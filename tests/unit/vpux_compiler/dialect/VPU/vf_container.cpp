@@ -19,7 +19,7 @@
 
 #include <gtest/gtest.h>
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 using namespace vpux;
 
 using MLIR_VPU_VFPipelineContainer = vpux::VPU::arch40xx::UnitTest;
@@ -67,7 +67,7 @@ TEST_F(MLIR_VPU_VFPipelineContainer, VF_ContainerCost) {
 
     auto container = VPU::VFPipelineContainer();
     // set cost model factory
-    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
     auto layerCost = std::make_unique<VPU::LayerVPUNNCost>(func);
 
     auto operationStorage = std::make_unique<VPU::TilingOperationStorage>();

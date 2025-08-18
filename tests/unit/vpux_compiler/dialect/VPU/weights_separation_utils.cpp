@@ -5,6 +5,7 @@
 
 #include "common/utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/dialect.hpp"
@@ -67,33 +68,33 @@ constexpr llvm::StringLiteral INPUT_IR = R"(
 {-#
     dialect_resources: {
         builtin: {
-            ov1: "0x10000000ABABABABCDCDCDCD",
-            ov2: "0x10000000ABABABABCDCDCDCD",
-            ov3: "0x10000000ABABABABCDCDCDCD",
-            ov4: "0x10000000ABABABABCDCDCDCD"
+            vpux_ow_1: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_2: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_3: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_4: "0x10000000ABABABABCDCDCDCD"
         }
     }
 #-}
 
 module @main {
     func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %ov1_0 = const.Declare tensor<2x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_0 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>]
-        %ov1_1 = const.Declare tensor<102x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_1 = const.Declare tensor<102x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.PadWithZero<[0, 0], [100, 0]>]
         // ov1 = 2 * 2 * f16 + 102 * 2 * f16
 
-        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<ov2> : tensor<2x2xf16>,
+        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_2> : tensor<2x2xf16>,
             [#const.Rescale<5.0>]
         // ov2 = 2 * 2 * f16
 
-        %ov3_1 = const.Declare tensor<2x2xf16> = dense_resource<ov3> : tensor<2x2xf16>,
+        %ov3_1 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_3> : tensor<2x2xf16>,
             [#const.Rescale<5.0>]
-        %ov3_2 = const.Declare tensor<52x2xf16> = dense_resource<ov3> : tensor<2x2xf16>,
+        %ov3_2 = const.Declare tensor<52x2xf16> = dense_resource<vpux_ow_3> : tensor<2x2xf16>,
             [#const.PadWithZero<[0, 0], [50, 0]>]
         // ov3 = 2 * 2 * f16 + 52 * 2 * f16
 
-        %ov4 = const.Declare tensor<2x2xf64> = dense_resource<ov4> : tensor<2x2xf16>,
+        %ov4 = const.Declare tensor<2x2xf64> = dense_resource<vpux_ow_4> : tensor<2x2xf16>,
             [#const.CastElemType<f64>]
         // ov4 = 2 * 2 * f64
 
@@ -164,10 +165,10 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, PartialSlicing) {
         const auto resourceName = getResourceName(actual.front().getContentAttr().getBaseContent()).str();
         std::vector<VPU::TransformationsSplit> expected;
         // Note: ov2 and ov4 are assumed to be stored together
-        if (resourceName == "ov2" || resourceName == "ov4") {
+        if (resourceName == "vpux_ow_2" || resourceName == "vpux_ow_4") {
             expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
                 const auto xName = getResourceName(x.getContentAttr().getBaseContent()).str();
-                return xName == "ov2" || xName == "ov4";
+                return xName == "vpux_ow_2" || xName == "vpux_ow_4";
             });
         } else {
             expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
@@ -183,25 +184,25 @@ constexpr llvm::StringLiteral INPUT_IR_SUBVIEWS = R"(
 {-#
     dialect_resources: {
         builtin: {
-            ov1: "0x10000000ABABABABCDCDCDCD",
-            ov2: "0x10000000ABABABABCDCDCDCD"
+            vpux_ow_1: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_2: "0x10000000ABABABABCDCDCDCD"
         }
     }
 #-}
 
 module @main {
     func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %ov1_0 = const.Declare tensor<1x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_0 = const.Declare tensor<1x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.SubView<[0, 0], [1, 2]>]
-        %ov1_1 = const.Declare tensor<1x2xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_1 = const.Declare tensor<1x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.SubView<[1, 0], [1, 2]>]
-        %ov1_2 = const.Declare tensor<2x1xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_2 = const.Declare tensor<2x1xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.SubView<[0, 0], [2, 1]>]
-        %ov1_3 = const.Declare tensor<2x1xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_3 = const.Declare tensor<2x1xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.SubView<[0, 1], [2, 1]>]
         // ov1 = 2 * 2 * f16 (subviews do not count)
 
-        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<ov2> : tensor<2x2xf16>,
+        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_2> : tensor<2x2xf16>,
             [#const.Rescale<5.0>]
         // ov2 = 2 * 2 * f16
 
@@ -262,8 +263,8 @@ constexpr llvm::StringLiteral INPUT_IR_REORDERS = R"(
 {-#
     dialect_resources: {
         builtin: {
-            ov1: "0x10000000ABABABABCDCDCDCD",
-            ov2: "0x10000000ABABABABCDCDCDCD"
+            vpux_ow_1: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_2: "0x10000000ABABABABCDCDCDCD"
         }
     }
 #-}
@@ -272,15 +273,15 @@ constexpr llvm::StringLiteral INPUT_IR_REORDERS = R"(
 
 module @main {
     func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %ov1_0 = const.Declare tensor<1x2xf16, {order = #CN}> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_0 = const.Declare tensor<1x2xf16, {order = #CN}> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.Reorder<#CN>, #const.SubView<[0, 0], [1, 2]>]
-        %ov1_1 = const.Declare tensor<1x2xf16, {order = #CN}> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_1 = const.Declare tensor<1x2xf16, {order = #CN}> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.Reorder<#CN>, #const.SubView<[1, 0], [1, 2]>]
-        %ov1_2 = const.Declare tensor<2x1xf16> = dense_resource<ov1> : tensor<2x2xf16>,
+        %ov1_2 = const.Declare tensor<2x1xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
             [#const.Add<1.0>, #const.PadWithZero<[0, 0], [0, 1]>, #const.SubView<[0, 0], [2, 1]>]
         // ov1 with reorder = 2 * 2 * f16 + 2 * 3 * f16 (subviews do not count)
 
-        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<ov2> : tensor<2x2xf16>,
+        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_2> : tensor<2x2xf16>,
             [#const.Rescale<5.0>]
         // ov2 = 2 * 2 * f16
 

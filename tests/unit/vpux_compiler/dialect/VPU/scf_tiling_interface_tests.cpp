@@ -72,17 +72,17 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesEltwise) {
         VPU::SCFTileInfo outputTile({1, 16, 256, 70}, builder);
         auto scfTilingInput = nceEltwiseOpModel.backInferSCFTileInfo(eltwise.getOperation(), builder, outputTile);
 
-        EXPECT_EQ(scfTilingInput.size(), 2);
-        auto inputShape1 = mlir::getConstantIntValues(scfTilingInput.front().shape);
-        auto inputShape2 = mlir::getConstantIntValues(scfTilingInput.back().shape);
+        EXPECT_EQ(scfTilingInput.tiles.size(), 2);
+        auto inputShape1 = mlir::getConstantIntValues(scfTilingInput.tiles.front().shape);
+        auto inputShape2 = mlir::getConstantIntValues(scfTilingInput.tiles.back().shape);
 
         EXPECT_TRUE(inputShape1.has_value() && inputShape2.has_value());
         EXPECT_TRUE(llvm::equal(inputShape1.value(), inputShape2.value()));
         SmallVector<int64_t> expectedShape = {1, 16, 256, 70};
         EXPECT_TRUE(llvm::equal(inputShape1.value(), expectedShape));
 
-        auto inputOffset1 = mlir::getConstantIntValues(scfTilingInput.front().offsets);
-        auto inputOffset2 = mlir::getConstantIntValues(scfTilingInput.back().offsets);
+        auto inputOffset1 = mlir::getConstantIntValues(scfTilingInput.tiles.front().offsets);
+        auto inputOffset2 = mlir::getConstantIntValues(scfTilingInput.tiles.back().offsets);
 
         EXPECT_TRUE(inputOffset1.has_value() && inputOffset2.has_value());
         EXPECT_TRUE(llvm::equal(inputOffset1.value(), inputOffset2.value()));
@@ -142,9 +142,9 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesConv) {
                                     mlir::getAsIndexOpFoldResult(&ctx, axes));
         auto scfTilingInput = nceConvOpModel.backInferSCFTileInfo(conv.getOperation(), builder, outputTile);
 
-        EXPECT_EQ(scfTilingInput.size(), 1);
-        auto inputShape = mlir::getConstantIntValues(scfTilingInput.front().shape);
-        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.front().offsets);
+        EXPECT_EQ(scfTilingInput.tiles.size(), 1);
+        auto inputShape = mlir::getConstantIntValues(scfTilingInput.tiles.front().shape);
+        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.tiles.front().offsets);
 
         EXPECT_TRUE(inputShape.has_value() && inputOffset.has_value());
         SmallVector<int64_t> expectedInputOffset = {0, 0, 31, 0};
@@ -209,9 +209,9 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesCTileConv) {
                                     mlir::getAsIndexOpFoldResult(&ctx, axes));
         auto scfTilingInput = nceConvOpModel.backInferSCFTileInfo(conv.getOperation(), builder, outputTile);
 
-        EXPECT_EQ(scfTilingInput.size(), 3);
-        auto inputShape = mlir::getConstantIntValues(scfTilingInput.front().shape);
-        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.front().offsets);
+        EXPECT_EQ(scfTilingInput.tiles.size(), 3);
+        auto inputShape = mlir::getConstantIntValues(scfTilingInput.tiles.front().shape);
+        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.tiles.front().offsets);
 
         EXPECT_TRUE(inputShape.has_value() && inputOffset.has_value());
         SmallVector<int64_t> expectedInputOffset = {0, 0, 0, 0};
@@ -219,8 +219,8 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesCTileConv) {
         EXPECT_TRUE(llvm::equal(inputShape.value(), expectedInputShape));
         EXPECT_TRUE(llvm::equal(inputOffset.value(), expectedInputOffset));
 
-        auto filterShape = mlir::getConstantIntValues(scfTilingInput[1].shape);
-        auto filterOffset = mlir::getConstantIntValues(scfTilingInput[1].offsets);
+        auto filterShape = mlir::getConstantIntValues(scfTilingInput.tiles[1].shape);
+        auto filterOffset = mlir::getConstantIntValues(scfTilingInput.tiles[1].offsets);
 
         EXPECT_TRUE(filterShape.has_value() && filterOffset.has_value());
         SmallVector<int64_t> expectedFilterOffset = {256, 0, 0, 0};
@@ -228,8 +228,8 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesCTileConv) {
         EXPECT_TRUE(llvm::equal(filterShape.value(), expectedFilterShape));
         EXPECT_TRUE(llvm::equal(filterOffset.value(), expectedFilterOffset));
 
-        auto wtShape = mlir::getConstantIntValues(scfTilingInput.back().shape);
-        auto wtOffset = mlir::getConstantIntValues(scfTilingInput.back().offsets);
+        auto wtShape = mlir::getConstantIntValues(scfTilingInput.tiles.back().shape);
+        auto wtOffset = mlir::getConstantIntValues(scfTilingInput.tiles.back().offsets);
 
         EXPECT_TRUE(wtShape.has_value() && wtOffset.has_value());
         SmallVector<int64_t> expectedWtOffset = {256, 0, 0, 0};
@@ -289,9 +289,9 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesPooling) {
                                     mlir::getAsIndexOpFoldResult(&ctx, axes));
         auto scfTilingInput = ncePoolOpModel.backInferSCFTileInfo(pooling.getOperation(), builder, outputTile);
 
-        EXPECT_EQ(scfTilingInput.size(), 1);
-        auto inputShape = mlir::getConstantIntValues(scfTilingInput.front().shape);
-        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.front().offsets);
+        EXPECT_EQ(scfTilingInput.tiles.size(), 1);
+        auto inputShape = mlir::getConstantIntValues(scfTilingInput.tiles.front().shape);
+        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.tiles.front().offsets);
 
         EXPECT_TRUE(inputShape.has_value() && inputOffset.has_value());
         SmallVector<int64_t> expectedInputOffset = {0, 0, 99, 0};
@@ -364,9 +364,9 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesDWConv) {
                                     mlir::getAsIndexOpFoldResult(&ctx, axes));
         auto scfTilingInput = nceDwConvOpModel.backInferSCFTileInfo(dwConv.getOperation(), builder, outputTile);
 
-        EXPECT_EQ(scfTilingInput.size(), 3);
-        auto inputShape = mlir::getConstantIntValues(scfTilingInput.front().shape);
-        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.front().offsets);
+        EXPECT_EQ(scfTilingInput.tiles.size(), 3);
+        auto inputShape = mlir::getConstantIntValues(scfTilingInput.tiles.front().shape);
+        auto inputOffset = mlir::getConstantIntValues(scfTilingInput.tiles.front().offsets);
 
         EXPECT_TRUE(inputShape.has_value() && inputOffset.has_value());
         SmallVector<int64_t> expectedInputOffset = {0, 16, 0, 0};
@@ -374,8 +374,8 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesDWConv) {
         EXPECT_TRUE(llvm::equal(inputShape.value(), expectedInputShape));
         EXPECT_TRUE(llvm::equal(inputOffset.value(), expectedInputOffset));
 
-        auto filterShape = mlir::getConstantIntValues(scfTilingInput[1].shape);
-        auto filterOffset = mlir::getConstantIntValues(scfTilingInput[1].offsets);
+        auto filterShape = mlir::getConstantIntValues(scfTilingInput.tiles[1].shape);
+        auto filterOffset = mlir::getConstantIntValues(scfTilingInput.tiles[1].offsets);
 
         EXPECT_TRUE(filterShape.has_value() && filterOffset.has_value());
         SmallVector<int64_t> expectedFilterOffset = {16, 0, 0, 0};
@@ -383,8 +383,8 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesDWConv) {
         EXPECT_TRUE(llvm::equal(filterShape.value(), expectedFilterShape));
         EXPECT_TRUE(llvm::equal(filterOffset.value(), expectedFilterOffset));
 
-        auto wtShape = mlir::getConstantIntValues(scfTilingInput.back().shape);
-        auto wtOffset = mlir::getConstantIntValues(scfTilingInput.back().offsets);
+        auto wtShape = mlir::getConstantIntValues(scfTilingInput.tiles.back().shape);
+        auto wtOffset = mlir::getConstantIntValues(scfTilingInput.tiles.back().offsets);
 
         EXPECT_TRUE(wtShape.has_value() && wtOffset.has_value());
         SmallVector<int64_t> expectedWtOffset = {16, 0, 0, 0};

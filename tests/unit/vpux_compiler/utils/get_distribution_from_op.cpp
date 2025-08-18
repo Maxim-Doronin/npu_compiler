@@ -340,7 +340,7 @@ TEST_P(GetDistributedTypeFromSOKOpTests, SplitOverChannelsDistribution) {
     const vpux::VPU::DistributionMode expectedDistribution = params.expectedDistribution;
 
     auto registry = vpux::createDialectRegistry();
-    auto interfacesRegistry = vpux::createInterfacesRegistry(vpux::VPU::ArchKind::NPU37XX);
+    auto interfacesRegistry = vpux::createInterfacesRegistry(vpux::config::ArchKind::NPU37XX);
     interfacesRegistry->registerInterfaces(registry);
 
     mlir::MLIRContext ctx(registry);
@@ -459,31 +459,31 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test {
         IE.TileResource 3 of @NCE at 6.000000e+02 MHz
-        func.func @main(%arg0: tensor<1x2048x1x1xf16, {order = #NHWC}>) 
+        func.func @main(%arg0: tensor<1x2048x1x1xf16, {order = #NHWC}>)
             -> (tensor<1x12288x1x1xf16, {order = #NHWC}>, tensor<1x12288x1x1xf16, {order = #NHWC}>) {
-            %cst = const.Declare tensor<12288x2048x1x1x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : 
+            %cst = const.Declare tensor<12288x2048x1x1x!qElemType, {order = #NHWC}> = dense<1.000000e+00> :
                     tensor<12288x2048x1x1xf16, {order = #NHWC}>, [#const.CastElemType<i4>, #const.CastElemType<!qElemType>]
             %cst_0 = const.Declare tensor<12288x1x1x4xsi32> = dense<10> : tensor<12288x1x1x4xsi32>
-            %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x2048x1x1xf16, {order = #NHWC}>, 
-                    %cst as %arg2: tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>, 
-                    %cst_0 as %arg3: tensor<12288x1x1x4xsi32>) 
+            %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x2048x1x1xf16, {order = #NHWC}>,
+                    %cst as %arg2: tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>,
+                    %cst_0 as %arg3: tensor<12288x1x1x4xsi32>)
                     attributes {tilingStrategy = [1, 8, 1, 1]} -> tensor<1x12288x1x1xf16, {order = #NHWC}> {
                 %1 = VPU.NCE.Convolution(%arg1, %arg2, %arg3) {
-                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, 
-                    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, 
-                    ppe = #VPU.PPEStub<>, 
-                    rawFilterShape = [12288, 2048, 1, 1], strides = [1, 1]} : 
-                    tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>, 
-                    tensor<12288x1x1x4xsi32> -> tensor<1x12288x1x1xf16, {order = #NHWC}> 
-                VPU.Yield %1 
+                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                    ppe = #VPU.PPEStub<>,
+                    rawFilterShape = [12288, 2048, 1, 1], strides = [1, 1]} :
+                    tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>,
+                    tensor<12288x1x1x4xsi32> -> tensor<1x12288x1x1xf16, {order = #NHWC}>
+                VPU.Yield %1
             }
             %2 = VPU.NCE.Convolution(%arg0, %cst, %cst_0) {
-                multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, 
-                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, 
-                ppe = #VPU.PPEStub<>, 
-                rawFilterShape = [12288, 2048, 1, 1], strides = [1, 1], tilingStrategy = [1, 8, 1, 1]} : 
-                tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>, 
-                tensor<12288x1x1x4xsi32> -> tensor<1x12288x1x1xf16, {order = #NHWC}> 
+                multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                ppe = #VPU.PPEStub<>,
+                rawFilterShape = [12288, 2048, 1, 1], strides = [1, 1], tilingStrategy = [1, 8, 1, 1]} :
+                tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<12288x2048x1x1x!qElemType, {order = #NHWC}>,
+                tensor<12288x1x1x4xsi32> -> tensor<1x12288x1x1xf16, {order = #NHWC}>
             return %0, %2 : tensor<1x12288x1x1xf16, {order = #NHWC}>, tensor<1x12288x1x1xf16, {order = #NHWC}>
         }
     })", false, VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED}};

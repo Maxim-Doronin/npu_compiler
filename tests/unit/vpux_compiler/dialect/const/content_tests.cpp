@@ -2147,8 +2147,8 @@ TEST_F(MLIR_ConstContentAttrTest, BitPackIsLast) {
     EXPECT_NO_THROW(std::ignore = contentAttrSetup.clone().transpose(DimsOrder::NHWC));
 
     // Inserting another transformation that has the LAST position requirement
-    EXPECT_ANY_THROW(
-            std::ignore = contentAttrSetup.clone().swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX)));
+    EXPECT_ANY_THROW(std::ignore = contentAttrSetup.clone().swizzleConstant(
+                             5, static_cast<uint64_t>(config::ArchKind::NPU37XX)));
 
     const auto quantType =
             mlir::quant::UniformQuantizedType::get(mlir::quant::QuantizationFlags::Signed, getSInt8Type(&ctx),
@@ -2461,7 +2461,7 @@ TEST_F(MLIR_ConstContentAttrTest, PositionRequirement) {
     auto contentAttrSetup1 = baseContentAttrSetup.rescale(10.0);
 
     // Inserting a transformation that has the LAST position requirement
-    auto contentAttrSetup2 = contentAttrSetup1.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup2 = contentAttrSetup1.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     // Inserting a transformation that has the PREFERRED_LAST position requirement
     auto contentAttrSetup3 = contentAttrSetup2.sparsify(false);
@@ -2613,7 +2613,8 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_I1) {
     Const::ContentSetup baseContentAttrSetup(baseType);
 
     auto contentAttrSetup = baseContentAttrSetup.castElemType(mlir::IntegerType::get(&ctx, 1));
-    auto contentAttrSetup1 = contentAttrSetup.clone().swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup1 =
+            contentAttrSetup.clone().swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     auto contentAttr1 = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup1));
@@ -2621,7 +2622,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_I1) {
     EXPECT_EQ(content.getType(), contentAttr1.getType());
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     const auto contentType = contentAttr.getType();
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
@@ -2651,7 +2652,8 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_I4) {
     Const::ContentSetup baseContentAttrSetup(baseType);
     auto contentAttrSetup = baseContentAttrSetup.castElemType(mlir::IntegerType::get(&ctx, 4));
 
-    auto contentAttrSetup1 = contentAttrSetup.clone().swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup1 =
+            contentAttrSetup.clone().swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr1 = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup1));
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
@@ -2660,7 +2662,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_I4) {
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
 
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     const auto contentType = contentAttr.getType();
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
@@ -2689,14 +2691,14 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_U8) {
     const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
     Const::ContentSetup baseContentAttrSetup(baseType);
 
-    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
     EXPECT_EQ(content.getType(), contentAttr.getType());
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     const auto contentType = contentAttr.getType();
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
@@ -2723,14 +2725,14 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_FP32) {
     const auto baseAttr = Const::createConstContent(baseType, ArrayRef(vals));
     Const::ContentSetup baseContentAttrSetup(baseType);
 
-    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
     EXPECT_EQ(content.getType(), contentAttr.getType());
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     const auto contentType = contentAttr.getType();
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
@@ -2763,7 +2765,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_Splat_I1) {
     const auto contentType = Const::inferFinalType(baseType, contentAttrSetup.getTransformations());
     ASSERT_NE(contentType, nullptr);
 
-    auto contentAttrSetup1 = contentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup1 = contentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr1 = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup1));
     const auto content = contentAttr1.fold();
@@ -2771,7 +2773,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_Splat_I1) {
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr1.isSplat(), content.isSplat());
 
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
 
@@ -2805,7 +2807,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_Splat_I4) {
     const auto contentType = Const::inferFinalType(baseType, contentAttrSetup.getTransformations());
     ASSERT_NE(contentType, nullptr);
 
-    auto contentAttrSetup1 = contentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup1 = contentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr1 = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup1));
     const auto content = contentAttr1.fold();
@@ -2813,7 +2815,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_SubBytes_Splat_I4) {
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr1.isSplat(), content.isSplat());
 
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
 
@@ -2842,7 +2844,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_Splat_U8) {
 
     Const::ContentSetup baseContentAttrSetup(baseType);
 
-    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
@@ -2850,7 +2852,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_Splat_U8) {
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
 
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     const auto contentType = contentAttr.getType();
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));
@@ -2880,7 +2882,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_Splat_FP32) {
 
     Const::ContentSetup baseContentAttrSetup(baseType);
 
-    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(VPU::ArchKind::NPU37XX));
+    auto contentAttrSetup = baseContentAttrSetup.swizzleConstant(5, static_cast<uint64_t>(config::ArchKind::NPU37XX));
 
     auto contentAttr = Const::ContentAttr::get(baseAttr, std::move(contentAttrSetup));
     const auto content = contentAttr.fold();
@@ -2888,7 +2890,7 @@ TEST_F(MLIR_ConstContentAttrTest, SwizzleConstant_Splat_FP32) {
     EXPECT_FALSE(content.isSplat());
     EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
 
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(VPU::ArchKind::NPU37XX);
+    config::ArchKind archKind = static_cast<config::ArchKind>(config::ArchKind::NPU37XX);
     const auto contentType = contentAttr.getType();
     auto acheAlignSize = static_cast<size_t>(
             alignSizeForSwizzling(contentType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind)));

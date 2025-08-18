@@ -123,16 +123,16 @@ public:
 
 TEST_F(MLIR_TaskRangeTest, Empty) {
     constexpr std::string_view inputIR = R"(
-        module @EmptyOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+        module @EmptyOpRanges attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
         IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+            IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
             IE.ExecutorResource 2 of @SHAVE_ACT
             IE.ExecutorResource 1 of @DPU
         }
         IE.ExecutorResource 1 of @M2I
         IE.ExecutorResource 2 of @DMA_NN
-        IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+        IE.MemoryResource 2306867200 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
         net.NetworkInfo entryPoint : @main inputsInfo : {
             DataInfo "input_0" : tensor<1x2x3x4xf16>
         } outputsInfo : {
@@ -162,16 +162,16 @@ TEST_F(MLIR_TaskRangeTest, Empty) {
 TEST_F(MLIR_TaskRangeTest, DMA) {
     constexpr std::string_view inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+        module @MultiOpRanges attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-                IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+                IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
                 IE.ExecutorResource 2 of @SHAVE_ACT
                 IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 2306867200 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
             net.NetworkInfo entryPoint : @main inputsInfo : {
                 DataInfo "input_0" : tensor<1x2x3x4xf16>
             } outputsInfo : {
@@ -210,16 +210,16 @@ TEST_F(MLIR_TaskRangeTest, DMA) {
 TEST_F(MLIR_TaskRangeTest, Shave) {
     constexpr std::string_view inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+        module @MultiOpRanges attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-                IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+                IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
                 IE.ExecutorResource 2 of @SHAVE_ACT
                 IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 2306867200 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
             net.NetworkInfo entryPoint : @main inputsInfo : {
                 DataInfo "input_0" : tensor<1x2x3x4xf16>
             } outputsInfo : {
@@ -287,16 +287,16 @@ TEST_F(MLIR_TaskRangeTest, Shave) {
 TEST_F(MLIR_TaskRangeTest, DPU) {
     constexpr std::string_view inputIR = R"(
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-        module @MultiOpRanges attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+        module @MultiOpRanges attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
             IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
                 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-                IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+                IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
                 IE.ExecutorResource 2 of @SHAVE_ACT
                 IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 1 of @M2I
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 2306867200 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
             net.NetworkInfo entryPoint : @main inputsInfo : {
                 DataInfo "input_0" : tensor<1x2x3x4xf16>
             } outputsInfo : {

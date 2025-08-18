@@ -17,7 +17,7 @@
 
 #include <gtest/gtest.h>
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 using namespace vpux;
 
 using MLIR_VPU_RT_SPARSITY_STATS_PROVIDER = vpux::VPU::arch37xx::UnitTest;

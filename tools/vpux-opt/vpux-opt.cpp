@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/NPU37XX/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPURT/transforms/passes.hpp"
@@ -33,6 +34,7 @@
 
 #include "vpux/utils/core/error.hpp"
 
+#include <mlir/Conversion/Passes.h>
 #include <mlir/Dialect/Func/Transforms/Passes.h>
 #include <mlir/Dialect/Linalg/Passes.h>
 #include <mlir/Dialect/MemRef/Transforms/Passes.h>
@@ -78,6 +80,7 @@ int main(int argc, char* argv[]) {
         vpux::ELF::registerPasses();
         vpux::VPUMI37XX::registerPasses();
         vpux::VPUMI40XX::registerPasses();
+        vpux::NPUReg40XX::registerPasses();
         vpux::VPUASM::registerPasses();
         vpux::VPUIPDPU::registerPasses();
         vpux::ShaveCodeGen::registerPasses();
@@ -89,6 +92,7 @@ int main(int argc, char* argv[]) {
         mlir::memref::registerResolveShapedTypeResultDims();
         mlir::registerLinalgPasses();
         mlir::memref::registerExpandStridedMetadataPass();
+        mlir::registerArithToLLVMConversionPass();
 
         return mlir::asMainReturnCode(
                 mlir::MlirOptMain(argc, argv, "NPU Optimizer Testing Tool", registry, hwSpecificRegistration));

@@ -155,10 +155,10 @@ TEST_F(BarrierPagesSplitTests, CheckSplitForGraphSimple) {
  *          |    |
  *          b3   |
  *          |    |
- * ------   t5   |
- *           \  /
- *            b4
- * Page2      |
+ * ------   t5   | <- t5 does not update any barrier from next page but since
+ *              /     there is no such task in the graph, that works on Page1/Page2
+ *            b4      boundary, page split legalization, which requires at least one boundary task,
+ * Page2      |       will create t5->b4 dependency
  *            t6
  *            |
  *            b5
@@ -174,7 +174,7 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithLongDepOnTaskUpdat
             {4},  // task 2
             {2},  // task 3
             {3},  // task 4
-            {4},  // task 5
+            {},   // task 5
             {5}   // task 6
     };
 
@@ -1257,8 +1257,8 @@ TEST_F(BarrierPagesSplitTests, LegalizeBoundaryTaskDepsWithMultipleUpdateBars) {
  *        | t4
  *        |    \
  *        \     \
- * ------   t5  |
- *          |   |
+ * ------  t5  /|
+ *            / |
  * Page2    b5  b4
  *          |   |
  *          |   t6
@@ -1278,15 +1278,15 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithMultipleBoundaryTa
     BarrierInfoMaps barrierMapsConfig;
 
     barrierMapsConfig.taskUpdateBarriers = {
-            {0},  // task 0
-            {1},  // task 1
-            {2},  // task 2
-            {3},  // task 3
-            {4},  // task 4
-            {5},  // task 5
-            {6},  // task 6
-            {6},  // task 7
-            {7}   // task 8
+            {0},     // task 0
+            {1},     // task 1
+            {2},     // task 2
+            {3},     // task 3
+            {4, 5},  // task 4
+            {},      // task 5
+            {6},     // task 6
+            {6},     // task 7
+            {7}      // task 8
     };
 
     barrierMapsConfig.taskWaitBarriers = {
@@ -1318,8 +1318,8 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithMultipleBoundaryTa
             {1},     // task 1
             {2},     // task 2
             {2, 3},  // task 3
-            {4},     // task 4
-            {4, 5},  // task 5
+            {4, 5},  // task 4
+            {4},     // task 5
             {6},     // task 6
             {6},     // task 7
             {7}      // task 8
@@ -2156,6 +2156,119 @@ TEST_F(BarrierPagesSplitTests, LegalizeForBarrierDmaWhereOneOfWaitBarriersWouldD
     EXPECT_EQ(barProgDmaPosPage1.updateBars[0], 5);
     EXPECT_EQ(barProgDmaPosPage1.updateBars[1], 7);
     EXPECT_EQ(barProgDmaPosPage1.insertAfter, 5);
+
+    auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
+
+    EXPECT_EQ(expectedBarrierMapsConfig.taskUpdateBarriers, testResult.taskUpdateBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.taskWaitBarriers, testResult.taskWaitBarriers);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierProducerMap, testResult.barrierProducerMap);
+    EXPECT_EQ(expectedBarrierMapsConfig.barrierConsumerMap, testResult.barrierConsumerMap);
+}
+
+/**
+ * HW FIFO (DMA): t0 t2 t3 t4 t5
+ * HW FIFO (DPU): t1
+ *
+ * ------     t0
+ *            |
+ *            b0
+ *           / \
+ * Page0    t1  t2
+ *          |    |
+ *          b1   |
+ *          |    |
+ * ------   t3   |  <- both t2 and t3 are boundary tasks but t3 has no update barrier
+ *              /
+ *            b2  <- Create t3->b2 dep
+ *            |      Slot for inserting barrier DMA prepared between b2 and b3
+ *  Page1     t4
+ *            |
+ *            b3
+ *            |
+ * ------     t5
+ *            |
+ *  Page2     b4
+ * ------
+ */
+// Create a tuple with BarrierInfoMaps, pageSize and expectedBarrierMapsConfig
+std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphToLegalizeForBarrierDmaWhereStartTaskHasNoUpdateBar() {
+    BarrierInfoMaps barrierMapsConfig;
+
+    barrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {},   // task 3
+            {3},  // task 4
+            {4}   // task 5
+    };
+
+    barrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {0},  // task 2
+            {1},  // task 3
+            {2},  // task 4
+            {3}   // task 5
+    };
+
+    fillProducersAndConsumers(barrierMapsConfig);
+
+    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+
+    barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 2, 3, 4, 5};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {1};
+
+    size_t pageSize = 2;
+
+    BarrierInfoMaps expectedBarrierMapsConfig;
+
+    expectedBarrierMapsConfig.taskUpdateBarriers = {
+            {0},  // task 0
+            {1},  // task 1
+            {2},  // task 2
+            {2},  // task 3
+            {3},  // task 4
+            {4}   // task 5
+    };
+
+    expectedBarrierMapsConfig.taskWaitBarriers = {
+            {},   // task 0
+            {0},  // task 1
+            {0},  // task 2
+            {1},  // task 3
+            {2},  // task 4
+            {3}   // task 5
+    };
+    fillProducersAndConsumers(expectedBarrierMapsConfig);
+
+    return std::make_tuple(barrierMapsConfig, pageSize, expectedBarrierMapsConfig);
+}
+
+TEST_F(BarrierPagesSplitTests, LegalizeForBarrierDmaWhereStartTaskHasNoUpdateBar) {
+    auto [barrierMapsConfig, pageSize, expectedBarrierMapsConfig] =
+            graphToLegalizeForBarrierDmaWhereStartTaskHasNoUpdateBar();
+
+    BarrierInfoTest barrierInfoTest(barrierMapsConfig);
+    VPURT::BarrierPagesSplitHandler barrierPagesSplitHandlerTest(barrierInfoTest, barrierMapsConfig.taskQueueTypeMap,
+                                                                 pageSize, /*_barrierFifoDepth = */ 1);
+
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyTaskBarrierPagesAreValid());
+    EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyNoCyclicDeps());
+
+    EXPECT_TRUE(barrierPagesSplitHandlerTest.areBoundaryTasksFromNeighborPagesDependent());
+
+    barrierPagesSplitHandlerTest.legalizeForDmaProgrammingBarriers();
+
+    auto barProgDmaPosPage1 = barrierPagesSplitHandlerTest.getDmaProgrammingBarrierPosition(1);
+
+    ASSERT_TRUE(barProgDmaPosPage1.valid);
+    ASSERT_EQ(barProgDmaPosPage1.waitBars.size(), 1);
+    EXPECT_EQ(barProgDmaPosPage1.waitBars[0], 2);
+    ASSERT_EQ(barProgDmaPosPage1.updateBars.size(), 1);
+    EXPECT_EQ(barProgDmaPosPage1.updateBars[0], 3);
+    EXPECT_EQ(barProgDmaPosPage1.insertAfter, 3);
 
     auto testResult = barrierPagesSplitHandlerTest.getBarrierMaps();
 

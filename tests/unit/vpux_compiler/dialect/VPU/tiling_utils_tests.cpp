@@ -4,7 +4,9 @@
 //
 
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mlir/Parser/Parser.h>
@@ -12,7 +14,7 @@
 
 #include <gtest/gtest.h>
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 using namespace vpux;
 using MLIR_VPU_doesTopKLayerFitIntoCMX = MLIR_UnitBase;
 
@@ -227,7 +229,7 @@ TEST_F(MLIR_VPU_isMultiClusterCompatibleForTiling, isSplitOverHeightCompatibleFo
     })";
 
     auto registry = vpux::createDialectRegistry();
-    const auto arch = VPU::ArchKind::NPU40XX;
+    const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
 
@@ -294,7 +296,7 @@ TEST_F(MLIR_VPU_isMultiClusterCompatibleForTiling, isSplitOverKernelCompatibleFo
     })";
 
     auto registry = vpux::createDialectRegistry();
-    const auto arch = VPU::ArchKind::NPU40XX;
+    const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
 

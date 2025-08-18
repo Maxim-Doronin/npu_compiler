@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Parser/Parser.h>
@@ -20,16 +21,16 @@ using MLIR_VPU_ClusteringStrategyNoThrow = vpux::VPU::arch40xx::UnitTest;
 TEST_F(MLIR_VPU_ClusteringStrategyNoThrow, SWLayer_ClusteringStrategy) {
     constexpr llvm::StringLiteral inputIR = R"(
 #loc0 = loc(unknown)
-    module @main attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+    module @main attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
         IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
             IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-            IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+            IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
             IE.ExecutorResource 2 of @SHAVE_ACT
             IE.ExecutorResource 1 of @DPU
         }
         IE.ExecutorResource 1 of @M2I
         IE.ExecutorResource 2 of @DMA_NN
-        IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+        IE.MemoryResource 2306867200 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
         func.func @main(%softmax_in: tensor<1x8x4x76xf16>,
                         %power_f16_in: tensor<1x16x256x256xf16>,
                         %power_f16_pow: tensor<1x16x1x1xf16>,
@@ -98,10 +99,10 @@ TEST_F(MLIR_VPU_ClusteringStrategyNoThrow, SWLayer_ClusteringStrategy) {
     bool enablePrefetchTiling = true;
 
     // set cost model factory
-    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
 
     auto siblingsOpsAnalysis = vpux::VPU::SiblingOpsAnalysis(func);
-    const auto arch = VPU::getArch(module.get());
+    const auto arch = config::getArch(module.get());
     auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
     vpux::VPU::StrategyManager strategyManager(func, tileOp.getCount(), enablePrefetchTiling,
                                                VPU::MCOptimizationScope::SUBGRAPH, siblingsOpsAnalysis, layerCostModel,

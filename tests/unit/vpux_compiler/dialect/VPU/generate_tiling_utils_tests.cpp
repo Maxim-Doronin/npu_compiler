@@ -9,7 +9,7 @@
 
 using namespace vpux;
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 using MLIR_VPU_Generate_Tiling = MLIR_UnitBase;
 
 TEST_F(MLIR_VPU_Generate_Tiling, Calculate_Workload_Number) {

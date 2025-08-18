@@ -19,7 +19,7 @@
 
 #include <gtest/gtest.h>
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 
 void testSparsitySupport(llvm::StringLiteral inputIR, ArchKind arch, bool supportInputSparsity,
                          bool supportOutputSparsity, bool supportWeightSparsity) {

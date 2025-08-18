@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
@@ -59,13 +60,41 @@ public:
     }
 };
 
+/**
+ * Pass to check that the cost model analysis and layer cost model analysis share the same VPUCostModel instance
+ */
+class CheckSharedCostModelPass : public mlir::PassWrapper<CheckSharedCostModelPass, vpux::FunctionPass> {
+public:
+    ::llvm::StringRef getName() const override {
+        return "CheckSharedCostModelPass";
+    }
+    void safeRunOnFunc() final {
+        auto func = getOperation();
+        auto module = func->getParentOfType<mlir::ModuleOp>();
+        const auto arch = config::getArch(module);
+
+        const auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
+        auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+
+        const auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
+        auto layerCostModel =
+                VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log)
+                        ->get_cost_model_shared();
+
+        VPUX_THROW_UNLESS(costModel != nullptr, "CostModelAnalysis must have a valid VPUCostModel instance");
+        VPUX_THROW_UNLESS(layerCostModel != nullptr, "LayerCostModelAnalysis must have a valid VPUCostModel instance");
+        VPUX_THROW_UNLESS(costModel == layerCostModel,
+                          "CostModelAnalysis and LayerCostModelAnalysis must share the same VPUCostModel instance");
+    }
+};
+
 }  // namespace CostModelAnalysisTests
 
 using MLIR_CostModelAnalysisTest = MLIR_UnitBase;
 
 const static llvm::StringLiteral inputIR = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-    module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+    module @test attributes {config.arch = #config.arch_kind<NPU40XX>} {
         func.func @main(%arg0: tensor<1x128x32x32xf16, {order = #NHWC}>) -> tensor<1x64x32x32xf16, {order = #NHWC}> {
             %cst = const.Declare tensor<64x1x1x4xsi32> = dense<10> : tensor<64x1x1x4xsi32>
             %cst_0 = const.Declare tensor<64x128x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<64x128x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -80,10 +109,10 @@ const static llvm::StringLiteral inputIR = R"(
 
 TEST_F(MLIR_CostModelAnalysisTest, CostModelAnalysisBehavior) {
     auto registry = vpux::createDialectRegistry();
-    const auto arch = VPU::ArchKind::NPU40XX;
+    const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
-    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);

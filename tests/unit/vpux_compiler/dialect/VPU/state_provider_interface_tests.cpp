@@ -26,7 +26,7 @@
 
 #include "llvm/Bitcode/BitcodeReader.h"
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 using namespace vpux;
 
 std::mt19937 gen(1);
@@ -309,7 +309,7 @@ TEST_F(StateProviderInterfaceTests, StateProviderNCEPermute_tests) {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 #loc0 = loc(unknown)
-    module @main attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
+    module @main attributes {config.arch = #config.arch_kind<NPU37XX>} {
         func.func @main(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x32x112x112x!qElemType0, {order = #NHWC}> {
         %cst = const.Declare tensor<32x1x1x32x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x1x1x32xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
         %cst_0 = const.Declare tensor<32x1x1x4xsi32> = dense<0> : tensor<32x1x1x4xsi32>
@@ -337,7 +337,7 @@ TEST_F(StateProviderInterfaceTests, StateProviderNCEPermute_tests) {
     auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
     ASSERT_TRUE(func != nullptr);
 
-    module.get()->removeAttr("VPU.arch");
+    module.get()->removeAttr("config.arch");
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
     auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU37XX, config::CompilationMode::DefaultHW);
 

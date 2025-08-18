@@ -58,11 +58,11 @@ const static llvm::StringLiteral inputIRClustering = R"(
 
 TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForSOK) {
     auto registry = vpux::createDialectRegistry();
-    const auto arch = VPU::ArchKind::NPU40XX;
+    const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
     // set cost model factory
-    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIRSOK, &ctx);
@@ -113,11 +113,11 @@ TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForSOK) {
 
 TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForClustering) {
     auto registry = vpux::createDialectRegistry();
-    const auto arch = VPU::ArchKind::NPU40XX;
+    const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
     // set cost model factory
-    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIRClustering, &ctx);
