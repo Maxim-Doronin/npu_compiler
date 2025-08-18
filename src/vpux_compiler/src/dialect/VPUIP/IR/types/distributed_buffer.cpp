@@ -6,17 +6,14 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
-
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
-
 #include "vpux/utils/core/numeric.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
-
-#include <numeric>
 
 using namespace vpux;
 
@@ -67,6 +64,45 @@ Byte getStridedAllocSize(const StridedShape& stridedTiledShape, ShapeRef strided
         totalBytes += alignValUp<int64_t>(tileByteSize, alignment);
     }
     return Byte(totalBytes);
+}
+
+// Returns strides attribute only when the provided strides are not compact.
+// This is aligned to what getMemRefType() does for mlir::MemRefType.
+mlir::ArrayAttr getStridesAttr(mlir::MLIRContext* ctx, StridesRef strides, const DimsOrder& dimsOrder, Bit elemSize,
+                               ShapeRef shape) {
+    if (strides.empty()) {
+        return nullptr;
+    }
+    const auto memStrides = dimsOrder.toMemoryOrder(strides);
+    const auto memShape = dimsOrder.toMemoryOrder(shape);
+
+    const bool isCompact = StrideReqs::compact(shape.size()).checkStrides(memStrides, elemSize, memShape);
+    if (isCompact) {
+        return nullptr;
+    }
+
+    // Have strides only if they are not compact
+    const auto elemStrides = to_small_vector(strides | transformed([&](Bit stride) {
+                                                 return stride.count() / elemSize.count();
+                                             }));
+    return getIntArrayAttr(ctx, elemStrides);
+}
+
+// Returns either a vpux::MemRefAttr or an mlir::AffineMapAttr (order) depending
+// on the specified input: when nothing except order is specified, only order is
+// returned. This aligns the behaviour to getMemRefType() that creates a
+// mlir::MemRefType.
+mlir::MemRefLayoutAttrInterface getMemrefLayout(mlir::AffineMapAttr order, mlir::ArrayAttr optionalStrides,
+                                                mlir::IntegerAttr optionalAllocSize,
+                                                mlir::ArrayRef<vpux::HwSpecificMemRefField> fields) {
+    const bool hwSpecificFieldsEmpty =
+            std::all_of(fields.begin(), fields.end(), [](const vpux::HwSpecificMemRefField& field) {
+                return field == nullptr;
+            });
+    if (optionalStrides == nullptr && optionalAllocSize == nullptr && hwSpecificFieldsEmpty) {
+        return order;
+    }
+    return vpux::MemRefAttr::get(order, optionalStrides, optionalAllocSize, fields, order.getContext());
 }
 }  // namespace
 
@@ -420,11 +456,11 @@ mlir::MemRefType VPUIP::DistributedBufferType::getCompactType() const {
                                swizzlingSchemeAttr, VPUIP::getSparsityCompressionAttr(*this));
 }
 
+namespace {
+
 //
 // Shape utils
 //
-
-namespace {
 
 Shape* getLargestShapeIt(SmallVector<Shape>& shapes) {
     return std::max_element(shapes.begin(), shapes.end(), [](ShapeRef a, ShapeRef b) {
@@ -440,6 +476,44 @@ StridedShape* getLargestStridedShapeIt(SmallVector<StridedShape>& stridedShapes)
                             [&](const StridedShape& a, const StridedShape& b) {
                                 return stridedShapeSize(a) < stridedShapeSize(b);
                             });
+}
+
+//
+// Helper to extract subview quantized type when input is already distributed over quant-axis
+//
+// e.g. full shape     = 16x?x?x?
+//      full qElemType = !quant.uniform<u8:f16:0, {s00:0, s01:0, s02:0, ... s15:0}
+//
+//         | Tile_0 | Tile_1 | Tile_2 |
+// ========|========|========|========|
+// Shave_0 |  s00   |  s06   |  s11   |
+// 9x?x?x? |  s01   |  s07   |  s12   | qElemType0 : {s00, s01, s02, s06, s07, s08, s11, s12, s13}
+//         |  s02   |  s08   |  s13   |
+// ========|========|========|========|
+// Shave_1 |  s03   |  s09   |  s14   |
+// 7x?x?x? |  s04   |  s10   |  s15   | qElemType1 : {s03, s04, s05, s09, s10, s14, s15}
+//         |  s05   |========|========|
+//         |========|
+
+mlir::Type getQuantTypeForExplicitDistribution(mlir::quant::UniformQuantizedPerAxisType perAxisQType,
+                                               VPU::DistributionInfoAttr inDistribution,
+                                               VPU::DistributionInfoAttr subDistribution, vpux::ShapeRef tileOffsets) {
+    auto axis = perAxisQType.getQuantizedDimension();
+    auto numTiles = vpux::parseIntArrayAttr<int64_t>(inDistribution.getNumTiles());
+    auto inputOffsets = vpux::parseIntArrayOfArrayAttr<int64_t>(inDistribution.getComputeOffsets());
+    auto subviewShapes = vpux::parseIntArrayOfArrayAttr<int64_t>(subDistribution.getMemoryShapes());
+    SmallVector<int64_t> offsets;
+    SmallVector<int64_t> sizes;
+    VPUX_THROW_UNLESS(tileOffsets[Dim(axis)] % numTiles[axis] == 0,
+                      "Previous subview shapes are not identical in all tiles.");
+
+    int64_t bias = tileOffsets[Dim(axis)] / numTiles[axis];  // bias within tile
+    for (auto ind : irange(inputOffsets.size())) {
+        offsets.push_back(inputOffsets[ind][axis] + bias);
+        sizes.push_back(subviewShapes[ind][axis]);
+    }
+
+    return vpux::tileScalesAndZP(perAxisQType, offsets, sizes);
 }
 
 }  // namespace
@@ -592,8 +666,8 @@ NDTypeInterface VPUIP::DistributedBufferType::changeShapeElemTypeForExplicitDist
         const auto orderAttr = mlir::AffineMapAttr::get(newOrder.toAffineMap(ctx));
         // If swizzlingKey is set get rid of strides settings
         if (memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>()) {
-            layoutAttr = vpux::MemRefAttr::get(orderAttr, nullptr,
-                                               /*allocSize=*/nullptr, memRefAttr.hwSpecificFields(), ctx);
+            layoutAttr = getMemrefLayout(orderAttr, nullptr,
+                                         /*allocSize=*/nullptr, memRefAttr.hwSpecificFields());
         } else {
             layoutAttr = orderAttr;
         }
@@ -630,15 +704,11 @@ NDTypeInterface VPUIP::DistributedBufferType::changeTypeComponentsForExplicitDis
     VPUX_THROW_UNLESS(dimsOrder.numDims() == shape.size(), "Order '{0}' is incompatible with the shape '{1}'",
                       dimsOrder, shape);
 
-    const auto elemSize = vpux::getElemTypeSize(elementType).count();
+    const auto elemSize = vpux::getElemTypeSize(elementType);
     const auto order = mlir::AffineMapAttr::get(dimsOrder.toAffineMap(ctx));
-    const auto newStrides = to_small_vector(strides | transformed([&](Bit stride) {
-                                                return stride.count() / elemSize;
-                                            }));
-    const auto newStridesAttr = getIntArrayAttr(ctx, newStrides);
-
+    const auto newStridesAttr = getStridesAttr(ctx, strides, dimsOrder, elemSize, shape);
     auto hwSpecificFields = getHwSpecificFields(getLayout());
-    const auto newDescAttr = vpux::MemRefAttr::get(order, newStridesAttr, /*allocSize=*/nullptr, hwSpecificFields, ctx);
+    const auto newDescAttr = getMemrefLayout(order, newStridesAttr, /*allocSize=*/nullptr, hwSpecificFields);
 
     auto newType = VPUIP::DistributedBufferType::get(ctx, shape.raw(), elementType, newDescAttr, memSpace,
                                                      distributedAttr, getSparsityCompression());
@@ -683,13 +753,27 @@ NDTypeInterface VPUIP::DistributedBufferType::extractViewTileForExplicitDistribu
     }
     const auto ctx = getContext();
 
-    const auto elemSize = getElemTypeSize().count();
+    const auto elemSize = getElemTypeSize();
     const auto order = mlir::AffineMapAttr::get(getDimsOrder().toAffineMap(ctx));
     const auto memSpace = getMemSpace();
 
     auto tileElemType = getElementType();
     if (const auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(tileElemType)) {
-        tileElemType = vpux::tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
+        auto inMode = getDistribution().getMode().getValue();
+        auto isMultiClusterAndMultiShaveOnAxis = false;
+        if (inMode == VPU::DistributionMode::SEGMENTED) {
+            auto axis = perAxisQType.getQuantizedDimension();
+            auto inTiles = vpux::parseIntArrayAttr<int64_t>(getDistribution().getNumTiles());
+            auto subTiles = vpux::parseIntArrayAttr<int64_t>(distributedAttr.getNumTiles());
+            isMultiClusterAndMultiShaveOnAxis = (inTiles[axis] > 1) && (subTiles[axis] > 1);
+        }
+
+        if (isMultiClusterAndMultiShaveOnAxis) {
+            tileElemType =
+                    getQuantTypeForExplicitDistribution(perAxisQType, getDistribution(), distributedAttr, tileOffsets);
+        } else {
+            tileElemType = vpux::tileScalesAndZP(perAxisQType, tileShape, tileOffsets);
+        }
     }
 
     auto tileStrides = getStrides();
@@ -703,14 +787,9 @@ NDTypeInterface VPUIP::DistributedBufferType::extractViewTileForExplicitDistribu
         }
     }
 
-    const auto newStrides = to_small_vector(tileStrides | transformed([&](Bit stride) {
-                                                return stride.count() / elemSize;
-                                            }));
-
-    const auto newStridesAttr = getIntArrayAttr(ctx, newStrides);
+    const auto newStridesAttr = getStridesAttr(ctx, tileStrides, getDimsOrder(), elemSize, tileShape);
     auto hwSpecificFields = getHwSpecificFields(getLayout());
-    const auto newDescAttr = vpux::MemRefAttr::get(order, newStridesAttr,
-                                                   /*allocSize=*/nullptr, hwSpecificFields, ctx);
+    const auto newDescAttr = getMemrefLayout(order, newStridesAttr, /*allocSize=*/nullptr, hwSpecificFields);
 
     const auto sparsityCompression = VPUIP::tileSparsityCompression(getSparsityCompression(), tileOffsets, tileShape);
 
@@ -973,8 +1052,8 @@ NDTypeInterface VPUIP::DistributedBufferType::changeShapeElemType(ShapeRef shape
         const auto orderAttr = mlir::AffineMapAttr::get(newOrder.toAffineMap(ctx));
         // If swizzlingKey is set get rid of strides settings
         if (memRefAttr.hwSpecificField<vpux::VPUIP::SwizzlingSchemeAttr>()) {
-            layoutAttr = vpux::MemRefAttr::get(orderAttr, nullptr,
-                                               /*allocSize=*/nullptr, memRefAttr.hwSpecificFields(), ctx);
+            layoutAttr = getMemrefLayout(orderAttr, nullptr,
+                                         /*allocSize=*/nullptr, memRefAttr.hwSpecificFields());
         } else {
             layoutAttr = orderAttr;
         }
@@ -997,8 +1076,8 @@ NDTypeInterface VPUIP::DistributedBufferType::changeDimsOrder(DimsOrder order) c
     auto orderAttr = mlir::AffineMapAttr::get(order.toAffineMap(ctx));
     if (auto memRefAttr = mlir::dyn_cast<vpux::MemRefAttr>(getLayout())) {
         // Assume compact strides
-        layoutAttr = vpux::MemRefAttr::get(orderAttr, nullptr,
-                                           /*allocSize=*/nullptr, memRefAttr.hwSpecificFields(), ctx);
+        layoutAttr = getMemrefLayout(orderAttr, nullptr,
+                                     /*allocSize=*/nullptr, memRefAttr.hwSpecificFields());
     } else {
         layoutAttr = orderAttr;
     }
@@ -1013,15 +1092,12 @@ NDTypeInterface VPUIP::DistributedBufferType::changeMemSpace(IndexedSymbolAttr /
 
 NDTypeInterface VPUIP::DistributedBufferType::changeStrides(StridesRef strides) const {
     const auto ctx = getContext();
-    const auto elemSize = getElemTypeSize().count();
+    const auto elemSize = getElemTypeSize();
     const auto order = mlir::AffineMapAttr::get(getDimsOrder().toAffineMap(ctx));
-    const auto newStrides = to_small_vector(strides | transformed([&](Bit stride) {
-                                                return stride.count() / elemSize;
-                                            }));
-    const auto newStridesAttr = getIntArrayAttr(ctx, newStrides);
+    const auto newStridesAttr = getStridesAttr(ctx, strides, getDimsOrder(), elemSize, getShape());
     auto hwSpecificFields = getHwSpecificFields(getLayout());
-    const auto newDescAttr = vpux::MemRefAttr::get(order, newStridesAttr,
-                                                   /*allocSize=*/nullptr, hwSpecificFields, ctx);
+    const auto newDescAttr = getMemrefLayout(order, newStridesAttr,
+                                             /*allocSize=*/nullptr, hwSpecificFields);
     return VPUIP::DistributedBufferType::get(ctx, getShape().raw(), getElementType(), newDescAttr, getMemSpace(),
                                              getDistribution(), getSparsityCompression());
 }
@@ -1042,16 +1118,13 @@ NDTypeInterface VPUIP::DistributedBufferType::changeTypeComponents(const vpux::T
                         "Cannot change shape when having explicit per cluster shapes/offsets");
     }
 
-    const auto elemSize = vpux::getElemTypeSize(elementType).count();
+    const auto elemSize = vpux::getElemTypeSize(elementType);
     const auto order = mlir::AffineMapAttr::get(dimsOrder.toAffineMap(ctx));
-    const auto newStrides = to_small_vector(strides | transformed([&](Bit stride) {
-                                                return stride.count() / elemSize;
-                                            }));
-    const auto newStridesAttr = getIntArrayAttr(ctx, newStrides);
+    const auto newStridesAttr = getStridesAttr(ctx, strides, dimsOrder, elemSize, shape);
 
     auto hwSpecificFields = getHwSpecificFields(getLayout());
-    const auto newDescAttr = vpux::MemRefAttr::get(order, newStridesAttr,
-                                                   /*allocSize=*/nullptr, hwSpecificFields, ctx);
+    const auto newDescAttr = getMemrefLayout(order, newStridesAttr,
+                                             /*allocSize=*/nullptr, hwSpecificFields);
 
     return VPUIP::DistributedBufferType::get(ctx, shape.raw(), elementType, newDescAttr, memSpace, distribution,
                                              getSparsityCompression());
@@ -1086,7 +1159,7 @@ NDTypeInterface VPUIP::DistributedBufferType::extractViewTile(vpux::ShapeRef til
                     "Cannot get DistributedBufferType with new shape from old one when having explicit per cluster "
                     "shapes/offsets");
 
-    const auto elemSize = getElemTypeSize().count();
+    const auto elemSize = getElemTypeSize();
     const auto order = mlir::AffineMapAttr::get(getDimsOrder().toAffineMap(ctx));
     const auto memSpace = getMemSpace();
 
@@ -1106,14 +1179,10 @@ NDTypeInterface VPUIP::DistributedBufferType::extractViewTile(vpux::ShapeRef til
         }
     }
 
-    const auto newStrides = to_small_vector(tileStrides | transformed([&](Bit stride) {
-                                                return stride.count() / elemSize;
-                                            }));
-
-    const auto newStridesAttr = getIntArrayAttr(ctx, newStrides);
+    const auto newStridesAttr = getStridesAttr(ctx, tileStrides, getDimsOrder(), elemSize, tileShape);
     auto hwSpecificFields = getHwSpecificFields(getLayout());
-    const auto newDescAttr = vpux::MemRefAttr::get(order, newStridesAttr,
-                                                   /*allocSize=*/nullptr, hwSpecificFields, ctx);
+    const auto newDescAttr = getMemrefLayout(order, newStridesAttr,
+                                             /*allocSize=*/nullptr, hwSpecificFields);
 
     const auto sparsityCompression = VPUIP::tileSparsityCompression(getSparsityCompression(), tileOffsets, tileShape);
 

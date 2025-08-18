@@ -4,8 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
@@ -14,25 +16,20 @@
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
-
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/asm.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinDialect.h>
-
-#include <llvm/ADT/TypeSwitch.h>
-#include <vpux/compiler/dialect/IE/utils/resources.hpp>
 
 using namespace vpux;
 
@@ -281,6 +278,10 @@ bool isSupportedIsolatedTilingEltwise(mlir::Operation* origOp, const OutputTilin
     const auto input1Type = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
     const auto input2Type = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(1).getType());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
+    const auto isValidTile = [](auto dim) {
+        return dim > 1;
+    };
+
     return llvm::all_of(tiles, [&](const TileInfo& tile) {
         const auto input1TileType = input1Type.extractDenseTile(tile.offsets, tile.shape);
         const auto input2TileType = input2Type.extractDenseTile(tile.offsets, tile.shape);
@@ -300,13 +301,28 @@ bool isSupportedIsolatedTilingEltwise(mlir::Operation* origOp, const OutputTilin
                     clusteredOp, outputTileType.getShape(),
                     mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
                             .getValue());
+            auto input1DistrType = VPU::getDistributedActivationTypeFromOp(
+                    clusteredOp, origOp->getOperand(0), input1TileType, numClusters, outputTileType, tile);
+            auto input2DistrType = input1DistrType;
+            if (input1TileType.getShape() != input2TileType.getShape()) {
+                input2DistrType = VPU::getDistributedActivationTypeFromOp(
+                        clusteredOp, origOp->getOperand(1), input2TileType, numClusters, outputTileType, tile);
+            }
+
+            const auto multiClusterStrategy = clusteredOp.getMultiClusterStrategy().value();
+            const auto tensorNumTiles =
+                    getOutputTensorNumTiles(clusteredOp, numClusters, multiClusterStrategy, outputTileType);
+            const auto tensorDistributionMode =
+                    getOutputTensorDistributionMode(clusteredOp, multiClusterStrategy, outputTileType);
+
+            if ((VPU::bitEnumContainsAny(tensorDistributionMode, VPU::DistributionMode::SEGMENTED) ||
+                 VPU::bitEnumContainsAny(tensorDistributionMode, VPU::DistributionMode::OVERLAPPED)) &&
+                llvm::count_if(tensorNumTiles, isValidTile) != 1) {
+                return false;
+            }
 
             return mlir::succeeded(VPU::NCEEltwiseOp::verifyEltwiseCMX(
-                    origOp->getLoc(), module, isInplace,
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp->getOperand(0), input1TileType,
-                                                            numClusters, outputTileType, tile),
-                    VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp->getOperand(1), input2TileType,
-                                                            numClusters, outputTileType, tile),
+                    origOp->getLoc(), module, isInplace, input1DistrType, input2DistrType,
                     VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters,
                                                         {input1TileType, input2TileType})));
         }
@@ -487,38 +503,104 @@ bool isSupportedIsolatedTilingGRUSequenceLastPart(VPU::GRUSequenceLastPartOp op,
     });
 }
 
+SmallVector<vpux::NDTypeInterface> getAllOperandsGatherDMAOp(VPU::GatherDMAOp origOp, const TileInfo& outputTile,
+                                                             Logger log) {
+    vpux::OutputTiling inputTiles{outputTile};
+    if (auto tilingBuilderInterface = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(origOp.getOperation())) {
+        inputTiles = tilingBuilderInterface.backInferTileInfo(outputTile, log).tiles;
+    }
+
+    VPUX_THROW_UNLESS(inputTiles.size() == origOp->getOperands().size(),
+                      "Unexpected inputTile size '{0}' and Op operands size '{1}'", inputTiles.size(),
+                      origOp->getOperands().size());
+
+    mlir::SmallVector<vpux::NDTypeInterface> inputTileTypes;
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getIndices().getType());
+    inputTileTypes.push_back(inputType.extractDenseTile(inputTiles[1].offsets, inputTiles[1].shape));
+
+    auto valueTypes = inputTileTypes;
+    mlir::SmallVector<vpux::NDTypeInterface> outputTileTypes;
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    const auto outputTileType = outputType.extractDenseTile(outputTile.offsets, outputTile.shape);
+    outputTileTypes.push_back(outputTileType);
+    valueTypes.push_back(outputTileType);
+
+    if (!origOp->hasAttr(VPU::multiClusterStrategy)) {
+        return valueTypes;
+    }
+
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileTypes[0].getShape(),
+                                                  clusteredOp.getMultiClusterStrategy().value());
+
+    if (!llvm::all_of(outputTileTypes, [&](const vpux::NDTypeInterface& outputTileType) {
+            auto numClustersOfPerOutput = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
+                                                                     clusteredOp.getMultiClusterStrategy().value());
+            return numClustersOfPerOutput == numClusters;
+        })) {
+        return SmallVector<vpux::NDTypeInterface>{};
+    }
+
+    SmallVector<vpux::NDTypeInterface> distributedTensorTypes;
+    auto inDistributedType =
+            getDistributedActivationTypeFromOp(clusteredOp, clusteredOp->getOperand(1), inputTileTypes[0], numClusters,
+                                               VPU::MultiClusterStrategy::Clustering,
+                                               /*customAlignment*/ ArrayRef<int64_t>{}, outputTileTypes[0], outputTile);
+    distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
+
+    for (const auto& outputTileType : outputTileTypes) {
+        auto outDistributedType =
+                VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, inputTileTypes);
+        distributedTensorTypes.push_back(mlir::cast<vpux::NDTypeInterface>(outDistributedType));
+    }
+
+    return distributedTensorTypes;
+}
+
 bool isSupportedIsolatedTilingGatherDMA(VPU::GatherDMAOp op, const OutputTiling& tiles, Logger log) {
     const auto origOp = op.getOperation();
     auto tilingOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(origOp);
     VPUX_THROW_UNLESS(tilingOp != nullptr, "Not a tileable operation {0}", origOp->getName());
 
-    const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(origOp).to<Byte>().count();
+    if (!origOp->hasAttr(VPU::multiClusterStrategy)) {
+        const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(origOp).to<Byte>().count();
 
-    const auto inputOutputTilesFitCMX = [&](const TileInfo& firstOutputTile) {
-        const auto computeRequiredMemory = [&](const auto& operand, const TileInfo& tilingInfo) {
-            const auto tensorType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
-            const auto denseTile = tensorType.extractDenseTile(tilingInfo.offsets, tilingInfo.shape);
-            return denseTile.getTotalAllocSize().count();
+        const auto inputOutputTilesFitCMX = [&](const TileInfo& firstOutputTile) {
+            const auto computeRequiredMemory = [&](const auto& operand, const TileInfo& tilingInfo) {
+                const auto tensorType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
+                const auto denseTile = tensorType.extractDenseTile(tilingInfo.offsets, tilingInfo.shape);
+                return denseTile.getTotalAllocSize().count();
+            };
+
+            const auto inputTilingInfo = tilingOp.backInferTileInfo(firstOutputTile, log);
+            const auto indicesMemorySize = computeRequiredMemory(op.getIndices(), inputTilingInfo.tiles[1]);
+
+            const auto outputTiles = tilingOp.getOutputTiling(firstOutputTile, log);
+            const auto outputMemorySize = computeRequiredMemory(op.getOutput(), outputTiles[0]);
+            // For gather DMA only indices and output are copy to CMX.
+            const auto requiredCMX = indicesMemorySize + outputMemorySize;
+
+            if (requiredCMX > cmxAvailableBytes) {
+                log.trace("Op '{0}' doesn't fit into CMX: required {1}, available {2}", origOp->getLoc(), requiredCMX,
+                          cmxAvailableBytes);
+                return false;
+            }
+
+            return true;
         };
 
-        const auto inputTilingInfo = tilingOp.backInferTileInfo(firstOutputTile, log);
-        const auto indicesMemorySize = computeRequiredMemory(op.getIndices(), inputTilingInfo.tiles[1]);
+        return llvm::all_of(tiles, inputOutputTilesFitCMX);
+    }
 
-        const auto outputTiles = tilingOp.getOutputTiling(firstOutputTile, log);
-        const auto outputMemorySize = computeRequiredMemory(op.getOutput(), outputTiles[0]);
-        // For gather DMA only indices and output are copy to CMX.
-        const auto requiredCMX = indicesMemorySize + outputMemorySize;
-
-        if (requiredCMX > cmxAvailableBytes) {
-            log.trace("Op '{0}' doesn't fit into CMX: required {1}, available {2}", origOp->getLoc(), requiredCMX,
-                      cmxAvailableBytes);
+    return llvm::all_of(tiles, [&](const TileInfo& outputTile) {
+        SmallVector<vpux::NDTypeInterface> operands = getAllOperandsGatherDMAOp(op, outputTile, log);
+        if (operands.empty()) {
             return false;
         }
-
-        return true;
-    };
-
-    return llvm::all_of(tiles, inputOutputTilesFitCMX);
+        return op.fitIntoCMX(operands, Byte(0));
+    });
 }
 
 bool isSupportedIsolatedTilingGeneric(mlir::Operation* origOp, const OutputTiling& firstOutputTiles, Logger log) {
@@ -782,18 +864,29 @@ bool isSupportedPrefetchTilingConvBased(ConcreteOp origOp, const OutputTiling& t
         return checkPrefetchMem(origOp.getOperation(), tiles, log);
     };
 
-    // neutral tiling check
-    if (tileDims.empty() && tilingMode == vpux::TilingMode::PREFETCHING) {
-        return isMemPrefetchable();
-    }
-
-    // Prefetch tiling is only triggered when the isolated tiling is not nested
-    if (tileDims.size() != 1) {
+    // Neutral tiling check
+    if (tileDims.empty()) {
+        if (tilingMode == vpux::TilingMode::PREFETCHING) {
+            return isMemPrefetchable();
+        }
         return false;
     }
-    auto tileDim = tileDims[0];
-    return VPU::isDivisibleTile(origOp.getOperation(), tileAxis, tileDim) && isMemPrefetchable() &&
-           !isLastTileBiggest(origOp.getOperation(), tileAxis, outputShape, tileDim);
+
+    if (!isMemPrefetchable()) {
+        return false;
+    }
+
+    for (auto tileDim : tileDims) {
+        if (!VPU::isDivisibleTile(origOp.getOperation(), tileAxis, tileDim)) {
+            return false;
+        }
+
+        if (isLastTileBiggest(origOp.getOperation(), tileAxis, outputShape, tileDim)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool isSupportedPrefetchTiling(VPU::NCEConvolutionOp origOp, const OutputTiling& tiles, Logger log,

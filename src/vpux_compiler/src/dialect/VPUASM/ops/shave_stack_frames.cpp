@@ -12,11 +12,11 @@ using namespace vpux;
 // ShaveStackFrameOp
 //
 
-size_t vpux::VPUASM::ShaveStackFrameOp::getBinarySizeCached(ELF::SymbolReferenceMap&, VPU::ArchKind) {
+size_t vpux::VPUASM::ShaveStackFrameOp::getBinarySizeCached(ELF::SymbolReferenceMap&, config::ArchKind) {
     return getStackSize();
 }
 
-size_t vpux::VPUASM::ShaveStackFrameOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::ShaveStackFrameOp::getAlignmentRequirements(config::ArchKind) {
     return ELF::VPUX_DEFAULT_ALIGNMENT;
 }
 

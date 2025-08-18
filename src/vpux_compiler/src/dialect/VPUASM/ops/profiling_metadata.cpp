@@ -14,12 +14,12 @@ void vpux::VPUASM::ProfilingMetadataOp::serialize(elf::writer::BinaryDataSection
     binDataSection.appendData(reinterpret_cast<const uint8_t*>(buf.data()), buf.size());
 }
 
-size_t vpux::VPUASM::ProfilingMetadataOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::ProfilingMetadataOp::getBinarySize(config::ArchKind) {
     auto values = getMetadata().getValues<uint8_t>();
     return values.size();
 }
 
-size_t vpux::VPUASM::ProfilingMetadataOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::ProfilingMetadataOp::getAlignmentRequirements(config::ArchKind) {
     return ELF::VPUX_NO_ALIGNMENT;
 }
 

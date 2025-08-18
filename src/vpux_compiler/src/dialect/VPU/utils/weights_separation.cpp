@@ -5,17 +5,21 @@
 
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/core/force_link_macros.hpp"
-
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/setup_pipeline_options_utils.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
@@ -110,28 +114,26 @@ bool hasOnlyViewLikeTransformations(const Const::ContentAttr& contentAttr) {
 namespace conversions {  // forward declarations
 bool isSupportedTransformation(vpux::NDTypeInterface inType, Const::TransformAttrInterface t);
 }
+}  // namespace
 
-bool shouldProcessThisConstant(Const::DeclareOp constOp) {
-    // preserve splats in @main - they (should be) cheap to work with.
-    const auto contentAttr = constOp.getContentAttr();
-
+bool isTrivialForWeightsSeparation(Const::DeclareOp constOp) {
     // E#151098: this should be handled the same way as view-like-only
     // transformations.
+    const auto contentAttr = constOp.getContentAttr();
     if (contentAttr.getTransformations().empty()) {
-        return false;
+        return true;
     }
 
+    return contentAttr.isSplat() || ViewLikeUtils::hasOnlyViewLikeTransformations(contentAttr);
+}
+
+bool isSuitableForWeightsSeparation(Const::DeclareOp constOp) {
     // ignore all non-OV constants
     if (!Const::isOpenVINOConstant(constOp)) {
         return false;
     }
 
-    // splat values should be quick enough to process in main()
-    if (contentAttr.isSplat()) {
-        return false;
-    }
-
-    if (ViewLikeUtils::hasOnlyViewLikeTransformations(contentAttr)) {
+    if (isTrivialForWeightsSeparation(constOp)) {
         return false;
     }
 
@@ -154,6 +156,7 @@ bool shouldProcessThisConstant(Const::DeclareOp constOp) {
     return hasOnlySupportedTransformations(constOp);
 }
 
+namespace {
 /// Utilities related to converting const transformations to IR operations.
 namespace conversions {
 /// Returns a QuantizeCast, optionally wrapped into Convert ops to ensure
@@ -516,14 +519,6 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
             .Case<Const::TransposeAttr>([&](Const::TransposeAttr transpose) {
                 return builder.create<IE::TransposeOp>(loc, input, /*order=*/nullptr, transpose.getOrder());
             })
-            .Case<Const::SparsifyAttr>([&](Const::SparsifyAttr sparsify) -> mlir::Value {
-                // it's fine if sparsity is disabled
-                if (!sparsify.getCompressOutputType().getValue()) {
-                    return input;
-                }
-
-                return nullptr;
-            })
             .Default([](Const::TransformAttrInterface) {
                 return nullptr;
             });
@@ -549,8 +544,8 @@ bool isSupportedTransformation(vpux::NDTypeInterface inType, Const::TransformAtt
     return mlir::isa<Const::AddAttr, Const::BroadcastAttr, Const::ChangeShapeAndElemTypeAttr, Const::CastElemTypeAttr,
                      Const::ConvertElemTypeAttr, Const::QuantizeAttr, Const::LayoutCastAttr, Const::MemPermuteAttr,
                      Const::PadWithZeroAttr, Const::ReorderAttr, Const::RescaleAttr, Const::ReshapeAttr,
-                     Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr, Const::SparsifyAttr,
-                     Const::AffineReshapeAttr>(t);
+                     Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr, Const::AffineReshapeAttr>(
+            t);
 }
 
 /// Returns a VPU operation for the given constant transformation.
@@ -879,7 +874,7 @@ bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
 std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc) {
     std::vector<Const::DeclareOp> ops;
     mainFunc.walk([&](Const::DeclareOp constOp) {
-        if (!shouldProcessThisConstant(constOp)) {
+        if (!isSuitableForWeightsSeparation(constOp)) {
             log.trace("Constant is NOT used in init schedule: {0}", constOp);
             return;
         }
@@ -980,11 +975,18 @@ std::vector<std::vector<TransformationsSplit>> sliceAccordingToMemoryLimit(const
     return constantsForInits;
 }
 
+mlir::StringRef getResourceId(mlir::DenseResourceElementsAttr attr) {
+    auto fullKey = getResourceName(attr);
+
+    return fullKey.drop_front(mlir::StringRef(Const::IMPORTED_WEIGHT_PREFIX).size());
+}
+
 std::string ConstArg::getUniqueName() const {
-    const auto name = getResourceName(content);
-    assert(!name.empty() && "Weights separation only works with dense_resource<>");
+    const auto id = getResourceId(content);
+
+    assert(!id.empty() && "Weights separation only works with dense_resource<>");
     const size_t hash = Const::ContentAttr::getTransformationHash(transformations);
-    return formatv("out_{0}_hash_{1}", name, hash).str();
+    return formatv("{0}{1}_hash_{2}", INIT_OUTPUT_PREFIX, id, hash).str();
 }
 
 // We want to cache the results of mapping a list of transformations to operations to avoid the call of a

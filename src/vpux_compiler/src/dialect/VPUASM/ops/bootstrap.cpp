@@ -15,14 +15,14 @@ using namespace vpux;
 void vpux::VPUASM::BootstrapOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binaryDataSection) {
     uint32_t barId = getBarrierId();
     auto ptrCharTmp = reinterpret_cast<uint8_t*>(&barId);
-    binaryDataSection.appendData(ptrCharTmp, getBinarySize(VPU::ArchKind::UNKNOWN));
+    binaryDataSection.appendData(ptrCharTmp, getBinarySize(config::ArchKind::UNKNOWN));
 }
 
-size_t vpux::VPUASM::BootstrapOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::BootstrapOp::getBinarySize(config::ArchKind) {
     return sizeof(uint32_t);
 }
 
-size_t vpux::VPUASM::BootstrapOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::BootstrapOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(uint32_t);
 }
 

@@ -114,7 +114,7 @@ void vpux::VPUASM::KernelParamsOp::serializeCached(elf::writer::BinaryDataSectio
     return;
 }
 
-size_t vpux::VPUASM::KernelParamsOp::getBinarySizeCached(ELF::SymbolReferenceMap& symRefMap, VPU::ArchKind) {
+size_t vpux::VPUASM::KernelParamsOp::getBinarySizeCached(ELF::SymbolReferenceMap& symRefMap, config::ArchKind) {
     auto actualParamsSize = getParamsStructSize();
     if (getIsJitCompiled()) {
         return actualParamsSize;
@@ -157,7 +157,7 @@ size_t vpux::VPUASM::KernelParamsOp::getParamsStructSize() {
 }
 
 // The parameter structs for the sw layers must be 64Byte aligned as an ActShave requirement
-size_t vpux::VPUASM::KernelParamsOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::KernelParamsOp::getAlignmentRequirements(config::ArchKind) {
     return ELF::VPUX_DEFAULT_ALIGNMENT;
 }
 

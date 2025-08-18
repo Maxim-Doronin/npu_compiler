@@ -14,7 +14,7 @@ using namespace vpux;
 // DeclareTaskBufferOp
 //
 
-size_t VPUASM::DeclareTaskBufferOp::getBinarySize([[maybe_unused]] VPU::ArchKind arch) {
+size_t VPUASM::DeclareTaskBufferOp::getBinarySize([[maybe_unused]] config::ArchKind arch) {
     switch (getTaskType()) {
     case VPURegMapped::TaskType::DMA:
         return sizeof(npu40xx::nn_public::VpuDMATask);
@@ -33,7 +33,7 @@ size_t VPUASM::DeclareTaskBufferOp::getBinarySize([[maybe_unused]] VPU::ArchKind
     }
 }
 
-size_t VPUASM::DeclareTaskBufferOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t VPUASM::DeclareTaskBufferOp::getAlignmentRequirements(config::ArchKind) {
     return ELF::VPUX_NO_ALIGNMENT;
 }
 

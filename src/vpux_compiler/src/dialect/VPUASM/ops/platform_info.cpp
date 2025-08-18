@@ -6,6 +6,7 @@
 #include <cstring>
 #include <vpux_elf/writer.hpp>
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
 #include "vpux_headers/platform.hpp"
 
@@ -14,23 +15,23 @@ using namespace vpux;
 void vpux::VPUASM::PlatformInfoOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
     elf::platform::PlatformInfo platformInfo;
 
-    platformInfo.mArchKind = ELF::mapVpuArchKindToElfArchKind(VPU::getArch(getOperation()));
+    platformInfo.mArchKind = ELF::mapVpuArchKindToElfArchKind(config::getArch(getOperation()));
 
     auto serializedPlatformInfo = elf::platform::PlatformInfoSerialization::serialize(platformInfo);
     binDataSection.appendData(&serializedPlatformInfo[0], serializedPlatformInfo.size());
 }
 
-size_t vpux::VPUASM::PlatformInfoOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::PlatformInfoOp::getBinarySize(config::ArchKind) {
     // calculate size based on serialized form, instead of just sizeof(PlatformInfo)
     // serialization uses metadata that also gets stored in the blob and must be accounted for
     // also for non-POD types (e.g. have vector as member) account for all data to be serialized
     // (data owned by vector, instead of just pointer)
     elf::platform::PlatformInfo platformInfo;
-    platformInfo.mArchKind = ELF::mapVpuArchKindToElfArchKind(VPU::getArch(getOperation()));
+    platformInfo.mArchKind = ELF::mapVpuArchKindToElfArchKind(config::getArch(getOperation()));
     return elf::platform::PlatformInfoSerialization::serialize(platformInfo).size();
 }
 
-size_t vpux::VPUASM::PlatformInfoOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::PlatformInfoOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(elf::platform::PlatformInfo);
 }
 

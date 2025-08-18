@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/utils/core/error.hpp"
 
 //
 // BoundedBuffer
@@ -183,9 +184,6 @@ mlir::Type VPUIP::BoundedBufferType::parse(mlir::AsmParser& parser) {
     if (parser.parseType<mlir::Type>(data)) {
         return Type();
     }
-    if (mlir::succeeded(parser.parseOptionalGreater())) {
-        return get(data, mlir::Type{});
-    }
 
     if (parser.parseComma()) {
         return Type();
@@ -233,4 +231,53 @@ vpux::VPUIP::BoundedBufferType vpux::VPUIP::BoundedBufferType::cloneWith(std::op
 mlir::Attribute vpux::VPUIP::BoundedBufferType::getMemorySpace() const {
     return getMemSpace();
 }
+
+//
+// DistributedTypeInterface
+//
+bool vpux::VPUIP::BoundedBufferType::containsDistributedTypes() const {
+    // If the data is a distributed type, the dynamicShape will be as well
+    return mlir::isa<vpux::VPUIP::DistributedBufferType>(getData());
+}
+
+SmallVector<mlir::Type> vpux::VPUIP::BoundedBufferType::getDistributedTypes() const {
+    SmallVector<mlir::Type> distributedTypes;
+    if (mlir::isa<vpux::VPUIP::DistributedBufferType>(getData())) {
+        distributedTypes.push_back(getData());
+    }
+    if (mlir::isa<vpux::VPUIP::DistributedBufferType>(getDynamicShape())) {
+        distributedTypes.push_back(getDynamicShape());
+    }
+    return distributedTypes;
+}
+
+NDTypeInterface vpux::VPUIP::BoundedBufferType::changeShapeForExplicitDistribution(
+        ShapeRef shape, VPU::DistributionInfoAttr distributedAttr) const {
+    return changeShapeElemTypeForExplicitDistribution(shape, getElementType(), distributedAttr);
+}
+
+NDTypeInterface vpux::VPUIP::BoundedBufferType::changeShapeElemTypeForExplicitDistribution(
+        ShapeRef /*shape*/, mlir::Type /*elemType*/, VPU::DistributionInfoAttr /*distributedAttr*/) const {
+    VPUX_THROW("Not implemented");
+    return nullptr;
+}
+
+NDTypeInterface vpux::VPUIP::BoundedBufferType::changeTypeComponentsForExplicitDistribution(
+        const TypeComponents& /*typeComponents*/, VPU::DistributionInfoAttr /*distributedAttr*/) const {
+    VPUX_THROW("Not implemented");
+    return nullptr;
+}
+
+NDTypeInterface vpux::VPUIP::BoundedBufferType::extractDenseTileForExplicitDistribution(
+        vpux::ShapeRef /*tileOffsets*/, vpux::ShapeRef /*tileShape*/,
+        VPU::DistributionInfoAttr /*distributedAttr*/) const {
+    VPUX_THROW("Not implemented");
+    return nullptr;
+}
+
+NDTypeInterface vpux::VPUIP::BoundedBufferType::extractViewTileForExplicitDistribution(
+        vpux::ShapeRef, vpux::ShapeRef, vpux::ShapeRef, VPU::DistributionInfoAttr) const {
+    VPUX_THROW("Not implemented");
+}
+
 }  // namespace vpux

@@ -28,7 +28,7 @@ void vpux::VPUASM::NetworkMetadataOp::serialize(elf::writer::BinaryDataSection<u
     binDataSection.appendData(&serializedMetadata[0], serializedMetadata.size());
 }
 
-size_t vpux::VPUASM::NetworkMetadataOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::NetworkMetadataOp::getBinarySize(config::ArchKind) {
     // calculate size based on serialized form, instead of just sizeof(NetworkMetadata)
     // serialization uses metadata that also gets stored in the blob and must be accounted for
     // also for non-POD types (e.g. have vector as member) account for all data to be serialized
@@ -39,7 +39,7 @@ size_t vpux::VPUASM::NetworkMetadataOp::getBinarySize(VPU::ArchKind) {
     return elf::MetadataSerialization::serialize(metadata).size();
 }
 
-size_t vpux::VPUASM::NetworkMetadataOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::NetworkMetadataOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(elf::NetworkMetadata);
 }
 

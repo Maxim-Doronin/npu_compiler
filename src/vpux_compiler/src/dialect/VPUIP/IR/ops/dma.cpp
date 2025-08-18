@@ -3,23 +3,25 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/error.hpp"
+
+#include <mlir/Support/LLVM.h>
 
 using namespace vpux;
 
 namespace {
 
-mlir::LogicalResult verifyTensorSize(VPU::ArchKind arch, mlir::Location loc, mlir::Value tensor) {
+mlir::LogicalResult verifyTensorSize(config::ArchKind arch, mlir::Location loc, mlir::Value tensor) {
     const auto size = static_cast<Byte>(getCompactSize(tensor));
 
     auto maxTransferSize = VPUIP::DMA::getEngineLimits(arch).getTransferLimits().max();
@@ -165,7 +167,7 @@ mlir::LogicalResult vpux::VPUIP::NNDMAOp::verify() {
         }
     }
 
-    return verifyTensorSize(VPU::getArch(getOperation()), loc, getInput());
+    return verifyTensorSize(config::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::NNDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -173,7 +175,7 @@ size_t vpux::VPUIP::NNDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCos
     auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
 
     // TODO: Expose API to get arch from cost model
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -187,7 +189,7 @@ void vpux::VPUIP::PermuteDMAOp::build(mlir::OpBuilder& builder, mlir::OperationS
     build(builder, state, input, output_buff, /*port=*/nullptr,
           /*is_out_of_order=*/nullptr,
           /*is_critical=*/nullptr, mem_perm, dma_descriptor, /* dma_hwp_id= */ nullptr,
-          /* profilingMetadata */ nullptr);
+          /* profilingMetadata */ nullptr, /*internalDataFlow=*/nullptr);
 }
 
 void vpux::VPUIP::PermuteDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
@@ -195,11 +197,12 @@ void vpux::VPUIP::PermuteDMAOp::build(mlir::OpBuilder& builder, mlir::OperationS
                                       VPUIP::DMADescriptorAttr dma_descriptor, mlir::IntegerAttr port) {
     build(builder, state, input, output_buff, /*port=*/port,
           /*is_out_of_order=*/nullptr,
-          /*is_critical=*/nullptr, mem_perm, dma_descriptor, nullptr, /* profilingMetadata */ nullptr);
+          /*is_critical=*/nullptr, mem_perm, dma_descriptor, nullptr, /* profilingMetadata= */ nullptr,
+          /*internalDataFlow=*/nullptr);
 }
 
 mlir::LogicalResult vpux::VPUIP::PermuteDMAOp::verify() {
-    return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+    return verifyTensorSize(config::getArch(getOperation()), getLoc(), getInput());
 }
 
 size_t vpux::VPUIP::PermuteDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -209,7 +212,7 @@ size_t vpux::VPUIP::PermuteDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::V
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs PermuteDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -240,15 +243,15 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
 
 mlir::LogicalResult vpux::VPUIP::GatherDMAOp::verify() {
     auto loc = getLoc();
-    auto arch = VPU::getArch(getOperation());
+    auto arch = config::getArch(getOperation());
 
     // Skip checks if architecture is unknown, enables LIT tests.
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
     // TODO: E#-86281 move to 40xx
-    if (arch < VPU::ArchKind::NPU40XX) {
+    if (arch < config::ArchKind::NPU40XX) {
         return errorAt(loc, "Operation {0} is only supported for NPU40XX+ but got {1}.", getOperationName(), arch);
     }
 
@@ -269,7 +272,7 @@ mlir::LogicalResult vpux::VPUIP::GatherDMAOp::verify() {
                        DMA_MAX_INDICES_LIST_LENGTH_ARCH_BASED);
     }
 
-    return verifyTensorSize(VPU::getArch(getOperation()), loc, getOutput());
+    return verifyTensorSize(config::getArch(getOperation()), loc, getOutput());
 }
 
 size_t vpux::VPUIP::GatherDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -279,7 +282,7 @@ size_t vpux::VPUIP::GatherDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VP
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs GatherDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -304,10 +307,10 @@ void vpux::VPUIP::ConvertDMAOp::build(mlir::OpBuilder& builder, mlir::OperationS
 
 mlir::LogicalResult vpux::VPUIP::ConvertDMAOp::verify() {
     auto loc = getLoc();
-    auto arch = VPU::getArch(getOperation());
+    auto arch = config::getArch(getOperation());
 
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
@@ -316,7 +319,7 @@ mlir::LogicalResult vpux::VPUIP::ConvertDMAOp::verify() {
     auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto inputElementType = inputType.getElementType();
 
-    if ((arch < VPU::ArchKind::NPU40XX) || !inputElementType.isF32() ||
+    if ((arch < config::ArchKind::NPU40XX) || !inputElementType.isF32() ||
         (!outputElementType.isF16() && !outputElementType.isBF16())) {
         return errorAt(loc,
                        "Operation {0} is only supported for NPU40XX+ arch for F32 to F16/BF16 "
@@ -326,7 +329,7 @@ mlir::LogicalResult vpux::VPUIP::ConvertDMAOp::verify() {
                        getOperationName(), arch, inputElementType, outputElementType);
     }
 
-    return verifyTensorSize(VPU::getArch(getOperation()), loc, getInput());
+    return verifyTensorSize(config::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::ConvertDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -336,7 +339,7 @@ size_t vpux::VPUIP::ConvertDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::V
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs ConvertDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -422,7 +425,7 @@ mlir::LogicalResult vpux::VPUIP::DecompressDMAOp::verify() {
     }
 
     if (mlir::failed(verifyInOutElementType(loc, getInput(), getOutput())) ||
-        mlir::failed(verifyTensorSize(VPU::getArch(getOperation()), loc, getInput()))) {
+        mlir::failed(verifyTensorSize(config::getArch(getOperation()), loc, getInput()))) {
         return mlir::failure();
     }
 
@@ -441,7 +444,7 @@ size_t vpux::VPUIP::DecompressDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs DecompressDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -492,7 +495,7 @@ mlir::LogicalResult vpux::VPUIP::CompressDMAOp::verify() {
     }
 
     if (mlir::failed(verifyInOutElementType(loc, getInput(), getOutput())) ||
-        mlir::failed(verifyTensorSize(VPU::getArch(getOperation()), loc, getInput()))) {
+        mlir::failed(verifyTensorSize(config::getArch(getOperation()), loc, getInput()))) {
         return mlir::failure();
     }
 
@@ -511,7 +514,7 @@ size_t vpux::VPUIP::CompressDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs CompressDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -545,7 +548,7 @@ mlir::LogicalResult vpux::VPUIP::DepthToSpaceDMAOp::verify() {
         return errorAt(loc, "block size for D2S should be > 0; actual {0}", blockSize);
     }
 
-    return verifyTensorSize(VPU::getArch(getOperation()), loc, getInput());
+    return verifyTensorSize(config::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::DepthToSpaceDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -555,7 +558,7 @@ size_t vpux::VPUIP::DepthToSpaceDMAOp::getOperationCycleCost(std::shared_ptr<VPU
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs DepthToSpaceDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -587,7 +590,7 @@ mlir::LogicalResult vpux::VPUIP::SpaceToDepthDMAOp::verify() {
         return errorAt(loc, "block size for S2D should be > 0; actual {0}", blockSize);
     }
 
-    return verifyTensorSize(VPU::getArch(getOperation()), loc, getInput());
+    return verifyTensorSize(config::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::SpaceToDepthDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -597,7 +600,7 @@ size_t vpux::VPUIP::SpaceToDepthDMAOp::getOperationCycleCost(std::shared_ptr<VPU
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs SpaceToDepthDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -630,7 +633,7 @@ mlir::LogicalResult vpux::VPUIP::ExpandDMAOp::verify() {
     // It should be tiled with several sub ExpandDMA that will be done at Unroll Pass.
     // Descriptor is generated at Unroll pass so using Descriptor as a flag to check the tensor size.
     if (getDmaDescriptor().has_value()) {
-        return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+        return verifyTensorSize(config::getArch(getOperation()), getLoc(), getInput());
     }
 
     return mlir::success();
@@ -643,7 +646,7 @@ size_t vpux::VPUIP::ExpandDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VP
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs ExpandDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -669,7 +672,7 @@ void vpux::VPUIP::PerAxisTileDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Ope
 }
 
 mlir::LogicalResult vpux::VPUIP::PerAxisTileDMAOp::verify() {
-    return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+    return verifyTensorSize(config::getArch(getOperation()), getLoc(), getInput());
 }
 
 size_t vpux::VPUIP::PerAxisTileDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -679,7 +682,7 @@ size_t vpux::VPUIP::PerAxisTileDMAOp::getOperationCycleCost(std::shared_ptr<VPUN
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs PerAxisTileDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -722,7 +725,7 @@ mlir::LogicalResult vpux::VPUIP::UpsamplingDMAOp::verify() {
     // It should be tiled with several sub UpsamplingDMA that will be done at Unroll Pass.
     // Descriptor is generated at Unroll pass so using Descriptor as a flag to check the tensor size.
     if (getDmaDescriptor().has_value()) {
-        return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+        return verifyTensorSize(config::getArch(getOperation()), getLoc(), getInput());
     }
 
     return mlir::success();
@@ -735,7 +738,7 @@ size_t vpux::VPUIP::UpsamplingDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs UpsamplingDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
 }
 
@@ -761,7 +764,7 @@ mlir::LogicalResult vpux::VPUIP::ReadOnlyDMAOp::verify() {
     if (!getResult().use_empty()) {
         return errorAt(loc, "ReadOnlyDMAOp result should have no users, but it does.");
     }
-    return verifyTensorSize(VPU::getArch(getOperation()), getLoc(), getInput());
+    return verifyTensorSize(config::getArch(getOperation()), getLoc(), getInput());
 }
 
 size_t vpux::VPUIP::ReadOnlyDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>&) {
@@ -791,7 +794,73 @@ mlir::LogicalResult vpux::VPUIP::BarProgDMAOp::verify() {
 size_t vpux::VPUIP::BarProgDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
+    // TODO: E#97004 Expose API to get arch from cost model
+    const auto arch = config::getArch(module);
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+}
+
+//
+// EnqueueDMAOp
+//
+
+mlir::LogicalResult vpux::VPUIP::EnqueueDMAOp::verify() {
+    auto loc = getLoc();
+    auto enqueueDmaAttr = getEnqueueDmaAttr();
+
+    auto startTaskIdx = enqueueDmaAttr.getStartTaskIdx().getValue().getSExtValue();
+    auto endTaskIdx = enqueueDmaAttr.getEndTaskIdx().getValue().getSExtValue();
+
+    if (endTaskIdx < startTaskIdx) {
+        return errorAt(loc, "endTaskIdx: {0} - must be greater than or equal to startTaskIdx: {1}", endTaskIdx,
+                       startTaskIdx);
+    }
+
+    if (enqueueDmaAttr.getTargetExecutorKindAttr().getValue() == VPU::ExecutorKind::DMA_NN) {
+        return errorAt(loc, "DMA tasks cannot be enqueued by enqueue DMA");
+    }
+
+    if (auto parentModule = getOperation()->getParentOfType<mlir::ModuleOp>()) {
+        if (auto tileExecutorOp = IE::getTileExecutor(parentModule)) {
+            const auto tilesCount = tileExecutorOp.getCount();
+            int64_t tileIdx = enqueueDmaAttr.getTileIdx().getValue().getSExtValue();
+            if (tileIdx < 0 || tileIdx >= tilesCount) {
+                return errorAt(loc, "tileIdx: {0} - must be in range [0, {1}]", tileIdx, tilesCount);
+            }
+        }
+    }
+
+    return mlir::success();
+}
+
+size_t vpux::VPUIP::EnqueueDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+    auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+
+    // TODO: E#97004 Expose API to get arch from cost model
+    const auto arch = config::getArch(module);
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+}
+
+//
+// FetchDMAOp
+//
+
+mlir::LogicalResult vpux::VPUIP::FetchDMAOp::verify() {
+    auto parentModule = getOperation()->getParentOfType<mlir::ModuleOp>();
+    const auto tilesCount = IE::getTileExecutor(parentModule).getCount();
+    auto loc = getLoc();
+
+    int64_t tileIdx = getFetchDma().getTileIdx().getValue().getSExtValue();
+    if (tileIdx < 0 || tileIdx >= tilesCount) {
+        return errorAt(loc, "tileIdx: {0} must be in range [0, {1}]", tileIdx, tilesCount);
+    }
+
+    return mlir::success();
+}
+
+size_t vpux::VPUIP::FetchDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+    auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
+
     // TODO: Expose API to get arch from cost model
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
 }

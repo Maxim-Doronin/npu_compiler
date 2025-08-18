@@ -16,7 +16,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
@@ -315,7 +315,7 @@ size_t vpux::VPUIP::NCEClusterTaskOp::getOperationCycleCost(std::shared_ptr<VPUN
 
     auto module = nceOp->getParentOfType<mlir::ModuleOp>();
     // TODO: Expose API to get arch from cost model
-    auto arch = VPU::getArch(module);
+    auto arch = config::getArch(module);
     auto tileOp = IE::getTileExecutor(module);
     VPUX_THROW_WHEN(tileOp == nullptr, "Couldn't get TileExecutor for module");
 
@@ -358,15 +358,16 @@ mlir::LogicalResult verifyInOutOrder(mlir::Operation* op, const std::string& opN
     return mlir::success();
 }
 
-mlir::LogicalResult verifyNCEConv(VPUIP::NCEClusterTaskOp op, VPU::ArchKind arch) {
+mlir::LogicalResult verifyNCEConv(VPUIP::NCEClusterTaskOp op, config::ArchKind arch) {
     VPUX_THROW_UNLESS(op.getTaskType() == VPUIP::NCETaskType::CONV, "Expected task type '{0}', but got '{1}'",
                       VPUIP::NCETaskType::CONV, op.getTaskType());
 
     if (op.getWeights() == nullptr) {
         return errorAt(op, "weights is required for NCETaskType : '{0}'", op.getTaskType());
     }
-    if (op.getWeightTable() == nullptr) {
-        return errorAt(op, "weight_table is required for NCETaskType : '{0}'", op.getTaskType());
+    if ((op.getWeightTableDataPtr() || op.getWeightTableSpPtr() || op.getWeightTableScale() ||
+         op.getWeightTableBias() || op.getWeightZeroPoints())) {
+        return errorAt(op, "Only weight_table can be populated for NCETaskType : '{0}'", op.getTaskType());
     } else if (op.getWeightTableDataPtr() && op.getWeightZeroPoints()) {
         return errorAt(op,
                        "weight_table data pointers and zero points only are mutually exclusive for NCETaskType : '{0}'",
@@ -439,7 +440,7 @@ mlir::LogicalResult verifyNCEConv(VPUIP::NCEClusterTaskOp op, VPU::ArchKind arch
 
     const auto batch = outputShape[Dims4D::Act::N];
     if (batch != vpux::VPU::NCEInvariant::SUPPORTED_BATCH_SIZE) {
-        if (arch < VPU::ArchKind::NPU37XX) {
+        if (arch < config::ArchKind::NPU37XX) {
             return errorAt(op, "Got unsupported input batch '{0}' expected '{1}'", batch,
                            vpux::VPU::NCEInvariant::SUPPORTED_BATCH_SIZE);
         }
@@ -488,7 +489,7 @@ mlir::LogicalResult verifyNCEPool(VPUIP::NCEClusterTaskOp op) {
     return verifyInOutOrder(op, "Pooling");
 }
 
-mlir::LogicalResult verifyNCEEltwise(VPUIP::NCEClusterTaskOp op, VPU::ArchKind) {
+mlir::LogicalResult verifyNCEEltwise(VPUIP::NCEClusterTaskOp op, config::ArchKind) {
     VPUX_THROW_UNLESS(op.getTaskType() == VPUIP::NCETaskType::ELTWISE, "Expected task type '{0}', but got '{1}'",
                       VPUIP::NCETaskType::ELTWISE, op.getTaskType());
     if (op.getKernelSizeAttr() != nullptr) {
@@ -504,7 +505,7 @@ mlir::LogicalResult verifyNCEEltwise(VPUIP::NCEClusterTaskOp op, VPU::ArchKind) 
     return mlir::success();
 }
 
-mlir::LogicalResult verifyNCEDWConv(VPUIP::NCEClusterTaskOp op, [[maybe_unused]] VPU::ArchKind arch) {
+mlir::LogicalResult verifyNCEDWConv(VPUIP::NCEClusterTaskOp op, [[maybe_unused]] config::ArchKind arch) {
     VPUX_THROW_UNLESS(op.getTaskType() == VPUIP::NCETaskType::DWCONV, "Expected task type '{0}', but got '{1}'",
                       VPUIP::NCETaskType::DWCONV, op.getTaskType());
 
@@ -602,7 +603,7 @@ mlir::LogicalResult vpux::VPUIP::DPUTaskOp::verify() {
 mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
     const auto op = getOperation();
     auto module = op->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     if (getTaskType() == VPUIP::NCETaskType::CONV) {
         if (mlir::failed(verifyNCEConv(*this, arch))) {
@@ -659,7 +660,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
     if (isInput4d) {
         const auto inputBatch = inputShape[Dims4D::Act::N];
         if (inputBatch != vpux::VPU::NCEInvariant::SUPPORTED_BATCH_SIZE) {
-            if (arch < VPU::ArchKind::NPU37XX) {
+            if (arch < config::ArchKind::NPU37XX) {
                 return errorAt(op, "Got unsupported input batch '{0}' expected '{1}'", inputBatch,
                                vpux::VPU::NCEInvariant::SUPPORTED_BATCH_SIZE);
             }
@@ -719,7 +720,7 @@ mlir::LogicalResult vpux::VPUIP::NCEClusterTaskOp::verify() {
         }
     }
 
-    if (arch >= VPU::ArchKind::NPU40XX) {
+    if (arch >= config::ArchKind::NPU40XX) {
         auto outputType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(getOutput().getType());
         auto outputItiBuffs = getOutput_ITIBuff();
 

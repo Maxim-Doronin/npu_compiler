@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/strides_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/reshape_utils.hpp"
@@ -143,9 +144,9 @@ mlir::LogicalResult VPUIP::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* ctx,
     if (mlir::failed(shapeCast.verify(loc))) {
         return mlir::failure();
     }
-    const auto arch = VPU::getArch(mlir::isa<mlir::BlockArgument>(operands[0])
-                                           ? operands[0].getParentRegion()->getParentOfType<mlir::ModuleOp>()
-                                           : operands[0].getDefiningOp());
+    const auto arch = config::getArch(mlir::isa<mlir::BlockArgument>(operands[0])
+                                              ? operands[0].getParentRegion()->getParentOfType<mlir::ModuleOp>()
+                                              : operands[0].getDefiningOp());
     const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getSource().getType());
     const auto outShape = parseIntArrayAttr<int64_t>(shapeCast.getShape());
 

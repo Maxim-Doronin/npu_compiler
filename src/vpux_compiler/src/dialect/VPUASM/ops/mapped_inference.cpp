@@ -31,11 +31,11 @@ bool vpux::VPUASM::MappedInferenceOp::hasMemoryFootprint() {
 // MappedInferenceOp_37XX
 //
 
-size_t vpux::VPUASM::MappedInferenceOp_37XX::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::MappedInferenceOp_37XX::getBinarySize(config::ArchKind) {
     return sizeof(npu40xx::nn_public::VpuMappedInference);
 }
 
-size_t vpux::VPUASM::MappedInferenceOp_37XX::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::MappedInferenceOp_37XX::getAlignmentRequirements(config::ArchKind) {
     return alignof(npu40xx::nn_public::VpuMappedInference);
 }
 

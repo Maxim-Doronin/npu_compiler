@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -54,7 +55,7 @@ size_t vpux::VPUIP::DPUTaskOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUC
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
     // TODO: Expose API to get arch from cost model
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     vpux::Logger log = Logger::global();
 
     return checked_cast<size_t>(getDPUTaskOpCost(dpuTaskOp, costModel, arch, log));

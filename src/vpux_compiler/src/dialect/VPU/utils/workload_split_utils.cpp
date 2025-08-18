@@ -29,7 +29,7 @@ void addSubTensorOffset(TileInfo& tileInfo, ShapeRef tensorOffset) {
 
 int64_t computeSplitCost(const VPUIP::WorkloadSplit& split, const VPUIP::WorkloadCostParams& params,
                          VPUNN::VPUCostModel& costModel, bool isAutopadODUEnabled, LogCb logCb) {
-    VPUX_THROW_WHEN(params.arch < VPU::ArchKind::NPU37XX, "Unexpected architecture {0}", params.arch);
+    VPUX_THROW_WHEN(params.arch < config::ArchKind::NPU37XX, "Unexpected architecture {0}", params.arch);
     std::vector<int64_t> workloadCost;
     workloadCost.reserve(split.size());
 
@@ -251,7 +251,7 @@ void splitOntoWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp, VP
             costParams.outputShape = outputSubTensorShapes[clusterId];
             costParams.numTiles = distributionAttr.getNumClusters().getInt();
             // #E129156 once with the update of VPUNN to provide MPE mode explicitly
-            if (costParams.arch != VPU::ArchKind::NPU40XX &&
+            if (costParams.arch != config::ArchKind::NPU40XX &&
                 mlir::isa<VPU::NCEConvolutionOp, VPU::NCECompressConvolutionOp, VPU::NCEInterpolateOp>(origOp)) {
                 mpeMode = origOp.getMpeMode(nullptr, nullptr, outputSubTensorShapes[clusterId]);
             }
@@ -292,7 +292,7 @@ SmallVector<bool> getSupportedWorkloadSplitDim(VPU::NCEOpInterface nceOp, vpux::
 }
 
 mlir::LogicalResult vpux::VPU::genericNCEWorkloadSplit(VPU::NCEOpInterface nceOp, mlir::PatternRewriter& rewriter,
-                                                       VPU::ArchKind arch, int64_t numDPU,
+                                                       config::ArchKind arch, int64_t numDPU,
                                                        std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log) {
     const auto mpeMode = getNCEHeuristicMPEMode(nceOp);
     auto params = VPU::getWorkloadCostParam(nceOp, arch, numDPU);

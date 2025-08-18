@@ -6,23 +6,23 @@
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/asm.hpp"
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/permute_utils.hpp"
-#include "vpux/utils/core/range.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/ADT/bit.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
+
 #include <algorithm>
+
 #define REGION_YOLO_MAX_MASK_SIZE 9   // max mask size for region yolo op
 #define PROPOSAL_MAX_RATIO 3          // max ratio size for proposal op
 #define PROPOSAL_MAX_SCALE 6          // max scale size for proposal op
@@ -36,19 +36,6 @@ using namespace vpux;
 using namespace mlir;
 
 namespace {
-// special format of dims/order available only on kernel-FW side
-int64_t computeReverseMemDim(mlir::Value tensorArg, int64_t dimIdx) {
-    const auto inOrder = DimsOrder::fromValue(tensorArg);
-    // Negative value means counting dimension from the end
-    if (dimIdx < 0) {
-        dimIdx += inOrder.numDims();
-    }
-    MemDim md = inOrder.toMemDim(Dim(dimIdx));
-
-    const auto shape = getShape(tensorArg);
-    auto nDims = checked_cast<uint32_t>(shape.size());
-    return nDims - 1 - md.ind();
-}
 
 // permute int array attribute in the physical order
 static SmallVector<int64_t> permuteIntArrayAttr(DimsOrder inOrder, mlir::ArrayAttr arrayAttr) {
@@ -78,90 +65,9 @@ static SmallVector<int64_t> getAxesArrayRevertAndOrderAware(mlir::Value tensorAr
     const auto axes = parseIntArrayAttr<int64_t>(arrayAttr);
     SmallVector<int64_t> revertedAxesArray(MAX_NUM_DIMS, 0);
     for (const auto srcInd : irange(arrayAttr.size())) {
-        revertedAxesArray[srcInd] = computeReverseMemDim(tensorArg, axes[srcInd]);
+        revertedAxesArray[srcInd] = VPUIP::computeReverseMemDim(tensorArg, axes[srcInd]);
     }
     return revertedAxesArray;
-}
-
-uint64_t getFloatBits(vpux::type::float16 val) {
-    return static_cast<uint64_t>(val.to_bits());
-}
-
-uint64_t getFloatBits(float val) {
-    uint32_t f32Bits = llvm::bit_cast<uint32_t>(val);
-    return static_cast<uint64_t>(f32Bits);
-}
-
-template <class IT, class OT>
-void packAsFpIntoU64(const SmallVector<IT>& values, SmallVector<int64_t>& params) {
-    static constexpr uint32_t PACKED_VALUES_COUNT = sizeof(int64_t) / sizeof(OT);
-    static constexpr uint64_t bitWidth = sizeof(OT) * CHAR_BIT;
-    OT fltValue[PACKED_VALUES_COUNT];
-    size_t packIdx = 0;
-
-    auto pack = [](OT fltVals[PACKED_VALUES_COUNT]) -> uint64_t {
-        uint64_t ret = 0;
-        for (uint32_t i = 0; i < PACKED_VALUES_COUNT; i++) {
-            ret |= getFloatBits(fltVals[i]) << (bitWidth * i);
-        }
-        return ret;
-    };
-
-    for (const auto val : values) {
-        fltValue[packIdx++] = static_cast<OT>(val);
-        if (packIdx == PACKED_VALUES_COUNT) {
-            params.push_back(pack(fltValue));
-            packIdx = 0;  // reset pack index
-        }
-    }
-
-    // Store trailing elements
-    if (packIdx) {
-        // Pad with zeros up to U64 alignment
-        while (packIdx < PACKED_VALUES_COUNT) {
-            fltValue[packIdx++] = 0;
-        }
-        params.push_back(pack(fltValue));
-    }
-}
-
-void getQuantParamsAttr(mlir::MLIRContext* ctx, mlir::Value qValue, mlir::Type pType, mlir::ArrayAttr& paramsAttr) {
-    SmallVector<double> scales;
-    SmallVector<int64_t> zeroes;
-    int64_t quantDim = -1;
-    const auto qType = mlir::cast<vpux::NDTypeInterface>(qValue.getType()).getElementType();
-
-    if (mlir::isa<mlir::quant::UniformQuantizedType>(qType)) {
-        auto quantParams = mlir::cast<mlir::quant::UniformQuantizedType>(qType);
-        scales = {quantParams.getScale()};
-        zeroes = {quantParams.getZeroPoint()};
-    } else if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
-        auto quantParams = mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(qType);
-        quantDim = computeReverseMemDim(qValue, quantParams.getQuantizedDimension());
-        scales = {quantParams.getScales().begin(), quantParams.getScales().end()};
-        zeroes = {quantParams.getZeroPoints().begin(), quantParams.getZeroPoints().end()};
-    } else {
-        VPUX_THROW("Unsupported quantized type {0}", qType);
-    }
-
-    typedef decltype(scales)::value_type TS;
-    typedef decltype(zeroes)::value_type TZ;
-
-    // Convert & pack float values into u64 words for serialization
-    llvm::SmallVector<int64_t> params;
-    params.push_back(quantDim);
-    params.push_back(scales.size());
-    if (pType.isF16()) {
-        packAsFpIntoU64<TS, vpux::type::float16>(scales, params);
-        packAsFpIntoU64<TZ, vpux::type::float16>(zeroes, params);
-    } else if (pType.isF32()) {
-        packAsFpIntoU64<TS, float>(scales, params);
-        packAsFpIntoU64<TZ, float>(zeroes, params);
-    } else {
-        pType.dump();
-        VPUX_THROW("Supported non-quantized type : f16/f32");
-    }
-    paramsAttr = getIntArrayAttr(ctx, std::move(params));
 }
 
 // Build a bit-mask to indicate present inputs/outputs
@@ -1281,13 +1187,13 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             .Case<VPU::QuantizeOp>([&](VPU::QuantizeOp op) {
                 const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
                 mlir::ArrayAttr paramsAttr;
-                getQuantParamsAttr(ctx, op.getOutput(), iType.getElementType(), paramsAttr);
+                getQuantParamsAttr(op.getOutput(), iType.getElementType(), paramsAttr);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{paramsAttr}, {"quantize"}};
             })
             .Case<VPU::DequantizeOp>([&](VPU::DequantizeOp op) {
                 const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
                 mlir::ArrayAttr paramsAttr;
-                getQuantParamsAttr(ctx, op.getInput(), oType.getElementType(), paramsAttr);
+                getQuantParamsAttr(op.getInput(), oType.getElementType(), paramsAttr);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{paramsAttr}, {"dequantize"}};
             })
             .Case<VPU::DynamicQuantizeOp>([&](VPU::DynamicQuantizeOp) {
@@ -2188,7 +2094,7 @@ size_t SwKernelOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& c
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
     // TODO: Expose API to get arch from cost model
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     return checked_cast<size_t>(calculateShaveActCycles(swKernelOp, costModel, arch));
 }
 
