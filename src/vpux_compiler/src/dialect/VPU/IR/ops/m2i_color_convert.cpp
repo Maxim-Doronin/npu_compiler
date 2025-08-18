@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/m2i_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -19,7 +21,8 @@ bool vpux::VPU::M2IColorConvertOp::fitIntoCMX(mlir::Operation* op, vpux::NDTypeI
             reservedMem.count() == 0 ? getTotalCMXSize(op).count() : getTotalCMXFragmentationAwareSize(op).count();
     // Note: for 1xPlane config, 1st input fully dictates the size
     SmallVector<Byte> buffers = {input.getTotalAllocSize(), output.getTotalAllocSize()};
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(op), buffers).count() + reservedMem.count() <=
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(op), buffers).count() +
+                   reservedMem.count() <=
            totalAvailableCMXSize;
 }
 

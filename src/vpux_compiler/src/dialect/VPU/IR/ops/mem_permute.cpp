@@ -3,15 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/BuiltinAttributes.h>
-
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-
 #include "vpux/compiler/utils/permute_utils.hpp"
+
+#include <mlir/IR/BuiltinAttributes.h>
 
 using namespace vpux;
 
@@ -111,7 +112,7 @@ void vpux::VPU::MemPermuteOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Opera
 bool vpux::VPU::MemPermuteOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
     auto inputType = mlir::cast<NDTypeInterface>(getInput().getType());
     auto outputType = mlir::cast<NDTypeInterface>(getOutput().getType());
-    if (VPUIP::satisfiesOptimizedMemPermute(VPU::getArch(getOperation()), inputType, outputType)) {
+    if (VPUIP::satisfiesOptimizedMemPermute(config::getArch(getOperation()), inputType, outputType)) {
         // Optimal MemPermute kernel is most performant with SOH
         // Should remove this experimental condition when shave cost is supported
         // Track E#170850
@@ -148,7 +149,7 @@ bool vpux::VPU::MemPermuteOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> b
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

@@ -7,11 +7,12 @@
 #include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <algorithm>
 #include <unordered_set>
@@ -95,9 +96,9 @@ mlir::LogicalResult vpux::VPU::MatMulOp::inferReturnTypes(mlir::MLIRContext* ctx
 
 namespace {
 
-bool isSupported(VPU::ArchKind arch, ShapeRef input1Shape, ShapeRef input2Shape, bool transposeA = false,
+bool isSupported(config::ArchKind arch, ShapeRef input1Shape, ShapeRef input2Shape, bool transposeA = false,
                  bool transposeB = false) {
-    if (arch == VPU::ArchKind::NPU37XX) {  // All platforms except MTL can use this
+    if (arch == config::ArchKind::NPU37XX) {  // All platforms except MTL can use this
         return false;
     }
 
@@ -135,7 +136,7 @@ bool isSupported(VPU::ArchKind arch, ShapeRef input1Shape, ShapeRef input2Shape,
 //
 
 bool vpux::VPU::MatMulOp::isSupported(vpux::IE::MatMulOp matmulOp) {
-    return ::isSupported(VPU::getArch(matmulOp), getShape(matmulOp.getInput1()), getShape(matmulOp.getInput2()),
+    return ::isSupported(config::getArch(matmulOp), getShape(matmulOp.getInput1()), getShape(matmulOp.getInput2()),
                          matmulOp.getTransposeA(), matmulOp.getTransposeB());
 }
 
@@ -149,7 +150,7 @@ mlir::LogicalResult vpux::VPU::MatMulOp::verify() {
     }
 
     const auto operation = getOperation();
-    const auto arch = VPU::getArch(operation);
+    const auto arch = config::getArch(operation);
     if (::isSupported(arch, getShape(getInput1()), getShape(getInput2()))) {
         return mlir::success();
     }
@@ -226,7 +227,7 @@ bool vpux::VPU::MatMulOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffe
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

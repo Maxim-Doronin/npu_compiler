@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
 using namespace vpux;
 

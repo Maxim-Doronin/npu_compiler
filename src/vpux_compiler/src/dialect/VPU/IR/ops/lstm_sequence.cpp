@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
@@ -12,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -108,8 +110,9 @@ mlir::Value createIntermediateSumsBuffer(mlir::OpBuilder& rewriter, int64_t hidd
     const auto dpuWeightTableSize = vpux::VPU::NCEInvariant::getWeightsTableSize(hiddenSize) * lstmNumberOfGates;
 
     int64_t size = dpuWeightTableSize.count() + lstmIntermediateMultiplicationBuffersize +
-                   VPU::getDpuDebugDataSize(VPU::getArch(module)) + VPU::getDPUVariantDataSize(VPU::getArch(module)) +
-                   VPU::getDPUInvariantDataSize(VPU::getArch(module));
+                   VPU::getDpuDebugDataSize(config::getArch(module)) +
+                   VPU::getDPUVariantDataSize(config::getArch(module)) +
+                   VPU::getDPUInvariantDataSize(config::getArch(module));
 
     size = size / sizeof(int32_t);  // int32_t type format
     const auto shape = Shape{1, 1, 1, size};
@@ -119,8 +122,8 @@ mlir::Value createIntermediateSumsBuffer(mlir::OpBuilder& rewriter, int64_t hidd
                               auxIndicesType, ArrayRef<int32_t>(0));
 }
 
-bool isSupported(VPU::ArchKind arch, ShapeRef initialHiddenStateShape, bool useDpu) {
-    auto maxHiddenSize = getMaxLstmSequenceHiddenSizeConstant(arch);
+bool isSupported(config::ArchKind arch, ShapeRef initialHiddenStateShape, bool useDpu) {
+    auto maxHiddenSize = VPU::getMaxLstmSequenceHiddenSizeConstant(arch);
 
     // shave implementation allow reduced size. Bigger size can and are map on DPU.
     if (initialHiddenStateShape.back() > maxHiddenSize) {
@@ -171,9 +174,9 @@ void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Ope
                                       vpux::IE::RNNSequenceDirectionAttr direction,
                                       vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
     const auto module = getModule(odsBuilder);
-    auto useDpu = VPU::getShaveControlsDpu(VPU::getArch(module));
+    auto useDpu = VPU::getShaveControlsDpu(config::getArch(module));
     // extra alignment condition should be meet in order to run on internal on dpu.
-    useDpu = useDpu ? ::isSupported(VPU::getArch(module), getShape(initialHiddenState), useDpu) : useDpu;
+    useDpu = useDpu ? ::isSupported(config::getArch(module), getShape(initialHiddenState), useDpu) : useDpu;
     mlir::BoolAttr useDpuAttr(nullptr);
     useDpuAttr = useDpu ? mlir::BoolAttr::get(odsBuilder.getContext(), useDpu) : useDpuAttr;
     build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, reccurenceWeights, biases,
@@ -184,7 +187,7 @@ bool vpux::VPU::LSTMSequenceOp::isSupported(vpux::IE::LSTMSequenceOp op, bool us
     if (op.getReccurenceWeights().getDefiningOp<Const::DeclareOp>() == nullptr) {
         return false;
     }
-    return ::isSupported(VPU::getArch(op), getShape(op.getInitialHiddenState()), useDpu);
+    return ::isSupported(config::getArch(op), getShape(op.getInitialHiddenState()), useDpu);
 }
 
 //
@@ -235,7 +238,7 @@ bool vpux::VPU::LSTMSequenceOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface>
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

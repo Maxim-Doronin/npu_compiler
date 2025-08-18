@@ -5,7 +5,12 @@
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
 using namespace vpux;
@@ -28,7 +33,8 @@ mlir::LogicalResult vpux::VPU::GatherDMAOp::inferReturnTypes(mlir::MLIRContext*,
     auto outputShape = inputShape.toValues();
     outputShape[Dim(axis)] = indicesShape[Dim(axis)];
 
-    auto outType = inputType.changeShape(Shape(std::move(outputShape)));
+    auto outType = mlir::RankedTensorType::get(to_small_vector(outputShape), inputType.getElementType(),
+                                               createTensorAttrFromType(inputType));
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();
@@ -110,4 +116,85 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherDMAOp::getTilingStrategy(TilingMo
 
     log.trace("Isolated tiling strategy: {0}", nTilesOnDimforGather);
     return fillDividedTiles(baseOp, nTilesOnDimforGather, outputShape);
+}
+
+//
+// ClusteredOpInterface
+//
+
+bool vpux::VPU::GatherDMAOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
+    const auto indicesShape = getShape(getIndices());
+    const auto outputShape = getShape(getOutput());
+    if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
+        return indicesShape[Dims4D::Act::H] == 1 && outputShape[Dims4D::Act::H] >= checked_cast<int64_t>(numTiles);
+    }
+
+    if (strategy == VPU::MultiClusterStrategy::SplitOverWidth) {
+        return indicesShape[Dims4D::Act::W] == 1 && outputShape[Dims4D::Act::W] >= checked_cast<int64_t>(numTiles);
+    }
+
+    return false;
+}
+
+vpux::VPU::DistributionInfo vpux::VPU::GatherDMAOp::getExplicitDistributionInfoAttr(
+        vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
+        const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
+        const vpux::VPU::OverlapDistributionParams& /*overlapParams*/) {
+    VPUX_THROW_UNLESS(distributionMode != VPU::DistributionMode::OVERLAPPED,
+                      "Overlapped distribution mode is not supported for GatherDMAOp");
+
+    return getNonOverlappedDistributedNative(shape, distributionMode, numTiles, numClusters, alignment,
+                                             uniformDistributedSegments);
+}
+
+vpux::NDTypeInterface vpux::VPU::GatherDMAOp::getDistributedTypeForOpOperand(mlir::OpOperand& operand,
+                                                                             bool hasExplicitDistributedAttr,
+                                                                             SiblingOpsAnalysis& siblingsAnalysis) {
+    auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
+    auto origOp = mlir::cast<GatherDMAOp>(getOperation());
+
+    if (operand.get() == origOp.getInput()) {
+        return mlir::dyn_cast<NDTypeInterface>(origOp.getInput().getType());
+    }
+    if (operand.get() == origOp.getIndices()) {
+        return getDistributedTypeFromInput(clusteredOp, operand.get(), VPU::DistributionMode::DUPLICATED, {}, {},
+                                           VPU::MultiClusterStrategy::Clustering, hasExplicitDistributedAttr,
+                                           siblingsAnalysis);
+    }
+
+    VPUX_THROW("Failed to compute distributed type for op operand {0}", clusteredOp);
+    return nullptr;
+}
+
+bool vpux::VPU::GatherDMAOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem) {
+    VPUX_THROW_UNLESS(buffers.size() == 2,
+                      "GatherDMAOp has 2 inputs and 1 output, and we only need to fit indices and output in CMX, but"
+                      "the number of buffer is { 0 } ",
+                      buffers.size());
+
+    SmallVector<Byte> buffersSize;
+    std::transform(buffers.begin(), buffers.end(), std::back_inserter(buffersSize), [](const auto buffer) {
+        return buffer.getTotalAllocSize();
+    });
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
+                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffersSize).count() +
+                   reservedMem.count() <=
+           totalAvailableCMXSize;
+}
+
+bool vpux::VPU::GatherDMAOp::fitIntoCMX(vpux::NDTypeInterface indices, vpux::NDTypeInterface output, Byte reservedMem) {
+    SmallVector<Byte> buffers = {indices.getTotalAllocSize(), output.getTotalAllocSize()};
+
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
+                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
+                   reservedMem.count() <=
+           totalAvailableCMXSize;
+}
+
+bool vpux::VPU::GatherDMAOp::fitIntoCMX(vpux::NDTypeInterface indices, vpux::NDTypeInterface output) {
+    return fitIntoCMX(indices, output, Byte(0));
 }

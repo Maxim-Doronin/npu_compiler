@@ -24,7 +24,7 @@ mlir::LogicalResult vpux::VPU::CopyOp::inferReturnTypes(mlir::MLIRContext* ctx, 
 
     const auto ndInType = mlir::dyn_cast<vpux::NDTypeInterface>(copyOp.getInput().getType());
     if (ndInType == nullptr) {
-        return errorAt(loc, "IE::CopyOp operand must have vpux::NDTypeInterface type");
+        return errorAt(loc, "CopyOp operand must have vpux::NDTypeInterface type");
     }
 
     IndexedSymbolAttr outMemSpace = nullptr;

@@ -5,9 +5,8 @@
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/dynamic_shape_propagation.hpp"
-#include "vpux/utils/core/range.hpp"
 
 using namespace vpux;
 
@@ -48,7 +47,7 @@ bool vpux::VPU::DynamicReshapeOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterfac
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
