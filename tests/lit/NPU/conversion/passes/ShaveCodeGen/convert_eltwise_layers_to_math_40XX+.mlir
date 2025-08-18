@@ -359,7 +359,7 @@ module @SingleLogLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:  IE.Log
-    // CHECK:      [[VAR0:%.+]] = math.log [[ARG0:%.+]] fastmath<afn> : tensor<1x1x1x1000xf16>
+    // CHECK:      {{.*}} = math.log {{.*}} fastmath<afn> : tensor<1x1x1x1000xf16>
 	}
 }
 // -----
@@ -379,7 +379,7 @@ module @SingleExpLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:  IE.Log
-    // CHECK: [[VAR0:%.+]] = math.exp [[ARG0:%.+]] fastmath<afn> : tensor<1x1x1x1000xf16>
+    // CHECK: {{.*}} = math.exp {{.*}} fastmath<afn> : tensor<1x1x1x1000xf16>
 	}
 }
 
@@ -401,7 +401,7 @@ module @SingleSinLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:    IE.Sin
-    // CHECK:        [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK:        {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[EXT:%.+]] = arith.extf [[IN]] : f16 to f32
     // CHECK-NEXT:      [[SIN:%.+]] = math.sin [[EXT]] : f32
@@ -430,7 +430,7 @@ module @SingleSqrtLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT: IE.Sqrt
-    // CHECK:     [[VAR0:%.+]] = math.sqrt [[ARG0:%.+]] fastmath<afn> : tensor<1x1x1x1000xf16>
+    // CHECK:     {{.*}} = math.sqrt {{.*}} fastmath<afn> : tensor<1x1x1x1000xf16>
   }
 }
 
@@ -452,7 +452,7 @@ module @SingleRoundLayerHalfToEven  {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Round
-    // CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK:         {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[VAR0:%.+]] = math.roundeven [[IN]] : f16
     // CHECK-NEXT:      linalg.yield [[VAR0]] : f16
@@ -477,7 +477,7 @@ module @SingleRoundLayerHalfAwayFromZero {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Round
-    // CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK:         {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[VAR0:%.+]] = math.round [[IN]] : f16
     // CHECK-NEXT:      linalg.yield [[VAR0]] : f16
@@ -503,7 +503,7 @@ module @SingleErfLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Erf
-    // CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK:         {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.*]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[EXT:%.+]] = arith.extf [[IN]] : f16 to f32
     // CHECK-NEXT:      [[ERF:%.+]] = math.erf [[EXT]] : f32
@@ -533,8 +533,8 @@ module @SingleConvertFPToSILayer {
 // CHECK-NOT: IE.Convert
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: f16, {{%.+}}: i32):
-// CHECK:       [[OP:%.+]] = arith.fptosi %{{.+}} : f16 to i32
+// CHECK:     ^bb0([[IN:%.+]]: f16, {{%.+}}: i32):
+// CHECK:       [[OP:%.+]] = arith.fptosi [[IN]] : f16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
 // CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
@@ -561,8 +561,8 @@ module @SingleConvertFPToUILayer {
 // CHECK-NOT: IE.Convert
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: f16, {{%.+}}: i32):
-// CHECK:       [[OP:%.+]] = arith.fptoui %{{.+}} : f16 to i32
+// CHECK:     ^bb0([[IN:%.+]]: f16, {{%.+}}: i32):
+// CHECK:       [[OP:%.+]] = arith.fptoui [[IN]] : f16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
 // CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
@@ -590,10 +590,10 @@ module @SingleConvertSIToFPLayer {
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG0:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: i32, {{%.+}}: f16):
-// CHECK:       [[OP:%.+]] = arith.sitofp %{{.+}} : i32 to f16
+// CHECK:     ^bb0([[IN:%.+]]: i32, {{%.+}}: f16):
+// CHECK:       [[OP:%.+]] = arith.sitofp [[IN]] : i32 to f16
 // CHECK:       linalg.yield [[OP]] : f16
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xf16>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
 
 
   }
@@ -619,10 +619,10 @@ module @SingleConvertUIToFPLayer {
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG0:%.+]] : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: i32, {{%.+}}: f16):
-// CHECK:       [[OP:%.+]] = arith.uitofp %{{.+}} : i32 to f16
+// CHECK:     ^bb0([[IN:%.+]]: i32, {{%.+}}: f16):
+// CHECK:       [[OP:%.+]] = arith.uitofp [[IN]] : i32 to f16
 // CHECK:       linalg.yield [[OP]] : f16
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xf16>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
 
   }
 }
@@ -646,10 +646,10 @@ module @SingleConvertExtFPLayer {
 // CHECK-NOT: IE.Convert
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf32>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf32>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: f16, {{%.+}}: f32):
-// CHECK:       [[OP:%.+]] = arith.extf %{{.+}} : f16 to f32
+// CHECK:     ^bb0([[IN:%.+]]: f16, {{%.+}}: f32):
+// CHECK:       [[OP:%.+]] = arith.extf [[IN]] : f16 to f32
 // CHECK:       linalg.yield [[OP]] : f32
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xf32>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf32>
 
   }
 }
@@ -671,12 +671,13 @@ module @SingleConvertTruncFPLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT: IE.Convert
+// CHECK: func.func @main([[ARG0:%.+]]: tensor<1x1x1x1000xf32>) -> tensor<1x1x1x1000xf16> {
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: f32, {{%.+}}: f16):
-// CHECK:       [[OP:%.+]] = arith.truncf %{{.+}} : f32 to f16
+// CHECK:     ^bb0([[IN:%.+]]: f32, {{%.+}}: f16):
+// CHECK:       [[OP:%.+]] = arith.truncf [[IN]] : f32 to f16
 // CHECK:       linalg.yield [[OP]] : f16
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xf16>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
 
   }
 }
@@ -701,11 +702,11 @@ module @SingleConvertExtSILayer {
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: i16, {{%.+}}: i32):
-// CHECK:       [[OP:%.+]] = arith.extsi %{{.+}} : i16 to i32
+// CHECK:     ^bb0([[IN:%.+]]: i16, {{%.+}}: i32):
+// CHECK:       [[OP:%.+]] = arith.extsi [[IN]] : i16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xsi32>
+// CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
 
   }
 }
@@ -734,7 +735,7 @@ module @SingleConvertExtUILayer {
 // CHECK:       [[OP:%.+]] = arith.extui %{{.+}} : i16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
 // CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xui32>
+// CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
 
   }
 }
@@ -758,10 +759,200 @@ module @SingleConvertTruncILayer {
 // CHECK-NOT: IE.Convert
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
 // CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG:%.+]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
-// CHECK:     ^bb0([[ARG0:%.+]]: i32, {{%.+}}: i16):
-// CHECK:       [[OP:%.+]] = arith.trunci %{{.+}} : i32 to i16
+// CHECK:     ^bb0([[IN:%.+]]: i32, {{%.+}}: i16):
+// CHECK:       [[OP:%.+]] = arith.trunci [[IN]] : i32 to i16
 // CHECK:       linalg.yield [[OP]] : i16
-// CHECK:     IE.CGCYield [[RET:%.+]] : tensor<1x1x1x1000xi16>
-
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi16>
   }
+} 
+
+// -----
+// IE.Abs 
+
+module @SingleAbsFloatLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Abs(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.Abs
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
+    // CHECK: [[ABS:%.+]] = math.absf [[IN]] : f16
+    // CHECK: linalg.yield [[ABS]] : f16
+    // CHECK: IE.CGCYield [[LINALG_OP]]  : tensor<1x1x1x1000xf16>
+	}
+}
+
+// -----
+// IE.Negative 
+
+// CHECK: module @SingleNegativeFloatLayer
+module @SingleNegativeFloatLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Negative(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.Negative
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG]] : tensor<1x1x1x1000xf16>) {
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
+    // CHECK: [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK: [[NEG:%.+]] = arith.subf [[ZERO]], [[IN]] : f16
+    // CHECK: linalg.yield [[NEG]] : f16
+    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+	}
+}
+
+// -----
+
+// CHECK: module @SingleNegativeSI32Layer
+module @SingleNegativeSI32Layer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xsi32>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xsi32>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xsi32>) -> tensor<1x1x1x1000xsi32> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xsi32>) {
+      %1 = IE.Negative(%arg1) : tensor<1x1x1x1000xsi32> -> tensor<1x1x1x1000xsi32>
+    IE.CGCYield %1 : tensor<1x1x1x1000xsi32>
+    } -> tensor<1x1x1x1000xsi32>
+    return %0 : tensor<1x1x1x1000xsi32>
+
+    // CHECK-NOT: IE.Negative
+    // CHECK: [[BC_ARG:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[BC_ARG]] : tensor<1x1x1x1000xi32>) outs([[BC_ARG]] : tensor<1x1x1x1000xi32>) {
+    // CHECK: ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
+    // CHECK: [[ZERO:%.+]] = arith.constant 0 : i32
+    // CHECK: [[NEG:%.+]] = arith.subi [[ZERO]], [[IN]] : i32
+    // CHECK: linalg.yield [[NEG]] : i32
+    // CHECK: [[RES:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
+    // CHECK: IE.CGCYield [[RES]] : tensor<1x1x1x1000xsi32>
+	}
+}
+
+// -----
+// IE.Sign  
+
+module @SingleSignFloatLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Sign(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.Sign
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
+    // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK:   [[NEGF_ONE:%.+]] = arith.constant -1.000000e+00 : f16
+    // CHECK:   [[POSF_ONE:%.+]] = arith.constant 1.000000e+00 : f16
+    // CHECK:   [[BITCAST:%.+]] = arith.bitcast [[IN]] : f16 to i16
+    // CHECK:   [[CST_32768:%.+]] = arith.constant -32768 : i16
+    // CHECK:   [[AND:%.+]] = arith.andi [[BITCAST]], [[CST_32768]] : i16
+    // CHECK:   [[ONE:%.+]] = arith.constant 1 : i16
+    // CHECK:   [[SHL:%.+]] = arith.shli [[BITCAST]], [[ONE]] : i16
+    // CHECK:   [[INT_ZERO:%.+]] = arith.constant 0 : i16
+    // CHECK:   [[CMP_EQ:%.+]] = arith.cmpi eq,  [[SHL]], [[INT_ZERO]] : i16
+    // CHECK:   [[INT_ZERO2:%.+]] = arith.constant 0 : i16
+    // CHECK:   [[CMP_NE:%.+]] = arith.cmpi ne, [[AND]], [[INT_ZERO2]] : i16
+    // CHECK:   [[SELECT_1:%.+]] = arith.select [[CMP_NE]], [[NEGF_ONE]], [[POSF_ONE]] : f16
+    // CHECK:   [[SELECT_2:%.+]] = arith.select [[CMP_EQ]], [[ZERO]], [[SELECT_1]] : f16
+    // CHECK:   linalg.yield [[SELECT_2]] : f16
+    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+	}
+}
+
+// -----
+// IE.HSwish  
+
+module @SingleHSwishFloatLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.HSwish(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.HSwish
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
+    // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK:   [[THREE:%.+]] = arith.constant 3.000000e+00 : f16
+    // CHECK:   [[SIX:%.+]] = arith.constant 6.000000e+00 : f16
+    // CHECK:   [[DIV_CST:%.+]] = arith.constant 1.666260e-01 : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf %{{.+}}, [[THREE]] : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[ADD]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[MAX]], [[SIX]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[DIV:%.+]] = arith.mulf [[MIN]], [[DIV_CST]] : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[IN]], [[DIV]] : f16
+    // CHECK:   linalg.yield [[MUL]] : f16
+    // CHECK: IE.CGCYield [[LINALG_OP]]  : tensor<1x1x1x1000xf16>
+    
+	}
+}
+
+// -----
+// IE.HSigmoid  
+
+module @SingleHSigmoidFloatLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.HSigmoid(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+    IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.HSigmoid
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]] : tensor<1x1x1x1000xf16>) outs([[ARG0]] : tensor<1x1x1x1000xf16>) {
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
+    // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK:   [[THREE:%.+]] = arith.constant 3.000000e+00 : f16
+    // CHECK:   [[SIX:%.+]] = arith.constant 6.000000e+00 : f16
+    // CHECK:   [[DIV_CST:%.+]] = arith.constant 1.666260e-01 : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf %{{.+}}, [[THREE]] : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[ADD]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[MAX]], [[SIX]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[DIV_CST]] : f16
+    // CHECK:   linalg.yield [[MUL]] : f16
+    // CHECK: IE.CGCYield [[LINALG_OP]]  : tensor<1x1x1x1000xf16>
+    
+	}
 }
