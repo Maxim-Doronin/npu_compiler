@@ -5,7 +5,10 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 namespace IE {
@@ -24,7 +27,7 @@ public:
 /*
    Find right class to verify whether DepthSpace to TransposedConv conversion is beneficial for particular platform
 */
-std::unique_ptr<D2SToTransposedConvVerifierBase> createD2SToTransposedConvVerifier(vpux::VPU::ArchKind arch);
+std::unique_ptr<D2SToTransposedConvVerifierBase> createD2SToTransposedConvVerifier(vpux::config::ArchKind arch);
 
 }  // namespace IE
 }  // namespace vpux

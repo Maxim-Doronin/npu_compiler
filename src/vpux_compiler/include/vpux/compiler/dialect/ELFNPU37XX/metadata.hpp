@@ -5,18 +5,16 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <vpux_elf/writer.hpp>
+#include <vpux_headers/metadata.hpp>
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Support/Timing.h>
 
 #include <transformations/utils/utils.hpp>
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-
-#include <vpux_headers/metadata.hpp>
 
 namespace vpux {
 namespace ELFNPU37XX {

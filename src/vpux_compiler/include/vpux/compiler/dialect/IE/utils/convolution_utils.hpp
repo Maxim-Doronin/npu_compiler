@@ -5,7 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 

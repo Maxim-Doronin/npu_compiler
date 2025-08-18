@@ -5,8 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/utils/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 
 namespace vpux {
 namespace IE {
@@ -18,7 +17,7 @@ bool isLegalReorderLikeToPermuteQuantize(vpux::NDTypeInterface inType, vpux::NDT
 std::optional<SmallVector<int64_t>> getAdjustHW(int64_t alignment, int64_t width, int64_t height);
 bool isODUPermuteEffectiveForShape(const ShapeRef shape, const int64_t alignment);
 bool isShapeCompatibleWithODUPermute(const ShapeRef shape, const int64_t alignment);
-bool canConvertToNCHWInOrderWithPermuteCast(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType);
+bool canConvertToNCHWInOrderWithPermuteCast(vpux::NDTypeInterface inType, mlir::AffineMap memPerm);
 bool checkNCEPermuteShapeCompatibility(ShapeRef inShape, ShapeRef outShape, int64_t alignment);
 
 }  // namespace IE

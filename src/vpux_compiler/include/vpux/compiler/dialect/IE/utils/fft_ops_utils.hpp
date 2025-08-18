@@ -5,12 +5,12 @@
 
 #pragma once
 
-#include <mlir/IR/BuiltinTypes.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/types.hpp"
-#include "vpux/utils/core/type_traits.hpp"
+
+#include <mlir/IR/BuiltinTypes.h>
 
 namespace vpux {
 namespace IE {

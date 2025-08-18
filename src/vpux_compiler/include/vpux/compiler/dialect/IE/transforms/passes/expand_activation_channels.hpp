@@ -5,13 +5,15 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/numeric.hpp"
+
 namespace vpux {
 
 namespace IE {

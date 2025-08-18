@@ -6,7 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/core/developer_build_utils.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/options.hpp"
 
 #include <mlir/Pass/PassManager.h>
@@ -50,9 +50,9 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
 
     BoolOption enableSEPtrsOperations{*this, "enable-se-ptrs-operations",
                                       llvm::cl::desc("Enable storage element pointer operations")};
-    static bool getDefaultEnableSEPtrsOperations(VPU::ArchKind arch) {
+    static bool getDefaultEnableSEPtrsOperations(config::ArchKind arch) {
         switch (arch) {
-        case VPU::ArchKind::NPU40XX:
+        case config::ArchKind::NPU40XX:
             return true;
         default:
             return false;
@@ -100,9 +100,9 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
                     clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                "Partial WLM, enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                "enqueue algorithm at VPUMI"))};
-    static WorkloadManagementMode getDefaultWorkloadManagementMode(VPU::ArchKind arch) {
+    static WorkloadManagementMode getDefaultWorkloadManagementMode(config::ArchKind arch) {
         switch (arch) {
-        case VPU::ArchKind::NPU40XX:
+        case config::ArchKind::NPU40XX:
             return WorkloadManagementMode::PWLM_V0_LCA;
         default:
             return WorkloadManagementMode::PWLM_V0_LCA;
@@ -115,9 +115,9 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
     StrOption enableDMAProfiling{*this, "dma-profiling",
                                  llvm::cl::desc("Enable DMA task profiling (true, false, static)"),
                                  llvm::cl::init("true")};
-    static std::string getDefaultEnableDMAProfiling(VPU::ArchKind arch) {
+    static std::string getDefaultEnableDMAProfiling(config::ArchKind arch) {
         switch (arch) {
-        case VPU::ArchKind::NPU40XX:
+        case config::ArchKind::NPU40XX:
             // Enable for 40XX once RT will be ready, follow up #E95864
             return "false";
         default:
@@ -148,15 +148,16 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
     //
 
     PublicOptions() = default;
-    PublicOptions(VPU::ArchKind arch) {
+    PublicOptions(config::ArchKind arch) {
         enableSEPtrsOperations = getDefaultEnableSEPtrsOperations(arch);
-        if (arch != VPU::ArchKind::NPU40XX) {
-            workloadManagementMode = getDefaultWorkloadManagementMode(arch);
+        if (arch != config::ArchKind::NPU40XX) {
+            workloadManagementMode.setValue(getDefaultWorkloadManagementMode(arch));
         }
+
         enableDMAProfiling = getDefaultEnableDMAProfiling(arch);
     }
 
-    static std::unique_ptr<PublicOptions> createFromString(StringRef options, VPU::ArchKind arch) {
+    static std::unique_ptr<PublicOptions> createFromString(StringRef options, config::ArchKind arch) {
         auto result = std::make_unique<PublicOptions>(arch);
         if (mlir::failed(result->parseFromString(options))) {
             return nullptr;

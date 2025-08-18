@@ -7,17 +7,19 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/core/attributes/strides.hpp"
 #include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include <llvm/Support/raw_ostream.h>
 #include <mlir/IR/BuiltinAttributes.h>
 
-#include <llvm/Support/raw_ostream.h>
-
-#include <functional>
+namespace vpux::IE {
+enum class InterpolateMode : uint64_t;
+enum class InterpolateCoordMode : uint64_t;
+enum class InterpolateNearestMode : uint64_t;
+}  // namespace vpux::IE
 
 namespace vpux {
 
@@ -181,41 +183,80 @@ bool isWeightsFirstNestedTiling(mlir::Operation* op, ShapeRef divisors);
 //
 
 struct PadInfo final {
-    int64_t left = 0;
-    int64_t right = 0;
-    int64_t top = 0;
-    int64_t bottom = 0;
+    int32_t left = 0;
+    int32_t right = 0;
+    int32_t top = 0;
+    int32_t bottom = 0;
+    int32_t front = 0;  // 5D depth padding
+    int32_t back = 0;   // 5D depth padding
+    bool is5D = false;  // Flag to indicate 5D vs 4D usage
 
     PadInfo() = default;
 
+    // 4D constructor
     PadInfo(int64_t left, int64_t right, int64_t top, int64_t bottom)
-            : left(left), right(right), top(top), bottom(bottom) {
+            : left(left), right(right), top(top), bottom(bottom), is5D(false) {
     }
 
-    PadInfo(mlir::ArrayAttr pads_begin, mlir::ArrayAttr pads_end) {
-        top = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims4D::PadsBegin::Top.ind()]).getValue().getSExtValue();
-        bottom = mlir::cast<mlir::IntegerAttr>(pads_end[Dims4D::PadsEnd::Bottom.ind()]).getValue().getSExtValue();
-        left = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims4D::PadsBegin::Left.ind()]).getValue().getSExtValue();
-        right = mlir::cast<mlir::IntegerAttr>(pads_end[Dims4D::PadsEnd::Right.ind()]).getValue().getSExtValue();
+    // 5D constructor
+    PadInfo(int64_t left, int64_t right, int64_t top, int64_t bottom, int64_t front, int64_t back)
+            : left(left), right(right), top(top), bottom(bottom), front(front), back(back), is5D(true) {
+    }
+
+    PadInfo(mlir::ArrayAttr pads_begin, mlir::ArrayAttr pads_end)
+            : is5D(pads_begin.size() == 3 && pads_end.size() == 3) {
+        if (is5D) {
+            top = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims5D::PadsBegin::Top.ind()]).getValue().getSExtValue();
+            bottom = mlir::cast<mlir::IntegerAttr>(pads_end[Dims5D::PadsEnd::Bottom.ind()]).getValue().getSExtValue();
+            left = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims5D::PadsBegin::Left.ind()]).getValue().getSExtValue();
+            right = mlir::cast<mlir::IntegerAttr>(pads_end[Dims5D::PadsEnd::Right.ind()]).getValue().getSExtValue();
+            front = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims5D::PadsBegin::Front.ind()]).getValue().getSExtValue();
+            back = mlir::cast<mlir::IntegerAttr>(pads_end[Dims5D::PadsEnd::Back.ind()]).getValue().getSExtValue();
+        } else {
+            top = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims4D::PadsBegin::Top.ind()]).getValue().getSExtValue();
+            bottom = mlir::cast<mlir::IntegerAttr>(pads_end[Dims4D::PadsEnd::Bottom.ind()]).getValue().getSExtValue();
+            left = mlir::cast<mlir::IntegerAttr>(pads_begin[Dims4D::PadsBegin::Left.ind()]).getValue().getSExtValue();
+            right = mlir::cast<mlir::IntegerAttr>(pads_end[Dims4D::PadsEnd::Right.ind()]).getValue().getSExtValue();
+        }
     }
 
     mlir::DenseMap<int64_t, std::pair<int64_t, int64_t>> toPadByDims() const {
-        return {{Dims4D::Act::H.ind(), {top, bottom}}, {Dims4D::Act::W.ind(), {left, right}}};
+        if (is5D) {
+            return {{Dims5D::Act::H.ind(), {top, bottom}},
+                    {Dims5D::Act::W.ind(), {left, right}},
+                    {Dims5D::Act::D.ind(), {front, back}}};
+        } else {
+            return {{Dims4D::Act::H.ind(), {top, bottom}}, {Dims4D::Act::W.ind(), {left, right}}};
+        }
     }
 
     bool enabled() const {
-        return left != 0 || right != 0 || top != 0 || bottom != 0;
+        if (is5D) {
+            return left != 0 || right != 0 || top != 0 || bottom != 0 || front != 0 || back != 0;
+        } else {
+            return left != 0 || right != 0 || top != 0 || bottom != 0;
+        }
     }
 
     bool operator==(const PadInfo& other) const {
-        return left == other.left && right == other.right && top == other.top && bottom == other.bottom;
+        if (is5D != other.is5D) {
+            return false;
+        }
+        bool base = left == other.left && right == other.right && top == other.top && bottom == other.bottom;
+        return is5D ? base && front == other.front && back == other.back : base;
     }
+
     bool operator!=(const PadInfo& other) const {
         return !(*this == other);
     }
 
     void printFormat(llvm::raw_ostream& stream) const {
-        printTo(stream, "PadInfo [left = {0}, right = {1}, top = {2}, bottom = {3}]", left, right, top, bottom);
+        if (is5D) {
+            printTo(stream, "PadInfo5D [left = {0}, right = {1}, top = {2}, bottom = {3}, front = {4}, back = {5}]",
+                    left, right, top, bottom, front, back);
+        } else {
+            printTo(stream, "PadInfo [left = {0}, right = {1}, top = {2}, bottom = {3}]", left, right, top, bottom);
+        }
     }
 };
 
@@ -256,6 +297,13 @@ InputTiling backInferGroupConvTile(const TileInfo& outputTile, ShapeRef origInpu
 //
 
 InputTiling backInferMatMulTile(const TileInfo& outputTile, ShapeRef origInputShape, ShapeRef origFilterShape,
+                                mlir::ArrayAttr strides, const PadInfo& origPadding);
+
+//
+// 5D Pooling tiling
+//
+
+InputTiling backInfer5DPoolTile(const TileInfo& outputTile, ShapeRef origInputShape, mlir::ArrayAttr kernel_size,
                                 mlir::ArrayAttr strides, const PadInfo& origPadding);
 
 //
@@ -414,7 +462,8 @@ SmallVector<Strides> adaptStrides(ShapeRef origShape, StridesRef origStrides, Ar
 // EltwiseOp
 //
 
-SmallVector<int64_t> getMaxNumTiles(mlir::Operation* op, bool checkMinimalWidthAndHeight = false);
+SmallVector<int64_t> getMaxNumTiles(mlir::Operation* op, bool checkMinimalWidthAndHeight = false,
+                                    bool checkWorkloadEfficiency = false);
 InputTiling backInferEltwiseTile(mlir::Operation* op, const vpux::TileInfo& outputTile);
 
 // SWLayer
@@ -513,6 +562,11 @@ bool isNewTileWithSameCostHasPotentialDMABenefits(mlir::Operation* op, ShapeRef 
  * Get the dimensions greater than 1
  */
 SmallVector<Dim> getNonOneDim(ShapeRef inputShape);
+
+/*
+ * Get the dimensions greater than 1 with tiling order
+ */
+SmallVector<Dim> getTilingOrderedDims(mlir::Operation* operation, ShapeRef tiling);
 
 /*
  * Get the dimension with the maximum size in all non-one dimensions

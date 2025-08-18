@@ -5,11 +5,21 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/common.hpp"
+
+namespace vpux::VPUIP {
+class DMATypeOpInterface;
+class ProfilingSectionOp;
+}  // namespace vpux::VPUIP
+
+namespace vpux::VPURT {
+class TaskOp;
+}  // namespace vpux::VPURT
 
 namespace vpux {
 
@@ -29,7 +39,7 @@ VPUIP::M2IProfilingMetadataAttr getM2IProfilingMetaAttr(mlir::MLIRContext* ctx, 
 
 enum class DMAProfilingMode { DISABLED, SCRATCH, SW, STATIC_HWP, DYNAMIC_HWP };
 
-DMAProfilingMode getDMAProfilingMode(VPU::ArchKind arch, const std::string& optionValue);
+DMAProfilingMode getDMAProfilingMode(config::ArchKind arch, const std::string& optionValue);
 
 // Post processing of profiling is relay on uniqueness of locations, but this may be violated. To ensure that all names
 // are unique this class is used

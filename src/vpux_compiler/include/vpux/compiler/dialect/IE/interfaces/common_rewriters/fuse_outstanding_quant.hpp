@@ -3,8 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Operation.h>
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 namespace IE {

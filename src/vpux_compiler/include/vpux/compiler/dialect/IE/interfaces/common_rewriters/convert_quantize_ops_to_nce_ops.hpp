@@ -6,11 +6,13 @@
 //
 
 #pragma once
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes/convert_quantize_ops_to_nce_ops.hpp"
-#include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
+
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
+#include "vpux/compiler/utils/passes.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux::IE {
 

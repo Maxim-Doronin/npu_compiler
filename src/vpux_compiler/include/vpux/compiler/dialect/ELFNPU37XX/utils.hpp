@@ -5,12 +5,14 @@
 
 #pragma once
 
-#include <vector>
 #include <vpux_headers/platform.hpp>
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/small_string.hpp"
+
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <vector>
 
 using namespace vpux;
 
@@ -56,7 +58,7 @@ using OffsetCache = mlir::DenseMap<mlir::Value, mlir::DenseMap<mlir::Value, size
 size_t getOffsetOfOpInSection(mlir::Value op, mlir::Value section, OffsetCache& cache);
 size_t getOffsetOfOpInSection(mlir::Value& op);
 
-SmallString getSwKernelArchString(VPU::ArchKind archKind);
+SmallString getSwKernelArchString(config::ArchKind archKind);
 
 class RelocationManager {
 public:
@@ -102,7 +104,7 @@ constexpr uint32_t CMX_SLICE_SIZE{CMX_BASE_ADDRESS[1] - CMX_BASE_ADDRESS[0]};
 // Platform Information
 //
 
-elf::platform::ArchKind mapVpuArchKindToElfArchKind(const VPU::ArchKind& archKind);
+elf::platform::ArchKind mapVpuArchKindToElfArchKind(const config::ArchKind& archKind);
 
 }  // namespace ELFNPU37XX
 }  // namespace vpux

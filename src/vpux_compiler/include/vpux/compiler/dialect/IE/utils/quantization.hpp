@@ -4,13 +4,10 @@
 //
 
 #pragma once
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/attributes_properties_conversion.hpp"
-#include "vpux/compiler/utils/types.hpp"
-#include "vpux/utils/core/algo.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinTypes.h>

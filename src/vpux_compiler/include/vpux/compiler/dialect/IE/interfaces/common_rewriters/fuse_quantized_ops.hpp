@@ -3,22 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/BuiltinAttributes.h>
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
-#include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
-#include "vpux/compiler/utils/attributes_properties_conversion.hpp"
-#include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 

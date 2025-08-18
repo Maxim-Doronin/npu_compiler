@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 
 namespace vpux {
 namespace IE {
