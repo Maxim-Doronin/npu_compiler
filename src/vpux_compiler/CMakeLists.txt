@@ -29,7 +29,7 @@ if(ENABLE_NPU_MONO)
     endif()
     set(SCHEMA_SOURCE_DIR ${GRAPHFILE_SCHEMA_SUBMODULE_PATH}/src/schema)
 else()
-    set(SCHEMA_SOURCE_DIR ${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/thirdparty/elf/src/schema) # Legacy path
+    set(SCHEMA_SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/graphFile-schema/src/schema) # Legacy path
 endif(ENABLE_NPU_MONO)
 
 
@@ -168,7 +168,7 @@ if (ENABLE_DIALECT_SHARED_LIBRARIES)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/tblgen>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<BUILD_INTERFACE:${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/sw_runtime_kernels>)
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/sw_runtime_kernels>)
     target_link_libraries(NPUReg40XX_dialect
         PUBLIC
             mlir-dependencies

@@ -43,7 +43,7 @@ function(add_npu_library name)
 
     # The npu_mlir_compiler_schema and cpp_schema targets are added as dependencies to ensure
     # that the following generated headers are built before the compiler code:
-    # - thirdparty/elf/schema.hpp
+    # - graphFile-schema/schema.hpp
     # - vpunn_generated.h
     add_mlir_library(${name}
         STATIC ${SRC_FILES}

@@ -11,8 +11,6 @@
 
 #include <mlir/Pass/PassManager.h>
 
-#include <memory>
-
 namespace vpux {
 namespace IE {
 namespace arch37xx {
@@ -22,8 +20,6 @@ namespace arch37xx {
 //
 
 std::unique_ptr<mlir::Pass> createInsertIdentityPoolBeforeOpPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createMapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp = false,
-                                                                  Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeSliceExpandPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPropagateExpandPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFusePermuteQuantizeExpandPass(Logger log = Logger::global());
@@ -97,7 +93,7 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
                                    llvm::cl::init(false)};
 
     BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
+                                    llvm::cl::desc("Enable runtime dequantization of asymmetrically quantized weights"),
                                     llvm::cl::init(false)};
     Int64Option runtimeDequantizationLimit{
             *this, "runtime-dequantization-limit",
@@ -118,6 +114,7 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
 };
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
+void buildReferenceSWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 
 //
 // AdjustLayout

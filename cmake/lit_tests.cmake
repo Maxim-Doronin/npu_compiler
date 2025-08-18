@@ -38,7 +38,7 @@ function(vpux_setup_lit_tool)
                 COMPONENT tests
                 EXCLUDE_FROM_ALL)
     else()
-        set(extra_tools FileCheck not ${ARGN})
+        set(extra_tools FileCheck ${ARGN})
     endif()
     foreach(tool IN LISTS extra_tools)
         list(APPEND extra_tools_copy_cmd
@@ -150,7 +150,7 @@ function(vpux_setup_lit_tests TEST_NAME)
             "    return str((Path(__file__).parent / p).resolve())\n")
 
     configure_lit_site_cfg(
-        "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/cmake/lit.site.cfg.py.in"
+        "${PROJECT_SOURCE_DIR}/cmake/lit.site.cfg.py.in"
         "${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py"
         @ONLY
     )
@@ -183,7 +183,7 @@ function(vpux_setup_lit_tests TEST_NAME)
                 "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/${TEST_NAME}"
         COMMAND
             ${CMAKE_COMMAND} -E copy
-                "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/cmake/lit.cfg.py"
+                "${PROJECT_SOURCE_DIR}/cmake/lit.cfg.py"
                 "${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py"
                 "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/${TEST_NAME}/"
         ${tests_copy_cmd}
@@ -192,29 +192,27 @@ function(vpux_setup_lit_tests TEST_NAME)
     )
     set_target_properties(copy_${TEST_NAME}_tests PROPERTIES FOLDER "tests")
 
-    if(NOT CMAKE_CROSSCOMPILING)
-        if(NOT Python3_FOUND)
-            message(WARNING "Python3 is not found, LIT tests ${TEST_NAME} disabled")
-        else()
-            add_test(NAME LIT-${TEST_NAME}
+    if(NOT Python3_FOUND)
+        message(WARNING "Python3 is not found, LIT tests ${TEST_NAME} disabled")
+    else()
+        add_test(NAME LIT-${TEST_NAME}
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/lit-tool/lit.py"
+                -v
+                "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/${TEST_NAME}"
+        )
+        set_tests_properties(LIT-${TEST_NAME} PROPERTIES
+            LABELS "NPU;LIT"
+        )
+        if(UNIX)
+            add_test(NAME LIT-${TEST_NAME}-ALL
                 COMMAND
-                    ${Python3_EXECUTABLE}
-                    "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/lit-tool/lit.py"
-                    -v
-                    "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/${TEST_NAME}"
+                    "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/run_all_lit_tests.sh"
             )
-            set_tests_properties(LIT-${TEST_NAME} PROPERTIES
-                LABELS "NPU;LIT"
+            set_tests_properties(LIT-${TEST_NAME}-ALL PROPERTIES
+                LABELS "NPU;LIT;Linux"
             )
-            if(UNIX)
-                add_test(NAME LIT-${TEST_NAME}-ALL
-                    COMMAND
-                        "$<TARGET_FILE_DIR:npuUnitTests>/lit-tests/run_all_lit_tests.sh"
-                )
-                set_tests_properties(LIT-${TEST_NAME}-ALL PROPERTIES
-                    LABELS "NPU;LIT;Linux"
-                )
-            endif()
         endif()
     endif()
 endfunction()

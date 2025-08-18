@@ -8,9 +8,9 @@ cmake_policy(SET CMP0054 NEW)
 include(ExternalProject)
 
 if(NOT BUILD_SHARED_LIBS)
-    set(TEMP "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/temp")
+    set(TEMP "${PROJECT_SOURCE_DIR}/temp")
 else()
-    ov_set_temp_directory(TEMP "${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}")
+    ov_set_temp_directory(TEMP "${PROJECT_SOURCE_DIR}")
 endif()
 
 # FIXME: Create empty file to avoid errors on CI

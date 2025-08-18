@@ -20,7 +20,7 @@ ov_dependent_option(ENABLE_NPU_FUZZ_TESTS "NPU Fuzz tests" OFF "ENABLE_TESTS" OF
 if(NOT ENABLE_LTO)
     set(ENABLE_LTO OFF)
 endif()
-ov_dependent_option(ENABLE_LTO "Enable Link Time Optimization" ${ENABLE_LTO} "LINUX OR WIN32;NOT CMAKE_CROSSCOMPILING" OFF)
+ov_dependent_option(ENABLE_LTO "Enable Link Time Optimization" ${ENABLE_LTO} "LINUX OR WIN32" OFF)
 
 if(NOT ENABLE_FASTER_BUILD)
     set(ENABLE_FASTER_BUILD OFF)
@@ -56,12 +56,8 @@ if(ENABLE_PRIVATE_COMPILER_OPTIONS)
     add_definitions(-DPRIVATE_COMPILER_OPTIONS_ENABLED)
 endif()
 
-if(NOT DEFINED MV_TOOLS_PATH AND DEFINED ENV{MV_TOOLS_DIR} AND DEFINED ENV{MV_TOOLS_VERSION})
-    set(MV_TOOLS_PATH $ENV{MV_TOOLS_DIR}/$ENV{MV_TOOLS_VERSION})
-endif()
-
 ov_option(ENABLE_NPU_LOADER "Enable npu-loader" OFF)
-ov_option(ENABLE_NPU_LSP_SERVER "Enable npu-lsp-server" ON)
+ov_option(ENABLE_NPU_LSP_SERVER "Enable npu-lsp-server" OFF)
 
 get_target_property(ov_linked_libs openvino::runtime IMPORTED_LINK_DEPENDENT_LIBRARIES_RELEASE)
 if(THREADING STREQUAL "TBB" OR THREADING STREQUAL "TBB_AUTO" OR "TBB::tbb" IN_LIST ov_linked_libs)
@@ -87,8 +83,8 @@ ov_option(ENABLE_NPU_MICRO_BENCHMARKS "NPU micro benchmarks" OFF)
 if(ENABLE_VPUX_DOCS)
     find_package(Doxygen)
     if(DOXYGEN_FOUND)
-        set(DOXYGEN_IN ${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/docs/VPUX_DG/Doxyfile.in)
-        set(DOXYGEN_OUT ${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/docs/VPUX_DG/generated/Doxyfile)
+        set(DOXYGEN_IN ${PROJECT_SOURCE_DIR}/docs/VPUX_DG/Doxyfile.in)
+        set(DOXYGEN_OUT ${PROJECT_SOURCE_DIR}/docs/VPUX_DG/generated/Doxyfile)
 
         configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
         message("Doxygen build started")

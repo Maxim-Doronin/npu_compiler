@@ -5,9 +5,10 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
-#include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Operation.h>
 
 namespace vpux {
 namespace IE {

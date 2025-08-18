@@ -18,7 +18,7 @@ namespace arch37xx {
 
 class ConvToNCE final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
 public:
-    ConvToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    ConvToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx), _arch(arch), _log(log) {
         setDebugName("ConvToNCE");
     }
@@ -27,7 +27,7 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::ConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -37,7 +37,7 @@ private:
 
 class MatMulToNCE final : public mlir::OpRewritePattern<IE::MatMulOp> {
 public:
-    MatMulToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    MatMulToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<IE::MatMulOp>(ctx), _arch(arch), _log(log) {
         setDebugName("MatMulToNCE");
     }
@@ -46,7 +46,7 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::MatMulOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -56,7 +56,7 @@ private:
 
 class DepthConvToNCE final : public mlir::OpRewritePattern<IE::GroupConvolutionOp> {
 public:
-    DepthConvToNCE(mlir::MLIRContext* ctx, VPU::ArchKind arch, Logger log)
+    DepthConvToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<IE::GroupConvolutionOp>(ctx), _arch(arch), _log(log) {
     }
 
@@ -64,7 +64,7 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     Logger _log;
 };
 
