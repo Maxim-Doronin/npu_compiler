@@ -8,6 +8,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_variant.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 namespace vpux::VPUIPDPU::arch40xx::IDU {
 
@@ -175,9 +176,12 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUVariantIDU(VPUASM::DPUVari
                                                                  ELF::SymbolReferenceMap& symRefMap) {
     auto origInvOp = mlir::cast<VPUASM::DPUInvariantOp>(symRefMap.lookupSymbol(origVarOp.getInvariant()));
 
-    auto inAct = symRefMap.lookupSymbol(origInvOp.getInput());
-    auto inActType = getBufferType(inAct);
-    auto inSwizzlingKey = getSwizzlingKey(inAct);
+    mlir::Operation* inAct = nullptr;
+    if (origInvOp.getInput()) {
+        inAct = symRefMap.lookupSymbol(origInvOp.getInput().value());
+    }
+
+    std::optional<int64_t> inSwizzlingKey;
 
     mlir::MemRefType outActType;
     if (!origInvOp.getIsContinued() && origInvOp.getOutput()) {
@@ -207,15 +211,19 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUVariantIDU(VPUASM::DPUVari
     }
 
     // IDUWeightSet
-    auto inStartZ = parseIntArrayAttr<int64_t>(origVarOp.getInStart())[2];
-    auto inEndZ = parseIntArrayAttr<int64_t>(origVarOp.getInEnd())[2];
-    auto outStartZ = parseIntArrayAttr<int64_t>(origVarOp.getStart())[2];
-    auto outEndZ = parseIntArrayAttr<int64_t>(origVarOp.getEnd())[2];
-    if (buildIDUWeightSet(builder, origVarOp.getLoc(), log, inStartZ, inEndZ, outStartZ, outEndZ,
-                          origInvOp.getOutChannelOffset(), origInvOp.getNceTaskType(), inActType, outActType,
-                          weightsType, origInvOp.getKernelSize())
-                .failed()) {
-        return mlir::failure();
+    if (inAct) {
+        inSwizzlingKey = getSwizzlingKey(inAct);
+        auto inStartZ = parseIntArrayAttr<int64_t>(origVarOp.getInStart())[2];
+        auto inEndZ = parseIntArrayAttr<int64_t>(origVarOp.getInEnd())[2];
+        auto outStartZ = parseIntArrayAttr<int64_t>(origVarOp.getStart())[2];
+        auto outEndZ = parseIntArrayAttr<int64_t>(origVarOp.getEnd())[2];
+        auto inActType = getBufferType(inAct);
+        if (buildIDUWeightSet(builder, origVarOp.getLoc(), log, inStartZ, inEndZ, outStartZ, outEndZ,
+                              origInvOp.getOutChannelOffset(), origInvOp.getNceTaskType(), inActType, outActType,
+                              weightsType, origInvOp.getKernelSize())
+                    .failed()) {
+            return mlir::failure();
+        }
     }
 
     // IDUPadding

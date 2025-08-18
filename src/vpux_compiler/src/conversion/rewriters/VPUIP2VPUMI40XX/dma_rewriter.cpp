@@ -6,12 +6,10 @@
 #include "vpux/compiler/conversion/rewriters/VPUIP2VPUMI40XX/dma_rewriter.hpp"
 #include "vpux/compiler/conversion/passes/VPUIP2VPUMI40XX/buffer_conversion.hpp"
 
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
+#include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 
 using namespace vpux;
@@ -88,14 +86,10 @@ mlir::LogicalResult PermuteDMARewriter::matchAndRewrite(VPUIP::PermuteDMAOp perm
     const auto tileIdx = adaptor.getPort().value();
     auto indexType = VPURegMapped::IndexType::get(ctx, tileIdx, getListIndex(inputType.getMemoryKind()), 0);
 
-    const auto dmaDescriptor = adaptor.getDmaDescriptor().value();
-
-    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(permuteDMAOp));
-    const auto dmaMaxNumPlanes = dmaEngineLimits.getMaxNumPlanes();
-
-    const auto numPlanes = checked_cast<uint32_t>(dmaDescriptor.getNumPlanes().getInt());
-    VPUX_THROW_UNLESS(numPlanes <= dmaMaxNumPlanes, "NUM PLANES should be less than or equal to {0}, but got {1}.",
-                      dmaMaxNumPlanes, numPlanes);
+    auto internalDataFlow = adaptor.getInternalDataFlow();
+    auto dmaTransaction = VPUMI40XX::PermuteDMATransactionAttr::get(
+            ctx, internalDataFlow->getInputType(), internalDataFlow->getOutputType(),
+            internalDataFlow->getMappingOrder(), internalDataFlow->getLoopOrder());
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = permuteDMAOp->getParentOfType<VPURT::TaskOp>();
@@ -111,10 +105,11 @@ mlir::LogicalResult PermuteDMARewriter::matchAndRewrite(VPUIP::PermuteDMAOp perm
             adaptor.getIsOutOfOrder(), adaptor.getIsCritical(),
             _isMemorySideCacheEnabled && enableMemorySideCache(inputType, outputType), tileIdx,
             VPUIP::DMAAccMode::DISABLE,
-            nullptr,  // actCompressionSizeEntry
-            nullptr,  // actCompressionSparsityMap
-            nullptr,  // dmaTransaction
-            dmaDescriptor, adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
+            nullptr,         // actCompressionSizeEntry
+            nullptr,         // actCompressionSparsityMap
+            dmaTransaction,  // dmaTransaction
+            nullptr,         // dmaDescriptor
+            adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
             true,                    // allowDifferentInOutShapes
             nullptr,                 // indices
             nullptr,                 // enqueueBarrier
@@ -596,11 +591,117 @@ mlir::LogicalResult BarrierProgDMARewriter::matchAndRewrite(VPUIP::BarProgDMAOp 
             nullptr,  // actCompressionSparsityMap
             nullptr,  // dmaTransaction
             dmaDescriptorAttr, adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
-            false,                                      // allowDifferentInOutShapes
-            nullptr,                                    // indices
-            nullptr,                                    // enqueueBarrier
-            origOp.getWlmPageAttr(),                    // wlmPageAttr
-            barProgDmaOp.getPhysicalBarrierRangeAttr()  // physicalBarrierRangeAttr
+            false,                                       // allowDifferentInOutShapes
+            nullptr,                                     // indices
+            nullptr,                                     // enqueueBarrier
+            origOp.getWlmPageAttr(),                     // wlmPageAttr
+            barProgDmaOp.getPhysicalBarrierRangeAttr(),  // physicalBarrierRangeAttr
+            nullptr,                                     // enqueueDMAAttr
+            nullptr                                      // fetchDMAAttr
+    );
+
+    return mlir::success();
+}
+
+mlir::LogicalResult FetchDMARewriter::matchAndRewrite(VPUIP::FetchDMAOp fetchDMAOp, OpAdaptor adaptor,
+                                                      mlir::ConversionPatternRewriter& rewriter) const {
+    auto ctx = fetchDMAOp.getContext();
+
+    auto inputType = mlir::cast<NDTypeInterface>(adaptor.getInput().getType());
+    auto outputType = mlir::cast<NDTypeInterface>(adaptor.getOutputBuff().getType());
+
+    const auto tileIdx = adaptor.getPort().value();
+    auto indexType = VPURegMapped::IndexType::get(ctx, tileIdx, getListIndex(inputType.getMemoryKind()), 0);
+
+    auto zeroAttr = getIntAttr(ctx, 0);
+    auto dmaDescriptorAttr = VPUIP::DMADescriptorAttr::get(ctx,
+                                                           zeroAttr,  // numPlane
+                                                           zeroAttr,  // len
+                                                           zeroAttr,  // srcWidth
+                                                           zeroAttr,  // srcStride
+                                                           zeroAttr,  // srcPlaneStride
+                                                           zeroAttr,  // dstWidth
+                                                           zeroAttr,  // dstStride
+                                                           zeroAttr   // dstPlaneStride
+    );
+
+    auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
+    auto origOp = fetchDMAOp->getParentOfType<VPURT::TaskOp>();
+    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+            fetchDMAOp, indexType,
+            nullptr,  // taskLocation
+            adaptor.getInput(), dmaResults,
+            nullptr,             // previousTask
+            mlir::ValueRange(),  // waitBarriers
+            mlir::ValueRange(),  // updateBarriers
+            0,                   // startAfter
+            0,                   // cleanAfter
+            adaptor.getIsOutOfOrder(), adaptor.getIsCritical(),
+            _isMemorySideCacheEnabled && enableMemorySideCache(inputType, outputType), tileIdx,
+            VPUIP::DMAAccMode::DISABLE,
+            nullptr,  // actCompressionSizeEntry
+            nullptr,  // actCompressionSparsityMap
+            nullptr,  // dmaTransaction
+            dmaDescriptorAttr, adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
+            false,                        // allowDifferentInOutShapes
+            nullptr,                      // indices
+            nullptr,                      // enqueueBarrier
+            origOp.getWlmPageAttr(),      // wlmPageAttr
+            nullptr,                      // physicalBarrierRangeAttr
+            nullptr,                      // enqueueDMAAttr
+            fetchDMAOp.getFetchDmaAttr()  // fetchDmaAttr
+    );
+
+    return mlir::success();
+}
+
+mlir::LogicalResult EnqueueDMARewriter::matchAndRewrite(VPUIP::EnqueueDMAOp enqueueDMAOp, OpAdaptor adaptor,
+                                                        mlir::ConversionPatternRewriter& rewriter) const {
+    auto ctx = enqueueDMAOp.getContext();
+
+    auto inputType = mlir::cast<NDTypeInterface>(adaptor.getInput().getType());
+    auto outputType = mlir::cast<NDTypeInterface>(adaptor.getOutputBuff().getType());
+
+    const auto tileIdx = adaptor.getPort().value();
+    auto indexType = VPURegMapped::IndexType::get(ctx, tileIdx, getListIndex(inputType.getMemoryKind()), 0);
+
+    auto zeroAttr = getIntAttr(ctx, 0);
+    auto dmaDescriptorAttr = VPUIP::DMADescriptorAttr::get(ctx,
+                                                           zeroAttr,  // numPlane
+                                                           zeroAttr,  // len
+                                                           zeroAttr,  // srcWidth
+                                                           zeroAttr,  // srcStride
+                                                           zeroAttr,  // srcPlaneStride
+                                                           zeroAttr,  // dstWidth
+                                                           zeroAttr,  // dstStride
+                                                           zeroAttr   // dstPlaneStride
+    );
+
+    auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
+    auto origOp = enqueueDMAOp->getParentOfType<VPURT::TaskOp>();
+    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+            enqueueDMAOp, indexType,
+            nullptr,  // taskLocation
+            adaptor.getInput(), dmaResults,
+            nullptr,             // previousTask
+            mlir::ValueRange(),  // waitBarriers
+            mlir::ValueRange(),  // updateBarriers
+            0,                   // startAfter
+            0,                   // cleanAfter
+            adaptor.getIsOutOfOrder(), adaptor.getIsCritical(),
+            _isMemorySideCacheEnabled && enableMemorySideCache(inputType, outputType), tileIdx,
+            VPUIP::DMAAccMode::DISABLE,
+            nullptr,  // actCompressionSizeEntry
+            nullptr,  // actCompressionSparsityMap
+            nullptr,  // dmaTransaction
+            dmaDescriptorAttr, adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
+            false,                             // allowDifferentInOutShapes
+            nullptr,                           // indices
+            nullptr,                           // enqueueBarrier
+            origOp.getWlmPageAttr(),           // wlmPageAttr
+            nullptr,                           // physicalBarrierRangeAttr
+            enqueueDMAOp.getEnqueueDmaAttr(),  // enqueueDMAAttr
+            nullptr                            // fetchDmaAttr
     );
 
     return mlir::success();

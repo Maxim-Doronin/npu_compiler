@@ -188,7 +188,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
 
     const auto getDistModeAttr = [&](VPUIP::DistributedBufferType distType) {
         const auto distAttr = distType.getDistribution();
-        VPUX_THROW_WHEN(distAttr == nullptr, "Failed to extract distributon tensor from distributed type");
+        VPUX_THROW_WHEN(distAttr == nullptr, "Failed to extract distribution tensor from distributed type");
         return distAttr.getMode();
     };
 
@@ -223,7 +223,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     mlir::SmallVector<mlir::Value> outputBuffers;
 
     if (distributedInputType != nullptr && distributedOutputType != nullptr) {
-        _log.nest().trace("Got multi-cluster to multi-clutser case");
+        _log.nest().trace("Got multi-cluster to multi-cluster case");
         const auto inputPerClusterShapes = distributedInputType.getPerClusterMemoryShapes();
         const auto outputPerClusterShapes = distributedOutputType.getPerClusterMemoryShapes();
 
@@ -241,7 +241,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     }
 
     if (distributedInputType != nullptr && distributedOutputType == nullptr) {
-        _log.nest().trace("Got multi-cluster to single-clutser case");
+        _log.nest().trace("Got multi-cluster to single-cluster case");
         const auto outputShapes = SmallVector<vpux::Shape>(
                 llvm::map_range(distributedInputType.getPerClusterMemoryShapes(), inferOutputShape));
         const auto outputShapeOffsets = SmallVector<vpux::Shape>(
@@ -255,7 +255,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     }
 
     if (distributedInputType == nullptr && distributedOutputType != nullptr) {
-        _log.nest().trace("Got single-cluster to multi-clutser case");
+        _log.nest().trace("Got single-cluster to multi-cluster case");
 
         const auto inputShapes = SmallVector<Shape>(
                 llvm::map_range(distributedOutputType.getPerClusterMemoryShapes(), [&](ShapeRef outShape) {

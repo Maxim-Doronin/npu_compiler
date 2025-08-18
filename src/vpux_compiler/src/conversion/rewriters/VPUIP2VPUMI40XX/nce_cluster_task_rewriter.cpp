@@ -144,7 +144,7 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
     auto dpuTasksIt = dpuTasks.begin();
 
     if (sprLookupTable || palletLookupTable) {
-        // Processing dummy DPU task (see more info in AddDummyDPUTaskForSprLUT pass)
+        // Processing dummy DPU task (see more info in AddDummyDPUTaskForMetadataPrefetch pass)
         createVPUMI40XXVariant(*(dpuTasksIt++));
 
         // For the first variant that goes after the dummy one, two additional registers are set:

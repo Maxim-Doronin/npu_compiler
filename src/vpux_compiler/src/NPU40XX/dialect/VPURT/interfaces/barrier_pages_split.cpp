@@ -171,47 +171,180 @@ void vpux::VPURT::BarrierPagesSplitHandler::initializeTaskToPageAssignment() {
     }
 }
 
+// Update boundary task data for provided task
+void vpux::VPURT::BarrierPagesSplitHandler::updateBoundaryTasksDataForTask(size_t taskInd) {
+    auto taskPage = _taskPageAssignment[taskInd];
+    auto queueType = _barrierInfo.getTaskQueueType(taskInd);
+    auto updateBars = _barrierInfo.getUpdateBarriers(taskInd);
+    auto waitBars = _barrierInfo.getWaitBarriers(taskInd);
+
+    if (waitBars.empty() && updateBars.empty()) {
+        // If there are no wait or update barriers, then no need to consider this task as
+        // boundary task as such task has no tight affiliation to any page
+        return;
+    }
+
+    // Check if there was already a boundary task of this type for this page identified
+    if (_firstAndLastBoundaryTaskForEachPagePerFifo[taskPage].find(queueType) ==
+        _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage].end()) {
+        // If not check if all update barriers belong to the same page as the task.
+        // If all update barriers are within taskPage, then this is NOT a boundary task
+        if (llvm::all_of(updateBars, [&](size_t barInd) {
+                return getBarrierPage(barInd) == taskPage;
+            })) {
+            return;
+        }
+
+        // If there is an update barrier from next page then this is a first boundary
+        // task on this HW FIFO
+        _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage][queueType] = std::make_pair(taskInd, taskInd);
+    }
+
+    if (taskInd < _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage][queueType].second) {
+        return;
+    }
+
+    // If there is already a boundary task of this type for this page, then update the data
+    // so that after traversing all tasks there is also information about the last boundary task
+    _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage][queueType].second = taskInd;
+
+    _log.nest().trace("Task {0} is boundary task for page {1}, queue type {2}:{3}", taskInd, taskPage,
+                      stringifyEnum(queueType.type).data(), queueType.id);
+}
+
+// Make sure last boundary task on each HW FIFO updates barrier from next page.
+// Tasks which are on the HW FIFO after a boundary task but they themselve do not have any
+// update barrier from next page should have this legalized as rest of code expects this
+// based on agreed definition of boundary task
+void vpux::VPURT::BarrierPagesSplitHandler::enforceBoundaryTaskHasUpdateBarrier(size_t pageInd) {
+    for (auto boundaryTask : getLastBoundaryTasksForPage(pageInd)) {
+        auto taskUpdateBarsVec = to_small_vector(_barrierInfo.getUpdateBarriers(boundaryTask));
+
+        // For analysis do not account for barriers from current page. Boundary task on PageN
+        // needs to have update barriers from next page
+        taskUpdateBarsVec.erase(llvm::remove_if(taskUpdateBarsVec,
+                                                [&](auto barInd) {
+                                                    return getBarrierPage(barInd) == pageInd;
+                                                }),
+                                taskUpdateBarsVec.end());
+        if (!taskUpdateBarsVec.empty()) {
+            // If task updates barriers from next page then no need to add any additional update barrier
+            continue;
+        }
+
+        // If there are no update barriers of this page then need to search for some other update
+        // barrier that can be used and which boundary task can update
+        _log.nest().trace("Boundary task {0} from page {1} does not have update barrier on next pages", boundaryTask,
+                          pageInd);
+
+        // Check for update barrier of some previous task on the same FIFO
+        auto currentTaskOpt = _barrierInfo.getPrevTaskOnSameQueue(boundaryTask);
+        while (taskUpdateBarsVec.empty() && currentTaskOpt.has_value() &&
+               _taskPageAssignment[currentTaskOpt.value()] == pageInd) {
+            taskUpdateBarsVec = to_small_vector(_barrierInfo.getUpdateBarriers(currentTaskOpt.value()));
+
+            taskUpdateBarsVec.erase(llvm::remove_if(taskUpdateBarsVec,
+                                                    [&](auto barInd) {
+                                                        return getBarrierPage(barInd) == pageInd;
+                                                    }),
+                                    taskUpdateBarsVec.end());
+
+            currentTaskOpt = _barrierInfo.getPrevTaskOnSameQueue(currentTaskOpt.value());
+        }
+
+        VPUX_THROW_UNLESS(!taskUpdateBarsVec.empty(),
+                          "Boundary task {0} from page {1} has no update barriers on next pages", boundaryTask,
+                          pageInd);
+
+        // If task updates multiple barriers, pick only one with smallest index and
+        // update barrier dependencies so that boundary also updates this barrier
+        // No need to use more barriers as 1 barrier is enough to know that boundary task has finished
+        auto newUpdateBar = *std::min_element(taskUpdateBarsVec.begin(), taskUpdateBarsVec.end());
+
+        _barrierInfo.addProducer(newUpdateBar, boundaryTask);
+        _log.nest().trace("Add producer {0} to barrier {1}", boundaryTask, newUpdateBar);
+    }
+}
+
 // Check all tasks and identify boundary tasks.
 // A boundary task is one where at least one update barrier belongs to a page
 // that is greater than taskPage (indicating cross-page dependency).
 // Boundary tasks are later used for legalization purposes.
 void vpux::VPURT::BarrierPagesSplitHandler::initializeBoundaryTasksData() {
     _firstAndLastBoundaryTaskForEachPagePerFifo.resize(_pageCount);
+    _firstAndLastTaskPerPage.resize(_pageCount);
     _log.trace("Initializing boundary tasks data");
 
     for (size_t taskInd = 0; taskInd < _barrierInfo.getNumOfTasks(); taskInd++) {
-        auto updateBars = _barrierInfo.getUpdateBarriers(taskInd);
-        if (updateBars.empty()) {
-            continue;
-        }
-
         auto taskPage = _taskPageAssignment[taskInd];
 
-        // Check if all update barriers belong to the same page as the task.
-        // If all update barriers are within taskPage, then this is NOT a boundary task
-        if (llvm::all_of(updateBars, [&](size_t barInd) {
-                return getBarrierPage(barInd) == taskPage;
-            })) {
-            continue;
+        if (!_firstAndLastTaskPerPage[taskPage].has_value()) {
+            _firstAndLastTaskPerPage[taskPage] = std::make_pair(taskInd, taskInd);
+        } else {
+            _firstAndLastTaskPerPage[taskPage].value().second = taskInd;
         }
 
-        // Get task queue and update boundary tasks per page data
-        // Since for each HW FIFO there can be a sequence of boundary tasks
-        // store index of first and last one
-        auto queueType = _barrierInfo.getTaskQueueType(taskInd);
-        if (_firstAndLastBoundaryTaskForEachPagePerFifo[taskPage].find(queueType) ==
-            _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage].end()) {
-            _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage][queueType] = std::make_pair(taskInd, taskInd);
-        } else {
-            _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage][queueType].second = taskInd;
-        }
+        updateBoundaryTasksDataForTask(taskInd);
     }
 
     for (size_t pageInd = 0; pageInd < _pageCount - 1; pageInd++) {
-        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].empty(),
-                        "No boundary tasks set for page {0}, pageCount {1}", pageInd, _pageCount);
-        _log.nest().trace("Page {0} boundary tasks: {1}", pageInd, getFirstAndLastBoundaryTasksForPage(pageInd));
+        auto pageBoundaryTasks = getFirstAndLastBoundaryTasksForPage(pageInd);
+        if (pageBoundaryTasks.empty()) {
+            _log.trace("No boundary tasks for page {0}", pageInd);
+            // If in rare case there is no boundary task for page - task that starts at PageN and updates
+            // barrier from PageN+1 then need to create one artificially. Pick lates task in PageN and find
+            // some wait barrier from PageN+1 and create dependency.
+            auto lastTaskOnPage = _firstAndLastTaskPerPage[pageInd].value().second;
+            std::optional<size_t> nextPageBarrier;
+            auto nextTask = lastTaskOnPage + 1;
+            while (nextTask < _barrierInfo.getNumOfTasks() && _taskPageAssignment[nextTask] <= pageInd + 1 &&
+                   !nextPageBarrier.has_value()) {
+                auto nextTaskWaitBars = _barrierInfo.getWaitBarriers(nextTask);
+                if (!nextTaskWaitBars.empty()) {
+                    nextPageBarrier = *std::min_element(nextTaskWaitBars.begin(), nextTaskWaitBars.end());
+                }
+
+                nextTask++;
+            }
+            VPUX_THROW_UNLESS(nextPageBarrier.has_value(), "No next page barrier found for page {0} last task {1}",
+                              pageInd, lastTaskOnPage);
+
+            _barrierInfo.addProducer(nextPageBarrier.value(), lastTaskOnPage);
+            _log.nest(2).trace("Add producer {0}(page {1}) to barrier {2}(page {3})", lastTaskOnPage, pageInd,
+                               nextPageBarrier.value(), getBarrierPage(nextPageBarrier.value()));
+
+            _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd][_barrierInfo.getTaskQueueType(lastTaskOnPage)] =
+                    std::make_pair(lastTaskOnPage, lastTaskOnPage);
+            pageBoundaryTasks.push_back(lastTaskOnPage);
+        }
+
+        _log.trace("Page {0} boundary tasks: {1}", pageInd, pageBoundaryTasks);
+        enforceBoundaryTaskHasUpdateBarrier(pageInd);
     }
+}
+
+// Update boundary task data for provided page
+void vpux::VPURT::BarrierPagesSplitHandler::updateBoundaryTasksDataForPage(size_t pageInd) {
+    _log.trace("Update boundary tasks data for page {0}", pageInd);
+    VPUX_THROW_WHEN(pageInd >= _pageCount, "Page index {0} out of range {1}", pageInd, _pageCount);
+
+    // No need to update data for last page
+    if (pageInd == _pageCount - 1) {
+        return;
+    }
+
+    VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].empty(), "No boundary tasks set for page {0}",
+                    pageInd);
+    VPUX_THROW_WHEN(!_firstAndLastTaskPerPage[pageInd].has_value(), "No first and last task set for page {0}", pageInd);
+
+    _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].clear();
+    for (size_t taskInd = _firstAndLastTaskPerPage[pageInd].value().first;
+         taskInd <= _firstAndLastTaskPerPage[pageInd].value().second; taskInd++) {
+        updateBoundaryTasksDataForTask(taskInd);
+    }
+
+    _log.trace("Page {0} boundary tasks: {1}", pageInd, getFirstAndLastBoundaryTasksForPage(pageInd));
+    enforceBoundaryTaskHasUpdateBarrier(pageInd);
 }
 
 // For given page get first and last boundary tasks for each HW FIFO
@@ -461,7 +594,9 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeWaitBarrierDependency(size_t
             //
 
             // TODO: E#160461 Analyze if this could be improved by picking different boundary task
-            auto pageBoundaryTask = getLastBoundaryTasksForPage(barProdTaskPage + 1)[0];
+            auto pageBoundaryTasks = getLastBoundaryTasksForPage(barProdTaskPage + 1);
+            VPUX_THROW_WHEN(pageBoundaryTasks.empty(), "No boundary tasks set for page {0}", barProdTaskPage + 1);
+            auto pageBoundaryTask = pageBoundaryTasks[0];
             _log.nest(2).trace("Page boundary task: {0}(page {1})", pageBoundaryTask,
                                _taskPageAssignment[pageBoundaryTask]);
             auto pageBoundaryTasksOnSameFifoIt =
@@ -542,7 +677,10 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeUpdateBarrierDependency(size
 
     // TODO: E#160461 Some improvement may be done by having some heuristic on which boundary
     // task should be used. Maybe take into account timing information or queue type?
-    auto pageBoundaryTask = getLastBoundaryTasksForPage(taskPage + 1)[0];
+    auto pageBoundaryTasks = getLastBoundaryTasksForPage(taskPage + 1);
+    VPUX_THROW_WHEN(pageBoundaryTasks.empty(), "No boundary tasks set for page {0}", taskPage + 1);
+    auto pageBoundaryTask = pageBoundaryTasks[0];
+
     auto pageBoundaryTasksOnSameFifoIt = _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage + 1].find(taskQueueType);
     if (pageBoundaryTasksOnSameFifoIt != _firstAndLastBoundaryTaskForEachPagePerFifo[taskPage + 1].end()) {
         // There is a boundary task on same FIFO. No need to insert dependency from barProdTask
@@ -680,6 +818,10 @@ bool vpux::VPURT::BarrierPagesSplitHandler::areBoundaryTasksFromNeighborPagesDep
 
     // Check deps from PageN to PageN+1 boundary tasks
     for (size_t pageInd = 0; pageInd < _pageCount - 2; pageInd++) {
+        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].empty(),
+                        "No boundary tasks set for page {0}", pageInd);
+        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd + 1].empty(),
+                        "No boundary tasks set for page {0}", pageInd + 1);
         auto pageBoundaryTaskPerFifo = _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd];
         auto nextPageBoundaryTaskPerFifo = _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd + 1];
 
@@ -712,6 +854,10 @@ vpux::VPURT::BarrierPagesSplitHandler::getBoundaryTaskPairsMissingDepInBetween()
 
     // Check deps from PageN to PageN+1 boundary tasks
     for (size_t pageInd = 0; pageInd < _pageCount - 2; pageInd++) {
+        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].empty(),
+                        "No boundary tasks set for page {0}", pageInd);
+        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd + 1].empty(),
+                        "No boundary tasks set for page {0}", pageInd + 1);
         auto pageBoundaryTaskPerFifo = _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd];
         auto nextPageBoundaryTaskPerFifo = _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd + 1];
 
@@ -884,6 +1030,8 @@ void vpux::VPURT::BarrierPagesSplitHandler::adjustPageStartAndEndPointsIfOnBlock
                        barProgDmaBlockInd, pageEndBarBlockInd, syncTaskOpt.value());
 
             auto syncTaskUpdateBars = _barrierInfo.getUpdateBarriers(syncTaskOpt.value());
+            VPUX_THROW_UNLESS(!syncTaskUpdateBars.empty(), "Control block sync task {0} has no update barriers",
+                              syncTaskOpt.value());
             auto newPageStartBar = *std::min_element(syncTaskUpdateBars.begin(), syncTaskUpdateBars.end());
 
             pageStartBars.clear();
@@ -895,6 +1043,8 @@ void vpux::VPURT::BarrierPagesSplitHandler::adjustPageStartAndEndPointsIfOnBlock
             _log.trace("Control block boundary: {0} and {1}. Use sync task {2} as endpoint for legalization",
                        barProgDmaBlockInd, pageEndBarBlockInd, syncTaskOpt.value());
 
+            VPUX_THROW_UNLESS(!syncTaskWaitBars.empty(), "Control block sync task {0} has no wait barriers",
+                              syncTaskOpt.value());
             auto newPageEndBar = *std::max_element(syncTaskWaitBars.begin(), syncTaskWaitBars.end());
             pageEndBars.clear();
             pageEndAllBars.clear();
@@ -931,6 +1081,7 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizePageStartBarsDependingOnPage
     _log.trace("Legalize page start bars depending on page end bars");
 
     // Pick some other pageStartBar that will be used for legalization
+    VPUX_THROW_UNLESS(!pageStartBars.empty(), "No page start bars to use for legalization");
     auto startBarToUseForLegalization = *std::max_element(pageStartBars.begin(), pageStartBars.end());
 
     for (auto pageStartBarToLegalize : pageStartBarsToLegalize) {
@@ -963,6 +1114,8 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizePageStartBarsDependingOnPage
 void vpux::VPURT::BarrierPagesSplitHandler::getPageStartTasksAndBars(size_t pageInd,
                                                                      BarrierInfo::TaskSet& pageStartTasks,
                                                                      BarrierInfo::TaskSet& pageStartBars) {
+    VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd - 1].empty(),
+                    "No boundary tasks set for page {0}", pageInd - 1);
     for (auto& [taskQueueType, firstLastTaskInd] : _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd - 1]) {
         _log.trace("Get page start tasks and bars for queue {0}:{1}", stringifyEnum(taskQueueType.type).data(),
                    taskQueueType.id);
@@ -976,12 +1129,15 @@ void vpux::VPURT::BarrierPagesSplitHandler::getPageStartTasksAndBars(size_t page
                                                 }),
                                 taskUpdateBarsVec.end());
 
+        VPUX_THROW_UNLESS(!taskUpdateBarsVec.empty(), "Page start task {0} has no update barriers on page {1}",
+                          pageStartTask, pageInd);
+
         // If task updates multiple barriers, pick only one with smallest index
         // No need to use more barriers as 1 barrier is enough to know that boundary task have finished
         auto startBar = *std::min_element(taskUpdateBarsVec.begin(), taskUpdateBarsVec.end());
         pageStartBars.insert(startBar);
         pageStartTasks.insert(pageStartTask);
-        _log.nest().trace("Page start task {0}, start bart {1}", pageStartTask, startBar);
+        _log.nest().trace("Page start task {0}, start bar {1}", pageStartTask, startBar);
     }
 }
 
@@ -992,6 +1148,8 @@ void vpux::VPURT::BarrierPagesSplitHandler::getPageStartTasksAndBars(size_t page
 void vpux::VPURT::BarrierPagesSplitHandler::getPageEndTasksAndBars(size_t pageInd, BarrierInfo::TaskSet& pageEndTasks,
                                                                    BarrierInfo::TaskSet& pageEndBars,
                                                                    BarrierInfo::TaskSet& pageEndAllBars) {
+    VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].empty(), "No boundary tasks set for page {0}",
+                    pageInd);
     for (auto& [taskQueueType, firstLastTaskInd] : _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd]) {
         _log.trace("Get page end tasks and bars for queue {0}:{1}", stringifyEnum(taskQueueType.type).data(),
                    taskQueueType.id);
@@ -1117,6 +1275,20 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeForDmaProgrammingBarriers() 
 
         llvm::set_subtract(pageStartOnlyBars, pageStartBarsToLegalize);
 
+        // During legalization dependencies are modified and boundary tasks data may change
+        // If tasks and barriers are from different pages, store this information so that
+        // boundary data for this page can be updated and barrier programming DMA legalization
+        // on next page can have up to date info about boundary tasks
+        mlir::DenseSet<size_t> pagesWithPossibleBoundaryTasksChanged;
+        auto barrierDepsChangedHandler = [&](size_t barInd, size_t taskInd) {
+            auto barPage = getBarrierPage(barInd);
+            auto taskPage = _taskPageAssignment[taskInd];
+            if (barPage != taskPage) {
+                pagesWithPossibleBoundaryTasksChanged.insert(taskPage);
+                pagesWithPossibleBoundaryTasksChanged.insert(barPage);
+            }
+        };
+
         if (!pageStartOnlyBars.empty()) {
             legalizePageStartBarsDependingOnPageEndBars(pageStartTasks, pageStartOnlyBars, pageStartBarsToLegalize);
 
@@ -1162,8 +1334,13 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeForDmaProgrammingBarriers() 
 
             for (auto commonStartEndBarBoundaryTaskProducer : commonStartEndBarBoundaryTaskProducers) {
                 _barrierInfo.addProducer(startBarForLegalization, commonStartEndBarBoundaryTaskProducer);
+                barrierDepsChangedHandler(startBarForLegalization, commonStartEndBarBoundaryTaskProducer);
                 _log.trace("Add producer {0} to barrier {1}", commonStartEndBarBoundaryTaskProducer,
                            startBarForLegalization);
+            }
+
+            for (auto pageWithPossibleBoundaryTasksChanged : pagesWithPossibleBoundaryTasksChanged) {
+                updateBoundaryTasksDataForPage(pageWithPossibleBoundaryTasksChanged);
             }
 
             _log.trace("Legalization completed");
@@ -1222,8 +1399,10 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeForDmaProgrammingBarriers() 
             }
 
             _barrierInfo.removeConsumer(newStartBar, startBarConsumer);
+            barrierDepsChangedHandler(newStartBar, startBarConsumer);
             _log.trace("Remove consumer {0} from barrier {1}", startBarConsumer, newStartBar);
             _barrierInfo.addConsumer(endBar, startBarConsumer);
+            barrierDepsChangedHandler(endBar, startBarConsumer);
             _log.trace("Add consumer {0} to barrier {1}", startBarConsumer, endBar);
         }
         pageEndBars.insert(endBar);
@@ -1255,8 +1434,10 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeForDmaProgrammingBarriers() 
 
             for (auto updBarToLegalize : updBarsToLegalizeVec) {
                 _barrierInfo.addProducer(updBarToLegalize, endBarConsumer);
+                barrierDepsChangedHandler(updBarToLegalize, endBarConsumer);
                 _log.trace("Add producer {0} to barrier {1}", endBarConsumer, updBarToLegalize);
                 _barrierInfo.removeProducer(updBarToLegalize, startBarConsumer);
+                barrierDepsChangedHandler(updBarToLegalize, startBarConsumer);
                 _log.trace("Remove producer {0} from barrier {1}", startBarConsumer, updBarToLegalize);
             }
             // Such task is now no longer a boundary task
@@ -1268,6 +1449,11 @@ void vpux::VPURT::BarrierPagesSplitHandler::legalizeForDmaProgrammingBarriers() 
         for (auto pageStartTask : pageStartTasks) {
             _log.trace("Add producer {0} to barrier {1}", pageStartTask, newStartBar);
             _barrierInfo.addProducer(newStartBar, pageStartTask);
+            barrierDepsChangedHandler(newStartBar, pageStartTask);
+        }
+
+        for (auto pageWithPossibleBoundaryTasksChanged : pagesWithPossibleBoundaryTasksChanged) {
+            updateBoundaryTasksDataForPage(pageWithPossibleBoundaryTasksChanged);
         }
 
         _log.trace("Legalization completed");
@@ -1325,6 +1511,8 @@ void vpux::VPURT::BarrierPagesSplitHandler::updateTaskPageAssignmentForQueue(siz
 // boundary tasks to guarantee that all barriers from previous page are fully consumed
 bool VPURT::BarrierPagesSplitHandler::isDummyDmaNeeded(size_t pageInd, VPURT::TaskQueueType dmaQueueType,
                                                        std::optional<size_t> lastDmaTaskOnSameQueueInPageOpt) {
+    VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].empty(), "No boundary tasks set for page {0}",
+                    pageInd);
     if (_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].find(dmaQueueType) !=
         _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd].end()) {
         // There is boundary task of this type on this page. No need to insert dummy DMA
@@ -1337,6 +1525,8 @@ bool VPURT::BarrierPagesSplitHandler::isDummyDmaNeeded(size_t pageInd, VPURT::Ta
     if (lastDmaTaskOnSameQueueInPageOpt.has_value()) {
         bool isDepFromAllBoundaryTasksToDma = true;
         auto lastDmaTaskOnSameQueueInPage = lastDmaTaskOnSameQueueInPageOpt.value();
+        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[pageInd - 1].empty(),
+                        "No boundary tasks set for page {0}", pageInd - 1);
         for (auto& [_, firstLastTaskInd] : _firstAndLastBoundaryTaskForEachPagePerFifo[pageInd - 1]) {
             auto lastTask = firstLastTaskInd.second;
             if (!isDepFromTaskAToTaskB(lastTask, lastDmaTaskOnSameQueueInPage)) {
@@ -1361,7 +1551,9 @@ bool VPURT::BarrierPagesSplitHandler::isDummyDmaNeeded(size_t pageInd, VPURT::Ta
 vpux::BarrierInfo::TaskSet VPURT::BarrierPagesSplitHandler::getDummyDmaWaitBars(size_t pageInd) {
     // As wait barrier use wait barrier of earliest boundary task on this page
     // WLM page split guarantees that this wait barrier is updated by all tasks from previous page
-    auto boundaryTask = getFirstBoundaryTasksForPage(pageInd).front();
+    auto boundaryTasks = getFirstBoundaryTasksForPage(pageInd);
+    VPUX_THROW_WHEN(boundaryTasks.empty(), "No boundary tasks set for page {0}", pageInd);
+    auto boundaryTask = boundaryTasks.front();
 
     auto dummyDmaProposedWaitBars = _barrierInfo.getWaitBarriers(boundaryTask);
 
@@ -1404,6 +1596,8 @@ vpux::BarrierInfo::TaskSet VPURT::BarrierPagesSplitHandler::getDummyDmaWaitBars(
         // As wait barriers use update barriers of boundary tasks from previous page. After that dummy DMA
         // may have more than 1 wait barrier but since all DMA tasks are expected to be enqueued at bootstrap
         // this is not a problem for enqueue algorithm
+        VPUX_THROW_WHEN(_firstAndLastBoundaryTaskForEachPagePerFifo[prevPageInd].empty(),
+                        "No boundary tasks set for page {0}", prevPageInd);
         for (auto& [_, firstLastTaskIndPair] : _firstAndLastBoundaryTaskForEachPagePerFifo[prevPageInd]) {
             auto prevPageBoundaryTask = firstLastTaskIndPair.second;
             auto prevPageBoundaryTaskUpdBars = _barrierInfo.getUpdateBarriers(prevPageBoundaryTask);
@@ -1513,6 +1707,8 @@ vpux::BarrierInfo::TaskSet VPURT::BarrierPagesSplitHandler::getDummyDmaUpdateBar
                 VPUX_THROW_UNLESS(syncTaskOpt.has_value(), "No control block sync task for task {0}", insertionPoint);
 
                 auto syncTaskWaitBars = _barrierInfo.getWaitBarriers(syncTaskOpt.value());
+                VPUX_THROW_UNLESS(!syncTaskWaitBars.empty(), "No wait barriers for control graph sync task {0} found",
+                                  syncTaskOpt.value());
                 auto newBarInd = *std::max_element(syncTaskWaitBars.begin(), syncTaskWaitBars.end());
                 _log.nest(2).trace("Change update barrier {0} to {1} due to crossing control graph block "
                                    "boundary set by task {2}",
@@ -1652,6 +1848,59 @@ VPURT::BarrierPagesSplitHandler::getAndLegalizeDummyDmaInsertionData() {
     }
 
     return dummyDmaInsertionDataVec;
+}
+
+// Prepare data for inserting dummy barriers. They are needed to be placed
+// in pages which use less than half of available physical barriers. To make barrier
+// programming DMAs simple and able to always refill 4 entries for all physical barriers
+// as a single transaction, each page except last two need to always use exactly half of
+// physical barriers. Dummy barriers will be placed in parallel to existing barriers
+// what will not have any impact on performance of schedule.
+SmallVector<VPURT::BarrierPagesSplitHandler::DummyBarrierData>
+VPURT::BarrierPagesSplitHandler::getDummyBarriersInsertionData() {
+    _log.trace("Getting dummy barriers data");
+    SmallVector<DummyBarrierData> dummyBarrierDataVec;
+
+    if (_pageCount <= 2) {
+        _log.trace("No need to insert dummy barriers if model has {0} <= 2 pages", _pageCount);
+        return dummyBarrierDataVec;
+    }
+
+    SmallVector<size_t> numberOfBarriersPerPage(_pageCount, 0);
+    SmallVector<size_t> lastBarrierIndexPerPage(_pageCount, 0);
+    // Iterate each barrier and count number of barriers per page and store information about
+    // last barrier index
+    for (size_t barInd = 0; barInd < _barrierInfo.getNumOfBarrierOps(); barInd++) {
+        auto pageInd = getBarrierPage(barInd);
+        numberOfBarriersPerPage[pageInd]++;
+        lastBarrierIndexPerPage[pageInd] = barInd;
+    }
+
+    // Iterate each page and check the number of barriers
+    // Skip last two pages, which are last pages for two halves of physical barrier set.
+    // There is no need to insert dummy barriers there as those entries can be filled by dummy values
+    // when programming barrier FIFOs using barrier programming DMA
+    _log = _log.nest();
+    for (size_t pageInd = 0; pageInd < _pageCount - 2; pageInd++) {
+        _log.trace("Page {0} barrier count: {1}", pageInd, numberOfBarriersPerPage[pageInd]);
+        for (size_t barrierIndexToAdd = numberOfBarriersPerPage[pageInd]; barrierIndexToAdd < _pageSize;
+             barrierIndexToAdd++) {
+            _log.nest().trace("Missing barrier. Prepare new one {0}", barrierIndexToAdd);
+
+            DummyBarrierData dummyBarrierData;
+            dummyBarrierData.pageInd = pageInd;
+            dummyBarrierData.insertAfter = lastBarrierIndexPerPage[pageInd];
+            dummyBarrierData.consumer = *(_barrierInfo.getBarrierConsumers(lastBarrierIndexPerPage[pageInd]).begin());
+            dummyBarrierData.producer = *(_barrierInfo.getBarrierProducers(lastBarrierIndexPerPage[pageInd]).begin());
+            _log.nest().trace("New barrier data: insert after bar {0}, producer {1}, consumer {2}",
+                              dummyBarrierData.insertAfter, dummyBarrierData.producer, dummyBarrierData.consumer);
+
+            dummyBarrierDataVec.push_back(dummyBarrierData);
+        }
+    }
+    _log = _log.unnest();
+
+    return dummyBarrierDataVec;
 }
 
 void vpux::VPURT::BarrierPagesSplitHandler::initPrevPhysBarrierData(SmallVector<size_t>& barrierToPidVec) {

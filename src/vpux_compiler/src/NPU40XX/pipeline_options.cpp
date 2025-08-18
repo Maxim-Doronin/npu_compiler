@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/NPU40XX/pipeline_options.hpp"
+#include "vpux/compiler/pipelines/options_setup.hpp"
 
 namespace vpux {
 
@@ -20,7 +21,7 @@ void setupParamsAccordingToOptimizationLevel(int optimizationLevel, DefaultHWOpt
         break;
     }
     case 3: {
-        compilationOptions.enableReduceNumTilesForSmallModelsPass = true;
+        overwriteIfUnset(compilationOptions.enableReduceNumTilesForSmallModelsPass, true);
         break;
     }
     default:

@@ -5,9 +5,8 @@
 
 #include "vpux/compiler/ShaveCodeGen/analysis.hpp"
 #include "vpux/compiler/ShaveCodeGen/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/utils/logger/logger.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>

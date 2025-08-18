@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <cstdint>
 #include <fstream>
@@ -21,11 +22,11 @@ ShaveBinaryResources& ShaveBinaryResources::getInstance() {
     return instance;
 }
 
-vpux::SmallString ShaveBinaryResources::getSwKernelArchString(VPU::ArchKind archKind) {
+vpux::SmallString ShaveBinaryResources::getSwKernelArchString(config::ArchKind archKind) {
     switch (archKind) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return vpux::SmallString("3720xx");
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return vpux::SmallString("4000xx");
     default:
         VPUX_THROW("unsupported archKind {0}", archKind);
@@ -95,10 +96,10 @@ void ShaveBinaryResources::loadElfData(mlir::ModuleOp module) {
         std::string funcName;
         std::getline(ifileList, funcName);
 
-        VPU::ArchKind archKind = VPU::getArch(module.getOperation());
+        config::ArchKind archKind = config::getArch(module.getOperation());
         auto kernelArch = getSwKernelArchString(archKind);
 
-        sbr.addCompiledElf(funcName, binary, kernelArch);
+        sbr.addCompiledElf(funcName, binary, kernelArch, true);
     }
 
     ifileList.close();

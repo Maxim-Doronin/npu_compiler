@@ -14,14 +14,14 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUInvariantMPE(
     if (auto inAct = getInvBlockArg(BlockArg::ACT_IN, invBlock, invBlockArgsPos)) {
         auto inActType = getBaseType(mlir::cast<mlir::MemRefType>(inAct.getType()).getElementType());
         if (inActType.isInteger(CHAR_BIT)) {
-            builder.create<MPEActivationBiasOp>(origInvOp.getLoc(), VPUIPDPU::getZeroPoint<uint8_t>(inAct.getType()));
+            builder.create<MPEActivationBiasOp>(origInvOp.getLoc(), VPUIPDPU::getZeroPoint(inAct.getType()));
         }
     }
 
     if (auto weights = getInvBlockArg(BlockArg::WEIGHTS, invBlock, invBlockArgsPos)) {
         auto wtType = getBaseType(mlir::cast<mlir::MemRefType>(weights.getType()).getElementType());
         if (wtType.isUnsignedInteger(CHAR_BIT)) {
-            builder.create<MPEWeightsBiasOp>(origInvOp.getLoc(), VPUIPDPU::getZeroPoint<uint8_t>(weights.getType()));
+            builder.create<MPEWeightsBiasOp>(origInvOp.getLoc(), VPUIPDPU::getZeroPoint(weights.getType()));
         }
     }
 

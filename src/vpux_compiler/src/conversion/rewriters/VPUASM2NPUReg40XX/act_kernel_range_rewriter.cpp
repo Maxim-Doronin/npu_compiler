@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace NPUReg40XX;
 using namespace NPUReg40XX::Descriptors;
@@ -34,7 +35,7 @@ mlir::LogicalResult ActKernelRangeRewriter::matchAndRewrite(VPUASM::ActKernelRan
                                                   origOp.getTaskLocationAttr(), origOp.getKernelTextAttr(),
                                                   origOp.getKernelEntryAttr());
 
-    _log.trace("[{0}] Got kernel '{1}' and cpu '{2}'", getDebugName(), kernelPath, VPU::getArch(origOp));
+    _log.trace("[{0}] Got kernel '{1}' and cpu '{2}'", getDebugName(), kernelPath, config::getArch(origOp));
 
     rewriter.eraseOp(origOp);
 

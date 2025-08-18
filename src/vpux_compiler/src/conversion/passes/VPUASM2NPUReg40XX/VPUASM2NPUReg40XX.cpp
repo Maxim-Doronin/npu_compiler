@@ -15,6 +15,7 @@
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/mi_version_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/nnrt_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/work_item_rewriter.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include "vpux/compiler/conversion.hpp"
@@ -98,7 +99,7 @@ void ConvertVPUASM2NPUReg40XXPass::safeRunOnModule() {
     target.addIllegalOp<VPUASM::MappedInferenceVersionOp>();
 
     target.addDynamicallyLegalOp<VPUASM::PlatformInfoOp>([&](VPUASM::PlatformInfoOp op) {
-        return VPU::getArch(op.getOperation()) != VPU::ArchKind::UNKNOWN;
+        return config::getArch(op.getOperation()) != config::ArchKind::UNKNOWN;
     });
 
     if (mlir::failed(mlir::applyPartialConversion(netFunc, target, std::move(patterns)))) {

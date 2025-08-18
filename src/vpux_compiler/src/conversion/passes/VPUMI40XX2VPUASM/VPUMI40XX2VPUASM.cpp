@@ -53,26 +53,26 @@ namespace {
 
 class ConvertVPUMI40XX2VPUASMPass final : public impl::ConvertVPUMI40XX2VPUASMBase<ConvertVPUMI40XX2VPUASMPass> {
 public:
-    explicit ConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM, bool disableDmaSwFifo)
-            : _enablePWLM(enablePWLM), _disableDmaSwFifo(disableDmaSwFifo) {
+    ConvertVPUMI40XX2VPUASMPass(Logger log, bool disableDmaSwFifo): _disableDmaSwFifo(disableDmaSwFifo) {
         Base::initLogger(log, Base::getArgumentName());
+    }
+
+    ConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM, bool disableDmaSwFifo)
+            : _disableDmaSwFifo(disableDmaSwFifo) {
+        Base::initLogger(log, Base::getArgumentName());
+        enablePWLMOpt = enablePWLM;
     }
 
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override;
 
 private:
     void safeRunOnModule() final;
-    bool _enablePWLM;
     bool _disableDmaSwFifo;
 };
 
 mlir::LogicalResult ConvertVPUMI40XX2VPUASMPass::initialize(mlir::MLIRContext* ctx) {
     if (mlir::failed(Base::initialize(ctx))) {
         return mlir::failure();
-    }
-
-    if (enablePWLMOpt.hasValue()) {
-        _enablePWLM = enablePWLMOpt.getValue();
     }
 
     return mlir::success();
@@ -145,7 +145,7 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
     patterns.add<DPUInvariantRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<ViewTaskRangeRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<EnqueueRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
-    patterns.add<BarrierRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log, _enablePWLM);
+    patterns.add<BarrierRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log, enablePWLMOpt);
     patterns.add<MappedInferenceRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log,
                                           _disableDmaSwFifo);
     patterns.add<ProfilingMetadataRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
@@ -166,7 +166,11 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
 // createConvertVPUMI40XX2VPUASMPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM,
+std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(Logger log, bool disableDmaSwFifo) {
+    return std::make_unique<ConvertVPUMI40XX2VPUASMPass>(log, disableDmaSwFifo);
+}
+
+std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(bool enablePWLM, Logger log,
                                                                     bool disableDmaSwFifo) {
     return std::make_unique<ConvertVPUMI40XX2VPUASMPass>(log, enablePWLM, disableDmaSwFifo);
 }

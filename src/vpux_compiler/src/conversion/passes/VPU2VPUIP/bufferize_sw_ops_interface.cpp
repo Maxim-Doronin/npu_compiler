@@ -210,7 +210,7 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
         }
     }
 
-    VPUIP::createRuntimeKernelDefinition(module, log.nest(), VPU::getArch(op));
+    VPUIP::createRuntimeKernelDefinition(module, log.nest(), config::getArch(op));
 
     // TODO : tile 0
     const int64_t tileIndex = 0;
@@ -223,8 +223,8 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
     auto swKernelOp = rewriter.create<VPUIP::SwKernelOp>(op->getLoc(), swKernelOperands, swKernelResults,
                                                          builtInFunction, getIntAttr(ctx, tileIndex));
 
-    vpux::VPUIP::initSwKernel(swKernelOp, swKernelOperands, swKernelResults, swLayerOp.getKernelInfo().args,
-                              log.nest());
+    vpux::VPUIP::initSwKernel(swKernelOp, swKernelOperands, swKernelResults, swLayerOp.getKernelInfo().args, log.nest(),
+                              /*swKernelRunOp=*/nullptr);
 
     const auto moveSwOpToCMX = [&]() {
         // Go through all inputs and outputs that were mapped to DDR and map them to NNCMX
@@ -280,7 +280,8 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
         swKernelOp = rewriter.create<VPUIP::SwKernelOp>(op->getLoc(), cmxOperands, cmxResults, builtInFunction,
                                                         getIntAttr(ctx, tileIndex));
 
-        vpux::VPUIP::initSwKernel(swKernelOp, cmxOperands, cmxResults, swLayerOp.getKernelInfo().args, log.nest());
+        vpux::VPUIP::initSwKernel(swKernelOp, cmxOperands, cmxResults, swLayerOp.getKernelInfo().args, log.nest(),
+                                  /*swKernelRunOp=*/nullptr);
     };
 
     if (isDMAConvertibleSwOp(mlir::dyn_cast<vpux::VPUIP::SoftwareLayerOpInterface>(op)) &&
@@ -319,7 +320,7 @@ mlir::LogicalResult vpux::bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewr
     auto layerOp = mlir::cast<VPU::LayerOpInterface>(op);
     auto swLayerOp = mlir::cast<VPUIP::SoftwareLayerOpInterface>(op);
 
-    VPUIP::createRuntimeKernelDefinition(module, log.nest(), VPU::getArch(op));
+    VPUIP::createRuntimeKernelDefinition(module, log.nest(), config::getArch(op));
 
     auto outputBuffers = allocateBuffers(log, op->getLoc(), rewriter, op->getResults(),
                                          /*individualBuffers=*/true);
@@ -332,7 +333,8 @@ mlir::LogicalResult vpux::bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewr
 
     auto swKernelOp = rewriter.create<VPUIP::SwKernelOp>(op->getLoc(), newOperands, outputBuffers, builtInFunction,
                                                          getIntAttr(op->getContext(), tileIndex));
-    vpux::VPUIP::initSwKernel(swKernelOp, newOperands, outputBuffers, swLayerOp.getKernelInfo().args, log.nest());
+    vpux::VPUIP::initSwKernel(swKernelOp, newOperands, outputBuffers, swLayerOp.getKernelInfo().args, log.nest(),
+                              /*swKernelRunOp=*/nullptr);
     mlir::bufferization::replaceOpWithBufferizedValues(rewriter, op, swKernelOp.getResults());
     return mlir::success();
 }
@@ -409,7 +411,7 @@ bool isLegalStridedSliceOp(VPU::StridedSliceOp stridedSliceOp) {
         }
     }
 
-    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(stridedSliceOp));
+    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(stridedSliceOp));
 
     return stridingLevel <= dmaEngineLimits.getMaxStrideCount();
 }

@@ -579,6 +579,8 @@ private:
         tasksConverters.add<GatherDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<SyncDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<BarrierProgDMARewriter>(&ctx, _enableMemorySideCacheOption);
+        tasksConverters.add<FetchDMARewriter>(&ctx, _enableMemorySideCacheOption);
+        tasksConverters.add<EnqueueDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<ReadOnlyDMARewriter>(&ctx, _enableMemorySideCacheOption);
         tasksConverters.add<NCEClusterTaskRewriter>(&ctx);
         tasksConverters.add<SWKernelRewriter>(&ctx);

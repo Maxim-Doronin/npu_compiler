@@ -6,12 +6,13 @@
 #include "vpux/compiler/conversion.hpp"
 
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/m2i_utils.hpp"
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -154,8 +155,8 @@ void ConvertIEToVPUM2IPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     auto module = getOperation();
-    const auto arch = VPU::getArch(module);
-    if (arch < VPU::ArchKind::NPU40XX) {
+    const auto arch = config::getArch(module);
+    if (arch < config::ArchKind::NPU40XX) {
         _log.trace("Convert to VPU-M2I Pass enabled only for NPU40XX+ devices. Got: {0}", arch);
         return;
     }

@@ -5,9 +5,11 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPURT/interfaces/enqueue_barrier.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 namespace vpux::VPURT::arch40xx {
 #define GEN_PASS_DECL_FINDWLMENQUEUEBARRIER
@@ -37,7 +39,7 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
-    if (vpux::VPUIP::getWlmStatus(module) != vpux::VPUIP::WlmStatus::ENABLED) {
+    if (VPU::getWorkloadManagementStatus(module) != VPU::WorkloadManagementStatus::ENABLED) {
         // WLM is not supported, no need to run this pass
         return;
     }
@@ -45,7 +47,7 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
     if (_workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
         !VPURT::verifyOneWaitBarrierPerTask(func, _log)) {
         _log.warning("WLM cannot be enabled as not all tasks have 1 wait barrier");
-        vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(module, VPU::WorkloadManagementStatus::FAILED);
         signalPassFailure();
         return;
     }
@@ -70,7 +72,7 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
     const auto res = enqueueBarrier.calculateEnqueueBarriers(executorEnqAtBootstrap);
     if (mlir::failed(res)) {
         _log.warning("Enqueue algorithm failed. Need to switch to nonWLM");
-        vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(module, VPU::WorkloadManagementStatus::FAILED);
         signalPassFailure();
         return;
     }
