@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/impl/shave_kernel_info.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
 using namespace vpux;

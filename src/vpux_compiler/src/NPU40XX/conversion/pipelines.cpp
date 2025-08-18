@@ -8,7 +8,6 @@
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/conversion.hpp"
-#include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
@@ -66,9 +65,7 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(createConvertVPUIP2VPUMI40XXPass(log, backendCompilationOptions.enableMemorySideCache,
                                                 backendCompilationOptions.allocateShaveStackFrames));
-    auto dmaProfilingMode =
-            getDMAProfilingMode(VPU::ArchKind::NPU40XX, backendCompilationOptions.enableDMAProfiling.getValue());
-    pm.addPass(VPUMI40XX::createSetupProfilingVPUMI40XXPass(dmaProfilingMode, log));
+    pm.addPass(VPUMI40XX::createSetupProfilingVPUMI40XXPass(backendCompilationOptions.enableDMAProfiling, log));
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(ELF::createAddABIVersionPass(log, NPUReg40XX::ABI_VERSION_MAJOR, NPUReg40XX::ABI_VERSION_MINOR,
                                             NPUReg40XX::ABI_VERSION_PATCH));
@@ -123,12 +120,17 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
 
         pm.addPass(VPUMI40XX::createBarrierTopologicalMappingPass(log));
         pm.addPass(VPUMI40XX::createGroupExecutionOpsPass(log));
-        pm.addPass(VPUMI40XX::createAddFetchOpsPass(log));
+        if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+            pm.addPass(VPUMI40XX::createConvertFetchDmasToFetchTaskOpsPass(log));
+        } else {
+            pm.addPass(VPUMI40XX::createAddFetchOpsPass(log));
+        }
         pm.addPass(VPUMI40XX::createResolveWLMTaskLocationPass(log));
         pm.addPass(VPUMI40XX::createUnGroupExecutionOpsPass(log));
         pm.addPass(VPUMI40XX::createPropagateFinalBarrierPass(log));
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(VPUMI40XX::createNextSameIdAssignmentPass(log));
+        // TODO: Skip AddEnqueueOps for FWLM_V1_PAGES once E#170833 is done
         pm.addPass(VPUMI40XX::createAddEnqueueOpsPass(workloadManagementMode, log));
         pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
         if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
@@ -138,11 +140,15 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
         if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
             pm.addPass(VPUMI40XX::createAddBootstrapBarriersPass(log));
         }
-        pm.addPass(VPUMI40XX::createAddBootstrapWorkItemsPass(log));
+        pm.addPass(VPUMI40XX::createAddBootstrapWorkItemsPass(workloadManagementMode, log));
 
+        // TODO: For FWLM_V1_PAGES skip SplitEnqueueOps and use SplitEnqueueDmaOps once E#170833 is done
         pm.addPass(VPUMI40XX::createSplitEnqueueOpsPass(log));
-        pm.addPass(VPUMI40XX::createLinkEnqueueTargetsPass(log));
-        pm.addPass(VPUMI40XX::createAddEnqueueDMAOps(workloadManagementMode, log));
+        pm.addPass(VPUMI40XX::createLinkEnqueueTargetsPass(workloadManagementMode, log));
+        // TODO: For FWLM_V1_PAGES remove AddEnqueueDMAOps and use UpdateEnqueueDMAInputAndOutput once E#170833 is done
+        if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+            pm.addPass(VPUMI40XX::createAddEnqueueDMAOps(log));
+        }
         pm.addPass(VPUMI40XX::createUnrollEnqueueOpsPass(log));
         if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
             pm.addPass(VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass(log));
@@ -163,7 +169,7 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
 
 void vpux::arch40xx::elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool workloadManagementEnable,
                                              bool disableDmaSwFifo, const Logger& log) {
-    pm.addPass(createConvertVPUMI40XX2VPUASMPass(log, workloadManagementEnable, disableDmaSwFifo));
+    pm.addPass(createConvertVPUMI40XX2VPUASMPass(workloadManagementEnable, log, disableDmaSwFifo));
     pm.addPass(ELF::createAddELFSymbolTablePass(log));
     pm.addPass(ELF::createSetEntryPointPass(log));
     pm.addPass(ELF::createAddNetworkMetadataPass(log));

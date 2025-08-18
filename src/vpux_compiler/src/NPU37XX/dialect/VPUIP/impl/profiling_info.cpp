@@ -5,6 +5,7 @@
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/impl/profiling_info.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 using namespace vpux;

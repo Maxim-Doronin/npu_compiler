@@ -472,7 +472,7 @@ mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewriteClusterDMA(VPUIP::Sp
                     outputType);
 
     const auto distributionAttr = distributedType.getDistribution();
-    VPUX_THROW_WHEN(distributionAttr == nullptr, "Failed to extract distributon attribute from distributed type.");
+    VPUX_THROW_WHEN(distributionAttr == nullptr, "Failed to extract distribution attribute from distributed type.");
 
     const auto modeAttr = distributionAttr.getMode();
     VPUX_THROW_WHEN(modeAttr == nullptr, "Failed to extract mode from distribution attribute.");

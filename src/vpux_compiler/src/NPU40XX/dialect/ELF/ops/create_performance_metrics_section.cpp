@@ -44,14 +44,14 @@ void vpux::ELF::PerformanceMetricsOp::serialize(elf::writer::BinaryDataSection<u
     }
 
     const auto ptrCharTmp = reinterpret_cast<uint8_t*>(&perf);
-    binDataSection.appendData(ptrCharTmp, getBinarySize(VPU::ArchKind::UNKNOWN));
+    binDataSection.appendData(ptrCharTmp, getBinarySize(config::ArchKind::UNKNOWN));
 }
 
-size_t vpux::ELF::PerformanceMetricsOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::ELF::PerformanceMetricsOp::getBinarySize(config::ArchKind) {
     return sizeof(VpuPerformanceMetrics);
 }
 
-size_t vpux::ELF::PerformanceMetricsOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::ELF::PerformanceMetricsOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(VpuPerformanceMetrics);
 }
 

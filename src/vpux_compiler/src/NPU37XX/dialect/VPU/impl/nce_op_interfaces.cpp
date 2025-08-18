@@ -7,6 +7,7 @@
 #include "vpux/compiler/NPU37XX/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -22,7 +23,7 @@ std::vector<unsigned int> getNTHWNTKGrid(VPU::MPEMode mode) {
         return {16, 16, 64};
     }
 }
-VPU::MPEMode getMpeModeForConv([[maybe_unused]] VPU::ArchKind arch, ShapeRef shape) {
+VPU::MPEMode getMpeModeForConv([[maybe_unused]] config::ArchKind arch, ShapeRef shape) {
     std::vector<std::pair<double, VPU::MPEMode>> MPECost = {{0.0, VPU::MPEMode::CUBOID_4x16},
                                                             {0.0, VPU::MPEMode::CUBOID_8x16},
                                                             {0.0, VPU::MPEMode::CUBOID_16x16}};
@@ -48,7 +49,7 @@ VPU::MPEMode getMpeModeForConv([[maybe_unused]] VPU::ArchKind arch, ShapeRef sha
 class ConvMpeModeModel {
 public:
     VPU::MPEMode getMpeModeImpl(mlir::Operation* op, mlir::Type, mlir::Type, ShapeRef shape) const {
-        auto archKind = VPU::getArch(op);
+        auto archKind = config::getArch(op);
         return getMpeModeForConv(archKind, shape);
     }
 };

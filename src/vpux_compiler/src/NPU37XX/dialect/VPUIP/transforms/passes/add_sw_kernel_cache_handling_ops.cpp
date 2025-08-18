@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
@@ -65,7 +66,8 @@ mlir::async::ExecuteOp createCacheHandlingSwKernel(mlir::OpBuilder builder, OpBu
         auto cacheHandlingSwKernel = builder.create<VPUIP::SwKernelOp>(loc, buffersRange, buffersRange, nullptr,
                                                                        functionSymbol, getIntAttr(builder, tileIndex));
         const SmallVector<mlir::Attribute> args = {};
-        vpux::VPUIP::initSwKernel(cacheHandlingSwKernel, buffersRange, buffersRange, args, log.nest());
+        vpux::VPUIP::initSwKernel(cacheHandlingSwKernel, buffersRange, buffersRange, args, log.nest(),
+                                  /*swKernelRunOp=*/nullptr);
 
         builder.create<mlir::async::YieldOp>(loc, std::nullopt);
     };

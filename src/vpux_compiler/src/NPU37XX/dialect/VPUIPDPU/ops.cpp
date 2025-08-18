@@ -174,7 +174,7 @@ mlir::LogicalResult ODUSparsityOp::verify() {
 }
 
 mlir::LogicalResult ODUOutActivationsOp::verify() {
-    auto arch = VPU::getArch(*this);
+    auto arch = config::getArch(*this);
     auto dataTypeExists = getDataType().has_value();
     auto dataWidthExists = getDataWidth().has_value();
 
@@ -182,10 +182,10 @@ mlir::LogicalResult ODUOutActivationsOp::verify() {
         return ::mlir::success();
     }
 
-    if ((arch == VPU::ArchKind::NPU37XX) && !(dataTypeExists && !dataWidthExists)) {
+    if ((arch == config::ArchKind::NPU37XX) && !(dataTypeExists && !dataWidthExists)) {
         return errorAt(getLoc(), "Operation {0}: use data_type attr to specify data type", getOperationName());
     }
-    if ((arch > VPU::ArchKind::NPU37XX) && !(!dataTypeExists && dataWidthExists)) {
+    if ((arch > config::ArchKind::NPU37XX) && !(!dataTypeExists && dataWidthExists)) {
         return errorAt(getLoc(), "Operation {0}: use data_width attr to specify data type", getOperationName());
     }
 

@@ -23,9 +23,9 @@ size_t ELF::LogicalSectionOp::getTotalSize(vpux::ELF::SymbolReferenceMap& symRef
         auto binarySizeOp = mlir::dyn_cast<ELF::BinarySizeOpInterface>(&op);
 
         if (binarySizeOp) {
-            // getting the BinarySize using VPU::ArchKind::UNKNOWN is OK at this point because the binarySizeOps should
-            // already all be in their arch-specific form or are arch-independent
-            auto span = binarySizeOp.getBinarySizeCached(symRefMap, VPU::ArchKind::UNKNOWN) +
+            // getting the BinarySize using config::ArchKind::UNKNOWN is OK at this point because the binarySizeOps
+            // should already all be in their arch-specific form or are arch-independent
+            auto span = binarySizeOp.getBinarySizeCached(symRefMap, config::ArchKind::UNKNOWN) +
                         binarySizeOp.getMemoryOffset();
             totalSize = std::max(totalSize, span);
         }
@@ -72,7 +72,7 @@ ELF::SymbolSignature ELF::LogicalSectionOp::getSymbolSignature() {
         ioBindings.walk([&symSize, &section, &index](VPUASM::DeclareBufferOp ioBuffer) {
             auto ioBuffLoc = ioBuffer.getBufferType().getLocation();
             if (ioBuffLoc.getSection() == section && ioBuffLoc.getSectionIndex() == index) {
-                symSize = ioBuffer.getBinarySize(VPU::ArchKind::UNKNOWN);
+                symSize = ioBuffer.getBinarySize(config::ArchKind::UNKNOWN);
             }
         });
     }

@@ -4,16 +4,17 @@
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/IR/ops_interfaces.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layer_post_ops_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/custom_float.hpp"
 #include "vpux/utils/core/numeric.hpp"
-#include "vpux/utils/core/type/float16.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -101,7 +102,7 @@ public:
             return false;
         }
 
-        return VPU::NCEInvariant::verifyKernel(mlir::cast<MainOpType>(mainOp)).succeeded();
+        return VPU::NCEInvariant::isSupported(mlir::cast<MainOpType>(mainOp)).succeeded();
     }
 
     bool isSupportedClampOp(mlir::Operation* mainOp, mlir::Operation* clampOp, const LogCb& logCb) const {
@@ -113,7 +114,7 @@ public:
             return false;
         }
 
-        return VPU::NCEInvariant::verifyKernel(mlir::cast<MainOpType>(mainOp)).succeeded();
+        return VPU::NCEInvariant::isSupported(mlir::cast<MainOpType>(mainOp)).succeeded();
     }
 
     void setLayerClampOp(mlir::Operation* mainOp, mlir::Operation* activationOp) const {

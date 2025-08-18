@@ -6,13 +6,15 @@
 #include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
-
-#include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/range.hpp"
@@ -186,21 +188,32 @@ IE::FakeQuantizeOp getMatchingFakeQuantizeOp(IE::ConvolutionOp convOp) {
     // Do pattern checks and quantization checks
 
     // We want to reach FakeQuantize there may be multiple optional different ops (reshape/transpose)
+    auto maybeFQ = checkOp<IE::ConvolutionOp, IE::FakeQuantizeOp>(convOp, getConvWeights, checkFQ);
+    if (maybeFQ != nullptr) {
+        return maybeFQ;
+    }
+
     auto maybeReshapeToNxCx1x1 =
             checkOp<IE::ConvolutionOp, IE::AffineReshapeOp>(convOp, getConvWeights, checkReshapeToNxCx1x1);
-    auto maybeFQ = checkOp<IE::AffineReshapeOp, IE::FakeQuantizeOp>(maybeReshapeToNxCx1x1, getReshapeInput, checkFQ);
-    if (maybeFQ == nullptr) {
-        // TransposeOp may or may not be in the graph depending on transpose_b.
-        auto maybeTransposeOp =
-                checkOp<IE::AffineReshapeOp, IE::TransposeOp>(maybeReshapeToNxCx1x1, getReshapeInput, checkTranspose);
-        maybeFQ = checkOp<IE::TransposeOp, IE::FakeQuantizeOp>(maybeTransposeOp, getTransposeInput, checkFQ);
-        if (maybeFQ == nullptr) {
-            // Some graphs have reshape to 1xHx1xW
-            auto maybeReshapeTo1xHx1xW = checkOp<IE::TransposeOp, IE::AffineReshapeOp>(
-                    maybeTransposeOp, getTransposeInput, checkReshapeTo1xHx1xW);
-            maybeFQ = checkOp<IE::AffineReshapeOp, IE::FakeQuantizeOp>(maybeReshapeTo1xHx1xW, getReshapeInput, checkFQ);
-        }
+    maybeFQ = checkOp<IE::AffineReshapeOp, IE::FakeQuantizeOp>(maybeReshapeToNxCx1x1, getReshapeInput, checkFQ);
+
+    if (maybeFQ != nullptr) {
+        return maybeFQ;
     }
+
+    // TransposeOp may or may not be in the graph depending on transpose_b.
+    auto maybeTransposeOp =
+            checkOp<IE::AffineReshapeOp, IE::TransposeOp>(maybeReshapeToNxCx1x1, getReshapeInput, checkTranspose);
+    maybeFQ = checkOp<IE::TransposeOp, IE::FakeQuantizeOp>(maybeTransposeOp, getTransposeInput, checkFQ);
+    if (maybeFQ != nullptr) {
+        return maybeFQ;
+    }
+
+    // Some graphs have reshape to 1xHx1xW
+    auto maybeReshapeTo1xHx1xW =
+            checkOp<IE::TransposeOp, IE::AffineReshapeOp>(maybeTransposeOp, getTransposeInput, checkReshapeTo1xHx1xW);
+    maybeFQ = checkOp<IE::AffineReshapeOp, IE::FakeQuantizeOp>(maybeReshapeTo1xHx1xW, getReshapeInput, checkFQ);
+
     return maybeFQ;
 }
 
@@ -385,16 +398,19 @@ private:
 
 mlir::LogicalResult FixMatmulZeroPointRewriter::matchAndRewrite(IE::ConvolutionOp convOp,
                                                                 mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), convOp->getName(), convOp->getLoc());
+
+    auto nestedLog = _log.nest();
     auto asymmetricFQ = getMatchingFakeQuantizeOp(convOp);
     if (asymmetricFQ == nullptr) {
-        return mlir::failure();
+        return matchFailed(nestedLog, rewriter, convOp, "Could not find asymmetric FQ");
     }
 
     // Most of the time runtime dequantization is more efficient than this method, however for some layers new ops added
     // with this are really small compared to original matmul, so if new ops are smaller
     // 1/_decompositionEnablementRatio(250) of original matmul we use this method
     if (!isConversionBeneficial(convOp, _decompositionEnablementRatio)) {
-        return mlir::failure();
+        return matchFailed(nestedLog, rewriter, convOp, "Conversion is not beneficial.");
     }
 
     // We change outputHigh/Low of FQ so original matmul runs as if it was symmetric, then we will apply a fix later
