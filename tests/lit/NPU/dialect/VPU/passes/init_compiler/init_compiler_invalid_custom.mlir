@@ -13,7 +13,7 @@ module @mode attributes {config.compilationMode = #config.compilation_mode<Refer
 // -----
 
 // expected-error@+1 {{Architecture is already defined, probably you run '--init-compiler' twice}}
-module @arch attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
+module @arch attributes {config.arch = #config.arch_kind<NPU37XX>} {
 }
 
 // -----

@@ -33,7 +33,6 @@ module @NoConstants {
     // CHECK-ALL-NEXT:  return [[IN]]
 
     // CHECK-ALL: func.func @wrapper_main([[IN:%.+]]: tensor<4x16xf16>) -> tensor<4x16xf16>
-    // CHECK-ALL-NEXT:  call @init() : () -> ()
     // CHECK-ALL-NEXT:  [[MAIN:%.+]] = call @main([[IN]])
     // CHECK-ALL-NEXT:  return [[MAIN]]
 

@@ -154,6 +154,41 @@ func.func @PropagateNonConstantInputAddSoftmaxThroughBatchUnrolledMatmul(
 
 // -----
 
+// CHECK-LABEL: @PropagateNonConstantInputSqueezeAddSoftmaxThroughBatchUnrolledMatmul
+// CHECK-SAME:      [[INPUT:%arg[0-9]]]: tensor<1x1x1024x1024xf32>
+func.func @PropagateNonConstantInputSqueezeAddSoftmaxThroughBatchUnrolledMatmul(
+            %arg0: tensor<1024x128xf32>,
+            %arg1: tensor<1024x128xf32>,
+            %arg2: tensor<1x1x1024x1024xf32>) -> tensor<1x2x1024x1024xf32> {
+    %cst = const.Declare tensor<1024x128xf32> = dense<1.000000e+00> : tensor<1024x128xf32>
+    %0 = IE.MatMul(%arg0, %cst) {transpose_b} : tensor<1024x128xf32>, tensor<1024x128xf32> -> tensor<1024x1024xf32>
+    %1 = IE.MatMul(%arg1, %cst) {transpose_b} : tensor<1024x128xf32>, tensor<1024x128xf32> -> tensor<1024x1024xf32>
+    %2 = IE.Reshape(%0) {shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    %3 = IE.Reshape(%1) {shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    %4 = IE.Concat(%2, %3) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+    %5 = IE.Squeeze(%arg2) {axes_value = [0, 1]} : tensor<1x1x1024x1024xf32> -> tensor<1024x1024xf32>
+    %6 = IE.Add(%4, %5) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x1024x1024xf32>, tensor<1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+    %7 = IE.SoftMax(%6) {axisInd = 3 : i64} : tensor<1x2x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+
+    return %7 : tensor<1x2x1024x1024xf32>
+
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<1024x128xf32> = dense<1.000000e+00> : tensor<1024x128xf32>
+    // CHECK:       [[MATMUL_1:%.+]] = IE.MatMul
+    // CHECK:       [[MATMUL_2:%.+]] = IE.MatMul
+    // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[MATMUL_1]]) {shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[MATMUL_2]]) {shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[SQUEEZE:%.+]] = IE.Squeeze([[INPUT]]) {axes_value = [0, 1]} : tensor<1x1x1024x1024xf32> -> tensor<1024x1024xf32>
+    // CHECK:       [[ADD_1:%.+]] = IE.Add([[RESHAPE_1]], [[SQUEEZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf32>, tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[SOFTMAX_1:%.+]] = IE.SoftMax([[ADD_1]]) {axisInd = 3 : i64} : tensor<1x1x1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[ADD_2:%.+]] = IE.Add([[RESHAPE_2]], [[SQUEEZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf32>, tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[SOFTMAX_2:%.+]] = IE.SoftMax([[ADD_2]]) {axisInd = 3 : i64} : tensor<1x1x1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[SOFTMAX_1]], [[SOFTMAX_2]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+
+    // CHECK:       return [[CONCAT]] : tensor<1x2x1024x1024xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @NotPropagateAddSoftmaxThroughBatchUnrolledMatmulDueToNoDimLeftForSplit
 // CHECK-SAME:      [[INPUT:%arg[0-9]]]: tensor<1x1x1x1024xf32>
 func.func @NotPropagateAddSoftmaxThroughBatchUnrolledMatmulDueToNoDimLeftForSplit(
@@ -232,6 +267,37 @@ func.func @NoPropagateAddSoftmaxWithInvalidAddSource(%arg0: tensor<16x2xf32>, %a
     // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x16x2xf32>, tensor<1x1x1xf32> -> tensor<2x16x2xf32>
     // CHECK:       [[SOFTMAX:%.+]] = IE.SoftMax([[ADD]]) {axisInd = -1 : i64} : tensor<2x16x2xf32> -> tensor<2x16x2xf32>
     // CHECK:       return [[SOFTMAX]] : tensor<2x16x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NotPropagateNonConstantSmallSizeInputAddSoftmaxThroughBatchUnrolledMatmul
+// CHECK-SAME:      [[INPUT:%arg[0-9]]]: tensor<1x1x77x77xf32>
+func.func @NotPropagateNonConstantSmallSizeInputAddSoftmaxThroughBatchUnrolledMatmul(
+            %arg0: tensor<77x128xf32>,
+            %arg1: tensor<77x128xf32>,
+            %arg2: tensor<1x1x77x77xf32>) -> tensor<1x2x77x77xf32> {
+    %cst = const.Declare tensor<77x128xf32> = dense<1.000000e+00> : tensor<77x128xf32>
+    %0 = IE.MatMul(%arg0, %cst) {transpose_b} : tensor<77x128xf32>, tensor<77x128xf32> -> tensor<77x77xf32>
+    %1 = IE.MatMul(%arg1, %cst) {transpose_b} : tensor<77x128xf32>, tensor<77x128xf32> -> tensor<77x77xf32>
+    %2 = IE.Reshape(%0) {shape_value = [1, 1, 77, 77]} : tensor<77x77xf32> -> tensor<1x1x77x77xf32>
+    %3 = IE.Reshape(%1) {shape_value = [1, 1, 77, 77]} : tensor<77x77xf32> -> tensor<1x1x77x77xf32>
+    %4 = IE.Concat(%2, %3) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
+    %5 = IE.Add(%4, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
+    %6 = IE.SoftMax(%5) {axisInd = 3 : i64} : tensor<1x2x77x77xf32> -> tensor<1x2x77x77xf32>
+
+    return %6 : tensor<1x2x77x77xf32>
+
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<77x128xf32> = dense<1.000000e+00> : tensor<77x128xf32>
+    // CHECK:       [[MATMUL_1:%.+]] = IE.MatMul
+    // CHECK:       [[MATMUL_2:%.+]] = IE.MatMul
+    // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[MATMUL_1]]) {shape_value = [1, 1, 77, 77]} : tensor<77x77xf32> -> tensor<1x1x77x77xf32>
+    // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[MATMUL_2]]) {shape_value = [1, 1, 77, 77]} : tensor<77x77xf32> -> tensor<1x1x77x77xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RESHAPE_1]], [[RESHAPE_2]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
+    // CHECK:       [[SOFTMAX:%.+]] = IE.SoftMax([[ADD]]) {axisInd = 3 : i64} : tensor<1x2x77x77xf32> -> tensor<1x2x77x77xf32>
+
+    // CHECK:       return [[SOFTMAX]] : tensor<1x2x77x77xf32>
 }
 
 // -----

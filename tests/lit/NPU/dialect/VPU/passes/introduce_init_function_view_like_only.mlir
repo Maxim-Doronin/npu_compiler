@@ -11,7 +11,7 @@
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -24,12 +24,12 @@ module @NoTransformations {
     }
 
     func.func @main() -> tensor<4x1xf32> {
-        %cst = const.Declare tensor<4x1xf32> = dense_resource<ov_1> : tensor<4x1xf32>
+        %cst = const.Declare tensor<4x1xf32> = dense_resource<vpux_ow_1> : tensor<4x1xf32>
         return %cst : tensor<4x1xf32>
     }
 
     // CHECK: @main() -> tensor<4x1xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1>
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1>
     // CHECK:   return [[CST]]
 }
 
@@ -38,7 +38,7 @@ module @NoTransformations {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -51,13 +51,13 @@ module @Reshape {
     }
 
     func.func @main() -> tensor<2x2xf32> {
-        %cst = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<4x1xf32>,
+        %cst = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<4x1xf32>,
             [#const.Reshape<[2, 2]>]
         return %cst : tensor<2x2xf32>
     }
 
     // CHECK: @main() -> tensor<2x2xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.Reshape<[2, 2]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Reshape<[2, 2]>]
     // CHECK:   return [[CST]]
 }
 
@@ -66,7 +66,7 @@ module @Reshape {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -82,13 +82,13 @@ module @ReshapeNonIdentityOrder {
     }
 
     func.func @main() -> tensor<2x2xf32, {order = #CN}> {
-        %cst = const.Declare tensor<2x2xf32, {order = #CN}> = dense_resource<ov_1> : tensor<4x1xf32, {order = #CN}>,
+        %cst = const.Declare tensor<2x2xf32, {order = #CN}> = dense_resource<vpux_ow_1> : tensor<4x1xf32, {order = #CN}>,
             [#const.Reshape<[2, 2]>]
         return %cst : tensor<2x2xf32, {order = #CN}>
     }
 
     // CHECK: @main() -> tensor<2x2xf32, {order = [[CN]]}>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.Reshape<[2, 2]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Reshape<[2, 2]>]
     // CHECK:   return [[CST]]
 }
 
@@ -97,7 +97,7 @@ module @ReshapeNonIdentityOrder {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -110,13 +110,13 @@ module @SubView {
     }
 
     func.func @main() -> tensor<2x1xf32> {
-        %cst = const.Declare tensor<2x1xf32> = dense_resource<ov_1> : tensor<4x1xf32>,
+        %cst = const.Declare tensor<2x1xf32> = dense_resource<vpux_ow_1> : tensor<4x1xf32>,
             [#const.SubView<[0, 0], [2, 1]>]
         return %cst : tensor<2x1xf32>
     }
 
     // CHECK: @main() -> tensor<2x1xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.SubView<[0, 0], [2, 1]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.SubView<[0, 0], [2, 1]>]
     // CHECK:   return [[CST]]
 }
 
@@ -125,7 +125,7 @@ module @SubView {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -141,13 +141,13 @@ module @LayoutCast {
     }
 
     func.func @main() -> tensor<4x1xf32, {order = #CN}> {
-        %cst = const.Declare tensor<4x1xf32, {order = #CN}> = dense_resource<ov_1> : tensor<4x1xf32>,
+        %cst = const.Declare tensor<4x1xf32, {order = #CN}> = dense_resource<vpux_ow_1> : tensor<4x1xf32>,
             [#const.LayoutCast<#CN>]
         return %cst : tensor<4x1xf32, {order = #CN}>
     }
 
     // CHECK: @main() -> tensor<4x1xf32, {order = [[CN]]}>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.LayoutCast<[[CN]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.LayoutCast<[[CN]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -156,7 +156,7 @@ module @LayoutCast {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -174,13 +174,13 @@ module @TrivialMemPermute {
     }
 
     func.func @main() -> tensor<4x1xf32> {
-        %cst = const.Declare tensor<4x1xf32> = dense_resource<ov_1> : tensor<4x1xf32, {order = #CN}>,
+        %cst = const.Declare tensor<4x1xf32> = dense_resource<vpux_ow_1> : tensor<4x1xf32, {order = #CN}>,
             [#const.MemPermute<#NC, #CN>]
         return %cst : tensor<4x1xf32>
     }
 
     // CHECK: @main() -> tensor<4x1xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.MemPermute<[[NC]], [[CN]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.MemPermute<[[NC]], [[CN]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -189,7 +189,7 @@ module @TrivialMemPermute {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -206,13 +206,13 @@ module @TrivialTranspose {
     }
 
     func.func @main() -> tensor<1x4xf32> {
-        %cst = const.Declare tensor<1x4xf32> = dense_resource<ov_1> : tensor<4x1xf32>,
+        %cst = const.Declare tensor<1x4xf32> = dense_resource<vpux_ow_1> : tensor<4x1xf32>,
             [#const.Transpose<#swap>]
         return %cst : tensor<1x4xf32>
     }
 
     // CHECK: @main() -> tensor<1x4xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.Transpose<[[swap]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Transpose<[[swap]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -221,7 +221,7 @@ module @TrivialTranspose {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -237,13 +237,13 @@ module @TrivialReorder {
     }
 
     func.func @main() -> tensor<4x1xf32, {order = #CN}> {
-        %cst = const.Declare tensor<4x1xf32, {order = #CN}> = dense_resource<ov_1> : tensor<4x1xf32>,
+        %cst = const.Declare tensor<4x1xf32, {order = #CN}> = dense_resource<vpux_ow_1> : tensor<4x1xf32>,
             [#const.Reorder<#CN>]
         return %cst : tensor<4x1xf32, {order = #CN}>
     }
 
     // CHECK: @main() -> tensor<4x1xf32, {order = [[CN]]}>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1> {{.*}} [#const.Reorder<[[CN]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Reorder<[[CN]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -252,7 +252,7 @@ module @TrivialReorder {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x00000004aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccd6"
+            vpux_ow_1: "0x00000004aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccd6"
         }
     }
 #-}
@@ -267,13 +267,13 @@ module @AffineReshape {
     }
 
     func.func @main() -> tensor<1x1x3x3xf32, {order = #NCWH}> {
-        %cst = const.Declare tensor<1x1x3x3xf32, {order = #NCWH}> = dense_resource<ov_1> : tensor<1x1x3x3xf32>,
+        %cst = const.Declare tensor<1x1x3x3xf32, {order = #NCWH}> = dense_resource<vpux_ow_1> : tensor<1x1x3x3xf32>,
             [#const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
         return %cst : tensor<1x1x3x3xf32, {order = #NCWH}>
     }
 
     // CHECK:           func.func @main() -> tensor<1x1x3x3xf32, {order = #NCWH}>
-    // CHECK:               [[CST:%.+]] = const.Declare {{.*}} dense_resource<ov_1>
+    // CHECK:               [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1>
     // CHECK-LITERAL:           [#const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
     // CHECK:           return [[CST]]
 }

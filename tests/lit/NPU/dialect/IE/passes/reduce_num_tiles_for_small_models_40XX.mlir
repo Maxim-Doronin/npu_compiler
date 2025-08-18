@@ -10,7 +10,7 @@
 module @NoMultiplyNumClustersRemained {
     IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @DPU
     }
@@ -39,7 +39,7 @@ module @NoMultiplyNumClustersRemained {
 module @NoMatMulNumClustersRemained {
     IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @DPU
     }
@@ -68,7 +68,7 @@ module @NoMatMulNumClustersRemained {
 module @NoSoftMaxNumClustersRemained {
     IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @DPU
     }
@@ -98,7 +98,7 @@ module @NoSoftMaxNumClustersRemained {
 module @MatMulMultiplySoftMaxNumClustersReduced {
     IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @DPU
     }
@@ -129,7 +129,7 @@ module @MatMulMultiplySoftMaxNumClustersReduced {
 module @BigShapesNumClustersRemained {
     IE.TileResource 6 of @NCE at 1.850000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 2 of @SHAVE_ACT
         IE.ExecutorResource 1 of @DPU
     }

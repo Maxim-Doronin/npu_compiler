@@ -1544,5 +1544,3 @@ func.func @LogicalNotAssignedClustering(%arg0: tensor<1x1x1x256xf16>) -> tensor<
     //CHECK:   [[LOGICALNOT:%.+]] = VPU.LogicalNot([[INPUT]]) {
     //CHECK-SAME:       multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>}
 }
-
-

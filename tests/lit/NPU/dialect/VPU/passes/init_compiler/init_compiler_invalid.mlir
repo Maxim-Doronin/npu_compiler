@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 // expected-error@+1 {{Architecture is already defined, probably you run '--init-compiler' twice}}
-module @test attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
+module @test attributes {config.arch = #config.arch_kind<NPU37XX>} {
 }
 
 // -----
@@ -20,5 +20,5 @@ module @error {
 // -----
 
 // expected-error@+1 {{RevisionID is already defined, probably you run '--init-compiler' twice}}
-module @revtest attributes {VPU.revisionID = #VPU.revision_id<REVISION_B>} {
+module @revtest attributes {config.revisionID = #config.revision_id<REVISION_B>} {
 }

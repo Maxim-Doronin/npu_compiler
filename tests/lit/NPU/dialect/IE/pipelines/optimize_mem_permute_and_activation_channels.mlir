@@ -114,13 +114,30 @@ func.func @MemPermuteProcessingForNHCWMemPermute(%arg0: tensor<1x380x720x1xf16>)
 
     return %0 : tensor<1x720x380x1xf16>
 
-    // CHECK:  [[PERMUTECAST0:%.+]] = IE.PermuteCast([[INPUT]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x380x720x1xf16> -> tensor<1x1x380x720xf16, {order = #NHWC}>
-    // CHECK:  [[SHAPECAST1:%.+]] = IE.ShapeCast {shape = [1, 16, 380, 45]} inputs([[PERMUTECAST0]] : tensor<1x1x380x720xf16, {order = #NHWC}>) -> tensor<1x16x380x45xf16, {order = #NHWC}>
-    // CHECK:  [[MAXPOOL:%.+]] = IE.MaxPool([[SHAPECAST1]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x380x45xf16, {order = #NHWC}> -> tensor<1x16x380x45xf16, {order = #NWCH}>
-    // CHECK:  [[PERMUTECAST3:%.+]] = IE.PermuteCast([[MAXPOOL]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x16x380x45xf16, {order = #NWCH}> -> tensor<1x45x16x380xf16>
-    // CHECK:  [[SHAPECAST4:%.+]] = IE.ShapeCast {shape = [1, 720, 1, 380]} inputs([[PERMUTECAST3]] : tensor<1x45x16x380xf16>) -> tensor<1x720x1x380xf16>
-    // CHECK:  [[PERMUTECAST5:%.+]] = IE.PermuteCast([[SHAPECAST4]]) {dst_order = #NCHW, mem_perm = #NHCW} : tensor<1x720x1x380xf16> -> tensor<1x1x720x380xf16>
-    // CHECK:  [[SHAPECAST6:%.+]] = IE.ShapeCast {shape = [1, 720, 380, 1]} inputs([[PERMUTECAST5]] : tensor<1x1x720x380xf16>) -> tensor<1x720x380x1xf16>
+    // CHECK:  [[SHAPECAST0:%.+]] = IE.ShapeCast {shape = [1, 1, 380, 720]} inputs([[INPUT]] : tensor<1x380x720x1xf16>) -> tensor<1x1x380x720xf16>
+    // CHECK:  [[PERMUTECAST1:%.+]] = IE.PermuteCast([[SHAPECAST0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x1x380x720xf16> -> tensor<1x720x1x380xf16, {order = #NHWC}>
+    // CHECK:  [[MAXPOOL:%.+]] = IE.MaxPool([[PERMUTECAST1]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x720x1x380xf16, {order = #NHWC}> -> tensor<1x720x1x380xf16, {order = #NHCW}>
+    // CHECK:  [[PERMUTECAST3:%.+]] = IE.PermuteCast([[MAXPOOL]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x720x1x380xf16, {order = #NHCW}> -> tensor<1x1x720x380xf16>
+    // CHECK:  [[SHAPECAST4:%.+]] = IE.ShapeCast {shape = [1, 720, 380, 1]} inputs(%3 : tensor<1x1x720x380xf16>) -> tensor<1x720x380x1xf16>
 
-    // CHECK: return [[SHAPECAST6]] : tensor<1x720x380x1xf16>
+    // CHECK: return [[SHAPECAST4]] : tensor<1x720x380x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @MemPermuteProcessingForNHWCMemPermute
+// CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<4x75x16x64xf16>
+func.func @MemPermuteProcessingForNHWCMemPermute(%arg0: tensor<4x75x16x64xf16>) -> tensor<4x16x64x75xf16> {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NHWC} :
+        tensor<4x75x16x64xf16> -> tensor<4x16x64x75xf16>
+
+    return %0 : tensor<4x16x64x75xf16>
+
+    // CHECK:  [[SHAPECAST0:%.+]] = IE.ShapeCast {shape = [1, 4, 75, 1024]} inputs([[INPUT]] : tensor<4x75x16x64xf16>) -> tensor<1x4x75x1024xf16>
+    // CHECK:  [[PERMUTECAST1:%.+]] = IE.PermuteCast([[SHAPECAST0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x4x75x1024xf16> -> tensor<1x1024x4x75xf16, {order = #NHWC}>
+    // CHECK:  [[MAXPOOL:%.+]] = IE.MaxPool([[PERMUTECAST1]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1024x4x75xf16, {order = #NHWC}> -> tensor<1x1024x4x75xf16, {order = #NHCW}>
+    // CHECK:  [[PERMUTECAST3:%.+]] = IE.PermuteCast([[MAXPOOL]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x1024x4x75xf16, {order = #NHCW}> -> tensor<1x4x1024x75xf16>
+    // CHECK:  [[SHAPECAST4:%.+]] = IE.ShapeCast {shape = [4, 16, 64, 75]} inputs([[PERMUTECAST3]] : tensor<1x4x1024x75xf16>) -> tensor<4x16x64x75xf16>
+
+    // CHECK: return [[SHAPECAST4]] : tensor<4x16x64x75xf16>
 }
