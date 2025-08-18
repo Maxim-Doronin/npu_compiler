@@ -24,8 +24,18 @@ namespace VPU {
 template <class VFKey, class VFValue, class Compare = std::less<VFValue>>
 class VFContainer {
 public:
+    // constructor
+    VFContainer() = default;
+
+    // constructor with reserved size for each inner container
+    VFContainer(ArrayRef<VFKey> vfKeys, int64_t reservedSize) {
+        for (const auto& vfKey : vfKeys) {
+            vfContainer[vfKey].reserve(reservedSize);
+        }
+    }
+
     // connection between number of tile and info
-    using VFTileContainer = DenseMap<size_t, VFValue>;
+    using VFTileContainer = std::unordered_map<size_t, VFValue>;
 
     // pointer to container
     using UPtr = std::unique_ptr<VFContainer<VFKey, VFValue, Compare>>;
@@ -42,16 +52,16 @@ public:
     std::optional<VFValue> get(VFKey key, size_t tile);
 
     // function returns information gathered together for all tiles
-    std::vector<VFValue> gatherValue(VFKey key);
+    const VFTileContainer& gatherValue(VFKey key);
 
     // get whole inner container
-    const llvm::DenseMap<VFKey, VFTileContainer>& getAll() const {
+    const std::unordered_map<VFKey, VFTileContainer>& getAll() const {
         return vfContainer;
     };
 
 private:
     // inner container for storage connection
-    DenseMap<VFKey, VFTileContainer> vfContainer;
+    std::unordered_map<VFKey, VFTileContainer> vfContainer;
 
     // comparator for elements of info
     Compare vfComparator;
@@ -59,11 +69,11 @@ private:
 
 template <class VFKey, class VFValue, class Compare>
 void vpux::VPU::VFContainer<VFKey, VFValue, Compare>::merge(const VFContainer<VFKey, VFValue, Compare>& src) {
-    for (auto item : src.getAll()) {
+    for (auto& item : src.getAll()) {
         if (vfContainer.count(item.first) == 0) {
             vfContainer[item.first] = item.second;
         } else {
-            for (auto tileItem : item.second) {
+            for (auto& tileItem : item.second) {
                 insert(item.first, tileItem.first, tileItem.second);
             }
         }
@@ -72,12 +82,10 @@ void vpux::VPU::VFContainer<VFKey, VFValue, Compare>::merge(const VFContainer<VF
 
 template <class VFKey, class VFValue, class Compare>
 void vpux::VPU::VFContainer<VFKey, VFValue, Compare>::insert(VFKey key, size_t tile, const VFValue& src) {
-    auto foundTileItem = llvm::find_if(vfContainer[key], [&](const auto& i) {
-        return tile == i.first;
-    });
-
-    if (foundTileItem == vfContainer[key].end()) {
-        vfContainer[key].try_emplace(tile, src);
+    auto& tileContainer = vfContainer[key];
+    auto foundTileItem = tileContainer.find(tile);
+    if (foundTileItem == tileContainer.end()) {
+        tileContainer.insert({tile, src});
     } else {
         foundTileItem->second = std::max(foundTileItem->second, src, vfComparator);
     }
@@ -101,10 +109,9 @@ std::optional<VFValue> vpux::VPU::VFContainer<VFKey, VFValue, Compare>::get(VFKe
 }
 
 template <class VFKey, class VFValue, class Compare>
-std::vector<VFValue> vpux::VPU::VFContainer<VFKey, VFValue, Compare>::gatherValue(VFKey key) {
-    return to_std_vector(vfContainer[key] | transformed([](const auto& item) {
-                             return item.second;
-                         }));
+const typename vpux::VPU::VFContainer<VFKey, VFValue, Compare>::VFTileContainer&
+vpux::VPU::VFContainer<VFKey, VFValue, Compare>::gatherValue(VFKey key) {
+    return vfContainer[key];
 }
 
 }  // namespace VPU

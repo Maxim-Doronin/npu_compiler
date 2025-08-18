@@ -5,11 +5,14 @@
 
 #pragma once
 
-#include <mlir/IR/Operation.h>
-#include <mlir/Support/LogicalResult.h>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+
+#include <mlir/IR/Operation.h>
+#include <mlir/Support/LogicalResult.h>
 
 namespace vpux {
 namespace VPUIP {

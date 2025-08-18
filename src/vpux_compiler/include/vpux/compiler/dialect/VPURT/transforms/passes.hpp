@@ -56,6 +56,7 @@ std::unique_ptr<mlir::Pass> createInferenceExecutionAnalysisPass(
         bool enableActivityFactor = true, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
         std::optional<size_t> virtualBarrierThresholdForWlm = VIRTUAL_BARRIER_THRESHOLD_WLM,
+        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
         Logger log = Logger::global());
 
 //

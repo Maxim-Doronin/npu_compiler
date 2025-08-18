@@ -122,7 +122,9 @@ void reindexTaskLinkAttrForDMA(VPURegMapped::TaskOpInterface head);
 //
 // Resolve Task Location utils
 //
-size_t getTaskBinarySize(VPURegMapped::TaskType taskType, VPU::ArchKind arch);
+size_t getTaskBinarySize(VPURegMapped::TaskType taskType, config::ArchKind arch);
+
+VPURegMapped::TaskType convertExecutorKindToExecutableTaskType(VPU::ExecutorKind kind);
 
 }  // namespace VPUMI40XX
 }  // namespace vpux

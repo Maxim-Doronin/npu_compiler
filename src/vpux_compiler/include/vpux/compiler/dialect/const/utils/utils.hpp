@@ -96,4 +96,7 @@ mlir::FailureOr<T> getSplatValue(mlir::Value input) {
     return getSplatValue<T>(input.getDefiningOp<Const::DeclareOp>());
 }
 
+/// Returns whether constant has a transformation that sparsifies the content.
+bool hasSparsifyTransformation(const Const::DeclareOp& constOp);
+
 }  // namespace vpux::Const

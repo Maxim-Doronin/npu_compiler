@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
@@ -12,6 +13,7 @@
 #include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/Interfaces/InferTypeOpInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <mlir/Interfaces/ViewLikeInterface.h>
 

@@ -17,6 +17,8 @@ public:
              bool secondVFNeedsTiling = true);
     ~VFConfig() = default;
 
+    VFConfig(const llvm::SetVector<mlir::Operation*>& operations);
+
     // get original subgraph
     VPU::VerticalFusionOp getSubgraph() const;
 
@@ -30,7 +32,7 @@ public:
     const SmallVector<mlir::Operation*>& getOutputs();
 
     // get all oeprations in the subgraph
-    const SmallVector<mlir::Operation*>& getVFOperations();
+    const llvm::SetVector<mlir::Operation*>& getVFOperations();
 
     // get all oeprations in the subgraph
     SmallVector<mlir::Operation*> getOperationsForTiling();
@@ -54,12 +56,13 @@ public:
 
 private:
     virtual bool isVFPipelinePattern();
+    void validateConfig();
 
     VPU::VerticalFusionOp _subgraph;
     mlir::Operation* _largestOp = nullptr;
     SmallVector<mlir::Operation*> _inputOps;
     SmallVector<mlir::Operation*> _outputOps;
-    SmallVector<mlir::Operation*> _vfOps;
+    llvm::SetVector<mlir::Operation*> _vfOps;
     bool _isVFPipelineCandidate = false;
     bool _isPipelineEnabled = false;
     bool _firstVFNeedsTiling = true;

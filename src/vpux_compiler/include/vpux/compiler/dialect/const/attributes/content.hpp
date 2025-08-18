@@ -177,8 +177,13 @@ namespace vpux::Const {
 mlir::ParseResult parseContentAttr(mlir::AsmParser& parser, ContentAttr& content);
 void printContentAttr(mlir::AsmPrinter& printer, const ContentAttr& content);
 
-/// @brief External constant prefix used for OpenVino constants.
-constexpr const char* OPENVINO_CONST_PREFIX = "ov";
+/** @brief External constant prefix.
+
+    This prefix is used also in the context of weights separation. Be careful when changing it.
+    "ow" stands for "original weights"
+*/
+
+constexpr const char* IMPORTED_WEIGHT_PREFIX = "vpux_ow_";
 
 /** @brief Returns new dense_resource<> "base" content.
 

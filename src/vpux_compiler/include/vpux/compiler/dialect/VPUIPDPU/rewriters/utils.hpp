@@ -5,12 +5,15 @@
 
 #pragma once
 
-#include <mlir/Dialect/Quant/QuantTypes.h>
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
+#include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/Builders.h>
+
+namespace vpux::VPUIPDPU {
+enum class ODUDataBitWidth : uint32_t;
+}  // namespace vpux::VPUIPDPU
 
 namespace vpux {
 namespace VPUIPDPU {
@@ -84,18 +87,14 @@ void computeLsbAndMsbFromTargetWidth(int64_t targetWidth, uint64_t& msbWidth, ui
     msbWidth = (targetWidth & bitMaskMsb) >> lsbBitWidth;
 }
 
-// Helper function to calculate zero point offset for input activations and weights
 template <typename DataType>
-auto getZeroPoint(vpux::NDTypeInterface type) {
+SmallVector<DataType> getZeroPoints(mlir::Type type) {
     static_assert(std::is_integral<DataType>::value, "DataType must be an integer type");
-    // Get also ZP
-    auto elementType = type.getElementType();
     SmallVector<DataType> quantZeroPoints;
 
-    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elementType)) {
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
         quantZeroPoints.push_back(checked_cast<DataType>(uniformQuantType.getZeroPoint()));
-    } else if (const auto uniformQuantPerAxisType =
-                       mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
+    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
         auto zp = uniformQuantPerAxisType.getZeroPoints();
         quantZeroPoints.resize(zp.size());
         std::transform(zp.begin(), zp.end(), quantZeroPoints.begin(), [](int64_t a) {
@@ -105,9 +104,11 @@ auto getZeroPoint(vpux::NDTypeInterface type) {
         quantZeroPoints.push_back(0);
     }
 
-    // Return only the first element as the zero point bias
-    return quantZeroPoints[0];
+    return quantZeroPoints;
 }
+
+// Helper function to calculate zero point offset for input/output activations and weights
+int64_t getZeroPoint(vpux::NDTypeInterface type);
 
 int64_t getRangeSize(int64_t start, int64_t end);
 

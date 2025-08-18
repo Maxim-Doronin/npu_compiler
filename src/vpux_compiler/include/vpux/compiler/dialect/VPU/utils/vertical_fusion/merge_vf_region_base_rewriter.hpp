@@ -65,14 +65,8 @@ public:
 
 protected:
     virtual StrategyCost extractVFCost(VFConfigType& vfConfig) const = 0;
-    virtual std::optional<int64_t> getOptimalTilingStrategy(const IVFSchedulingPtr& scheduling, const Dim dim,
-                                                            const int64_t minTiles, int64_t& maxTiles,
-                                                            TilingOperationStorage::UPtr& minStorage,
-                                                            TilingOperationStorage::UPtr& maxStorage,
-                                                            VFConfigType& config) const = 0;
     virtual bool canMergeVFOpsWithoutCostCheck(VFCaseType& mergedCase) const = 0;
     virtual bool canSkipMergeVF(VFConfigType& vfConfig, bool opsNeedTiling) const = 0;
-    virtual std::deque<IVFSchedulingPtr> getVFSchedulingChecks(VFConfigType& config) const = 0;
     virtual IVFSchedulingPtr detectScenario(VFConfigType& vfConfig) const = 0;
     virtual std::optional<VFCaseType> findVFTiling(VPU::VerticalFusionOp mergedOp, VPU::VerticalFusionOp prevOp,
                                                    VPU::VerticalFusionOp currentOp) const = 0;

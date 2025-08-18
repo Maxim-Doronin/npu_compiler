@@ -14,7 +14,7 @@ namespace vpux::VPU {
  * Split pattern is decided by VPUNN L1 API cost
  */
 mlir::LogicalResult genericNCEWorkloadSplit(VPU::NCEOpInterface nceOp, mlir::PatternRewriter& rewriter,
-                                            VPU::ArchKind arch, int64_t numDPU,
+                                            config::ArchKind arch, int64_t numDPU,
                                             std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log);
 
 /**

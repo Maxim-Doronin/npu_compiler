@@ -29,7 +29,11 @@ std::unique_ptr<mlir::Pass> createStartLocationVerifierPass(
 std::unique_ptr<mlir::Pass> createStopLocationVerifierPass(vpux::Logger log);
 std::unique_ptr<mlir::Pass> createPackNestedModulesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnpackNestedModulesPass(const Logger& log = Logger::global());
-std::unique_ptr<mlir::Pass> createAddNetInfoToModulePass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddNetInfoToModulePass(Logger log = Logger::global(),
+                                                         bool hasTensorSemantics = false);
+
+// special pass
+std::unique_ptr<mlir::Pass> createWsFoldReinterpretCastIntoConstPass(const Logger& log = Logger::global());
 
 //
 // Registration

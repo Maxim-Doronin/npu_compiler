@@ -7,6 +7,8 @@
 
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+
 namespace vpux::VPUIP {
 
 class ICaptureWorkpointStrategy {

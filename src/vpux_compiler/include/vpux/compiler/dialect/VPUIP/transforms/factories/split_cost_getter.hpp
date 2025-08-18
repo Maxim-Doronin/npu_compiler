@@ -12,6 +12,6 @@ namespace vpux::VPUIP {
 using SplitCostCb = int64_t (*)(const VPUIP::WorkloadSplit&, const VPUIP::WorkloadCostParams&, VPUNN::VPUCostModel&,
                                 LogCb);
 
-SplitCostCb getSplitCostCb(VPU::ArchKind arch);
+SplitCostCb getSplitCostCb(config::ArchKind arch);
 
 }  // namespace vpux::VPUIP

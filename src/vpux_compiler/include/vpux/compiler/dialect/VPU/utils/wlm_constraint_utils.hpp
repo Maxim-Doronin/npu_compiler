@@ -21,7 +21,7 @@ constexpr StringRef METADATA_MAX_KERNEL_INVOCATION_COUNT = "VPU.MetadataMaxKerne
 constexpr StringRef METADATA_MAX_KERNEL_RANGE_COUNT = "VPU.MetadataMaxKernelRangeCount";
 constexpr StringRef METADATA_MAX_MEDIA_COUNT = "VPU.MetadataMaxMediaCount";
 
-uint32_t getDefaultTaskListCount(VPU::TaskType taskType, VPU::ArchKind archKind);
+uint32_t getDefaultTaskListCount(VPU::TaskType taskType, config::ArchKind archKind);
 
 }  // namespace VPU
 }  // namespace vpux

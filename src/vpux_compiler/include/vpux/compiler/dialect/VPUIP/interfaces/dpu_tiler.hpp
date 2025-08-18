@@ -8,14 +8,15 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
 
 #include <vpu_cost_model.h>
 
 #include <set>
 #include <tuple>
+
+namespace vpux::VPUIP {
+enum class NCETaskType : uint64_t;
+}  // namespace vpux::VPUIP
 
 namespace vpux {
 namespace VPUIP {
@@ -32,7 +33,7 @@ struct WorkloadCostParams {
     std::optional<mlir::Type> weightsDataType = std::nullopt;
     DimsOrder inOrder;
     DimsOrder outOrder;
-    VPU::ArchKind arch;
+    config::ArchKind arch;
     Shape fullInputShape;
     Shape inputShape;
     Shape outputShape;

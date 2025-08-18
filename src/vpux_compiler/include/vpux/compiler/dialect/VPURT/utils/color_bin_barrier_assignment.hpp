@@ -16,7 +16,7 @@ namespace VPURT {
 class BarrierColorBin final {
 public:
     using BinType = VPURT::TaskQueueType;
-    BarrierColorBin(size_t numBarriers, VPU::ArchKind arch, Logger log);
+    BarrierColorBin(size_t numBarriers, config::ArchKind arch, Logger log);
     bool calculateBinSize(BarrierGraphInfo& BarrierGraphInfo);
     mlir::LogicalResult assignPhysicalBarrier(BarrierGraphInfo& BarrierGraphInfo, BarrierSimulator& simulator);
     size_t getPhysicalBarrier(size_t virtualBarrierInd);

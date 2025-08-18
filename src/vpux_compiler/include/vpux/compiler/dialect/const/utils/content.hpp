@@ -216,7 +216,16 @@ public:
     template <typename OutT>
     auto getSplatValue() const {
         VPUX_THROW_UNLESS(isSplat(), "Expected the attribute to be a splat value");
-        return *getValues<OutT>().begin();
+        return read([](auto values) {
+            if constexpr (std::is_same<OutT, bool>::value) {
+                // E#160869: checked_cast<bool> works poorly due to MSVC warning
+                // C4804. fixing checked_cast<> overload is also not simple, so
+                // for now this could act as a workaround.
+                return static_cast<bool>(values[0]);
+            } else {
+                return checked_cast<OutT>(values[0]);
+            }
+        });
     }
 
 public:

@@ -5,14 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
-
-#include <llvm/Support/raw_ostream.h>
-#include <mlir/Dialect/Func/IR/FuncOps.h>
-#include <mlir/Pass/AnalysisManager.h>
-#include <algorithm>
-#include <cstdint>
+#include <mlir/IR/Operation.h>
+#include <array>
 
 namespace vpux {
 namespace VPUIP {
@@ -21,9 +15,10 @@ enum class UnrollDMAAnalysisNeeded {
     UnrollDepthToSpaceDMAPass,
     UnrollSpaceToDepthDMAPass,
     UnrollUpsamplingDMAPass,
-    UnrollPermuteToNNDMAPass,
+    UnrollPermuteDMAPass,
     UnrollExpandDMAPass,
     UnrollPerAxisTileDMAPass,
+    UnrollGatherDMAPass,
     NumberOfAnalyzedPasses
 };
 

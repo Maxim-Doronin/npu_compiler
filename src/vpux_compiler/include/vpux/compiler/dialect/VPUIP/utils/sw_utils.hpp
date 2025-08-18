@@ -5,10 +5,31 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/small_string.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinOps.h>
+
+namespace vpux::config {
+enum class ArchKind : uint64_t;
+}  // namespace vpux::config
+namespace vpux::VPU {
+class LayerOpInterface;
+}  // namespace vpux::VPU
+namespace vpux::VPUIP {
+struct KernelInfo;
+class SwKernelOp;
+class SwKernelRun;
+}  // namespace vpux::VPUIP
+namespace vpux::VPURT {
+class TaskOp;
+}  // namespace vpux::VPURT
 
 namespace vpux {
 namespace VPUIP {
@@ -101,8 +122,9 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
 const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {"mvn1", "lstm_cell", "lstm_sequence", "reorder"};
 
 const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {
-        "softmax",     "eltwise_mul", "activation_sin", "activation_cos", "activation_swish", "activation_clamp",
-        "eltwise_min", "eltwise_max", "round_fp16",     "activation_exp", "prelu_fp16",       "eltwise_logical_not"};
+        "softmax",          "eltwise_mul", "activation_sin",     "activation_cos", "activation_swish",
+        "activation_clamp", "convert",     "eltwise_min",        "eltwise_max",    "round_fp16",
+        "activation_exp",   "prelu_fp16",  "eltwise_logical_not"};
 
 const SmallVector<StringLiteral> SW_KERNELS_LAYOUT_AGNOSTIC = {
         "activation_swish", "activation_gelu",    "activation_hswish", "activation_hardsigmoid",
@@ -173,11 +195,10 @@ mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, VPU::LayerOpInt
                                           ArrayRef<mlir::Value> operands, ArrayRef<mlir::Value> results,
                                           const VPUIP::KernelInfo& kernelInfo, const Logger& log);
 
-void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpux::VPU::ArchKind arch);
+void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpux::config::ArchKind arch);
 
 void initSwKernel(vpux::VPUIP::SwKernelOp swKernelOp, mlir::ValueRange inputs, mlir::ValueRange outputBuffs,
-                  mlir::ArrayRef<mlir::Attribute> args, const vpux::Logger& log,
-                  VPUIP::SwKernelRun swKernelRunOp = nullptr);
+                  mlir::ArrayRef<mlir::Attribute> args, const vpux::Logger& log, VPUIP::SwKernelRun swKernelRunOp);
 
 void initSwKernel(VPUIP::SwKernelOp swKernelOp, VPUIP::SwKernelRun swKernelRunOp, const vpux::Logger& log);
 
@@ -204,6 +225,10 @@ SmallVector<mlir::Attribute> getSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp sw
 SmallVector<int64_t> getPopulateWeightTableSwKernelEntries(VPUIP::SwKernelOp swKernelOp);
 void updatePopulateWeightTableSwKernel(VPUIP::SwKernelOp swKernelOp, int64_t currOffset, Logger log);
 
+int64_t computeReverseMemDim(mlir::Value tensorArg, int64_t dimIdx);
+void getQuantParamsAttr(mlir::Value qValue, mlir::Type pType, mlir::ArrayAttr& paramsAttr, int64_t tileSize = 0,
+                        int64_t tileOffset = 0);
+
 SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKernelOp, Dim tileDim);
 
 bool isCacheOpTaskType(std::optional<::mlir::SymbolRefAttr> kernelTaskType, bool includePrefetch = true);
@@ -216,8 +241,8 @@ bool isJitKernelOp(VPUIP::SwKernelOp swKernelOp);
 mlir::SmallVector<mlir::Value> getDDRBuffers(mlir::ValueRange buffers);
 bool hasInputsInDDR(VPUIP::SwKernelOp swKernelTask);
 
-int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, VPU::ArchKind arch);
-std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(VPU::ArchKind arch);
+int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, config::ArchKind arch);
+std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(config::ArchKind arch);
 
 }  // namespace VPUIP
 }  // namespace vpux

@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_scheduler_interface.hpp"
 
 namespace vpux::VPU::VF::v2 {
@@ -21,7 +22,7 @@ public:
     /*
      Constructor of VF case
     */
-    explicit VFCase(VFConfigType& config, Dim axis);
+    VFCase(VFConfigType& config, const VFSplit& split);
 
     /*
      Destructor of VF case
@@ -49,9 +50,9 @@ public:
     VFCase& operator=(const VFCase& other);
 
     /*
-     Set number of tiles
+     Set number of tiles for given dimension
     */
-    void setTilingNumber(int64_t number);
+    void setTilingNumber(Dim dim, int64_t number);
 
     /*
      Set VF scheduling
@@ -81,17 +82,12 @@ public:
     /*
      Generate VF tiling
     */
-    mlir::ArrayAttr getTiling() const;
+    mlir::ArrayAttr getTiling();
 
     /*
      Set Scheduling and tiling to VF
     */
     void approveScheduling();
-
-    /*
-     Get current tiling number
-    */
-    int64_t getTilingNumber() const;
 
 private:
     /*
@@ -115,14 +111,9 @@ private:
     VFConfigType _config;
 
     /*
-     Axis for tiling
+     VF Split
     */
-    Dim _axis;
-
-    /*
-     Number of tiles
-    */
-    int64_t _tilingNumber = 1;
+    VFSplit _split;
 
     /*
      VF Scheduling

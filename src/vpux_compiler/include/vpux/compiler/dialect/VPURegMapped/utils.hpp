@@ -5,15 +5,16 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
+
+#include <llvm/ADT/bit.h>
+#include <mlir/IR/Builders.h>
+
 #include <map>
 #include <string>
 
-#include <llvm/ADT/bit.h>
-
-#include <mlir/IR/Builders.h>
-
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 namespace vpux {
 namespace VPURegMapped {
 

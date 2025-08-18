@@ -15,6 +15,6 @@ namespace VPU {
 constexpr StringRef FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS =
         "VPU.FragmentationAvoidRatioPipeliningLargeWeights";
 
-double getFragmentationAvoidRatioPipeliningLargeWeights(VPU::ArchKind archKind);
+double getFragmentationAvoidRatioPipeliningLargeWeights(config::ArchKind archKind);
 }  // namespace VPU
 }  // namespace vpux

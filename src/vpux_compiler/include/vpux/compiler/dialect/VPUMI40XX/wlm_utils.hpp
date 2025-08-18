@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
@@ -117,6 +116,15 @@ struct FetchTaskDetails {
 
 VPUMI40XX::NNDMAOp getPreviousDMAWithBarriers(VPURegMapped::TaskOpInterface taskOpInterface);
 void logFetchOpsDetails(mlir::func::FuncOp netFunc, Logger log);
+
+struct EnqDmaInfo {
+    int64_t startTaskIdx;
+    int64_t endTaskIdx;
+    VPUMI40XX::NNDMAOp enqDmaOp;
+};
+
+mlir::DenseMap<VPUMI40XX::HwQueueType, SmallVector<EnqDmaInfo>> getEnqueueDmaData(
+        VPUMI40XX::NNDMAOp firstDmaTile0List0Op, Logger log);
 
 }  // namespace VPUMI40XX
 }  // namespace vpux

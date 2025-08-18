@@ -7,8 +7,16 @@
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+
+namespace vpux::Const {
+class DeclareOp;
+}  // namespace vpux::Const
+namespace vpux::VPURT {
+class TaskOp;
+}  // namespace vpux::VPURT
 
 namespace vpux {
 namespace VPUIP {
@@ -121,6 +129,10 @@ private:
 
 void unrollDistributedOpsCommon40XXPlus(mlir::func::FuncOp funcOp,
                                         std::optional<DmaFusionHandlerType> maybeDmaFusionHandler, vpux::Logger log);
+
+mlir::Value patchSETableValue(mlir::Location loc, Const::DeclareOp constOp,
+                              VPUIP::DistributedBufferType nceInputDistType, const int64_t targetClusterId,
+                              mlir::OpBuilder& builder);
 
 }  // namespace VPUIP
 }  // namespace vpux
