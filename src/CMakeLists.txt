@@ -16,19 +16,6 @@ if(BUILD_COMPILER_FOR_DRIVER)
     add_subdirectory(vpux_driver_compiler)
 endif()
 
-if(ENABLE_IMD_BACKEND)
-    message(
-        WARNING
-        "ENABLE_IMD_BACKEND is planned to be removed for the next OpenVINO release. Please use ENABLE_IMD_PLUGIN instead."
-    )
-endif()
-
-if(ENABLE_IMD_BACKEND OR ENABLE_IMD_PLUGIN)
-    add_subdirectory(vpux_imd_backend)
-
-    add_subdirectory(imd_plugin)
-endif()
-
 add_subdirectory(vpux_utils)
 
 add_subdirectory(vpux_compiler)

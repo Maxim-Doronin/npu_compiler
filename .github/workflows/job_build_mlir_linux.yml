@@ -211,7 +211,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DOpenVINODeveloperPackage_DIR=$(realpath ${OPENVINO_BUILD_DIR}) \
             -DENABLE_TESTS=${{ env.ENABLE_TESTS_FLAG }} \
-            -DENABLE_DEVELOPER_BUILD=OFF \
+            -DENABLE_DEVELOPER_BUILD=ON \
             -DENABLE_MLIR_COMPILER=ON \
             -DBUILD_COMPILER_FOR_DRIVER=OFF \
             -DENABLE_DRIVER_COMPILER_ADAPTER=ON \
