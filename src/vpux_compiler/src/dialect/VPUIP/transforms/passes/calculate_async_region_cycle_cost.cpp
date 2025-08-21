@@ -7,7 +7,10 @@
 #include "vpux/compiler/core/cycle_cost_info.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_CALCULATEASYNCREGIONCYCLECOST
@@ -33,7 +36,7 @@ private:
 void CalculateAsyncRegionCycleCostPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
     auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);

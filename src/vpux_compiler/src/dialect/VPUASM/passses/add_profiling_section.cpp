@@ -3,10 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
@@ -34,7 +36,7 @@ void AddProfilingSection::safeRunOnModule() {
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
-    const auto arch = VPU::getArch(moduleOp);
+    const auto arch = config::getArch(moduleOp);
     if (netInfo.getProfilingOutputsInfo().empty()) {
         return;
     }

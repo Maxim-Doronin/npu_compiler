@@ -19,11 +19,7 @@
 }>
 
 // CHECK-LABEL: @SoftMax
-module @SoftMax attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
-    // CHECK-DAG: {{  }}IE.TileResource
-    // CHECK-DAG: {{      }}module @DmaProfilingReservedMemory
-    // CHECK-NEXT: {{        }}IE.MemoryResource 1024 bytes of @CMX_NN offset 1473536
-
+module @SoftMax attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]
     module @VPU.SW {
         func.func private @builtin_SoftMax(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64) attributes {VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax", VPU.task_type = @COMPUTE}
@@ -169,7 +165,7 @@ module @SoftMax attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilati
 }>
 
 // CHECK-LABEL: @TwoFunctions
-module @TwoFunctions attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
     // CHECK-DAG: {{  }}IE.TileResource
 
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]

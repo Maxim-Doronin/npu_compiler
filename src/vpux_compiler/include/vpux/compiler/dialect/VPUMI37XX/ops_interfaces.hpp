@@ -5,31 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/core/attributes/strides.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/attributes.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/types.hpp"
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
-
-#include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/optional.hpp"
-#include "vpux/utils/core/range.hpp"
-#include "vpux/utils/core/string_ref.hpp"
-#include "vpux/utils/logger/logger.hpp"
-
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/Operation.h>
-#include <mlir/IR/Value.h>
-
-#include "vpux/compiler/utils/attributes.hpp"
-
-#include "vpux/utils/core/small_vector.hpp"
-
 #include <mlir/IR/OpDefinition.h>
 #include <mlir/IR/Operation.h>
-#include <mlir/Interfaces/SideEffectInterfaces.h>
 
 namespace vpux {
 namespace VPUMI37XX {

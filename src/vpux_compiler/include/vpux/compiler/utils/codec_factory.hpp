@@ -25,5 +25,6 @@ public:
     static std::string compressionModeToStr(ICodec::CompressionMode mode);
 };
 
-std::unique_ptr<ICodec> makeCodec(const ICodec::CompressionAlgorithm algo, VPU::ArchKind arch = VPU::ArchKind::UNKNOWN);
+std::unique_ptr<ICodec> makeCodec(const ICodec::CompressionAlgorithm algo,
+                                  config::ArchKind arch = config::ArchKind::UNKNOWN);
 }  // namespace vpux

@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 
@@ -22,8 +23,20 @@ using namespace vpux;
 
 namespace {
 
+std::optional<uint32_t> getFirstNonFetchDMAIdx(ArrayRef<uint32_t> dmaTaskIndices, const BarrierInfo& barrierInfo) {
+    for (auto dmaIdx : dmaTaskIndices) {
+        auto taskOp = barrierInfo.getTaskOpAtIndex(dmaIdx);
+        auto innerOp = taskOp.getInnerTaskOp();
+
+        if (!mlir::isa<VPUIP::FetchDMAOp>(innerOp)) {
+            return dmaIdx;
+        }
+    }
+    return std::nullopt;
+}
+
 std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarrierCandidate(
-        BarrierInfo& barrierInfo, VPURT::TaskOpQueues& taskQueueTypeMap, bool compilerBarrierProgramming, Logger log) {
+        BarrierInfo& barrierInfo, VPURT::TaskOpQueues& taskQueueTypeMap, Logger log) {
     VPURT::TaskOp firstDmaOp;
     VPURT::DeclareVirtualBarrierOp startBarrierCandidateOp;
 
@@ -51,11 +64,8 @@ std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarr
     // Find also first DMA on that FIFO that updates a barrier.
     // This DMA is the candidate to produce a start barrier
 
-    auto firstP0ChDdrDmaIdxIt = std::begin(taskQueueTypeMap[dmaP0ChDddrQueueType]);
-
-    std::optional<uint32_t> firstP0ChDdrDmaIdx = (firstP0ChDdrDmaIdxIt != taskQueueTypeMap[dmaP0ChDddrQueueType].end()
-                                                          ? std::make_optional(*firstP0ChDdrDmaIdxIt)
-                                                          : std::nullopt);
+    const auto& dmaTaskIndices = taskQueueTypeMap[dmaP0ChDddrQueueType];
+    auto firstP0ChDdrDmaIdx = getFirstNonFetchDMAIdx(dmaTaskIndices, barrierInfo);
 
     // If no DMA was found then it needs to be created, do early return
     if (!firstP0ChDdrDmaIdx.has_value()) {
@@ -164,28 +174,26 @@ std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarr
                 startBarrierCandidatesVec.end());
     }
 
-    if (compilerBarrierProgramming) {
-        // 4. Remove candidates which are produced by any other tasks than firstDMA. Special case which needed only for
-        // compiler barrier programming for avoid race condition between DMA tasks
-        startBarrierCandidatesVec.erase(
-                llvm::remove_if(startBarrierCandidatesVec,
-                                [&](size_t barrierIdx) {
-                                    auto barrierUpdatedNonFirstDmaTask = false;
-                                    for (auto barrierProducerIdx : barrierInfo.getBarrierProducers(barrierIdx)) {
-                                        auto barrierProducerOp = barrierInfo.getTaskOpAtIndex(barrierProducerIdx);
-                                        if (barrierProducerOp != firstDmaOp) {
-                                            barrierUpdatedNonFirstDmaTask = true;
-                                            break;
-                                        }
+    // 4. Remove candidates which are produced by any other tasks than firstDMA. Special case which needed only for
+    // compiler barrier programming for avoid race condition between DMA tasks
+    startBarrierCandidatesVec.erase(
+            llvm::remove_if(startBarrierCandidatesVec,
+                            [&](size_t barrierIdx) {
+                                auto barrierUpdatedNonFirstDmaTask = false;
+                                for (auto barrierProducerIdx : barrierInfo.getBarrierProducers(barrierIdx)) {
+                                    auto barrierProducerOp = barrierInfo.getTaskOpAtIndex(barrierProducerIdx);
+                                    if (barrierProducerOp != firstDmaOp) {
+                                        barrierUpdatedNonFirstDmaTask = true;
+                                        break;
                                     }
-                                    return barrierUpdatedNonFirstDmaTask;
-                                }),
-                startBarrierCandidatesVec.end());
+                                }
+                                return barrierUpdatedNonFirstDmaTask;
+                            }),
+            startBarrierCandidatesVec.end());
 
-        if (startBarrierCandidatesVec.empty()) {
-            log.trace("No start barrier candidates left");
-            return std::make_pair(firstDmaOp, nullptr);
-        }
+    if (startBarrierCandidatesVec.empty()) {
+        log.trace("No start barrier candidates left");
+        return std::make_pair(firstDmaOp, nullptr);
     }
 
     // No candidates left, return
@@ -227,7 +235,7 @@ void addExplicitDependencyBetweenDmaListsAndStartBarrier(mlir::func::FuncOp func
                                                          VPURT::DeclareVirtualBarrierOp startBarrierOp, Logger log) {
     const auto module = func->getParentOfType<mlir::ModuleOp>();
     const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-    auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(VPU::getArch(module));
+    auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(config::getArch(module));
     for (auto dmaPortIdx : irange(dmaPortNum)) {
         for (auto dmaChannel : dmaChannels) {
             // We skip queue P0 CH:DDR because is queue where we have DMA that's responsible for handling start barrier.
@@ -256,28 +264,13 @@ void addExplicitDependencyBetweenDmaListsAndStartBarrier(mlir::func::FuncOp func
 
 class AddStartBarrierPass final : public VPUIP::arch40xx::impl::AddStartBarrierBase<AddStartBarrierPass> {
 public:
-    explicit AddStartBarrierPass(bool compilerBarrierProgramming, Logger log)
-            : _compilerBarrierProgramming(compilerBarrierProgramming) {
+    explicit AddStartBarrierPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
 private:
-    bool _compilerBarrierProgramming;
     void safeRunOnFunc() final;
 };
-
-mlir::LogicalResult AddStartBarrierPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-    if (!enableCompilerBarrierProgramming.hasValue()) {
-        return mlir::success();
-    }
-    _compilerBarrierProgramming = enableCompilerBarrierProgramming.getValue();
-    return mlir::success();
-}
 
 void AddStartBarrierPass::safeRunOnFunc() {
     auto func = getOperation();
@@ -285,7 +278,7 @@ void AddStartBarrierPass::safeRunOnFunc() {
     barrierInfo.buildTaskQueueTypeMap();
     auto taskQueueTypeMap = VPURT::getTaskOpQueues(func, barrierInfo);
     auto [firstDmaOp, startBarrierCandidateOp] =
-            getFirstDmaAndStartBarrierCandidate(barrierInfo, taskQueueTypeMap, _compilerBarrierProgramming, _log);
+            getFirstDmaAndStartBarrierCandidate(barrierInfo, taskQueueTypeMap, _log);
 
     if (startBarrierCandidateOp == nullptr) {
         auto insertPoint = &func.getBody().front().front();
@@ -321,21 +314,14 @@ void AddStartBarrierPass::safeRunOnFunc() {
     auto loc = mlir::NameLoc::get(mlir::StringAttr::get(&getContext(), "start_barrier"));
     startBarrierCandidateOp->setLoc(loc);
     startBarrierCandidateOp.setIsStartBarrier(true);
-    if (_compilerBarrierProgramming) {
-        addExplicitDependencyBetweenDmaListsAndStartBarrier(func, barrierInfo, taskQueueTypeMap,
-                                                            startBarrierCandidateOp, _log);
-    }
+    addExplicitDependencyBetweenDmaListsAndStartBarrier(func, barrierInfo, taskQueueTypeMap, startBarrierCandidateOp,
+                                                        _log);
 
     barrierInfo.clearAttributes();
     VPURT::verifyBarrierSlots(func, _log);
 }
 }  // namespace
 
-//
-// createAddStartBarrierPass
-//
-
-std::unique_ptr<mlir::Pass> vpux::VPUIP::arch40xx::createAddStartBarrierPass(bool compilerBarrierProgramming,
-                                                                             Logger log) {
-    return std::make_unique<AddStartBarrierPass>(compilerBarrierProgramming, log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::arch40xx::createAddStartBarrierPass(Logger log) {
+    return std::make_unique<AddStartBarrierPass>(log);
 }

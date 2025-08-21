@@ -28,7 +28,7 @@ using MLIR_OpTilingCacheTest = vpux::VPU::arch37xx::UnitTest;
 
 llvm::StringLiteral inputIR = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-    module @test attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+    module @test attributes {config.arch = #config.arch_kind<NPU40XX>} {
         func.func @main(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>)
           -> tensor<1x16x8x8xf16, {order = #NHWC}> {
 
@@ -54,16 +54,16 @@ llvm::StringLiteral inputIR = R"(
 
 TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
     auto registry = vpux::createDialectRegistry();
-    auto interfacesRegistry = vpux::createInterfacesRegistry(VPU::ArchKind::NPU40XX);
+    auto interfacesRegistry = vpux::createInterfacesRegistry(config::ArchKind::NPU40XX);
     interfacesRegistry->registerInterfaces(registry);
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
-    module.get()->removeAttr("VPU.arch");
+    module.get()->removeAttr("config.arch");
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(VPU::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(config::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
     ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
 
@@ -92,18 +92,18 @@ TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
 
 TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
     auto registry = vpux::createDialectRegistry();
-    auto interfacesRegistry = vpux::createInterfacesRegistry(VPU::ArchKind::NPU40XX);
+    auto interfacesRegistry = vpux::createInterfacesRegistry(config::ArchKind::NPU40XX);
     interfacesRegistry->registerInterfaces(registry);
     // set cost model factory
-    VPU::CostModelConfig::setFactory(VPU::ArchKind::NPU40XX);
+    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
-    module.get()->removeAttr("VPU.arch");
+    module.get()->removeAttr("config.arch");
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(VPU::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(config::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
     ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
 
@@ -133,10 +133,11 @@ TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
             mlir::dyn_cast<VPU::ClusteredOpInterface>(nceOps[0].getOperation()).getMultiClusterStrategy().value();
 
     const auto costParams = VPU::getWorkloadCostParam(mlir::dyn_cast<VPU::NCEOpInterface>(nceOps[0].getOperation()),
-                                                      VPU::ArchKind::NPU40XX, numDPUs);
-    const auto vpunnStrategy = VPU::getVPULayerStrategy(strategy, numDPUs, numTiles, VPU::ArchKind::NPU40XX, 1, true);
+                                                      config::ArchKind::NPU40XX, numDPUs);
+    const auto vpunnStrategy =
+            VPU::getVPULayerStrategy(strategy, numDPUs, numTiles, config::ArchKind::NPU40XX, 1, true);
 
-    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(VPU::ArchKind::NPU40XX);
+    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(config::ArchKind::NPU40XX);
 
     auto dpuCost1 = getDPUCostForNCEOp(nceOps[0], strategy, outputTiling, costParams, vpunnStrategy, layerCostModel,
                                        Logger::global());

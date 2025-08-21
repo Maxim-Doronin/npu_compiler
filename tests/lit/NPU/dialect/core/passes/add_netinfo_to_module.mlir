@@ -69,7 +69,7 @@ module @MultipleNestedModules {
     }
   }
 
-// CHECK-LABEL:  module @Module2 {  
+// CHECK-LABEL:  module @Module2 {
   module @Module2 {
 // CHECK:  net.NetworkInfo entryPoint : @main_part3 inputsInfo : {
 // CHECK:    DataInfo "in_0" : tensor<1x3x60x60xf16>
@@ -112,14 +112,6 @@ module @ExistingNetInfoFailure {
     %1 = VPUIP.Copy inputs(%0 : memref<1x3x60x60xf16>) outputs(%arg1 : memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16>
     return %arg1 : memref<1x3x60x60xf16>
   }
-}
-
-// -----
-
-module @NoFnFailure {
-  // expected-error@+1 {{Module must contain exactly one function to add NetworkInfoOp}}
-  module @Module0 {
-  }  
 }
 
 // -----

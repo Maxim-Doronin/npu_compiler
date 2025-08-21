@@ -81,32 +81,43 @@ private:
     }
 
 public:
-    friend BoundedDim operator+(const BoundedDim& x, const BoundedDim& y);
-    friend BoundedDim operator-(const BoundedDim& x, const BoundedDim& y);
-    friend BoundedDim operator*(const BoundedDim& x, const BoundedDim& y);
+    BoundedDim operator+(const BoundedDim& other) const;
+    BoundedDim operator-(const BoundedDim& other) const;
+    BoundedDim operator*(const BoundedDim& other) const;
 
     BoundedDim& operator+=(const BoundedDim& other);
     BoundedDim& operator-=(const BoundedDim& other);
     BoundedDim& operator*=(const BoundedDim& other);
 
-    friend bool operator==(const BoundedDim& x, const BoundedDim& y);
-    friend bool operator!=(const BoundedDim& x, const BoundedDim& y);
-    friend bool operator<(const BoundedDim& x, const BoundedDim& y);
-    friend bool operator>(const BoundedDim& x, const BoundedDim& y);
-    friend bool operator<=(const BoundedDim& x, const BoundedDim& y);
-    friend bool operator>=(const BoundedDim& x, const BoundedDim& y);
+    bool operator==(const BoundedDim& other) const;
+    bool operator!=(const BoundedDim& other) const;
+    bool operator<(const BoundedDim& other) const;
+    bool operator>(const BoundedDim& other) const;
+    bool operator<=(const BoundedDim& other) const;
+    bool operator>=(const BoundedDim& other) const;
+
+    friend BoundedDim operator+(int64_t x, const BoundedDim& y);
+    friend BoundedDim operator-(int64_t x, const BoundedDim& y);
+    friend BoundedDim operator*(int64_t x, const BoundedDim& y);
+
+    friend bool operator==(int64_t x, const BoundedDim& y);
+    friend bool operator!=(int64_t x, const BoundedDim& y);
+    friend bool operator<(int64_t x, const BoundedDim& y);
+    friend bool operator>(int64_t x, const BoundedDim& y);
+    friend bool operator<=(int64_t x, const BoundedDim& y);
+    friend bool operator>=(int64_t x, const BoundedDim& y);
 };
 
-BoundedDim operator+(const BoundedDim& x, const BoundedDim& y);
-BoundedDim operator-(const BoundedDim& x, const BoundedDim& y);
-BoundedDim operator*(const BoundedDim& x, const BoundedDim& y);
+BoundedDim operator+(int64_t x, const BoundedDim& y);
+BoundedDim operator-(int64_t x, const BoundedDim& y);
+BoundedDim operator*(int64_t x, const BoundedDim& y);
 
-bool operator==(const BoundedDim& x, const BoundedDim& y);
-bool operator!=(const BoundedDim& x, const BoundedDim& y);
-bool operator<(const BoundedDim& x, const BoundedDim& y);
-bool operator>(const BoundedDim& x, const BoundedDim& y);
-bool operator<=(const BoundedDim& x, const BoundedDim& y);
-bool operator>=(const BoundedDim& x, const BoundedDim& y);
+bool operator==(int64_t x, const BoundedDim& y);
+bool operator!=(int64_t x, const BoundedDim& y);
+bool operator>(int64_t x, const BoundedDim& y);
+bool operator<(int64_t x, const BoundedDim& y);
+bool operator>=(int64_t x, const BoundedDim& y);
+bool operator<=(int64_t x, const BoundedDim& y);
 
 // Represents a possibly dynamic dimension size. For dynamic sizes the bound is stored as the size and isDynamic is set
 // to true.
@@ -138,32 +149,43 @@ private:
     }
 
 public:
-    friend MaskedDim operator+(const MaskedDim& x, const MaskedDim& y);
-    friend MaskedDim operator-(const MaskedDim& x, const MaskedDim& y);
-    friend MaskedDim operator*(const MaskedDim& x, const MaskedDim& y);
+    MaskedDim operator+(const MaskedDim& other) const;
+    MaskedDim operator-(const MaskedDim& other) const;
+    MaskedDim operator*(const MaskedDim& other) const;
 
     MaskedDim& operator+=(const MaskedDim& other);
     MaskedDim& operator-=(const MaskedDim& other);
     MaskedDim& operator*=(const MaskedDim& other);
 
-    friend bool operator==(const MaskedDim& x, const MaskedDim& y);
-    friend bool operator!=(const MaskedDim& x, const MaskedDim& y);
-    friend bool operator<(const MaskedDim& x, const MaskedDim& y);
-    friend bool operator>(const MaskedDim& x, const MaskedDim& y);
-    friend bool operator<=(const MaskedDim& x, const MaskedDim& y);
-    friend bool operator>=(const MaskedDim& x, const MaskedDim& y);
+    bool operator==(const MaskedDim& other) const;
+    bool operator!=(const MaskedDim& other) const;
+    bool operator<(const MaskedDim& other) const;
+    bool operator>(const MaskedDim& other) const;
+    bool operator<=(const MaskedDim& other) const;
+    bool operator>=(const MaskedDim& other) const;
+
+    friend MaskedDim operator+(int64_t x, const MaskedDim& y);
+    friend MaskedDim operator-(int64_t x, const MaskedDim& y);
+    friend MaskedDim operator*(int64_t x, const MaskedDim& y);
+
+    friend bool operator==(int64_t x, const MaskedDim& y);
+    friend bool operator!=(int64_t x, const MaskedDim& y);
+    friend bool operator<(int64_t x, const MaskedDim& y);
+    friend bool operator>(int64_t x, const MaskedDim& y);
+    friend bool operator<=(int64_t x, const MaskedDim& y);
+    friend bool operator>=(int64_t x, const MaskedDim& y);
 };
 
-MaskedDim operator+(const MaskedDim& x, const MaskedDim& y);
-MaskedDim operator-(const MaskedDim& x, const MaskedDim& y);
-MaskedDim operator*(const MaskedDim& x, const MaskedDim& y);
+MaskedDim operator+(int64_t x, const MaskedDim& y);
+MaskedDim operator-(int64_t x, const MaskedDim& y);
+MaskedDim operator*(int64_t x, const MaskedDim& y);
 
-bool operator==(const MaskedDim& x, const MaskedDim& y);
-bool operator!=(const MaskedDim& x, const MaskedDim& y);
-bool operator<(const MaskedDim& x, const MaskedDim& y);
-bool operator>(const MaskedDim& x, const MaskedDim& y);
-bool operator<=(const MaskedDim& x, const MaskedDim& y);
-bool operator>=(const MaskedDim& x, const MaskedDim& y);
+bool operator==(int64_t x, const MaskedDim& y);
+bool operator!=(int64_t x, const MaskedDim& y);
+bool operator>(int64_t x, const MaskedDim& y);
+bool operator<(int64_t x, const MaskedDim& y);
+bool operator>=(int64_t x, const MaskedDim& y);
+bool operator<=(int64_t x, const MaskedDim& y);
 
 namespace details {
 

@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -160,7 +159,7 @@ bool isNullOrConstWithSingleValue(mlir::Value value);
  *
  * NOTE: see also vpux::calculateAlignedBuffersMemoryRequirement
  */
-Byte calculateAlignedBuffersMemoryRequirement(VPU::ArchKind arch, mlir::SmallVector<Byte>& bufferSizes);
+Byte calculateAlignedBuffersMemoryRequirement(config::ArchKind arch, mlir::SmallVector<Byte>& bufferSizes);
 
 }  // namespace VPU
 }  // namespace vpux

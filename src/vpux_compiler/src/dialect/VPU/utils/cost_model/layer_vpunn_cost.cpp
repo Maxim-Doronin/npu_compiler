@@ -4,12 +4,15 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
-#include <llvm/ADT/TypeSwitch.h>
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
 
 using namespace vpux;
 using namespace VPU;
@@ -40,11 +43,11 @@ StrategyCost correctSwOpCost(VPU::SWOpInterface swOp, ArrayRef<vpux::NDTypeInter
         // Currently only MemPermuteOp needs cost correction
         auto inputType = mlir::cast<NDTypeInterface>(memPermute.getInput().getType());
         auto outputType = mlir::cast<NDTypeInterface>(memPermute.getOutput().getType());
-        if (VPUIP::satisfiesOptimizedMemPermute(VPU::getArch(swOp.getOperation()), inputType, outputType)) {
+        if (VPUIP::satisfiesOptimizedMemPermute(config::getArch(swOp.getOperation()), inputType, outputType)) {
             VPUX_THROW_WHEN(tiledInputTypes.empty(), "Cannot get tiled input");
             auto tiledInputType = tiledInputTypes.front();
             auto tiledOutputType = tiledInputType.changeDimsOrder(outputType.getDimsOrder());
-            if (!VPUIP::satisfiesOptimizedMemPermute(VPU::getArch(swOp.getOperation()), tiledInputType,
+            if (!VPUIP::satisfiesOptimizedMemPermute(config::getArch(swOp.getOperation()), tiledInputType,
                                                      tiledOutputType)) {
                 cost *= SW_COST_CORRECTION_FACTOR_FOR_MEM_PERMUTE;
             }
@@ -84,7 +87,7 @@ LayerVPUNNCost::LayerVPUNNCost(mlir::func::FuncOp func, std::shared_ptr<VPUNN::V
                                Logger log)
         : _vpunnCostModel(std::move(layerCostModel)), _log(log) {
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    _arch = VPU::getArch(module);
+    _arch = config::getArch(module);
 
     auto tileOp = IE::getTileExecutor(module);
     auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
@@ -99,7 +102,7 @@ LayerVPUNNCost::LayerVPUNNCost(mlir::func::FuncOp func, std::shared_ptr<VPUNN::V
 };
 
 LayerVPUNNCost::LayerVPUNNCost(mlir::func::FuncOp func, Logger log)
-        : LayerVPUNNCost(func, VPU::CostModelConfig::createLayerCostModel(getArch(func)), log) {};
+        : LayerVPUNNCost(func, VPU::CostModelConfig::createLayerCostModel(config::getArch(func)), log) {};
 
 void LayerVPUNNCost::resetNNCacheCounter() {
     _vpunnCostModel->getDPUPreloadedCacheCounter().reset();

@@ -29,14 +29,16 @@ public:
     RelocManager& operator=(const RelocManager&) = delete;
 
     void createRelocations(ELF::RelocatableOpInterface relocatableOp);
+    void createRelocations(mlir::Operation* op, ELF::SymbolOp sourceSym, ELF::ElfSectionInterface targetSection,
+                           size_t offset, bool isOffsetRelative, vpux::ELF::RelocationType relocType, size_t addend,
+                           std::string_view description);
+    ELF::SymbolOp getSymbolOfBinOpOrEncapsulatingSection(mlir::Operation* binOp);
 
 private:
     void createRelocations(mlir::Operation* op, ELF::RelocationInfo& relocInfo);
     void createRelocations(mlir::Operation* op, std::vector<ELF::RelocationInfo>& relocInfo);
 
     void constructSymbolMap(ELF::MainOp elfMain);
-
-    ELF::SymbolOp getSymbolOfBinOpOrEncapsulatingSection(mlir::Operation* binOp);
 
     ELF::CreateRelocationSectionOp getRelocationSection(ELF::ElfSectionInterface targetSection,
                                                         ELF::CreateSymbolTableSectionOp symbolTable);

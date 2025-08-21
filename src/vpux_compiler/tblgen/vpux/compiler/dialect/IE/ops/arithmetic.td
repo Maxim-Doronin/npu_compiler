@@ -18,6 +18,7 @@ def IE_AbsOp :
         IE_LayerOp<
             "Abs",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -342,6 +343,7 @@ def IE_NegativeOp :
         IE_LayerOp<
             "Negative",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -383,6 +385,7 @@ def IE_SignOp :
         IE_LayerOp<
             "Sign",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {

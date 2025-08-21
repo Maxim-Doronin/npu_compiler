@@ -5,27 +5,22 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/resources.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/utils/core/enums.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/Value.h>
-#include <vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp>
 
 namespace vpux {
 namespace VPUIP {
-
-//
-// Wlm status utils
-//
-
-void setWlmStatus(mlir::ModuleOp module, vpux::VPUIP::WlmStatus status);
-vpux::VPUIP::WlmStatus getWlmStatus(mlir::ModuleOp module);
 
 //
 // Profiling
@@ -61,15 +56,20 @@ constexpr uint32_t HW_M2I_PROFILING_MAX_BUFFER_SIZE = 128;
 constexpr int64_t MAX_SW_KERNEL_PREFETCH_DATA_SIZE_37XX = 256;
 constexpr int64_t MAX_SW_KERNEL_PREFETCH_DATA_SIZE_40XX = 1024;
 
+// Reserved memory for buffers required by dummy kernels.
+// Used to prefetch SW kernels instructions on architectures
+// which do not support dedicated operation
+constexpr int64_t MAX_SW_KERNEL_DUMMY_KERNELS_DATA_SIZE = 8;
+
 // PLL WORKPOINT_CONFIG_MIRROR ADDRESS
 constexpr uint32_t NUM_CAPTURED_WORKPOINTS = 2;
 constexpr uint32_t HW_PLL_WORKPOINT_ABSOLUTE_ADDR = 0x20082020;
 constexpr uint16_t HW_PLL_WORKPOINT_SIZE = 4;
 
 // TODO: E#78647 refactor to use api/vpu_cmx_info_{arch}.h
-const EnumMap<VPU::ArchKind, size_t> firmwareVariantCount = {
-        {VPU::ArchKind::NPU37XX, 256},
-        {VPU::ArchKind::NPU40XX, 128},
+const EnumMap<config::ArchKind, size_t> firmwareVariantCount = {
+        {config::ArchKind::NPU37XX, 256},
+        {config::ArchKind::NPU40XX, 128},
 };
 
 uint16_t getProfWorkloadSize(mlir::ModuleOp module);
@@ -190,7 +190,8 @@ SmallVector<mlir::Value> getSplitBuffers(mlir::MLIRContext* ctx, mlir::Location 
 // MovePureViewOpBeforeCopy Utilities
 //
 
-int64_t getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse, VPU::ArchKind arch);
+int64_t getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse,
+                                     config::ArchKind arch);
 
 int64_t getSpecificAxisFromAttr(mlir::ArrayAttr attr);
 
@@ -204,11 +205,11 @@ bool areDistributedTypePerClusterDataCompatible(DistType inDistType, DistType ou
     const auto inStrides = inDistType.getStrides();
     const auto outStrides = outDistType.getStrides();
     const auto calcBufferOffset = [](ShapeRef shapeOffset, Strides strides) {
-        Byte bufOffset{0};
+        Bit bufOffset{0};
         for (size_t axis = 0; axis < strides.size(); axis++) {
-            bufOffset += shapeOffset[Dim(axis)] * static_cast<Byte>(strides[Dim(axis)]);
+            bufOffset += shapeOffset[Dim(axis)] * strides[Dim(axis)];
         }
-        return bufOffset.count();
+        return bufOffset.to<Byte>().count();
     };
     const auto isPerClusterCompatible = [&](ShapeRef inShape, ShapeRef outShape, ShapeRef inShapeOffset,
                                             ShapeRef outShapeOffset) {
@@ -226,7 +227,7 @@ bool areDistributedTypePerClusterDataCompatible(DistType inDistType, DistType ou
 
 template <typename DistType>
 VPU::DistributionInfoAttr getSOHDistAttrWithNewShape(mlir::MLIRContext* ctx, DistType origDistType, ShapeRef newShape,
-                                                     VPU::ArchKind arch) {
+                                                     config::ArchKind arch) {
     const auto origDistAttr = origDistType.getDistribution();
     VPUX_THROW_UNLESS(VPU::isSegmentedOverH(origDistAttr), "Input dist type is not SEGMENTED over H");
 
@@ -321,7 +322,7 @@ bool isDistributedCompatibleAfterShapeChangeForViewOps(DistType inDistType, Dist
 
 template <typename DistType>
 bool isDistributedCompatibleAfterShapeChangeForViewOps(DistType inDistType, ShapeRef shape, DimsOrder outOrder,
-                                                       VPU::ArchKind arch) {
+                                                       config::ArchKind arch) {
     const auto mode = inDistType.getDistribution().getMode().getValue();
     VPUX_THROW_UNLESS(VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED) ||
                               VPU::bitEnumContainsAny(mode, VPU::DistributionMode::SEGMENTED),
@@ -537,7 +538,7 @@ vpux::Dim getCopyDMATilingDimForLargePlaneNum(mlir::Operation* op);
 int64_t getStridingLevel(const vpux::NDTypeInterface& type);
 int64_t getStridingLevel(const mlir::Value val);
 bool hasLegalStridingLevel(mlir::Operation* op);
-bool isSplitNeededForLargePlanesNum(const VPU::ArchKind arch, const vpux::NDTypeInterface& type, ShapeRef shape);
+bool isSplitNeededForLargePlanesNum(const config::ArchKind arch, const vpux::NDTypeInterface& type, ShapeRef shape);
 bool isSplitNeededForLargePlanesNum(mlir::Operation* op);
 
 //
@@ -589,13 +590,18 @@ VPURT::TaskOp createBarProgDMA(mlir::OpBuilder& builder, mlir::Value input, mlir
                                mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
                                VPUIP::PhysicalBarrierRangeAttr physicalBarrierRangeAttr,
                                llvm::StringLiteral opName = "bar_prog_dma");
+
+VPURT::TaskOp createEnqueueDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                               mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                               VPUIP::EnqueueDMAAttr enqueueDMAAttr, llvm::StringLiteral opName = "enqueue_dma");
+
 //
 // Distributed Type utils
 //
 
 template <typename DistType>
 VPU::DistributionInfoAttr getDistributedAttrAfterShapeCast(VPU::DistributedTypeInterface origDistrType,
-                                                           ArrayRef<int64_t> origOutShape, VPU::ArchKind arch) {
+                                                           ArrayRef<int64_t> origOutShape, config::ArchKind arch) {
     const auto ndTypeIf = mlir::cast<NDTypeInterface>(origDistrType);
     const auto origInShape = ndTypeIf.getShape().raw();
     const auto distributedType = mlir::cast<DistType>(origDistrType.getDistributedTypes().front());
@@ -742,8 +748,6 @@ std::pair<int64_t, int64_t> getSplitPartSizes(NDTypeInterface bufferType, vpux::
 //
 // Check user utils
 //
-
-bool hasOneOrSameUser(mlir::Operation* op);
 
 std::unordered_set<Dim> getConcatAxes(VPUIP::ConcatViewOp concatViewOp);
 

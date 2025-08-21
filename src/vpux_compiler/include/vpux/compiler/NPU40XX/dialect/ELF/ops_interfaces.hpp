@@ -6,12 +6,15 @@
 #pragma once
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
-
+#include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/utils/core/dense_map.hpp"
+#include "vpux/utils/core/mem_size.hpp"
 
 #include <vpux_elf/writer.hpp>
+
+#include <mlir/IR/OpDefinition.h>
+#include <mlir/IR/Operation.h>
 
 namespace vpux {
 namespace ELF {

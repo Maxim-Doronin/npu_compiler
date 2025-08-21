@@ -19,7 +19,7 @@ bool needsStaticShape(mlir::Operation* op);
 bool isDynamicDataContiguous(vpux::ShapeRef shape, vpux::DimsOrder order);
 
 template <typename T>
-SmallVector<T> replaceDynamicDimsWithValue(const SmallVector<int64_t>& original, T value) {
+SmallVector<T> replaceDynamicDimsWithValue(ArrayRef<int64_t> original, T value) {
     const auto originalRank = static_cast<int64_t>(original.size());
     const auto transformDim = [value](auto dim) -> T {
         return dim != mlir::ShapedType::kDynamic ? static_cast<T>(dim) : value;
@@ -39,12 +39,27 @@ Shape extractShape(const Shape& shape);
 Shape extractShape(const BoundedShape& shape);
 Shape extractShape(const DimsMaskedShape& shape);
 
+// Helpers for obtaining the reified form of any shape type. Calling this method on a regular Shape with dynamic dims
+// will result in an exception. May be used in templated contexts where the shape type is unknown.
+Shape reifyShape(ShapeRef shape);
+Shape reifyShape(BoundedShapeRef shape);
+Shape reifyShape(DimsMaskedShapeRef shape);
+Shape reifyShape(const Shape& shape);
+Shape reifyShape(const BoundedShape& shape);
+Shape reifyShape(const DimsMaskedShape& shape);
+
 // Helpers for splitting any shape type into its corresponding static Shape, Bounds and DynamicDimsMask representations.
 // Dynamic representations other than the one used by the given shape type are left empty. May be used in templated
 // contexts where the shape type is unknown.
 std::tuple<Shape, Bounds, DynamicDimsMask> splitShapeAndRepresentation(const Shape& shape);
 std::tuple<Shape, Bounds, DynamicDimsMask> splitShapeAndRepresentation(const BoundedShape& shape);
 std::tuple<Shape, Bounds, DynamicDimsMask> splitShapeAndRepresentation(const DimsMaskedShape& shape);
+
+template <typename ShapeType>
+constexpr bool isStaticShape = llvm::is_one_of<ShapeType, Shape, ShapeRef>::value;
+template <typename ShapeType>
+constexpr bool isDynamicShape =
+        llvm::is_one_of<ShapeType, BoundedShape, BoundedShapeRef, DimsMaskedShape, DimsMaskedShapeRef>::value;
 
 // Invokes and returns the result of a dynamic-shape-friendly functor on the concrete shape
 // of a tensor type, eliminating the need for call site type-switching.

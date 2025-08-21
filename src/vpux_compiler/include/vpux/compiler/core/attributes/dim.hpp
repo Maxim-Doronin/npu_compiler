@@ -11,14 +11,11 @@
 
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/core/type_traits.hpp"
 
-#include <functional>
-
 #include <cassert>
+#include <functional>
 
 namespace vpux {
 

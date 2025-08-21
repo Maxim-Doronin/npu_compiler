@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/wlm_utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/compiler/utils/stl_extras.hpp"
 
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SetVector.h>

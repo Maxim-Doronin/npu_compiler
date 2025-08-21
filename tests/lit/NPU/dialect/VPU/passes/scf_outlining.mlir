@@ -60,7 +60,7 @@ module @ControlFlowOutliningStaticShape {
 // CHECK:    [[OUTPUT:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[CST]], [[CST_0]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, {{[^:]+}}} : tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}>, tensor<256x1x1x4xsi32, {order = #NCHW}> -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:    return [[OUTPUT]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:  }
-// CHECK:  func.func @main(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {  
+// CHECK:  func.func @main(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {
 // CHECK:      [[LOCAL_BUFF:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:      [[CST_1:%.+]] = arith.constant 0 : index
 // CHECK:      [[CST_64:%.+]] = arith.constant 64 : index
@@ -109,18 +109,18 @@ module @ControlFlowOutliningStaticShape1 {
       %3 = arith.cmpi eq, %arg1, %c0_0 : index
       %extracted_slice = tensor.extract_slice %arg0[0, 0, %2, 0] [1, 16, 51, 200] [1, 1, 1, 1] : tensor<1x16x200x200xf16, {order = #NHWC}> to tensor<1x16x51x200xf16, {order = #NHWC}>
       %4 = scf.if %3 -> (tensor<1x16x50x200xf16, {order = #NHWC}>) {
-        %5 = VPU.NCE.MaxPool(%extracted_slice, %cst ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}> 
+        %5 = VPU.NCE.MaxPool(%extracted_slice, %cst ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}>
         scf.yield %5 : tensor<1x16x50x200xf16, {order = #NHWC}>
       } else {
         %c200_1 = arith.constant 200 : index
         %5 = arith.subi %c200_1, %arg1 : index
         %6 = arith.cmpi eq, %arg1, %5 : index
         %7 = scf.if %6 -> (tensor<1x16x50x200xf16, {order = #NHWC}>) {
-          %8 = VPU.NCE.MaxPool(%extracted_slice, %cst ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}> 
+          %8 = VPU.NCE.MaxPool(%extracted_slice, %cst ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}>
           scf.yield %8 : tensor<1x16x50x200xf16, {order = #NHWC}>
         } else {
           %extracted_slice_2 = tensor.extract_slice %arg0[0, 0, %2, 0] [1, 16, 52, 200] [1, 1, 1, 1] : tensor<1x16x200x200xf16, {order = #NHWC}> to tensor<1x16x52x200xf16, {order = #NHWC}>
-          %8 = VPU.NCE.MaxPool(%extracted_slice_2, %cst ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}> 
+          %8 = VPU.NCE.MaxPool(%extracted_slice_2, %cst ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}>
           scf.yield %8 : tensor<1x16x50x200xf16, {order = #NHWC}>
         }
         scf.yield %7 : tensor<1x16x50x200xf16, {order = #NHWC}>
@@ -333,4 +333,48 @@ module @ControlFlowOutliningMultipleOutput {
 // CHECK:       scf.yield %inserted_slice : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:     }
 // CHECK:     return [[RESULT]] : tensor<1x256x64x64xf16, {order = #NHWC}>
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+module @Add {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input1" : tensor<1x1x100x100xf32>
+    DataInfo "input2" : tensor<1x1x100x100xf32>
+  } outputsInfo : {
+    DataInfo "Add_3" friendlyName = "output" : tensor<1x1x100x100xf32>
+  }
+  func.func @main(%arg0: tensor<1x1x100x100xf32>, %arg1: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32>{
+    %0 = VPU.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x1x100x100xf32> -> tensor<1x1x100x100xf32, {order = #NHWC}>
+    %1 = VPU.PermuteCast(%arg1) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x1x100x100xf32> -> tensor<1x1x100x100xf32, {order = #NHWC}>
+    %2 = VPU.ShapeCast {shape = [1, 16, 25, 25]} inputs(%0 : tensor<1x1x100x100xf32, {order = #NHWC}>) -> tensor<1x16x25x25xf32, {order = #NHWC}>
+    %3 = VPU.Convert(%2) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x16x25x25xf32, {order = #NHWC}> -> tensor<1x16x25x25xf16, {order = #NHWC}>
+    %4 = VPU.ShapeCast {shape = [1, 16, 25, 25]} inputs(%1 : tensor<1x1x100x100xf32, {order = #NHWC}>) -> tensor<1x16x25x25xf32, {order = #NHWC}>
+    %5 = VPU.Convert(%4) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x16x25x25xf32, {order = #NHWC}> -> tensor<1x16x25x25xf16, {order = #NHWC}>
+    %6 = VPU.NCE.Eltwise(%3, %5) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00]
+, fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x25x25xf32, {order = #NHWC}>
+    %7 = VPU.ShapeCast {shape = [1, 1, 100, 100]} inputs(%6 : tensor<1x16x25x25xf32, {order = #NHWC}>) -> tensor<1x1x100x100xf32, {order = #NHWC}>
+    %8 = VPU.PermuteCast(%7) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x1x100x100xf32, {order = #NHWC}> -> tensor<1x1x100x100xf32>
+    return %8 : tensor<1x1x100x100xf32>
+  }
+
+  // CHECK:   func.func private @main_func0([[INPUT0:%.+]]: tensor<1x1x100x100xf32>, [[INPUT1:%.+]]: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32> {
+  // CHECK:   [[CAST0:%.+]] = VPU.PermuteCast([[INPUT0]])
+  // CHECK:   [[CAST1:%.+]] = VPU.PermuteCast([[INPUT1]])
+  // CHECK:   [[SHAPECAST0:%.+]] = VPU.ShapeCast {shape = [1, 16, 25, 25]} inputs([[CAST0]]
+  // CHECK:   [[CONVERT0:%.+]] = VPU.Convert([[SHAPECAST0]])
+  // CHECK:   [[SHAPECAST1:%.+]] = VPU.ShapeCast {shape = [1, 16, 25, 25]} inputs([[CAST1]]
+  // CHECK:   [[CONVERT1:%.+]] = VPU.Convert([[SHAPECAST1]])
+  // CHECK:   [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[CONVERT0]], [[CONVERT1]])
+  // CHECK:   [[SHAPECAST2:%.+]] = VPU.ShapeCast
+  // CHECK:   [[RESULT:%.+]] = VPU.PermuteCast
+  // CHECK:   return [[RESULT]] : tensor<1x1x100x100xf32>
+  // CHECK:   }
+  // CHECK:   func.func @main([[ARGS0:%.+]]: tensor<1x1x100x100xf32>, [[ARGS1:%.+]]: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32> {
+  // CHECK:   [[RESULTS:%.+]] = call @main_func0([[ARGS0]], [[ARGS1]]) : (tensor<1x1x100x100xf32>, tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32>
+  // CHECK:   return [[RESULTS]] : tensor<1x1x100x100xf32>
+  // CHECK:   }
+}
 

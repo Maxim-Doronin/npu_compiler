@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
@@ -11,12 +11,12 @@
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-
 #include "vpux/utils/core/checked_cast.hpp"
 
 #include <map>
@@ -710,23 +710,11 @@ mlir::LogicalResult FuseConcatsWithDifferentAxes::matchAndRewrite(VPU::ConcatOp 
             return false;
         }
         auto concatAxes = getConcatAxesFromOffsets(concatOp, getShape(concatOp.getResult()));
-        if (concatAxes.size() != 1) {
-            return false;
-        }
         return llvm::all_of(op->getUsers(), [&](const auto& user) {
             auto sliceOp = mlir::dyn_cast<VPU::SliceOp>(user);
             if (sliceOp == nullptr || !sliceOp->hasOneUse()) {
                 return false;
             }
-            auto inShape = getShape(sliceOp.getSource());
-            auto outShape = getShape(sliceOp.getResult());
-            auto diffAxesNum = llvm::count_if(irange(inShape.size()), [&](auto idx) {
-                return inShape[Dim(idx)] != outShape[Dim(idx)];
-            });
-            if (diffAxesNum != 1) {
-                return false;
-            }
-
             auto nextUser = *sliceOp->getUsers().begin();
             if (!mlir::isa<VPU::NCEOpInterface, VPU::SWOpInterface>(nextUser)) {
                 return false;
@@ -1063,7 +1051,7 @@ bool VPU::ConcatOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, Sibl
 
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffersSize).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffersSize).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -1072,7 +1060,7 @@ bool vpux::VPU::ConcatOp::fitIntoCMX(vpux::NDTypeInterface output, Byte reserved
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
     SmallVector<Byte> buffers{output.getTotalAllocSize()};
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

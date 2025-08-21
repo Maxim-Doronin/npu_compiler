@@ -10,6 +10,8 @@
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/PatternMatch.h>
 
+#include "vpux/utils/core/small_vector.hpp"
+
 namespace vpux {
 namespace VPU {
 //
@@ -22,6 +24,10 @@ public:
     virtual ~ITilingAlgorithm() = default;
 
     virtual mlir::LogicalResult applyTiling(mlir::Operation* operation, mlir::RewriterBase& builder, Logger log) = 0;
+
+    virtual mlir::FailureOr<SmallVector<mlir::Operation*>> applyVerticalFusion(mlir::Operation* operation,
+                                                                               mlir::RewriterBase& builder,
+                                                                               Logger log) = 0;
 };
 }  // namespace VPU
 }  // namespace vpux

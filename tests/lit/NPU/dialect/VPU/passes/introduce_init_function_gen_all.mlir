@@ -11,8 +11,8 @@
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
-            ov_2: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
+            vpux_ow_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
+            vpux_ow_2: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
         }
     }
 #-}
@@ -30,13 +30,13 @@ module @CommonSubexpressionElimination {
     }
 
     func.func @main() -> (tensor<4x4xf32>, tensor<4x4xf32>, tensor<8x4xf32>, tensor<8x4xf16>, tensor<8x4xf16>, tensor<4x4xf32>, tensor<4x4xf32>) {
-        %cst_t1 = const.Declare tensor<4x4xf32> = dense_resource<ov_1> : tensor<4x4xf32>, [#const.Add<1.0 : f32>]
-        %cst_t2 = const.Declare tensor<4x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>]
-        %cst_t2_t3_t4 = const.Declare tensor<8x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.PadWithZero<[0, 0], [4, 0]>, #const.Rescale<5.0 : f32>]
-        %cst_t2_t3_t5 = const.Declare tensor<8x4xf16> = dense_resource<ov_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.PadWithZero<[0, 0], [4, 0]>, #const.ConvertElemType<f16>]
-        %cst_t2_t3_t5_copy = const.Declare tensor<8x4xf16> = dense_resource<ov_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.PadWithZero<[0, 0], [4, 0]>, #const.ConvertElemType<f16>]
-        %cst_empty_1 = const.Declare tensor<4x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>
-        %cst_empty_2 = const.Declare tensor<4x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>, []
+        %cst_t1 = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>, [#const.Add<1.0 : f32>]
+        %cst_t2 = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>]
+        %cst_t2_t3_t4 = const.Declare tensor<8x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.PadWithZero<[0, 0], [4, 0]>, #const.Rescale<5.0 : f32>]
+        %cst_t2_t3_t5 = const.Declare tensor<8x4xf16> = dense_resource<vpux_ow_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.PadWithZero<[0, 0], [4, 0]>, #const.ConvertElemType<f16>]
+        %cst_t2_t3_t5_copy = const.Declare tensor<8x4xf16> = dense_resource<vpux_ow_2> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.PadWithZero<[0, 0], [4, 0]>, #const.ConvertElemType<f16>]
+        %cst_empty_1 = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>
+        %cst_empty_2 = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>, []
         return %cst_t1, %cst_t2, %cst_t2_t3_t4, %cst_t2_t3_t5, %cst_t2_t3_t5_copy, %cst_empty_1, %cst_empty_2 : tensor<4x4xf32>, tensor<4x4xf32>, tensor<8x4xf32>, tensor<8x4xf16>, tensor<8x4xf16>, tensor<4x4xf32>, tensor<4x4xf32>
     }
 
@@ -58,13 +58,13 @@ module @CommonSubexpressionElimination {
 
     // CHECK:       func.func private @main([[ARG0:%.+]]: tensor<4x4xf32>, [[ARG2:%.+]]: tensor<8x4xf32>, [[ARG3:%.+]]: tensor<8x4xf16>, [[ARG1:%.+]]: tensor<4x4xf32>)
     // CHECK-SAME:          -> (tensor<4x4xf32>, tensor<4x4xf32>, tensor<8x4xf32>, tensor<8x4xf16>, tensor<8x4xf16>, tensor<4x4xf32>, tensor<4x4xf32>)
-    // CHECK:           [[CST2:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>
-    // CHECK:           [[CST3:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>
+    // CHECK:           [[CST2:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>
+    // CHECK:           [[CST3:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>
     // CHECK:           return [[ARG0]], [[ARG1]], [[ARG2]], [[ARG3]], [[ARG3]], [[CST2]], [[CST3]] : tensor<4x4xf32>, tensor<4x4xf32>, tensor<8x4xf32>, tensor<8x4xf16>, tensor<8x4xf16>, tensor<4x4xf32>, tensor<4x4xf32>
 
     // CHECK:       func.func @wrapper_main() -> (tensor<4x4xf32>, tensor<4x4xf32>, tensor<8x4xf32>, tensor<8x4xf16>, tensor<8x4xf16>, tensor<4x4xf32>, tensor<4x4xf32>)
-    // CHECK:           [[CST0:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_1> : tensor<4x4xf32>
-    // CHECK:           [[CST1:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_2> : tensor<4x4xf32>
+    // CHECK:           [[CST0:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>
+    // CHECK:           [[CST1:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_2> : tensor<4x4xf32>
     // CHECK:           [[CALL:%.+]]:4 = call @init([[CST0]], [[CST1]])
     // CHECK:           [[RET:%.+]]:7 = call @main([[CALL]]#0, [[CALL]]#1, [[CALL]]#2, [[CALL]]#3)
     // CHECK:           return [[RET]]#0, [[RET]]#1, [[RET]]#2, [[RET]]#3, [[RET]]#4, [[RET]]#5, [[RET]]#6
@@ -76,8 +76,8 @@ module @CommonSubexpressionElimination {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
-            ov_2: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
+            vpux_ow_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
+            vpux_ow_2: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
         }
     }
 #-}
@@ -89,7 +89,7 @@ module @SubViewOutside {
     }
 
     func.func @main() -> (tensor<2x2xf32>) {
-        %cst_t1 = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.SubView<[2, 2], [2, 2]>]
+        %cst_t1 = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>, [#const.Add<1.0 : f32>, #const.SubView<[2, 2], [2, 2]>]
         return %cst_t1 : tensor<2x2xf32>
     }
 
@@ -107,7 +107,7 @@ module @SubViewOutside {
     // CHECK:     return [[SLICE]] : tensor<2x2xf32>
 
     // CHECK: func.func @wrapper_main() -> tensor<2x2xf32>
-    // CHECK:     [[CST0:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_1> : tensor<4x4xf32>
+    // CHECK:     [[CST0:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>
     // CHECK:     [[CALL:%.+]] = call @init([[CST0]]) : (tensor<4x4xf32>) -> tensor<4x4xf32>
     // CHECK:     [[RET:%.+]] = call @main([[CALL]])
     // CHECK:     return [[RET]] : tensor<2x2xf32>
@@ -118,7 +118,7 @@ module @SubViewOutside {
 {-#
   dialect_resources: {
     builtin: {
-      ov: "0x10000000ABABABABCDCDCDCD"
+      vpux_ow_: "0x10000000ABABABABCDCDCDCD"
     }
   }
 #-}
@@ -150,7 +150,7 @@ module @SubViewOutsideAdvanced {
     // CHECK:     DataInfo "Convolution_63" friendlyName = "Result_64" : tensor<48x16x1x1xf16>
 
     func.func @main(%arg0: tensor<1x192x100x100xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}> {
-        %cst = const.Declare tensor<48x16x1x1xf16, {order = #NHWC}> = dense_resource<ov> : tensor<2x2x1x1xf16>, [#const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [46, 14, 0, 0]>, #const.SubView<[0, 0, 0, 0], [48, 16, 1, 1]>]
+        %cst = const.Declare tensor<48x16x1x1xf16, {order = #NHWC}> = dense_resource<vpux_ow_> : tensor<2x2x1x1xf16>, [#const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [46, 14, 0, 0]>, #const.SubView<[0, 0, 0, 0], [48, 16, 1, 1]>]
         %0 = VPU.Copy(%cst) {out_mem_space = @CMX_NN} : tensor<48x16x1x1xf16, {order = #NHWC}> -> !DistributedTensor0
 
         %1 = VPU.Copy(%0) : !DistributedTensor0 -> tensor<48x16x1x1xf16, {order = #NHWC}>
@@ -174,7 +174,7 @@ module @SubViewOutsideAdvanced {
 
     // CHECK: func.func @wrapper_main([[ARG0:%.+]]: tensor<1x192x100x100xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}>
     // -- Ensure that the stripped ngraph constants are outside.
-    // CHECK-DAG: [[CST0:%.+]] = const.Declare tensor<2x2x1x1xf16> = dense_resource<ov> : tensor<2x2x1x1xf16>
+    // CHECK-DAG: [[CST0:%.+]] = const.Declare tensor<2x2x1x1xf16> = dense_resource<vpux_ow_> : tensor<2x2x1x1xf16>
     // CHECK:     [[CALL:%.+]] = call @init([[CST0]]) : (tensor<2x2x1x1xf16>) -> tensor<48x16x1x1xf16, {order = #NHWC}>
     // CHECK:     [[RET:%.+]] = call @main([[ARG0]], [[CALL]])
     // CHECK:     return [[RET:%.+]] : tensor<48x16x1x1xf16, {order = #NHWC}>
@@ -185,7 +185,7 @@ module @SubViewOutsideAdvanced {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30"
+        vpux_ow_0: "0x10000000AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30"
     }
   }
 #-}
@@ -211,7 +211,7 @@ module @QuantizedToQuantizedConversion {
     // CHECK:        DataInfo "output_0" : tensor<16x3x3x3xui8>
 
     func.func @main() -> (tensor<16x3x3x3xui8>) {
-        %cst = const.Declare tensor<16x3x3x3x!qElemType2> = dense_resource<ov_0> : tensor<16x3x3x3xsi8>,
+        %cst = const.Declare tensor<16x3x3x3x!qElemType2> = dense_resource<vpux_ow_0> : tensor<16x3x3x3xsi8>,
             [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>]
 
         // Normally QuantizeCast ops are part of transformations
@@ -241,7 +241,7 @@ module @QuantizedToQuantizedConversion {
     // CHECK:   return [[RES]]
 
     // CHECK: func.func @wrapper_main() -> tensor<16x3x3x3xui8>
-    // CHECK:   [[CST0:%.+]] = const.Declare tensor<16x3x3x3xsi8> = dense_resource<ov_0>
+    // CHECK:   [[CST0:%.+]] = const.Declare tensor<16x3x3x3xsi8> = dense_resource<vpux_ow_0>
     // CHECK:   [[INIT:%.+]] = call @init([[CST0]])
     // CHECK:   [[RET:%.+]] = call @main([[INIT]])
     // CHECK:   return [[RET]]
@@ -252,8 +252,8 @@ module @QuantizedToQuantizedConversion {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30",
-        ov_1: "0x100000000ABDCE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE30"
+        vpux_ow_0: "0x10000000AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30",
+        vpux_ow_1: "0x100000000ABDCE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE300AB0CE300AB0CE30CE30"
     }
   }
 #-}
@@ -302,16 +302,16 @@ module @QuantizedToQuantizedConversion_PerAxis {
     // CHECK:        DataInfo "output_2" : tensor<10x20x1x1xui8>
 
     func.func @main() -> (tensor<16x1x3x3xui8, {order = #NHWC}>,  tensor<16x2x3x3xui8, {order = #NHWC}>, tensor<10x20x1x1xui8>) {
-        %cst_0 = const.Declare tensor<16x1x3x3x!qElemType3, {order = #NHWC}> = dense_resource<ov_0> : tensor<16x3x3x3xsi8>,
+        %cst_0 = const.Declare tensor<16x1x3x3x!qElemType3, {order = #NHWC}> = dense_resource<vpux_ow_0> : tensor<16x3x3x3xsi8>,
                     [#const.CastElemType<!qElemType1>,
                     #const.ConvertElemType<!qElemType2>,
                     #const.Reorder<#NHWC>, #const.SubView<[0, 0, 0, 0], [16, 1, 3, 3]>]
-        %cst_1 = const.Declare tensor<16x2x3x3x!qElemType4, {order = #NHWC}> = dense_resource<ov_0> : tensor<16x3x3x3xsi8>,
+        %cst_1 = const.Declare tensor<16x2x3x3x!qElemType4, {order = #NHWC}> = dense_resource<vpux_ow_0> : tensor<16x3x3x3xsi8>,
                     [#const.CastElemType<!qElemType1>,
                     #const.ConvertElemType<!qElemType2>,
                     #const.Reorder<#NHWC>, #const.SubView<[0, 1, 0, 0], [16, 2, 3, 3]>]
 
-        %cst_2 = const.Declare tensor<10x20x1x1x!qElemType7> = dense_resource<ov_1> : tensor<10x20xsi8>,
+        %cst_2 = const.Declare tensor<10x20x1x1x!qElemType7> = dense_resource<vpux_ow_1> : tensor<10x20xsi8>,
                     [#const.Reshape<[1, 10, 1, 20]>, #const.CastElemType<!qElemType5>,
                     #const.ChangeShapeAndElemType<[10, 20, 1, 1], !qElemType6>,
                     #const.ConvertElemType<!qElemType7>]
@@ -376,8 +376,8 @@ module @QuantizedToQuantizedConversion_PerAxis {
     // CHECK:   return [[QUANTIZECAST13]], [[QUANTIZECAST14]], [[QUANTIZECAST15]]
 
     // CHECK: func.func @wrapper_main() -> (tensor<16x1x3x3xui8, {order = #NHWC}>, tensor<16x2x3x3xui8, {order = #NHWC}>, tensor<10x20x1x1xui8>)
-    // CHECK-DAG: [[CST0:%.+]] = const.Declare tensor<16x3x3x3xsi8> = dense_resource<ov_0>
-    // CHECK-DAG: [[CST1:%.+]] = const.Declare tensor<10x20xsi8> = dense_resource<ov_1>
+    // CHECK-DAG: [[CST0:%.+]] = const.Declare tensor<16x3x3x3xsi8> = dense_resource<vpux_ow_0>
+    // CHECK-DAG: [[CST1:%.+]] = const.Declare tensor<10x20xsi8> = dense_resource<vpux_ow_1>
     // CHECK:   [[CALL:%[0-9]+]]:2 = call @init([[CST0]], [[CST1]])
     // CHECK:   [[RET:%.+]]:3 = call @main([[CALL]]#0, [[CALL]]#1)
     // CHECK:   return [[RET]]#0, [[RET]]#1, [[RET]]#2
@@ -388,8 +388,8 @@ module @QuantizedToQuantizedConversion_PerAxis {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30",
-            ov_1: "0x100000000AB0CE30"
+            vpux_ow_0: "0x10000000AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30AEB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E300EB00E30",
+            vpux_ow_1: "0x100000000AB0CE30"
         }
   }
 #-}
@@ -416,7 +416,7 @@ module @Convolution {
     func.func @main(%arg0: tensor<1x3x62x62xf16>) -> (tensor<1x16x60x60xf16>, tensor<2x1x1x1xf16, {order = #NHWC}>,  tensor<1x2x1x1xf16>) {
         %cst = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
         %cst_0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}>
-                      = dense_resource<ov_0> : tensor<16x3x3x3xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [0, 13, 0, 0]>]
+                      = dense_resource<vpux_ow_0> : tensor<16x3x3x3xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [0, 13, 0, 0]>]
 
         %0 = VPU.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 2]} : tensor<1x3x62x62xf16> -> tensor<1x3x62x64xf16>
         %1 = VPU.NCE.Permute(%0) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 16 : i64, ppe = #VPU.PPEStub<>} -> tensor<1x16x62x64xf16, {order = #NHWC}>
@@ -425,8 +425,8 @@ module @Convolution {
               pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, rawFilterShape = [16, 16, 3, 3], strides = [1, 1], ppe = #VPU.PPEStub<>}
                   : tensor<1x16x62x62xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x60x60xf16>
 
-        %cst_1 = const.Declare tensor<2x1x1x1xf16, {order = #NHWC}> = dense_resource<ov_1> : tensor<1x2x1x1xf16>, [#const.Reshape<[2, 1, 1, 1]>, #const.Reorder<#NHWC>]
-        %cst_2 = const.Declare tensor<1x2x1x1xf16> = dense_resource<ov_1> : tensor<1x2x1x1xf16>, [#const.Add<1.0>]
+        %cst_1 = const.Declare tensor<2x1x1x1xf16, {order = #NHWC}> = dense_resource<vpux_ow_1> : tensor<1x2x1x1xf16>, [#const.Reshape<[2, 1, 1, 1]>, #const.Reorder<#NHWC>]
+        %cst_2 = const.Declare tensor<1x2x1x1xf16> = dense_resource<vpux_ow_1> : tensor<1x2x1x1xf16>, [#const.Add<1.0>]
 
         return %3, %cst_1, %cst_2 : tensor<1x16x60x60xf16>, tensor<2x1x1x1xf16, {order = #NHWC}>,  tensor<1x2x1x1xf16>
     }
@@ -448,13 +448,13 @@ module @Convolution {
     // CHECK:           [[PERMUTE0:%.+]] = VPU.NCE.Permute([[EXPAND0]])
     // CHECK:           [[SLICE0:%.+]] = VPU.Slice [[PERMUTE0]] [0, 0, 0, 0] [1, 16, 62, 62] : tensor<1x16x62x64xf16, {order = #NHWC}> to tensor<1x16x62x62xf16, {order = #NHWC}>
     // CHECK:           [[CONVOLUTION0:%.+]] = VPU.NCE.Convolution([[SLICE0]], [[INIT_OUT0]], [[CST]])
-    // CHECK:           [[CST2:%.+]] = const.Declare tensor<2x1x1x1xf16, {order = #NHWC}> = dense_resource<ov_1>
+    // CHECK:           [[CST2:%.+]] = const.Declare tensor<2x1x1x1xf16, {order = #NHWC}> = dense_resource<vpux_ow_1>
     // CHECK-SAME:          [#const.Reshape<[2, 1, 1, 1]>, #const.Reorder<#NHWC>]
     // CHECK:           return [[CONVOLUTION0]], [[CST2]], [[INIT_OUT2]]
 
     // CHECK:       func.func @wrapper_main([[ARG0:%.+]]: tensor<1x3x62x62xf16>) -> (tensor<1x16x60x60xf16>, tensor<2x1x1x1xf16, {order = #NHWC}>, tensor<1x2x1x1xf16>)
-    // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<16x3x3x3xf32> = dense_resource<ov_0> : tensor<16x3x3x3xf32>
-    // CHECK-DAG:       [[CST1:%.+]] = const.Declare tensor<1x2x1x1xf16> = dense_resource<ov_1> : tensor<1x2x1x1xf16>
+    // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<16x3x3x3xf32> = dense_resource<vpux_ow_0> : tensor<16x3x3x3xf32>
+    // CHECK-DAG:       [[CST1:%.+]] = const.Declare tensor<1x2x1x1xf16> = dense_resource<vpux_ow_1> : tensor<1x2x1x1xf16>
     // CHECK:           [[CALL:%[0-9]+]]:2 = call @init([[CST0]], [[CST1]])
     // CHECK:           [[RET:%.+]]:3 = call @main([[ARG0]], [[CALL]]#0, [[CALL]]#1)
     // CHECK:           return [[RET]]#0, [[RET]]#1, [[RET]]#2
@@ -465,7 +465,7 @@ module @Convolution {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000ABCDABCDABCDABCE"
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
         }
   }
 #-}
@@ -486,7 +486,7 @@ module @QuantizeAttr {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
 
     func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x2x!qElemType> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Quantize<!qElemType>]
+        %cst = const.Declare tensor<2x2x!qElemType> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Quantize<!qElemType>]
         return %dummy : tensor<2x2xf16>
     }
 
@@ -500,7 +500,7 @@ module @QuantizeAttr {
     // CHECK:           return [[ARG0]] : tensor<2x2xf16>
 
     // CHECK:       func.func @wrapper_main([[ARG2:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16>
-    // CHECK:           [[CST:%.+]] = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>
+    // CHECK:           [[CST:%.+]] = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>
     // CHECK:           [[CALL0:%.+]] = call @init([[CST]]) : (tensor<2x2xf16>) -> tensor<2x2xsi8>
     // CHECK:           [[CALL1:%.+]] = call @main([[ARG2]], [[CALL0]]) : (tensor<2x2xf16>, tensor<2x2xsi8>) -> tensor<2x2xf16>
     // CHECK:           return [[CALL1]] : tensor<2x2xf16>
@@ -511,7 +511,7 @@ module @QuantizeAttr {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000ABCDABCDABCDABCE"
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
         }
   }
 #-}
@@ -533,8 +533,8 @@ module @UniqueArgumentChains {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
 
     func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst0 = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<1.0>]
-        %cst1 = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<2.0>]
+        %cst0 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<1.0>]
+        %cst1 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<2.0>]
         return %dummy : tensor<2x2xf16>
     }
 
@@ -549,7 +549,7 @@ module @UniqueArgumentChains {
     // CHECK:           return [[ARG0]]
 
     // CHECK:       func.func @wrapper_main([[ARG2:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16>
-    // CHECK:           [[CST:%.+]] = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>
+    // CHECK:           [[CST:%.+]] = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>
     // CHECK:           [[INIT:%.+]]:2 = call @init([[CST]])
     // CHECK:           [[MAIN:%.+]] = call @main([[ARG2]], [[INIT]]#0, [[INIT]]#1)
     // CHECK:           return [[MAIN]]
@@ -560,7 +560,7 @@ module @UniqueArgumentChains {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000ABCDABCDABCDABCE"
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
         }
   }
 #-}
@@ -579,8 +579,8 @@ module @OutlinedConstants {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
 
     func.func private @main_foo1(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<15.0>]
-        %cst_bar_duplicate = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>]
+        %cst_bar_duplicate = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.Rescale<2.0>]
         %user_cst = VPU.Convert(%cst) {dstElemType = f32} : tensor<2x2xf16> -> tensor<2x2xf32>
         %user_cst_bar_duplicate = VPU.Convert(%cst_bar_duplicate) {dstElemType = f32}
@@ -594,8 +594,8 @@ module @OutlinedConstants {
     // CHECK:       return [[DUMMY]]
 
     func.func private @main_bar() -> (tensor<4x1xf16>, tensor<2x2xf16>) {
-        %cst1 = const.Declare tensor<4x1xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<15.0>, #const.Reshape<[4, 1]>]
-        %cst2 = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Rescale<2.0>]
+        %cst1 = const.Declare tensor<4x1xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>, #const.Reshape<[4, 1]>]
+        %cst2 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Rescale<2.0>]
         return %cst1, %cst2 : tensor<4x1xf16>, tensor<2x2xf16>
     }
 
@@ -603,8 +603,8 @@ module @OutlinedConstants {
     // CHECK:       return [[CST1]], [[CST2]]
 
     func.func private @main_foo2(%dummy: tensor<2x2xf16>) -> (tensor<2x2xf16>, tensor<4x1xf16>, tensor<2x2xf16>) {
-        %cst = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<10.0>]
-        %cst_bar_duplicate = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<10.0>]
+        %cst_bar_duplicate = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.Rescale<2.0>]
 
         %user_cst = VPU.Convert(%cst) {dstElemType = f32} : tensor<2x2xf16> -> tensor<2x2xf32>
@@ -625,23 +625,23 @@ module @OutlinedConstants {
     // CHECK:   func.func private @init([[OV_CONST0:%.+]]: tensor<2x2xf16>)
     // CHECK-SAME:  -> (tensor<2x2xf16>, tensor<2x2xf16>, tensor<2x2xf16>, tensor<4x1xf16>)
 
-    // foo2 && main: dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<10.0>]
+    // foo2 && main: dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<10.0>]
 
     // CHECK:       [[CST3:%.+]] = const.Declare {{.*}} dense<1.000000e+01>
     // CHECK:       [[CST_ADD10:%.+]] = IE.Add([[OV_CONST0]], [[CST3]])
 
-    // foo1: dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<15.0>]
-    // foo2: dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<15.0>]
+    // foo1: dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>]
+    // foo2: dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>]
 
     // CHECK:       [[CST1:%.+]] = const.Declare {{.*}} dense<1.500000e+01>
     // CHECK:       [[CST_ADD15:%.+]] = IE.Add([[OV_CONST0]], [[CST1]])
 
-    // foo2 && bar:  dense_resource<ov_0> : tensor<2x2xf16>, [#const.Rescale<2.0>]
+    // foo2 && bar:  dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Rescale<2.0>]
 
     // CHECK:       [[CST2:%.+]] = const.Declare {{.*}} dense<2.000000e+00>
     // CHECK:       [[CST_RESCALE2:%.+]] = IE.Multiply([[OV_CONST0]], [[CST2]])
 
-    // bar:  dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<15.0>, #const.Reshape<[4, 1]>]
+    // bar:  dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>, #const.Reshape<[4, 1]>]
 
     // CHECK:       [[CST_RESHAPE_4_1:%.+]] = IE.Reshape([[CST_ADD15]]) {shape_value = [4, 1]}
 
@@ -649,7 +649,7 @@ module @OutlinedConstants {
 
 
     func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst0 = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Add<10.0>]
+        %cst0 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<10.0>]
         %user_cst0 = VPU.Convert(%cst0) {dstElemType = f32} : tensor<2x2xf16> -> tensor<2x2xf32>
 
         %call_foo1 = func.call @main_foo1(%dummy) : (tensor<2x2xf16>) -> tensor<2x2xf16>
@@ -676,7 +676,7 @@ module @OutlinedConstants {
 
 
     // CHECK:   func.func @wrapper_main([[DUMMY:%.+]]: tensor<2x2xf16>)
-    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<ov_0>
+    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_0>
     // CHECK:       [[INIT:%.+]]:4 = call @init([[OV_0]])
     // CHECK:       [[MAIN:%.+]] = call @main([[DUMMY]], [[INIT]]#0, [[INIT]]#1, [[INIT]]#2, [[INIT]]#3)
     // CHECK:       return [[MAIN]]
@@ -687,8 +687,8 @@ module @OutlinedConstants {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000ABCDABCDABCDABCE",
-            ov_1: "0x10000000ABCDABCDABCDABCE"
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE",
+            vpux_ow_1: "0x10000000ABCDABCDABCDABCE"
         }
   }
 #-}
@@ -707,7 +707,7 @@ module @OutlinedConstants_MultiCall {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
 
     func.func private @multi_call(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x2xf16> = dense_resource<ov_0> : tensor<2x2xf16>, [#const.Rescale<42.0>]
+        %cst = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Rescale<42.0>]
         %user_cst = VPU.Convert(%cst) {dstElemType = f32} : tensor<2x2xf16> -> tensor<2x2xf32>
         return %dummy : tensor<2x2xf16>
     }
@@ -717,7 +717,7 @@ module @OutlinedConstants_MultiCall {
     // CHECK:       return [[DUMMY]]
 
     func.func private @single_call(%dummy: tensor<2x2xf16>) -> (tensor<2x2xf16>, tensor<2x2xf16>) {
-        %cst1 = const.Declare tensor<2x2xf16> = dense_resource<ov_1> : tensor<2x2xf16>, [#const.Add<15.0>]
+        %cst1 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>, [#const.Add<15.0>]
         %call = func.call @multi_call(%dummy) : (tensor<2x2xf16>) -> tensor<2x2xf16>
         return %cst1, %call : tensor<2x2xf16>, tensor<2x2xf16>
     }
@@ -754,8 +754,8 @@ module @OutlinedConstants_MultiCall {
 
 
     // CHECK:   func.func @wrapper_main([[DUMMY:%.+]]: tensor<2x2xf16>)
-    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<ov_0>
-    // CHECK:       [[OV_1:%.+]] = const.Declare {{.*}} dense_resource<ov_1>
+    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_0>
+    // CHECK:       [[OV_1:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1>
     // CHECK:       [[INIT:%.+]]:2 = call @init([[OV_0]], [[OV_1]])
     // CHECK:       [[MAIN:%.+]] = call @main([[DUMMY]], [[INIT]]#0, [[INIT]]#1)
     // CHECK:       return [[MAIN]]
@@ -772,7 +772,7 @@ module @OutlinedConstants_MultiCall {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000ABCDABCDABCDABCE"
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
         }
   }
 #-}
@@ -794,7 +794,7 @@ module @OutlinedConstants_Quantized {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
 
     func.func private @quant_cst(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x2x!qElemType1> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst = const.Declare tensor<2x2x!qElemType1> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.CastElemType<!qElemType1>]
         return %dummy : tensor<2x2xf16>
     }
@@ -818,9 +818,9 @@ module @OutlinedConstants_Quantized {
 
 
     func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x2x!qElemType1> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst = const.Declare tensor<2x2x!qElemType1> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.CastElemType<!qElemType1>]
-        %cst2 = const.Declare tensor<2x2x!qElemType2> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst2 = const.Declare tensor<2x2x!qElemType2> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.CastElemType<!qElemType2>]
         %call = func.call @quant_cst(%dummy) : (tensor<2x2xf16>) -> tensor<2x2xf16>
         return %call : tensor<2x2xf16>
@@ -834,7 +834,7 @@ module @OutlinedConstants_Quantized {
 
 
     // CHECK:   func.func @wrapper_main([[DUMMY:%.+]]: tensor<2x2xf16>)
-    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<ov_0>
+    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_0>
     // CHECK:       [[INIT:%.+]]:2 = call @init([[OV_0]])
     // CHECK:       [[MAIN:%.+]] = call @main([[DUMMY]], [[INIT]]#0, [[INIT]]#1)
     // CHECK:       return [[MAIN]]
@@ -846,7 +846,7 @@ module @OutlinedConstants_Quantized {
 {-#
   dialect_resources: {
     builtin: {
-            ov_0: "0x10000000ABCDABCDABCDABCE"
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
         }
   }
 #-}
@@ -869,7 +869,7 @@ module @OutlinedConstants_PostInitTransformations {
     // CHECK:     DataInfo "output" : tensor<2x2xf16>
 
     func.func private @subview_cst(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x1xf16> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst = const.Declare tensor<2x1xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.Add<42.0>, #const.SubView<[0, 1], [2, 1]>]
         return %dummy : tensor<2x2xf16>
     }
@@ -886,9 +886,9 @@ module @OutlinedConstants_PostInitTransformations {
 
 
     func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x1xf16> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst = const.Declare tensor<2x1xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.Add<42.0>, #const.SubView<[0, 1], [2, 1]>]
-        %cst2 = const.Declare tensor<1x1xf16> = dense_resource<ov_0> : tensor<2x2xf16>,
+        %cst2 = const.Declare tensor<1x1xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
             [#const.Add<42.0>, #const.SubView<[0, 0], [1, 1]>]
         %call = func.call @subview_cst(%dummy) : (tensor<2x2xf16>) -> tensor<2x2xf16>
         return %call : tensor<2x2xf16>
@@ -902,7 +902,63 @@ module @OutlinedConstants_PostInitTransformations {
 
 
     // CHECK:   func.func @wrapper_main([[DUMMY:%.+]]: tensor<2x2xf16>)
-    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<ov_0>
+    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_0>
+    // CHECK:       [[INIT:%.+]] = call @init([[OV_0]])
+    // CHECK:       [[MAIN:%.+]] = call @main([[DUMMY]], [[INIT]])
+    // CHECK:       return [[MAIN]]
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
+        }
+  }
+#-}
+
+// CHECK-LABEL: @DoNotNestFunctions
+module @DoNotNestFunctions {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input" : tensor<2x2xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xf16>
+    }
+
+    // CHECK: net.NetworkInfo entryPoint : @wrapper_main inputsInfo : {
+    // CHECK:     DataInfo "input" : tensor<2x2xf16>
+    // CHECK: } outputsInfo : {
+    // CHECK:     DataInfo "output" : tensor<2x2xf16>
+
+    func.func private @subview_cst(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %cst = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
+            [#const.Add<42.0>]
+        return %dummy : tensor<2x2xf16>
+    }
+
+    // CHECK:   func.func private @subview_cst([[DUMMY:%.+]]: tensor<2x2xf16>, [[CST:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16> attributes {do_not_nest}
+
+    // CHECK:   func.func private @init([[OV_CONST0:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16
+    // CHECK:       [[CST:%.+]] = const.Declare {{.*}} dense<4.200000e+01>
+    // CHECK:       [[CST_ADD42:%.+]] = IE.Add([[OV_CONST0]], [[CST]])
+    // CHECK:       return [[CST_ADD42]]
+
+
+    func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %cst = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
+            [#const.Add<42.0>]
+        %call = func.call @subview_cst(%dummy) : (tensor<2x2xf16>) -> tensor<2x2xf16>
+        return %call : tensor<2x2xf16>
+    }
+
+    // CHECK:   func.func private @main([[DUMMY:%.+]]: tensor<2x2xf16>, [[CST_ADD42:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16> attributes {do_not_nest}
+    // CHECK:       [[CALL:%.+]] = call @subview_cst([[DUMMY]], [[CST_ADD42]])
+    // CHECK:       return [[CALL]]
+
+
+    // CHECK:   func.func @wrapper_main([[DUMMY:%.+]]: tensor<2x2xf16>)
+    // CHECK:       [[OV_0:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_0>
     // CHECK:       [[INIT:%.+]] = call @init([[OV_0]])
     // CHECK:       [[MAIN:%.+]] = call @main([[DUMMY]], [[INIT]])
     // CHECK:       return [[MAIN]]

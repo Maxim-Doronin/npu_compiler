@@ -116,30 +116,6 @@ def IE_ConcatOp :
     let checkInferredMemSpace = 1;
 }
 
-def IE_CopyOp :
-        IE_LayerOp<
-            "Copy"
-        > {
-    let summary = "InferenceEngine Copy layer";
-
-    let arguments = (ins
-        AnyRankedTensor:$input,
-
-        OptionalAttr<IndexedSymbolAttr>:$out_mem_space
-    );
-
-    let results = (outs
-        AnyRankedTensor:$output
-    );
-
-    let hasFolder = 1;
-    let hasCanonicalizer = 1;
-
-    let elemComparisonModes = [IE_TypeComparisonMode_STRICT_EQUAL];
-    let checkInferredDimsOrder = 1;
-    let checkInferredMemSpace = 1;
-}
-
 def IE_DepthToSpaceOp :
         IE_LayerOp<
             "DepthToSpace"
@@ -670,27 +646,27 @@ def IE_SliceOp :
     let summary = "Extract single slice from tensor";
 
     let arguments = (ins
-        AnyRankedTensor:$source,
+        AnyRankedTensor:$input,
 
         I64ArrayAttr:$static_offsets,
         I64ArrayAttr:$static_sizes
     );
 
     let results = (outs
-        AnyRankedTensor:$result
+        AnyRankedTensor:$output
     );
 
     let assemblyFormat = [{
-        $source $static_offsets $static_sizes
-        attr-dict `:` type($source) `to` type(results)
+        $input $static_offsets $static_sizes
+        attr-dict `:` type($input) `to` type(results)
     }];
 
     let builders = [
         OpBuilder<
-            (ins "mlir::Value":$source, "vpux::ShapeRef":$static_offsets, "vpux::ShapeRef":$static_sizes)
+            (ins "mlir::Value":$input, "vpux::ShapeRef":$static_offsets, "vpux::ShapeRef":$static_sizes)
         >,
         OpBuilder<
-            (ins "mlir::Value":$source, "vpux::ArrayRef<int64_t>":$static_offsets, "vpux::ArrayRef<int64_t>":$static_sizes)
+            (ins "mlir::Value":$input, "vpux::ArrayRef<int64_t>":$static_offsets, "vpux::ArrayRef<int64_t>":$static_sizes)
         >
     ];
 
@@ -700,6 +676,11 @@ def IE_SliceOp :
     let elemComparisonModes = [IE_TypeComparisonMode_STRICT_EQUAL];
     let checkInferredDimsOrder = 1;
     let checkInferredMemSpace = 1;
+
+    let extraClassDeclaration = [{
+        // Note: to be compatible with existing code
+        mlir::Value getSource() { return getInput(); }
+    }] # baseExtraClassDeclaration;
 }
 
 def IE_SpaceToBatch :

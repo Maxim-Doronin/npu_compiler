@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/Linalg/IR/Linalg.h>
@@ -189,6 +190,7 @@ void OptimizeSparsityOpsPass::safeRunOnFunc() {
     if (_sparsityProfile != ActivationSparsityProfile::S1) {
         mlir::ConversionTarget target(ctx);
         target.addIllegalOp<VPU::SparsifyOp>();
+        target.addLegalDialect<Core::CoreDialect>();
         target.addLegalDialect<Const::ConstDialect>();
         target.addLegalDialect<VPU::VPUDialect>();
         target.addLegalDialect<mlir::linalg::LinalgDialect>();

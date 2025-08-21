@@ -5,10 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-
-#include <vpux/utils/core/type/float8_e4m3.hpp>
-#include <vpux/utils/core/type/float8_e5m2.hpp>
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/utils/core/type/float8_e4m3.hpp"
+#include "vpux/utils/core/type/float8_e5m2.hpp"
 
 #include <mlir/IR/Types.h>
 #include <variant>
@@ -21,8 +20,8 @@ using IntOrFloatType = std::variant<int32_t, float, vpux::type::float8_e5m2, vpu
 using PPEConverterCb = IntOrFloatType (*)(uint8_t, int16_t, double, mlir::Type);
 using BiasConverterCb = IntOrFloatType (*)(double, mlir::Type);
 
-PPEConverterCb getPPEConverterCb(VPU::ArchKind arch, bool isFloatType = false);
-BiasConverterCb getBiasConverterCb(VPU::ArchKind arch, bool isFloatType = false);
+PPEConverterCb getPPEConverterCb(config::ArchKind arch, bool isFloatType = false);
+BiasConverterCb getBiasConverterCb(config::ArchKind arch, bool isFloatType = false);
 
 }  // namespace NCESparsity
 }  // namespace VPU

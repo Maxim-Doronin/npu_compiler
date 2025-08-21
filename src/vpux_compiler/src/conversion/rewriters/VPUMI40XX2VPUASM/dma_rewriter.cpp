@@ -11,7 +11,7 @@ namespace vpux {
 namespace vpumi40xx2vpuasm {
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> NNDMARewriter::getSymbolicNames(VPUMI40XX::NNDMAOp op, size_t) {
-    return getSymbolicNamesByTileListValue(op);
+    return createSymbolicName(op);
 }
 
 VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp op, mlir::MLIRContext* ctx) const {

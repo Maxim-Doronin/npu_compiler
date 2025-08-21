@@ -3,18 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/Transforms/DialectConversion.h>
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/matmul.hpp"
-#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SHRINKMATMULGROUPS
@@ -133,13 +134,13 @@ bool checkMatMul(IE::MatMulOp origOp) {
         return false;
     }
 
-    // Restrict to Dim H = 1, otherwise it would break the VF pattern for MatMul-Add-Softmax-MatMul in LLM
-    // TODO: Remove the restriction, see E#138709
-    if (lhsShape[H] != 1) {
-        return false;
+    if (lhsShape[H] == 1) {
+        return true;
     }
 
-    return true;
+    // The optimization will break the VF pattern for MatMul-Add-Softmax-MatMul in LLM, but VF pattern needs
+    // unrolled MatMul, not grouped MatMul. So here we check if it is beneficial for group MatMul.
+    return isGroupedMatMulBeneficial(origOp, lhsShape, rhsShape);
 }
 
 bool checkTranspose(IE::TransposeOp transposeOp) {

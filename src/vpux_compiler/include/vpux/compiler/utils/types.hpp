@@ -7,19 +7,21 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
-
 #include "vpux/utils/core/enums.hpp"
 #include "vpux/utils/core/mem_size.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Value.h>
+
+namespace vpux::IE {
+enum class TypeComparisonMode : uint64_t;
+}  // namespace vpux::IE
 
 namespace vpux {
 

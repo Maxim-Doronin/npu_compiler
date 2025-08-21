@@ -4,39 +4,35 @@
 //
 
 #include "vpux/compiler/init.hpp"
-
 #include "vpux/compiler/NPU37XX/dialect/NPUReg37XX/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
+#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
+#include "vpux/compiler/core/types/quantile_float/dialect.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
-#include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
+#include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
+#include "vpux/compiler/dialect/HostExec/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
-#include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/dialect.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include "vpux/compiler/core/types/quantile_float/dialect.hpp"
-#include "vpux/compiler/core/types/quantile_float/types.hpp"
-
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Conversion/ConvertToLLVM/ToLLVMPass.h>
+#include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h>
+#include <mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
@@ -58,8 +54,10 @@
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h>
 #include <mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h>
 
+#include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
+#include <mlir/Transforms/BufferizationUtils.h>
 
 using namespace vpux;
 
@@ -95,6 +93,7 @@ void registerDialects(mlir::DialectRegistry& registry) {
                     vpux::VPUASM::VPUASMDialect,              //
                     vpux::VPURegMapped::VPURegMappedDialect,  //
                     vpux::ELF::ELFDialect,                    //
+                    vpux::HostExec::HostExecDialect,          //
                     vpux::NPUReg37XX::NPUReg37XXDialect,      //
                     vpux::NPUReg40XX::NPUReg40XXDialect,      //
                     vpux::ELFNPU37XX::ELFNPU37XXDialect,      //
@@ -144,7 +143,7 @@ mlir::DialectRegistry vpux::createDialectRegistry(DummyOpMode dummyOpMode) {
     mlir::registerLLVMDialectTranslation(registry);
     mlir::registerConvertMemRefToLLVMInterface(registry);
     mlir::registerConvertFuncToLLVMInterface(registry);
-
+    mlir::cf::registerConvertControlFlowToLLVMInterface(registry);
     if (dummyOpMode == DummyOpMode::ENABLED) {
         VPUIP::VPUIPDialect::setupExtraInterfacesAdditional(registry);
     }

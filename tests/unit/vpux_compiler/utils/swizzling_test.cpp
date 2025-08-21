@@ -34,7 +34,7 @@ bool compareBuffers(const SmallVector<T>& buf1, const MutableArrayRef<T>& buf2) 
 }
 
 template <typename T>
-bool swizzlingTest(uint32_t elements, uint32_t swizzleKey, VPU::ArchKind archKind) {
+bool swizzlingTest(uint32_t elements, uint32_t swizzleKey, config::ArchKind archKind) {
     BufferTransform::BufferSwizzleTransform bufferTransform{swizzleKey, archKind};
     const auto swizzlePatternStride{bufferTransform.getSwizzlePatternStride()};
 
@@ -82,7 +82,7 @@ TEST_P(SwizzlingTest_VPUX37XX, swizzlingTest_VPUX37XX) {
     const auto elements = std::get<1>(params);
 
     bool result = false;
-    EXPECT_TRUE(result = swizzlingTest<uint32_t>(elements, swizzlingKey, VPU::ArchKind::NPU37XX));
+    EXPECT_TRUE(result = swizzlingTest<uint32_t>(elements, swizzlingKey, config::ArchKind::NPU37XX));
 }
 
 TEST_P(SwizzlingTest_VPUX40XX, swizzlingTest_VPUX40XX) {
@@ -91,7 +91,7 @@ TEST_P(SwizzlingTest_VPUX40XX, swizzlingTest_VPUX40XX) {
     const auto elements = std::get<1>(params);
 
     bool result = false;
-    EXPECT_TRUE(result = swizzlingTest<uint32_t>(elements, swizzlingKey, VPU::ArchKind::NPU40XX));
+    EXPECT_TRUE(result = swizzlingTest<uint32_t>(elements, swizzlingKey, config::ArchKind::NPU40XX));
 }
 
 INSTANTIATE_TEST_SUITE_P(testAligned_VPUX40XX_Key0, SwizzlingTest_VPUX40XX, Combine(Values(0), Values(1024)));

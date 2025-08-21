@@ -10,7 +10,7 @@
 {-#
   dialect_resources: {
     builtin: {
-      ov: "0x10000000ABABABABCDCDCDCD"
+      vpux_ow_: "0x10000000ABABABABCDCDCDCD"
     }
   }
 #-}
@@ -28,8 +28,8 @@ module @SimilarConstantsSimilarLocationNames {
     }
 
     func.func @main(%arg0: tensor<2x2x1x1xf16>) -> (tensor<2x2x1x1xi8>, tensor<2x2x1x1xi8>) {
-        %cst = const.Declare tensor<2x2x1x1x!qElemType> = dense_resource<ov> : tensor<2x2x1x1xf16>, [#const.SubView<[1, 0, 0, 0], [2, 2, 1, 1]>, #const.CastElemType<!qElemType>]
-        %cst1 = const.Declare tensor<2x2x1x1x!qElemType> = dense_resource<ov> : tensor<2x2x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [2, 2, 1, 1]>, #const.CastElemType<!qElemType>]
+        %cst = const.Declare tensor<2x2x1x1x!qElemType> = dense_resource<vpux_ow_> : tensor<2x2x1x1xf16>, [#const.SubView<[1, 0, 0, 0], [2, 2, 1, 1]>, #const.CastElemType<!qElemType>]
+        %cst1 = const.Declare tensor<2x2x1x1x!qElemType> = dense_resource<vpux_ow_> : tensor<2x2x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [2, 2, 1, 1]>, #const.CastElemType<!qElemType>]
 
         %0 = VPU.QuantizeCast(%cst) { dstElemType = i8 }
             : tensor<2x2x1x1x!qElemType> -> tensor<2x2x1x1xi8>

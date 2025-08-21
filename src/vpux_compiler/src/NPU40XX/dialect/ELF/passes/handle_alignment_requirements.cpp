@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/ELF/utils.hpp"
 
 #include <vpux_elf/types/vpu_extensions.hpp>
@@ -37,7 +39,7 @@ void HandleAlignmentRequirementsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto moduleOp = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     VPUX_THROW_UNLESS(moduleOp, "The top-level module is missing");
-    const auto arch = VPU::getArch(moduleOp);
+    const auto arch = config::getArch(moduleOp);
 
     auto mainOps = to_small_vector(netFunc.getOps<ELF::MainOp>());
     VPUX_THROW_UNLESS(mainOps.size() == 1, "Expected exactly one ELF mainOp. Got {0}", mainOps.size());

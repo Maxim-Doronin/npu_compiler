@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
 

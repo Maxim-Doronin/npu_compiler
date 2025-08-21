@@ -47,7 +47,9 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::OpPassManager& pm, cons
         setupParamsAccordingToOptimizationLevel(options->optimizationLevel, *options, useWlm);
         setupPWLMParams(*options);
         dpuDryRunMode = VPU::getDPUDryRunMode(options->dpuDryRun);
-        backendCompilationOptions->enableDMAProfiling = options->enableDMAProfiling.getValue();
+        auto enableProfiling = config.get<intel_npu::PERF_COUNT>();
+        backendCompilationOptions->enableDMAProfiling =
+                enableProfiling ? options->enableDMAProfiling.getValue() : "false";
         backendCompilationOptions->enableShaveDDRAccessOptimization = options->enableShaveDDRAccessOptimization;
         backendCompilationOptions->enableDumpStatisticsOfWlmOps = options->enableDumpTaskStats;
         backendCompilationOptions->workloadManagementBarrierCountThreshold =

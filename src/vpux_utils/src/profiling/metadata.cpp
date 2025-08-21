@@ -5,7 +5,6 @@
 
 #include "vpux/utils/profiling/metadata.hpp"
 
-#include "schema/graphfile_generated.h"
 #include "schema/profiling_generated.h"
 
 #include <vpux_elf/accessor.hpp>

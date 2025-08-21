@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_MULTICLUSTERSTRATEGYASSIGNMENT
@@ -92,7 +93,7 @@ void MultiClusterStrategyAssignmentPass::safeRunOnFunc() {
         return;
     }
 
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
     auto layerCostModel =
             VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);

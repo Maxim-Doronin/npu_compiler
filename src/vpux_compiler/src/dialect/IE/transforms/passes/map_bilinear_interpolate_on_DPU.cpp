@@ -4,13 +4,21 @@
 //
 
 #include "vpux/compiler/dialect/IE/transforms/passes/map_bilinear_interpolate_on_DPU.hpp"
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/transforms/factories/map_bilinear_interpolate_on_dpu_strategy_getter.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/utils/core/numeric.hpp"
+
+namespace vpux::IE {
+#define GEN_PASS_DECL_MAPBILINEARINTERPOLATEONDPU
+#define GEN_PASS_DEF_MAPBILINEARINTERPOLATEONDPU
+#include "vpux/compiler/dialect/IE/passes.hpp.inc"
+}  // namespace vpux::IE
 
 using namespace vpux;
 
@@ -358,4 +366,77 @@ bool vpux::IE::isLegalInterpolateOp(IE::InterpolateOp op, bool interpolateAsSEOp
     }
 
     return false;
+}
+
+namespace {
+
+//
+// MapBilinearInterpolateOnDPUPass
+//
+
+class MapBilinearInterpolateOnDPUPass final :
+        public IE::impl::MapBilinearInterpolateOnDPUBase<MapBilinearInterpolateOnDPUPass> {
+public:
+    explicit MapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp, Logger log)
+            : _interpolateAsSEOp(interpolateAsSEOp), _log(log) {
+        _log.setName(Base::getArgumentName());
+    }
+
+    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override;
+
+private:
+    void safeRunOnFunc() override;
+
+    bool _interpolateAsSEOp = false;
+    Logger _log;
+};
+
+mlir::LogicalResult MapBilinearInterpolateOnDPUPass::initialize(mlir::MLIRContext* ctx) {
+    if (mlir::failed(Base::initialize(ctx))) {
+        return mlir::failure();
+    }
+
+    // When this parameter has a value, it probably comes from LIT test.
+    // Override the default
+    if (interpolateAsSEOp.hasValue()) {
+        _interpolateAsSEOp = interpolateAsSEOp.getValue();
+    }
+
+    return mlir::success();
+}
+
+void MapBilinearInterpolateOnDPUPass::safeRunOnFunc() {
+    auto& ctx = getContext();
+    const auto func = getOperation();
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+
+    auto strategy = IE::createMapBilinearInterpolateOnDPUStrategy(func, _interpolateAsSEOp);
+
+    mlir::ConversionTarget target(ctx);
+    target.addLegalOp<IE::ExpandOp>();
+    target.addLegalOp<IE::AvgPoolOp>();
+    target.addLegalOp<IE::SliceOp>();
+    target.addLegalOp<IE::ConcatOp>();
+    target.addLegalOp<Const::DeclareOp>();
+    target.addLegalOp<IE::GroupConvolutionOp>();
+    strategy->prepareInterpolate(target, logCb);
+
+    mlir::RewritePatternSet patterns(&ctx);
+    patterns.add<IE::MapBilinearInterpolateOnDPUBaseRewriter>(&ctx, _log);
+
+    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
+        signalPassFailure();
+    }
+}
+
+}  // namespace
+
+//
+// createMapBilinearInterpolateOnDPUPass
+//
+
+std::unique_ptr<mlir::Pass> vpux::IE::createMapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp, Logger log) {
+    return std::make_unique<MapBilinearInterpolateOnDPUPass>(interpolateAsSEOp, log);
 }

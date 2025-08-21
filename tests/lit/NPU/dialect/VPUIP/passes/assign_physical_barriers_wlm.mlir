@@ -6,9 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --assign-physical-barriers="num-barriers=4 workload-management-barrier-count-threshold=1" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
-module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
-// CHECK: attributes
-// CHECK-SAME: VPUIP.wlm_status = #VPUIP.wlm_status<FAILED>
+// CHECK: config.Option @VPU.WorkloadManagementStatus : "FAILED"
 // CHECK-LABEL: @LinearDMA
 func.func @LinearDMA(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10xf16> {
     // CHECK-NOT: attributes
@@ -48,5 +46,4 @@ func.func @LinearDMA(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10x
             ) -> memref<10xf16>
     }
     return %arg1 : memref<10xf16>
-}
 }

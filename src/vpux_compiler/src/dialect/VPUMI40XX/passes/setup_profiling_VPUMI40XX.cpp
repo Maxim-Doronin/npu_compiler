@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/core/profiling.hpp"
-#include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -12,7 +11,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/dialect.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
@@ -35,13 +34,12 @@ namespace {
 class SetupProfilingVPUMI40XXPass final :
         public VPUMI40XX::impl::SetupProfilingVPUMI40XXBase<SetupProfilingVPUMI40XXPass> {
 public:
-    explicit SetupProfilingVPUMI40XXPass(DMAProfilingMode dmaProfilingMode, Logger log)
-            : _dmaProfilingMode(dmaProfilingMode) {
+    explicit SetupProfilingVPUMI40XXPass(const std::string& enableDmaProfiling, Logger log)
+            : SetupProfilingVPUMI40XXBase({enableDmaProfiling}) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
-    DMAProfilingMode _dmaProfilingMode;
     void safeRunOnModule() final;
 
     mlir::Value createDmaHwpBaseStatic(mlir::OpBuilder builderFunc, VPUIP::ProfilingSectionOp dmaSection) {
@@ -104,11 +102,12 @@ private:
         return dmaHwpScratch.getResult();
     }
 
-    void addDmaHwpBase(mlir::OpBuilder builderFunc, mlir::ModuleOp moduleOp, VPUMI40XX::MappedInferenceOp mpi) {
+    void addDmaHwpBase(DMAProfilingMode dmaProfilingMode, mlir::OpBuilder builderFunc, mlir::ModuleOp moduleOp,
+                       VPUMI40XX::MappedInferenceOp mpi) {
         _log.trace("addDmaHwpBase");
 
         mlir::Value dmaHwpBase = nullptr;
-        switch (_dmaProfilingMode) {
+        switch (dmaProfilingMode) {
         case DMAProfilingMode::DYNAMIC_HWP: {
             dmaHwpBase = createDmaHwpBaseDynamic(builderFunc, moduleOp);
             break;
@@ -164,15 +163,10 @@ private:
 
 void SetupProfilingVPUMI40XXPass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    auto arch = VPU::getArch(moduleOp);
+    auto arch = config::getArch(moduleOp);
 
-    if (enableDMAProfiling.hasValue()) {
-        _dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling.getValue());
-    }
-
-    if (_dmaProfilingMode == DMAProfilingMode::DISABLED) {
-        return;
-    }
+    VPUX_THROW_UNLESS(enableDMAProfiling.hasValue(), "No option");
+    auto dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling);
 
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp funcOp;
@@ -182,7 +176,7 @@ void SetupProfilingVPUMI40XXPass::safeRunOnModule() {
     auto mpi = VPUMI40XX::getMPI(funcOp);
 
     // create DMA hardware profiling base ref in MI
-    addDmaHwpBase(builderFunc, moduleOp, mpi);
+    addDmaHwpBase(dmaProfilingMode, builderFunc, moduleOp, mpi);
 
     // create workpoint cfg ref in MI for hardware profiling
     addWorkpointCapture(builderFunc, moduleOp, mpi);
@@ -194,7 +188,7 @@ void SetupProfilingVPUMI40XXPass::safeRunOnModule() {
 // createSetupProfilingVPUMI40XXPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createSetupProfilingVPUMI40XXPass(DMAProfilingMode dmaProfilingMode,
+std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createSetupProfilingVPUMI40XXPass(const std::string& enableDmaProfiling,
                                                                                Logger log) {
-    return std::make_unique<SetupProfilingVPUMI40XXPass>(dmaProfilingMode, log);
+    return std::make_unique<SetupProfilingVPUMI40XXPass>(enableDmaProfiling, log);
 }

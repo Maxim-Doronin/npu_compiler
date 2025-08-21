@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/net/network_info_utils.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 namespace vpux::Core {
@@ -24,18 +25,19 @@ namespace {
 
 class AddNetInfoToModule final : public Core::impl::AddNetInfoToModuleBase<AddNetInfoToModule> {
 public:
-    explicit AddNetInfoToModule(Logger log) {
+    explicit AddNetInfoToModule(Logger log, bool hasTensorSemantics) {
         Base::initLogger(log, Base::getArgumentName());
+        this->hasTensorSemantics = hasTensorSemantics;
     }
 
 private:
     void safeRunOnModule() final;
 };
 
-net::NetworkInfoOp createNetInfoForFuncOp(mlir::func::FuncOp funcOp) {
+net::NetworkInfoOp createNetInfoForFuncOp(mlir::func::FuncOp funcOp, bool hasTensorSemantics) {
     auto ctx = funcOp.getContext();
     mlir::OpBuilder builder(ctx);
-    auto netInfo = builder.create<net::NetworkInfoOp>(funcOp.getLoc(),
+    auto netInfo = builder.create<net::NetworkInfoOp>(appendLoc(funcOp.getLoc(), "nested_network_info"),
                                                       mlir::FlatSymbolRefAttr::get(ctx, funcOp.getName()), false);
     net::setupSections(netInfo);
 
@@ -45,10 +47,14 @@ net::NetworkInfoOp createNetInfoForFuncOp(mlir::func::FuncOp funcOp) {
     auto& inputRegion = netInfo.getInputsInfo();
     builder.setInsertionPointToStart(&inputRegion.front());
 
-    for (unsigned i = 0; i < funcType.getNumInputs() - funcType.getNumResults(); ++i) {
+    auto numOfInputs =
+            hasTensorSemantics ? funcType.getNumInputs() : funcType.getNumInputs() - funcType.getNumResults();
+
+    for (unsigned i = 0; i < numOfInputs; ++i) {
         auto argType = mlir::cast<vpux::NDTypeInterface>(funcType.getInput(i));
         const auto newType = mlir::RankedTensorType::get(argType.getShape(), argType.getElementType(), nullptr);
-        builder.create<net::DataInfoOp>(funcOp.getLoc(), formatv("in_{0}", i).str(), newType);
+        auto name = formatv("in_{0}", i).str();
+        builder.create<net::DataInfoOp>(appendLoc(funcOp.getLoc(), name), name, newType);
     }
 
     // Handle outputs
@@ -58,7 +64,8 @@ net::NetworkInfoOp createNetInfoForFuncOp(mlir::func::FuncOp funcOp) {
     for (unsigned i = 0; i < funcType.getNumResults(); ++i) {
         auto resType = mlir::cast<vpux::NDTypeInterface>(funcType.getResult(i));
         const auto newType = mlir::RankedTensorType::get(resType.getShape(), resType.getElementType(), nullptr);
-        builder.create<net::DataInfoOp>(funcOp.getLoc(), formatv("out_{0}", i).str(), newType);
+        auto name = formatv("out_{0}", i).str();
+        builder.create<net::DataInfoOp>(appendLoc(funcOp.getLoc(), name), name, newType);
     }
 
     return netInfo;
@@ -72,6 +79,12 @@ void AddNetInfoToModule::safeRunOnModule() {
     auto funcOps = module.getOps<mlir::func::FuncOp>();
     auto it = funcOps.begin();
 
+    // Module without funcOp indicates reserved memory module. Skip this pass
+    // for such modules.
+    if (std::distance(it, funcOps.end()) == 0) {
+        return;
+    }
+
     if (std::distance(it, funcOps.end()) != 1) {
         module->emitError("Module must contain exactly one function to add NetworkInfoOp");
         return signalPassFailure();
@@ -82,7 +95,7 @@ void AddNetInfoToModule::safeRunOnModule() {
         return signalPassFailure();
     }
 
-    auto netInfo = createNetInfoForFuncOp(*it);
+    auto netInfo = createNetInfoForFuncOp(*it, hasTensorSemantics);
     builder.setInsertionPointToStart(module.getBody());
     builder.insert(netInfo);
     _log.trace("Added NetworkInfoOp to module '{0}'", module.getSymName());
@@ -94,6 +107,6 @@ void AddNetInfoToModule::safeRunOnModule() {
 // createAddNetInfoToModulePass
 //
 
-std::unique_ptr<mlir::Pass> vpux::Core::createAddNetInfoToModulePass(Logger log) {
-    return std::make_unique<AddNetInfoToModule>(log);
+std::unique_ptr<mlir::Pass> vpux::Core::createAddNetInfoToModulePass(Logger log, bool hasTensorSemantics) {
+    return std::make_unique<AddNetInfoToModule>(log, hasTensorSemantics);
 }

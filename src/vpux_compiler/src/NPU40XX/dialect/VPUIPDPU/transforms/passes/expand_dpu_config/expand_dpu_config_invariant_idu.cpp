@@ -4,28 +4,18 @@
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_invariant_idu.hpp"
-#include <mlir/Support/LogicalResult.h>
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_invariant.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+
+#include <mlir/Support/LogicalResult.h>
 
 namespace vpux::VPUIPDPU::arch40xx::IDU {
 
 mlir::LogicalResult verifyInQuantConfig(const Logger& log, mlir::Type inType) {
-    SmallVector<uint8_t> inQuantZero;
-
-    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inType)) {
-        inQuantZero.push_back(checked_cast<uint8_t>(uniformQuantType.getZeroPoint()));
-    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inType)) {
-        auto zp = uniformQuantPerAxisType.getZeroPoints();
-        inQuantZero.resize(zp.size());
-        std::transform(zp.begin(), zp.end(), inQuantZero.begin(), [](int64_t a) {
-            return checked_cast<uint8_t>(a);
-        });
-    } else {
-        inQuantZero.push_back(0);
-    }
+    SmallVector<uint8_t> inQuantZero = getZeroPoints<uint8_t>(inType);
 
     if (inQuantZero.size() != 1) {
         log.error("Mismatch of size between input quant ZP and quant shift vector:  {0} != 1", inQuantZero.size());

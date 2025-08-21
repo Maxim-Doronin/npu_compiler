@@ -3,12 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 #include <npu_37xx_nnrt.hpp>
+
+#include <mlir/IR/BuiltinTypes.h>
 
 using namespace vpux;
 using namespace npu37xx;

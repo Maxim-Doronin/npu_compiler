@@ -4,15 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -233,7 +230,32 @@ mlir::LogicalResult GroupConvolutionBackpropDataConversion::matchAndRewrite(IE::
 
     auto filterOp = filterTensor.getDefiningOp<Const::DeclareOp>();
     if (filterOp == nullptr) {
-        return matchFailed(rewriter, origOp, "Unable to find filter constant operation");
+        auto filterTensorType = mlir::cast<NDTypeInterface>(filterTensor.getType());
+        auto permutation = to_small_vector(filterTensorType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
+                                               return checked_cast<uint32_t>(dim.ind());
+                                           }));
+        std::swap(permutation[IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX],
+                  permutation[IE::GROUP_TRANSPOSED_CONV_C_OUT_DIM_INDEX]);
+        auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
+        auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "_transpose"), filterTensor,
+                                                            /*order=*/nullptr, orderAttr);
+
+        const auto rank = filterTensorType.getRank();
+        const auto axes = SmallVector<int64_t>{rank - 2, rank - 1};
+        const auto axesAttr = getIntArrayAttr(getContext(), axes);
+        IE::ReverseModeAttr modeAttr = IE::ReverseModeAttr::get(getContext(), IE::ReverseMode::INDEX);
+        auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "_reverse"),
+                                                        transposeOp.getOutput(), nullptr, axesAttr, modeAttr);
+
+        auto newFilter = reverseOp.getOutput();
+
+        rewriter.replaceOpWithNewOp<IE::GroupTransposedConvolutionOp>(
+                origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), origOp.getStridesAttr(),
+                origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
+                origOp.getSpatialOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+                /*inputPadding=*/nullptr);
+
+        return mlir::success();
     }
 
     // Reverse IC and OC dimensions in filter constant:

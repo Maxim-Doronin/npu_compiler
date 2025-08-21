@@ -19,7 +19,7 @@ def AddSwKernelInstructionPrefetch : PassBase<"add-sw-kernel-instruction-prefetc
         This pass adds a CACHE_PREFETCH SwKernel which loads specified kernel's instructions into L2 cache.
         Prefetch operations are added at the beginning of the inference if there is enough idle time on shave
         which can be configured via minimumShaveStartTimeForPrefetch option.
-        
+
         Pass will first go over SW kernels present in the inference and gather unique kernels until it runs out of
         free cache space or until it encounters a cache handling operation. After gathering prefetch candidates it
         checks if first SW kernel start time is greater than minimumShaveStartTimeForPrefetch and inserts prefetch
@@ -37,19 +37,19 @@ def AddSwKernelInstructionPrefetch : PassBase<"add-sw-kernel-instruction-prefetc
 
         Before:
         DMA             | DMA ... DMA             DMA ... DMA
-        Cluster0 DPU    |             DPU ... DPU             
+        Cluster0 DPU    |             DPU ... DPU
         Cluster0 SHAVE0 |                                     softmax, convert
         Cluster0 SHAVE1 |                                     softmax
-        Cluster1 DPU    |             DPU ... DPU             
+        Cluster1 DPU    |             DPU ... DPU
         Cluster1 SHAVE0 |                                     topk
         Cluster1 SHAVE1 |                                     topk
 
         After:
         DMA             | DMA ... DMA             DMA ... DMA
-        Cluster0 DPU    |             DPU ... DPU             
+        Cluster0 DPU    |             DPU ... DPU
         Cluster0 SHAVE0 | prefetch softmax                    softmax, convert
         Cluster0 SHAVE1 | prefetch convert                    softmax
-        Cluster1 DPU    |             DPU ... DPU             
+        Cluster1 DPU    |             DPU ... DPU
         Cluster1 SHAVE0 | prefetch topk                       topk
         Cluster1 SHAVE1 |                                     topk
     }];
@@ -280,6 +280,7 @@ def ConvertEltwiseToInPlace : PassBase<"convert-eltwise-to-in-place", "vpux::Fun
 // ConvertSprLUTToConst
 //
 
+
 def ConvertSprLUTToConst : PassBase<"convert-sprlut-to-const", "vpux::FunctionPass"> {
     let summary = "Convert sprLUT from PPE attribute to Const";
 
@@ -292,6 +293,20 @@ def ConvertSprLUTToConst : PassBase<"convert-sprlut-to-const", "vpux::FunctionPa
     }];
 
     let constructor = "vpux::VPUIP::createConvertSprLUTToConstPass()";
+}
+
+//
+// ConvertPalletLUTToConst
+//
+
+def ConvertPalletLUTToConst : PassBase<"convert-pallet-lut-to-const", "vpux::FunctionPass"> {
+    let summary = "Convert pallet LUT to Const";
+
+    let description = [{
+        Extract pallet LUT from input quantile type and make it Const inputs.
+    }];
+
+    let constructor = "vpux::VPUIP::createConvertPalletLUTToConstPass()";
 }
 
 //
@@ -442,28 +457,6 @@ def BreakDataFlow : PassBase<"break-data-flow", "vpux::FunctionPass"> {
 }
 
 //
-// DMATaskProfilingReserveMem
-//
-
-def DMATaskProfilingReserveMem : PassBase<"dma-task-profiling-reserve-mem", "vpux::ModulePass"> {
-    let summary = "DMA task profiling memory reserving";
-
-    let description = [{
-        This pass adds in ModuleOp information about reserved memory for DMA profiling.
-    }];
-
-    let options = [
-        Option<
-            "enableDMAProfiling", "dma-profiling",
-            "std::string", [{"false"}],
-            "Enable DMA task profiling (true|static|false)"
-        >
-    ];
-
-    let constructor = "vpux::VPUIP::createDMATaskProfilingReserveMemPass()";
-}
-
-//
 // DMATaskProfilingAfterBarrierSched
 //
 
@@ -473,14 +466,6 @@ def DMATaskProfilingAfterBarrierSched : PassBase<"dma-task-profiling-after-barri
     let description = [{
         This pass adds DMA profiling tasks after barrier scheduler.
     }];
-
-    let options = [
-        Option<
-            "enableDMAProfiling", "dma-profiling",
-            "std::string", [{"false"}],
-            "Enable DMA task profiling (true|static|false)"
-        >
-    ];
 
     let constructor = "vpux::VPUIP::createDMATaskProfilingAfterBarrierSchedPass()";
 }
@@ -1108,6 +1093,21 @@ def UnrollExpandDMA : PassBase<"unroll-expand-dma", "vpux::FunctionPass"> {
 }
 
 //
+// UnrollGatherDMA
+//
+
+def UnrollGatherDMA : PassBase<"unroll-gather-dma", "vpux::FunctionPass"> {
+    let summary = "Unroll gather DMA task with several NN DMA tasks";
+
+    let description = [{
+        This pass unrolls GatherDMA tasks with several NN DMA tasks, which are functionally equivalent.
+        Each sub GatherDMA will be converted to a NNDMA.
+    }];
+
+    let constructor = "vpux::VPUIP::createUnrollGatherDMAPass()";
+}
+
+//
 // UnrollPerAxisTileDMA
 //
 
@@ -1268,24 +1268,6 @@ def ConvertAsyncOpsToTasks : PassBase<"convert-async-ops-to-tasks", "vpux::Funct
         "vpux::VPUIP::VPUIPDialect",
         "vpux::VPURT::VPURTDialect"
     ];
-}
-
-
-//
-// UnrollPermuteToNNDMA
-//
-
-def UnrollPermuteToNNDMA : PassBase<"unroll-permute-to-nndma", "vpux::FunctionPass"> {
-    let summary = "Transform PermuteDMA task with one or several PermuteDMA tasks";
-
-    let description = [{
-        This pass unrolls PermuteDMA task to one or several PermuteDMA tasks.
-        The number of PermuteDMA depend on the number of planes (num_planes <= 256).
-        1. NCHW -> NHWC: The number of planes is C.
-        2. NHWC -> NCHW: The number of planes is H * W, and W must <= 256.
-    }];
-
-    let constructor = "vpux::VPUIP::createUnrollPermuteToNNDMAPass()";
 }
 
 //
@@ -1710,44 +1692,6 @@ def AdjustSpillSize : PassBase<"adjust-spill-size", "vpux::FunctionPass"> {
     }];
 
     let constructor = "vpux::VPUIP::createAdjustSpillSizePass()";
-}
-
-//
-// Reserve memory for compressed DMA
-//
-
-def CompressDmaReserveMem : PassBase<"compress-dma-reserve-mem", "vpux::ModulePass"> {
-    let summary = "Reserve memory for additional compressedDMA metadata";
-
-    let description = [{
-        Reserve memory in CMX where additional metadata is stored for compressed DMAs handling activation spilling.
-        In this memory Compressed DMA wil store a LUT with actual compressed data sizee that is later to be used
-        by decompress DMA
-    }];
-
-    let constructor = "vpux::VPUIP::createCompressDmaReserveMemPass()";
-}
-
-//
-// SWKernelPrefetchingReserveMem
-//
-
-def SWKernelPrefetchingReserveMem : PassBase<"sw-kernel-prefetching-reserve-mem", "vpux::ModulePass"> {
-    let summary = "Reserve memory for SW Kernel data prefetching";
-
-    let description = [{
-        SW Kernel reads extra few bytes of data for better performance.
-        When input buffer is at the end of CMX, reading extra data would cause ACT SHAVE read violation.
-        Now we reserve CMX for profiling and activation compression at the end of CMX.
-        This pass checks the total reserved memory size and inserts a dummy section if necessary, to ensure
-        the total reserved memory size is safe for SW Kenel data prefetching.
-
-        This pass eliminates the risk of ACT SHAVE read violation, but model performance might be impacted.
-        One case is described in E#122488, where DMA and DPU execution pipeline is impacted by the memory layout adjustment.
-        This can be optimized in the future by CMX allocation improvement.
-    }];
-
-    let constructor = "vpux::VPUIP::createSWKernelPrefetchingReserveMemPass()";
 }
 
 //

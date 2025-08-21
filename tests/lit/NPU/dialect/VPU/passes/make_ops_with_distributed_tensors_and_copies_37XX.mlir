@@ -1755,8 +1755,8 @@ func.func @NCEInterpolateToDistributedOpClustering(%arg0: tensor<1x16x1x1xf16, {
     // CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>]
     // CHECK-DAG:    [[WEIGHTSTABLE:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
 
-    // CHECK-DAG:    [[INPUT_SM:%.*]] = const.Declare tensor<1x16x2x2xi1> = dense<true> : tensor<1x16x2x2xi1>
-    // CHECK:        [[INPUT_SE:%.*]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 1, 1],
+    // CHECK-DAG:    [[INPUT_SM:%.+]] = const.Declare tensor<1x16x2x2xi1> = dense<true> : tensor<1x16x2x2xi1>
+    // CHECK:        [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 16, 1, 1],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:                                   scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 2, 2]>,
     // CHECK-SAME:       seDepth = 1 : i64, seSize = [16]}
@@ -1829,8 +1829,8 @@ func.func @NCEInterpolateToDistributedOpSOH(%arg0: tensor<1x64x5x10xf16, {order 
     // CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<64x64x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<64x64x1x1xf16>, [#const.Reorder<#NHWC>]
     // CHECK-DAG:    [[WEIGHTSTABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
 
-    // CHECK-DAG:    [[INPUT_SM:%.*]] = const.Declare tensor<1x64x10x20xi1> = dense<true> : tensor<1x64x10x20xi1>
-    // CHECK:        [[INPUT_SE:%.*]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 5, 10],
+    // CHECK-DAG:    [[INPUT_SM:%.+]] = const.Declare tensor<1x64x10x20xi1> = dense<true> : tensor<1x64x10x20xi1>
+    // CHECK:        [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 5, 10],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:                                   scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 10, 20]>,
     // CHECK-SAME:       seDepth = 1 : i64, seSize = [64]}
@@ -1904,8 +1904,8 @@ func.func @NCEInterpolateToDistributedOpSOK(%arg0: tensor<1x64x5x10xf16, {order 
     // CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<64x64x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<64x64x1x1xf16>, [#const.Reorder<#NHWC>]
     // CHECK-DAG:    [[WEIGHTSTABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
 
-    // CHECK-DAG:    [[INPUT_SM:%.*]] = const.Declare tensor<1x64x10x20xi1> = dense<true> : tensor<1x64x10x20xi1>
-    // CHECK:        [[INPUT_SE:%.*]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 5, 10],
+    // CHECK-DAG:    [[INPUT_SM:%.+]] = const.Declare tensor<1x64x10x20xi1> = dense<true> : tensor<1x64x10x20xi1>
+    // CHECK:        [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 64, 5, 10],
     // CHECK-SAME:       seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
     // CHECK-SAME:                                   scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 10, 20]>,
     // CHECK-SAME:       seDepth = 1 : i64, seSize = [64]}
@@ -1981,7 +1981,7 @@ func.func @TopKSWTilingSOH(%arg0: tensor<1x31x103x513xf16, {order = #NHWC}>) -> 
 
     //CHECK:        [[OUTPUT:%.+]], [[TARGET:%.+]] = VPU.TopK([[INPUT]], [[AUX_BUFFER]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x1x103x513xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
-    //CHECK-SMAE:   !VPU.DistributedTensor<1x1x103x513xsi32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+    //CHECK-SAME:   !VPU.DistributedTensor<1x1x103x513xsi32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     //CHECK:        [[OUTPUT_VALUES:%.+]] = VPU.Copy([[OUTPUT]]
     //CHECK-SAME:   -> tensor<1x1x103x513xf16, {order = #NHWC}>
@@ -2014,7 +2014,7 @@ func.func @TopKSWTilingSOK(%arg0: tensor<1x103x513x31xf16, {order = #NHWC}>) -> 
 
     //CHECK:        [[OUTPUT:%.+]], [[TARGET:%.+]] = VPU.TopK([[INPUT]], [[AUX_BUFFER]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x103x513x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>,
-    //CHECK-SMAE:   !VPU.DistributedTensor<1x103x513x1xsi32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    //CHECK-SAME:   !VPU.DistributedTensor<1x103x513x1xsi32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
 
     //CHECK:        [[OUTPUT_VALUES:%.+]] = VPU.Copy([[OUTPUT]]
     //CHECK-SAME:    -> tensor<1x103x513x1xf16, {order = #NHWC}>
@@ -4111,4 +4111,29 @@ func.func @LogicalNotSWWithClustering(%arg0: tensor<1x1x1x44xf16>) -> tensor<1x1
 
     // CHECK:        [[OUT:%.+]] = VPU.Copy([[LOGICALNOT]]
     // CHECK:        return [[OUT]] : tensor<1x1x1x44xf16>
+}
+
+// -----
+
+// CHECK-LABEL:   @GatherDMA
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x1x128256x2048xf16>,
+// CHECK-SAME:    [[INDICES:%.+]]: tensor<1x1x1024x1xi64>
+func.func @GatherDMA(%input: tensor<1x1x128256x2048xf16>, %indices: tensor<1x1x1024x1xi64>) -> tensor<1x1x1024x2048xf16> {
+
+    %gatherDMA = VPU.GatherDMA(%input, %indices) {axis_value = 2 : i64, batch_dims = 1 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>} :
+                tensor<1x1x128256x2048xf16>, tensor<1x1x1024x1xi64> -> tensor<1x1x1024x2048xf16>
+    return %gatherDMA : tensor<1x1x1024x2048xf16>
+
+    // CHECK:        [[INDICES_COPY:%.+]] = VPU.Copy([[INDICES]]) {out_mem_space = @CMX_NN} : tensor<1x1x1024x1xi64>
+    // CHECK-SAME:      -> !VPU.DistributedTensor<1x1x1024x1xi64, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK:        [[GATHER_DMA:%.+]] = VPU.GatherDMA([[INPUT]], [[INDICES_COPY]]) {axis_value = 2 : i64, batch_dims = 1 : i64} :
+    // CHECK-SAME:      tensor<1x1x128256x2048xf16>, !VPU.DistributedTensor<1x1x1024x1xi64, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-SAME:      -> !VPU.DistributedTensor<1x1x1024x2048xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+
+    // CHECK:        [[OUT:%.+]] = VPU.Copy([[GATHER_DMA]]) :
+    // CHECK-SAME:      !VPU.DistributedTensor<1x1x1024x2048xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+    // CHECK-SAME:      -> tensor<1x1x1024x2048xf16>
+
+    // CHECK:        return [[OUT]] : tensor<1x1x1024x2048xf16>
 }

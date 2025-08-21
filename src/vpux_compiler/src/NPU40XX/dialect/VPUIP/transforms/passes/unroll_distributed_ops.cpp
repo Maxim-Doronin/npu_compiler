@@ -6,12 +6,9 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_distributed_ops.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes/unroll_distributed_ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
-
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/dma_fusion_utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 

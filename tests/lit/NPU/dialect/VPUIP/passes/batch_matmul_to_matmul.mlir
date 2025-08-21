@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: @BatchMatMulToMatMul
 module @BatchMatMulToMatMul attributes {
-    VPU.arch = #VPU.arch_kind<NPU40XX>
+    config.arch = #config.arch_kind<NPU40XX>
 } {
 
 IE.TileResource 4 of @NCE at 1.850000e+03 MHz {
@@ -110,7 +110,7 @@ func.func @main() -> () {
 // CHECK-LABEL-DAG: @QuantBatchMatMulToMatMul
 // CHECK-DAG:   [[Q_ELEM_TYPE:!.+]] = !quant.uniform<u8:f16:1, {
 module @QuantBatchMatMulToMatMul attributes {
-    VPU.arch = #VPU.arch_kind<NPU40XX>
+    config.arch = #config.arch_kind<NPU40XX>
 } {
 
 IE.TileResource 4 of @NCE at 1.850000e+03 MHz {
@@ -202,7 +202,7 @@ func.func @main() -> () {
 
 // CHECK-LABEL: @MatMulWithBatch1ToMatMul
 module @MatMulWithBatch1ToMatMul attributes {
-    VPU.arch = #VPU.arch_kind<NPU40XX>
+    config.arch = #config.arch_kind<NPU40XX>
 } {
 
 IE.TileResource 4 of @NCE at 1.850000e+03 MHz {

@@ -61,11 +61,11 @@ const EngineLimits NPU40XX_ENGINE_LIMITS_DEFAULT = {
                 DimLimits(SizeLimits(1, 0x10000), StrideLimits(0, 0xFFFFFFFF), {}),
                 /**/
         })};
-const EngineLimits& getEngineLimits(VPU::ArchKind arch) {
+const EngineLimits& getEngineLimits(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return NPU37XX_ENGINE_LIMITS_DEFAULT;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return NPU40XX_ENGINE_LIMITS_DEFAULT;
     default:
         return DEFAULT_ENGINE_LIMITS_DEFAULT;

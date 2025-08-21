@@ -13,6 +13,8 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 
+#include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/Visitors.h>
 
@@ -57,8 +59,9 @@ public:
     void endVisit(const Node& node) final {
         auto computeBlocks = node.data().computeBlockVec;
         for (auto computeBlock : computeBlocks) {
-            for (auto op : computeBlock) {
+            for (auto op : llvm::reverse(computeBlock)) {
                 if (!mlir::isa<Const::DeclareOp>(op)) {
+                    assert(op->getUsers().empty() && "An op with users is not expected");
                     op->erase();
                 }
             }

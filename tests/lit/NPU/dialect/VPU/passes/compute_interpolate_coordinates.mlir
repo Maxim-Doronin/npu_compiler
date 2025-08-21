@@ -104,7 +104,7 @@ func.func @interpolateNCHWAxes12(%arg0: tensor<1x14x14x21xf16>) -> tensor<1x16x1
 //CHECK:    [[UNROLLED_LAMBDAS:%.+]] = VPU.UnrolledType([[LAMBDAS]] : tensor<1x1x1x20xf16>) -> !VPU.DistributedTensor<1x1x1x20xf16
 
 // CHECK:   [[INTERPOLATE:%.+]] = VPU.Interpolate([[UNROLLED_INPUT]], [[UNROLLED_COORDINATES]], [[UNROLLED_LAMBDAS]])
-// CHECK-SAME:  : !VPU.DistributedTensor<1x14x14x21xf16, 
+// CHECK-SAME:  : !VPU.DistributedTensor<1x14x14x21xf16,
 
 // CHECK:   [[UNROLLED_OUTPUT:%.+]] = VPU.UnrolledType([[INTERPOLATE]]
 

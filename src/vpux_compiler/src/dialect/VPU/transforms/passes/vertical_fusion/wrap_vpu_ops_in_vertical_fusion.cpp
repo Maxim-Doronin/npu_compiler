@@ -4,10 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/wrap_vf_rewriter.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/wrap_vf_rewriter.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
 
@@ -22,35 +24,6 @@ using namespace VPU;
 
 namespace {
 
-void wrapIntoVFRegion(VPU::VerticalFusionOpInterface op, Logger log) {
-    if (op->getParentOfType<VPU::VerticalFusionOp>() != nullptr) {
-        log.trace("[SKIP] The Operation already wrapped into VF region");
-        return;
-    }
-
-    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
-    const SmallVector<int64_t> one(inputType.getRank(), 1);
-
-    auto tilingStrategyArray = op->hasAttr(tilingStrategy) ? mlir::cast<mlir::ArrayAttr>(op->getAttr(tilingStrategy))
-                                                           : getIntArrayAttr(op->getContext(), one);
-
-    const auto bodyBuilder = [op](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange newOperands) {
-        mlir::IRMapping mapper;
-        mapper.map(op->getOperands(), newOperands);
-        auto* newOp = builder.clone(*op, mapper);
-        newOp->removeAttr(tilingStrategy);
-        builder.create<VPU::YieldOp>(loc, newOp->getResults());
-    };
-
-    OpBuilderLogger builderLog(log.nest());
-    mlir::OpBuilder builder(op, &builderLog);
-
-    auto vfOp = builder.create<VPU::VerticalFusionOp>(op->getLoc(), op->getResultTypes(), op->getOperands(),
-                                                      bodyBuilder, tilingStrategyArray);
-    op->replaceAllUsesWith(vfOp);
-    op->erase();
-}
-
 //
 // WrapVerticalFusionRegionPass
 //
@@ -58,46 +31,49 @@ void wrapIntoVFRegion(VPU::VerticalFusionOpInterface op, Logger log) {
 class WrapVerticalFusionRegionPass final :
         public VPU::impl::WrapVerticalFusionRegionBase<WrapVerticalFusionRegionPass> {
 public:
-    explicit WrapVerticalFusionRegionPass(Logger log) {
+    explicit WrapVerticalFusionRegionPass(const WorkloadManagementMode workloadManagementMode, Logger log)
+            : _workloadManagementMode(workloadManagementMode) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
+    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
+
 private:
     void safeRunOnFunc() final;
+
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
 };
+
+mlir::LogicalResult WrapVerticalFusionRegionPass::initialize(mlir::MLIRContext* ctx) {
+    if (mlir::failed(Base::initialize(ctx))) {
+        return mlir::failure();
+    }
+
+    if (workloadManagementModeOpt.hasValue()) {
+        _workloadManagementMode = workloadManagementModeOpt.getValue();
+    }
+    return mlir::success();
+}
 
 //
 // safeRunOnModule
 //
 
 void WrapVerticalFusionRegionPass::safeRunOnFunc() {
-    const auto callback = [&](VPU::VerticalFusionOpInterface op) {
-        if (mlir::isa<VPU::VerticalFusionOp>(op->getParentOp())) {
-            _log.trace("Skip for operation '{0}' at '{1}' which is wrapped in other op", op->getName(), op->getLoc());
-            return;
-        }
+    auto& ctx = getContext();
 
-        if (!op.isVFSupported()) {
-            _log.trace("Skip for operation '{0}' at '{1}' which doesn't support VF", op->getName(), op->getLoc());
-            return;
-        }
+    mlir::RewritePatternSet patterns(&ctx);
 
-        if (op->hasAttr(tilingStrategy)) {
-            const auto tilingShape =
-                    Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(op->getAttr(tilingStrategy))));
-            auto tilingDimCount = getNonOneDim(tilingShape).size();
-            if (tilingDimCount > 1) {
-                _log.trace("Skip for operation '{0}' at '{1}' because VF doesn't support multi-dim tiling",
-                           op->getName(), op->getLoc());
-                return;
-            }
-        }
+    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_LCA) {
+        patterns.add<VPU::VF::v1::WrapVFRewriter>(&ctx, _log);
+    } else {
+        patterns.add<VPU::VF::v2::WrapVFRewriter>(&ctx, _log);
+    }
 
-        _log.trace("Process Layer Operation '{0}' at '{1}'", op->getName(), op->getLoc());
-        wrapIntoVFRegion(op, _log.nest());
-    };
-
-    getOperation().walk(callback);
+    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                                        getDefaultGreedyRewriteConfig()))) {
+        signalPassFailure();
+    }
 }
 
 }  // namespace
@@ -106,6 +82,7 @@ void WrapVerticalFusionRegionPass::safeRunOnFunc() {
 // createWrapVerticalFusionRegion
 //
 
-std::unique_ptr<mlir::Pass> VPU::createWrapVerticalFusionRegionPass(Logger log) {
-    return std::make_unique<WrapVerticalFusionRegionPass>(log);
+std::unique_ptr<mlir::Pass> VPU::createWrapVerticalFusionRegionPass(const WorkloadManagementMode workloadManagementMode,
+                                                                    Logger log) {
+    return std::make_unique<WrapVerticalFusionRegionPass>(workloadManagementMode, log);
 }

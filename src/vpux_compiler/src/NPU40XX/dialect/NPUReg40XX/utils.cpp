@@ -26,7 +26,7 @@ uint32_t vpux::NPUReg40XX::getKernelEntry(vpux::ELF::SymbolReferenceMap& _symRef
 uint64_t vpux::NPUReg40XX::getKernelTextSize(vpux::ELF::SymbolReferenceMap& _symRefMap,
                                              std::optional<mlir::SymbolRefAttr> attr) {
     auto kernelTextOp = getOpFrom<vpux::VPUASM::DeclareKernelTextOp>(_symRefMap, attr);
-    return kernelTextOp ? kernelTextOp.getBinarySize(VPU::ArchKind::NPU40XX) : 0;
+    return kernelTextOp ? kernelTextOp.getBinarySize(config::ArchKind::NPU40XX) : 0;
 }
 
 llvm::StringRef vpux::NPUReg40XX::getKernelPath(vpux::ELF::SymbolReferenceMap& _symRefMap,

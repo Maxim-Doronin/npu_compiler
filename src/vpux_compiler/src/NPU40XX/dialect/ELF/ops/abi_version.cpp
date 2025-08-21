@@ -28,14 +28,14 @@ void vpux::ELF::ABIVersionOp::serialize(elf::writer::BinaryDataSection<uint8_t>&
     std::memcpy(abiVersionStruct.n_desc, desc, descSize);
 
     auto ptrCharTmp = reinterpret_cast<uint8_t*>(&abiVersionStruct);
-    binDataSection.appendData(ptrCharTmp, getBinarySize(VPU::ArchKind::UNKNOWN));
+    binDataSection.appendData(ptrCharTmp, getBinarySize(config::ArchKind::UNKNOWN));
 }
 
-size_t vpux::ELF::ABIVersionOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::ELF::ABIVersionOp::getBinarySize(config::ArchKind) {
     return sizeof(LoaderAbiVersionNote);
 }
 
-size_t vpux::ELF::ABIVersionOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::ELF::ABIVersionOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(LoaderAbiVersionNote);
 }
 

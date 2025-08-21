@@ -6,7 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/core/barrier_info.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 
 namespace vpux {
 namespace VPURT {
@@ -108,6 +108,14 @@ public:
     };
     SmallVector<DummyDmaInsertionData> getAndLegalizeDummyDmaInsertionData();
 
+    struct DummyBarrierData {
+        size_t pageInd;
+        size_t producer;
+        size_t consumer;
+        size_t insertAfter;
+    };
+    SmallVector<DummyBarrierData> getDummyBarriersInsertionData();
+
     void initPrevPhysBarrierData(SmallVector<size_t>& barrierToPidVec);
     void initPrevPhysBarrierData(mlir::func::FuncOp func);
     SmallVector<std::optional<size_t>> prepareEnqueueDmaBarForFullWlm(
@@ -122,7 +130,10 @@ private:
 
     void readBarrierPageAssignmentFromIr();
 
+    void updateBoundaryTasksDataForTask(size_t taskInd);
+    void enforceBoundaryTaskHasUpdateBarrier(size_t pageInd);
     void initializeBoundaryTasksData();
+    void updateBoundaryTasksDataForPage(size_t pageInd);
     bool isTaskWithNonAdjacentPageDependency(size_t taskInd);
     bool isDepFromTaskAToTaskB(size_t taskA, size_t taskB);
     bool isDepFromTaskToBarrier(size_t taskInd, size_t barInd);
@@ -169,6 +180,9 @@ private:
 
     // Store information at which page given task start to execute
     SmallVector<size_t> _taskPageAssignment;
+
+    // Store information about first and last task index on each page
+    SmallVector<std::optional<std::pair<size_t, size_t>>> _firstAndLastTaskPerPage;
 
     // For each page index store per HW FIFO boundary task data.
     // Since for each HW FIFO there can be a sequence of boundary tasks store index of first and last one

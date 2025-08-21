@@ -8,8 +8,6 @@
 #include <mlir/IR/Types.h>
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 
-using namespace vpux;
-
 namespace vpux::VPUIP::arch37xx {
 
 mlir::Type getTimestampType(mlir::MLIRContext* ctx);

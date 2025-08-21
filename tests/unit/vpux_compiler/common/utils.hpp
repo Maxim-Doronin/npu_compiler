@@ -5,18 +5,17 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
-
-#include <mlir/IR/Builders.h>
-#include <mlir/IR/MLIRContext.h>
-
 #include "vpux/compiler/NPU37XX/dialect/NPUReg37XX/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/MLIRContext.h>
+
+#include <gtest/gtest.h>
 #include <bitset>
 #include <random>
 
@@ -32,7 +31,7 @@ protected:
 
 class NPUSpecific_UnitTest : public MLIR_UnitBase {
 public:
-    NPUSpecific_UnitTest(vpux::VPU::ArchKind arch) {
+    NPUSpecific_UnitTest(vpux::config::ArchKind arch) {
         // We need to register hw-specific interfaces (e.g. NCEOpInterface) for VPU NCE ops
         auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
         interfacesRegistry->registerInterfaces(registry);
@@ -45,7 +44,7 @@ public:
 namespace vpux::VPU::arch37xx {
 class UnitTest : public NPUSpecific_UnitTest {
 public:
-    UnitTest(): NPUSpecific_UnitTest(vpux::VPU::ArchKind::NPU37XX) {
+    UnitTest(): NPUSpecific_UnitTest(vpux::config::ArchKind::NPU37XX) {
     }
 };
 }  // namespace vpux::VPU::arch37xx
@@ -53,7 +52,7 @@ public:
 namespace vpux::VPU::arch40xx {
 class UnitTest : public NPUSpecific_UnitTest {
 public:
-    UnitTest(): NPUSpecific_UnitTest(vpux::VPU::ArchKind::NPU40XX) {
+    UnitTest(): NPUSpecific_UnitTest(vpux::config::ArchKind::NPU40XX) {
     }
 };
 }  // namespace vpux::VPU::arch40xx

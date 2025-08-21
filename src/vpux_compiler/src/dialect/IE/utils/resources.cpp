@@ -41,7 +41,6 @@ IE::MemoryResourceOp getReservedMemoryResource(mlir::ModuleOp mainModule, mlir::
                                                mlir::SymbolRefAttr memSpace);
 SmallVector<IE::MemoryResourceOp> getReservedMemoryResource(mlir::ModuleOp mainModule,
                                                             mlir::StringLiteral reservedMemorySection);
-
 }  // namespace vpux::IE::details
 
 //
@@ -68,14 +67,13 @@ bool vpux::IE::isNceTile(mlir::SymbolRefAttr executor) {
 //
 // MemoryResourceOp
 //
-
 IE::MemoryResourceOp vpux::IE::details::addAvailableMemory(mlir::Region& region, mlir::SymbolRefAttr memSpace,
                                                            Byte size) {
     VPUX_THROW_UNLESS(size.count() > 0, "Trying to set zero size of memory kind '{0}'", memSpace);
     const auto byteSizeAttr = getIntAttr(region.getContext(), size.count());
     auto builder = mlir::OpBuilder::atBlockBegin(&region.front());
     return builder.create<IE::MemoryResourceOp>(mlir::UnknownLoc::get(region.getContext()), memSpace.getLeafReference(),
-                                                byteSizeAttr, nullptr);
+                                                byteSizeAttr, /*offset*/ nullptr);
 }
 
 IE::MemoryResourceOp vpux::IE::addAvailableMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace, Byte size) {
@@ -155,6 +153,50 @@ SmallVector<IE::MemoryResourceOp> vpux::IE::getReservedMemoryResources(mlir::Mod
     return resMemVec;
 }
 
+namespace {
+size_t getReservedMemoryStartOffset(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace) {
+    size_t startMemoryOffset = 0;
+
+    // DDR reserved memory starts at 0. Adjustment is required only for CMX
+    auto cmxSpaceAttr = mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN));
+    if (memSpace == cmxSpaceAttr) {
+        startMemoryOffset = IE::getAvailableMemory(mainModule, cmxSpaceAttr).size().count();
+        for (auto resource : IE::getReservedMemoryResources(mainModule, memSpace)) {
+            VPUX_THROW_WHEN(!resource.getOffset().has_value(), "reserved memory without offset");
+            size_t offset = resource.getOffset().value();
+            if (offset < startMemoryOffset) {
+                startMemoryOffset = offset;
+            }
+        }
+    }
+
+    return startMemoryOffset;
+}
+
+size_t getReservedMemoryEndOffset(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace) {
+    // CMX reserved memory always ends at the CMX end.
+    auto cmxSpaceAttr = mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN));
+    if (memSpace == cmxSpaceAttr) {
+        return IE::getAvailableMemory(mainModule, cmxSpaceAttr).size().count() - 1;
+    }
+
+    size_t endMemoryOffset = 0;
+    for (auto resource : IE::getReservedMemoryResources(mainModule, memSpace)) {
+        VPUX_THROW_WHEN(!resource.getOffset().has_value(), "reserved memory without offset value");
+        size_t offset = resource.getOffset().value() + resource.getByteSize();
+        if (offset > endMemoryOffset) {
+            endMemoryOffset = offset;
+        }
+    }
+
+    return endMemoryOffset;
+}
+}  // namespace
+
+size_t vpux::IE::getReservedMemorySize(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace) {
+    return getReservedMemoryEndOffset(mainModule, memSpace) - getReservedMemoryStartOffset(mainModule, memSpace) + 1;
+}
+
 IE::MemoryResourceOp vpux::IE::details::addReservedMemoryResource(mlir::ModuleOp mainModule,
                                                                   mlir::StringLiteral reservedMemorySection,
                                                                   mlir::SymbolRefAttr memSpace, int64_t size) {
@@ -168,6 +210,20 @@ IE::MemoryResourceOp vpux::IE::details::addReservedMemoryResource(mlir::ModuleOp
     }
 
     auto resMemBuilder = mlir::OpBuilder::atBlockBegin(resMemTable.getBody());
+    auto cmxSpaceAttr = mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN));
+    // For DDR - reserve memory at the beginning of DDR space
+    // For CMX - reserve at the end of CMX space. This is done to satisfy the requirement of SW kernel
+    // data prefetching. When prefetching SW kernel can exceed the input buffer size potentially reading
+    // the memory outside the CMX range. To prevent this compiler reserves 1KiB of CMX at the end so that
+    // at worst reserved, but accessible, memory is read by SW kernel.
+    size_t offset = 0;
+    if (memSpace == cmxSpaceAttr) {
+        offset = getReservedMemoryStartOffset(mainModule, memSpace);
+        VPUX_THROW_WHEN(static_cast<int64_t>(offset) < size, "Out of CMX memory for reservation");
+        offset -= size;
+    } else {
+        offset = getReservedMemoryEndOffset(mainModule, memSpace);
+    }
 
     auto resMemModule = resMemTable.lookupSymbol<mlir::ModuleOp>(reservedMemorySection);
     if (resMemModule == nullptr) {
@@ -186,7 +242,8 @@ IE::MemoryResourceOp vpux::IE::details::addReservedMemoryResource(mlir::ModuleOp
 
     auto innerBuilder = mlir::OpBuilder::atBlockBegin(resMemModule.getBody());
     return innerBuilder.create<IE::MemoryResourceOp>(mlir::UnknownLoc::get(resMemModule.getContext()),
-                                                     memSpace.getLeafReference(), byteSizeAttr, nullptr);
+                                                     memSpace.getLeafReference(), byteSizeAttr,
+                                                     getIntAttr(mainModule.getContext(), offset));
 };
 
 IE::MemoryResourceOp vpux::IE::details::getReservedMemoryResource(mlir::ModuleOp mainModule,
@@ -245,19 +302,9 @@ SmallVector<std::pair<uint64_t, uint64_t>> vpux::IE::getReservedMemOffsetAndSize
     // Check for reserved memory which memory scheduler should take into account
     // so that they not overlap with other buffers. Those reserved resource might be related
     // to handling of additional special features (e.g. DMA HW profiling)
-    auto reservedMemoryResources = IE::getReservedMemoryResources(module, memSpaceAttr);
-    if (!reservedMemoryResources.empty()) {
-        // Put all reserved resources starting from 0 if they were not assigned any address
-        size_t resMemOffset = 0;
-        for (auto& resMem : reservedMemoryResources) {
-            auto resMemSize = resMem.getByteSize();
-            resMemOffset = resMem.getOffset().value_or(resMemOffset);
-            reservedMemVec.push_back(std::make_pair(resMemOffset, resMemSize));
-            if (!resMem.getOffset().has_value()) {
-                resMem.setOffsetAttr(getIntAttr(module->getContext(), resMemOffset));
-            }
-            resMemOffset += resMemSize;
-        }
+    for (auto& resMem : IE::getReservedMemoryResources(module, memSpaceAttr)) {
+        VPUX_THROW_UNLESS(resMem.getOffset().has_value(), "reserved memory resource without offset value");
+        reservedMemVec.push_back(std::make_pair(resMem.getOffset().value(), resMem.getByteSize()));
     }
 
     return reservedMemVec;
@@ -316,21 +363,20 @@ SmallVector<IE::MemoryResourceOp> vpux::IE::getSWKernelPrefetchingReservedMemory
 }
 
 //
-// SW Kernel cache prefetching reserved memory
+// Dummy SW Kernel prefetch reserved memory
 //
 
-IE::MemoryResourceOp vpux::IE::setSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule,
-                                                                         mlir::SymbolRefAttr memSpace, int64_t size) {
-    return details::addReservedMemoryResource(mainModule, swKernelCachePrefetchingResMemModuleName, memSpace, size);
+IE::MemoryResourceOp vpux::IE::setDummySwKernelsForInstructionPrefetchReservedMemory(mlir::ModuleOp mainModule,
+                                                                                     mlir::SymbolRefAttr memSpace,
+                                                                                     int64_t size) {
+    return details::addReservedMemoryResource(mainModule, dummySwKernelsForInstructionPrefetchResMemModuleName,
+                                              memSpace, size);
 }
 
-IE::MemoryResourceOp vpux::IE::getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule,
-                                                                         mlir::SymbolRefAttr memSpace) {
-    return details::getReservedMemoryResource(mainModule, swKernelCachePrefetchingResMemModuleName, memSpace);
-}
-
-SmallVector<IE::MemoryResourceOp> vpux::IE::getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule) {
-    return details::getReservedMemoryResource(mainModule, swKernelCachePrefetchingResMemModuleName);
+IE::MemoryResourceOp vpux::IE::getDummySwKernelsForInstructionPrefetchReservedMemory(mlir::ModuleOp mainModule,
+                                                                                     mlir::SymbolRefAttr memSpace) {
+    return details::getReservedMemoryResource(mainModule, dummySwKernelsForInstructionPrefetchResMemModuleName,
+                                              memSpace);
 }
 
 //

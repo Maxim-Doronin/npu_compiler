@@ -11,13 +11,13 @@
 
 using namespace vpux;
 
-VPU::PerBarrierVariantConstraint VPU::getPerBarrierVariantConstraint(VPU::ArchKind arch,
+VPU::PerBarrierVariantConstraint VPU::getPerBarrierVariantConstraint(config::ArchKind arch,
                                                                      bool enableWorkloadManagement) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX: {
+    case config::ArchKind::NPU37XX: {
         return VPU::arch37xx::PerBarrierVariantConstraint{};
     }
-    case VPU::ArchKind::NPU40XX: {
+    case config::ArchKind::NPU40XX: {
         return VPU::arch40xx::PerBarrierVariantConstraint{enableWorkloadManagement};
     }
     default: {

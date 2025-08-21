@@ -12,12 +12,7 @@ namespace vpumi40xx2vpuasm {
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> DeclareConstBufferRewriter::getSymbolicNames(Const::DeclareOp op,
                                                                                         size_t counter) {
-    auto fullName = Const::DeclareOp::getOperationName();
-    auto opName = fullName.drop_front(Const::ConstDialect::getDialectNamespace().size() + 1);
-
-    auto index = std::to_string(counter);
-    auto symName = mlir::StringAttr::get(op.getContext(), opName + index);
-    return {mlir::FlatSymbolRefAttr::get(symName)};
+    return createSymbolicName(op, /* taskTypeString */ std::nullopt, counter);
 }
 
 mlir::FailureOr<SymbolizationResult> DeclareConstBufferRewriter::symbolize(

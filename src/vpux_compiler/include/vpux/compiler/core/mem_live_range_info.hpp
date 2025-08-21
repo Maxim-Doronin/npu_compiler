@@ -6,11 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/core/aliases_info.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
-
-#include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>

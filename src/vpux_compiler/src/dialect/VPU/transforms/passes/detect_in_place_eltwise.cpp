@@ -59,7 +59,7 @@ mlir::LogicalResult DetectInPlaceEltwise::matchAndRewrite(VPU::NCEEltwiseOp eltw
     }
 
     // sprLUT adds additional dummy DPU task, that writes garbage to the output
-    // (see AddDummyDPUTaskForSprLUT pass). In case of in-place operation it will
+    // (see AddDummyDPUTaskForMetadataPrefetch pass). In case of in-place operation it will
     // write into the input, corrupting its data.
     if (auto ppeAttr = mlir::dyn_cast_or_null<VPU::PPEFpAttr>(eltwiseOp.getPpeAttr())) {
         if (ppeAttr.getSprlut()) {

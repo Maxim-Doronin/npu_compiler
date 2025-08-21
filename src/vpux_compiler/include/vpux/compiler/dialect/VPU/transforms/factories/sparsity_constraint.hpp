@@ -5,13 +5,13 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/sparsity_constraint.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 namespace vpux {
 namespace VPU {
 
-VPU::SparsityConstraint getSparsityConstraint(VPU::ArchKind arch);
+VPU::SparsityConstraint getSparsityConstraint(config::ArchKind arch);
 
 }  // namespace VPU
 }  // namespace vpux

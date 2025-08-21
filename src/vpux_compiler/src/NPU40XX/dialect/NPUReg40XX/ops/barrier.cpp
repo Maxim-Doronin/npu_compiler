@@ -22,14 +22,14 @@ void vpux::NPUReg40XX::ConfigureBarrierOp::serialize(elf::writer::BinaryDataSect
                       sizeof(nn_public::VpuBarrierCountConfig), barrierDescriptor.size());
 
     auto serializedBarrierDescriptor = barrierDescriptor.getStorage();
-    binDataSection.appendData(serializedBarrierDescriptor.data(), getBinarySize(VPU::ArchKind::NPU40XX));
+    binDataSection.appendData(serializedBarrierDescriptor.data(), getBinarySize(config::ArchKind::NPU40XX));
 }
 
-size_t vpux::NPUReg40XX::ConfigureBarrierOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::ConfigureBarrierOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuBarrierCountConfig);
 }
 
-size_t vpux::NPUReg40XX::ConfigureBarrierOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::ConfigureBarrierOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuBarrierCountConfig);
 }
 

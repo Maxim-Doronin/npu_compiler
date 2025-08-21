@@ -67,11 +67,11 @@ void NPUReg40XX::M2IOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDa
     binDataSection.appendData(serializedM2iDesc.data(), serializedM2iDesc.size());
 }
 
-size_t NPUReg40XX::M2IOp::getBinarySize(VPU::ArchKind) {
+size_t NPUReg40XX::M2IOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuMediaTask);
 }
 
-size_t NPUReg40XX::M2IOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t NPUReg40XX::M2IOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuMediaTask);
 }
 

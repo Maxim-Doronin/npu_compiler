@@ -6,13 +6,16 @@
 #pragma once
 
 #include "vpux/compiler/core/tiling.hpp"
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 
+#include <vpu/layer.h>
+#include <vpu_layer_strategy.h>
+
 #include <atomic>
-#include <memory>
+
+namespace vpux::VPU {
+class DistributionInfo;
+}
 
 namespace vpux {
 namespace VPU {

@@ -5,12 +5,24 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/PatternMatch.h>
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+namespace vpux::IE {
+class ChannelPaddingAttr;
+class DepthToSpaceModeAttr;
+class SpaceToDepthModeAttr;
+}  // namespace vpux::IE
+namespace vpux::VPU {
+class DepthToSpaceOp;
+}  // namespace vpux::VPU
+namespace vpux::VPUIP {
+class DMADescriptorAttr;
+class DistributedBufferType;
+class SwKernelOp;
+}  // namespace vpux::VPUIP
 
 namespace vpux {
 namespace VPUIP {
@@ -22,7 +34,7 @@ std::optional<Shape> getPermuteDMAInputShape(NDTypeInterface inType, NDTypeInter
                                              vpux::Logger log);
 std::optional<Shape> getPermuteDMAOutputShape(NDTypeInterface inType, NDTypeInterface outType, mlir::AffineMap memPerm,
                                               vpux::Logger log);
-std::optional<SmallVector<Shape>> getPermuteDMASubInputShapes(VPU::ArchKind arch, NDTypeInterface inType,
+std::optional<SmallVector<Shape>> getPermuteDMASubInputShapes(config::ArchKind arch, NDTypeInterface inType,
                                                               NDTypeInterface outType, mlir::AffineMap memPerm,
                                                               int64_t dmaPortCount, vpux::Logger log);
 SmallVector<vpux::Shape> getPermuteDMASubOutputShapes(SmallVector<vpux::Shape> subInputShapes,
@@ -53,14 +65,14 @@ bool doesPermuteDMATileDimSupportWrapInCluster(vpux::NDTypeInterface inputType, 
 std::optional<mlir::AffineMap> getMemPermFromSwKernel(VPUIP::SwKernelOp swKernelTask);
 
 // Check if MemPermute satisfies the condition of optimal SW implementation
-bool satisfiesOptimizedMemPermute(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType);
+bool satisfiesOptimizedMemPermute(config::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType);
 
 /**
  * Cost function to evaluate whether it's beneficial to implement the operation using DMA for
  * operations like MemPermute.
  * @return true if it's beneficial for using DMA, otherwise false.
  */
-bool isBeneficialForUsingPermuteDMA(VPU::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
+bool isBeneficialForUsingPermuteDMA(config::ArchKind arch, NDTypeInterface inType, NDTypeInterface outType,
                                     mlir::AffineMap memPerm, int64_t dmaPortCount, vpux::Logger log);
 
 bool isMemPermSwKernel(VPUIP::SwKernelOp swKernelTask);
@@ -92,7 +104,7 @@ std::optional<VPUIP::PerAxisTileAttr> getPerAxisTileSwKernelAttr(VPUIP::SwKernel
 std::pair<vpux::Shape, vpux::Shape> getPerAxisTileDMAMergedShape(vpux::NDTypeInterface inType,
                                                                  vpux::NDTypeInterface outType, int64_t axis,
                                                                  int64_t tiles);
-SmallVector<vpux::Shape> getPerAxisTileDMASubShapes(VPU::ArchKind arch, vpux::ShapeRef shape);
+SmallVector<vpux::Shape> getPerAxisTileDMASubShapes(config::ArchKind arch, vpux::ShapeRef shape);
 
 // Public interface
 bool doesSWLayerFitIntoCMX(mlir::Operation* op, vpux::Logger log);

@@ -3,25 +3,37 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <llvm/ADT/STLExtras.h>
-#include <mlir/IR/Operation.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
+
+#include <llvm/ADT/STLExtras.h>
+#include <mlir/IR/Operation.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTINPUTSHAPE
@@ -361,7 +373,7 @@ bool ExpandEltwisePattern::init() {
             buffSizes.push_back(_unExpandedShape.totalSize() * outputType.getElemTypeSize());
         }
 
-        const auto arch = VPU::getArch(_eltwiseOp);
+        const auto arch = config::getArch(_eltwiseOp);
         auto requiredCMXSize = vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffSizes).count();
         return requiredCMXSize > totalAvailableCMXSize;
     };
@@ -479,6 +491,11 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
     auto ctx = rewriter.getContext();
 
     _log.trace("Converting unexpanded shape {0} to new aligned shape {1}", _unExpandedShape, _newExpandedShape);
+
+    if (isPerAxisQuant(_eltwiseOp->getResult(0))) {
+        _log.trace("Per axis quantization is not supported for replace by ShapeCast");
+        return mlir::failure();
+    }
 
     auto getOwnerIgnoreQuantizeCast = [&](mlir::OpOperand& opOperand) -> mlir::Operation* {
         auto ownerOp = opOperand.getOwner();
@@ -1368,43 +1385,44 @@ mlir::LogicalResult AdjustMemPermuteRewriter::matchAndRewrite(IE::MemPermuteOp l
                                                               mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), layerOp->getName(), layerOp->getLoc());
 
-    const auto inputShape = getShape(layerOp.getInput());
-    if (inputShape.size() != 4) {
-        return mlir::failure();
-    }
-
-    const auto memPerm = DimsOrder::fromAffineMap(layerOp.getMemPerm());
-
-    // This rewriter only process MemPermute with 2 non-one dims, and it will be processed by ConvertMemPermuteToOp
-    // pass. Otherwise such MemPermute cannot convert to Pool. And for such MemPermute. And for such MemPermute with 2
-    // non-one dims, only 2 cases, NxCx1x1 and 1xCxHx1. Both of them are reshaped to 1x1xHxW.
-    if (!((inputShape[Dims4D::Act::N] == 1 && inputShape[Dims4D::Act::W] == 1 && memPerm == DimsOrder::NHCW) ||
-          (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1 && memPerm == DimsOrder::CNHW))) {
-        return mlir::failure();
-    }
-
-    const auto memPermuteOutputOrder = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType()).getDimsOrder();
-    const auto memPermuteInputOrder = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType()).getDimsOrder();
-    const auto expectedOutOrder = DimsOrder::NCHW;
-    if (memPermuteOutputOrder != expectedOutOrder || memPermuteInputOrder != expectedOutOrder) {
-        return mlir::failure();
-    }
-
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
-    auto getNonOneDims = [](ShapeRef shape) {
-        Shape resultShape;
-        llvm::copy_if(shape, std::back_inserter(resultShape), [](int64_t elem) {
-            return elem != 1;
-        });
-        return resultShape;
-    };
-    const auto inputNonOneDims = getNonOneDims(getShape(layerOp.getInput()));
-    if (inputNonOneDims.size() != 2) {
+    const auto inputShape = inputType.getShape();
+
+    const int64_t SUPPORTED_RANK = 4;
+    if (inputShape.size() != SUPPORTED_RANK) {
         return mlir::failure();
     }
 
-    const auto newShape = Shape({1, 1, inputNonOneDims[Dims4D::Act::N], inputNonOneDims[Dims4D::Act::C]});
+    const auto expectedOutOrder = DimsOrder::NCHW;
+    if (outputType.getDimsOrder() != expectedOutOrder || inputType.getDimsOrder() != expectedOutOrder) {
+        return mlir::failure();
+    }
+
+    // This rewriter only process MemPermute with NCHW layout on the lowest two dims, and it will be processed by
+    // ConvertMemPermuteToOp pass with MemPermuteNCHWInNCHWOutNCWHPerm case.
+    const auto memPerm = DimsOrder::fromAffineMap(layerOp.getMemPerm());
+    if (!((inputShape[Dims4D::Act::N] == 1 && inputShape[Dims4D::Act::W] == 1 && memPerm == DimsOrder::NHCW) ||
+          (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1 && memPerm == DimsOrder::CNHW) ||
+          (memPerm == DimsOrder::NHWC))) {
+        return mlir::failure();
+    }
+
+    if (inputShape[Dims4D::Act::N] == 1 && inputShape[Dims4D::Act::H] == 1) {
+        // If input is 1xCx1xW, then it can be convert to pooling directly
+        return mlir::failure();
+    }
+
+    if (!isSuitableToAdjustMemPermuteShape(inputType, outputType, layerOp.getMemPerm())) {
+        return mlir::failure();
+    }
+
+    auto [mergedPermutation, mergedMemShape] = vpux::getMergedPermutationAndShape(inputType, layerOp.getMemPerm());
+    for (size_t i = 0; i < inputType.getShape().size() - mergedMemShape.size() + 1; ++i) {
+        mergedMemShape.insert(mergedMemShape.begin(), 1);
+    }
+    const auto newShape = Shape(mergedMemShape);
+
     auto inputShapeCastOp =
             rewriter.create<IE::ShapeCastOp>(layerOp.getLoc(), inputType.changeShape(newShape), layerOp.getInput(),
                                              getIntArrayAttr(layerOp.getContext(), newShape));

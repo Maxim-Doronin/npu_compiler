@@ -5,14 +5,15 @@
 
 #pragma once
 
-#include <mlir/IR/Operation.h>
-#include <mlir/IR/Value.h>
-#include <numeric>
 #include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/utils/factors.hpp"
-#include "vpux/utils/core/numeric.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Operation.h>
+#include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Value.h>
 
 namespace vpux {
 

@@ -7,7 +7,10 @@
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 
 #include <stack>
 
@@ -476,8 +479,8 @@ OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::Clustere
     // For 37XX, we do not set input workloads explicitly and therefore
     // OVERLAPPED should only represent the current op's input needs w/o
     // the sibling requirements
-    auto archKind = getArch(clusteredOp.getOperation());
-    if (archKind == VPU::ArchKind::NPU37XX) {
+    auto archKind = config::getArch(clusteredOp.getOperation());
+    if (archKind == config::ArchKind::NPU37XX) {
         return localOverlappedParams;
     }
 
@@ -658,7 +661,7 @@ std::set<VPU::ClusteredOpInterface> vpux::VPU::getSiblingOps(mlir::Operation* op
 }
 
 bool vpux::VPU::outputOverlappedParamsIsHaloSupported(mlir::Operation* op) {
-    return getArch(op) >= VPU::ArchKind::NPU40XX;
+    return config::getArch(op) >= config::ArchKind::NPU40XX;
 }
 
 OverlapDistributionParams vpux::VPU::getActivationOverlappedParams(VPU::ClusteredOpInterface clusteredOp,
@@ -731,8 +734,8 @@ OverlapDistributionParams vpux::VPU::getOutputOverlappedParams(VPU::ClusteredOpI
                                                                vpux::NDTypeInterface outputType,
                                                                ArrayRef<int64_t> activationTensorNumTiles) {
     SmallVector<VPU::ClusteredOpInterface> consumerSubgraph;
-    auto archKind = getArch(clusteredOp.getOperation());
-    const auto equalComputeAndMemoryView = archKind <= VPU::ArchKind::NPU37XX;
+    auto archKind = config::getArch(clusteredOp.getOperation());
+    const auto equalComputeAndMemoryView = archKind <= config::ArchKind::NPU37XX;
 
     if (auto eltwise = mlir::dyn_cast<VPU::NCEEltwiseOp>(clusteredOp.getOperation())) {
         if (eltwise.getIsInplace().value_or(false)) {
@@ -864,7 +867,7 @@ OverlapDistributionParams vpux::VPU::getOutputOverlappedParams(VPU::ClusteredOpI
 
 OverlapDistributionParams vpux::VPU::getOutputOverlappedParamsNoHalo(VPU::ClusteredOpInterface clusteredOp,
                                                                      ArrayRef<int64_t> outputTensorNumTiles) {
-    auto archKind = getArch(clusteredOp.getOperation());
+    auto archKind = config::getArch(clusteredOp.getOperation());
     VPUX_THROW_WHEN(!mlir::isa<NCEPermuteOp>(clusteredOp.getOperation()),
                     "Arch {0} does not support output OVERLAPPED distribution for op = {1}", archKind, clusteredOp);
 

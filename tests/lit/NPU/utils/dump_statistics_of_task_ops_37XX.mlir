@@ -10,7 +10,7 @@
 
 !qtype = !quant.uniform<u8:f32, 1.000000e+00>
 
-module @dual_tile attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   net.NetworkInfo
     entryPoint : @main
     inputsInfo : {
@@ -19,9 +19,9 @@ module @dual_tile attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, config.compila
       DataInfo "output_0" : tensor<2x16x16x16xf16>
     }
 
-  IE.MemoryResource 31457280 bytes of @DDR {VPU.bandwidth = 8, VPU.derateFactor = 6.000000e-01}
+  IE.MemoryResource 31457280 bytes of @DDR {config.bandwidth = 8, config.derateFactor = 6.000000e-01}
   IE.TileResource 1 of @NCE  {
-    IE.MemoryResource 2097152 bytes of @CMX_NN {VPU.bandwidth = 32, VPU.derateFactor = 1.000000e+00}
+    IE.MemoryResource 2097152 bytes of @CMX_NN {config.bandwidth = 32, config.derateFactor = 1.000000e+00}
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 2 of @DMA_NN

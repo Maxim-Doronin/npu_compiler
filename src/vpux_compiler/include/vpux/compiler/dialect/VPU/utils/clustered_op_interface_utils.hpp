@@ -7,9 +7,11 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
-
 #include "vpux/utils/core/mem_size.hpp"
+
+namespace vpux::VPU {
+class SiblingOpsAnalysis;
+}
 
 namespace vpux {
 namespace VPU {

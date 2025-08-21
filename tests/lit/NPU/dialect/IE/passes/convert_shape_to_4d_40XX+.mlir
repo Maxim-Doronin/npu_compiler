@@ -14,7 +14,7 @@ func.func @Convert2dTopKPositiveAxis(%arg0: tensor<80x77xsi32>) -> (tensor<80x1x
     return %output_values, %target_shape : tensor<80x1xsi32>, tensor<80x1xsi32>
 
     // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
-    // CHECK-SMAE:         shape_value = [1, 1, 80, 77]
+    // CHECK-SAME:         shape_value = [1, 1, 80, 77]
     // CHECK-SAME:     } : tensor<80x77xsi32> -> tensor<1x1x80x77xsi32>
 
     // CHECK:   [[VALUE:%.*]], [[SHAPE:%.*]] = IE.TopK([[RESHAPE_INPUT]])
@@ -40,7 +40,7 @@ func.func @Convert2dTopKNegativeAxis(%arg0: tensor<80x77xsi32>) -> (tensor<1x77x
     return %output_values, %target_shape : tensor<1x77xsi32>, tensor<1x77xsi32>
 
     // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
-    // CHECK-SMAE:         shape_value = [1, 1, 80, 77]
+    // CHECK-SAME:         shape_value = [1, 1, 80, 77]
     // CHECK-SAME:     } : tensor<80x77xsi32> -> tensor<1x1x80x77xsi32>
 
     // CHECK:   [[VALUE:%.*]], [[SHAPE:%.*]] = IE.TopK([[RESHAPE_INPUT]])

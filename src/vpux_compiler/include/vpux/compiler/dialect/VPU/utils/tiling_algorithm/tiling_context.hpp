@@ -24,12 +24,14 @@ public:
 
     mlir::LogicalResult applyTiling(mlir::RewriterBase& builder, Logger log);
 
+    mlir::FailureOr<SmallVector<mlir::Operation*>> applyVerticalFusion(mlir::RewriterBase& builder, Logger log);
+
 private:
     std::unique_ptr<ITilingAlgorithm> _tilingAlgorithm;
     mlir::Operation* _operation = nullptr;
 };
 
 // create and configure tiling context
-TilingContext createTilingContext(mlir::Operation* operation, ShapeRef strategy, bool enableSCFTiling);
+TilingContext createTilingContext(mlir::Operation* operation, bool enableSCFTiling);
 }  // namespace VPU
 }  // namespace vpux

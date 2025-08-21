@@ -229,6 +229,12 @@ DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vp
 
     auto ctx = inType.getContext();
 
+    VPUX_THROW_WHEN(inType.getRank() != outType.getRank(), "Rank mismatch between input and output types");
+    VPUX_THROW_WHEN(inType.getRank() != mappingOrder.getNumDims(),
+                    "Rank mismatch between input type and mapping order");
+    VPUX_THROW_WHEN(inType.getRank() != static_cast<int64_t>(loopOrder.size()),
+                    "Rank mismatch between input type and loop order");
+
     // Mapping order maps out logical dims to in logical dims
     // This mapping allows to find the in logical dim corresponding to a given out logical dim
 

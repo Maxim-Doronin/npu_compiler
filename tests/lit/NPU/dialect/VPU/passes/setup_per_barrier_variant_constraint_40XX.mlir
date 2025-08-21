@@ -7,7 +7,7 @@
 // RUN: vpux-opt --vpu-arch=%arch% --setup-npu-constraint %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module @mainModule attributes { VPU.arch = #VPU.arch_kind<NPU40XX> } {
+module @mainModule attributes { config.arch = #config.arch_kind<NPU40XX> } {
   IE.TileResource 2 of @NCE at 1.700000e+03 MHz {
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU

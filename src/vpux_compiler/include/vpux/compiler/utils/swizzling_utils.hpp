@@ -26,15 +26,15 @@ constexpr uint64_t SWIZZLING_KEY_5 = 5;
 constexpr int64_t SWIZZLING_SIZE_ALIGNMENT_VPUX40XX = 1024;
 constexpr int64_t SWIZZLING_SIZE_ALIGNMENT_VPUX37XX = 512;
 
-int64_t getSizeAlignmentForSwizzling(VPU::ArchKind arch);
+int64_t getSizeAlignmentForSwizzling(config::ArchKind arch);
 
 /// @brief Required alignment of buffers in CMX memory required swizzling operations
 /// @param swizzlingKey
 /// @param archKind
 /// @return alignment [bytes]
-int64_t getAddressAlignmentForSwizzling(int64_t swizzlingKey, VPU::ArchKind archKind);
+int64_t getAddressAlignmentForSwizzling(int64_t swizzlingKey, config::ArchKind archKind);
 
-VPUIP::SwizzlingSchemeAttr createSwizzlingSchemeAttr(mlir::MLIRContext* ctx, VPU::ArchKind archKind,
+VPUIP::SwizzlingSchemeAttr createSwizzlingSchemeAttr(mlir::MLIRContext* ctx, config::ArchKind archKind,
                                                      int64_t swizzlingKey);
 
 // For swizzling buffer size needs to be aligned to 512/1024 as dictated by arch
@@ -59,9 +59,9 @@ VPUIP::SwizzlingSchemeAttr getSwizzlingSchemeAttr(mlir::Type type);
 // Retrieve swizzling key setting embedded in layout with buffer types
 int64_t getSwizzlingKey(mlir::Type type);
 
-mlir::Type setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKeyAttr, VPU::ArchKind archKind);
+mlir::Type setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKeyAttr, config::ArchKind archKind);
 
-mlir::Type setSwizzlingKey(mlir::Type type, int64_t swizzlingKey, VPU::ArchKind archKind);
+mlir::Type setSwizzlingKey(mlir::Type type, int64_t swizzlingKey, config::ArchKind archKind);
 
 SmallVector<int64_t> getPerClusterBytesAddedForSwizzling(VPUIP::DistributedBufferType distributedBuffer);
 

@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_WRAPOPSINSPARSIFYDESPARSIFYPAIRS
@@ -88,7 +89,7 @@ void WrapOpsInSparsifyDesparsifyPairsPass::safeRunOnFunc() {
         return;
     }
 
-    auto arch = VPU::getArch(func);
+    auto arch = config::getArch(func);
     auto constraint = VPU::getSparsityConstraint(arch);
 
     const auto outputWrapper = [&](mlir::Operation* producerOp, mlir::Location loc) {

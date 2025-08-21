@@ -89,3 +89,21 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::LayoutC
     return std::make_pair(mlir::cast<mlir::Type>(dstType.changeTypeComponents(typeComponents)),
                           castedOutputDistribution.value());
 }
+
+//
+// TilingViewLikeOpInterface
+//
+
+vpux::InputTiling vpux::VPU::LayoutCastOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger) {
+    SmallVector<TileInfo> inputTiles;
+    const auto inputShape = getShape(getInput());
+    VPUX_THROW_UNLESS(inputShape.size() == outputTile.shape.size(),
+                      "Can't tile LayoutCast operation at '{0}', which has operands with different rank",
+                      this->getLoc());
+    inputTiles.push_back(outputTile);
+    return TilingInfo{inputTiles};
+}
+
+void vpux::VPU::LayoutCastOp::adjustAttrs(const TilingInfo&, const TileInfo&, ShapeRef) {
+    // Do nothing
+}

@@ -13,8 +13,8 @@
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x10000000AABBCCDD",
-            ov_2: "0x10000000AABBCCDD"
+            vpux_ow_1: "0x10000000AABBCCDD",
+            vpux_ow_2: "0x10000000AABBCCDD"
         }
     }
 #-}
@@ -29,8 +29,8 @@ module @MemoryLimitTest {
     }
 
     func.func @main(%arg: tensor<4x16xf16>) -> tensor<4x16xf16> {
-        %cst1 = const.Declare tensor<4xui8> = dense_resource<ov_1> : tensor<4xui8>, [#const.Add<1.0>]
-        %cst2 = const.Declare tensor<4xui8> = dense_resource<ov_2> : tensor<4xui8>, [#const.Add<2.0>]
+        %cst1 = const.Declare tensor<4xui8> = dense_resource<vpux_ow_1> : tensor<4xui8>, [#const.Add<1.0>]
+        %cst2 = const.Declare tensor<4xui8> = dense_resource<vpux_ow_2> : tensor<4xui8>, [#const.Add<2.0>]
         return %arg : tensor<4x16xf16>
     }
 

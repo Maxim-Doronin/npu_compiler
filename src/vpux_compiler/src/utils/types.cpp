@@ -4,25 +4,24 @@
 //
 
 #include "vpux/compiler/utils/types.hpp"
-
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/core/attributes/strides.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
-#include <mlir/Dialect/Quant/QuantTypes.h>
-
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinTypes.h>
+
 #include <numeric>
-#include <utility>
 
 using namespace vpux;
 

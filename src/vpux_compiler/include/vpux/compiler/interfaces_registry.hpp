@@ -5,8 +5,10 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+
+#include <mlir/IR/DialectRegistry.h>
 #include <memory>
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 namespace vpux {
 
@@ -24,6 +26,6 @@ public:
 // createInterface
 //
 
-std::unique_ptr<IInterfaceRegistry> createInterfacesRegistry(VPU::ArchKind arch);
+std::unique_ptr<IInterfaceRegistry> createInterfacesRegistry(config::ArchKind arch);
 
 }  // namespace vpux

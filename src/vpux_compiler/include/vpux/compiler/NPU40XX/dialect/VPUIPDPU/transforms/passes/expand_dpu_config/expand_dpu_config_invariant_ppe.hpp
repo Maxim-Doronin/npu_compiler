@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
+
+#include <optional>
 
 namespace vpux::VPUIPDPU::arch40xx::PPE {
 

@@ -3,15 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/IR/BuiltinTypes.h>
-
+#include "vpux/compiler/dialect/VPUMI37XX/blob_writer.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
+#include "vpux/compiler/dialect/VPUMI37XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-
 #include "vpux/compiler/utils/ELF/utils.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
-#include "vpux/compiler/dialect/VPUMI37XX/blob_writer.hpp"
+#include <mlir/IR/BuiltinTypes.h>
 
 #include <npu_37xx_nnrt.hpp>
 
@@ -22,11 +21,7 @@
 #include <string>
 #include <vector>
 
-#include "vpux/compiler/dialect/VPUMI37XX/utils.hpp"
-
-namespace {
 #include "external/runtime_dpu_parser_imports.cpp.inc"
-}
 
 using namespace vpux;
 using namespace npu37xx;

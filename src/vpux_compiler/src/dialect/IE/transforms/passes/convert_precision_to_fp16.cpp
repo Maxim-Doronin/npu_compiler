@@ -3,10 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/control_flow.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/convert_op_types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
@@ -28,7 +35,7 @@ using namespace IE;
 
 namespace {
 
-// E#160869: The compiler must have a much more general solution: either all
+// E#160872: The compiler must have a much more general solution: either all
 // fp16 values must come out as HALF_MAX / HALF_MIN or none. the preferred way
 // seems to be "all". However, clamping non-splats produced inaccurate results
 // according to tests. This needs to be debugged properly to understand why. The

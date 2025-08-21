@@ -16,6 +16,6 @@ void vpux::ELF::PadOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDat
     binDataSection.appendData(padding.data(), padSize);
 }
 
-size_t vpux::ELF::PadOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::ELF::PadOp::getBinarySize(config::ArchKind) {
     return getPaddingSize();
 }

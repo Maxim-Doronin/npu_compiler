@@ -1210,3 +1210,31 @@ func.func @notFuseSliceSoftmaxExpandWithOffsetOfSliceNotAllZero(%arg0: tensor<1x
   // CHECK:    return [[OUTPUT]]
 }
 }
+
+// -----
+
+
+!qElemType = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128, 0.956:128, 0.785:128, 0.567:128}>
+!qElemType1 = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128}>
+!qElemType2 = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128, 0.567:128, 0.567:128, 0.567:128}>
+
+// CHECK-LABEL: @OptimizeSliceConcatExpandForQuantizedType
+module @OptimizeSliceConcatExpandForQuantizedType {
+// CHECK-LABEL:       @OptimizeSliceConcatExpandForQuantizedType
+// CHECK-SAME:        [[INPUT1:%arg0]]: tensor<1x6x32x56x!qElemType>,
+// CHECK-SAME:        [[INPUT2:%arg1]]: tensor<1x6x32x56x!qElemType>) -> tensor<2x6x32x56x!qElemType>
+func.func @OptimizeSliceConcatExpandForQuantizedType(%arg0: tensor<1x6x32x56x!qElemType>, %arg1: tensor<1x6x32x56x!qElemType>) -> tensor<2x6x32x56x!qElemType> {
+
+   %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 3, 32, 56] : tensor<1x6x32x56x!qElemType> to tensor<1x3x32x56x!qElemType1>
+   %1 = IE.Slice %arg1 [0, 0, 0, 0] [1, 3, 32, 56] : tensor<1x6x32x56x!qElemType> to tensor<1x3x32x56x!qElemType1>
+   %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x3x32x56x!qElemType1>, tensor<1x3x32x56x!qElemType1> -> tensor<2x3x32x56x!qElemType1>
+   %3 = IE.Expand(%2) {pads_begin = [0, 0, 0, 0], pads_end = [0, 3, 0, 0]} : tensor<2x3x32x56x!qElemType1> -> tensor<2x6x32x56x!qElemType2>
+   %4 = IE.QuantizeCast(%3) {dstElemType = !qElemType} : tensor<2x6x32x56x!qElemType2> -> tensor<2x6x32x56x!qElemType>
+   return %4 : tensor<2x6x32x56x!qElemType>
+
+   // CHECK:       [[VAR0:%.+]] = IE.Concat([[INPUT1]], [[INPUT2]])
+   // CHECK-SAME:      tensor<1x6x32x56x!qElemType>, tensor<1x6x32x56x!qElemType> -> tensor<2x6x32x56x!qElemType>
+   // CHECK:       return [[VAR0]] : tensor<2x6x32x56x!qElemType>
+
+}
+}

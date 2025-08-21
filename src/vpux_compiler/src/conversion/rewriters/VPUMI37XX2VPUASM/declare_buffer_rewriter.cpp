@@ -48,12 +48,7 @@ mlir::FailureOr<SymbolizationResult> DeclareBufferRewriter::symbolize(VPURT::Dec
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> DeclareBufferRewriter::getSymbolicNames(VPURT::DeclareBufferOp op,
                                                                                    size_t counter) {
-    auto fullName = VPURT::DeclareBufferOp::getOperationName();
-    auto opName = fullName.drop_front(VPURT::VPURTDialect::getDialectNamespace().size() + 1);
-
-    auto index = std::to_string(counter);
-    auto symName = mlir::StringAttr::get(op.getContext(), opName + index);
-    return {mlir::FlatSymbolRefAttr::get(symName)};
+    return this->createSymbolicName(op, /* taskTypeString */ std::nullopt, counter);
 }
 
 }  // namespace vpumi37xx2vpuasm

@@ -6,12 +6,12 @@
 #include "vpux/compiler/dialect/VPU/utils/sprlut_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/common_rewriters/convert_lut_to_const.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-
-#include <llvm/ADT/TypeSwitch.h>
+#include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_CONVERTSPRLUTTOCONST
@@ -27,57 +27,24 @@ namespace {
 // SprLUTConverter
 //
 
-class SprLUTConverter final : public mlir::OpRewritePattern<VPUIP::NCEClusterTaskOp> {
+class SprLUTConverter final : public VPUIP::LUTConverterBase {
 public:
     SprLUTConverter(mlir::MLIRContext* ctx, Logger log, mlir::func::FuncOp netFunc)
-            : mlir::OpRewritePattern<VPUIP::NCEClusterTaskOp>(ctx), _log(log), _netFunc(netFunc) {
+            : LUTConverterBase(ctx, log, netFunc) {
         setDebugName("ConvertSprLUTToConstPass::SprLUTConverter");
     }
 
-    mlir::LogicalResult matchAndRewrite(VPUIP::NCEClusterTaskOp nceClusterTask,
-                                        mlir::PatternRewriter& rewriter) const final;
-
 private:
-    mlir::Value createSprLookupTableConst(VPUIP::NCEClusterTaskOp nceClusterTask,
-                                          mlir::PatternRewriter& rewriter) const;
-    mlir::Value createCopyDestination(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUTConst,
-                                      mlir::PatternRewriter& rewriter) const;
-    VPU::DistributionInfoAttr createDistributionInfoAttr(VPUIP::DistributedBufferType inputDistribType,
-                                                         VPUIP::NCEClusterTaskOp nceClusterTask) const;
-    VPUIP::DistributedBufferType createDistributedBufferType(VPU::DistributionInfoAttr distributedInfo,
-                                                             VPUIP::NCEClusterTaskOp nceClusterTask,
-                                                             mlir::Value sprLUTConst) const;
-    void replaceAttrWithConst(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUT,
-                              mlir::PatternRewriter& rewriter) const;
+    mlir::Value createLookupTableConst(VPUIP::NCEClusterTaskOp nceClusterTask,
+                                       mlir::PatternRewriter& rewriter) const override;
+    void replaceWithConstInput(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUT,
+                               mlir::PatternRewriter& rewriter) const override;
     void removeSprLUTFromPPE(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::PatternRewriter& rewriter) const;
     VPU::PPEFpAttr createPPEWithoutSprLUT(VPU::PPEFpAttr prevPPE) const;
-
-private:
-    Logger _log;
-    mutable mlir::func::FuncOp _netFunc;
 };
 
-mlir::LogicalResult SprLUTConverter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceClusterTask,
-                                                     mlir::PatternRewriter& rewriter) const {
-    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), nceClusterTask->getName(), nceClusterTask->getLoc());
-
-    const auto sprLUTConst = [&]() {
-        mlir::OpBuilder::InsertionGuard guard(rewriter);
-        rewriter.setInsertionPoint(&_netFunc.getBody().front().front());
-        return createSprLookupTableConst(nceClusterTask, rewriter);
-    }();
-
-    const auto copyDst = createCopyDestination(nceClusterTask, sprLUTConst, rewriter);
-    const auto sprLutNceInput =
-            rewriter.create<VPUIP::CopyOp>(nceClusterTask->getLoc(), sprLUTConst, copyDst).getOutput();
-
-    replaceAttrWithConst(nceClusterTask, sprLutNceInput, rewriter);
-
-    return mlir::success();
-}
-
-mlir::Value SprLUTConverter::createSprLookupTableConst(VPUIP::NCEClusterTaskOp nceClusterTask,
-                                                       mlir::PatternRewriter& rewriter) const {
+mlir::Value SprLUTConverter::createLookupTableConst(VPUIP::NCEClusterTaskOp nceClusterTask,
+                                                    mlir::PatternRewriter& rewriter) const {
     const auto ppeOps = nceClusterTask.getPpe().getOps<VPUIP::PPETaskOp>();
     VPUX_THROW_WHEN(ppeOps.empty(), "{0}: expected PPE inside {1}, but it was not found", getDebugName(),
                     nceClusterTask);
@@ -91,66 +58,8 @@ mlir::Value SprLUTConverter::createSprLookupTableConst(VPUIP::NCEClusterTaskOp n
     return rewriter.create<Const::DeclareOp>(nceClusterTask->getLoc(), bufferType, contentAttr).getOutput();
 }
 
-mlir::Value SprLUTConverter::createCopyDestination(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUTConst,
-                                                   mlir::PatternRewriter& rewriter) const {
-    const auto input = nceClusterTask.getInput();
-    const auto inputType = input.getType();
-
-    return llvm::TypeSwitch<mlir::Type, mlir::Value>(inputType)
-            .Case<VPUIP::DistributedBufferType>([&](VPUIP::DistributedBufferType distributedBufferType) {
-                const auto distributedInfo = createDistributionInfoAttr(distributedBufferType, nceClusterTask);
-                const auto ditributedBufferType =
-                        createDistributedBufferType(distributedInfo, nceClusterTask, sprLUTConst);
-
-                auto alignment = vpux::getIntAttr(nceClusterTask.getContext(), VPU::SPRLUT_ALIGNMENT_REQUIREMENT);
-
-                auto allocDistributed = rewriter.create<VPURT::AllocDistributed>(
-                        nceClusterTask.getLoc(), ditributedBufferType, alignment, nullptr);
-                return allocDistributed->getResult(0);
-            })
-            .Case<mlir::MemRefType>([&](auto) {
-                const auto constOutType = mlir::dyn_cast<mlir::MemRefType>(sprLUTConst.getType());
-                VPUX_THROW_WHEN(constOutType == nullptr,
-                                "{0}: sprLUT const output type is expected to be MemRefType, but got {1}",
-                                getDebugName(), sprLUTConst.getType());
-                const auto memSpaceCMX = vpux::IndexedSymbolAttr::get(nceClusterTask.getContext(),
-                                                                      stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
-                const auto cmxMemType = mlir::MemRefType::get(constOutType.getShape(), constOutType.getElementType(),
-                                                              constOutType.getLayout(), memSpaceCMX);
-                const auto allocOp = rewriter.create<mlir::memref::AllocOp>(nceClusterTask.getLoc(), cmxMemType);
-                return allocOp->getResult(0);
-            })
-            .Default([&](mlir::Type inputType) {
-                VPUX_THROW("{0}: `{1}` is not supported as an input type", getDebugName(), inputType);
-                return mlir::Value{};
-            });
-}
-
-VPU::DistributionInfoAttr SprLUTConverter::createDistributionInfoAttr(VPUIP::DistributedBufferType inputDistribType,
-                                                                      VPUIP::NCEClusterTaskOp nceClusterTask) const {
-    auto inputDistribInfo = inputDistribType.getDistribution();
-    VPUX_THROW_WHEN(inputDistribInfo == nullptr, "{0}: inputDistribInfo == nullptr for the input type is not allowed",
-                    getDebugName());
-    const auto duplicatedDistrModeAttr =
-            VPU::DistributionModeAttr::get(nceClusterTask.getContext(), VPU::DistributionMode::DUPLICATED);
-    return VPU::DistributionInfoAttr::get(nceClusterTask.getContext(), duplicatedDistrModeAttr, nullptr, nullptr,
-                                          nullptr, nullptr, inputDistribInfo.getNumClusters(), nullptr, nullptr,
-                                          nullptr, nullptr, nullptr, nullptr, nullptr);
-}
-
-VPUIP::DistributedBufferType SprLUTConverter::createDistributedBufferType(VPU::DistributionInfoAttr distributedInfo,
-                                                                          VPUIP::NCEClusterTaskOp nceClusterTask,
-                                                                          mlir::Value sprLUTConst) const {
-    const auto memSpaceCMX =
-            vpux::IndexedSymbolAttr::get(nceClusterTask.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
-    const auto ndTypeInterface = mlir::cast<vpux::NDTypeInterface>(sprLUTConst.getType());
-    return VPUIP::DistributedBufferType::get(
-            nceClusterTask.getContext(), ndTypeInterface.getShape().raw(), ndTypeInterface.getElementType(),
-            mlir::dyn_cast<mlir::MemRefType>(sprLUTConst.getType()).getLayout(), memSpaceCMX, distributedInfo);
-}
-
-void SprLUTConverter::replaceAttrWithConst(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUT,
-                                           mlir::PatternRewriter& rewriter) const {
+void SprLUTConverter::replaceWithConstInput(VPUIP::NCEClusterTaskOp nceClusterTask, mlir::Value sprLUT,
+                                            mlir::PatternRewriter& rewriter) const {
     auto newInput = [&]() -> mlir::Value {
         if (vpux::VPUIP::hasDistributedOperand(nceClusterTask)) {
             const auto sprLUTOutType = mlir::dyn_cast<VPUIP::DistributedBufferType>(sprLUT.getType());

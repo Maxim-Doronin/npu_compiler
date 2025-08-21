@@ -5,21 +5,22 @@
 
 //
 
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
-
-#include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
-#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_support.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <openvino/op/convolution.hpp>
+#include <openvino/op/parameter.hpp>
 
 using namespace vpux;
 
@@ -47,7 +48,7 @@ bool vpux::VPU::NCECompressConvolutionOp::fitIntoCMX(vpux::NDTypeInterface input
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -77,10 +78,10 @@ static mlir::LogicalResult verifyConv(mlir::Location loc, mlir::Operation* op,
 
 mlir::LogicalResult vpux::VPU::NCECompressConvolutionOp::verify() {
     auto op = getOperation();
-    const auto arch = getArch(op);
+    const auto arch = config::getArch(op);
 
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
@@ -217,7 +218,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCECompressConvolutionOp::getTilingStra
 //
 
 bool vpux::VPU::NCECompressConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = VPU::getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
     if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
@@ -271,7 +272,7 @@ bool VPU::NCECompressConvolutionOp::isOperationSplitOverHeightCompatible(const v
     auto tileOp = IE::getTileExecutor(moduleOp);
     const auto numTiles = tileOp.getCount();
 
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, config::getArch(nceOp.getOperation()));
 }
 
 bool VPU::NCECompressConvolutionOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset,
@@ -318,7 +319,7 @@ bool VPU::NCECompressConvolutionOp::doesLayerFitIntoCMX(VPU::MultiClusterStrateg
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }

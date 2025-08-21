@@ -17,6 +17,7 @@ add_llvm_executable(${TARGET_NAME} main.cpp)
 
 add_dependencies(${TARGET_NAME}
     MLIRVPUXVPUAttrIncGen
+    MLIRVPUXconfigAttrIncGen
     MLIRSupport)
 target_compile_features(${TARGET_NAME} PRIVATE cxx_std_17)
 enable_warnings_as_errors(${TARGET_NAME})

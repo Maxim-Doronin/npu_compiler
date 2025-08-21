@@ -27,14 +27,14 @@ void vpux::NPUReg40XX::MappedInferenceOp::serialize(elf::writer::BinaryDataSecti
                       sizeof(nn_public::VpuMappedInference), mappedInference.size());
 
     auto serializedDescriptor = mappedInference.getStorage();
-    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(VPU::ArchKind::NPU40XX));
+    binDataSection.appendData(serializedDescriptor.data(), getBinarySize(config::ArchKind::NPU40XX));
 }
 
-size_t vpux::NPUReg40XX::MappedInferenceOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::MappedInferenceOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuMappedInference);
 }
 
-size_t vpux::NPUReg40XX::MappedInferenceOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::MappedInferenceOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuMappedInference);
 }
 

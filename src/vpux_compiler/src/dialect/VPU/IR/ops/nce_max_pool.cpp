@@ -6,6 +6,8 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -16,10 +18,11 @@
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_support.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
-
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
@@ -41,7 +44,7 @@ bool vpux::VPU::NCEMaxPoolOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTy
 
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
-    auto arch = getArch(getOperation());
+    auto arch = config::getArch(getOperation());
     return vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffers).count() + reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -55,7 +58,7 @@ bool vpux::VPU::NCEMaxPoolOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTy
 //
 
 bool vpux::VPU::NCEMaxPoolOp::isSupported(IE::MaxPoolOp op, LogCb logCb, bool checkLayout, bool checkChannelAlignment) {
-    auto arch = VPU::getArch(op);
+    auto arch = config::getArch(op);
 
     if (op.getType().getRank() != 4) {
         logCb(formatv("Only 4D tensors are supported"));
@@ -112,10 +115,10 @@ bool vpux::VPU::NCEMaxPoolOp::isSupported(IE::MaxPoolOp op, LogCb logCb, bool ch
 
 mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::verify() {
     const auto op = getOperation();
-    const auto arch = getArch(op);
+    const auto arch = config::getArch(op);
 
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
@@ -247,7 +250,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEMaxPoolOp::getTilingStrategy(TilingM
 //
 
 bool vpux::VPU::NCEMaxPoolOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = VPU::getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
@@ -303,7 +306,7 @@ bool VPU::NCEMaxPoolOp::isOperationSplitOverHeightCompatible(const vpux::TileInf
     auto tileOp = IE::getTileExecutor(moduleOp);
     const auto numTiles = tileOp.getCount();
 
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, true, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputType, inputShape, numTiles, true, config::getArch(nceOp.getOperation()));
 }
 
 bool VPU::NCEMaxPoolOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
@@ -343,7 +346,7 @@ bool VPU::NCEMaxPoolOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, 
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    auto arch = getArch(getOperation());
+    auto arch = config::getArch(getOperation());
     return vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffers).count() + reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -439,4 +442,30 @@ mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::verifyKernel(IE::MaxPoolOp origOp, 
     const auto padRight = padsEnd[1];
 
     return NCEInvariant::verifyKernel(origOp, KY, KX, SY, SX, padTop, padBottom, padLeft, padRight, log);
+}
+
+mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                               mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    // Parse attributes
+    const auto strides = parseIntArrayAttr<int64_t>(getStrides());
+
+    const auto padTop = getPad().getTop().getValue().getSExtValue();
+    const auto padBottom = getPad().getBottom().getValue().getSExtValue();
+    const auto padLeft = getPad().getLeft().getValue().getSExtValue();
+    const auto padRight = getPad().getRight().getValue().getSExtValue();
+
+    const auto dataPaddingAbove = SmallVector<int64_t>({padTop, padLeft});
+    const auto dataPaddingBelow = SmallVector<int64_t>({padBottom, padRight});
+
+    const auto kernelSize = parseIntArrayAttr<int64_t>(getKernelSizeAttr());
+
+    // Compute output shape using utility
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), nullptr, kernelSize, strides,
+                                         dataPaddingAbove, dataPaddingBelow, getLoc());
+    if (mlir::failed(outShape)) {
+        return outShape;
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

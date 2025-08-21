@@ -94,8 +94,9 @@ size_t vpux::ELFNPU37XX::getOffsetOfOpInSection(mlir::Value& op) {
     return tile * vpux::ELFNPU37XX::CMX_SLICE_SIZE + declareBufferOp.getByteOffset();
 }
 
-llvm::SmallString<128> vpux::ELFNPU37XX::getSwKernelArchString(VPU::ArchKind archKind) {
-    VPUX_THROW_UNLESS(archKind == VPU::ArchKind::NPU37XX, "The only supported architecture for sw kernels is 3720xx");
+llvm::SmallString<128> vpux::ELFNPU37XX::getSwKernelArchString(config::ArchKind archKind) {
+    VPUX_THROW_UNLESS(archKind == config::ArchKind::NPU37XX,
+                      "The only supported architecture for sw kernels is 3720xx");
     return llvm::SmallString<128>("3720xx");
 }
 
@@ -265,13 +266,13 @@ size_t vpux::ELFNPU37XX::math::lcm(size_t a, size_t b) {
 //
 
 namespace {
-const std::unordered_map<VPU::ArchKind, elf::platform::ArchKind> vpuToElfArchEnumMap = {
-        {VPU::ArchKind::UNKNOWN, elf::platform::ArchKind::UNKNOWN},
-        {VPU::ArchKind::NPU37XX, elf::platform::ArchKind::VPUX37XX},
-        {VPU::ArchKind::NPU40XX, elf::platform::ArchKind::VPUX40XX},
+const std::unordered_map<config::ArchKind, elf::platform::ArchKind> vpuToElfArchEnumMap = {
+        {config::ArchKind::UNKNOWN, elf::platform::ArchKind::UNKNOWN},
+        {config::ArchKind::NPU37XX, elf::platform::ArchKind::VPUX37XX},
+        {config::ArchKind::NPU40XX, elf::platform::ArchKind::VPUX40XX},
 };
 }  // namespace
 
-elf::platform::ArchKind vpux::ELFNPU37XX::mapVpuArchKindToElfArchKind(const VPU::ArchKind& archKind) {
+elf::platform::ArchKind vpux::ELFNPU37XX::mapVpuArchKindToElfArchKind(const config::ArchKind& archKind) {
     return vpuToElfArchEnumMap.at(archKind);
 }

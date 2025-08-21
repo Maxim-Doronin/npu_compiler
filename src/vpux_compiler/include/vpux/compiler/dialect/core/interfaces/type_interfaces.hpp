@@ -8,17 +8,16 @@
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/attributes/strides.hpp"
-#include "vpux/compiler/dialect/core/IR/attributes.hpp"
-
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-
-#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
+#include "vpux/compiler/dialect/core/IR/indexed_symbol_attr.hpp"
 #include "vpux/utils/core/mem_size.hpp"
-#include "vpux/utils/core/optional.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
+
+namespace vpux::VPU {
+enum class MemoryKind : uint64_t;
+}
 
 namespace vpux {
 

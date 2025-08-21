@@ -3,10 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/hw_settings.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -79,48 +82,6 @@ mlir::LogicalResult LegalizeEpsAttr::matchAndRewrite(IE::MVNOp origOp, mlir::Pat
     return mlir::success();
 }
 
-//
-// ReshapeBatched
-//
-
-class ReshapeBatched final : public mlir::OpRewritePattern<IE::MVNOp> {
-public:
-    using mlir::OpRewritePattern<IE::MVNOp>::OpRewritePattern;
-
-public:
-    mlir::LogicalResult matchAndRewrite(IE::MVNOp origOp, mlir::PatternRewriter& rewriter) const final;
-};
-
-mlir::LogicalResult ReshapeBatched::matchAndRewrite(IE::MVNOp origOp, mlir::PatternRewriter& rewriter) const {
-    const auto acrossChannels = origOp.getAcrossChannelsAttr().getValue();
-    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
-    auto origShape = inputType.getShape();
-    if (acrossChannels == false || inputType.getRank() != 4 || origShape[Dims4D::Act::N] == 1) {
-        return mlir::failure();
-    }
-
-    // acrossChannel batched MVN with shape [N,C,H,W] can be converted into
-    // non-acrossChannel non-batched MVN with shape [1,N,C,H*W]
-    SmallVector<int64_t> newShape(inputType.getRank(), 1);
-    newShape[Dims4D::Act::C.ind()] = origShape[Dims4D::Act::N];
-    newShape[Dims4D::Act::H.ind()] = origShape[Dims4D::Act::C];
-    newShape[Dims4D::Act::W.ind()] = origShape[Dims4D::Act::H] * origShape[Dims4D::Act::W];
-    const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    auto inputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
-                                                             nullptr, false, newShapeAttr);
-
-    auto newMvnOp = rewriter.create<IE::MVNOp>(origOp->getLoc(), inputReshape,
-                                               mlir::BoolAttr::get(rewriter.getContext(), false),
-                                               origOp.getNormalizeVarianceAttr(), origOp.getEpsAttr());
-
-    const auto origShapeAttr = getIntArrayAttr(origOp->getContext(), origShape);
-    auto outputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), newMvnOp, nullptr,
-                                                              false, origShapeAttr);
-
-    rewriter.replaceOp(origOp, outputReshape);
-    return mlir::success();
-}
-
 }  // namespace
 
 //
@@ -129,5 +90,4 @@ mlir::LogicalResult ReshapeBatched::matchAndRewrite(IE::MVNOp origOp, mlir::Patt
 
 void vpux::IE::MVNOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns, mlir::MLIRContext* ctx) {
     patterns.add<LegalizeEpsAttr>(ctx);
-    patterns.add<ReshapeBatched>(ctx);
 }

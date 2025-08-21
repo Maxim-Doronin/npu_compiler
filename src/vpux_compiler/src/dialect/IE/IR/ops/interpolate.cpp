@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -118,10 +120,10 @@ public:
 
 mlir::LogicalResult ConvertInputToFP16::matchAndRewrite(IE::InterpolateOp op, mlir::PatternRewriter& rewriter) const {
     const auto inputType = mlir::cast<mlir::ShapedType>(op.getInput().getType()).getElementType();
-    const auto arch = VPU::getArch(op);
+    const auto arch = config::getArch(op);
 
     // VPU4000-M2I does not support C-minor FP16
-    if (arch >= VPU::ArchKind::NPU40XX && (config::getCompilationMode(op) != config::CompilationMode::ReferenceSW)) {
+    if (arch >= config::ArchKind::NPU40XX && (config::getCompilationMode(op) != config::CompilationMode::ReferenceSW)) {
         return mlir::failure();
     }
 

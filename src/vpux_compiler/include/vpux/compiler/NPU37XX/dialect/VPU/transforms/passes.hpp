@@ -49,6 +49,7 @@ struct DefaultHWOptions : public VPU::DefaultHWOptionsDialectBase, virtual vpux:
 };
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
+void buildReferenceSWPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 
 //
 // Registration

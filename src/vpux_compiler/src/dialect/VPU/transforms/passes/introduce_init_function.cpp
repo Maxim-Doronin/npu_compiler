@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/ir_modification.hpp"
@@ -24,13 +25,12 @@
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/Visitors.h>
-#include <mlir/Support/LogicalResult.h>
-
 #include <mlir/IR/BuiltinDialect.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/DialectImplementation.h>
 #include <mlir/IR/DialectResourceBlobManager.h>
+#include <mlir/IR/Visitors.h>
+#include <mlir/Support/LogicalResult.h>
 
 #include <limits>
 
@@ -43,6 +43,180 @@ namespace vpux::VPU {
 using namespace vpux;
 
 namespace {
+struct InitSpecificLoggerBase {
+    virtual ~InitSpecificLoggerBase() = default;
+    virtual void analyzeInitFunction(mlir::func::FuncOp) = 0;
+    virtual void print(const Logger&) = 0;
+};
+
+struct InitSpecificNullLogger : InitSpecificLoggerBase {
+    void analyzeInitFunction(mlir::func::FuncOp) override {
+    }
+    void print(const Logger&) override {
+    }
+};
+
+// Simple helper that gives write access to the underlying data if and only if a
+// specified key has never been seen before by the helper.
+template <typename T, typename Key>
+class Uniqued {
+    mlir::DenseSet<Key> _uniquenessChecker;
+    T _data{};
+
+public:
+    // Returns a pointer to a mutable data. Returns a nullptr if the data cannot
+    // be accessed.
+    T* operator()(const Key& key) {
+        const bool firstOccurrence = _uniquenessChecker.insert(key).second;
+        if (firstOccurrence) {
+            return std::addressof(_data);
+        }
+        return nullptr;
+    }
+
+    // Returns a pointer to an immutable data.
+    const T* operator->() const {
+        return std::addressof(_data);
+    }
+};
+
+class InitSpecificMetaInfoLogger : public InitSpecificLoggerBase {
+    struct ConstantInfo {
+        size_t count{0};
+        Byte size{0};
+    };
+    Uniqued<ConstantInfo, mlir::StringRef> _importedWeights;            // weights from original model
+    Uniqued<ConstantInfo, mlir::StringRef> _availableWeights;           // weights still present in pre-init IR
+    Uniqued<ConstantInfo, Const::ContentAttr> _ovConstants;             // OV-originated constant ops
+    Uniqued<ConstantInfo, Const::ContentAttr> _usedOvConstants;         // supported by weights separation
+    Uniqued<ConstantInfo, Const::ContentAttr> _unusedOvConstants;       // supported by weights separation but ignored
+    Uniqued<ConstantInfo, Const::ContentAttr> _unsupportedOvConstants;  // unsupported by weights separation
+
+    ConstantInfo _currentInitInputs;
+    ConstantInfo _currentInitOutputs;
+
+    static double toKb(vpux::Byte bytes);
+    static double percentify(vpux::Byte n, vpux::Byte m);
+
+public:
+    InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp);
+    void analyzeInitFunction(mlir::func::FuncOp) override;
+    void print(const Logger&) override;
+};
+
+InitSpecificMetaInfoLogger::InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp) {
+    // Note: to collect *all* OV-imported weights, use blob manager (backing
+    // container for dense_resource<>).
+    const auto& manager = mlir::DenseResourceElementsHandle::getManagerInterface(moduleOp.getContext());
+    manager.getBlobManager().getBlobMap(
+            [&](const llvm::StringMap<mlir::DialectResourceBlobManager::BlobEntry>& allBlobs) {
+                for (const auto& entry : allBlobs) {
+                    const auto& blob = entry.getValue();
+                    const auto key = blob.getKey();
+                    if (!key.starts_with(Const::IMPORTED_WEIGHT_PREFIX)) {
+                        continue;
+                    }
+
+                    // Note: blob entries are unique (and so are keys)
+                    if (auto* info = _importedWeights(key)) {
+                        info->count++;
+                        info->size += vpux::Byte(static_cast<int64_t>(blob.getBlob()->getData().size()));
+                    }
+                }
+            });
+
+    moduleOp->walk([&](Const::DeclareOp constOp) {
+        if (!Const::isOpenVINOConstant(constOp)) {
+            return;
+        }
+
+        const auto attr = constOp.getContentAttr();
+        if (auto* info = _availableWeights(getResourceName(attr.getBaseContent()))) {
+            info->count++;
+            info->size += vpux::getExpectedBufferSize(attr.getBaseContent().getType());
+        }
+
+        // Note: due to the nature of the IR, duplicate constants are assumed to
+        // be fused. However, there's a slight chance that the same constant can
+        // be used in two different functions?
+        if (auto* info = _ovConstants(attr)) {
+            info->count++;
+            info->size += vpux::getExpectedBufferSize(constOp.getContentAttr().getType());
+        }
+
+        // if suitable, recorded into used constants
+        if (VPU::isSuitableForWeightsSeparation(constOp)) {
+            if (auto* info = _usedOvConstants(attr)) {
+                info->count++;
+                info->size += vpux::getExpectedBufferSize(attr.getType());
+            }
+            return;
+        }
+
+        // if not suitable, but trivial, recorded into unused constants
+        // otherwise - unsupported
+        auto* weightsCategory =
+                VPU::isTrivialForWeightsSeparation(constOp) ? &_unusedOvConstants : &_unsupportedOvConstants;
+        if (auto* info = (*weightsCategory)(attr)) {
+            info->count++;
+            info->size += vpux::getExpectedBufferSize(constOp.getContentAttr().getType());
+        }
+    });
+}
+
+void InitSpecificMetaInfoLogger::analyzeInitFunction(mlir::func::FuncOp initFunc) {
+    const auto calculateSize = [](ArrayRef<mlir::Type> c) {
+        return std::accumulate(c.begin(), c.end(), vpux::Byte(0), [](vpux::Byte i, mlir::Type argType) {
+            return i + vpux::getExpectedBufferSize(argType);
+        });
+    };
+    _currentInitInputs = {initFunc.getNumArguments(), calculateSize(initFunc.getArgumentTypes())};
+    _currentInitOutputs = {initFunc.getNumResults(), calculateSize(initFunc.getResultTypes())};
+}
+
+void InitSpecificMetaInfoLogger::print(const Logger& log) {
+    log.info("Summary about constants:");
+    auto generalStats = log.nest("general-statistics", 1);
+    generalStats.info("All imported unique weights: {0} ({1:F} KB)", _importedWeights->count,
+                      toKb(_importedWeights->size));
+    generalStats.info("Available unique weights[1]: {0} ({1:F} KB which is {2:P})", _availableWeights->count,
+                      toKb(_availableWeights->size), percentify(_availableWeights->size, _importedWeights->size));
+    generalStats.info("Unique weights used by schedule (from available): {0} ({1:F} KB which is {2:P})",
+                      _currentInitInputs.count, toKb(_currentInitInputs.size),
+                      percentify(_currentInitInputs.size, _availableWeights->size));
+
+    generalStats.info("OV-originated constants[2] in IR: {0} ({1:F} KB)", _ovConstants->count,
+                      toKb(_ovConstants->size));
+    generalStats.info("Unused constants[3]: {0} ({1:F} KB which is {2:P})", _unusedOvConstants->count,
+                      toKb(_unusedOvConstants->size), percentify(_unusedOvConstants->size, _ovConstants->size));
+    generalStats.info("Unsupported constants[4]: {0} ({1:F} KB which is {2:P})", _unsupportedOvConstants->count,
+                      toKb(_unsupportedOvConstants->size),
+                      percentify(_unsupportedOvConstants->size, _ovConstants->size));
+    generalStats.info("Size percentage of *used* constants: {0:P}",
+                      percentify(_usedOvConstants->size, _ovConstants->size));
+
+    generalStats.info("Generated schedule's total I/O size: {0:F} KB",
+                      toKb(_currentInitInputs.size + _currentInitOutputs.size));
+
+    generalStats.info("");  // dummy line
+    generalStats.info("[1]: available unique weights - weights that come from original model and are used in the "
+                      "compiled schedule (via constant operations)");
+    generalStats.info("[2]: OV-originated constants - constant operations that combine OV weights with transformations "
+                      "(e.g. subview, reorder)");
+    generalStats.nest(1).info("Note: the same unique weight could be used in multiple constants");
+    generalStats.info("[3]: unused constants - OV-originated constants that are ignored by weights separation (e.g. "
+                      "splats, only trivial transformations)");
+    generalStats.info("[4]: unsupported constants - OV-originated constants that have unsupported transformations");
+}
+
+double InitSpecificMetaInfoLogger::toKb(vpux::Byte bytes) {
+    constexpr auto multiplier = vpux::MemMultiplier<MemType::KB, MemType::Byte>::value;
+    return static_cast<double>(bytes.count()) / multiplier;
+}
+
+double InitSpecificMetaInfoLogger::percentify(vpux::Byte n, vpux::Byte m) {
+    return static_cast<double>(n.count()) / static_cast<double>(m.count());
+}
 
 // Casts the resulting value to its storage type counterpart. This is normally
 // done in init and thus in IE dialect.
@@ -115,8 +289,8 @@ public:
     void setNetworkEntryPointToMain(net::NetworkInfoOp netInfo, const WsArgumentCache& topLevelMainArgCache);
     // creates new main that calls init and main in sequence. this function
     // becomes the new entry-point.
-    void buildWrapperOpForInitAndMain(net::NetworkInfoOp netInfo, mlir::func::FuncOp mainFuncOp,
-                                      mlir::func::FuncOp initFuncOp, const WsArgumentCache& initArgCache);
+    mlir::func::CallOp buildWrapperOpForInitAndMain(net::NetworkInfoOp netInfo, mlir::func::FuncOp mainFuncOp,
+                                                    mlir::func::FuncOp initFuncOp, const WsArgumentCache& initArgCache);
 
     mlir::LogicalResult initialize(mlir::MLIRContext* context) final;
     mlir::LogicalResult deferredInitialize(mlir::ModuleOp moduleOp);
@@ -146,7 +320,7 @@ void IntroduceInitFunctionPass::setNetworkEntryPointToInit(net::NetworkInfoOp ne
     for (auto it : argCache.getSortedArgs()) {
         const auto& [entry, blockArg] = *it;
         const auto type = blockArg.getType();
-        const auto name = formatv("in_{0}", getResourceName(entry.content)).str();
+        const auto name = getResourceName(entry.content);
         builder.create<net::DataInfoOp>(appendLoc(netInfo.getLoc(), name), name, type);
     }
 
@@ -457,9 +631,10 @@ void IntroduceInitFunctionPass::setNetworkEntryPointToMain(net::NetworkInfoOp ne
     }
 }
 
-void IntroduceInitFunctionPass::buildWrapperOpForInitAndMain(net::NetworkInfoOp netInfo, mlir::func::FuncOp mainFuncOp,
-                                                             mlir::func::FuncOp initFuncOp,
-                                                             const WsArgumentCache& initArgCache) {
+mlir::func::CallOp IntroduceInitFunctionPass::buildWrapperOpForInitAndMain(net::NetworkInfoOp netInfo,
+                                                                           mlir::func::FuncOp mainFuncOp,
+                                                                           mlir::func::FuncOp initFuncOp,
+                                                                           const WsArgumentCache& initArgCache) {
     const auto mainFuncType = mainFuncOp.getFunctionType();
     const auto initFuncType = initFuncOp.getFunctionType();
     // Note: expect the below to never fail
@@ -518,6 +693,8 @@ void IntroduceInitFunctionPass::buildWrapperOpForInitAndMain(net::NetworkInfoOp 
     builder.create<mlir::func::ReturnOp>(appendLoc(locBase, "_return"), mainCallOp.getResults());
 
     netInfo.setEntryPoint(wrapperFuncOp.getSymName());
+
+    return initCallOp;
 }
 
 mlir::LogicalResult IntroduceInitFunctionPass::initialize(mlir::MLIRContext*) {
@@ -631,7 +808,6 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp mainFuncOp;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
-
     const auto& wsAnalysis = getAnalysis<VPU::WeightsSeparationInfo>();
 
     auto tree = VPU::getOutliningRepresentation(mainFuncOp);
@@ -643,11 +819,29 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
         _log.debug("The following operation tree is found:\n{0}\n", stream.str());
     }
 
+    auto statisticsLogger = [&]() -> std::unique_ptr<InitSpecificLoggerBase> {
+        if (_log.isActive(LogLevel::Info)) {
+            return std::make_unique<InitSpecificMetaInfoLogger>(moduleOp);
+        }
+        return std::make_unique<InitSpecificNullLogger>();
+    }();
+
+    // Don't let PackNestedModulesPass put @main and other functions into a submodule.
+    auto applyNoNestingToAllFunctions = [&]() {
+        auto ctx = moduleOp.getContext();
+        moduleOp.walk([&](mlir::func::FuncOp funcOp) {
+            funcOp->setAttr("do_not_nest", mlir::UnitAttr::get(ctx));
+        });
+    };
+
     switch (_mode) {
     case Mode::GenerateInit: {
         auto [initFuncOp, initArgCache, initResults] = buildInitFunction(mainFuncOp, wsAnalysis);
         setNetworkEntryPointToInit(netInfo, initFuncOp, initArgCache, initResults);
         eraseMainAndOutlinedFunctions(tree);
+
+        statisticsLogger->analyzeInitFunction(initFuncOp);
+        statisticsLogger->print(_log);
         break;
     }
     case Mode::GenerateMain: {
@@ -656,13 +850,24 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
         break;
     }
     case Mode::GenerateAll: {
+        applyNoNestingToAllFunctions();
         auto [initFuncOp, initArgCache, initResults] = buildInitFunction(mainFuncOp, wsAnalysis);
         std::ignore = updateMainAndOutlinedFunctions(moduleOp, mainFuncOp, tree);
         initFuncOp.setPrivate();
         mainFuncOp.setPrivate();
-        // Don't let PackNestedModulesPass put @main into a submodule.
-        mainFuncOp->setAttr("do_not_nest", mlir::UnitAttr::get(&getContext()));
-        buildWrapperOpForInitAndMain(netInfo, mainFuncOp, initFuncOp, initArgCache);
+
+        auto initCallOp = buildWrapperOpForInitAndMain(netInfo, mainFuncOp, initFuncOp, initArgCache);
+
+        // Note: erase empty init to avoid issues further in the pipeline (e.g.
+        // with feasible allocation)
+        if (bool emptyInit = initCallOp->getOperands().empty() && initCallOp->getResults().empty(); emptyInit) {
+            initFuncOp.erase();
+            initCallOp.erase();
+            break;
+        }
+
+        statisticsLogger->analyzeInitFunction(initFuncOp);
+        statisticsLogger->print(_log);
         break;
     }
     default: {

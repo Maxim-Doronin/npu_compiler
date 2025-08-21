@@ -4,6 +4,7 @@
 #
 
 add_vpux_dialect(VPU)
+add_vpux_ops(VPU GENERIC)
 add_vpux_ops_interface(VPU dialect/VPU/)
 add_vpux_attr_interface(VPU dialect/VPU/)
 add_vpux_type_interface(VPU dialect/VPU/)

@@ -4,6 +4,9 @@
 #
 
 function(vpux_add_flatc_target FLATC_TARGET_NAME)
+    if(NOT TARGET ${flatc_TARGET} OR NOT flatc_COMMAND)
+        message(FATAL_ERROR "Missing Flatbuffers")
+    endif()
     set(options)
     set(oneValueArgs SRC_DIR DST_DIR)
     set(multiValueArgs ARGS)
@@ -35,7 +38,6 @@ function(vpux_add_flatc_target FLATC_TARGET_NAME)
             ${flatc_COMMAND} -o "${FLATC_DST_DIR}/schema" --cpp ${FLATC_ARGS} ${FLATC_SOURCES}
         DEPENDS
             ${FLATC_SOURCES}
-            ${flatc_COMMAND}
             ${flatc_TARGET}
         COMMENT
             "[flatc] Generating schema for ${FLATC_SRC_DIR} ..."
@@ -55,7 +57,7 @@ function(vpux_add_flatc_target FLATC_TARGET_NAME)
     add_library(${FLATC_TARGET_NAME} INTERFACE)
     add_dependencies(${FLATC_TARGET_NAME} ${FLATC_GEN_TARGET})
     target_include_directories(${FLATC_TARGET_NAME}
-        INTERFACE
+        SYSTEM INTERFACE
             $<TARGET_PROPERTY:flatbuffers,INTERFACE_INCLUDE_DIRECTORIES>
             ${FLATC_DST_DIR}
     )
@@ -75,7 +77,7 @@ function(vpux_gf_version_generate SRC_DIR DST_DIR)
     )
 
     if ("${GIT_DESCRIBE_DIRTY}" STREQUAL "")
-        message(WARNING "GraphFile version cannot be read from ${SRC_DIR}")
+        message(WARNING "ELF version cannot be read from ${SRC_DIR}")
         set(GIT_DESCRIBE_DIRTY "v3.35.2")
     endif()
 

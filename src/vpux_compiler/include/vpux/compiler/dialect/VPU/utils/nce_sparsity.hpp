@@ -6,23 +6,21 @@
 #pragma once
 
 #include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-
 #include "vpux/utils/core/algo.hpp"
 #include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/enums.hpp"
-#include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/optional.hpp"
 
 #include <llvm/ADT/bit.h>
 #include <mlir/IR/Value.h>
+
+namespace vpux::VPUIP {
+class DPUTaskOp;
+}  // namespace vpux::VPUIP
 
 namespace vpux {
 namespace VPU {
@@ -31,9 +29,6 @@ namespace NCESparsity {
 
 // base_ptr is 9bits size
 const int BASE_PTR_SIZE = 9;
-
-const VPU::SparsitySupport FULLY_SUPPORTED_SPARSITY_MODE =
-        SparsitySupport::SPARSE_INPUTS | SparsitySupport::SPARSE_OUTPUTS | SparsitySupport::SPARSE_WEIGHTS;
 
 constexpr int32_t SPARSITY_PTR_WHEN_NO_SPARSITY = 0xFFFFFF;
 
@@ -589,10 +584,6 @@ double getSparsityRatio(vpux::NDTypeInterface weightsType, ArrayRef<int64_t> num
 
 bool isSparsifiableWeightsOperand(mlir::Value operand);
 bool isSuperdenseRequired(const DimsOrder outOrder, const ShapeRef outShape, const mlir::Type outElemType);
-inline VPU::SparsitySupport bitwiseNot(const VPU::SparsitySupport bits) {
-    static_assert(sizeof(bits) == sizeof(uint32_t), "VPU::SparsitySupport has unexpected size");
-    return static_cast<VPU::SparsitySupport>(~static_cast<uint32_t>(bits));
-}
 
 // 5D weights.
 int32_t get5DWeightPtrStep(mlir::Value weights);

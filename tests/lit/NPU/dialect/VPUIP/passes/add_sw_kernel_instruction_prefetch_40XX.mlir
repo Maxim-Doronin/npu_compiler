@@ -18,7 +18,7 @@
 //  Other    : [ SyncDMA ] |
 //
 
-module @subgraph attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @subgraph attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096, 4096, 4096]
   module @VPU.SW {
     func.func private @builtin_SoftMax(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64) attributes {VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax", VPU.task_type = @COMPUTE}
@@ -27,18 +27,18 @@ module @subgraph attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilat
   }
   IE.TileResource {activity_factor = 0.078934384661980161 : f64} 2 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
-      module @DmaProfilingReservedMemory {
-        IE.MemoryResource 512 bytes of @CMX_NN offset 0
+      module @DummySWKernelsForInstructionPrefetchReservedMemory {
+        IE.MemoryResource 8 bytes of @CMX_NN offset 1474552
       }
     }
     IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 2 of @SHAVE_ACT
     IE.ExecutorResource 1 of @DPU
   }
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
-  IE.MemoryResource 2306867200 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+  IE.MemoryResource 2306867200 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
   net.NetworkInfo {inferenceTiming = 369464 : i64} entryPoint : @main inputsInfo : {
     DataInfo "data" : tensor<1x3x62x62xui8>
   } outputsInfo : {
@@ -83,7 +83,7 @@ module @subgraph attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilat
     VPURT.Task waits(%2: !VPURT.Barrier) updates(%3 : !VPURT.Barrier) {
         %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
-  
+
     VPURT.Task waits(%3: !VPURT.Barrier) updates(%4 : !VPURT.Barrier) {
         %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
@@ -142,7 +142,7 @@ module @subgraph attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, config.compilat
 
     // CHECK:       VPURT.Task waits([[BARRIER_4]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier) {
     // CHECK-NEXT:        VPUIP.NNDMA
-  
+
     // CHECK:       VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier) updates([[BARRIER_5]] : !VPURT.Barrier) {
     // CHECK:             VPUIP.SW.Kernel
     // CHECK-SAME:        @VPU.SW::@builtin_SoftMax

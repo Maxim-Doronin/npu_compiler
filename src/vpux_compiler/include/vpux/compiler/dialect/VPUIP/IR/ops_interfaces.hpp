@@ -5,12 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-
+#include "vpux/compiler/dialect/core/IR/indexed_symbol_attr.hpp"
 #include "vpux/utils/core/small_string.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
@@ -19,6 +16,13 @@
 #include <mlir/IR/ValueRange.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <vpu_cost_model.h>
+
+namespace vpux::IE {
+class LayerLayoutInfo;
+}  // namespace vpux::IE
+namespace vpux::VPU {
+enum class ExecutorKind : uint64_t;
+}  // namespace vpux::VPU
 
 namespace vpux {
 namespace VPUIP {

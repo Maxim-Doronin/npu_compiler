@@ -1326,6 +1326,52 @@ func.func @ApplyTilingNCEMatMulTileOverGroup(%arg0: tensor<64x8x64x32xf16>, %arg
 
 // -----
 
+#NCDHW = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+
+// CHECK-LABEL: func.func @ApplyTilingAvgPool5D
+// CHECK-SAME:          [[INPUT0:%arg[0-7]]]: tensor<1x24x8x56x56xf32>
+func.func @ApplyTilingAvgPool5D(%arg0: tensor<1x24x8x56x56xf32>) -> tensor<1x24x4x56x56xf32> {
+    %0 = VPU.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 24, 448, 56]} : tensor<1x24x8x56x56xf32> -> tensor<1x24x448x56xf32>
+    %1 = VPU.Convert(%0) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x24x448x56xf32> -> tensor<1x24x448x56xf16>
+    %2 = VPU.AffineReshape(%1) {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 24, 8, 56, 56]} : tensor<1x24x448x56xf16> -> tensor<1x24x8x56x56xf16>
+    %3 = VPU.AvgPool(%2) {exclude_pads, kernel_size = [2, 1, 1], pads_begin = [0, 0, 0], pads_end = [0, 0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 1, 1], tilingStrategy = [1, 1, 2, 1, 1]} : tensor<1x24x8x56x56xf16> -> tensor<1x24x4x56x56xf16>
+    %4 = VPU.AffineReshape(%3) {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 24, 224, 56]} : tensor<1x24x4x56x56xf16> -> tensor<1x24x224x56xf16>
+    %5 = VPU.Convert(%4) {dstElemType = f32, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x24x224x56xf16> -> tensor<1x24x224x56xf32>
+    %6 = VPU.AffineReshape(%5) {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 24, 4, 56, 56]} : tensor<1x24x224x56xf32> -> tensor<1x24x4x56x56xf32>
+    return %6 : tensor<1x24x4x56x56xf32>
+
+    // CHECK:               [[INPUT_AFFINE_RESHAPE:%.+]] = VPU.AffineReshape([[INPUT0]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 24, 448, 56]}
+    // CHECK-SAME:              tensor<1x24x8x56x56xf32> -> tensor<1x24x448x56xf32>
+    // CHECK:               [[INPUT_CONVERT:%.+]] = VPU.Convert([[INPUT_AFFINE_RESHAPE]]) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x24x448x56xf32> -> tensor<1x24x448x56xf16>
+    // CHECK:               [[INPUT_AFFINE_RESHAPE2:%.+]] = VPU.AffineReshape([[INPUT_CONVERT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 24, 8, 56, 56]}
+    // CHECK-SAME:              tensor<1x24x448x56xf16> -> tensor<1x24x8x56x56xf16>
+    // CHECK:               [[SLICE_0:%.+]] = VPU.Slice [[INPUT_AFFINE_RESHAPE2]] [0, 0, 0, 0, 0] [1, 24, 4, 56, 56]
+    // CHECK-SAME:              tensor<1x24x8x56x56xf16> to tensor<1x24x4x56x56xf16>
+    // CHECK:               [[AVG_POOL_0:%.+]] = VPU.AvgPool([[SLICE_0]])
+    // CHECK-SAME{LITERAL}:      exclude_pads, kernel_size = [2, 1, 1], pads_begin = [0, 0, 0], pads_end = [0, 0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 1, 1]
+    // CHECK-SAME:               tensor<1x24x4x56x56xf16> -> tensor<1x24x2x56x56xf16>
+    // CHECK:               [[SLICE_1:%.+]] = VPU.Slice [[INPUT_AFFINE_RESHAPE2]] [0, 0, 4, 0, 0] [1, 24, 4, 56, 56]
+    // CHECK-SAME:              tensor<1x24x8x56x56xf16> to tensor<1x24x4x56x56xf16>
+    // CHECK:               [[AVG_POOL_1:%.+]] = VPU.AvgPool([[SLICE_1]])
+    // CHECK-SAME{LITERAL}:      exclude_pads, kernel_size = [2, 1, 1], pads_begin = [0, 0, 0], pads_end = [0, 0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 1, 1]
+    // CHECK-SAME:               tensor<1x24x4x56x56xf16> -> tensor<1x24x2x56x56xf16>
+    // CHECK:               [[CONCAT:%.+]] = VPU.Concat([[AVG_POOL_0]], [[AVG_POOL_1]])
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0, 0], [0, 0, 2, 0, 0]]}
+    // CHECK-SAME:              tensor<1x24x2x56x56xf16>, tensor<1x24x2x56x56xf16> -> tensor<1x24x4x56x56xf16>
+    // CHECK:               [[AVG_POOL_AFFINE_RESHAPE:%.+]] = VPU.AffineReshape([[CONCAT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 24, 224, 56]}
+    // CHECK-SAME:              tensor<1x24x4x56x56xf16> -> tensor<1x24x224x56xf16>
+    // CHECK:               [[AVG_POOL_CONVERT:%.+]] = VPU.Convert([[AVG_POOL_AFFINE_RESHAPE]]) {dstElemType = f32, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x24x224x56xf16> -> tensor<1x24x224x56xf32>
+    // CHECK:               [[AVG_POOL_AFFINE_RESHAPE2:%.+]] = VPU.AffineReshape([[AVG_POOL_CONVERT]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 24, 4, 56, 56]}
+    // CHECK-SAME:              tensor<1x24x224x56xf32> -> tensor<1x24x4x56x56xf32>
+    // CHECK:               return [[AVG_POOL_AFFINE_RESHAPE2]] : tensor<1x24x4x56x56xf32>
+}
+
+// -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !qElemType = !quant.uniform<u8:f16, 1.000000e+00>

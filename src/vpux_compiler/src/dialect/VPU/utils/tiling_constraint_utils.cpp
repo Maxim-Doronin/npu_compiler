@@ -14,12 +14,12 @@ using namespace vpux;
 
 constexpr double NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS = 0.45;
 
-const std::unordered_map<VPU::ArchKind, double> fragmentationDefaultRatioForPipelinlingMap = {
-        {VPU::ArchKind::NPU37XX, NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
-        {VPU::ArchKind::NPU40XX, NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
+const std::unordered_map<config::ArchKind, double> fragmentationDefaultRatioForPipelinlingMap = {
+        {config::ArchKind::NPU37XX, NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
+        {config::ArchKind::NPU40XX, NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
 };
 
-double VPU::getFragmentationAvoidRatioPipeliningLargeWeights(VPU::ArchKind archKind) {
+double VPU::getFragmentationAvoidRatioPipeliningLargeWeights(config::ArchKind archKind) {
     auto iter = fragmentationDefaultRatioForPipelinlingMap.find(archKind);
     VPUX_THROW_WHEN(iter == fragmentationDefaultRatioForPipelinlingMap.end(),
                     "getFragmentationAvoidRatioPipeliningLargeWeights: Unsupported arch {0}", archKind);

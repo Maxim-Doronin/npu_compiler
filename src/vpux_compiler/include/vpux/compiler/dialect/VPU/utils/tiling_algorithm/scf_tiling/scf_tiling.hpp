@@ -16,6 +16,10 @@ namespace vpux::VPU {
 // Apply tiling using SCF dialect
 mlir::LogicalResult applySCFTiling(mlir::Operation* operation, mlir::RewriterBase& builder);
 
+// Apply VF tiling using SCF dialect
+mlir::FailureOr<SmallVector<mlir::Operation*>> applySCFVerticalFusion(mlir::Operation* operation,
+                                                                      mlir::RewriterBase& builder, Logger log);
+
 SmallVector<mlir::OpFoldResult> staticTileSizeComputation(mlir::OpBuilder& builder, mlir::Operation* operation,
                                                           ShapeRef strategy, ShapeRef outputShape);
 

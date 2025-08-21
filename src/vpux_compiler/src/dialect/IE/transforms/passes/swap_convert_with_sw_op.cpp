@@ -3,12 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+
+#include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
+#include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -30,20 +37,17 @@ namespace {
 constexpr int64_t EXPERIMENTAL_F32_FUSION_THRESHOLD = 36000;
 
 //
-// SwapConvertWithSWOp
+// SwapSWOpWithConvert
 //
 
-class SwapConvertWithSWOp final : public IE::impl::SwapConvertWithSWOpBase<SwapConvertWithSWOp> {
+class SwapSWOpWithConvert final : public mlir::OpRewritePattern<IE::ConvertOp> {
 public:
-    explicit SwapConvertWithSWOp(Logger log): _log(log) {
-        _log.setName(Base::getArgumentName());
+    SwapSWOpWithConvert(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
+        this->setDebugName("SwapSWOpWithConvert");
     }
 
-public:
-    class OpSwapConverter;
-
 private:
-    void safeRunOnFunc() final;
+    mlir::LogicalResult matchAndRewrite(IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;
@@ -52,24 +56,10 @@ private:
 bool isReshapeKindOp(mlir::Operation* op) {
     return mlir::isa_and_nonnull<IE::TransposeOp, IE::ReshapeOp, IE::AffineReshapeOp>(op);
 }
-//
-// OpSwapConverter
-//
 
-class SwapConvertWithSWOp::OpSwapConverter final : public mlir::OpRewritePattern<IE::ConvertOp> {
-public:
-    OpSwapConverter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
-    }
+mlir::LogicalResult SwapSWOpWithConvert::matchAndRewrite(IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
-public:
-    mlir::LogicalResult matchAndRewrite(IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
-mlir::LogicalResult SwapConvertWithSWOp::OpSwapConverter::matchAndRewrite(IE::ConvertOp origOp,
-                                                                          mlir::PatternRewriter& rewriter) const {
     const auto convertInput = origOp.getInput();
 
     mlir::Operation* nceOp = convertInput.getDefiningOp();
@@ -95,10 +85,111 @@ mlir::LogicalResult SwapConvertWithSWOp::OpSwapConverter::matchAndRewrite(IE::Co
     return mlir::success();
 }
 
-void SwapConvertWithSWOp::safeRunOnFunc() {
-    auto func = getOperation();
+//
+// SwapConvertWithEltwiseOp
+//
 
+template <typename EltwiseOp>
+class SwapConvertWithEltwiseOp final : public mlir::OpRewritePattern<EltwiseOp> {
+public:
+    SwapConvertWithEltwiseOp(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<EltwiseOp>(ctx), _log(log) {
+        this->setDebugName("SwapConvertWithEltwiseOp");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(EltwiseOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+// If pattern like EltwiseOp[si32] -> ConvertOp[si32, fp16], since EltwiseOp with IntegerType cannot convert to DPU
+// task, if we swap EltwiseOp with ConvertOp, the EltwiseOp will be converted to DPU task.
+
+/* Rewrite the pattern from:
+   Input       Const
+     |          |
+      \        /
+        Eltwise (IntegerType, will not be converted to DPU task)
+           |
+        ConvertOp (IntegerType to Float16Type)
+
+    to:
+   Input                                Const (changeShapeAndElemTypeAttr, IntegerType to Float16Type)
+      |                                   |
+  ConvertOp (IntegerType to Float16Type)  |
+       \                                 /
+                EltwiseOp (Float16Type, will be converted to DPU task)
+ */
+template <typename EltwiseOp>
+mlir::LogicalResult SwapConvertWithEltwiseOp<EltwiseOp>::matchAndRewrite(EltwiseOp origOp,
+                                                                         mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    if (!origOp.getOutput().hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto convertOp = mlir::dyn_cast<IE::ConvertOp>(*origOp.getOutput().getUsers().begin());
+    if (convertOp == nullptr) {
+        return mlir::failure();
+    }
+
+    auto convertInElemType = mlir::cast<NDTypeInterface>(convertOp.getInput().getType()).getElementType();
+    auto convertOutElemType = mlir::cast<NDTypeInterface>(convertOp.getOutput().getType()).getElementType();
+    if (!mlir::isa<mlir::IntegerType>(convertInElemType) || !mlir::isa<mlir::Float16Type>(convertOutElemType)) {
+        return mlir::failure();
+    }
+
+    if (mlir::failed(IE::getConstParentOp(origOp.getInput2()))) {
+        return mlir::failure();
+    }
+
+    // Experimental number to determine if swapping ConvertOp with EltwiseOp is beneficial.
+    constexpr int BENEFICIAL_SIZE = 1024;
+    auto shapeSize = vpux::details::calcTotalShapeSize(getShape(origOp.getOutput()));
+    if (shapeSize < BENEFICIAL_SIZE) {
+        return mlir::failure();
+    }
+
+    auto newConvert = rewriter.create<IE::ConvertOp>(convertOp->getLoc(), origOp.getInput1(), convertOutElemType);
+
+    auto constInput = origOp.getInput2().template getDefiningOp<Const::DeclareOp>();
+    auto biasContentAttr =
+            constInput.transformContentAttr().changeShapeAndElemType(getShape(constInput), convertOutElemType).get();
+    auto newBiasValue =
+            rewriter.create<Const::DeclareOp>(origOp.getLoc(), biasContentAttr.getType(), std::move(biasContentAttr))
+                    .getResult();
+    mlir::IRMapping mapper;
+    mapper.map(origOp->getOperands(), SmallVector<mlir::Value>{newConvert.getOutput(), newBiasValue});
+    auto* newOp = rewriter.clone(*origOp, mapper);
+    vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ALL);
+
+    convertOp.replaceAllUsesWith(newOp->getResult(0));
+
+    return mlir::success();
+}
+
+//
+// SwapConvertWithSWOp
+//
+
+class SwapConvertWithSWOp final : public IE::impl::SwapConvertWithSWOpBase<SwapConvertWithSWOp> {
+public:
+    explicit SwapConvertWithSWOp(Logger log): _log(log) {
+        _log.setName(Base::getArgumentName());
+    }
+
+private:
+    void safeRunOnFunc() final;
+
+private:
+    Logger _log;
+};
+
+void SwapConvertWithSWOp::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
 
     const auto isLegalOp = [](IE::ConvertOp op) -> bool {
         auto inputElemType = mlir::cast<NDTypeInterface>(op.getInput().getType()).getElementType();
@@ -150,10 +241,19 @@ void SwapConvertWithSWOp::safeRunOnFunc() {
     target.addDynamicallyLegalOp<IE::ConvertOp>(isLegalOp);
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<SwapConvertWithSWOp::OpSwapConverter>(&ctx, _log);
-
+    patterns.add<SwapSWOpWithConvert>(&ctx, _log);
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
+    }
+
+    mlir::RewritePatternSet eltwisePatterns(&ctx);
+    eltwisePatterns.add<SwapConvertWithEltwiseOp<IE::MultiplyOp>>(&ctx, _log);
+    eltwisePatterns.add<SwapConvertWithEltwiseOp<IE::AddOp>>(&ctx, _log);
+    eltwisePatterns.add<SwapConvertWithEltwiseOp<IE::SubtractOp>>(&ctx, _log);
+    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(func, std::move(eltwisePatterns),
+                                                        getDefaultGreedyRewriteConfig()))) {
+        signalPassFailure();
+        return;
     }
 }
 

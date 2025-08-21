@@ -4,9 +4,8 @@
 //
 
 #pragma once
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 
 namespace vpux::IE {
 

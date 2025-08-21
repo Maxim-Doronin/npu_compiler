@@ -6,6 +6,7 @@
 
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 
 using namespace vpux;
 

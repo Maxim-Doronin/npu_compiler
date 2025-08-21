@@ -5,7 +5,13 @@
 
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
+#include <mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h>
 #include <mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h>
+#include <mlir/Dialect/LLVMIR/Transforms/Passes.h>
+#include <mlir/Dialect/MemRef/Transforms/Passes.h>
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/Passes.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -30,12 +36,24 @@ void HostExec::registerHostExecPipelines() {
 void HostExec::buildHostExecPipeline(mlir::OpPassManager& pm, Logger /*log*/) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
-    pm.addPass(mlir::createConvertSCFToCFPass());
-    pm.addPass(mlir::createConvertFuncToLLVMPass());
-    pm.addPass(mlir::createConvertControlFlowToLLVMPass());
-
+    pm.addPass(mlir::createArithToLLVMConversionPass());
     pm.addPass(HostExec::createSerializeELFToBinaryPass());
     pm.addPass(HostExec::createConvertToLLVMUMDCallsPass());
+
+    // This should be placed after ConvertToLLVMUMDCalls
+    // as additional arguments (e.g., L0 command list, command queue, and so on)
+    // are added in ConvertToLLVMUMDCalls
+    pm.addPass(mlir::LLVM::createRequestCWrappersPass());
+
+    // Lowering to LLVM passes
+    pm.addPass(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+    pm.addPass(mlir::memref::createExpandStridedMetadataPass());
+    pm.addPass(mlir::createLowerAffinePass());
+    pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
+
+    pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
     pm.addPass(mlir::createCanonicalizerPass(grc));
 }

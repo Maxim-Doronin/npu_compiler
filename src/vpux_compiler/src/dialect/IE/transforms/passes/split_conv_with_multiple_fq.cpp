@@ -3,15 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <deque>
-
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+
+#include <deque>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SPLITCONVWITHMULTIPLEFQ

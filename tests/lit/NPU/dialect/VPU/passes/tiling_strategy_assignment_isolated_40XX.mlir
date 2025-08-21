@@ -607,3 +607,40 @@ func.func @SEPDWConvCTile(%arg0: tensor<1x768x32x32xf16, {order = #NHWC}>) -> te
   // CHECK:         VPU.NCE.DepthConvolution
   // CHECK-SAME:    tilingStrategy = [1, 2, 1, 1]
 }
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<i4:f16, 1.3385416666666667>
+
+// CHECK-LABEL:   @SplitI4QuantNCEConvOverOC
+// CHECK-SAME:          [[INPUT:%arg[0-9]]]: tensor<1x128x256x4xf16, {order = #NHWC}>
+func.func @SplitI4QuantNCEConvOverOC(%arg0: tensor<1x128x256x4xf16, {order = #NHWC}>) -> tensor<1x6320x256x4xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<6320x128x1x1x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : tensor<6320x128x1x1xf16>, [#const.CastElemType<si4>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+    %weights_table = const.Declare tensor<6320x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<6320x1x1x4xsi32>
+
+    %0 = VPU.NCE.Convolution(%arg0, %weights, %weights_table) {
+        ppe = #VPU.PPEStub<>,
+        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        rawFilterShape = [6320, 128, 1, 1], strides = [1, 1]
+    } : tensor<1x128x256x4xf16, {order = #NHWC}>, tensor<6320x128x1x1x!qElemType, {order = #NHWC}>, tensor<6320x1x1x4xsi32, {order = #NCHW}> -> tensor<1x6320x256x4xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x6320x256x4xf16, {order = #NHWC}>
+
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<6320x128x1x1x!qElemType, {order = #NHWC}> = dense<1.000000e+00>
+    // CHECK-SAME:      : tensor<6320x128x1x1xf16>, [#const.CastElemType<si4>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+
+    // CHECK-DAG:       [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<6320x1x1x4xsi32, {order = #NCHW}> = dense<10>
+    // CHECK-SAME:      : tensor<6320x1x1x4xsi32>
+
+    // CHECK:           [[CONV:%.+]] = VPU.NCE.Convolution([[INPUT]], [[WEIGHTS]], [[WEIGHTS_TABLE]])
+    // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    // CHECK-SAME:          rawFilterShape = [6320, 128, 1, 1],
+    // CHECK-SAME:          strides = [1, 1],
+    // CHECK-SAME:          tilingStrategy = [1, 12, 1, 1]}
+    // CHECK-SAME:          -> tensor<1x6320x256x4xf16, {order = #NHWC}>
+
+    // CHECK:           return [[CONV]] : tensor<1x6320x256x4xf16, {order = #NHWC}>
+}

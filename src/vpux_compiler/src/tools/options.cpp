@@ -18,7 +18,7 @@ using namespace vpux;
 // parseArchKind
 //
 
-vpux::VPU::ArchKind vpux::parseArchKind(int argc, char* argv[], StringRef helpHeader) {
+vpux::config::ArchKind vpux::parseArchKind(int argc, char* argv[], StringRef helpHeader) {
     static llvm::cl::OptionCategory vpuxOptOptions("NPU Options");
 
     // Please use this option to test pipelines only (DefaultHW, ReferenceSW, etc.)
@@ -54,13 +54,13 @@ vpux::VPU::ArchKind vpux::parseArchKind(int argc, char* argv[], StringRef helpHe
     VPUX_THROW_WHEN(archOpt.empty() && initCompiler.empty(), "Can't get ArchKind value");
 
     const auto getArchFromString = [](vpux::StringRef archOptStr) {
-        auto archKind = vpux::VPU::symbolizeEnum<vpux::VPU::ArchKind>(archOptStr);
+        auto archKind = vpux::config::symbolizeEnum<vpux::config::ArchKind>(archOptStr);
         VPUX_THROW_UNLESS(archKind.has_value(), "Unknown VPU architecture : '{0}'", archOpt.getValue());
 
         return archKind.value();
     };
 
-    auto arch = vpux::VPU::ArchKind::UNKNOWN;
+    auto arch = vpux::config::ArchKind::UNKNOWN;
     if (!archOpt.empty()) {
         arch = getArchFromString(archOpt);
     } else {

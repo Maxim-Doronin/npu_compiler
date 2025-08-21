@@ -1310,3 +1310,28 @@ func.func @QuantConvWithNegativeScales(%arg0: tensor<1x16x16x16xf16, {order = #N
 
     // CHECK:       return [[VAL0]] : tensor<1x16x16x16xf16, {order = #NHWC}>
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @DontConvertGroupConvToNCEIfDilatedConv
+func.func @DontConvertGroupConvToNCEIfDilatedConv(%arg0: tensor<1x16x48x48xf16, {order = #NHWC}>) -> tensor<1x16x48x48xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<16x1x3x3xf16, {order = #NHWC}> =
+        dense<1.000000e+00> : tensor<16x1x3x3xf16>, [#const.Reorder<#NHWC>]
+
+    %0 = IE.GroupConvolution(%arg0, %weights) {
+            dilations = [2, 2],
+            groups = 16,
+            pads_begin = [2, 2],
+            pads_end = [2, 2],
+            strides = [1, 1],
+            post_op = #IE.LeakyRelu<negative_slope = 1.000000e-01 : f64>
+        } : tensor<1x16x48x48xf16, {order = #NHWC}>, tensor<16x1x3x3xf16, {order = #NHWC}>
+            -> tensor<1x16x48x48xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x16x48x48xf16, {order = #NHWC}>
+
+    // CHECK-NOT: VPU.NCE.DepthConvolution
+    // CHECK:     IE.GroupConvolution
+}

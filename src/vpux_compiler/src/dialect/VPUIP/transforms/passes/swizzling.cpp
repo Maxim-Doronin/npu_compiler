@@ -10,19 +10,16 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/constant_fusion.hpp"
 
-#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
-
-#include "vpux/utils/core/numeric.hpp"
-#include "vpux/utils/core/range.hpp"
 
 #include <mlir/IR/IRMapping.h>
 
@@ -61,7 +58,7 @@ private:
     bool _enableSwizzlingOfFusedConsts = false;
 
     struct DeviceInfo {
-        VPU::ArchKind archKind;
+        config::ArchKind archKind;
         int64_t cmxSize;
         int64_t reservedCMXSize;
     };
@@ -85,7 +82,7 @@ private:
                                  DeviceInfo& deviceInfo);
     template <typename InAllocOp, typename OutAllocOp>
     void addSwizzlingAttributesToBuffer(mlir::OpBuilder& builder, InAllocOp inAllocOp, mlir::Type newType,
-                                        VPU::ArchKind archKind);
+                                        config::ArchKind archKind);
     void updateConstantTypeForSwizzling(Const::DeclareOp decOp, mlir::Operation* cstLoadOp, int64_t swizzlingKey,
                                         DeviceInfo& deviceInfo);
     ValuesSet getSwizzledOperandsFromFlagsMap(VPUIP::NCEClusterTaskOp nceOp, OpsInfo& opsInfo);
@@ -97,7 +94,7 @@ private:
                        OpsInfo& opsInfo, AliasesInfo& aliasesInfo);
 };
 
-void adjustReturnTypesForInputChain(mlir::Value value, int64_t swizzlingKey, VPU::ArchKind archKind) {
+void adjustReturnTypesForInputChain(mlir::Value value, int64_t swizzlingKey, config::ArchKind archKind) {
     auto adjustReturnType = [&](mlir::Value value) {
         auto adjustedType = setSwizzlingKey(value.getType(), swizzlingKey, archKind);
         value.setType(adjustedType);
@@ -124,7 +121,7 @@ VPUIP::DistributedBufferType getDistributedBufferTypeWithSwizzling(VPUIP::Distri
                                              origDistType.getSparsityCompression());
 }
 
-bool isSizeAlignmentRequired(Const::DeclareOp decOp, VPU::ArchKind archKind,
+bool isSizeAlignmentRequired(Const::DeclareOp decOp, config::ArchKind archKind,
                              VPUIP::DistributedBufferType distributedType = nullptr) {
     auto isAlignmentRequired = [&](NDTypeInterface type) {
         auto swizzlingSizeAlignment = vpux::getSizeAlignmentForSwizzling(archKind);
@@ -416,7 +413,7 @@ bool Swizzling::canSwizzleWeights(VPUIP::NCEClusterTaskOp nceOp, DeviceInfo& dev
 
 template <typename InAllocOp, typename OutAllocOp>
 void Swizzling::addSwizzlingAttributesToBuffer(mlir::OpBuilder& builder, InAllocOp inAllocOp, mlir::Type newType,
-                                               VPU::ArchKind archKind) {
+                                               config::ArchKind archKind) {
     auto swizzlingSchemeAttr = getSwizzlingSchemeAttr(newType);
     auto addressAlignment = vpux::getAddressAlignmentForSwizzling(swizzlingSchemeAttr.getKey().getInt(), archKind);
     auto addressAlignmentAttr = getIntAttr(&getContext(), addressAlignment);
@@ -769,7 +766,7 @@ void Swizzling::safeRunOnFunc() {
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
     DeviceInfo deviceInfo;
-    deviceInfo.archKind = VPU::getArch(module);
+    deviceInfo.archKind = config::getArch(module);
     deviceInfo.cmxSize = IE::getAvailableMemory(module, VPU::MemoryKind::CMX_NN).size().count();
     deviceInfo.reservedCMXSize = deviceInfo.cmxSize - VPU::getTotalCMXSize(module).count();
 

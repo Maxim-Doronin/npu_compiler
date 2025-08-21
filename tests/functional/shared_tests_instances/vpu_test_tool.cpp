@@ -14,7 +14,7 @@ namespace ov::test::utils {
 
 VpuTestTool::VpuTestTool(const VpuTestEnvConfig& envCfg)
         : envConfig(envCfg),
-          DEVICE_NAME(envConfig.IE_NPU_TESTS_DEVICE_NAME.empty() ? "NPU" : envConfig.IE_NPU_TESTS_DEVICE_NAME),
+          DEVICE_NAME(envConfig.IE_NPU_TESTS_DEVICE_NAME.empty() ? DEVICE_NPU : envConfig.IE_NPU_TESTS_DEVICE_NAME),
           _log(vpux::Logger::global().nest("VpuTestTool", 1)) {
 }
 

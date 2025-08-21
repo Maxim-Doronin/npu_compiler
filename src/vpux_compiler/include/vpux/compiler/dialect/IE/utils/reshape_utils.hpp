@@ -5,7 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 namespace IE {
@@ -33,6 +35,9 @@ bool isEligibleToFoldStrideKernel(vpux::NDTypeInterface inputType, vpux::NDTypeI
                                   const Logger& log);
 
 Shape getNewShapeAfterStrideFolding(ShapeRef origShape, int64_t SX);
+
+mlir::Value createDynamicReshape(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
+                                 BoundedShape outputShape);
 
 }  // namespace IE
 }  // namespace vpux

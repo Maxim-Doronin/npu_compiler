@@ -86,10 +86,10 @@ Following this approach, the development of a "mixed" pass is similar to a commo
 ```C++
 std::unique_ptr<IStrategyGetter> vpux::VPU::createMCStrategyGetter(ArchKind arch, int64_t numClusters) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX: {
+    case config::ArchKind::NPU37XX: {
         return std::make_unique<arch37xx::StrategyGetter>();
     }
-    case VPU::ArchKind::NPU40XX: {
+    case config::ArchKind::NPU40XX: {
         return std::make_unique<arch40xx::StrategyGetter>(numClusters);
     }
     case ArchKind::UNKNOWN:
@@ -202,7 +202,7 @@ The main advantage of this approach is that we can easily hide the pipeline for 
 ```C++
 void MyPass::safeRunOnFunc() {
     // ...
-    if (arch != VPU::ArchKind::NPU37XX) {
+    if (arch != config::ArchKind::NPU37XX) {
         return mlir::failure();
     }
     // ...
@@ -352,7 +352,7 @@ The common approach here is extending `mlir::DialectInlinerInterface` and implem
 ```cpp
 struct MyDialectInlinerInterface : public mlir::DialectInlinerInterface {
     bool isLegalToInline(mlir::Operation*, mlir::Operation*, bool) const final {
-        return true;   
+        return true;
     }
 
     bool isLegalToInline(mlir::Region*, mlir::Region*, bool, mlir::IRMapping&) const final {
@@ -381,7 +381,7 @@ Assume we want to implement a custom `MyDialect.Call` operation. It extends `Cal
 ```cpp
 struct MyDialectDispatchedInlinerInterface : public mlir::DialectInlinerInterface {
     bool isLegalToInline(mlir::Operation*, mlir::Operation*, bool) const final {
-        return true;   
+        return true;
     }
 
     bool isLegalToInline(mlir::Region*, mlir::Region*, bool, mlir::IRMapping&) const final {
@@ -440,19 +440,6 @@ void MyDialect::initialize() {
 
 Note: If no dispatched inliner interface is provided via `registerDispatchedInlinerInterface`, a fallback implementation which mirrors `mlir/lib/Dialect/Func/Extensions/InlinerExtension.cpp` is used! For a lot of use-cases this is enough as the default inlining behaviour is the desired one.
 
-## Weights Separation
-
-### Monolithic Mode
-
-The main motivation of the Monolithic mode is to align as much as possible with "real" weights separation but keeping `@init()` and `@main()` in the same blob and thus being able to use the current CI infrastructure. This eases the debugging of compilation, accuracy and inference issues (IMD).
-
-A rough sketch of the Monolithic WS pipeline looks like this:
-
-<img src="images/ws-monolithic-compilation-flow.png" alt="drawing" width="400"/>
-
-Up until `IntroduceInitFunctionPass`, we have the normal IR structure with a single `@main(...) -> (...)` function. This pass then creates the `@init(...) -> (...)` function. The pass strips away the transformations from `const.Declare` operations and converts them into `IE`-dialect operations in `@init`. The `WSInit` pipeline is then executed only on the `@init` function. After that, the `UnpackNestedModulesPass`, together with the `InlinerPass`, converts the multiple nested functions back into a single network function. Then, the default hardware `VPUIP` pipeline is executed.
-
-
 ## HostCompile Compilation Pipeline
 
 The HostCompile pipeline is a specialized compilation mode designed to partition a neural network into multiple independently compilable functions. Each function contains NPU code, which is subsequently compiled into separate ELF blobs, along with the main function, which contains CPU host code that manages these compiled blobs using the LevelZero API.
@@ -468,11 +455,11 @@ In the HostCompile pipeline, the network is divided into kernel functions and ho
 Consider the following example:
 
 ```mlir
-module @StaticEltwiseNHWC attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
   module @Module_1 {
     // function which contains the NPU-specific code and supposed to be compiled into ELF blobs
     func.func private @main_func0(%arg0: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}> {
-        %0 = VPU.NCE.Eltwise(%arg0, %arg1) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}> 
+        %0 = VPU.NCE.Eltwise(%arg0, %arg1) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>
         return %0 : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 100]> : tensor<4xsi64>, order = #NHWC}>
     }
   }
@@ -512,7 +499,7 @@ To compile a network end to end with `HostCompile` pipeline use one of the follo
 
 `./compile_tool -d NPU.4000 -m ./net.onnx -o ./net.blob -c ./extra_config_net.conf -shape [1,3,4..6,7..10]`
 
-Below is the content of the `extra_config_net.conf` file 
+Below is the content of the `extra_config_net.conf` file
 
 ```plaintext
 NPU_COMPILATION_MODE HostCompile

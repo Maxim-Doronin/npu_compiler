@@ -3,11 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//
-
-#include <vector>
 #include <vpux/compiler/core/attributes/shape.hpp>
 #include <vpux/compiler/core/attributes/strides.hpp>
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/init.hpp"
@@ -17,6 +15,8 @@
 #include <mlir/IR/Types.h>
 
 #include <gtest/gtest.h>
+
+#include <vector>
 
 using namespace vpux;
 

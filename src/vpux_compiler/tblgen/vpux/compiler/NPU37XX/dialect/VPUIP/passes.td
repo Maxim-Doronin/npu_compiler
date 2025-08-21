@@ -85,4 +85,21 @@ def UnrollSpaceToDepthDMA : PassBase<"unroll-space-to-depth-dma", "vpux::Functio
     let constructor = "vpux::VPUIP::arch37xx::createUnrollSpaceToDepthDMAPass()";
 }
 
+//
+// UnrollPermuteDMA
+//
+
+def UnrollPermuteDMA : PassBase<"unroll-permute-dma", "vpux::FunctionPass"> {
+    let summary = "Unroll PermuteDMA tasks";
+
+    let description = [{
+        This pass unrolls PermuteDMA tasks to one or several PermuteDMA tasks.
+        The number of new PermuteDMA tasks depends on the number of planes (num_planes <= 256).
+        1. NCHW -> NHWC: The number of planes is C.
+        2. NHWC -> NCHW: The number of planes is H * W, and W must be <= 256.
+    }];
+
+    let constructor = "vpux::VPUIP::arch37xx::createUnrollPermuteDMAPass()";
+}
+
 #endif

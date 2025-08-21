@@ -5,8 +5,10 @@
 
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -100,24 +102,14 @@ void PropagateSparsityCompression::safeRunOnFunc() {
     auto func = getOperation();
 
     func.walk([&](Const::DeclareOp constOp) {
-        const auto& contentAttr = constOp.getContentAttr();
-        const auto transformations = contentAttr.getTransformations();
-        if (transformations.empty()) {
-            return;
-        }
-
-        auto sparsifyTransformationIt =
-                std::find_if(transformations.rbegin(), transformations.rend(), [](Const::TransformAttrInterface tr) {
-                    return mlir::isa<vpux::Const::SparsifyAttr>(tr);
-                });
-        if (sparsifyTransformationIt == transformations.rend()) {
+        if (!Const::hasSparsifyTransformation(constOp)) {
             return;
         }
 
         auto userOp = *constOp.getOutput().getUsers().begin();
         auto userGroupOp = mlir::dyn_cast<VPUIP::GroupSparseBufferOp>(userOp);
         VPUX_THROW_UNLESS(userGroupOp != nullptr, "Expected weights user to be a VPUIP.GroupSparseBuffer op, got {0}",
-                          userOp);
+                          userOp->getName());
         auto sparsityCompressionAttr = userGroupOp.getSparsityCompressionAttr();
 
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(constOp.getType());

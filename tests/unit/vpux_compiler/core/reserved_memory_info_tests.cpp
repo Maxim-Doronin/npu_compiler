@@ -28,13 +28,13 @@ TEST_F(MLIR_ArgAllocationInfo, MultipleCallOps) {
             module @test {
                 IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
                     IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
-                    IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+                    IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
                     IE.ExecutorResource 2 of @SHAVE_ACT
                     IE.ExecutorResource 1 of @SHAVE_NN
                     IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
 
             net.NetworkInfo entryPoint : @main
             inputsInfo : {
@@ -120,13 +120,13 @@ TEST_F(MLIR_ArgAllocationInfo, MultipleCallOpsWithMultipleUses) {
             module @test {
                 IE.TileResource 2 of @NCE at 1.300000e+03 MHz {
                     IE.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
-                    IE.MemoryResource 1982464 bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+                    IE.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}
                     IE.ExecutorResource 2 of @SHAVE_ACT
                     IE.ExecutorResource 1 of @SHAVE_NN
                     IE.ExecutorResource 1 of @DPU
             }
             IE.ExecutorResource 2 of @DMA_NN
-            IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 8 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+            IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
 
             net.NetworkInfo entryPoint : @main
             inputsInfo : {

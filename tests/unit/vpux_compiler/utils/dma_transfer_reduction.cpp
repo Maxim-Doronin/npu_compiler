@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "common/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/utils/dma_transaction_utils.hpp"
 #include "vpux/utils/core/range.hpp"
 

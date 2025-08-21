@@ -30,6 +30,6 @@ public:
 // createPassesRegistry
 //
 
-std::unique_ptr<IPassesRegistry> createPassesRegistry(VPU::ArchKind archKind);
+std::unique_ptr<IPassesRegistry> createPassesRegistry(config::ArchKind archKind);
 
 }  // namespace vpux

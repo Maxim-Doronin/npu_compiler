@@ -4,18 +4,18 @@
 //
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 using namespace vpux;
 
-int64_t vpux::getSizeAlignmentForSwizzling(VPU::ArchKind arch) {
+int64_t vpux::getSizeAlignmentForSwizzling(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return SWIZZLING_SIZE_ALIGNMENT_VPUX37XX;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return SWIZZLING_SIZE_ALIGNMENT_VPUX40XX;
     default: {
     }
@@ -23,7 +23,7 @@ int64_t vpux::getSizeAlignmentForSwizzling(VPU::ArchKind arch) {
     VPUX_THROW("Architecture {0} does not support swizzling", arch);
 }
 
-VPUIP::SwizzlingSchemeAttr vpux::createSwizzlingSchemeAttr(mlir::MLIRContext* ctx, VPU::ArchKind archKind,
+VPUIP::SwizzlingSchemeAttr vpux::createSwizzlingSchemeAttr(mlir::MLIRContext* ctx, config::ArchKind archKind,
                                                            int64_t swizzlingKey) {
     VPUIP::SwizzlingSchemeAttr swizzlingSchemeAttr = nullptr;
     if (swizzlingKey < 1 || swizzlingKey > 5) {
@@ -38,7 +38,7 @@ VPUIP::SwizzlingSchemeAttr vpux::createSwizzlingSchemeAttr(mlir::MLIRContext* ct
     return swizzlingSchemeAttr;
 }
 
-int64_t vpux::getAddressAlignmentForSwizzling(int64_t swizzlingKey, VPU::ArchKind archKind) {
+int64_t vpux::getAddressAlignmentForSwizzling(int64_t swizzlingKey, config::ArchKind archKind) {
     if (swizzlingKey < 1 || swizzlingKey > 5) {
         return 0;
     }
@@ -49,7 +49,7 @@ int64_t vpux::getAddressAlignmentForSwizzling(int64_t swizzlingKey, VPU::ArchKin
                                                                  {3, 4096},
                                                                  {4, 8192},
                                                                  {5, 16384}};
-    int64_t archMultiplier = archKind >= VPU::ArchKind::NPU40XX ? 2 : 1;
+    int64_t archMultiplier = archKind >= config::ArchKind::NPU40XX ? 2 : 1;
     return swizzlingAddressAlignment.at(swizzlingKey) * archMultiplier;
 }
 
@@ -146,7 +146,7 @@ int64_t vpux::getSwizzlingKey(mlir::Type type) {
     return 0;
 }
 
-mlir::Type vpux::setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKeyAttr, VPU::ArchKind archKind) {
+mlir::Type vpux::setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKeyAttr, config::ArchKind archKind) {
     VPUX_THROW_WHEN(type == nullptr, "NULL type provided");
 
     if (!swizzlingKeyAttr) {
@@ -201,7 +201,7 @@ mlir::Type vpux::setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKey
     VPUX_THROW("Unsupported type for storing swizzling setting");
 }
 
-mlir::Type vpux::setSwizzlingKey(mlir::Type type, int64_t swizzlingKey, VPU::ArchKind archKind) {
+mlir::Type vpux::setSwizzlingKey(mlir::Type type, int64_t swizzlingKey, config::ArchKind archKind) {
     if (swizzlingKey < 1 || swizzlingKey > 5) {
         return type;
     }

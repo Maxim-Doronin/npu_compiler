@@ -34,4 +34,8 @@ template <class OptionsType>
 extern std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy37XX(
         const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options);
 
+template <class OptionsType>
+extern std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy37XXReferenceSW(
+        const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options);
+
 }  // namespace vpux

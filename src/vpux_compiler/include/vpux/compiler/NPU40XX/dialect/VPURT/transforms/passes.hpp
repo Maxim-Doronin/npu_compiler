@@ -24,6 +24,7 @@ std::unique_ptr<mlir::Pass> createWlmSplitGraphToPagesPass(Logger log = Logger::
 std::unique_ptr<mlir::Pass> createWlmLegalizeSplitGraphToPagesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWlmLegalizePagesForBarrierDmasPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWlmInsertDummyDmasInPagesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWlmInsertDummyBarriersInPagesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeBarriersSlotsUsagePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFindWlmEnqueueDmasBarrierPass(Logger log = Logger::global());
 

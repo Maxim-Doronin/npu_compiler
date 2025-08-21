@@ -5,10 +5,10 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Value.h>
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 namespace vpux {
 

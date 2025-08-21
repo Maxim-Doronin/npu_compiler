@@ -63,7 +63,7 @@ public:
 
         mlir::PassManager pm(module->getName(), mlir::OpPassManager::Nesting::Implicit);
         auto initCompilerOptions =
-                VPU::InitCompilerOptions(vpux::VPU::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+                VPU::InitCompilerOptions(vpux::config::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
 
         VPU::buildInitCompilerPipeline(pm, initCompilerOptions, log);
 

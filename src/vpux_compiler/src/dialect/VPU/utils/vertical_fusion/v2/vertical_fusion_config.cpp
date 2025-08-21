@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 
 using namespace vpux;
@@ -19,6 +20,11 @@ VFConfig::VFConfig(VPU::VerticalFusionOp vfOp, bool enableVFPipelining /*true*/,
           _firstVFNeedsTiling(firstVFNeedsTiling),
           _secondVFNeedsTiling(secondVFNeedsTiling) {
     _isVFPipelineCandidate = _isPipelineEnabled && isVFPipelinePattern();
+}
+
+VFConfig::VFConfig(const llvm::SetVector<mlir::Operation*>& operations): _subgraph(nullptr), _isPipelineEnabled(true) {
+    _vfOps = std::move(operations);
+    _isVFPipelineCandidate = isVFPipelinePattern();
 }
 
 bool VFConfig::isVFPipelinePattern() {
@@ -46,13 +52,21 @@ bool VFConfig::isVFPipelinePattern() {
              llvm::all_of(checkedOperations, filterSWKernels));
 }
 
-const SmallVector<mlir::Operation*>& VFConfig::getVFOperations() {
+void VFConfig::validateConfig() {
+    VPUX_THROW_WHEN(_vfOps.empty() && _subgraph == nullptr,
+                    "Vertical fusion config should be enabled by wrapped operation or list of operations");
+}
+
+const llvm::SetVector<mlir::Operation*>& VFConfig::getVFOperations() {
+    validateConfig();
     if (_vfOps.empty()) {
         const auto getOpPointer = [](auto& op) -> mlir::Operation* {
             return &op;
         };
-        llvm::copy(_subgraph.getBody()->without_terminator() | transformed(getOpPointer), std::back_inserter(_vfOps));
+        auto operations = _subgraph.getBody()->without_terminator() | transformed(getOpPointer);
+        _vfOps.insert(operations.begin(), operations.end());
     }
+
     return _vfOps;
 }
 
@@ -63,7 +77,9 @@ SmallVector<mlir::Operation*> VFConfig::getOperationsForTiling() {
 }
 
 void VFConfig::invalidatePointers() {
-    _vfOps.clear();
+    if (_subgraph != nullptr) {
+        _vfOps.clear();
+    }
     _largestOp = nullptr;
     _inputOps.clear();
     _outputOps.clear();
@@ -76,7 +92,7 @@ VPU::VerticalFusionOp VFConfig::getSubgraph() const {
 
 mlir::Operation* VFConfig::getLargestOp() {
     if (_largestOp == nullptr) {
-        auto operations = _subgraph.getBody()->without_terminator();
+        auto operations = getVFOperations();
 
         const auto sumTypes = [&](const Byte& sum, mlir::Value value) {
             return sum + mlir::cast<vpux::NDTypeInterface>(value.getType()).getTotalAllocSize();
@@ -85,29 +101,35 @@ mlir::Operation* VFConfig::getLargestOp() {
         const auto getAllocationSize = [&](auto valueList) -> Byte {
             return std::accumulate(valueList.begin(), valueList.end(), Byte(0), sumTypes);
         };
+        const auto getTotalAllocationSize = [&](auto& operation) {
+            if (operation->hasAttr(isInPlace)) {
+                return getAllocationSize(operation->getOperands());
+            }
+            return getAllocationSize(operation->getOperands()) + getAllocationSize(operation->getResults());
+        };
 
         auto largestOperation = std::max_element(operations.begin(), operations.end(), [&](auto& op1, auto& op2) {
-            return getAllocationSize(op1.getOperands()) + getAllocationSize(op1.getResults()) <
-                   getAllocationSize(op2.getOperands()) + getAllocationSize(op2.getResults());
+            return getTotalAllocationSize(op1) < getTotalAllocationSize(op2);
         });
 
         if (largestOperation == operations.end()) {
             return nullptr;
         }
 
-        _largestOp = &(*largestOperation);
+        _largestOp = *largestOperation;
     }
     return _largestOp;
 }
 
 const SmallVector<mlir::Operation*>& VFConfig::getInputs() {
     if (_inputOps.empty()) {
-        const auto allOperandsInputs = [](auto* current) -> bool {
-            return llvm::all_of(current->getOperands(), [](mlir::Value operand) {
-                return mlir::dyn_cast<mlir::BlockArgument>(operand) != nullptr;
+        auto operations = getVFOperations();
+        const auto allOperandsInputs = [&](auto* current) -> bool {
+            return llvm::all_of(current->getOperands(), [&](mlir::Value operand) {
+                return mlir::dyn_cast<mlir::BlockArgument>(operand) != nullptr ||
+                       !_vfOps.contains(operand.getDefiningOp());
             });
         };
-        auto operations = getVFOperations();
         for (auto* operation : operations) {
             if (!mlir::isa<VPU::VerticalFusionOpInterface>(operation)) {
                 continue;
@@ -116,8 +138,12 @@ const SmallVector<mlir::Operation*>& VFConfig::getInputs() {
             if (!allOperandsInputs(operation)) {
                 bool notInput = false;
                 for (auto operand : operation->getOperands()) {
-                    if (!mlir::isa<mlir::BlockArgument>(operand)) {
+                    if (!mlir::isa<mlir::BlockArgument>(operand) &&
+                        !mlir::isa<Const::DeclareOp>(operand.getDefiningOp())) {
                         auto* parent = operand.getDefiningOp();
+                        if (!_vfOps.contains(parent)) {
+                            break;
+                        }
                         while (parent != nullptr) {
                             if (mlir::isa<VPU::VerticalFusionOpInterface>(parent)) {
                                 notInput = true;
@@ -139,10 +165,20 @@ const SmallVector<mlir::Operation*>& VFConfig::getInputs() {
 
 const SmallVector<mlir::Operation*>& VFConfig::getOutputs() {
     if (_outputOps.empty()) {
-        _outputOps = to_small_vector(_subgraph.getBody()->getTerminator()->getOperands() |
-                                     transformed([](auto operand) -> mlir::Operation* {
-                                         return operand.getDefiningOp();
-                                     }));
+        if (_subgraph != nullptr) {
+            _outputOps = to_small_vector(_subgraph.getBody()->getTerminator()->getOperands() |
+                                         transformed([](auto operand) -> mlir::Operation* {
+                                             return operand.getDefiningOp();
+                                         }));
+        } else {
+            auto operations = getVFOperations();
+            const auto hasNoUserInVF = [this](auto* operation) {
+                return llvm::none_of(operation->getUsers(), [&](auto* user) {
+                    return _vfOps.contains(user);
+                });
+            };
+            _outputOps = to_small_vector(operations | filtered(hasNoUserInVF));
+        }
     }
     return _outputOps;
 }
@@ -152,8 +188,8 @@ bool VFConfig::isPipelined() const {
 }
 
 SmallVector<NDTypeInterface> VFConfig::getOperationTypes(mlir::Operation* operation) {
-    VPUX_THROW_WHEN(llvm::find(getVFOperations(), operation) == _vfOps.end(), "Cannot find operation {0} in VF {1}",
-                    *operation, _subgraph);
+    getVFOperations();
+    VPUX_THROW_WHEN(!_vfOps.contains(operation), "Cannot find operation {0} in VF", *operation);
 
     auto origShape = Shape(getShape(operation->getResult(0)));
     if (_tilesCache.find(operation) == _tilesCache.end()) {

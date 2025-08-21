@@ -14,6 +14,8 @@
 namespace vpux {
 namespace VPU {
 
+constexpr vpux::StringLiteral isInPlace = "is_inplace";  // inplace attribute name
+
 // min length of tensor by tiled axis. It limits number of tiles
 // which we may increase in order to fit in CMX
 constexpr int64_t MINIMUM_LENGTH_TILING = 4;
@@ -42,32 +44,23 @@ using VFContainerPipelineStorage = VFContainer<size_t, VFPipelineContainer>;
 // for each VF tile
 TilingStorage restoreTilingRegions(VPU::VerticalFusionOp vfOp, Logger log,
                                    const TilingOperationStorage::UPtr& opStorage);
-// calculate tiling regions based on particular tiling strategy
-mlir::FailureOr<TilingStorage> calculateTilingRegions(VPU::VerticalFusionOp vfOp, ArrayRef<int64_t> tilingStrategy,
-                                                      Logger log, const TilingOperationStorage::UPtr& opStorage);
-// calculate tiling regions based on known output tiles for last operation in the block
-mlir::FailureOr<TilingStorage> calculateTilingRegions(VPU::VerticalFusionOp vfOp, const OutputTiling& tiles, Logger log,
-                                                      const TilingOperationStorage::UPtr& opStorage);
+
 // calculate recursively tiling regions for the block starting from last operation and known output tiles for it
 // function builds connection between block arguments and tiles
-// in case TilingOperationStorage pointer was passed, it filles in connection between each operation and
+// in case TilingOperationStorage pointer was passed, it fills in connection between each operation and
 // its input and output tiles
 mlir::FailureOr<TilingStorage> calculateTilingRegions(mlir::Operation* operation, const OutputTiling& tiles, Logger log,
                                                       const TilingOperationStorage::UPtr& opStorage,
-                                                      std::optional<size_t> numTile = std::nullopt);
+                                                      const llvm::SetVector<mlir::Operation*>& fusedOps = {});
+
+mlir::FailureOr<TilingStorage> calculateTilingRegions(VPU::VerticalFusionOp vfOp, const OutputTiling& tiles, Logger log,
+                                                      const TilingOperationStorage::UPtr& opStorage);
+
+mlir::FailureOr<TilingStorage> calculateTilingRegions(VPU::VerticalFusionOp vfOp, ArrayRef<int64_t> tilingStrategy,
+                                                      Logger log, const TilingOperationStorage::UPtr& opStorage);
 
 // calculate limit for number of tiles for set of operations
-int64_t getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operations);
-
-// get the maximal valid tiling strategy for VF block between the given range of tiling strategy
-mlir::FailureOr<SmallVector<int64_t>> getMaximalValidTilingStrategyFromRange(
-        VPU::VerticalFusionOp op, ArrayRef<int64_t> lowerTilingStrategy, ArrayRef<int64_t> upperTilingStrategy,
-        Dim tilingAxis, TilingOperationStorage::UPtr& opStorage, Logger log);
-
-// get the minimal valid tiling strategy for VF block between the given range of tiling strategy
-mlir::FailureOr<SmallVector<int64_t>> getMinimalValidTilingStrategyFromRange(
-        VPU::VerticalFusionOp op, ArrayRef<int64_t> lowerTilingStrategy, ArrayRef<int64_t> upperTilingStrategy,
-        Dim tilingAxis, TilingOperationStorage::UPtr& opStorage, Logger log);
+int64_t getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operations, bool tilingOnHW = false);
 
 // get the tiling dimension according to the tiling strategy
 // return nullopt if there is no tiling
@@ -116,7 +109,7 @@ mlir::FailureOr<SmallVector<ResultType>> backInferVFTiling(
 // Check if spilling read and write operations can be overlapped
 // For DMA ops with different source memory kind, if the HW supports VPUIP.ChannelType, the spilling read and write ops
 // can be overlapped
-bool spillingCopyOpsCanBeOverlapped(VPU::ArchKind arch);
+bool spillingCopyOpsCanBeOverlapped(config::ArchKind arch);
 
 // Check if the op is tiled or not
 bool isOpTiled(mlir::Operation* op);

@@ -4,10 +4,15 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 
 using namespace vpux;
@@ -479,7 +484,7 @@ void vpux::VPU::inferLSTMSequenceLayoutInfo(mlir::Operation* op, IE::LayerLayout
         info.setInput(ind++, DimsOrder::NWHC);  // weights
     }
     // recurrenceWeights order. It depends by lower-level implementation.
-    auto useDpu = VPU::getShaveControlsDpu(VPU::getArch(op));
+    auto useDpu = VPU::getShaveControlsDpu(config::getArch(op));
     useDpu = useDpu ? VPU::LSTMSequenceOp::isSupported(lstmSequenceOp, useDpu) : useDpu;
     auto recurrenceWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NWHC;
     info.setInput(ind++, recurrenceWeightsOrder);

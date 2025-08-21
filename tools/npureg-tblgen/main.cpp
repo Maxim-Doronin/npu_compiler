@@ -20,6 +20,8 @@
 
 // clang-format off
 // because header file should be in the first
+#include <vpux/compiler/dialect/config/enums.hpp.inc>
+#include <vpux/compiler/dialect/config/enums.cpp.inc>
 #include <vpux/compiler/dialect/VPU/enums.hpp.inc>
 #include <vpux/compiler/dialect/VPU/enums.cpp.inc>
 // clang-format on
@@ -33,11 +35,11 @@ static llvm::cl::opt<ActionType> Action(llvm::cl::desc("Actions to perform"),
                                         llvm::cl::values(clEnumValN(Generate, "generate", "")),
                                         llvm::cl::init(Generate));
 
-static llvm::cl::opt<vpux::VPU::ArchKind> Platform(llvm::cl::desc("Specify the platform type"),
-                                                   llvm::cl::values(clEnumValN(vpux::VPU::ArchKind::NPU40XX, "NPU40XX",
-                                                                               "LNL platform")
-                                                                    // clang-format off
-        ), llvm::cl::init(vpux::VPU::ArchKind::NPU40XX));
+static llvm::cl::opt<vpux::config::ArchKind> Platform(llvm::cl::desc("Specify the platform type"),
+                                                      llvm::cl::values(clEnumValN(vpux::config::ArchKind::NPU40XX,
+                                                                                  "NPU40XX", "LNL platform")
+                                                                       // clang-format off
+        ), llvm::cl::init(vpux::config::ArchKind::NPU40XX));
 // clang-format on
 
 static std::map<std::string, std::string> platformTypeMap{
@@ -418,7 +420,7 @@ bool RegGenMain(llvm::raw_ostream& stream, llvm::RecordKeeper& records) {
         return false;
     };
 
-    const auto platformTypeName = platformTypeMap[vpux::VPU::stringifyArchKind(Platform).str()];
+    const auto platformTypeName = platformTypeMap[vpux::config::stringifyArchKind(Platform).str()];
 
     switch (Action) {
     case Generate:

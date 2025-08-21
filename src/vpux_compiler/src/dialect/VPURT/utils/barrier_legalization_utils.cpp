@@ -200,10 +200,17 @@ void VPURT::orderExecutionTasksAndBarriers(mlir::func::FuncOp funcOp, BarrierInf
     };
 
     // simulate per FIFO execution - all FIFOs must reach end
+    SmallVector<size_t> lastReadyOps;
     while (!VPURT::allQueuesReachedEnd(frontTasks, taskOpQueues)) {
         const auto readyOps = VPURT::findReadyOpsFromTaskOpQueues(frontTasks, taskOpQueues, barrierInfo);
-        // at each step there must be some ready ops
-        VPUX_THROW_WHEN(readyOps.empty(), "Failed to simulate execution");
+
+        // If simulation fails (no ready ops), dump previous
+        if (readyOps.empty()) {
+            if (!lastReadyOps.empty()) {
+                log.error("Last readyOps before failure: {0}", lastReadyOps);
+            }
+            VPUX_THROW("Failed to simulate execution. Possible deadlock or barrier misconfiguration");
+        }
 
         for (auto& readyOp : readyOps) {
             log.trace("Task '{0}' is ready", readyOp);
@@ -211,6 +218,7 @@ void VPURT::orderExecutionTasksAndBarriers(mlir::func::FuncOp funcOp, BarrierInf
             newTaskOpOrder.push_back(readyOp);
             removeBarrierProducer(readyOp);
         }
+        lastReadyOps = std::move(readyOps);
     }
 
     // ensure number of tasks remains the same

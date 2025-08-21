@@ -26,5 +26,5 @@ bool VPU::hasMaxKernelSize(mlir::Operation* op) {
 }
 
 int64_t VPU::getMaxKernelSize(mlir::Operation* op) {
-    return VPU::getConstraint(op, VPU::MAX_KERNEL_SIZE);
+    return VPU::getConstraint<int64_t>(op, VPU::MAX_KERNEL_SIZE);
 }

@@ -4,6 +4,7 @@
 //
 
 #include <gtest/gtest.h>
+#include <openvino/op/convert.hpp>
 #include <openvino/op/relu.hpp>
 #include <string>
 #include <vector>

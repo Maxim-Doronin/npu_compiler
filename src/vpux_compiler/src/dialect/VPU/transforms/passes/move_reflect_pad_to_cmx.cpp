@@ -4,10 +4,12 @@
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPU {
@@ -343,10 +345,10 @@ private:
 void MoveReflectPadToCMXPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto arch = VPU::getArch(module);
+    auto arch = config::getArch(module);
     auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
     auto vpunnCostModel = vpux::VPU::CostModelConfig::createLayerCostModel(arch);
-    auto vpuDevice = getVPUDeviceType(arch);
+    auto vpuDevice = vpux::VPU::getVPUDeviceType(arch);
 
     func.walk([&](VPU::ConcatOp concatOp) {
         _log.trace("Found Concat operation '{0}' at '{1}'.", concatOp->getName(), concatOp->getLoc());
@@ -412,13 +414,8 @@ void MoveReflectPadToCMXPass::safeRunOnFunc() {
 
         // move concatOp output back to DDR
         builder.setInsertionPointAfter(concatOp);
-        const auto concatOpOutBuff = concatOp.getOutput();
-        auto concatOpOutBuffType = mlir::cast<NDTypeInterface>(concatOpOutBuff.getType());
-        auto newOutputType = concatOpOutBuffType.changeMemSpace(VPU::MemoryKind::DDR);
-        const auto memSpaceDdr = IndexedSymbolAttr::get(concatOp.getContext(), stringifyEnum(VPU::MemoryKind::DDR));
         inferReturnTypes(concatOp, vpux::InferShapedTypeMode::ALL);
-        auto copyOutputToDdr =
-                builder.create<VPU::CopyOp>(concatOp.getLoc(), newOutputType, concatOp.getOutput(), memSpaceDdr);
+        auto copyOutputToDdr = builder.create<VPU::CopyOp>(concatOp.getLoc(), concatOp.getOutput());
         concatOp->getResult(0).replaceAllUsesExcept(copyOutputToDdr, copyOutputToDdr);
     });
 }

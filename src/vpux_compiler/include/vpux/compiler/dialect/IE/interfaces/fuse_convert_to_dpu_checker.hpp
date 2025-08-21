@@ -5,7 +5,10 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Operation.h>
 
 namespace vpux {
 namespace IE {
@@ -31,7 +34,7 @@ public:
 /*
    Find right class to verify whether fusion of Convert F16 -> F32 to parent DPU is feasible
 */
-std::unique_ptr<FuseConvertToDPUCheckerBase> createFuseConvertToDPUChecker(vpux::VPU::ArchKind arch);
+std::unique_ptr<FuseConvertToDPUCheckerBase> createFuseConvertToDPUChecker(vpux::config::ArchKind arch);
 
 }  // namespace IE
 }  // namespace vpux

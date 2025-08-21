@@ -12,37 +12,6 @@
 namespace vpux {
 
 //
-// ReferenceSWOptions40XX
-//
-
-struct ReferenceSWOptions40XX final :
-        public PublicOptions,
-        public ReferenceSWOptions<ReferenceSWOptions40XX>,
-        public vpux::BatchCompileOptionsAdapter {
-    ReferenceSWOptions40XX(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
-    }
-    ReferenceSWOptions40XX(VPU::ArchKind arch)
-            : PublicOptions(arch), vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
-    }
-
-    static std::unique_ptr<ReferenceSWOptions40XX> createFromString(StringRef options, VPU::ArchKind arch) {
-        auto result = std::make_unique<ReferenceSWOptions40XX>(arch);
-        if (mlir::failed(result->parseFromString(options))) {
-            return nullptr;
-        }
-        return result;
-    }
-
-    BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
-                                      llvm::cl::init(false)};
-    BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
-                                          llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(false)};
-};
-
-void buildReferenceSWModePipeline(mlir::OpPassManager& pm, const ReferenceSWOptions40XX& options,
-                                  Logger log = Logger::global());
-
-//
 // DefaultHWOptions40XX
 //
 
@@ -52,10 +21,10 @@ struct DefaultHWOptions40XX final :
         VPUIP::arch40xx::DefaultHWOptions,
         mlir::PassPipelineOptions<DefaultHWOptions40XX> {
     DefaultHWOptions40XX() = default;
-    DefaultHWOptions40XX(VPU::ArchKind arch): PublicOptions(arch) {
+    DefaultHWOptions40XX(config::ArchKind arch): PublicOptions(arch) {
     }
 
-    static std::unique_ptr<DefaultHWOptions40XX> createFromString(StringRef options, VPU::ArchKind arch) {
+    static std::unique_ptr<DefaultHWOptions40XX> createFromString(StringRef options, config::ArchKind arch) {
         auto result = std::make_unique<DefaultHWOptions40XX>(arch);
         if (mlir::failed(result->parseFromString(options))) {
             return nullptr;

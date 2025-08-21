@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
@@ -48,7 +49,7 @@ void ApplySwizzlingPass::safeRunOnFunc() {
         auto newContentAttr =
                 constOp.getContentAttr()
                         .transform()
-                        .swizzleConstant(getSwizzlingKey(constType), static_cast<uint64_t>(VPU::getArch(module)))
+                        .swizzleConstant(getSwizzlingKey(constType), static_cast<uint64_t>(config::getArch(module)))
                         .get();
         mlir::OpBuilder builder(constOp);
         auto newConstOp =

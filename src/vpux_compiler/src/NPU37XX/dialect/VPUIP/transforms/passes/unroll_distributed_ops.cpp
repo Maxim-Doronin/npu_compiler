@@ -6,15 +6,14 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_distributed_ops.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes/unroll_distributed_ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
-#include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/core/profiling.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -131,8 +130,28 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
 
     // For overlapped input, the Swkernel's attr need to be updated according to its input/output tiles
     const auto kernelEntryName = getSwKernelEntryName(swTask);
+
+    // Dequantize needs attr updates only if tiling_axis == quantization_axis
+    auto isDequantizeTiledOverQuantAxis = [&]() {
+        if (kernelEntryName == "dequantize") {
+            const auto input = swTask.getInputs()[0];
+            const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+            const auto elementType = inType.getElementType();
+
+            if (auto quantParams = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
+                auto tilingDimIdx = VPUIP::getTilingDimIndex(outputType);
+                if (tilingDimIdx.has_value()) {
+                    auto quantAxis = quantParams.getQuantizedDimension();
+                    return tilingDimIdx.value() == quantAxis;
+                }
+            }
+        }
+        return false;
+    };
+
     auto needUpdateAttrs = inDistributionMode == VPU::DistributionMode::OVERLAPPED ||
                            kernelEntryName == "lstm_sequence" || kernelEntryName == "lstm_dpu" ||
+                           isDequantizeTiledOverQuantAxis() ||
                            (inDistributionMode == VPU::DistributionMode::SEGMENTED && kernelEntryName == "gatherND");
 
     if (needUpdateAttrs) {
@@ -245,7 +264,7 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
             inputTypes.push_back(type);
         }
 
-        VPUIP::createRuntimeKernelDefinition(_module, _log.nest(), VPU::getArch(swTask.getOperation()));
+        VPUIP::createRuntimeKernelDefinition(_module, _log.nest(), config::getArch(swTask.getOperation()));
 
         auto module = swTask->getParentOfType<mlir::ModuleOp>();
         auto kernelFunc = module.lookupSymbol<mlir::func::FuncOp>(swTask.getKernelFunctionAttr());
@@ -284,7 +303,8 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
             newTask.setListIndexAttr(listIndexAttr);
         }
 
-        initSwKernel(newTask, inputBuffs[clusterId], outputBuffs[clusterId], newArgs, _log.nest());
+        initSwKernel(newTask, inputBuffs[clusterId], outputBuffs[clusterId], newArgs, _log.nest(),
+                     /*swKernelRunOp=*/nullptr);
 
         _log.trace("Task created: {0}", newTask);
     }
@@ -316,7 +336,7 @@ void VPUIP::arch37xx::ClusterNCERewriter::getInputBuffers(
     inputSETableBuffs = VPUIP::getPerClusterMemoryBuffers(_ctx, loc, "inputSETable",
                                                           nceTask.getInputStorageElementTable(), numClusters, builder);
 
-    auto arch = VPU::getArch(nceTask);
+    auto arch = config::getArch(nceTask);
     bool isDWOpAndNeedsAlign = VPU::isDWOpAndNeedsAlign(arch, nceTask.getTaskType());
     for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
         // For 37XX arch, ensure we have H_per_cluster x W as a multiple of 4 (or 8 for sparse inputs).

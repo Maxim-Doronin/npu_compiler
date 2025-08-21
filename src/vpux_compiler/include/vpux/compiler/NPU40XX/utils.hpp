@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 namespace vpux {
 
@@ -20,8 +20,8 @@ bool isConvertSupportedOnDMA(T convertOp) {
     auto module = convertOp.getOperation();
     // ConvertSWLayers2VPUIPSWKernelPass still rely on arch check logic here
     // Remove arch check when one-shot enabled, TODO: E#113196
-    auto arch = VPU::getArch(module);
-    if (arch < VPU::ArchKind::NPU40XX) {
+    auto arch = config::getArch(module);
+    if (arch < config::ArchKind::NPU40XX) {
         // Feature is only tested on 40XX+
         return false;
     }

@@ -4,7 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 namespace vpux::VPUIP {
 

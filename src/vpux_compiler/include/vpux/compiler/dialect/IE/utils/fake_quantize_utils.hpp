@@ -5,13 +5,16 @@
 
 #pragma once
 
-#include <mlir/IR/Value.h>
-#include "mlir/Support/LogicalResult.h"
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Value.h>
+#include "mlir/Support/LogicalResult.h"
 
 namespace vpux {
 namespace IE {

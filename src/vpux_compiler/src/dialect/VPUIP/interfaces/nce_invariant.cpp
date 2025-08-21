@@ -4,25 +4,20 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
-
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
-#include "vpux/compiler/utils/types.hpp"
-
-#include <mlir/IR/Operation.h>
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/IR/Operation.h>
 
 using namespace vpux;
 
@@ -526,8 +521,11 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
         return {curTileTypes[0], curTileTypes[1], curTileTypes[2], nextTileTypes[0], nextTileTypes[1]};
     }
 
-    // TODO : Logic should be improved to handle tiling on 2 dimensions.
-    const auto isWeightPrefetch = curTile.axis[Dims4D::Act::C] > 1;
+    auto isWeightPrefetch = curTile.axis[Dims4D::Act::C] > 1;
+    if (isNestedTiling(tiling)) {
+        auto unrollSpatialFirst = isSpatialFirstNestedTiling(origOp, curTile.axis);
+        isWeightPrefetch = unrollSpatialFirst;
+    }
     return {curTileTypes[0], curTileTypes[1], curTileTypes[2], isWeightPrefetch ? nextTileTypes[1] : nextTileTypes[0]};
 }
 
@@ -600,9 +598,6 @@ template <class ConcreteOp>
 mlir::LogicalResult verifyPipeliningCMXConvBased(ConcreteOp origOp, const OutputTiling& tiling, Logger log) {
     log.setName("NCEInvariant");
     if (tiling.size() <= 1) {
-        return mlir::failure();
-    }
-    if (isNestedTiling(tiling)) {
         return mlir::failure();
     }
 

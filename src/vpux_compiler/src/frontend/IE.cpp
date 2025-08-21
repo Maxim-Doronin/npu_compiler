@@ -4,32 +4,45 @@
 //
 
 #include "vpux/compiler/frontend/IE.hpp"
-
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/types/quantile_float/dialect.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/control_flow.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/IE/locations.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/cal_range_data.hpp"
-#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/net/network_info_utils.hpp"
+#include "vpux/compiler/utils/range_bound.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/compiler/utils/types.hpp"
-
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -42,13 +55,19 @@
 
 #include "intel_npu/config/config.hpp"
 
+#include <llvm/ADT/ArrayRef.h>
+#include <mlir/Dialect/Shape/IR/Shape.h>
 #include <mlir/IR/AsmState.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinDialect.h>
 #include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/DialectResourceBlobManager.h>
 #include <mlir/IR/Verifier.h>
 
 #include <openvino/core/node.hpp>
+#include <openvino/core/rt_info/weightless_caching_attributes.hpp>
 #include <openvino/core/type.hpp>
 #include <openvino/core/type/element_type.hpp>
 #include <openvino/op/strided_slice.hpp>
@@ -117,14 +136,6 @@
 #include <transformations/op_conversions/softmax_decomposition.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <transformations/utils/utils.hpp>
-
-#include <llvm/ADT/ArrayRef.h>
-#include <mlir/Dialect/Shape/IR/Shape.h>
-#include <mlir/IR/Builders.h>
-#include <mlir/IR/BuiltinAttributes.h>
-#include <mlir/IR/BuiltinOps.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/Verifier.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -1057,11 +1068,34 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
         const auto rawBuffer = ArrayRef(origNode->get_data_ptr<char>(), bufferSize);
         // DenseElementsAttr has very limited support for sub byte type (only I1 is supported).
         // Therefore, we need to avoid using DenseElementsAttr to store sub byte type.
+
         if (!vpux::Const::isSubByte(bitWidth) && !_sharedConstants) {
             return mlir::DenseElementsAttr::getFromRawBuffer(tensorType, rawBuffer);
         }
 
-        return vpux::Const::createExternalConstContent(tensorType, rawBuffer, vpux::Const::OPENVINO_CONST_PREFIX);
+        std::string cstName;
+        ov::RTMap& runtimeInfoMap = origNode->get_rt_info();
+
+        cstName = [&]() -> std::string {
+            const auto& weightlessCacheAttrIt =
+                    runtimeInfoMap.find(ov::WeightlessCacheAttribute::get_type_info_static());
+
+            if (weightlessCacheAttrIt != runtimeInfoMap.end()) {
+                auto& weightlessCacheAttr = weightlessCacheAttrIt->second.as<ov::WeightlessCacheAttribute>();
+                if (origNode->get_element_type() == weightlessCacheAttr.original_dtype) {
+                    return formatv("{0}{1}", vpux::Const::IMPORTED_WEIGHT_PREFIX, weightlessCacheAttr.bin_offset).str();
+                } else {
+                    Logger::global().debug(
+                            "Weightless cache attribute type {0} does not match constant type {1} for node '{2}'",
+                            weightlessCacheAttr.original_dtype, origNode->get_element_type(),
+                            origNode->get_friendly_name());
+                }
+            }
+
+            return "INTERNAL_CONSTANT";
+        }();
+
+        return Const::createExternalConstContent(tensorType, rawBuffer, cstName);
     }();
 
     Const::ContentSetup contentSetup(value.getType());
@@ -3626,7 +3660,7 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
 
     const auto nameAttr = mlir::StringAttr::get(_ctx, origNode->get_variable_id());
 
-    auto op = builder.create<IE::ReadValueOp>(createLocation(origNode), inputs[0], nameAttr);
+    auto op = builder.create<IE::ReadValueOp>(createLocation(origNode), inputs[0], nameAttr, nullptr, nullptr);
     addOutputs(origNode, op);
 }
 
@@ -3635,12 +3669,23 @@ void NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<o
                   "opset operation mismatch");
 
     const auto inputs = getInputs(origNode);
-    VPUX_THROW_UNLESS(inputs.size() == 1, "nGraph ReadValue node '{0}' has unsupported number of inputs '{1}'",
+    VPUX_THROW_UNLESS(inputs.size() <= 1, "nGraph ReadValue node '{0}' has unsupported number of inputs '{1}'",
                       origNode->get_friendly_name(), inputs.size());
 
     const auto nameAttr = mlir::StringAttr::get(_ctx, origNode->get_variable_id());
+    const auto elementType = importPrecision(_ctx, origNode->get_element_type());
+    const auto shape = importShape(origNode->get_shape());
+    mlir::Value inputTensor;
+    if (inputs.size() == 0) {
+        // If the 1st input is not provided, ReadValue returns the tensor with zero values
+        const auto inputType = mlir::RankedTensorType::get({shape}, elementType);
+        inputTensor = Const::createZerosConst(builder, createLocation(origNode), inputType);
+    } else {
+        inputTensor = inputs[0];
+    }
 
-    auto op = builder.create<IE::ReadValueOp>(createLocation(origNode), inputs[0], nameAttr);
+    auto op = builder.create<IE::ReadValueOp>(createLocation(origNode), inputTensor, nameAttr,
+                                              mlir::TypeAttr::get(elementType), getIntArrayAttr(_ctx, shape));
     addOutputs(origNode, op);
 }
 
@@ -4982,7 +5027,8 @@ static void addCommonOptimizationsPasses(ov::pass::Manager& manager) {
     manager.register_pass<ov::pass::StridesOptimization>();
 }
 
-void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, mlir::TimingScope& rootTiming) {
+void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, mlir::TimingScope& rootTiming,
+                                   bool isWeightsSeparationPath) {
     auto scopeTiming = rootTiming.nest("Common nGraph passes");
 
     ov::pass::Manager manager;
@@ -5003,7 +5049,11 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
     manager.register_pass<ov::pass::KeepConstPrecision>(decompression_precisions, /*fold_subtract_const=*/true);
     manager.register_pass<ov::pass::KeepConstAndDecompression>();
     passConfig->set_callback<ov::pass::KeepConstAndDecompression>(
-            [](const std::shared_ptr<const ov::Node>& node) -> bool {
+            [&](const std::shared_ptr<const ov::Node>& node) -> bool {
+                if (isWeightsSeparationPath) {
+                    return false;
+                }
+
                 return skipKeepConstAndDecompressionForNode(node);
             });
     manager.register_pass<ov::pass::SharedOpOptimization>();
@@ -5206,9 +5256,8 @@ void dynamicToStaticShape(const std::shared_ptr<ov::Model>& model) {
 mlir::OwningOpRef<mlir::ModuleOp> vpux::IE::importNetwork(
         mlir::MLIRContext* ctx, const std::shared_ptr<ov::Model>& model,
         const std::vector<std::shared_ptr<const ov::Node>>& originalParameters,
-        const std::vector<std::shared_ptr<const ov::Node>>& originalResults, bool sharedConstants,
-        mlir::TimingScope& rootTiming, bool enableProfiling, vpux::DummyOpMode stubLayers, bool dynamicShapeToStatic,
-        Logger log) {
+        const std::vector<std::shared_ptr<const ov::Node>>& originalResults, mlir::TimingScope& rootTiming,
+        const vpux::IE::ImportNetworkConfig& importCfg, Logger log) {
     log.setName("IE::FrontEnd::importNetwork");
 
     log.trace("Load IE::FrontEnd dependent Dialects");
@@ -5217,12 +5266,12 @@ mlir::OwningOpRef<mlir::ModuleOp> vpux::IE::importNetwork(
     ctx->loadDialect<vpux::type::QuantileFloatDialect>();
     ctx->loadDialect<IE::IEDialect>();
 
-    if (dynamicShapeToStatic && model->is_dynamic()) {
+    if (importCfg.dynamicShapeToStatic && model->is_dynamic()) {
         dynamicToStaticShape(model);
     }
 
     log.trace("Run common nGraph passes");
-    NGraphPasses::runNGraphPasses(model, rootTiming);
+    NGraphPasses::runNGraphPasses(model, rootTiming, importCfg.enableWeightsSeparationPath);
 
     const auto moduleLoc = IE::createLayerLocation(ctx, "module", "Module");
     auto module = mlir::ModuleOp::create(moduleLoc, StringRef(model->get_friendly_name()));
@@ -5233,11 +5282,14 @@ mlir::OwningOpRef<mlir::ModuleOp> vpux::IE::importNetwork(
     auto builder = mlir::OpBuilder::atBlockBegin(module.getBody(), &builderLog);
 
     log.trace("Add NetworkInfo Operation");
-    addNetworkInfoOp(builder, mainFuncName, model, originalParameters, originalResults, rootTiming, enableProfiling);
+    addNetworkInfoOp(builder, mainFuncName, model, originalParameters, originalResults, rootTiming,
+                     importCfg.enableProfiling);
 
     log.trace("Import nGraph function");
-    NGraphImporter importer(ctx, model, sharedConstants, log);
-    importer.buildMainFunc(builder, mainFuncName.getValue(), rootTiming, stubLayers, dynamicShapeToStatic);
+
+    NGraphImporter importer(ctx, model, importCfg.sharedConstants, log);
+    importer.buildMainFunc(builder, mainFuncName.getValue(), rootTiming, importCfg.stubLayers,
+                           importCfg.dynamicShapeToStatic);
 
     log.trace("Validate MLIR module");
     auto finalTiming = rootTiming.nest("Validate MLIR module");

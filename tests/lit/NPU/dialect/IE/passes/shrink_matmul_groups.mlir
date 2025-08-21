@@ -73,3 +73,43 @@ func.func @ShrinkMatmulGroupsWithTrivialD1(%arg0: tensor<1x8x1x64xf32>, %arg1: t
 
     // CHECK:       return  [[RESULT]] : tensor<1x8x1x1024xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @ShrinkForBeneficialGroupMatMul
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x24x16x64xf32>,
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x8x1x1024x64xf32>
+func.func @ShrinkForBeneficialGroupMatMul(%arg0: tensor<1x24x16x64xf32>, %arg1: tensor<1x8x1x1024x64xf32>) -> tensor<1x24x16x1024xf32> {
+    %cst = const.Declare tensor<5xsi64> = dense<[1, 8, 3, 1024, 64]> : tensor<5xsi64>
+
+    %0 = IE.Broadcast(%arg1, %cst) {mode = #IE.broadcast_type<BIDIRECTIONAL>} : tensor<1x8x1x1024x64xf32>, tensor<5xsi64> -> tensor<1x8x3x1024x64xf32>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [1], [2], [3]], shape_value = [1, 24, 1024, 64]} : tensor<1x8x3x1024x64xf32> -> tensor<1x24x1024x64xf32>
+    %2 = IE.MatMul(%arg0, %1) {transpose_b} : tensor<1x24x16x64xf32>, tensor<1x24x1024x64xf32> -> tensor<1x24x16x1024xf32>
+
+    return %2 : tensor<1x24x16x1024xf32>
+
+    // CHECK:       [[LHS:%.+]] = IE.Reshape([[INPUT1]]) {shape_value = [1, 8, 48, 64]} : tensor<1x24x16x64xf32> -> tensor<1x8x48x64xf32>
+    // CHECK:       [[RHS:%.+]] = IE.Reshape([[INPUT2]]) {shape_value = [1, 8, 1024, 64]} : tensor<1x8x1x1024x64xf32> -> tensor<1x8x1024x64xf32>
+    // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[LHS]], [[RHS]]) {transpose_b} : tensor<1x8x48x64xf32>, tensor<1x8x1024x64xf32> -> tensor<1x8x48x1024xf32>
+    // CHECK:       [[RESULT:%.+]] = IE.Reshape([[MATMUL]]) {shape_value = [1, 24, 16, 1024]} : tensor<1x8x48x1024xf32> -> tensor<1x24x16x1024xf32>
+
+    // CHECK:       return  [[RESULT]] : tensor<1x24x16x1024xf32>
+}
+
+
+// -----
+
+// CHECK-LABEL: @NotShrinkForUnbeneficialGroupMatMul
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x24x1024x64xf32>,
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x8x1x1024x64xf32>
+func.func @NotShrinkForUnbeneficialGroupMatMul(%arg0: tensor<1x24x1024x64xf32>, %arg1: tensor<1x8x1x1024x64xf32>) -> tensor<1x24x1024x1024xf32> {
+    %cst = const.Declare tensor<5xsi64> = dense<[1, 8, 3, 1024, 64]> : tensor<5xsi64>
+
+    %0 = IE.Broadcast(%arg1, %cst) {mode = #IE.broadcast_type<BIDIRECTIONAL>} : tensor<1x8x1x1024x64xf32>, tensor<5xsi64> -> tensor<1x8x3x1024x64xf32>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [1], [2], [3]], shape_value = [1, 24, 1024, 64]} : tensor<1x8x3x1024x64xf32> -> tensor<1x24x1024x64xf32>
+    %2 = IE.MatMul(%arg0, %1) {transpose_b} : tensor<1x24x1024x64xf32>, tensor<1x24x1024x64xf32> -> tensor<1x24x1024x1024xf32>
+
+    return %2 : tensor<1x24x1024x1024xf32>
+
+    // CHECK:       IE.Broadcast
+}

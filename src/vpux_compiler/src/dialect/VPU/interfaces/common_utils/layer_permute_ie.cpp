@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/interfaces/common_utils/layer_permute_ie.hpp"
-
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sep_utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"

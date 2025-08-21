@@ -5,8 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux {
@@ -173,7 +174,7 @@ public:
         mlir::IRMapping mapper;
         mapper.map(implicitOp.getOperands(), newInputValues);
         auto newOp = rewriter.clone(*implicitOp, mapper);
-        vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::SHAPE);
+        vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ALL);
 
         _log.trace("Optimization completed successfully at '{0}'", expandOp->getLoc());
         rewriter.replaceOp(expandOp, newOp->getResults());
@@ -286,7 +287,7 @@ public:
         mlir::IRMapping mapper;
         mapper.map(eltwiseOp.getOperands(), inputs);
         auto newOp = rewriter.clone(*eltwiseOp, mapper);
-        vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::SHAPE);
+        vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ALL);
 
         _log.trace("Optimization completed successfully at '{0}'", origOp->getLoc());
         rewriter.replaceOp(origOp, newOp->getResults());

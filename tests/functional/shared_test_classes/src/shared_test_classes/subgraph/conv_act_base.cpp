@@ -45,7 +45,7 @@ std::string ConvActTest::getTestCaseName(const testing::TestParamInfo<convActTes
 }
 
 void ConvActTest::buildFloatFunction() {
-    auto modelType = ov::element::undefined;
+    auto modelType = ov::element::dynamic;
     ov::op::PadType padType;
     std::vector<size_t> kernel, stride, dilation;
     std::vector<ptrdiff_t> padBegin, padEnd;
@@ -81,7 +81,7 @@ void ConvActTest::buildFloatFunction() {
 }
 
 void ConvActTest::buildFQFunction() {
-    auto modelType = ov::element::undefined;
+    auto modelType = ov::element::dynamic;
     ov::op::PadType padType;
     std::vector<size_t> kernel, stride, dilation;
     std::vector<ptrdiff_t> padBegin, padEnd;

@@ -5,9 +5,11 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -315,7 +317,7 @@ void ConvertParallelSlicesToGatherPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    const auto arch = VPU::getArch(func);
+    const auto arch = config::getArch(func);
     _maxGatherDMAIndicesListLength = VPU::getGatherDMAMaxIndicesListLength(arch);
     _maxGatherDMAElementSize = VPU::getGatherDMAMaxElementSize(arch);
     mlir::RewritePatternSet patterns(&ctx);

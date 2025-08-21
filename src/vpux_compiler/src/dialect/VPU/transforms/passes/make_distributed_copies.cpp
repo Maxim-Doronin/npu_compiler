@@ -6,13 +6,18 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/utils/net/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -91,7 +96,7 @@ mlir::LogicalResult OptimizeShapeCastDistributedCopies::matchAndRewrite(VPU::Sha
 
     // Get updated distribution based on the distribution after the shape cast, using the shape before the shape cast
     auto updatedDistAttr = VPUIP::getDistributedAttrAfterShapeCast<VPU::DistributedTensorType>(
-            nextUTOpOutputDistTypeInterface, prevUTOpInputDistTensorType.getShape(), VPU::getArch(origOp));
+            nextUTOpOutputDistTypeInterface, prevUTOpInputDistTensorType.getShape(), config::getArch(origOp));
 
     _log.trace("[{0}] Updating output type of: {1}\n\tOld Distribution: {2}\n\tNew Distribution: {3}", getDebugName(),
                prevUTOp.getInput(), prevUTOpInputDistTensorType.getDistribution(), updatedDistAttr);
@@ -176,17 +181,23 @@ void MakeDistributedCopiesPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    mlir::ConversionTarget target(ctx);
-    target.addIllegalOp<VPU::UnrolledTypeOp>();
-    target.addLegalDialect<VPU::VPUDialect>();
-    target.addLegalDialect<Const::ConstDialect>();
-    target.addLegalOp<VPU::CopyOp>();
-    target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
-
     // TODO: The scf/affine/tensor dialects are explicitly marked as legal because, in the case of the HostCompile
     // pipeline, this pass is executed on the main function, which contains host-side code as well. Ideally, this pass
     // should not operate on the main function in the HostCompile pipeline. This will be refactored in the future.
     // Track: E#168311
+    bool hostCompileMode = (config::getCompilationMode(func) == config::CompilationMode::HostCompile);
+    auto entryPointFunc = vpux::net::findEntryPointFunc(func, _log);
+    if (hostCompileMode && (func == entryPointFunc)) {
+        return;
+    }
+
+    mlir::ConversionTarget target(ctx);
+    target.addIllegalOp<VPU::UnrolledTypeOp>();
+    target.addLegalDialect<Core::CoreDialect>();
+    target.addLegalDialect<VPU::VPUDialect>();
+    target.addLegalDialect<Const::ConstDialect>();
+    target.addLegalOp<VPU::CopyOp>();
+    target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
     target.addLegalDialect<mlir::arith::ArithDialect>();
     target.addLegalDialect<mlir::scf::SCFDialect>();
     target.addLegalDialect<mlir::affine::AffineDialect>();

@@ -11,8 +11,10 @@
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/shave.hpp"
+#include "vpux/compiler/utils/stl_extras.hpp"
 
 namespace vpux::VPUMI40XX {
 #define GEN_PASS_DECL_GROUPEXECUTIONOPS
@@ -125,7 +127,7 @@ VPUMI40XX::ExecutableTaskOpInterface getBarrieredOp(VPURegMapped::TaskOpInterfac
     return nullptr;
 }
 
-size_t getMetadataSize(mlir::Operation* op, VPURegMapped::TaskType taskType, VPU::ArchKind archKind) {
+size_t getMetadataSize(mlir::Operation* op, VPURegMapped::TaskType taskType, config::ArchKind archKind) {
     // TODO: E109456
     VPU::TaskType vpuTaskType = VPURegMapped::TaskTypeMapper<VPURegMapped::TaskType>::map(taskType);
     switch (vpuTaskType) {
@@ -147,7 +149,7 @@ size_t getMetadataSize(mlir::Operation* op, VPURegMapped::TaskType taskType, VPU
 
 void groupExecOps(VPUMI40XX::MappedInferenceOp mpi, const VPURegMapped::TaskType primary,
                   const VPURegMapped::TaskType secondary, int64_t tilesCount, int64_t listsCount = 1) {
-    auto archKind = VPU::getArch(mpi.getOperation());
+    auto archKind = config::getArch(mpi.getOperation());
     for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
         for (int64_t listIdx = 0; listIdx < listsCount; listIdx++) {
             auto startingVal = mpi.getListHead(primary, tileIdx, listIdx);

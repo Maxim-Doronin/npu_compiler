@@ -89,43 +89,46 @@ ELF::SymbolOp ELF::RelocManager::getSymbolOfBinOpOrEncapsulatingSection(mlir::Op
     VPUX_THROW("No ELF Symbol found for the provided operation");
 }
 
-void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::RelocationInfo& relocInfo) {
-    auto sourceOp = symRefMap_.lookupSymbol(relocInfo.source);
-
-    ELF::SymbolOp sourceSym = getSymbolOfBinOpOrEncapsulatingSection(sourceOp);
-
+void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::SymbolOp sourceSym,
+                                          ELF::ElfSectionInterface targetSection, size_t offset, bool isOffsetRelative,
+                                          vpux::ELF::RelocationType relocType, size_t addend,
+                                          std::string_view description) {
     // we can only modify ops for which the binary format is known
     auto targetOp = mlir::dyn_cast<VPURegMapped::NPURegDescriptorOpInterface>(op);
     if (sourceSym.getValue().has_value() && targetOp) {
-        auto relocFunc = relocationMap.find(relocInfo.relocType);
+        auto relocFunc = relocationMap.find(relocType);
         VPUX_THROW_UNLESS(relocFunc != relocationMap.end(), "Relocation type {0} not known!",
-                          stringifyRelocationType(relocInfo.relocType));
+                          stringifyRelocationType(relocType));
 
         // reloc offset at this point is expressed only inside of the operation specific descriptor
         auto descriptor = targetOp.getDescriptorStorage();
-        VPUX_THROW_UNLESS(relocInfo.offset < descriptor.size(), "Offset is outside of descriptor!");
+        VPUX_THROW_UNLESS(offset < descriptor.size(), "Offset is outside of descriptor!");
 
-        relocFunc->second(reinterpret_cast<void*>(descriptor.begin() + relocInfo.offset), sourceSym.getValue().value(),
-                          relocInfo.addend);
+        relocFunc->second(reinterpret_cast<void*>(descriptor.begin() + offset), sourceSym.getValue().value(), addend);
 
     } else {
         ELF::CreateSymbolTableSectionOp symTab =
                 mlir::dyn_cast<ELF::CreateSymbolTableSectionOp>(sourceSym->getParentOp());
         auto symForReloc = ELF::composeSectionObjectSymRef(symTab, sourceSym.getOperation());
-        ELF::CreateRelocationSectionOp relocSection = getRelocationSection(relocInfo.targetSection, symTab);
+        ELF::CreateRelocationSectionOp relocSection = getRelocationSection(targetSection, symTab);
         auto relocBuilder = mlir::OpBuilder::atBlockEnd(relocSection.getBlock());
 
-        auto offset = relocInfo.offset;
-
         // here we set the actual offset from the beginning of the final ELF file
-        if (relocInfo.isOffsetRelative) {
+        if (isOffsetRelative) {
             auto baseBinarySizeOp = mlir::cast<ELF::BinarySizeOpInterface>(op);
             offset += baseBinarySizeOp.getMemoryOffset();
         }
 
-        relocBuilder.create<ELF::RelocOp>(relocSection.getLoc(), offset, symForReloc, relocInfo.relocType,
-                                          relocInfo.addend, relocInfo.description);
+        relocBuilder.create<ELF::RelocOp>(relocSection.getLoc(), offset, symForReloc, relocType, addend, description);
     }
+}
+
+void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::RelocationInfo& relocInfo) {
+    auto sourceOp = symRefMap_.lookupSymbol(relocInfo.source);
+
+    ELF::SymbolOp sourceSym = getSymbolOfBinOpOrEncapsulatingSection(sourceOp);
+    createRelocations(op, sourceSym, relocInfo.targetSection, relocInfo.offset, relocInfo.isOffsetRelative,
+                      relocInfo.relocType, relocInfo.addend, relocInfo.description);
 }
 
 void ELF::RelocManager::createRelocations(mlir::Operation* op, std::vector<ELF::RelocationInfo>& relocInfo) {

@@ -5,14 +5,13 @@
 
 #include <llvm/Support/FileSystem.h>
 #include <mlir/IR/BuiltinTypes.h>
-#include <fstream>
 #include <vector>
 #include <vpux_elf/accessor.hpp>
 #include <vpux_elf/reader.hpp>
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
-#include "vpux/utils/core/scope_exit.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -24,7 +23,7 @@ void vpux::VPUMI37XX::ActShaveRtOp::serialize(elf::writer::BinaryDataSection<uin
     auto kernel = getKernelPath();
 
     const auto& kernelInfo = ShaveBinaryResources::getInstance();
-    const SmallString arch = ELFNPU37XX::getSwKernelArchString(VPU::getArch(this->getOperation()));
+    const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
 
@@ -37,7 +36,7 @@ size_t vpux::VPUMI37XX::ActShaveRtOp::getBinarySize() {
     auto kernel = getKernelPath();
 
     const auto& kernelInfo = ShaveBinaryResources::getInstance();
-    const SmallString arch = ELFNPU37XX::getSwKernelArchString(VPU::getArch(this->getOperation()));
+    const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
 
@@ -50,7 +49,7 @@ uint32_t vpux::VPUMI37XX::ActShaveRtOp::getKernelEntry() {
     auto kernel = getKernelPath();
 
     const auto& kernelInfo = ShaveBinaryResources::getInstance();
-    const SmallString arch = ELFNPU37XX::getSwKernelArchString(VPU::getArch(this->getOperation()));
+    const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
 
@@ -65,7 +64,7 @@ uint32_t vpux::VPUMI37XX::ActShaveRtOp::getVersion() {
     auto kernel = getKernelPath();
 
     const auto& kernelInfo = ShaveBinaryResources::getInstance();
-    const SmallString arch = ELFNPU37XX::getSwKernelArchString(VPU::getArch(this->getOperation()));
+    const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
 

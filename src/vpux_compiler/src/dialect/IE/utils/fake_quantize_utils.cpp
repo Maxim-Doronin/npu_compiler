@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -347,7 +348,6 @@ mlir::FailureOr<WeightsDequantizeStructureInfo> WeightsDequantizeStructureInfo::
     WeightsDequantizeStructureInfo info(log);
     const auto status = info.initializeStructure(origOp);
     if (mlir::succeeded(status)) {
-        log.trace("Match succeeded");
         return info;
     }
     return mlir::failure();
@@ -358,7 +358,6 @@ mlir::FailureOr<WeightsDequantizeStructureInfo> WeightsDequantizeStructureInfo::
     WeightsDequantizeStructureInfo info(log);
     const auto status = info.initializeStructure(origOp);
     if (mlir::succeeded(status)) {
-        log.trace("Match succeeded");
         return info;
     }
     return mlir::failure();

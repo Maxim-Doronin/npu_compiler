@@ -11,7 +11,7 @@
 namespace vpux {
 namespace VPU {
 
-static constexpr unsigned int VPUNN_CACHE_SIZE = 8156;
+static constexpr unsigned int VPUNN_CACHE_SIZE = 8192U;
 
 /**
  * @brief Interface for creating VPUNN Cost Models

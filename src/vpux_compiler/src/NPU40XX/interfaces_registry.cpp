@@ -45,6 +45,8 @@ void InterfacesRegistry40XX::registerInterfaces(mlir::DialectRegistry& registry)
     VPUIPDPU::arch40xx::registerDPUExpandOpInterfaces(registry);
     // NB: arch40xx::VerifiersOpModel uses its own logic
     VPUIPDPU::arch40xx::registerVerifiersOpInterfaces(registry);
+    // NB: arch37xx::ICostModelUtilsInterface can be re-used for 40XX
+    VPU::arch37xx::registerICostModelUtilsInterface(registry);
 }
 
 }  // namespace vpux

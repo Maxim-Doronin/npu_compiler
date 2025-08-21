@@ -30,11 +30,11 @@ void NPUReg40XX::NNDMAOp::serialize(elf::writer::BinaryDataSection<uint8_t>& bin
     binDataSection.appendData(serializedDmaDesc.data(), serializedDmaDesc.size());
 }
 
-size_t NPUReg40XX::NNDMAOp::getBinarySize(VPU::ArchKind) {
+size_t NPUReg40XX::NNDMAOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuDMATask);
 }
 
-size_t NPUReg40XX::NNDMAOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t NPUReg40XX::NNDMAOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuDMATask);
 }
 

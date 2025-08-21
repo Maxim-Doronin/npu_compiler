@@ -6,9 +6,6 @@
 #pragma once
 
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
-#include "vpux/compiler/utils/strings.hpp"
 
 namespace vpux {
 

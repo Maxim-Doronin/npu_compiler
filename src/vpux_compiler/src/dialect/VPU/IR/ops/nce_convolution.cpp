@@ -3,21 +3,20 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
-#include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
-
-#include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
-#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_support.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/IE/transposed_convolution_utils.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
-#include "vpux/compiler/utils/empty_node.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
@@ -54,7 +53,7 @@ bool vpux::VPU::NCEConvolutionOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::
     auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -85,18 +84,19 @@ static mlir::LogicalResult verifyConv(mlir::Location loc, mlir::Operation* op, V
 }
 
 static mlir::LogicalResult verifyWeightTables(VPU::NCEConvolutionOp op) {
-    if (op.getWeightsTable() == nullptr) {
-        return errorAt(op, "weightsTable is required for NCEConvolutionOp");
+    if ((op.getWeightTableDataPtr() || op.getWeightTableSpPtr() || op.getWeightTableScale() ||
+         op.getWeightTableBias() || op.getWeightZeroPoints())) {
+        return errorAt(op, "Only weightsTable can be populated for NCEConvolutionOp");
     }
     return mlir::success();
 }
 
 mlir::LogicalResult vpux::VPU::NCEConvolutionOp::verify() {
     auto op = getOperation();
-    const auto arch = getArch(op);
+    const auto arch = config::getArch(op);
 
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
@@ -278,7 +278,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEConvolutionOp::getTilingStrategy(Til
 //
 
 bool vpux::VPU::NCEConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = VPU::getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
 
     auto nceOp = mlir::cast<NCEConvolutionOp>(getOperation());
     const auto isCompatible = VPU::isSEPConvCompatibleWithClusterStrategy(nceOp, strategy);
@@ -349,7 +349,7 @@ bool VPU::NCEConvolutionOp::isOperationSplitOverHeightCompatible(const vpux::Til
     auto tileOp = IE::getTileExecutor(moduleOp);
     const auto numTiles = tileOp.getCount();
 
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, config::getArch(nceOp.getOperation()));
 }
 
 bool VPU::NCEConvolutionOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
@@ -397,7 +397,7 @@ bool VPU::NCEConvolutionOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strate
                                          ? VPU::getTotalCMXSize(getOperation()).count()
                                          : VPU::getTotalCMXFragmentationAwareSize(getOperation()).count();
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(VPU::getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -594,5 +594,32 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::verifyConvCMX(mlir::Location lo
         return mlir::failure();
     }
 
+    return mlir::success();
+}
+
+mlir::LogicalResult vpux::VPU::NCEConvolutionOp::reifyResultShapes(
+        mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    // Parse attributes
+    const auto strides = parseIntArrayAttr<int64_t>(getStrides());
+
+    const auto padTop = getPad().getTop().getValue().getSExtValue();
+    const auto padBottom = getPad().getBottom().getValue().getSExtValue();
+    const auto padLeft = getPad().getLeft().getValue().getSExtValue();
+    const auto padRight = getPad().getRight().getValue().getSExtValue();
+
+    const auto dataPaddingAbove = SmallVector<int64_t>({padTop, padLeft});
+    const auto dataPaddingBelow = SmallVector<int64_t>({padBottom, padRight});
+
+    auto kernelShape = mlir::cast<vpux::NDTypeInterface>(getFilter().getType()).getShape();
+    SmallVector<int64_t> kernelSize{kernelShape[Dims4D::Filter::KY], kernelShape[Dims4D::Filter::KX]};
+
+    // Compute output shape using utility
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), getFilter(), kernelSize, strides,
+                                         dataPaddingAbove, dataPaddingBelow, getLoc());
+    if (mlir::failed(outShape)) {
+        return outShape;
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
     return mlir::success();
 }

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
@@ -12,6 +13,7 @@
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
 
@@ -203,8 +205,7 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const size_t
             // wlmPage is not assigned for first Fetch on each tile as technically they don't belong to a page rather
             // than bootstrap
             auto firstFetch = builder.create<VPURegMapped::FetchTaskOp>(
-                    firstGroup.getLoc(), dummyIndexType,
-                    nullptr,  // no previous
+                    firstGroup.getLoc(), dummyIndexType, mlir::ValueRange({}), mlir::ValueRange({}), nullptr,
                     firstGroup.getStartIndexes()[0], firstGroup.getEndIndexes()[0], firstGroup.getStartIndexes()[1],
                     firstGroup.getEndIndexes()[1], VPURegMapped::TaskTypeAttr::get(builder.getContext(), taskType),
                     mlir::IntegerAttr::get(uint64Type, tileIdx), mlir::IntegerAttr::get(uint64Type, groupIdx),
@@ -238,11 +239,12 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const size_t
                 builder.setInsertionPointAfter(insertionDma.getOperation());
 
                 auto fetchTaskOp = builder.create<VPURegMapped::FetchTaskOp>(
-                        travelingGroup.getLoc(), dummyIndexType, insertionDma.getResult(),
-                        travelingGroup.getStartIndexes()[0], travelingGroup.getEndIndexes()[0],
-                        travelingGroup.getStartIndexes()[1], travelingGroup.getEndIndexes()[1],
-                        VPURegMapped::TaskTypeAttr::get(ctx, taskType), mlir::IntegerAttr::get(uint64Type, tileIdx),
-                        mlir::IntegerAttr::get(uint64Type, groupIdx), insertionDma.getWlmPageAttr());
+                        travelingGroup.getLoc(), dummyIndexType, mlir::ValueRange({}), mlir::ValueRange({}),
+                        insertionDma.getResult(), travelingGroup.getStartIndexes()[0],
+                        travelingGroup.getEndIndexes()[0], travelingGroup.getStartIndexes()[1],
+                        travelingGroup.getEndIndexes()[1], VPURegMapped::TaskTypeAttr::get(ctx, taskType),
+                        mlir::IntegerAttr::get(uint64Type, tileIdx), mlir::IntegerAttr::get(uint64Type, groupIdx),
+                        insertionDma.getWlmPageAttr());
 
                 // set the previousIdx to the fetchOp
                 insertionDma.getResult().replaceAllUsesExcept(fetchTaskOp.getIndex(), fetchTaskOp.getOperation());
@@ -275,13 +277,13 @@ void AddFetchOpsPass::safeRunOnFunc() {
 
     if (mlir::failed(addFetchTasks(mpi, DMA_WLM_TILEIDX, DMA_DDR2CMX_LISTIDX, VPURegMapped::TaskType::DPUInvariant,
                                    _log, tilesCount))) {
-        vpux::VPUIP::setWlmStatus(parentModule, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(parentModule, VPU::WorkloadManagementStatus::FAILED);
         signalPassFailure();
         return;
     }
     if (mlir::failed(addFetchTasks(mpi, DMA_WLM_TILEIDX, DMA_DDR2CMX_LISTIDX, VPURegMapped::TaskType::ActKernelRange,
                                    _log, tilesCount, shavesCountPerTile))) {
-        vpux::VPUIP::setWlmStatus(parentModule, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(parentModule, VPU::WorkloadManagementStatus::FAILED);
         signalPassFailure();
         return;
     }

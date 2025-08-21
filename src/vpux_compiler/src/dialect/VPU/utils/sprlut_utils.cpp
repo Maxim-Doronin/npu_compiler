@@ -11,5 +11,5 @@
 using namespace vpux;
 
 bool VPU::isSprLUTEnabled(mlir::Operation* op) {
-    return VPU::getConstraint(op, VPU::SPRLUT_ENABLED);
+    return VPU::getConstraint<bool>(op, VPU::SPRLUT_ENABLED);
 }

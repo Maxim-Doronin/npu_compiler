@@ -893,7 +893,7 @@ TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_MaxPool_F16_U8_CLAMP) {
 }
 
 TEST_F(NPU37xxPpeIfcUnitTest, IntPPE_ReduceMean_U8_U8_NOOP) {
-    auto op = createReduceMean(getU8Type(), getU8Type());
+    auto op = createReduceMean(getU8Type(), getU8Type(), {Dims4D::Act::C.ind()}, {});
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);

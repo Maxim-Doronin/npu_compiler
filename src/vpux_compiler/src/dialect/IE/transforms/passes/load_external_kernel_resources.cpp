@@ -10,8 +10,8 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
@@ -54,7 +54,7 @@ void LoadExternalKernelResources::safeRunOnFunc() {
     }
 
     auto& shaveBinResources = ShaveBinaryResources::getInstance();
-    auto archEncoding = shaveBinResources.getSwKernelArchString((VPU::getArch(func)));
+    auto archEncoding = shaveBinResources.getSwKernelArchString((config::getArch(func)));
 
     // Keep track of loaded kernel resources in order to avoid multiple retrivals
     std::set<std::string> loadedKernels;

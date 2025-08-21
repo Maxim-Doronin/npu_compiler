@@ -5,9 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-
-#include <numeric>
+#include <mlir/IR/PatternMatch.h>
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 
 namespace vpux {
 namespace IE {

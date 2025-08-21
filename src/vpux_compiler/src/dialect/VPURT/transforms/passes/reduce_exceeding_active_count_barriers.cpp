@@ -5,10 +5,13 @@
 
 #include "vpux/compiler/core/barrier_info.hpp"
 #include "vpux/compiler/core/execution_group_analysis.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 namespace vpux::VPURT {
 #define GEN_PASS_DECL_REDUCEEXCEEDINGACTIVECOUNTBARRIERS
@@ -272,7 +275,7 @@ void ReduceExceedingActiveCountBarriersPass::verifyFinalBarrier(mlir::func::Func
 void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto arch = VPU::getArch(module);
+    auto arch = config::getArch(module);
 
     const auto numBarriersToUse = numBarriers.hasValue() ? checked_cast<size_t>(numBarriers.getValue())
                                                          : checked_cast<size_t>(VPUIP::getNumAvailableBarriers(func));
@@ -288,7 +291,8 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     VPUX_THROW_UNLESS(numBarriersToUse > 1, "Not possible to satisfy barrier requirement numBarriersToUse '{0}'",
                       numBarriersToUse);
 
-    auto wlmFlag = (vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::ENABLED) && !isArchVPUX3XXX(arch);
+    auto wlmFlag = (VPU::getWorkloadManagementStatus(module) == VPU::WorkloadManagementStatus::ENABLED) &&
+                   !config::isArchVPUX3XXX(arch);
     _shareWaitAndUpdateBarriers = VPURT::isShareWaitAndUpdateBarriersNeeded(_workloadManagementMode);
 
     auto shareWaitAndUpdateBarriers = shareWaitAndUpdateBarriersOpt.hasValue()
@@ -312,7 +316,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
         _log.trace("WLM flag turned off because number of barrier is above threshold {0} > {1}",
                    barrierInfo.getNumOfBarrierOps(), _virtualBarrierThresholdForWlm.value());
         wlmFlag = false;
-        vpux::VPUIP::setWlmStatus(module, vpux::VPUIP::WlmStatus::FAILED);
+        VPU::setWorkloadManagementStatus(module, VPU::WorkloadManagementStatus::FAILED);
     }
 
     if (wlmFlag) {

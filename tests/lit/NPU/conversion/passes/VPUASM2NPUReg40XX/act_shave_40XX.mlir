@@ -6,7 +6,7 @@
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module @SingleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @SingleHswishFP16 attributes {config.arch = #config.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
@@ -97,7 +97,7 @@ module @SingleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
 
 // -----
 
-module @QuadripleHswishFP16 attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @QuadripleHswishFP16 attributes {config.arch = #config.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish inputsInfo : {

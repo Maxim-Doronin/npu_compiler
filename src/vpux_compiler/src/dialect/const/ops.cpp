@@ -8,9 +8,8 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>

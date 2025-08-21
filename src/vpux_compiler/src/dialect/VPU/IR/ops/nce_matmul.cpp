@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/Support/LogicalResult.h>
+#include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/utils/matmul.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -13,12 +15,11 @@
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
-
-#include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/core/layers.hpp"
 #include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/Support/LogicalResult.h>
 
 using namespace vpux;
 
@@ -80,7 +81,7 @@ mlir::LogicalResult vpux::VPU::NCEMatMulOp::verifyKernel(IE::MatMulOp) {
 
 bool doesNCEMatMulFitIntoCMX(vpux::NDTypeInterface inputType, vpux::NDTypeInterface filterType,
                              vpux::NDTypeInterface outputType, mlir::ModuleOp moduleOp, Byte reservedMem) {
-    auto arch = VPU::getArch(moduleOp);
+    auto arch = config::getArch(moduleOp);
 
     auto largestGroupsNumPerCluster = filterType.getShape()[DimsGroups5D::Act::G];
     if (auto distType = mlir::dyn_cast<VPU::DistributedTensorType>(filterType)) {
@@ -275,7 +276,7 @@ bool VPU::NCEMatMulOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy, S
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     auto numClusters = VPU::getOptimalNumClusters(nceOp, outputType.getShape(), strategy);
     auto mod = getModuleOp(getOperation());
-    auto arch = VPU::getArch(mod);
+    auto arch = config::getArch(mod);
 
     auto filterType = mlir::cast<vpux::NDTypeInterface>(getWeights().getType());
     auto largestGroupsNumPerCluster = filterType.getShape()[DimsGroups5D::Act::G];

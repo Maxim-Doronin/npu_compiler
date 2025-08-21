@@ -4,13 +4,15 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
-#include <llvm/ADT/TypeSwitch.h>
-
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
 
 using namespace vpux;
 using namespace IE;

@@ -157,10 +157,10 @@ mlir::LogicalResult configureOutActivations(const Logger& log, ODUConfig::OutAct
 }
 
 mlir::LogicalResult configureSparsity(const Logger&, ODUConfig::Sparsity& config, bool outSparsityEnabled,
-                                      NDTypeInterface outActType) {
+                                      int64_t sparseValue) {
     if (outSparsityEnabled) {
         config.compressionEnabled = true;
-        config.sparseValue = VPUIPDPU::getZeroPoint<uint8_t>(outActType);
+        config.sparseValue = sparseValue;
     }
     return mlir::success();
 }
@@ -195,7 +195,9 @@ mlir::LogicalResult configureODU(const Logger& log, ODUConfig& config, const NDT
     if (configureDataReuse(log, config.dataReuse, mpeFrequentMode, dpuTaskType).failed()) {
         return mlir::failure();
     }
-    if (VPUIPDPU::arch40xx::ODU::configureSparsity(log, config.sparsity, outSparsityEnabled, outActType).failed()) {
+    if (VPUIPDPU::arch40xx::ODU::configureSparsity(log, config.sparsity, outSparsityEnabled,
+                                                   VPUIPDPU::getZeroPoint(outActType))
+                .failed()) {
         return mlir::failure();
     }
 

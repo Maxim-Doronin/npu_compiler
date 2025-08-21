@@ -5,22 +5,35 @@
 
 #pragma once
 
-#include <set>
-#include <unordered_map>
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/numeric.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
+
+namespace vpux::VPU {
+enum class MultiClusterStrategy : uint64_t;
+class ClusteredOpInterface;
+class CopyOp;
+class DistributedTensorType;
+class DistributedTypeInterface;
+class NCEOpInterface;
+class SiblingOpsAnalysis;
+class SparseTensorType;
+class SWOpInterface;
+class UnrolledTypeOp;
+struct OverlapDistributionParams;
+}  // namespace vpux::VPU
+
+namespace vpux::VPUIP {
+enum class NCETaskType : uint64_t;
+}  // namespace vpux::VPUIP
 
 namespace vpux {
 namespace VPU {
@@ -73,16 +86,19 @@ SmallVector<int64_t> getWeightsTableTensorNumTiles(VPU::ClusteredOpInterface clu
                                                    VPU::MultiClusterStrategy strategy);
 DistributionMode getActivationTensorDistributionMode(VPU::ClusteredOpInterface clusteredOp,
                                                      VPU::MultiClusterStrategy strategy);
+DistributionMode getActivationTensorDistributionMode(VPU::GatherDMAOp op, VPU::MultiClusterStrategy strategy,
+                                                     mlir::Value operand);
 DistributionMode getWeightsTensorDistributionMode(VPU::MultiClusterStrategy strategy);
 DistributionMode getOutputTensorDistributionMode(VPU::ClusteredOpInterface clusteredOp,
                                                  VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface outputType);
 
 int64_t getSOHPerClusterHeightAlignment(int64_t inputWidth, bool isInputSparse);
-int64_t getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse, VPU::ArchKind arch);
+int64_t getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse,
+                                     config::ArchKind arch);
 bool isSOHSupportedByDPU(vpux::NDTypeInterface inputType, ShapeRef inputShape, int64_t numClusters, bool DWTypeOp,
-                         VPU::ArchKind arch);
+                         config::ArchKind arch);
 bool isSOGSupportedByDPU(vpux::NDTypeInterface inputType, ShapeRef inputShape, int64_t numClusters, bool DWTypeOp,
-                         VPU::ArchKind arch);
+                         config::ArchKind arch);
 
 vpux::VPU::CopyOp createDistributedCopyIn(mlir::PatternRewriter& rewriter, VPU::ClusteredOpInterface clusteredOp,
                                           mlir::Value input, vpux::NDTypeInterface inputTensorDistributedTensorType);
@@ -136,6 +152,10 @@ VPU::DistributedTensorType createDistributedTensorType(mlir::Operation* viewLike
                                                        VPU::PaddingAttr pad = nullptr, ArrayRef<int64_t> stride = {});
 
 VPU::DistributedTensorType createDistributedTensorType(VPU::SWOpInterface swOp, vpux::NDTypeInterface inputType,
+                                                       DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
+                                                       int64_t numClusters, ArrayRef<int64_t> alignment,
+                                                       bool uniformDistributedSegments);
+VPU::DistributedTensorType createDistributedTensorType(VPU::GatherDMAOp gatherDMAOp, vpux::NDTypeInterface inputType,
                                                        DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
                                                        int64_t numClusters, ArrayRef<int64_t> alignment,
                                                        bool uniformDistributedSegments);
@@ -199,7 +219,7 @@ bool isSegmentedLikeDistributionMode(vpux::NDTypeInterface sourceType, const VPU
 mlir::Type getCompactTypeFromDistributed(mlir::Type originalType);
 
 Shape getLargestClusterOutputShape(VPU::ClusteredOpInterface clusteredOp, VPU::MultiClusterStrategy strategy);
-bool isDWOpAndNeedsAlign(ArchKind arch, VPUIP::NCETaskType nceTaskType);
+bool isDWOpAndNeedsAlign(config::ArchKind arch, VPUIP::NCETaskType nceTaskType);
 bool isEltwiseOpAndNeedsAlign(VPU::ClusteredOpInterface nceOp);
 bool isSWOpChannelAlignmentCompatible(VPU::ClusteredOpInterface swOp, vpux::NDTypeInterface inputType,
                                       vpux::NDTypeInterface outputType);
@@ -254,6 +274,10 @@ VPU::DistributionInfo createDistributionInfo(mlir::Operation* viewLikeOp, Distri
                                              ArrayRef<int64_t> stride = {});
 
 VPU::DistributionInfo createDistributionInfo(VPU::SWOpInterface swOp, DistributionMode distributionMode,
+                                             ArrayRef<int64_t> numTiles, int64_t optimalNumberOfClusters,
+                                             ArrayRef<int64_t> alignment, bool uniformDistributedSegments);
+
+VPU::DistributionInfo createDistributionInfo(VPU::GatherDMAOp gatherDMAOp, DistributionMode distributionMode,
                                              ArrayRef<int64_t> numTiles, int64_t optimalNumberOfClusters,
                                              ArrayRef<int64_t> alignment, bool uniformDistributedSegments);
 

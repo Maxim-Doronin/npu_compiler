@@ -152,7 +152,7 @@ module @DpuProfilingWithMulticlustering  {
     //CHECK-SAME:   weights(%arg1 : memref<48x16x3x3xf16, #NHWC, @CMX_NN>)
     //CHECK-SAME:   weight_table(%arg2 : memref<48x1x1x4xsi32, #NHWC, @CMX_NN>)
     //CHECK-SAME:   outputs([[OUTPUT_BUF_CMX]] : !VPUIP.DistributedBuffer<1x48x60x60xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>)
-    //CHECK-SAME:   profiling_data([[PROF_BUF_VIEW_CMX]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN
+    //CHECK-SAME:   profiling_data([[PROF_BUF_VIEW_CMX]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN
 
     //CHECK:        [[PROF_OUTPUT_VIEW:%.*]] = VPUIP.SubView %arg4 [0] [[[PROFDATA_INFO_TENSOR_SIZE]]] : memref<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]]>
     //CHECK:        [[PROF_VIEW_CMX_CONCAT:%.*]] = VPUIP.ConcatView inputs([[NCE_RES]]#1
@@ -346,10 +346,10 @@ module @DpuProfilingMultipleOps  {
     }
 
     //CHECK:        [[PROF_VIEW_OP_4:%.+]] = VPUIP.SubView [[BUFFER_D]] [0] [[[PROF_VIEW_OP_4_SIZE:.*]]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SPLIT_0]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
-    //CHECK-SAME:     to !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
+    //CHECK-SAME:     to !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
     //CHECK:        [[OP_RESULT_4:%[0-9]+]]:2 = VPUIP.NCEClusterTask
     //CHECK-SAME:     profilingMetadata = #VPUIP.DpuProfilingMetadataAttr<bufferId = 1 : i64, taskId = 1 : i64, maxVariants = 3 : i64>
-    //CHECK-SAME:     profiling_data([[PROF_VIEW_OP_4]] : !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN
+    //CHECK-SAME:     profiling_data([[PROF_VIEW_OP_4]] : !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN
 
     %15 = VPURT.AllocDistributed -> !OutputDistributed
     %16 = VPUIP.NCEClusterTask {
@@ -372,10 +372,10 @@ module @DpuProfilingMultipleOps  {
     }
 
     //CHECK:        [[PROF_VIEW_OP_5:%.+]] = VPUIP.SubView [[BUFFER_D]] [[[PROF_VIEW_OFFSET:.*]]] [[[PROF_VIEW_OP_5_SIZE:.*]]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SPLIT_0]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
-    //CHECK-SAME:     to !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_5_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
+    //CHECK-SAME:     to !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_5_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
     //CHECK:        [[OP_RESULT_5:%[0-9]+]]:2 = VPUIP.NCEClusterTask
     //CHECK-SAME:     profilingMetadata = #VPUIP.DpuProfilingMetadataAttr<bufferId = 1 : i64, taskId = 2 : i64, maxVariants = 4 : i64>
-    //CHECK-SAME:     profiling_data([[PROF_VIEW_OP_5]] : !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_5_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN
+    //CHECK-SAME:     profiling_data([[PROF_VIEW_OP_5]] : !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_5_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN
 
 
     %17 = memref.alloc() : !Output_DDR
@@ -385,8 +385,8 @@ module @DpuProfilingMultipleOps  {
 
     //CHECK:        [[DDR_VIEW_2:%.*]] = VPUIP.SubView %arg2 [[[DDR_VIEW_2_OFFSET:.*]]] [[[PROFDATA_INFO_TENSOR_SPLIT_0]]] : memref<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]]> to memref<[[PROFDATA_INFO_TENSOR_SPLIT_0]]x[[PROFDATA_INFO_TENSOR_TYPE]]>
     //CHECK:        [[PROF_CONCAT_3:%.*]] = VPUIP.ConcatView inputs([[OP_RESULT_4]]#1, [[OP_RESULT_5]]#1
-    //CHECK-SAME:     !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
-    //CHECK-SAME:     !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_5_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
+    //CHECK-SAME:     !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
+    //CHECK-SAME:     !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_5_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3], num_clusters = 3 : i64, uniform_distributed_segments}>
     //CHECK:        VPUIP.NNDMA
     //CHECK-SAME:     inputs([[PROF_CONCAT_3]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SPLIT_0]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN
     //CHECK-SAME:     outputs([[DDR_VIEW_2]] : memref<[[PROFDATA_INFO_TENSOR_SPLIT_0]]x[[PROFDATA_INFO_TENSOR_TYPE]]>) -> memref<[[PROFDATA_INFO_TENSOR_SPLIT_0]]x[[PROFDATA_INFO_TENSOR_TYPE]]>
@@ -578,7 +578,7 @@ module @DpuProfilingSparseWithMulticlustering  {
   //CHECK-SAME:   weight_table(%arg2 : memref<48x1x1x4xsi32, #NHWC, @CMX_NN>)
   //CHECK-SAME:   outputs([[OUTPUT_BUF_CMX]] : !VPUIP.DistributedBuffer<1x48x60x60xf16, #NHWC, @CMX_NN
   //CHECK-SAME:   output_sparsity_map([[SPARSITY_MAP_BUF_CMX]] : !VPUIP.DistributedBuffer<1x48x60x60xi1, #NHWC, @CMX_NN
-  //CHECK-SAME:   profiling_data([[PROF_BUF_VIEW_CMX]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], {order = #C, strides = [1]}, @CMX_NN
+  //CHECK-SAME:   profiling_data([[PROF_BUF_VIEW_CMX]] : !VPUIP.DistributedBuffer<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN
 
   //CHECK:        [[PROF_OUTPUT_VIEW:%.*]] = VPUIP.SubView %arg4 [0] [[[PROFDATA_INFO_TENSOR_SIZE]]] : memref<[[PROFDATA_INFO_TENSOR_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]]>
   //CHECK:        [[PROF_VIEW_CMX_CONCAT:%.*]] = VPUIP.ConcatView inputs([[NCE_RES]]#2

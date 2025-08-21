@@ -7,7 +7,7 @@
 // REQUIRES: arch-NPU40XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @mainModule attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @read_after_write_act_dma_f16_f16 inputsInfo : {

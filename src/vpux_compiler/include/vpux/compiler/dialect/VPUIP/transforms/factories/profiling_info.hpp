@@ -14,7 +14,7 @@ namespace vpux::VPUIP {
 using TimestampTypeCb = mlir::Type (*)(mlir::MLIRContext* ctx);
 using SetWorkloadIdsCb = void (*)(VPUIP::NCEClusterTaskOp nceClusterTaskOp);
 
-TimestampTypeCb getTimestampTypeCb(VPU::ArchKind arch);
-SetWorkloadIdsCb setWorkloadsIdsCb(VPU::ArchKind arch);
+TimestampTypeCb getTimestampTypeCb(config::ArchKind arch);
+SetWorkloadIdsCb setWorkloadsIdsCb(config::ArchKind arch);
 
 }  // namespace vpux::VPUIP

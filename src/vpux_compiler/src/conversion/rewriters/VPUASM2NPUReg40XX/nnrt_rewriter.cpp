@@ -4,10 +4,10 @@
 //
 
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg40XX/nnrt_rewriter.hpp"
-
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 
 #include <npu_40xx_nnrt.hpp>
 

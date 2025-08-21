@@ -740,3 +740,27 @@ func.func @ExpandConvolutionChannelsWithSoftMaxAfter(%arg0: tensor<1x512x56x56xf
 
     // CHECK:    return [[SLICE]] : tensor<1x510x56x56xf16, {order = #NHWC}>
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ExpandConvolutionChannelsDynamic
+// CHECK-SAME: ([[INPUT:%.+]]: tensor<1x3x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>)
+func.func @ExpandConvolutionChannelsDynamic(%arg0: tensor<1x3x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x32x360x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 360, 640]> : tensor<4xsi64>, order = #NHWC}> {
+
+    %cst = const.Declare tensor<32x3x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.Reorder<#NHWC>]
+    %0 = IE.Convolution(%arg0, %cst) {
+        dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]
+    } : tensor<1x3x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>, tensor<32x3x3x3xf16, {order = #NHWC}> -> tensor<1x32x360x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 360, 640]> : tensor<4xsi64>, order = #NHWC}>
+
+    return %0 : tensor<1x32x360x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 360, 640]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK:    [[CST:%.+]] = const.Declare tensor<32x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [0, 13, 0, 0]>]
+    // CHECK:    [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 720, 1280]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK:    [[CONV:%.+]] = IE.Convolution([[EXPAND]], [[CST]])
+    // CHECK-SAME:        -> tensor<1x32x360x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 360, 640]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK:    return [[CONV]] : tensor<1x32x360x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 360, 640]> : tensor<4xsi64>, order = #NHWC}>
+}

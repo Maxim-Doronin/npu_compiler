@@ -6,7 +6,6 @@
 #pragma once
 
 #include <mlir/IR/Dialect.h>
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 namespace vpux {
 

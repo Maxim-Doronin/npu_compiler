@@ -40,8 +40,8 @@ protected:
                                                     const int64_t minTiles, int64_t& maxTiles,
                                                     VPU::TilingOperationStorage::UPtr& minStorage,
                                                     VPU::TilingOperationStorage::UPtr& maxStorage,
-                                                    VFConfig& config) const override;
-    std::deque<IVFSchedulingPtr> getVFSchedulingChecks(VFConfig& config) const override;
+                                                    VFConfig& config) const;
+    std::deque<IVFSchedulingPtr> getVFSchedulingChecks(VFConfig& config) const;
     std::shared_ptr<IVFScheduling<VFConfig>> detectScenario(VFConfig& vfConfig) const override;
     std::optional<VFCase> findVFTiling(VPU::VerticalFusionOp mergedOp, VPU::VerticalFusionOp prevOp,
                                        VPU::VerticalFusionOp currentOp) const override;

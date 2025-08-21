@@ -202,6 +202,30 @@ def WlmInsertDummyDmasInPages : PassBase<"wlm-insert-dummy-dmas-in-pages", "vpux
 }
 
 //
+// WlmInsertDummyBarriersInPages
+//
+
+def WlmInsertDummyBarriersInPages : PassBase<"wlm-insert-dummy-barriers-in-pages", "vpux::FunctionPass"> {
+    let summary = "For WLM pages split insert dummy barriers if given page doesn't use half of physical barriers";
+
+    let description = [{
+        This pass checks if in each page except last one number of barriers is equal to half of
+        number of physical barriers. If not, then it inserts dummy barriers to fill the gap.
+        Dummy barriers will be inserted parallel to some existing barrier with same consumer and producer.
+    }];
+
+    let constructor = "vpux::VPURT::arch40xx::createWlmInsertDummyBarriersInPagesPass()";
+
+    let options = [
+        Option<
+            "numBarriersOpt", "num-barriers",
+            "int", "",
+            "Number of physical barriers, available for use"
+        >
+    ];
+}
+
+//
 // OptimizeBarriersSlotsUsage
 //
 

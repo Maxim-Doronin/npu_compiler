@@ -3,14 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
-
 #include "vpux/compiler/dialect/VPU/IR/se_attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
-
-#include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
 using namespace vpux;
 using namespace VPU;

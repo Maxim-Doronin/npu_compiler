@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/descriptors.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/types.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
@@ -288,9 +289,6 @@ void lowerToRegIDUWeightsOp(VPUIPDPU::IDUWeightsOp op, DpuInvariantDescriptorTyp
             } else if (wmode == static_cast<uint64_t>(nn_public::VpuInputTensorDType::BF16)) {
                 vpux::type::bfloat16 bf16(value);
                 return bf16.to_bits();
-            } else if (wmode == static_cast<uint64_t>(nn_public::VpuInputTensorDType::FP8)) {
-                vpux::type::float8_e5m2 bf8(value);
-                return bf8.to_bits();
             } else {
                 VPUX_THROW("getPalletModeBitValue: Unsupported wmode for palletization table {0}", wmode);
             }

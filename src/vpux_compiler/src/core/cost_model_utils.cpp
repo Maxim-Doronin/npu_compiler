@@ -4,12 +4,14 @@
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -43,11 +45,11 @@ VPUNN::VPUTensor getVPUNNTensorMultiCluster(ArrayRef<Shape> tensorShapes, VPUNN:
 }
 
 // This function convert Arch kind to VPUNN VPUDevice directly and faithfully
-VPUNN::VPUDevice getVPUNNDevice(VPU::ArchKind archKind) {
+VPUNN::VPUDevice getVPUNNDevice(config::ArchKind archKind) {
     switch (archKind) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUNN::VPUDevice::VPU_2_7;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return VPUNN::VPUDevice::VPU_4_0;
     default:
         VPUX_THROW("Unsupported VPU arch type: '{0}'", archKind);
@@ -64,6 +66,13 @@ VPUNN::DataType getElementType(mlir::Type type, [[maybe_unused]] VPUNN::VPUDevic
     } else if (type.isUnsignedInteger(CHAR_BIT * sizeof(int8_t))) {
         return VPUNN::DataType::UINT8;
     } else if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
+        auto storageType = qType.getStorageType();
+        if (storageType.isFloat8E5M2()) {
+            return VPUNN::DataType::BF8;
+        } else if (storageType.isFloat8E4M3FN()) {
+            return VPUNN::DataType::HF8;
+        }
+
         if (qType.getStorageTypeIntegralWidth() == 8) {
             return qType.isSigned() ? VPUNN::DataType::INT8 : VPUNN::DataType::UINT8;
         }
@@ -158,16 +167,18 @@ VPUNN::ISIStrategy getVPUNNISIStrategyForNPU40XXAndBelow(VPUIP::DPUTaskOp dpuTas
 
 bool isConstDeclareOpFilledAllOne(Const::DeclareOp op) {
     const auto content = op.getContent();
-    const auto values = content.getValues<int>();
-    if (values.size() == 0) {
-        return false;
-    }
-    for (const auto& value : values) {
-        if (value != 1) {
+    return content.read([](auto values) {
+        if (values.size() == 0) {
             return false;
         }
-    }
-    return true;
+
+        for (const auto& value : values) {
+            if (checked_cast<int>(value) != 1) {
+                return false;
+            }
+        }
+        return true;
+    });
 }
 }  // namespace
 
@@ -181,7 +192,7 @@ VPUNN::SEPModeInfo vpux::getSEPModeInfo(VPUIP::SEPInfo sepInfo) {
     return VPUNN::SEPModeInfo{true, getWHCBShape(sepInfo.sepTableShape), getWHCBShape(sepInfo.sepActShape)};
 }
 
-VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, VPU::ArchKind arch) {
+VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, config::ArchKind arch) {
     auto nceClusterOp = dpuTaskOp->getParentOfType<VPUIP::NCEClusterTaskOp>();
     VPUX_THROW_WHEN(nceClusterOp == nullptr, "The parent of dpuTaskOp {0} must be a NCEClusterTaskOp but not",
                     dpuTaskOp->getLoc());
@@ -322,7 +333,7 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, VPU::ArchKin
     if (inputTwoElemType != nullptr) {
         vpunnDPUWorkload.weight_type = getElementType(inputTwoElemType, getVPUNNDevice(arch));
     }
-    vpunnDPUWorkload.device = getVPUDeviceType(arch);
+    vpunnDPUWorkload.device = VPU::getVPUDeviceType(arch);
     vpunnDPUWorkload.op = opType;
     vpunnDPUWorkload.inputs = {inputTensor};
     vpunnDPUWorkload.outputs = {outputTensor};
@@ -360,12 +371,12 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, VPU::ArchKin
 }
 
 size_t calculateMultiClusterDMACost(mlir::Value innerOperand, VPUNN::DataType inElemType, VPUNN::DataType outElemType,
-                                    VPU::ArchKind archKind, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                                    config::ArchKind archKind, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
                                     [[maybe_unused]] int64_t numDMAPorts) {
     auto operandType = innerOperand.getType();
     auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
-    auto vpuDevice = getVPUDeviceType(archKind);
+    auto vpuDevice = VPU::getVPUDeviceType(archKind);
 
     // TODO: E#66557
     // Currently, if DMA source is OVERLAPPED we're moving the overlap twice. Once that is optimized,
@@ -386,7 +397,7 @@ bool extraDMAsRequired(mlir::Value innerOperand) {
     return false;
 }
 
-size_t vpux::getDMACost(mlir::Value input, mlir::Value output, VPU::ArchKind archKind,
+size_t vpux::getDMACost(mlir::Value input, mlir::Value output, config::ArchKind archKind,
                         const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts) {
     auto inputType = input.getType();
     auto outputType = output.getType();
@@ -408,7 +419,7 @@ size_t vpux::getDMACost(mlir::Value input, mlir::Value output, VPU::ArchKind arc
     auto outputShape = getShape(output);
 
     // TODO: add layout info to VPUNN tensors
-    auto cost = costModel->DMA(getVPUDeviceType(archKind), {getVPUNNTensor(inputShape, inElemType)},
+    auto cost = costModel->DMA(VPU::getVPUDeviceType(archKind), {getVPUNNTensor(inputShape, inElemType)},
                                {getVPUNNTensor(outputShape, outElemType)}, getMemoryLocation(inputType),
                                getMemoryLocation(outputType));
 
@@ -596,7 +607,7 @@ size_t vpux::getAsyncExecuteCycleEnd(mlir::async::ExecuteOp op) {
     return checked_cast<size_t>(mlir::cast<mlir::IntegerAttr>(op->getAttr(cycleEnd)).getValue().getSExtValue());
 }
 
-size_t vpux::calculateCopyCycles(mlir::Operation* innerOp, VPU::ArchKind archKind,
+size_t vpux::calculateCopyCycles(mlir::Operation* innerOp, config::ArchKind archKind,
                                  const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     if (auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(innerOp)) {
         return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
@@ -802,13 +813,13 @@ std::unique_ptr<VPUNN::SWOperation> queryKernelMap(const std::string& swKernelNa
     return queryKernelMap(swKernelName, vpuDev, inputTypes, mlir::cast<vpux::NDTypeInterface>(output.getType()));
 }
 
-size_t getShaveActCycleForSwKernelFunc(const std::string& swKernelName, VPU::ArchKind arch,
+size_t getShaveActCycleForSwKernelFunc(const std::string& swKernelName, config::ArchKind arch,
                                        ArrayRef<mlir::Value> inputs, ArrayRef<mlir::Value> outputs,
                                        const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     VPUX_THROW_WHEN(inputs.empty(), "No inputs identified for op {0}", swKernelName);
     VPUX_THROW_WHEN(outputs.empty(), "No outputs identified for op {0}", swKernelName);
 
-    auto vpuDev = getVPUDeviceType(arch);
+    auto vpuDev = vpux::VPU::getVPUDeviceType(arch);
 
     std::unique_ptr<VPUNN::SWOperation> vpunnLayer = queryKernelMap(swKernelName, vpuDev, inputs, outputs[0]);
 
@@ -821,7 +832,7 @@ std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp s
         return nullptr;
     }
     const auto swKernelName = getSwKernelOperationName(swKernelOp);
-    auto vpuDev = getVPUDeviceType(VPU::getArch(swKernelOp.getOperation()));
+    auto vpuDev = VPU::getVPUDeviceType(config::getArch(swKernelOp.getOperation()));
 
     auto inputs = to_small_vector(swKernelOp->getOperands());
     auto output = swKernelOp->getResult(0);
@@ -832,7 +843,7 @@ std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp s
 }
 
 std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation) {
-    auto vpuDev = VPU::getVPUDeviceType(VPU::getArch(operation));
+    auto vpuDev = VPU::getVPUDeviceType(config::getArch(operation));
     const auto operName = operation->getName().stripDialect().str();
 
     auto inputs = to_small_vector(operation->getOperands());
@@ -846,7 +857,7 @@ std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface 
 std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation,
                                                              vpux::NDTypeInterface outputNDType,
                                                              ArrayRef<vpux::NDTypeInterface> types) {
-    auto vpuDev = VPU::getVPUDeviceType(VPU::getArch(operation));
+    auto vpuDev = VPU::getVPUDeviceType(config::getArch(operation));
     const auto operName = operation->getName().stripDialect().str();
 
     std::unique_ptr<VPUNN::SWOperation> vpunnLayer = queryKernelMap(operName, vpuDev, types, outputNDType);
@@ -855,7 +866,7 @@ std::unique_ptr<VPUNN::SWOperation> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface 
 }
 
 size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
-                                     const std::shared_ptr<VPUNN::VPUCostModel>& costModel, VPU::ArchKind arch) {
+                                     const std::shared_ptr<VPUNN::VPUCostModel>& costModel, config::ArchKind arch) {
     if (swKernelOp.getInputs().empty() || swKernelOp.getOutputBuffs().empty()) {
         return 1;
     }
@@ -903,7 +914,7 @@ size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
 }
 
 size_t vpux::getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
-                              VPU::ArchKind arch, vpux::Logger log) {
+                              config::ArchKind arch, vpux::Logger log) {
     auto nceOp = dpuTaskOp->getParentOfType<VPUIP::NCEClusterTaskOp>();
     VPUX_THROW_WHEN(nceOp == nullptr, "The parent of dpuTaskOp {0} must be a NCEClusterTaskOp but not",
                     dpuTaskOp->getLoc());
@@ -938,7 +949,7 @@ size_t vpux::getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<
 }
 
 std::vector<std::pair<int64_t, size_t>> vpux::calculateNceVariantCycles(
-        VPUIP::NCEClusterTaskOp nceOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel, VPU::ArchKind arch,
+        VPUIP::NCEClusterTaskOp nceOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel, config::ArchKind arch,
         vpux::Logger log) {
     std::vector<std::pair<int64_t, size_t>> nceVariantCyclePerCluster;
     for (auto dpuTaskOp : nceOp.getVariants().getOps<VPUIP::DPUTaskOp>()) {
@@ -949,7 +960,7 @@ std::vector<std::pair<int64_t, size_t>> vpux::calculateNceVariantCycles(
 }
 
 size_t vpux::calculateNceCycles(VPUIP::NCEClusterTaskOp nceOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
-                                VPU::ArchKind arch, vpux::Logger log, int64_t numDPU) {
+                                config::ArchKind arch, vpux::Logger log, int64_t numDPU) {
     auto variantCostVec = calculateNceVariantCycles(nceOp, costModel, arch, log);
 
     // Group costs by cluster ID and find the maximum cost for each cluster

@@ -7,6 +7,7 @@
 #include <vpux/compiler/dialect/VPUMI40XX/utils.hpp>
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 using namespace vpux;
@@ -45,7 +46,7 @@ void ConfigureBarrierOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState
 
 mlir::LogicalResult ConfigureBarrierOp::verify() {
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (VPU::getArch(getOperation()) == VPU::ArchKind::UNKNOWN) {
+    if (config::getArch(getOperation()) == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 

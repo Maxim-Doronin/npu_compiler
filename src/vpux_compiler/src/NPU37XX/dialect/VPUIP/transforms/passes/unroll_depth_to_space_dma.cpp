@@ -7,12 +7,12 @@
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -82,7 +82,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
 
     const auto getDistModeAttr = [&](VPUIP::DistributedBufferType distType) {
         const auto distAttr = distType.getDistribution();
-        VPUX_THROW_WHEN(distAttr == nullptr, "Failed to extract distributon tensor from distributed type");
+        VPUX_THROW_WHEN(distAttr == nullptr, "Failed to extract distribution tensor from distributed type");
         return distAttr.getMode();
     };
 
@@ -117,7 +117,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     mlir::SmallVector<mlir::Value> outputBuffers;
 
     if (distributedInputType != nullptr && distributedOutputType != nullptr) {
-        _log.nest().trace("Got multi-cluster to multi-clutser case");
+        _log.nest().trace("Got multi-cluster to multi-cluster case");
         const auto inputPerClusterShapes = distributedInputType.getPerClusterMemoryShapes();
         const auto outputPerClusterShapes = distributedOutputType.getPerClusterMemoryShapes();
 
@@ -135,7 +135,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     }
 
     if (distributedInputType != nullptr && distributedOutputType == nullptr) {
-        _log.nest().trace("Got multi-cluster to single-clutser case");
+        _log.nest().trace("Got multi-cluster to single-cluster case");
         const auto outputShapes = SmallVector<vpux::Shape>(
                 llvm::map_range(distributedInputType.getPerClusterMemoryShapes(), inferOutputShape));
         const auto outputShapeOffsets = SmallVector<vpux::Shape>(
@@ -149,7 +149,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewriteClusterDMA(VPUIP::De
     }
 
     if (distributedInputType == nullptr && distributedOutputType != nullptr) {
-        _log.nest().trace("Got single-cluster to multi-clutser case");
+        _log.nest().trace("Got single-cluster to multi-cluster case");
 
         const auto inputShapes = SmallVector<Shape>(
                 llvm::map_range(distributedOutputType.getPerClusterMemoryShapes(), [&](ShapeRef outShape) {
@@ -280,7 +280,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
 
     auto dmaDescriptorGenerator = VPUIP::DepthToSpaceDmaDescriptorGenerator(ctx, _log);
 
-    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(depthToSpaceDMAOp));
+    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(depthToSpaceDMAOp));
     const auto dmaMaxNumPlanes = dmaEngineLimits.getMaxNumPlanes() - 1;
 
     // inputH is the planes number, need to split if it exceed the max number.

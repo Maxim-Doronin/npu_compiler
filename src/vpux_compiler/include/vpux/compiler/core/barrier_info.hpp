@@ -7,17 +7,14 @@
 
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
-#include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
-#include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include <llvm/ADT/BitVector.h>
+#include <llvm/ADT/SmallSet.h>
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Operation.h>
-
-#include <llvm/ADT/BitVector.h>
-#include <llvm/ADT/SmallSet.h>
 
 namespace vpux {
 
@@ -299,6 +296,16 @@ public:
      * do not have sync-point.
      */
     std::optional<size_t> getPreviousBlockSyncPoint(size_t taskInd) const;
+
+    /**
+     * @brief Get index of sync-task for the next block to which the task taskInd belongs
+     *
+     * @param taskInd - task for which next sync-task should be calculated
+     * @return  return index of the next sync point from the taskInd's block, if the sync-task exists and return
+     * std::nullopt otherwise. (Tasks from last block do not have a sync-point).
+     *
+     */
+    std::optional<size_t> getNextBlockSyncPoint(size_t taskInd) const;
     void splitBarriersWithExceedingVariantCount(size_t availableSlots, size_t maxSlotsSum, size_t maxAvailableSlots);
     void splitBarrierProducers(size_t availableSlots, size_t maxSlotsSum, bool maxSlotsSumLimitEnabled);
     void splitBarrierConsumers(size_t availableSlots, size_t maxSlotsSum, bool maxSlotsSumLimitEnabled);

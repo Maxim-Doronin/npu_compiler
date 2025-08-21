@@ -4,18 +4,25 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
-
-#include <llvm/ADT/TypeSwitch.h>
 #include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
+
+#include <llvm/ADT/TypeSwitch.h>
 
 using namespace vpux;
 
@@ -226,7 +233,7 @@ mlir::FailureOr<SmallVector<Byte>> vpux::VPU::NCEInvariant::getWeightsTableSize(
 //
 
 bool vpux::VPU::NCEInvariant::checkLayouts(mlir::TypeRange operandTypes, mlir::TypeRange resultTypes,
-                                           const VPU::ArchKind& arch, const unsigned numInputOperands, LogCb logCb) {
+                                           const config::ArchKind& arch, const unsigned numInputOperands, LogCb logCb) {
     VPUX_UNUSED(resultTypes);
     VPUX_UNUSED(arch);
 
@@ -242,8 +249,8 @@ bool vpux::VPU::NCEInvariant::checkLayouts(mlir::TypeRange operandTypes, mlir::T
     return true;
 }
 
-bool vpux::VPU::NCEInvariant::isEltwiseMultiplySubtractSupported(const VPU::ArchKind arch) {
-    return arch > VPU::ArchKind::NPU40XX;
+bool vpux::VPU::NCEInvariant::isEltwiseMultiplySubtractSupported(const config::ArchKind arch) {
+    return arch > config::ArchKind::NPU40XX;
 }
 
 mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Logger) {
@@ -271,7 +278,7 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
                     })
                     // #E157147: Do not set layout for NCE multiply. It will be enabled once it is optimal.
                     .Case<IE::SubtractOp>([&](auto origOp) {
-                        const auto arch = getArch(origOp);
+                        const auto arch = config::getArch(origOp);
                         if (!isEltwiseMultiplySubtractSupported(arch)) {
                             return false;
                         }
@@ -314,9 +321,10 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
                     }));
 }
 
-bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt([[maybe_unused]] VPU::ArchKind arch, const int64_t KX,
-                                                                const int64_t SX, ArrayRef<int64_t> workloadOutSz,
-                                                                bool isFp16Input, [[maybe_unused]] const int64_t KY,
+bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt([[maybe_unused]] config::ArchKind arch,
+                                                                const int64_t KX, const int64_t SX,
+                                                                ArrayRef<int64_t> workloadOutSz, bool isFp16Input,
+                                                                [[maybe_unused]] const int64_t KY,
                                                                 [[maybe_unused]] const int64_t padLeft) {
     // L1Opt can be enabled when kernelX = 3 and strideX = 1
     if (KX != 3 || SX != 1) {
@@ -328,9 +336,9 @@ bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt([[maybe_unused]]
                        : workloadOutSz[Dims4D::Act::C.ind()] % VPU_CHANNEL_SIZE_FOR_L1OPT16 == 0;
 }
 
-bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const VPU::ArchKind arch, mlir::Operation* op) {
+bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const config::ArchKind arch, mlir::Operation* op) {
     // TODO: E#96201, attach concrete implementation of NCEOpInterface depending on the type of device
-    if (arch == VPU::ArchKind::NPU37XX) {
+    if (arch == config::ArchKind::NPU37XX) {
         return false;
     }
     if (!mlir::isa<VPU::NCEDepthConvolutionOp>(op)) {

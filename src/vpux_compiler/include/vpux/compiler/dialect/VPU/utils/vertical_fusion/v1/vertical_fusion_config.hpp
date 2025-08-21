@@ -59,6 +59,8 @@ public:
 private:
     bool isVFPipelinePattern();
 
+    void validateConfig();
+
     VPU::VerticalFusionOp _subgraph;
     mlir::Operation* _largestOp = nullptr;
     SmallVector<mlir::Operation*> _inputOps;

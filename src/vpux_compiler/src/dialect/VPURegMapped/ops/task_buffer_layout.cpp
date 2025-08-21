@@ -6,6 +6,8 @@
 #include <vpux/compiler/NPU40XX/dialect/ELF/ops.hpp>
 #include <vpux/compiler/dialect/VPURegMapped/ops.hpp>
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+
 using namespace vpux;
 using namespace VPURegMapped;
 

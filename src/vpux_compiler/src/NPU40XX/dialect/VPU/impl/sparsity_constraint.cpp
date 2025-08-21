@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/NPU40XX/dialect/VPU/impl/sparsity_constraint.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 using namespace vpux::VPU::arch40xx;

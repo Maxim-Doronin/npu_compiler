@@ -5,9 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/func_ref.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 

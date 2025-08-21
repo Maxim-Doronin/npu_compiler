@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+
 #include <numeric>
 
 using namespace vpux;

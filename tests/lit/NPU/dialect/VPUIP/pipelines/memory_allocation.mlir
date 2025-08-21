@@ -365,11 +365,9 @@ module @ThreeFunctionsReservedMem {
 
     builtin.module @ReservedMemory {
       module @CustomReservedMemory {
-        IE.MemoryResource 512 bytes of @DDR
+        IE.MemoryResource 512 bytes of @DDR offset 0
       }
     }
-
-    // CHECK: IE.MemoryResource 512 bytes of @DDR offset 0
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {

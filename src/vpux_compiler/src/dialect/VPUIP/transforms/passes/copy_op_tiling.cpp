@@ -10,11 +10,11 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
-#include "vpux/utils/core/numeric.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -44,7 +44,7 @@ bool isLegalCopyOp(VPUIP::CopyOp copyOp) {
         return true;
     }
 
-    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(copyOp));
+    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(copyOp));
 
     // If tensor size is greater than max plane size, its no longer legal operation
     if (getDmaSize(copyOp) > Byte(dmaEngineLimits.getMaxLength())) {
@@ -127,7 +127,7 @@ private:
 // Splits large CopyOps into a bunch of smaller ones to fit DMA capabilities
 class CopyOpTiling final : public mlir::OpRewritePattern<VPUIP::CopyOp> {
 public:
-    CopyOpTiling(mlir::MLIRContext* ctx, Logger log, VPU::ArchKind arch, int64_t dmaPortNum)
+    CopyOpTiling(mlir::MLIRContext* ctx, Logger log, config::ArchKind arch, int64_t dmaPortNum)
             : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx), _log(log), _arch(arch), _dmaPortNum(dmaPortNum) {
     }
 
@@ -138,7 +138,7 @@ private:
     SmallVector<mlir::Value> createTiles(VPUIP::CopyOp origOp, mlir::PatternRewriter& rewriter) const;
 
     Logger _log;
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     int64_t _dmaPortNum;
 };
 
@@ -342,7 +342,7 @@ void CopyOpTilingPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     const auto dmaPortNum = dmaOp.getCount();
 

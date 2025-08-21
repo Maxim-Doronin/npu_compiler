@@ -1,10 +1,9 @@
-////
-//// Copyright (C) 2022-2025 Intel Corporation.
-//// SPDX-License-Identifier: Apache-2.0
-////
+//
+// Copyright (C) 2022-2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
 #include <mlir/IR/PatternMatch.h>

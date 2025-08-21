@@ -24,44 +24,29 @@ cmake_policy(SET CMP0063 NEW)
 # Set PROJECT_VERSION* variables by project command only.
 cmake_policy(SET CMP0048 NEW)
 
-project(InferenceEngineVPUXPlugin)
+project(VPUX)
 
 #
 # Build properties
 #
 
 set(NPU_DEVICE_NAME "NPU")
-string(TOLOWER "${NPU_DEVICE_NAME}" VPUX_PLUGIN_COMPONENT)
-set(VPUX_INTERNAL_COMPONENT "${VPUX_PLUGIN_COMPONENT}_internal")
-set(VPUX_TESTS_COMPONENT "${VPUX_PLUGIN_COMPONENT}_tests")
+set(VPUX_PLUGIN_COMPONENT "npu")
+set(VPUX_INTERNAL_COMPONENT "npu_internal")
+set(VPUX_TESTS_COMPONENT "npu_tests")
 
 set(NPU_CPACK_COMPONENTS_ALL ${VPUX_PLUGIN_COMPONENT} ${VPUX_INTERNAL_COMPONENT})
-
-set(IE_MAIN_VPUX_PLUGIN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 if (CMAKE_BUILD_TYPE STREQUAL "")
     message(STATUS "CMAKE_BUILD_TYPE not defined, 'Release' will be used")
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY ${MAIN_VPUX_PLUGIN_BINARY_DIR})
-    set(CMAKE_PDB_OUTPUT_DIRECTORY ${MAIN_VPUX_PLUGIN_BINARY_DIR})
-endif()
-
-if(DEFINED ENV{THIRDPARTY_SERVER_PATH})
-    set(THIRDPARTY_SERVER_PATH "$ENV{THIRDPARTY_SERVER_PATH}")
-elseif(DEFINED THIRDPARTY_SERVER_PATH)
-    set(THIRDPARTY_SERVER_PATH "${THIRDPARTY_SERVER_PATH}")
-endif()
-
-include(FetchContent)
-
 # TODO remove after migration
 option(ENABLE_NPU_MONO "Please turn it on if you work under `npu_mono` environment" OFF)
 if (ENABLE_NPU_MONO)
     message(AUTHOR_WARNING "Experimental option ENABLE_NPU_MONO enabled")
-    set (NPU_MONO_ROOT ${IE_MAIN_VPUX_PLUGIN_SOURCE_DIR}/..)
+    set (NPU_MONO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
 endif()
 
 find_package(OpenVINODeveloperPackage REQUIRED)
@@ -82,7 +67,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies.cmake")
     include(cmake/dependencies.cmake)
 endif()
 
-include(cmake/cross_compilation.cmake)
 include(cmake/flatbuffers.cmake)
 include(cmake/bundle_static_library.cmake)
 include(cmake/embed_bin_file.cmake)
@@ -177,14 +161,6 @@ add_subdirectory(tools)
 
 if(ENABLE_SOURCE_PACKAGE)
     include(cmake/source_package.cmake)
-endif()
-
-if(CMAKE_SOURCE_DIR STREQUAL OpenVINO_SOURCE_DIR)
-    # NPU plugin public headers should be a part of common OpenVINO headers
-    set(dev_component ${OV_CPACK_COMP_CORE_DEV})
-else()
-    # compatibility mode while NPU plugin is not part of OpenVINO repository and can be built separately
-    set(dev_component ${VPUX_PLUGIN_COMPONENT})
 endif()
 
 #

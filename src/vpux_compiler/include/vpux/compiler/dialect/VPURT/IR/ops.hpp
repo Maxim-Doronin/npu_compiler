@@ -6,11 +6,18 @@
 #pragma once
 
 #include "vpux/compiler/dialect/ELFNPU37XX/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/types.hpp"
+#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
+
+#include <mlir/Interfaces/InferTypeOpInterface.h>
+
+namespace vpux::VPUIP {
+class DistributedBufferType;
+}  // namespace vpux::VPUIP
 
 //
 // Generated

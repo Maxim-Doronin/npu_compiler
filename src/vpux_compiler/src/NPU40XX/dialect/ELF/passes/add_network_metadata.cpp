@@ -3,9 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::ELF::arch40xx {
 #define GEN_PASS_DECL_ADDNETWORKMETADATA
@@ -42,7 +44,7 @@ void AddNetworkMetadata::safeRunOnFunc() {
     auto metadataOp = builder.create<VPUASM::NetworkMetadataOp>(netFunc.getLoc(), "NetworkMetadata");
 
     auto actualAlignment = builder.getIntegerAttr(builder.getIntegerType(64, false),
-                                                  metadataOp.getAlignmentRequirements(VPU::getArch(netFunc)));
+                                                  metadataOp.getAlignmentRequirements(config::getArch(netFunc)));
     metadataSection.setSecAddrAlignAttr(actualAlignment);
 }
 }  // namespace

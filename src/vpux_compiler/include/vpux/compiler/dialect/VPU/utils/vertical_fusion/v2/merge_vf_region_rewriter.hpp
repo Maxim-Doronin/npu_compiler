@@ -36,14 +36,8 @@ protected:
     bool canMergeVFOpsWithoutCostCheck(VFCase& mergedCase) const override;
     bool canSkipMergeVF(VFConfig& vfConfig, bool opsNeedTiling) const override;
     VPU::StrategyCost extractVFCost(VFConfig& vfConfig) const override;
-    std::optional<int64_t> getOptimalTilingStrategy(const IVFSchedulingPtr& scheduling, const Dim dim,
-                                                    const int64_t minTiles, int64_t& maxTiles,
-                                                    TilingOperationStorage::UPtr& minStorage,
-                                                    TilingOperationStorage::UPtr& maxStorage,
-                                                    VFConfig& config) const override;
     bool cmxSizeExceedForEltwiseOpWithSwOpUser(VFConfig& currentConfig, ArrayRef<mlir::Operation*> parents,
                                                Logger log) const;
-    std::deque<IVFSchedulingPtr> getVFSchedulingChecks(VFConfig& config) const override;
     std::shared_ptr<IVFScheduling<VFConfig>> detectScenario(VFConfig& vfConfig) const override;
     std::optional<VFCase> findVFTiling(VPU::VerticalFusionOp mergedOp, VPU::VerticalFusionOp prevOp,
                                        VPU::VerticalFusionOp currentOp) const override;

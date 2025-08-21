@@ -4,23 +4,25 @@
 //
 
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/utils/ShaveCodeGen/linalg_type_conversion.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/small_string.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
-
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Linalg/Utils/Utils.h>
 #include <mlir/Dialect/Math/IR/Math.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Pass/Pass.h>
-
-#include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 // Generated
 namespace ConvertEltwiseLayersToMathPatterns {
@@ -584,6 +586,21 @@ mlir::Value emitLinalgRegion<IE::SinhOp>(IE::SinhOp op, mlir::ValueRange args, l
     return rewriter.create<mlir::arith::MulFOp>(loc, diffExp, halfConst);
 }
 
+// Negative layer
+template <>
+mlir::Value emitLinalgRegion<IE::NegativeOp>(IE::NegativeOp op, mlir::ValueRange args,
+                                             llvm::ArrayRef<mlir::Type> resultTypes, mlir::PatternRewriter& rewriter) {
+    auto loc = op.getLoc();
+
+    if (mlir::isa<mlir::FloatType>(args[0].getType())) {
+        auto zero = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getFloatAttr(args[0].getType(), 0.));
+        return rewriter.create<mlir::arith::SubFOp>(loc, resultTypes, mlir::ValueRange{zero, args[0]});
+    }
+
+    auto zero = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(args[0].getType(), 0));
+    return rewriter.create<mlir::arith::SubIOp>(loc, resultTypes, mlir::ValueRange{zero, args[0]});
+}
+
 // Callback type for emitting the linalg body for an operation.
 using EmitBodyCallback = std::function<mlir::Value(mlir::Operation*, mlir::ValueRange, llvm::ArrayRef<mlir::Type>,
                                                    mlir::PatternRewriter&)>;
@@ -782,6 +799,107 @@ mlir::Value emitLinalgRegion<IE::ConvertOp>(IE::ConvertOp op, mlir::ValueRange a
     VPUX_THROW("Unsupported convert type combination");
 }
 
+// Abs layer
+template <>
+mlir::Value emitLinalgRegion<IE::AbsOp>(IE::AbsOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                        mlir::PatternRewriter& rewriter) {
+    auto loc = op.getLoc();
+
+    return rewriter.create<mlir::math::AbsFOp>(loc, resultTypes, args);
+}
+
+// Sign layer
+template <>
+mlir::Value emitLinalgRegion<IE::SignOp>(IE::SignOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                         mlir::PatternRewriter& rewriter) {
+    // This algorithm computes the sign of a floating-point value by examining its sign bit.
+    // To handle the case where there is -0, we check if the value is exactly zero
+    // (including both +0 and -0) and return 0 in that case.
+    VPUX_UNUSED(resultTypes);
+    auto loc = op.getLoc();
+    auto val = args[0];
+
+    auto zeroAttr = rewriter.getFloatAttr(val.getType(), 0.0);
+    mlir::Value zero = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), zeroAttr);
+    auto negAttr = rewriter.getFloatAttr(val.getType(), -1.0);
+    mlir::Value negOne = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), negAttr);
+    auto posAttr = rewriter.getFloatAttr(val.getType(), 1.0);
+    mlir::Value posOne = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), posAttr);
+
+    auto bitWidth = val.getType().getIntOrFloatBitWidth();
+    auto intTy = mlir::IntegerType::get(val.getContext(), bitWidth);
+    auto casted = rewriter.create<mlir::arith::BitcastOp>(loc, intTy, val);
+    llvm::APInt msbMaskVal = llvm::APInt::getSignMask(bitWidth);
+    auto msbMask = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(intTy, msbMaskVal));
+    auto signBit = rewriter.create<mlir::arith::AndIOp>(loc, casted, msbMask);
+
+    auto shift = rewriter.create<mlir::arith::ShLIOp>(loc, casted,
+                                                      rewriter.create<mlir::arith::ConstantIntOp>(loc, 1, intTy));
+    auto isZero = rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, shift,
+                                                       rewriter.create<mlir::arith::ConstantIntOp>(loc, 0, intTy));
+
+    auto signHandled = rewriter.create<mlir::arith::SelectOp>(
+            loc,
+            rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::ne, signBit,
+                                                 rewriter.create<mlir::arith::ConstantIntOp>(loc, 0, intTy)),
+            negOne, posOne);
+
+    return rewriter.create<mlir::arith::SelectOp>(loc, isZero, zero, signHandled);
+}
+
+// HSwish layer
+template <>
+mlir::Value emitLinalgRegion<IE::HSwishOp>(IE::HSwishOp op, mlir::ValueRange args,
+                                           llvm::ArrayRef<mlir::Type> resultTypes, mlir::PatternRewriter& rewriter) {
+    // Compute this as x*((min(max(x+3,0),6))/6)
+    VPUX_UNUSED(resultTypes);
+    auto loc = op.getLoc();
+    auto val = args[0];
+    auto zeroAttr = rewriter.getFloatAttr(val.getType(), 0.0);
+    mlir::Value zero = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), zeroAttr);
+    auto threeAttr = rewriter.getFloatAttr(val.getType(), 3.0);
+    mlir::Value three = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), threeAttr);
+    auto sixAttr = rewriter.getFloatAttr(val.getType(), 6.0);
+    mlir::Value six = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), sixAttr);
+    auto divSixAttr = rewriter.getFloatAttr(val.getType(), 1.0 / 6.0);
+    mlir::Value divSix = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), divSixAttr);
+    auto fmFlags = mlir::arith::FastMathFlagsAttr::get(
+            rewriter.getContext(), mlir::arith::FastMathFlags::nnan | mlir::arith::FastMathFlags::nsz);
+
+    auto add = rewriter.create<mlir::arith::AddFOp>(loc, val, three);
+    auto max = rewriter.create<mlir::arith::MaximumFOp>(loc, add, zero, fmFlags);
+    auto min = rewriter.create<mlir::arith::MinimumFOp>(loc, max, six, fmFlags);
+    auto mul = rewriter.create<mlir::arith::MulFOp>(loc, min, divSix);
+
+    return rewriter.create<mlir::arith::MulFOp>(loc, val, mul);
+}
+
+// HSigmoid Layer
+template <>
+mlir::Value emitLinalgRegion<IE::HSigmoidOp>(IE::HSigmoidOp op, mlir::ValueRange args,
+                                             llvm::ArrayRef<mlir::Type> resultTypes, mlir::PatternRewriter& rewriter) {
+    // Compute this as (min(max(x+3,0),6))/6
+    VPUX_UNUSED(resultTypes);
+    auto loc = op.getLoc();
+    auto val = args[0];
+    auto zeroAttr = rewriter.getFloatAttr(val.getType(), 0.0);
+    mlir::Value zero = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), zeroAttr);
+    auto threeAttr = rewriter.getFloatAttr(val.getType(), 3.0);
+    mlir::Value three = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), threeAttr);
+    auto sixAttr = rewriter.getFloatAttr(val.getType(), 6.0);
+    mlir::Value six = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), sixAttr);
+    auto divSixAttr = rewriter.getFloatAttr(val.getType(), 1.0 / 6.0);
+    mlir::Value divSix = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), divSixAttr);
+    auto fmFlags = mlir::arith::FastMathFlagsAttr::get(
+            rewriter.getContext(), mlir::arith::FastMathFlags::nnan | mlir::arith::FastMathFlags::nsz);
+
+    auto add = rewriter.create<mlir::arith::AddFOp>(loc, val, three);
+    auto max = rewriter.create<mlir::arith::MaximumFOp>(loc, add, zero, fmFlags);
+    auto min = rewriter.create<mlir::arith::MinimumFOp>(loc, max, six, fmFlags);
+
+    return rewriter.create<mlir::arith::MulFOp>(loc, min, divSix);
+}
+
 void ConvertEltwiseLayers2MathPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
@@ -811,6 +929,11 @@ void ConvertEltwiseLayers2MathPass::safeRunOnFunc() {
     target.addIllegalOp<IE::AddOp, IE::MultiplyOp, IE::SubtractOp>();
     target.addIllegalOp<IE::ConvertOp>();
     target.addIllegalOp<IE::TanOp, IE::SinhOp, IE::CoshOp, IE::AtanOp, IE::AtanhOp>();
+    target.addIllegalOp<IE::AbsOp>();
+    target.addIllegalOp<IE::NegativeOp>();
+    target.addIllegalOp<IE::SignOp>();
+    target.addIllegalOp<IE::HSwishOp>();
+    target.addIllegalOp<IE::HSigmoidOp>();
 
     auto populatePatterns = [&](mlir::RewritePatternSet& patternSet) {
         ConvertEltwiseLayersToMathPatterns::populateWithGenerated(patternSet);
@@ -835,6 +958,8 @@ void ConvertEltwiseLayers2MathPass::safeRunOnFunc() {
         patternSet.add<IEEltwiseToLinalg<IE::ConvertOp>>(&ctx);
         patternSet.add<IEEltwiseToLinalg<IE::TanOp>, IEEltwiseToLinalg<IE::AtanhOp>, IEEltwiseToLinalg<IE::SinhOp>,
                        IEEltwiseToLinalg<IE::CoshOp>>(&ctx);
+        patternSet.add<IEEltwiseToLinalg<IE::AbsOp>, IEEltwiseToLinalg<IE::NegativeOp>, IEEltwiseToLinalg<IE::SignOp>,
+                       IEEltwiseToLinalg<IE::HSwishOp>, IEEltwiseToLinalg<IE::HSigmoidOp>>(&ctx);
     };
 
     // E#172607 [ShaveCodeGen] Make Linalg lowering pass run on CodeGenCapsuleOps

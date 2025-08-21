@@ -4,20 +4,20 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-#include <mlir/IR/Value.h>
+#include <vpux/utils/core/numeric.hpp>
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
-#include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/permute_utils.hpp"
-
-#include <vpux/utils/core/numeric.hpp>
+#include <mlir/IR/Value.h>
 
 namespace vpux {
 namespace VPU {
@@ -352,10 +352,10 @@ mlir::Value alignConvWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc,
     return alignedWeightsOp.getOutput();
 }
 
-Byte calculateAlignedBuffersMemoryRequirement(VPU::ArchKind arch, SmallVector<Byte>& bufferSizes) {
+Byte calculateAlignedBuffersMemoryRequirement(config::ArchKind arch, SmallVector<Byte>& bufferSizes) {
     Byte offsetAlignment = Byte(vpux::DEFAULT_CMX_ALIGNMENT);
     Byte sizeAlignment = Byte(1);
-    if (arch == VPU::ArchKind::NPU37XX || arch == VPU::ArchKind::NPU40XX) {
+    if (arch == config::ArchKind::NPU37XX || arch == config::ArchKind::NPU40XX) {
         offsetAlignment = Byte(getAddressAlignmentForSwizzling(SWIZZLING_KEY_5, arch));
         sizeAlignment = Byte(vpux::getSizeAlignmentForSwizzling(arch));
     }

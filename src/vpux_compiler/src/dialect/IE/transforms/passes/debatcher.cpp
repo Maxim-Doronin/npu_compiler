@@ -3,20 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <stack>
-#include <unordered_set>
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/batch.hpp"
-#include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/core/dense_map.hpp"
-#include "vpux/utils/core/format.hpp"
+
+#include <unordered_set>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_DEBATCHER

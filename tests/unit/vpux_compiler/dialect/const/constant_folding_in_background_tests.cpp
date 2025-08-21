@@ -22,6 +22,7 @@
 #include <thread>
 
 using namespace vpux;
+#include <chrono>
 using namespace std::chrono_literals;
 
 namespace {

@@ -5,7 +5,7 @@
 
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 
 namespace vpux {
@@ -76,6 +76,32 @@ Shape extractShape(const BoundedShape& shape) {
     return shape.toShape();
 }
 Shape extractShape(const DimsMaskedShape& shape) {
+    return shape.toReifiedShape();
+}
+
+Shape reifyShape(ShapeRef shape) {
+    VPUX_THROW_WHEN(shape.isDynamic(), "Tried to reify a dynamic shape without known bounds: {0}", shape);
+    return Shape(shape);
+}
+
+Shape reifyShape(BoundedShapeRef shape) {
+    return shape.toReifiedShape();
+}
+
+Shape reifyShape(DimsMaskedShapeRef shape) {
+    return shape.toReifiedShape();
+}
+
+Shape reifyShape(const Shape& shape) {
+    VPUX_THROW_WHEN(shape.isDynamic(), "Tried to reify a dynamic shape without known bounds: {0}", shape);
+    return shape;
+}
+
+Shape reifyShape(const BoundedShape& shape) {
+    return shape.toReifiedShape();
+}
+
+Shape reifyShape(const DimsMaskedShape& shape) {
     return shape.toReifiedShape();
 }
 

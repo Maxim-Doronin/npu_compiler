@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/utils/options.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
@@ -21,8 +20,8 @@ namespace VPUMI40XX {
 // Passes
 //
 
-std::unique_ptr<mlir::Pass> createSetupProfilingVPUMI40XXPass(
-        DMAProfilingMode dmaProfilingMode = DMAProfilingMode::DISABLED, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSetupProfilingVPUMI40XXPass(const std::string& enableDmaProfiling = "false",
+                                                              Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createBarrierComputationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> reorderMappedInferenceOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createResolveTaskLocationPass(Logger log = Logger::global());
@@ -30,19 +29,25 @@ std::unique_ptr<mlir::Pass> createBarrierTopologicalMappingPass(Logger log = Log
 std::unique_ptr<mlir::Pass> createGroupExecutionOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnGroupExecutionOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddFetchOpsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConvertFetchDmasToFetchTaskOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createResolveWLMTaskLocationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPropagateFinalBarrierPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddEnqueueOpsPass(
         WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollFetchTaskOpsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createLinkEnqueueTargetsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createLinkEnqueueTargetsPass(
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLinkAllOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollEnqueueOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLinkEnqueueOpsForSameBarrierPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitEnqueueOpsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSplitEnqueueDmaOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddBootstrapBarriersPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createAddBootstrapWorkItemsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddBootstrapWorkItemsPass(
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createNextSameIdAssignmentPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddPlatformInfoPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDumpStatisticsOfWlmOpsPass(Logger log = Logger::global());
@@ -55,9 +60,8 @@ std::unique_ptr<mlir::Pass> createAddBarrierConfigurationOps(
                 WorkloadManagementBarrierProgrammingMode::LEGACY,
         Logger log = Logger::global());
 
-std::unique_ptr<mlir::Pass> createAddEnqueueDMAOps(
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::FWLM_V1_PAGES,
-        Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddEnqueueDMAOps(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUpdateEnqueueDMAInputAndOutput(Logger log = Logger::global());
 
 //
 // Registration

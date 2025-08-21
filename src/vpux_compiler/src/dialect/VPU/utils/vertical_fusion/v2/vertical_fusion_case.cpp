@@ -22,20 +22,18 @@ vpux::VPU::MultiClusterStrategy getStrategy(mlir::Operation* operation) {
 
 namespace vpux::VPU::VF::v2 {
 
-VFCase::VFCase(VFCase::VFConfigType& config, Dim axis): _config(config), _axis(axis) {
+VFCase::VFCase(VFCase::VFConfigType& config, const VFSplit& split): _config(config), _split(split) {
 }
 
 VFCase::~VFCase() {
 }
 
 VFCase::VFCase(VFCase&& vfCase): _config(vfCase._config) {
-    _axis = vfCase._axis;
+    _split = std::move(vfCase._split);
     _cachedCost = vfCase._cachedCost;
     _vfScheduling = std::move(vfCase._vfScheduling);
     _vfTilingStorage = std::move(vfCase._vfTilingStorage);
-    _tilingNumber = vfCase._tilingNumber;
 
-    vfCase._tilingNumber = 1;
     vfCase._vfScheduling = nullptr;
     vfCase._vfTilingStorage = nullptr;
 }
@@ -48,11 +46,9 @@ VFCase& VFCase::operator=(VFCase&& other) {
     std::swap(_config, other._config);
     std::swap(_vfScheduling, other._vfScheduling);
     _vfTilingStorage = std::move(other._vfTilingStorage);
-    _axis = other._axis;
-    _tilingNumber = other._tilingNumber;
+    _split = std::move(other._split);
     std::swap(_cachedCost, other._cachedCost);
 
-    other._tilingNumber = 1;
     other._vfScheduling = nullptr;
     _vfTilingStorage = nullptr;
 
@@ -60,10 +56,9 @@ VFCase& VFCase::operator=(VFCase&& other) {
 }
 
 VFCase::VFCase(const VFCase& vfCase): _config(vfCase._config) {
-    _axis = vfCase._axis;
+    _split = vfCase._split;
     _cachedCost = vfCase._cachedCost;
     _vfScheduling = vfCase._vfScheduling;
-    _tilingNumber = vfCase._tilingNumber;
     _vfTilingStorage = nullptr;
 }
 
@@ -73,20 +68,19 @@ VFCase& VFCase::operator=(const VFCase& other) {
     }
 
     _config = other._config;
-    _axis = other._axis;
+    _split = other._split;
     _cachedCost = other._cachedCost;
     _vfScheduling = other._vfScheduling;
-    _tilingNumber = other._tilingNumber;
     _vfTilingStorage = nullptr;
 
     return *this;
 }
 
-void VFCase::setTilingNumber(int64_t number) {
-    if (_tilingNumber != number) {
+void VFCase::setTilingNumber(Dim dim, int64_t number) {
+    if (_split[dim].value_or(1) != number) {
         clearCache();
     }
-    _tilingNumber = number;
+    _split[dim] = number;
 }
 
 void VFCase::setScheduling(std::shared_ptr<IVFScheduling<VFCase::VFConfigType>> vfScheduling) {
@@ -114,12 +108,17 @@ StrategyCost VFCase::getCost(const std::unique_ptr<VPU::LayerVPUNNCost>& costFun
         if (_vfTilingStorage == nullptr) {
             _vfTilingStorage = std::make_unique<TilingOperationStorage>();
             auto tilingDims = parseIntArrayAttr<int64_t>(getTiling());
-            auto tilingStorage = calculateTilingRegions(_config.getSubgraph(), tilingDims, log, _vfTilingStorage);
+            auto tilingStorage = calculateTilingRegions(_config, tilingDims, log, _vfTilingStorage);
             VPUX_THROW_WHEN(mlir::failed(tilingStorage), "Cannot get tiling regions for {0} and {1} tiles",
                             _config.getSubgraph(), tilingDims);
         }
-
-        _cachedCost = _vfScheduling->getCost(_config, _tilingNumber, _vfTilingStorage, costFunction);
+        VPUX_THROW_WHEN(llvm::any_of(_split,
+                                     [](const auto& item) {
+                                         return !item.second.has_value();
+                                     }),
+                        "Cannot get cost for VF {0} without fixed tiling number", _config.getSubgraph().getLoc());
+        auto tileLen = getVFTilesLen(_split);
+        _cachedCost = _vfScheduling->getCost(_config, tileLen, _vfTilingStorage, costFunction);
         log.trace("Merged VF {0} cost {1}", _config.getSubgraph().getLoc(), _cachedCost.value());
         addCMXWriteSpills(costFunction, log);
         log.trace("Merged VF {0} cost with spill write {1}", _config.getSubgraph().getLoc(), _cachedCost.value());
@@ -134,16 +133,12 @@ VFCase::VFConfigType& VFCase::getConfig() {
     return _config;
 }
 
-mlir::ArrayAttr VFCase::getTiling() const {
-    auto outType = mlir::cast<vpux::NDTypeInterface>(_config.getSubgraph()->getResult(0).getType());
-    auto tilingArray = SmallVector<int64_t>(outType.getRank(), 1);
-    tilingArray[_axis.ind()] = _tilingNumber;
-
-    return getIntArrayAttr(_config.getSubgraph().getContext(), tilingArray);
-}
-
-int64_t VFCase::getTilingNumber() const {
-    return _tilingNumber;
+mlir::ArrayAttr VFCase::getTiling() {
+    auto outputs = _config.getOutputs();
+    VPUX_THROW_WHEN(outputs.empty(), "No outputs for VF");
+    auto outType = mlir::cast<vpux::NDTypeInterface>(outputs.front()->getResult(0).getType());
+    auto tilingArray = restoreTilingBySplit(outType.getRank(), _split);
+    return getIntArrayAttr(outputs.front()->getContext(), tilingArray);
 }
 
 void VFCase::approveScheduling() {
@@ -154,7 +149,12 @@ void VFCase::approveScheduling() {
 }
 
 bool VFCase::isInitialized() {
-    return _vfScheduling != nullptr && _tilingNumber > 1;
+    return _vfScheduling != nullptr &&
+           llvm::all_of(_split,
+                        [](const auto& item) {
+                            return item.second.has_value();
+                        }) &&
+           getVFTilesLen(_split) > 1;
 }
 
 void VFCase::addCMXReadSpills(const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction, Logger log) {

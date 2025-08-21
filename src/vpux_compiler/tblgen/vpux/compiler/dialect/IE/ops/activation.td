@@ -82,6 +82,7 @@ def IE_HSigmoidOp :
         IE_LayerOp<
             "HSigmoid",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -101,6 +102,7 @@ def IE_HSwishOp :
         IE_LayerOp<
             "HSwish",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {

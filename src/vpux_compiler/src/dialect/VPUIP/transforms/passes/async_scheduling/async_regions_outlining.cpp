@@ -16,6 +16,7 @@
 #include "vpux/compiler/utils/allocate_buffers_for_net_results.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Pass/PassManager.h>
 

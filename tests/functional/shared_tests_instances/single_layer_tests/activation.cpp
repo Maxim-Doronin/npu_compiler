@@ -177,7 +177,8 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenAct
         {Cos, {{1.0f}}},          {Exp, {{1.0f}}},   {Log, {{1.0f}}},       {Sin, {{1.0f}}},
         {Erf, {{1.0f}}},          {Sqrt, {{1.0f}}},  {RoundHalfToEven, {}}, {RoundHalfAwayFromZero, {}},
         {Clamp, {{-1.0f, 1.0f}}}, {Tanh, {{1.0f}}},  {Tan, {{1.0f}}},       {Sinh, {{1.0f}}},
-        {Cosh, {{1.0f}}},         {Atanh, {{1.0f}}}, {Atan, {{1.0f}}}};
+        {Cosh, {{1.0f}}},         {Atanh, {{1.0f}}}, {Atan, {{1.0f}}},      {Abs, {{1.0f}}},
+        {Negative, {{0.01f}}},    {Sign, {{1.0f}}},  {HSwish, {{1.0f}}},    {HSigmoid, {{1.0f}}}};
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenIntActivationTypes = {
         {Clamp, {{-1.0f, 1.0f}}},

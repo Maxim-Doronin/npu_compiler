@@ -16,6 +16,11 @@ using namespace vpux;
 ReservedMemInfo::ReservedMemInfo(mlir::ModuleOp moduleOp, mlir::AnalysisManager& am) {
     // TODO:#108991 -- for now only "main" function with inner functions is supported,
     // but it is possible support multiple nested calls using a loop through call/function ops
+
+    if (moduleOp.getOps<net::NetworkInfoOp>().empty()) {
+        return;
+    }
+
     mlir::func::FuncOp netFunc;
     net::NetworkInfoOp netInfo;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);

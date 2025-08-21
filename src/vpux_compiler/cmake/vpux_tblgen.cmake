@@ -6,13 +6,13 @@
 add_custom_target(MLIRVPUXIncGenList)
 
 function(add_vpux_dialect dialect_namespace)
-    set(LLVM_TARGET_DEFINITIONS ops.td)
+    set(LLVM_TARGET_DEFINITIONS dialect.td)
     mlir_tablegen(dialect.hpp.inc -gen-dialect-decls -dialect=${dialect_namespace}
     )
     mlir_tablegen(dialect.cpp.inc -gen-dialect-defs -dialect=${dialect_namespace}
     )
-    add_mlir_doc(ops _${dialect_namespace} dialect/ -gen-dialect-doc -dialect=${dialect_namespace})
-    add_vpux_ops(${dialect_namespace} GENERIC)
+    add_public_tablegen_target(MLIRVPUX${dialect_namespace}DialectIncGen)
+    add_dependencies(MLIRVPUXIncGenList MLIRVPUX${dialect_namespace}DialectIncGen)
 endfunction()
 
 function(add_vpux_ops dialect_namespace arch)
@@ -23,6 +23,22 @@ function(add_vpux_ops dialect_namespace arch)
     )
     add_public_tablegen_target(MLIRVPUX${dialect_namespace}${arch}OpsIncGen)
     add_dependencies(MLIRVPUXIncGenList MLIRVPUX${dialect_namespace}${arch}OpsIncGen)
+    if(arch STREQUAL GENERIC)
+        add_mlir_doc(ops _${dialect_namespace} dialect/ -gen-dialect-doc -dialect=${dialect_namespace})
+    else()
+        add_mlir_doc(ops _${dialect_namespace}_${arch} dialect/ -gen-dialect-doc -dialect=${dialect_namespace})
+    endif()
+endfunction()
+
+function(add_vpux_ops_granular dialect_namespace arch target_dir ops_target)
+    set(LLVM_TARGET_DEFINITIONS ${target_dir}/${ops_target}.td)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/${target_dir})
+    mlir_tablegen(${target_dir}/${ops_target}.hpp.inc -gen-op-decls
+    )
+    mlir_tablegen(${target_dir}/${ops_target}.cpp.inc -gen-op-defs
+    )
+    add_public_tablegen_target(MLIRVPUX${dialect_namespace}${arch}${ops_target}OpsIncGen)
+    add_dependencies(MLIRVPUXIncGenList MLIRVPUX${dialect_namespace}${arch}${ops_target}OpsIncGen)
 endfunction()
 
 function(add_vpux_ops_interface ops_namespace doc_dir)

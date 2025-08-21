@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2021-2025 Intel Corporation.
+// Copyright (C) 2021-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <base/ov_behavior_test_utils.hpp>
 #include <cstring>
+#include <shared_test_classes/base/ov_behavior_test_utils.hpp>
 #include <string>
 #include <vector>
 #include "common/functions.h"

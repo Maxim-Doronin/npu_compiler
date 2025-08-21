@@ -557,11 +557,11 @@ func.func @Optimize2SubviewCopyConvPatternWithOptimizableCopyIn(
 
     // CHECK:        [[DISTRIB_CAST:%.+]] = VPUIP.DistributedCast
     // CHECK-SAME:      inputs([[ARG0]] : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED"
-    // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x3072x1x1xf16, {order = #NHWC, strides = [3072, 1, 3072, 3072]}, @CMX_NN,
+    // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          mode = "DUPLICATED", num_clusters = 2 : i64
 
     // CHECK:       [[SUBVIEW0:%.+]] = VPUIP.SubView [[DISTRIB_CAST]] [0, 0, 0, 0] [1, 1536, 1, 1]
-    // CHECK-SAME:       : !VPUIP.DistributedBuffer<1x3072x1x1xf16, {order = #NHWC, strides = [3072, 1, 3072, 3072]}, @CMX_NN,
+    // CHECK-SAME:       : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 3072, 1, 1], [1, 3072, 1, 1]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]
     // CHECK-SAME:       to !VPUIP.DistributedBuffer<1x1536x1x1xf16, {order = #NHWC, strides = [3072, 1, 3072, 3072]}, @CMX_NN,
@@ -569,7 +569,7 @@ func.func @Optimize2SubviewCopyConvPatternWithOptimizableCopyIn(
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 1536, 1, 1], [1, 1536, 1, 1]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]
 
     // CHECK:       [[SUBVIEW1:%.+]] = VPUIP.SubView [[DISTRIB_CAST]] [0, 1536, 0, 0] [1, 1536, 1, 1]
-    // CHECK-SAME:       : !VPUIP.DistributedBuffer<1x3072x1x1xf16, {order = #NHWC, strides = [3072, 1, 3072, 3072]}, @CMX_NN,
+    // CHECK-SAME:       : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 3072, 1, 1], [1, 3072, 1, 1]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]
     // CHECK-SAME:       to !VPUIP.DistributedBuffer<1x1536x1x1xf16, {order = #NHWC, strides = [3072, 1, 3072, 3072]}, @CMX_NN,
@@ -2354,7 +2354,7 @@ func.func @NotOptimizeSubviewWithRMS(
     // CHECK:        [[RMS_INPUT2:%.+]] = VPUIP.Copy inputs([[ARG1]] : memref<3072xf16, @DDR>
 
     // CHECK:        [[RMS_RESULT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RMS
-    // CHECK-SAME:   inputs([[RMS_INPUT1]] as %{{.+}}: memref<1x1x3072xf16, [@CMX_NN, 0]>, 
+    // CHECK-SAME:   inputs([[RMS_INPUT1]] as %{{.+}}: memref<1x1x3072xf16, [@CMX_NN, 0]>,
     // CHECK-SAME:   [[RMS_INPUT2]] as %{{.+}}: memref<3072xf16, [@CMX_NN, 0]>)
 
     // CHECK:        [[GENERIC_RESHAPE:%.+]] = VPUIP.GenericReshape inputs([[RMS_RESULT]] : memref<1x1x3072xf16, [@CMX_NN, 0]>)

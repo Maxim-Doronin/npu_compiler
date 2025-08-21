@@ -568,24 +568,6 @@ def VPU_DDRAccessOpInterface: OpInterface<"DDRAccessOpInterface"> {
 }
 
 //
-// DefinedInArch op trait
-//
-
-class DefinedInArch<string arch>
-    : ParamNativeOpTrait<"DefinedInArch", arch>  {
-    let cppNamespace = "vpux::VPU";
-}
-
-//
-// LimitedToArch op trait
-//
-
-class LimitedToArch<list<string> archs>
-    : ParamNativeOpTrait<"LimitedToArch", !interleave(archs, ", ")>  {
-    let cppNamespace = "vpux::VPU";
-}
-
-//
 // AlignedWorkloadChannelOpInterface
 //
 

@@ -4,16 +4,15 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 using namespace VPU;
 namespace {
 DimArr getReshapedDims(ShapeCastOp shapeCastOp) {
-    auto inputShape = getShape(shapeCastOp.getSource());
-    auto outputShape = getShape(shapeCastOp.getResult());
+    auto inputShape = getShape(shapeCastOp.getInput());
+    auto outputShape = getShape(shapeCastOp.getOutput());
     DimArr reshapedDims;
     for (auto i : irange(inputShape.size())) {
         Dim dim(i);
@@ -38,12 +37,12 @@ mlir::LogicalResult vpux::VPU::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* 
     }
 
     const auto outShape = parseIntArrayAttr<int64_t>(shapeCast.getShape());
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getSource().getType());
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(shapeCast.getInput().getType());
 
     auto getDistType = [&](VPU::DistributedTypeInterface inDistInterface) {
-        const auto arch = VPU::getArch(mlir::isa<mlir::BlockArgument>(operands[0])
-                                               ? operands[0].getParentRegion()->getParentOfType<mlir::ModuleOp>()
-                                               : operands[0].getDefiningOp());
+        const auto arch = config::getArch(mlir::isa<mlir::BlockArgument>(operands[0])
+                                                  ? operands[0].getParentRegion()->getParentOfType<mlir::ModuleOp>()
+                                                  : operands[0].getDefiningOp());
         const auto distAttr =
                 VPUIP::getDistributedAttrAfterShapeCast<VPU::DistributedTensorType>(inDistInterface, outShape, arch);
         return inDistInterface.changeShapeForExplicitDistribution(ShapeRef(outShape), distAttr);
@@ -71,8 +70,8 @@ vpux::InputTiling vpux::VPU::ShapeCastOp::backInferTileInfo(const vpux::TileInfo
                       "ShapeCastOp does not support out tile with shape {0}, offset {1}", outputTile.shape,
                       outputTile.offsets);
 
-    const auto inputShape = vpux::getShape(getSource());
-    const auto outputShape = vpux::getShape(getResult());
+    const auto inputShape = vpux::getShape(getInput());
+    const auto outputShape = vpux::getShape(getOutput());
     const auto tilingDims = getNonOneDim(outputTile.axis);
 
     TileInfo inputTile(inputShape);
@@ -116,7 +115,7 @@ bool vpux::VPU::ShapeCastOp::isSupportedTilingDim(DimArrRef tilingDims) {
     }
 
     auto tilingDim = tilingDims.front();
-    auto dimOrder = DimsOrder::fromValue(getSource());
+    auto dimOrder = DimsOrder::fromValue(getInput());
     auto idx0 = checked_cast<int64_t>(dimOrder.dimPos(reshapedDims[0]));
     auto idx1 = checked_cast<int64_t>(dimOrder.dimPos(reshapedDims[1]));
     if (std::abs(idx0 - idx1) != 1) {
@@ -137,8 +136,8 @@ bool vpux::VPU::ShapeCastOp::isSupportedOutTile(const TileInfo& outTile) {
         return true;
     }
 
-    auto inputShape = vpux::getShape(getSource());
-    auto outputShape = vpux::getShape(getResult());
+    auto inputShape = vpux::getShape(getInput());
+    auto outputShape = vpux::getShape(getOutput());
     auto reshapedDims = getReshapedDims(*this);
     auto tilingDim = tilingDims.front();
 
@@ -169,7 +168,7 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::ShapeCa
     }
 
     const auto srcShape = inType.getShape();
-    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto outShape = dstType.getShape();
 
     auto mode = distribution.getDistributionMode();
@@ -216,10 +215,10 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::ShapeCa
 
 mlir::OpFoldResult vpux::VPU::ShapeCastOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(getSource().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(getResult().getType());
-    if (getSource().getType() == getResult().getType()) {
-        return getSource();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+    if (inputType == outputType) {
+        return getInput();
     }
 
     VPUX_THROW_UNLESS(!operands.empty(), "Wrong number of operands : {0}", operands.size());
@@ -247,12 +246,12 @@ public:
 };
 
 mlir::LogicalResult FuseShapeCast::matchAndRewrite(VPU::ShapeCastOp origOp, mlir::PatternRewriter& rewriter) const {
-    auto prevOp = origOp.getSource().getDefiningOp<VPU::ShapeCastOp>();
+    auto prevOp = origOp.getInput().getDefiningOp<VPU::ShapeCastOp>();
     if (prevOp == nullptr) {
         return mlir::failure();
     }
 
-    rewriter.replaceOpWithNewOp<VPU::ShapeCastOp>(origOp, prevOp.getSource(), origOp.getShape());
+    rewriter.replaceOpWithNewOp<VPU::ShapeCastOp>(origOp, prevOp.getInput(), origOp.getShape());
     return mlir::success();
 }
 

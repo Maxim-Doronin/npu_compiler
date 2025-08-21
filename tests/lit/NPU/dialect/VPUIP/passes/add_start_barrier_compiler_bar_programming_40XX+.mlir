@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-start-barrier="enable-compiler-barrier-programming=true" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-start-barrier %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 // -----

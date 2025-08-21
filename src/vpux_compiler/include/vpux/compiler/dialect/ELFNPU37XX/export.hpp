@@ -6,7 +6,6 @@
 #pragma once
 
 #include "vpux/compiler/compiler.hpp"
-
 #include "vpux/utils/logger/logger.hpp"
 
 #include <vpux_elf/writer.hpp>
@@ -15,9 +14,6 @@
 #include <mlir/Support/Timing.h>
 
 #include <transformations/utils/utils.hpp>
-
-#include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 
 namespace vpux {
 namespace ELFNPU37XX {

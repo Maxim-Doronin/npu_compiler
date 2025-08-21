@@ -4,9 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -209,23 +212,19 @@ bool ReshapeMVNPattern::init() {
         log.trace("Match failed: [Reorder]->MVN");
         return false;
     }
-    mlir::Operation* reshape2 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReshapeOp>(
-            reorder3.getInput().getDefiningOp(), DimsOrder::NCHW, DimsOrder::NCHW);
+    auto reshape2 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReshapeOp>(reorder3.getInput().getDefiningOp(),
+                                                                              DimsOrder::NCHW, DimsOrder::NCHW);
     if (reshape2 == nullptr) {
-        reshape2 = getTargetOpWithSpecificLayoutAndSingleUser<IE::AffineReshapeOp>(reorder3.getInput().getDefiningOp(),
-                                                                                   DimsOrder::NCHW, DimsOrder::NCHW);
-        if (reshape2 == nullptr) {
-            log.trace("Match failed: [Reshape]->Reorder->MVN");
-            return false;
-        }
+        log.trace("Match failed: [Reshape]->Reorder->MVN");
+        return false;
     }
-    auto reorder1 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(reshape2->getOperand(0).getDefiningOp(),
+    auto reorder1 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(reshape2.getInput().getDefiningOp(),
                                                                               DimsOrder::NHWC, DimsOrder::NCHW);
 
     if (reorder1 != nullptr) {
         _patternIn = reorder1.getInput();
     } else {
-        auto concatOp = mlir::dyn_cast_or_null<IE::ConcatOp>(reshape2->getOperand(0).getDefiningOp());
+        auto concatOp = mlir::dyn_cast_or_null<IE::ConcatOp>(reshape2.getInput().getDefiningOp());
 
         if (concatOp == nullptr) {
             log.trace("Match failed: [Reorder]->Reshape->Reorder->MVN");
@@ -257,30 +256,12 @@ bool ReshapeMVNPattern::init() {
 
     _patternOut = reorder4.getOutput();
 
-    // MVN(NHWC) -> Reorder4(NCHW) -> Reshape5(NCHW)
-    mlir::Operation* reshape5 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReshapeOp>(
-            *(_patternOut.getUsers().begin()), DimsOrder::NCHW, DimsOrder::NCHW);
-    if (reshape5 == nullptr) {
-        reshape5 = getTargetOpWithSpecificLayoutAndSingleUser<IE::AffineReshapeOp>(*(_patternOut.getUsers().begin()),
-                                                                                   DimsOrder::NCHW, DimsOrder::NCHW);
-        if (reshape5 == nullptr) {
-            log.trace("Match failed: MVN->Reorder->[Reshape]");
-            return false;
-        }
-    }
-    _patternOut = reshape5->getResult(0);
-
-    // Check Reshapes are symmetrical
-    const auto patternInType = mlir::cast<NDTypeInterface>(_patternIn.getType());
-    _newChannelSize = patternInType.getShape()[Dims4D::Act::C];
-    const auto outType = mlir::cast<vpux::NDTypeInterface>(_patternOut.getType());
-    const auto outC = outType.getShape()[Dims4D::Act::C];
-    if (_newChannelSize != outC) {
-        // Check [Optional Part] pattern
-        // [ -> Reorder(NHWC) -> GroupConv(NHWC) -> Reorder(NCHW) -> Reshape(NCHW)]
-        // To be removed after E#123528 gets implemented
-        auto reorderPreGc = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(*(_patternOut.getUsers().begin()),
-                                                                                      DimsOrder::NCHW, DimsOrder::NHWC);
+    // Check [Optional Part] pattern
+    // [AffineReshape(NCHW) -> Reorder(NHWC) -> GroupConv(NHWC) -> Reorder(NCHW)]
+    if (auto affineReshape = getTargetOpWithSpecificLayoutAndSingleUser<IE::AffineReshapeOp>(
+                *(_patternOut.getUsers().begin()), DimsOrder::NCHW, DimsOrder::NCHW)) {
+        auto reorderPreGc = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(
+                *(affineReshape.getOutput().getUsers().begin()), DimsOrder::NCHW, DimsOrder::NHWC);
         if (reorderPreGc == nullptr) {
             log.trace("Match failed: MVN->AffineReshape->[Reorder]");
             return false;
@@ -290,51 +271,48 @@ bool ReshapeMVNPattern::init() {
                 *(reorderPreGc.getOutput().getUsers().begin()), DimsOrder::NHWC, DimsOrder::NHWC);
 
         if (!isSupportedGroupConv()) {
-            log.trace("Match failed: MVN->Reorder->Reshape->Reorder->[GroupConv]");
+            log.trace("Match failed: MVN->AffineReshape->Reorder->[GroupConv]");
             return false;
         }
 
         auto reorderPostGc = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(
                 *(_groupConvOp.getOutput().getUsers().begin()), DimsOrder::NHWC, DimsOrder::NCHW);
         if (reorderPostGc == nullptr) {
-            log.trace("Match failed: MVN->Reorder->Reshape->Reorder->GroupConv->[Reorder]");
+            log.trace("Match failed: MVN->AffineReshape->Reorder->GroupConv->[Reorder]");
             return false;
         }
 
-        auto reshapePostGc = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReshapeOp>(
-                *(reorderPostGc.getOutput().getUsers().begin()), DimsOrder::NCHW, DimsOrder::NCHW);
-        if (reshapePostGc == nullptr) {
-            log.trace("Match failed: MVN->Reorder->Reshape->Reorder->GroupConv->Reorder->[Reshape]");
-            return false;
-        }
-
-        _patternOut = reshapePostGc.getOutput();
-        const auto newOutType = mlir::cast<vpux::NDTypeInterface>(_patternOut.getType());
-        const auto newOutC = newOutType.getShape()[Dims4D::Act::C];
-        if (_newChannelSize != newOutC) {
-            log.trace("Match failed: Pattern's input channel and output channel are not equal");
-            return false;
-        }
+        _patternOut = reorderPostGc.getOutput();
     }
 
     // Back to common pattern
-    // MVN(NHWC) -> Reorder4(NCHW) -> Reshape5(NCHW) -> [Optional Part](NCHW) -> Reorder6(NHWC) -> Output(NHWC)
-    auto reorder6 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(*(_patternOut.getUsers().begin()),
-                                                                              DimsOrder::NCHW, DimsOrder::NHWC);
-    if (reorder6 == nullptr) {
-        log.trace("Match failed: MVN->Reorder->Reshape->(Optional Part)->[Reorder]");
+    // MVN(NHWC) -> Reorder4(NCHW) -> [Optional Part](NCHW) -> Reshape5(NCHW) -> Reorder6(NHWC) -> Output(NHWC)
+    auto reshape5 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReshapeOp>(*(_patternOut.getUsers().begin()),
+                                                                              DimsOrder::NCHW, DimsOrder::NCHW);
+    if (reshape5 == nullptr) {
+        log.trace("Match failed: MVN->Reorder->(Optional Part)->[Reshape]");
         return false;
     }
+
+    auto reorder6 = getTargetOpWithSpecificLayoutAndSingleUser<IE::ReorderOp>(
+            *(reshape5.getOutput().getUsers().begin()), DimsOrder::NCHW, DimsOrder::NHWC);
+    if (reorder6 == nullptr) {
+        log.trace("Match failed: MVN->Reorder->(Optional Part)->Reshape->[Reorder]");
+        return false;
+    }
+
     _patternOut = reorder6.getOutput();
 
     // Check patern input and output has the same type
-    const auto patternOutType = mlir::cast<NDTypeInterface>(_patternOut.getType());
+    auto patternInType = mlir::cast<NDTypeInterface>(_patternIn.getType());
+    auto patternOutType = mlir::cast<NDTypeInterface>(_patternOut.getType());
     if (patternInType != patternOutType) {
         log.trace("Mismatching pattern input type {0} and output type {1}", patternInType, patternOutType);
         return false;
     }
 
     // Checks for C reshape value
+    _newChannelSize = patternInType.getShape()[Dims4D::Act::C];
     _origChannelSize = mvnInType.getShape()[Dims4D::Act::C];
     if ((_newChannelSize % _origChannelSize) || (_newChannelSize <= _origChannelSize)) {
         log.trace("Expecting in-C to be a multiple of reshaped-C, got {0}, {1}", _newChannelSize, _origChannelSize);

@@ -4,8 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
-
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 
 void inferPermuteReturnTypeComponents(mlir::Value input, mlir::AffineMap mem_perm, mlir::AffineMap dst_order,
                                       SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnShapes,

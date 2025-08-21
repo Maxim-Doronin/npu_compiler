@@ -166,7 +166,8 @@ def VPUIP_PermuteDMAOp :
         OptionalAttr<AffineMapAttr>:$mem_perm,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
         OptionalAttr<IntAttr>:$dma_hwp_id,
-        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        OptionalAttr<VPUIP_InternalDataFlow>:$internalDataFlow
     );
 
     let results = (outs
@@ -225,8 +226,8 @@ def VPUIP_GatherDMAOp :
 
     let arguments = (ins
         AnyMemRef:$input,
-        MemRefOf<[I64]>:$indices,
-        AnyMemRef:$outputBuff,
+        AnyTypeOf<[MemRefOf<[I64]>, VPUIP_DistributedBuffer]>:$indices,
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$outputBuff,
 
 
         IntAttr:$elementSize,
@@ -245,7 +246,7 @@ def VPUIP_GatherDMAOp :
     );
 
     let results = (outs
-        AnyMemRef:$output
+        AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$output
     );
 
     let builders = [
@@ -742,7 +743,7 @@ def VPUIP_NCEClusterTaskOp :
     }];
 
     let arguments = (ins
-        AnyTypeOf<[MemRefOf<[F16, BF16, quant_QuantizedType]>, VPUIP_DistributedBuffer, VPUIP_ITIBuffer]>:$input,
+        Optional<AnyTypeOf<[MemRefOf<[F32, SI32, F16, BF16, quant_QuantizedType]>, VPUIP_DistributedBuffer, VPUIP_ITIBuffer]>>:$input,
         Optional<AnyTypeOf<[MemRefOf<[I1]>, VPUIP_DistributedBuffer]>>:$input_sparsity_map,
         Optional<AnyTypeOf<[MemRefOf<[I32]>, VPUIP_DistributedBuffer]>>:$input_storage_element_table,
         Optional<AnyTypeOf<[MemRefOf<[F16, BF16, quant_QuantizedType]>, VPUIP_DistributedBuffer]>>:$weights,
@@ -2491,36 +2492,6 @@ def VPUIP_ExtractFlatSliceOp :
 }
 
 //
-// WorkloadCastOp
-//
-
-def VPUIP_WorkloadCastOp :
-        VPUIP_Op<
-            "WorkloadCast",
-            [
-                DeclareOpInterfaceMethods<ViewLikeOpInterface>,
-                Pure
-            ]
-        > {
-    let summary = "Operation that casts one DistributedBuffer type to another.";
-
-    let arguments = (ins
-        AnyTypeOf<[VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>:$input
-    );
-
-    let results = (outs
-        AnyTypeOf<[VPUIP_DistributedBuffer, VPUIP_SparseBuffer]>:$output
-    );
-
-    let assemblyFormat = [{
-        attr-dict
-        `inputs` `(` $input `:` qualified(type($input)) `)`
-        `->` qualified(type(results))
-    }];
-}
-
-
-//
 // ProfilingSectionInfoOp
 //
 
@@ -2699,6 +2670,106 @@ def VPUIP_BarProgDMAOp :
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `physical_barrier_range` `(` $physical_barrier_range `)`
+        `->` type(results)
+    }];
+
+    let hasVerifier = 1;
+}
+
+//
+// FetchDMAOp
+//
+
+def VPUIP_FetchDMAOp :
+        VPUIP_TaskOp<1, "FetchDMA",
+            [
+                ViewLikeOpInterface,
+                VPUIP_DMATypeOpInterface,
+                DotInterface
+            ]
+        > {
+    let summary = "Fetch task descriptors DMA task";
+
+    let arguments = (ins
+        AnyMemRef:$input,
+        AnyMemRef:$output_buff,
+        OptionalAttr<IntAttr>:$port,
+        UnitAttr:$is_out_of_order,
+        UnitAttr:$is_critical,
+        OptionalAttr<IntAttr>:$dma_hwp_id,
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        VPUIP_FetchDMAAttr:$fetch_dma
+    );
+
+    let results = (outs
+        AnyMemRef:$output
+    );
+
+    let extraClassDeclaration = [{
+        static vpux::VPU::ExecutorKind getExecutorKind() {
+            return vpux::VPU::ExecutorKind::DMA_NN;
+        }
+
+        vpux::DotNodeColor getNodeColor() {
+            return vpux::DotNodeColor::GREEN;
+        }
+    }] # commonExtraClassDeclaration;
+
+    let assemblyFormat = [{
+        attr-dict
+        `inputs` `(` $input `:` type($input) `)`
+        `outputs` `(` $output_buff `:` type($output_buff) `)`
+        `fetch_dma` `(` $fetch_dma `)`
+        `->` type(results)
+    }];
+
+    let hasVerifier = 1;
+}
+
+//
+// EnqueueDMAOp
+//
+
+def VPUIP_EnqueueDMAOp :
+        VPUIP_TaskOp<1, "EnqueueDMA",
+            [
+                ViewLikeOpInterface,
+                VPUIP_DMATypeOpInterface,
+                DotInterface
+            ]
+        > {
+    let summary = "Task enqueue DMA operation";
+
+    let arguments = (ins
+        AnyMemRef:$input,
+        AnyMemRef:$output_buff,
+        OptionalAttr<IntAttr>:$port,
+        UnitAttr:$is_out_of_order,
+        UnitAttr:$is_critical,
+        OptionalAttr<IntAttr>:$dma_hwp_id,
+        OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
+        VPUIP_EnqueueDMAAttr: $enqueue_dma_attr
+    );
+
+    let results = (outs
+        AnyMemRef:$output
+    );
+
+    let extraClassDeclaration = [{
+        static vpux::VPU::ExecutorKind getExecutorKind() {
+            return vpux::VPU::ExecutorKind::DMA_NN;
+        }
+
+        vpux::DotNodeColor getNodeColor() {
+            return vpux::DotNodeColor::GREEN;
+        }
+    }] # commonExtraClassDeclaration;
+
+    let assemblyFormat = [{
+        attr-dict
+        `inputs` `(` $input `:` type($input) `)`
+        `outputs` `(` $output_buff `:` type($output_buff) `)`
+        `enqueue_dma_attr` `(` $enqueue_dma_attr `)`
         `->` type(results)
     }];
 

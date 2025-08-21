@@ -178,7 +178,7 @@ module @DynamicReshape {
     // CHECK-DAG:  {{      }}module @SWKernelPrefetchingReservedMemory {
     // CHECK-DAG:  {{        }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN offset {{[0-9]+}}
     // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN_FragmentationAware
-    // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = {{.+}} : f64}
+    // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = {{.+}} : f64}
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @DPU
     // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN
@@ -255,7 +255,7 @@ module @DynamicReshape {
     // CHECK-DAG:  {{      }}module @SWKernelPrefetchingReservedMemory {
     // CHECK-DAG:  {{        }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN offset {{[0-9]+}}
     // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN_FragmentationAware
-    // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN {VPU.bandwidth = 32 : i64, VPU.derateFactor = {{.+}} : f64}
+    // CHECK-DAG:  {{    }}IE.MemoryResource {{[0-9]+}} bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = {{.+}} : f64}
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @DPU
     // CHECK-DAG:  {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
     // CHECK-DAG:  {{    }}IE.ExecutorResource 1 of @SHAVE_NN

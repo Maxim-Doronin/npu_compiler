@@ -10,16 +10,7 @@ namespace vpux {
 namespace vpumi37xx2vpuasm {
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> NNDMARewriter::getSymbolicNames(VPUMI37XX::NNDMAOp op, size_t) {
-    auto fullName = VPUMI37XX::NNDMAOp::getOperationName();
-    auto opName = fullName.drop_front(VPUMI37XX::VPUMI37XXDialect::getDialectNamespace().size() + 1);
-
-    auto tileIdx = std::to_string(op.getType().getTileIdx());
-    auto srcTypeIdx = std::to_string(op.getType().getListIdx());
-    auto opIdx = std::to_string(op.getType().getValue());
-
-    auto symName = mlir::StringAttr::get(op.getContext(), opName + "_" + tileIdx + "_" + srcTypeIdx + "_" + opIdx);
-
-    return {mlir::FlatSymbolRefAttr::get(symName)};
+    return createSymbolicName(op, std::nullopt, std::nullopt);
 }
 
 llvm::SmallVector<std::pair<uint32_t, int32_t>> NNDMARewriter::reduce_dims_for_dma(mlir::Value val) {

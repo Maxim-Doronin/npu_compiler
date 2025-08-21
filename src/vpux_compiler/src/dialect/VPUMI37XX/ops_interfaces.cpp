@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUMI37XX/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>

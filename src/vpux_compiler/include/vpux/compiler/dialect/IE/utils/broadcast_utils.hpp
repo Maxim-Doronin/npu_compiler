@@ -5,8 +5,7 @@
 
 #pragma once
 
-#include <numeric>
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/utils/content.hpp"
 
 namespace vpux {

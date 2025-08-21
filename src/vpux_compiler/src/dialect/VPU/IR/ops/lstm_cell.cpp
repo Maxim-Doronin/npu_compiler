@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/max_lstm_hidden_size_constant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
@@ -30,8 +32,8 @@ mlir::LogicalResult vpux::VPU::LSTMCellOp::inferReturnTypes(mlir::MLIRContext* c
 
 namespace {
 
-bool isSupported(VPU::ArchKind arch, ShapeRef inputDataShape, ShapeRef initialHiddenStateShape) {
-    auto maxHiddenSize = getMaxLstmCellHiddenSizeConstant(arch);
+bool isSupported(config::ArchKind arch, ShapeRef inputDataShape, ShapeRef initialHiddenStateShape) {
+    auto maxHiddenSize = VPU::getMaxLstmCellHiddenSizeConstant(arch);
     // shave implementation allow reduced size. Bigger size can be map on DPU.
     // Cost model can be interrogate.
     constexpr int64_t maxInputSize(256);
@@ -55,5 +57,5 @@ bool isSupported(VPU::ArchKind arch, ShapeRef inputDataShape, ShapeRef initialHi
 //
 
 bool vpux::VPU::LSTMCellOp::isSupported(vpux::IE::LSTMCellOp op) {
-    return ::isSupported(VPU::getArch(op), getShape(op.getInputData()), getShape(op.getInitialHiddenState()));
+    return ::isSupported(config::getArch(op), getShape(op.getInputData()), getShape(op.getInitialHiddenState()));
 }

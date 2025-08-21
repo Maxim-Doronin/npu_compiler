@@ -11,7 +11,7 @@
 namespace vpux {
 namespace VPU {
 
-VPU::PerBarrierVariantConstraint getPerBarrierVariantConstraint(VPU::ArchKind arch, bool workloadManagementEnable);
+VPU::PerBarrierVariantConstraint getPerBarrierVariantConstraint(config::ArchKind arch, bool workloadManagementEnable);
 
 }  // namespace VPU
 }  // namespace vpux

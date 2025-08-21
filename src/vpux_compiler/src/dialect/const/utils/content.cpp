@@ -125,7 +125,7 @@ void vpux::Const::Content::copySubByteContent(MutableArrayRef<char> targetData, 
         if (_storageElemType.isInteger(1)) {
             subByteValue = _data.data().front() & 1;
         } else {
-            subByteValue = getValues<int8_t>()[0] & mask;
+            subByteValue = getSplatValue<int8_t>() & mask;
         }
 
         for (int64_t shift = 0; shift < numShifts; shift++) {
@@ -176,18 +176,6 @@ void vpux::Const::Content::copyTo(MutableArrayRef<char> targetData) const {
     const auto isSubByte = elemSize.count() < CHAR_BIT;
     if (isSubByte) {
         copySubByteContent(targetData, elemType);
-        return;
-    }
-
-    // E#160872: float16 splats are special due to (obscure) overflow semantics
-    // handling, but float16 non-splats are not special?!
-    const bool isTrivialStorage = (elemType == _storageElemType);
-    if (!_isSplat && isTrivialStorage) {
-        VPUX_THROW_UNLESS(targetData.size() >= _data.size(),
-                          "Byte sizes of the target buffer '{0}' is smaller then storage buffer '{1}' ",
-                          targetData.size(), _data.size());
-        auto srcData = _data.data();
-        std::memcpy(targetData.data(), srcData.data(), srcData.size());
         return;
     }
 

@@ -5,108 +5,41 @@
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/merge_vf_region_rewriter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_scheduling_factory.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vf_axis_increment.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/VPU/tile_utils.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 #include <llvm/ADT/SmallSet.h>
 #include <mlir/IR/IRMapping.h>
 
 namespace vpux::VPU::VF::v1 {
-std::optional<int64_t> MergeVFRegionRewriter::getOptimalTilingStrategy(
-        const IVFSchedulingPtr& scheduling, const Dim dim, const int64_t minTiles, int64_t& maxTiles,
-        TilingOperationStorage::UPtr& minStorage, TilingOperationStorage::UPtr& maxStorage, VFConfig& config) const {
-    if (minTiles > maxTiles || maxTiles == 1) {
-        return std::nullopt;
-    }
 
-    auto minNTiles = minTiles;
-    auto maxNTiles = maxTiles;
-
-    std::optional<int64_t> result;
-    auto outType = mlir::cast<vpux::NDTypeInterface>(config.getSubgraph()->getResult(0).getType());
-    auto tilingArray = SmallVector<int64_t>(outType.getRank(), 1);
-    tilingArray[dim.ind()] = minNTiles;
-    if (minTiles == maxTiles) {
-        if (minStorage == nullptr) {
-            minStorage = std::make_unique<TilingOperationStorage>();
-            auto tilingRegions = VPU::calculateTilingRegions(config.getSubgraph(), tilingArray, _log, minStorage);
-
-            if (mlir::failed(tilingRegions)) {
-                minStorage.reset();
-                return std::nullopt;
-            }
-        }
-
-        if (scheduling->validate(config, minStorage)) {
-            result = minTiles;
-        }
-        return result;
-    }
-
-    auto tilingMaxStrategy = SmallVector<int64_t>(outType.getRank(), 1);
-    tilingMaxStrategy[dim.ind()] = maxNTiles;
-
-    if (minStorage == nullptr) {
-        minStorage = std::make_unique<TilingOperationStorage>();
-        auto getValidStrategy = VPU::getMinimalValidTilingStrategyFromRange(config.getSubgraph(), tilingArray,
-                                                                            tilingMaxStrategy, dim, minStorage, _log);
-
-        if (mlir::failed(getValidStrategy)) {
-            minStorage.reset();
-            return std::nullopt;
-        }
-
-        tilingArray = getValidStrategy.value();
-        minNTiles = tilingArray[dim.ind()];
-    }
-
-    if (scheduling->validate(config, minStorage)) {
-        result = minNTiles;
-        return result;
-    }
-
-    if (maxStorage == nullptr) {
-        maxStorage = std::make_unique<TilingOperationStorage>();
-        auto getValidStrategy = VPU::getMaximalValidTilingStrategyFromRange(config.getSubgraph(), tilingArray,
-                                                                            tilingMaxStrategy, dim, maxStorage, _log);
-
-        if (mlir::failed(getValidStrategy)) {
-            maxStorage.reset();
-            return std::nullopt;
-        }
-
-        tilingMaxStrategy = getValidStrategy.value();
-        maxNTiles = tilingMaxStrategy[dim.ind()];
-        maxTiles = tilingMaxStrategy[dim.ind()];
-    }
-
-    if (!scheduling->validate(config, maxStorage)) {
-        return std::nullopt;
-    }
-
-    auto axisIncrement = getVFAxisIncrement(dim);
-    VPUX_THROW_WHEN(axisIncrement == nullptr, "Cannot get functions to get values for axis {0}", dim);
-
+std::optional<int64_t> findOptimalTilingStrategyInRange(const MergeVFRegionRewriter::IVFSchedulingPtr& scheduling,
+                                                        const Dim dim, int64_t minNTiles, int64_t& maxNTiles,
+                                                        std::unique_ptr<IVFAxisIncrement>& axisIncrement,
+                                                        ArrayRef<int64_t> origTilingArray,
+                                                        TilingOperationStorage::UPtr& minStorage,
+                                                        TilingOperationStorage::UPtr& maxStorage, VFConfig& config,
+                                                        Logger log) {
+    std::optional<int64_t> result = std::nullopt;
+    const auto origMaxTile = maxNTiles;
     auto nextValueFromMin = minNTiles;
     axisIncrement->increasedValue(nextValueFromMin, maxNTiles);
+    SmallVector<int64_t> tilingMaxStrategy(origTilingArray.begin(), origTilingArray.end());
+    SmallVector<int64_t> tilingArray(origTilingArray.begin(), origTilingArray.end());
 
     while (minNTiles < maxNTiles) {
         auto currentNTiles = axisIncrement->getMiddleValue(minNTiles, maxNTiles);
 
         if (maxNTiles == nextValueFromMin) {
             result = maxNTiles;
-            if (maxNTiles == maxTiles) {
+            if (maxNTiles == origMaxTile) {
                 minStorage.reset(maxStorage.release());
             }
             break;
@@ -120,8 +53,8 @@ std::optional<int64_t> MergeVFRegionRewriter::getOptimalTilingStrategy(
         tilingArray[dim.ind()] = currentNTiles;
 
         auto opStorage = std::make_unique<TilingOperationStorage>();
-        auto getValidTilingStrategy = VPU::getMinimalValidTilingStrategyFromRange(
-                config.getSubgraph(), tilingArray, tilingMaxStrategy, dim, opStorage, _log);
+        auto getValidTilingStrategy = getMinimalValidTilingStrategyFromRange(config.getSubgraph(), tilingArray,
+                                                                             tilingMaxStrategy, dim, opStorage, log);
         if (mlir::failed(getValidTilingStrategy)) {
             return std::nullopt;
         }
@@ -144,8 +77,106 @@ std::optional<int64_t> MergeVFRegionRewriter::getOptimalTilingStrategy(
         nextValueFromMin = minNTiles;
         axisIncrement->increasedValue(nextValueFromMin, maxNTiles);
     }
-
     return result;
+};
+
+std::optional<int64_t> MergeVFRegionRewriter::getOptimalTilingStrategy(
+        const IVFSchedulingPtr& scheduling, const Dim dim, const int64_t minTiles, int64_t& maxTiles,
+        TilingOperationStorage::UPtr& minStorage, TilingOperationStorage::UPtr& maxStorage, VFConfig& config) const {
+    if (minTiles > maxTiles || maxTiles == 1) {
+        return std::nullopt;
+    }
+
+    auto minNTiles = minTiles;
+    auto maxNTiles = maxTiles;
+
+    std::optional<int64_t> result;
+    auto outType = mlir::cast<vpux::NDTypeInterface>(config.getSubgraph()->getResult(0).getType());
+    auto tilingArray = SmallVector<int64_t>(outType.getRank(), 1);
+    tilingArray[dim.ind()] = minNTiles;
+    if (minTiles == maxTiles) {
+        if (minStorage == nullptr) {
+            minStorage = std::make_unique<TilingOperationStorage>();
+            auto tilingRegions = calculateTilingRegions(config.getSubgraph(), tilingArray, _log, minStorage);
+
+            if (mlir::failed(tilingRegions)) {
+                minStorage.reset();
+                return std::nullopt;
+            }
+        }
+
+        if (scheduling->validate(config, minStorage)) {
+            result = minTiles;
+        }
+        return result;
+    }
+
+    auto tilingMaxStrategy = SmallVector<int64_t>(outType.getRank(), 1);
+    tilingMaxStrategy[dim.ind()] = maxNTiles;
+
+    if (minStorage == nullptr) {
+        minStorage = std::make_unique<TilingOperationStorage>();
+        auto getValidStrategy = getMinimalValidTilingStrategyFromRange(config.getSubgraph(), tilingArray,
+                                                                       tilingMaxStrategy, dim, minStorage, _log);
+
+        if (mlir::failed(getValidStrategy)) {
+            minStorage.reset();
+            return std::nullopt;
+        }
+
+        tilingArray = getValidStrategy.value();
+        minNTiles = tilingArray[dim.ind()];
+    }
+
+    if (scheduling->validate(config, minStorage)) {
+        result = minNTiles;
+        return result;
+    }
+
+    auto axisIncrement = getVFAxisIncrement(dim);
+    VPUX_THROW_WHEN(axisIncrement == nullptr, "Cannot get functions to get values for axis {0}", dim);
+
+    if (maxStorage == nullptr) {
+        maxStorage = std::make_unique<TilingOperationStorage>(config.getOperationsForTiling(), maxNTiles);
+        // When maxNTiles is too large,  to avoid spending too much time on calculating, try to check if the cube root
+        // of the max tile is valid or not.
+        mlir::FailureOr<SmallVector<int64_t>> getValidStrategy = mlir::failure();
+        auto cbrtMaxTile = getCbrtMaxTileCandidate(minNTiles, maxNTiles, axisIncrement);
+        if (cbrtMaxTile.has_value()) {
+            auto tilingCbrtMaxStrategy = tilingMaxStrategy;
+            tilingCbrtMaxStrategy[dim.ind()] = cbrtMaxTile.value();
+            getValidStrategy = getMaximalValidTilingStrategyFromRange(config.getSubgraph(), tilingArray,
+                                                                      tilingCbrtMaxStrategy, dim, maxStorage, _log);
+
+            auto useCbrtMaxTileStrategy = mlir::succeeded(getValidStrategy) && scheduling->validate(config, maxStorage);
+            if (useCbrtMaxTileStrategy) {
+                maxNTiles = getValidStrategy.value()[dim.ind()];
+                result = findOptimalTilingStrategyInRange(scheduling, dim, minNTiles, maxNTiles, axisIncrement,
+                                                          tilingArray, minStorage, maxStorage, config, _log);
+                maxStorage.reset();
+                return result;
+            }
+        }
+
+        maxStorage.reset();
+        getValidStrategy = getMaximalValidTilingStrategyFromRange(config.getSubgraph(), tilingArray, tilingMaxStrategy,
+                                                                  dim, maxStorage, _log);
+        if (mlir::failed(getValidStrategy)) {
+            maxStorage.reset();
+            return std::nullopt;
+        }
+
+        maxTiles = tilingMaxStrategy[dim.ind()];
+        tilingMaxStrategy = getValidStrategy.value();
+        maxNTiles = tilingMaxStrategy[dim.ind()];
+    }
+
+    if (!scheduling->validate(config, maxStorage)) {
+        return std::nullopt;
+    }
+
+    return findOptimalTilingStrategyInRange(scheduling, dim, minNTiles, maxNTiles, axisIncrement, tilingArray,
+                                            minStorage, maxStorage, config, _log);
 }
 
 StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
@@ -201,7 +232,7 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
                 return false;
             }
 
-            const auto arch = VPU::getArch(operation);
+            const auto arch = config::getArch(operation);
             if (!VPU::spillingCopyOpsCanBeOverlapped(arch)) {
                 return false;
             }

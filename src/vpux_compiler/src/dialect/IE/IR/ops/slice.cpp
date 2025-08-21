@@ -3,9 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
-
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
@@ -43,7 +42,7 @@ mlir::LogicalResult vpux::IE::SliceOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(sliceOp.getSource().getType());
+    const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(sliceOp.getInput().getType());
     if (origType == nullptr) {
         return errorAt(loc, "IE::SliceOp operand must have vpux::NDTypeInterface type");
     }
@@ -73,8 +72,8 @@ mlir::LogicalResult vpux::IE::SliceOp::inferReturnTypeComponents(
 
 mlir::OpFoldResult vpux::IE::SliceOp::fold(FoldAdaptor adaptor) {
     auto operands = adaptor.getOperands();
-    if (getSource().getType() == getResult().getType()) {
-        return getSource();
+    if (getInput().getType() == getOutput().getType()) {
+        return getInput();
     }
 
     if (const auto origContent = mlir::dyn_cast_or_null<Const::ContentAttr>(operands[0])) {
@@ -100,7 +99,7 @@ public:
 };
 
 mlir::LogicalResult ComposeSlice::matchAndRewrite(IE::SliceOp origOp, mlir::PatternRewriter& rewriter) const {
-    auto producerSliceOp = origOp.getSource().getDefiningOp<IE::SliceOp>();
+    auto producerSliceOp = origOp.getInput().getDefiningOp<IE::SliceOp>();
     if (producerSliceOp == nullptr) {
         return mlir::failure();
     }
@@ -113,7 +112,7 @@ mlir::LogicalResult ComposeSlice::matchAndRewrite(IE::SliceOp origOp, mlir::Patt
 
     const auto finalOffsetsAttr = getIntArrayAttr(getContext(), finalOffsets);
     const auto finalShapeAttr = origOp.getStaticSizes();
-    rewriter.replaceOpWithNewOp<IE::SliceOp>(origOp, producerSliceOp.getSource(), finalOffsetsAttr, finalShapeAttr);
+    rewriter.replaceOpWithNewOp<IE::SliceOp>(origOp, producerSliceOp.getInput(), finalOffsetsAttr, finalShapeAttr);
 
     return mlir::success();
 }
@@ -136,7 +135,7 @@ mlir::LogicalResult ProcessNegativeOffset::matchAndRewrite(IE::SliceOp origOp,
     for (size_t i = 0; i < offsets.size(); ++i) {
         if (offsets[i] < 0) {
             negFlag = true;
-            offsets[i] += getShape(origOp.getSource())[Dim(i)];
+            offsets[i] += getShape(origOp.getInput())[Dim(i)];
         }
     }
 

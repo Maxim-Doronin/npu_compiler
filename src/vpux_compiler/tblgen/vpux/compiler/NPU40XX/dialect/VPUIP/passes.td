@@ -172,15 +172,6 @@ def AddStartBarrier: PassBase<"add-start-barrier", "vpux::FunctionPass"> {
         DMATask -> Barrier -> DMATask -> other tasks
     }];
 
-    let options = [
-        Option<
-            "enableCompilerBarrierProgramming", "enable-compiler-barrier-programming",
-            "bool", "false",
-            "Indicates whether barrier programming was done by the compiler or the runtime"
-        >
-    ];
-
-
     let constructor = "vpux::VPUIP::arch40xx::createAddStartBarrierPass()";
 }
 
@@ -227,11 +218,11 @@ def FuseSegmentedDMA : PassBase<"fuse-segmented-dma", "vpux::FunctionPass"> {
 }
 
 //
-// LegalizeScheduleForWlmFetchDmas
+// LegalizeScheduleForPartialWlmFetchDmas
 //
 
-def LegalizeScheduleForWlmFetchDmas : PassBase<"legalize-schedule-for-wlm", "vpux::FunctionPass"> {
-    let summary = "Pass inserts dummy dmas to facilitate workload-management pass";
+def LegalizeScheduleForPartialWlmFetchDmas : PassBase<"legalize-schedule-for-partial-wlm", "vpux::FunctionPass"> {
+    let summary = "Pass inserts dummy dmas to facilitate add-fetch-ops pass";
 
     let description = [{
         Workload Management pass expects to always find a DMA on tile 0 and list 0 for attaching a
@@ -242,7 +233,7 @@ def LegalizeScheduleForWlmFetchDmas : PassBase<"legalize-schedule-for-wlm", "vpu
         dummy DMAs such we would always find DMAs during fetch task insertion while maintaining a valid schedule
     }];
 
-    let constructor = "vpux::VPUIP::arch40xx::createLegalizeScheduleForWlmFetchDmasPass()";
+    let constructor = "vpux::VPUIP::arch40xx::createLegalizeScheduleForPartialWlmFetchDmasPass()";
 }
 
 //
@@ -276,6 +267,52 @@ def UnrollSpaceToDepthDMA : PassBase<"unroll-space-to-depth-dma", "vpux::Functio
     }];
 
     let constructor = "vpux::VPUIP::arch40xx::createUnrollSpaceToDepthDMAPass()";
+}
+
+//
+// AddPlaceholderFetchDMAs
+//
+
+def AddPlaceholderFetchDMAs : PassBase<"add-placeholder-fetch-dmas", "vpux::FunctionPass"> {
+    let summary = "Pass inserts fetch dmas to facilitate add-fetch-ops pass";
+
+    let description = [{
+        [Group N-2]..[Group N-1]..[Group N]
+        For the first 2 available groups it inserts FetchDMAs at beginning of the DMA list on port 0 ch:DDR
+
+        For the rest of groups it inserts FetchDMA with barriers. It creates 2 barriers such that last task of Group N-2 updates
+        barrier X and last task of Group N-1 waits for barrier Y. In such case it inserts FetchDMA which waits for barrier X and
+        updates barrier Y ensuring fetching for Group N is finished before Group N-1 is finished execution
+
+        These FetchDMAs are replaced with actual fetch DMAs by add-fetch-dma-ops-full-wlm pass
+        To identify which DMA belongs to which group on which queue we store fetchDMAAttr which contains information like
+        FetchDMAAttr{
+            executorKind
+            tileIdx
+            listIdx
+            executionGroupIdx
+        }
+        Any FetchDMA can be uniquely identified by above parameters and replaced
+    }];
+
+    let constructor = "vpux::VPUIP::arch40xx::createAddPlaceholderFetchDMAsPass()";
+}
+
+//
+// UnrollPermuteDMA
+//
+
+def UnrollPermuteDMA : PassBase<"unroll-permute-dma", "vpux::FunctionPass"> {
+    let summary = "Unroll PermuteDMA tasks";
+
+    let description = [{
+        This pass unrolls PermuteDMA tasks to one or several PermuteDMA tasks.
+        The multi-cluster unrolling is carried over from NPU37XX and the single-cluster unrolling is completely new
+        for NPU40XX in order to leverage the more flexible DMA capabilities of NPU40XX.
+        After this pass completes, all PermuteDMA tasks will have an InternalDataFlowAttr attached.
+    }];
+
+    let constructor = "vpux::VPUIP::arch40xx::createUnrollPermuteDMAPass()";
 }
 
 #endif

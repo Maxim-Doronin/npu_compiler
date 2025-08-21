@@ -5,6 +5,7 @@
 
 //
 
+#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>

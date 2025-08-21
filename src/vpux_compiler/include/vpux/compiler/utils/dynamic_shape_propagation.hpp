@@ -5,8 +5,13 @@
 
 #pragma once
 
-#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+
+#include <mlir/Support/LLVM.h>
+
+namespace vpux::VPU {
+enum class BoundsRepresentation : uint64_t;
+}  // namespace vpux::VPU
 
 namespace vpux {
 

@@ -6,14 +6,11 @@
 #pragma once
 
 #include "vpux/compiler/core/pipelines_options.hpp"
-
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/utils/options.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Pass/Pass.h>
-#include <mlir/Pass/PassOptions.h>
-
-#include <memory>
 
 namespace vpux {
 namespace IE {
@@ -95,6 +92,7 @@ std::unique_ptr<mlir::Pass> createFuseReshapeMvnPass(Logger log = Logger::global
 std::unique_ptr<mlir::Pass> createFuseRMSNormPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseRoPEPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseSDPAPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createExpandSoftmaxAxisPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseDynamicQuantizePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeParallelLayersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeReordersPass(const bool seOpsEnabled = false,
@@ -229,7 +227,7 @@ std::unique_ptr<mlir::Pass> createPropagateShapeCastPass(Logger log = Logger::gl
 std::unique_ptr<mlir::Pass> createPropagateTransposePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSwapTransposeWithFQPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPropagateDequantThroughConcatPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSwapConvertWithTransposeReshapePass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSwapConvertWithReshapeKindOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPerAxisFQConcatPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertGatherToSlicePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertToScaleShiftPass(Logger log = Logger::global());
@@ -259,6 +257,8 @@ std::unique_ptr<mlir::Pass> createDumpStatisticsOfIeOpsPass(Logger log = Logger:
 std::unique_ptr<mlir::Pass> createConvertSDPAToOnlineSDPAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDecomposeOnlineSDPAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDecomposeIncrementalSDPAPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createMapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp = false,
+                                                                  Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createTileIncrementalSDPAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createTileOnlineSDPAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLoadExternalKernelResourcesPass(Logger log = Logger::global());
@@ -586,6 +586,7 @@ std::unique_ptr<mlir::Pass> createConvertDynamicDequantizeToDequantizePass(Logge
 std::unique_ptr<mlir::Pass> createSwapOperationWithGatherPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertVariadicSplitToStridedSlicePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustFakeQuantizeParamsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAdjustFakeQdqParamsPass(Logger log = Logger::global());
 
 //
 // Legalization for NCE
@@ -823,6 +824,9 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
             *this, "enable-online-sdpa-conversion",
             llvm::cl::desc("Convert SDPA layer into OnlineSDPA that implements FlashAttention-2 approach"),
             llvm::cl::init(false)};
+    BoolOption enableApplyDynamicBoundaryCorrection{*this, "enable-apply-dynamic-boundary-correction",
+                                                    llvm::cl::desc("Enable apply-dynamic-boundary-correction pass"),
+                                                    llvm::cl::init(false)};
 };
 
 //

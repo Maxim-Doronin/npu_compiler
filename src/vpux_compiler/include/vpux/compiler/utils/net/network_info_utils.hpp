@@ -6,6 +6,8 @@
 #pragma once
 
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux::net {
 
@@ -22,5 +24,15 @@ void setupSections(net::NetworkInfoOp netInfo, bool enableProfiling = false);
     the specified section. The removal starts from @a begin.
  */
 void eraseSectionEntries(mlir::Region& section, size_t begin = 0);
+
+// Remove the utility function after pipeline issues are resolved in E#168311
+
+/** @brief Utility function for HostCompile pipeline to fetch entry point function.
+
+    The function safely returns an entry point function from network info object.
+    If the entry point function is not found, it returns nullptr.
+    Track: E#168311
+ */
+mlir::func::FuncOp findEntryPointFunc(mlir::Operation* op, Logger& log);
 
 }  // namespace vpux::net

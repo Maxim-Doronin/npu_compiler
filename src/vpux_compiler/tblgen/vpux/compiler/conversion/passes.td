@@ -288,7 +288,7 @@ def ConvertVPUMI40XX2VPUASM : PassBase<"convert-VPUMI40XX-to-VPUASM", "vpux::Mod
     let options = [
         Option<
             "enablePWLMOpt", "workload-management-enable",
-            "bool", "false",
+            "bool", "true",
             "Flag which identifies enablement of partial workload management"
         >
     ];

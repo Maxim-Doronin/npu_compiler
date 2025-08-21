@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -205,8 +206,8 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                         const auto outputType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getOutput().getType());
                         auto module = getModuleOp(memPermuteOp.getOperation());
                         const auto dmaPortNum = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-                        if (VPUIP::isBeneficialForUsingPermuteDMA(getArch(memPermuteOp.getOperation()), inputType,
-                                                                  outputType, memPerm, dmaPortNum, _log)) {
+                        if (VPUIP::isBeneficialForUsingPermuteDMA(config::getArch(memPermuteOp.getOperation()),
+                                                                  inputType, outputType, memPerm, dmaPortNum, _log)) {
                             _log.trace("Operation {0} is mapped to permute DMA, do not assign strategy", origOp);
                             return;
                         }
@@ -371,6 +372,10 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                     if (origOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverGroup, _numTiles)) {
                         setLayerStrategy(VPU::MultiClusterStrategy::SplitOverGroup, origOp.getOperation());
                     }
+                })
+                .Case<GatherDMAOp>([&](GatherDMAOp /*origOp*/) {
+                    // Multiclustering is not yet enabled for Gather DMA op
+                    return;
                 })
                 .Default([&](mlir::Operation* unknownOp) -> void {
                     _log.trace("Operation '{0}' at '{1}' does not support multi cluster", unknownOp->getName(),

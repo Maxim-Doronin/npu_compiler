@@ -23,14 +23,14 @@ void vpux::NPUReg40XX::ActKernelRangeOp::serialize(elf::writer::BinaryDataSectio
                       sizeof(nn_public::VpuActKernelRange), actKernRangeDescriptor.size());
 
     auto serializedActKernRangeDesc = actKernRangeDescriptor.getStorage();
-    binDataSection.appendData(serializedActKernRangeDesc.data(), getBinarySize(VPU::ArchKind::NPU40XX));
+    binDataSection.appendData(serializedActKernRangeDesc.data(), getBinarySize(config::ArchKind::NPU40XX));
 }
 
-size_t vpux::NPUReg40XX::ActKernelRangeOp::getBinarySize(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::ActKernelRangeOp::getBinarySize(config::ArchKind) {
     return sizeof(nn_public::VpuActKernelRange);
 }
 
-size_t vpux::NPUReg40XX::ActKernelRangeOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::NPUReg40XX::ActKernelRangeOp::getAlignmentRequirements(config::ArchKind) {
     return alignof(nn_public::VpuActKernelRange);
 }
 

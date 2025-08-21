@@ -32,15 +32,14 @@
 // then check to make sure that the incoming delta has the same shape as the forward output.
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
-
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
-#include "openvino/op/group_conv.hpp"
+#include <openvino/core/dimension.hpp>
 
 using namespace vpux;
 

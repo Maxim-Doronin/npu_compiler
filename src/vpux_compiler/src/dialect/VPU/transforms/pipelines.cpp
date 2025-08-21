@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -72,17 +73,11 @@ void vpux::VPU::buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::In
 
     pm.addPass(VPU::createInitResourcesPass(options, log));
     pm.addPass(VPU::createSetupPipelineOptionsPass(options, log));
+    pm.addPass(VPU::createSetTargetIndependentPassOptionsPass(options, log));
+
     pm.addPass(VPU::createSetupMaxKernelSizePass(options, log));
     pm.addPass(VPU::createSetupNpuConstraintPass(options, log));
     pm.addPass(VPU::createSetupTilingConstraintPass(options, log));
-    pm.addPass(VPU::createSetupChannelsAutoPaddingPass(options, log));
-    pm.addPass(VPU::createSetupIsReduceSupportedPass(options, log));
-    pm.addPass(VPU::createSetupEnableFP16CompressedConvPass(options, log));
-    pm.addPass(VPU::createSetupEnableVPUNNPreSplitPass(options, log));
-    pm.addPass(VPU::createSetupWeightsTableReuseModePass(options, log));
-    pm.addPass(VPU::createSetupEnableSEPtrsOperationsPass(options, log));
-    pm.addPass(VPU::createSetupEnableAdaptiveStrippingPass(options, log));
-    pm.addPass(VPU::createSetupEnableExtraStaticShapeOpsPass(options, log));
 }
 
 //
@@ -164,10 +159,15 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
     }
     pm.addPass(VPU::createEfficientIROrderPass(log));
     if (options.enableVerticalFusion) {
-        VPU::buildVFPipeline(pm, options, log);
+        if (!options.enableSCFTiling) {
+            VPU::buildVFPipeline(pm, options, log);
+        } else {
+            pm.addPass(VPU::createSCFVerticalFusionPass(log));
+            pm.addPass(mlir::createCanonicalizerPass(grc));
+        }
     }
 
-    if (options.enableOutputPipelining) {
+    if (!options.enableSCFTiling && options.enableOutputPipelining) {
         pm.addPass(VPU::createOutputPipelineTilingPass(options.enablePrefetchTiling, log));
         // manual strategy debug configuration
         pm.addPass(VPU::createManualStrategyUtilsPass(
@@ -186,7 +186,7 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
 //
 
 void vpux::VPU::buildVFPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& options, Logger log) {
-    pm.addPass(VPU::createWrapVerticalFusionRegionPass(log));
+    pm.addPass(VPU::createWrapVerticalFusionRegionPass(options.workloadManagementMode, log));
     pm.addPass(VPU::createMoveViewOpsToVerticalFusionPass(options.workloadManagementMode, log));
     pm.addPass(VPU::createMergeVfSubgraphsPass(options.enableVerticalFusionPipelining, options.enablePrefetchTiling,
                                                options.workloadManagementMode, log));

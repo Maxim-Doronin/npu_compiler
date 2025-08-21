@@ -4,13 +4,7 @@
 //
 
 #include "vpux/compiler/ShaveCodeGen/passes.hpp"
-
-#include "vpux/compiler/conversion.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/small_string.hpp"
-#include "vpux/utils/logger/logger.hpp"
-
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -23,6 +17,7 @@
 #include <mlir/Interfaces/DestinationStyleOpInterface.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <mlir/Transforms/RegionUtils.h>
 
 namespace vpux::ShaveCodeGen {
@@ -197,7 +192,7 @@ void OutlineCodeGenCapsulesPass::safeRunOnModule() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<OutlineCodeGenCapsule>(&ctx, swModule, counter, swModule.getSymNameAttr());
     mlir::tensor::BitcastOp::getCanonicalizationPatterns(patterns, &ctx);
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    if (failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
         return signalPassFailure();
     }
 }

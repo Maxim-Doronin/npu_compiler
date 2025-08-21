@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/dialect.hpp"
 
 #include <mlir/Dialect/Tensor/IR/Tensor.h>

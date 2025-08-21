@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -50,7 +51,7 @@ mlir::LogicalResult TileGatherElement::matchAndRewrite(VPU::GatherOp origOp, mli
     const auto inputShape = getShape(origOp.getInput());
     const auto outputShape = getShape(origOp.getOutput());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    const auto arch = VPU::getArch(origOp);
+    const auto arch = config::getArch(origOp);
 
     Shape nTilesOnDim(outputShape.size(), 1);
     DimArr tileDimOrder;
@@ -125,7 +126,7 @@ mlir::LogicalResult TileGatherIndices::matchAndRewrite(VPU::GatherOp origOp, mli
     const auto indicesType = mlir::cast<vpux::NDTypeInterface>(origOp.getIndices().getType());
     const auto indicesShape = indicesType.getShape();
     const auto indicesRank = origOp.getIndicesRank().value_or(indicesShape.size());
-    const auto arch = VPU::getArch(origOp);
+    const auto arch = config::getArch(origOp);
 
     Shape nTilesOnDim(outputShape.size(), 1);
 

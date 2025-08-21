@@ -4,8 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/dialect.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -46,6 +50,7 @@ void ConvertAllocationsToDeclarationsPass::safeRunOnFunc() {
 
     mlir::ConversionTarget target(ctx);
     target.addLegalDialect<mlir::async::AsyncDialect>();
+    target.addLegalDialect<Core::CoreDialect>();
     target.addLegalDialect<Const::ConstDialect>();
     target.addLegalDialect<VPUIP::VPUIPDialect>();
     target.addLegalDialect<VPURT::VPURTDialect>();

@@ -1,8 +1,8 @@
+#!/usr/bin/env python
 #
 # Copyright (C) 2025 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
-#!/usr/bin/env python
 
 import argparse
 import os

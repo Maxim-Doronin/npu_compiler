@@ -58,12 +58,7 @@ llvm::SmallVector<mlir::FlatSymbolRefAttr> DeclareBufferRewriter::getSymbolicNam
         return {mlir::FlatSymbolRefAttr()};
     }
 
-    auto fullName = VPURT::DeclareBufferOp::getOperationName();
-    auto opName = fullName.drop_front(VPURT::VPURTDialect::getDialectNamespace().size() + 1);
-
-    auto index = std::to_string(counter);
-    auto symName = mlir::StringAttr::get(op.getContext(), opName + index);
-    return {mlir::FlatSymbolRefAttr::get(symName)};
+    return createSymbolicName(op, /* taskTypeString */ std::nullopt, counter);
 }
 
 }  // namespace vpumi40xx2vpuasm

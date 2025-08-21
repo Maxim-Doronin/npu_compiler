@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/error.hpp"
-
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -93,17 +93,19 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
     if (padOp.getPadValue() != nullptr) {
         const auto padValueType = mlir::cast<mlir::ShapedType>(padOp.getPadValue().getType());
         if (padValueType.getNumElements() != 1) {
-            return errorAt(padOp.getLoc(), "'pad_value' should have only 1 element, while it has {0}",
-                           padValueType.getNumElements());
+            // Cannot convert const to attr: 'pad_value' has more than 1 element
+            return mlir::failure();
         }
 
         auto padValueConst = padOp.getPadValue().getDefiningOp<Const::DeclareOp>();
         if (padValueConst == nullptr) {
-            return errorAt(padOp.getLoc(), "Only constant input is supported for 'pad_value'");
+            // Cannot convert const to attr: 'pad_value' is not const
+            return mlir::failure();
         }
 
         if (const auto& attr = padValueConst.getContentAttr(); !attr.isSplat()) {
-            return errorAt(padOp.getLoc(), "Only splat input is supported for 'pad_value'");
+            // Cannot convert const to attr: 'pad_value' is not splat const
+            return mlir::failure();
         }
 
         const auto padValueContent = padValueConst.getContent();

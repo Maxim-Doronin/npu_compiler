@@ -5,8 +5,8 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
@@ -15,7 +15,8 @@
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_support.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
@@ -52,7 +53,7 @@ bool vpux::VPU::NCEPermuteOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTy
                                                           : getTotalCMXFragmentationAwareSize(getOperation()).count();
     SmallVector<Byte> buffers = {input.getTotalAllocSize(), output.getTotalAllocSize()};
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(getOperation()), buffers).count() +
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -139,10 +140,10 @@ bool vpux::VPU::NCEPermuteOp::isSupported(IE::PermuteQuantizeOp op, LogCb logCb,
 
 mlir::LogicalResult vpux::VPU::NCEPermuteOp::verify() {
     const auto op = getOperation();
-    const auto arch = getArch(op);
+    const auto arch = config::getArch(op);
 
     // Skip checks if architecture is unknown since all of them depend on the architecture used
-    if (arch == VPU::ArchKind::UNKNOWN) {
+    if (arch == config::ArchKind::UNKNOWN) {
         return mlir::success();
     }
 
@@ -266,13 +267,13 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEPermuteOp::getTilingStrategy(TilingM
 //
 
 bool vpux::VPU::NCEPermuteOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
     // SOK is only enabled on 40XX+, but 37XX also supports it, need to enable and refactor.
     // Tracked by: E116491
     const auto origInputShape = getShape(this->getInput());
     const auto expandedChannels = this->getExpandedChannels();
     return strategy == VPU::MultiClusterStrategy::SplitOverHeightOverlapped ||
-           (arch >= VPU::ArchKind::NPU40XX && strategy == VPU::MultiClusterStrategy::SplitOverKernel &&
+           (arch >= config::ArchKind::NPU40XX && strategy == VPU::MultiClusterStrategy::SplitOverKernel &&
             origInputShape[Dims4D::Act::C] == expandedChannels);
 }
 
@@ -294,10 +295,10 @@ bool VPU::NCEPermuteOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape
 }
 
 bool VPU::NCEPermuteOp::isOperationSplitOverKernelCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
-    const auto arch = getArch(getOperation());
+    const auto arch = config::getArch(getOperation());
     const auto origInputShape = getShape(this->getInput());
     const auto expandedChannels = this->getExpandedChannels();
-    if (arch == VPU::ArchKind::NPU37XX || origInputShape[Dims4D::Act::C] != expandedChannels) {
+    if (arch == config::ArchKind::NPU37XX || origInputShape[Dims4D::Act::C] != expandedChannels) {
         return false;
     }
     return VPU::isOperationSplitOverKernelCompatible(getOperation(), outputShape, offset, axis);

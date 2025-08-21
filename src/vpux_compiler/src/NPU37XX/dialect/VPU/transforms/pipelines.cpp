@@ -46,6 +46,28 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
                                                  const VPU::arch37xx::DefaultHWOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
+    /*
+      Memory reservation for CMX has to happen as early in VPU as possible. It is required because memory reservation
+      decreases usable CMX size which can result in different tiling decisions. If different passes see different
+      effective CMX size different failures which can be hard to diagnose can happen. Examples of such failures include:
+      - Fail during compilation if additional memory was reserved after tiling but before scheduling since tiles
+      selected by tiling pipeline won't fit CMX anymore
+      - Memory corruption if additional memory is reserved after scheduler since additional memory will overlap
+      addresses allocated by the scheduler Currently there is no validation if memory is not reserved before the first
+      call to getTotalCMXSize.
+    */
+    if (options.enableProfiling) {
+        pm.addPass(VPU::createDMATaskProfilingReserveMemPass(options.enableDMAProfiling.getValue(), log));
+    }
+
+    /*
+      Call this pass after all other memory reservation has already been done. This pass checks if there is 1KiB
+      of reserved memory at the end of CMX and extends it if some is missing. So to not waste CMX memory make sure
+      as much as possible is allocated in that 1KiB region. Exception to this rule is memory reserved for SW kernel IO
+      for such memory make sure to reserve it after this pass to allow data prefetching.
+    */
+    pm.addPass(VPU::createSWKernelDataPrefetchReserveMemPass(log));
+
     // TODO: E#140041 enable profiling with outlining
     if (options.enableConcatRepeatingBlockOutlining && !options.enableProfiling) {
         pm.addPass(VPU::createConcatRepeatingBlocksOutliningPass(options.concatRepeatingBlockOutliningSeqLength, log));
@@ -70,8 +92,8 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createFuseClampPass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(true, log));
-    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
-
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false,
+                                             /*disablePassOnEntryFunctionForHostCompile=*/false, log));
     if (options.enableWeightsSparsity) {
         VPU::buildWeightsSparsityPipeline(pm, VPU::WeightsSparsityOptions(options), log);
     }
@@ -94,7 +116,8 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPU::createAdjustMemorySpacePass(log));
     pm.addPass(VPU::createOptimizeSharedInputCopyForConcatPass(log));
-    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false, log));
+    pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false,
+                                             /*disablePassOnEntryFunctionForHostCompile=*/false, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
     pm.addPass(VPU::createCMXConcatPass(log));
@@ -105,6 +128,26 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createResolveEltwiseWithZTiledWorkloadsPass(log));
     pm.addPass(VPU::createOutlineEntireMainContentPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
+}
+
+void vpux::VPU::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm, Logger log) {
+    // Create DMA HWP scratch buffer
+    pm.addPass(VPU::createDMATaskProfilingReserveMemPass("false", log));
+    pm.addPass(VPU::createSWKernelDataPrefetchReserveMemPass(log));
+    pm.addPass(VPU::createDetectionOutputDecompositionPass(log));
+    pm.addPass(VPU::arch37xx::createSplitRealDFTOpsPass(log));
+    pm.addPass(VPU::createSplitGRUSequencePass(log));
+    pm.addPass(VPU::arch37xx::createDecomposeMVNPass(log));
+    pm.addPass(VPU::createAddSwOpAuxiliaryBufferPass(log));
+
+    pm.addPass(VPU::createTilingStrategyAssignmentPass(
+            /*enablePrefetchTiling=*/false, /*enableVPUNNCostForTiling*/ false,
+            /*enableShaveDDRAccessOptimization*/ "true", log));
+    pm.addPass(VPU::arch37xx::createApplyTilingMVN1SumPass(/*enablePrefetchTiling=*/false, log));
+    pm.addPass(VPU::createApplyTilingPass(/*enableSCFTiling=*/false, log));
+    pm.addPass(VPU::createComputeInterpolateCoordinatesPass(/*enableExplicitDistributionInfoAttr*/ false, log));
+
+    pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
 }
 
 void vpux::VPU::arch37xx::registerVPUPipelines() {
@@ -124,5 +167,11 @@ void vpux::VPU::arch37xx::registerVPUPipelines() {
             "sm-pipeline", "Apply SM Pipeline",
             [](mlir::OpPassManager& pm, const vpux::arch37xx::MCAndTilingOptionsDevice& options) {
                 VPU::buildSMPipeline(pm, vpux::MCAndTilingOptionsBase(options));
+            });
+
+    mlir::PassPipelineRegistration<VPU::arch37xx::DefaultHWOptions>(
+            "reference-sw-mode-vpu", "VPU dialect part of Reference SW pipeline",
+            [](mlir::OpPassManager& pm, const VPU::arch37xx::DefaultHWOptions&) {
+                VPU::arch37xx::buildReferenceSWPipeline(pm);
             });
 }

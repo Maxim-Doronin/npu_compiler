@@ -120,9 +120,10 @@ protected:
 
     void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
         inputs.clear();
-        size_t num_directions = seq_direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
-        ov::Shape default_shape{batch_size, num_directions, hidden_size};
+        size_t numDirections = seq_direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
+        ov::Shape defaultShape{batch_size, numDirections, hidden_size};
         auto itTargetShape = targetInputStaticShapes.begin();
+        int seed = 1;
         for (const auto& param : function->get_parameters()) {
             std::shared_ptr<ov::Node> inputNode = param;
             for (size_t i = 0; i < param->get_output_size(); i++) {
@@ -132,14 +133,14 @@ protected:
                         if (itTargetShape != targetInputStaticShapes.end()) {
                             if (nodePtr->get_input_node_ptr(port)->shared_from_this() ==
                                 inputNode->shared_from_this()) {
-                                ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(param->get_element_type(),
-                                                                                            *itTargetShape, 100, 0);
+                                ov::Tensor tensor = ov::test::utils::create_and_fill_tensor_real_distribution(
+                                        param->get_element_type(), *itTargetShape, -1.0f, 1.0f, seed++);
                                 inputs.insert({param, tensor});
                                 break;
                             }
                         } else {
-                            ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(param->get_element_type(),
-                                                                                        default_shape, 100, 0);
+                            ov::Tensor tensor = ov::test::utils::create_and_fill_tensor_real_distribution(
+                                    param->get_element_type(), defaultShape, -1.0f, 1.0f, seed++);
                             inputs.insert({param, tensor});
                         }
                     }
@@ -153,6 +154,7 @@ protected:
 };
 
 TEST_P(DynamicTensorIteratorNPUTest, NPU4000_HW_TestKindSubgraph) {
+    abs_threshold = 0.0001f;
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
@@ -164,14 +166,14 @@ std::vector<int32_t> hidden_sizes = {128};
 
 std::vector<ov::element::Type> model_types = {ov::element::f32};
 
-std::vector<ov::op::RecurrentSequenceDirection> reccurent_sequence_direction = {
+std::vector<ov::op::RecurrentSequenceDirection> recurent_sequence_direction = {
         ov::op::RecurrentSequenceDirection::FORWARD, ov::op::RecurrentSequenceDirection::REVERSE,
         ov::op::RecurrentSequenceDirection::BIDIRECTIONAL};
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicTensorIterator_LSTMSequence, DynamicTensorIteratorNPUTest,
                          testing::Combine(testing::ValuesIn({LSTMType::LSTMSequence}), testing::ValuesIn(input_shapes),
                                           testing::ValuesIn(hidden_sizes),
-                                          testing::ValuesIn(reccurent_sequence_direction),
+                                          testing::ValuesIn(recurent_sequence_direction),
                                           testing::Values<std::string>(ov::test::utils::DEVICE_NPU),
                                           testing::ValuesIn(model_types)),
                          DynamicTensorIteratorNPUTest::getTestCaseName);

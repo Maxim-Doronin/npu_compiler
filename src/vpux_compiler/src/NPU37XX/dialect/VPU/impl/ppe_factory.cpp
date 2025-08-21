@@ -3,14 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/NPU37XX/dialect/VPU/impl/ppe_factory.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/ppe_utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/custom_float.hpp"
 #include "vpux/utils/core/numeric.hpp"
-
-#include "vpux/compiler/NPU37XX/dialect/VPU/impl/ppe_factory.hpp"
-#include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/ppe_utils.hpp"
-#include "vpux/compiler/utils/quantization.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 

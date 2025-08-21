@@ -6,19 +6,19 @@
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --init-resources="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" %s | FileCheck %s  --strict-whitespace
 // REQUIRES: arch-NPU40XX
 
-// CHECK: module @mode attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<ReferenceSW>}
+// CHECK: module @mode attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>} {
 }
 
 // -----
 
-// CHECK: module @arch attributes {VPU.arch = #VPU.arch_kind<NPU37XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>}
-module @arch attributes {VPU.arch = #VPU.arch_kind<NPU37XX>} {
+// CHECK: module @arch attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+module @arch attributes {config.arch = #config.arch_kind<NPU37XX>} {
 }
 
 // -----
 
-// CHECK: module @executors attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>}
+// CHECK: module @executors attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @executors {
     IE.ExecutorResource 5 of @DMA_NN
     IE.TileResource 5 of @NCE at 6.000000e+02 MHz
@@ -30,16 +30,16 @@ module @executors {
 // CHECK-DAG:   {{    }}IE.ExecutorResource 1 of @DPU
 // CHECK-DAG:   {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
 // CHECK-DAG:   {{    }}IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-// CHECK-DAG:   {{    }}IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
-// CHECK-DAG:   {{  }}IE.MemoryResource 67108864000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+// CHECK-DAG:   {{    }}IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+// CHECK-DAG:   {{  }}IE.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
 
 // -----
 
-// CHECK: module @memory attributes {VPU.arch = #VPU.arch_kind<NPU40XX>, VPU.revisionID = #VPU.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>}
+// CHECK: module @memory attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @memory {
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
         IE.MemoryResource 5 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 10000 bytes of @CMX_NN {VPU.bandwidth = 10 : i64, VPU.derateFactor = 2.0 : f64}
+        IE.MemoryResource 10000 bytes of @CMX_NN {config.bandwidth = 10 : i64, config.derateFactor = 2.0 : f64}
     }
     IE.MemoryResource 500000 bytes of @DDR
 }
@@ -50,5 +50,5 @@ module @memory {
 // CHECK-DAG:   {{    }}IE.ExecutorResource 1 of @DPU
 // CHECK-DAG:   {{    }}IE.ExecutorResource 2 of @SHAVE_ACT
 // CHECK-DAG:   {{    }}IE.MemoryResource 5 bytes of @CMX_NN_FragmentationAware
-// CHECK-DAG:   {{    }}IE.MemoryResource 10000 bytes of @CMX_NN {VPU.bandwidth = 10 : i64, VPU.derateFactor = 2.000000e+00 : f64}
-// CHECK-DAG:   {{  }}IE.MemoryResource 500000 bytes of @DDR {VPU.bandwidth = 64 : i64, VPU.derateFactor = 6.000000e-01 : f64}
+// CHECK-DAG:   {{    }}IE.MemoryResource 10000 bytes of @CMX_NN {config.bandwidth = 10 : i64, config.derateFactor = 2.000000e+00 : f64}
+// CHECK-DAG:   {{  }}IE.MemoryResource 500000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}

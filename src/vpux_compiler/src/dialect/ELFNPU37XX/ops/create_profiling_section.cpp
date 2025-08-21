@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/attributes.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 void vpux::ELFNPU37XX::CreateProfilingSectionOp::serialize(elf::Writer& writer,
                                                            vpux::ELFNPU37XX::SectionMapType& sectionMap,

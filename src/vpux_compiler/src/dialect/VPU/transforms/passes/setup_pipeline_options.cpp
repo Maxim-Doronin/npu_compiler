@@ -62,7 +62,7 @@ mlir::LogicalResult SetupPipelineOptionsPass::initializeOptions(
 }
 
 void SetupPipelineOptionsPass::initializeFromOptions() {
-    auto archStr = VPU::symbolizeEnum<VPU::ArchKind>(archOpt.getValue());
+    auto archStr = config::symbolizeEnum<config::ArchKind>(archOpt.getValue());
     VPUX_THROW_UNLESS(archStr.has_value(), "Unknown VPU architecture : '{0}'", archOpt.getValue());
     const auto _arch = archStr.value();
 
@@ -73,7 +73,7 @@ void SetupPipelineOptionsPass::initializeFromOptions() {
     // Register the default PPE factory singleton
     const auto& ppeVersion = ppeVersionOpt.getValue();
     if (ppeVersion == "Auto") {
-        if (_arch == VPU::ArchKind::NPU37XX || _arch == VPU::ArchKind::NPU40XX) {
+        if (_arch == config::ArchKind::NPU37XX || _arch == config::ArchKind::NPU40XX) {
             VPU::PpeVersionConfig::setFactory<VPU::arch37xx::PpeFactory>();
             _log.info("Auto target PPE version set to: 'IntPPE'");
         }

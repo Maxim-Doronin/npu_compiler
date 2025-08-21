@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/weights_table_reuse_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 
 #include <mlir/IR/PatternMatch.h>

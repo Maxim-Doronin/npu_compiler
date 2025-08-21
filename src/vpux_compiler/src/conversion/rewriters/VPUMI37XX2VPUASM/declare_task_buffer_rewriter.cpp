@@ -22,17 +22,7 @@ mlir::FailureOr<SymbolizationResult> DeclareTaskBufferRewriter::symbolize(
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> DeclareTaskBufferRewriter::getSymbolicNames(
         VPUMI37XX::DeclareTaskBufferOp op, size_t) {
-    auto opName = op->getName().stripDialect();
-    auto taskTypeString = VPURegMapped::stringifyTaskType(op.getTaskType());
-
-    auto tileIdx = std::to_string(op.getType().getTileIdx());
-    auto srcTypeIdx = std::to_string(op.getType().getListIdx());
-    auto opIdx = std::to_string(op.getType().getValue());
-
-    auto symName = mlir::StringAttr::get(
-            op.getContext(), opName + "_" + taskTypeString + "_" + tileIdx + "_" + srcTypeIdx + "_" + opIdx);
-
-    return {mlir::FlatSymbolRefAttr::get(symName)};
+    return createSymbolicName(op, VPURegMapped::stringifyTaskType(op.getTaskType()).str(), /* counter */ std::nullopt);
 }
 
 }  // namespace vpumi37xx2vpuasm

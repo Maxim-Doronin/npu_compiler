@@ -7,6 +7,7 @@
 #define VPUX_COMPILER_DIALECT_VPUIPDPU_OPS
 
 include "vpux/compiler/dialect/VPU/ops_interfaces.td"
+include "vpux/compiler/dialect/config/ops_interfaces.td"
 include "vpux/compiler/dialect/VPUIPDPU/attributes.td"
 include "vpux/compiler/dialect/VPUIPDPU/dialect.td"
 include "vpux/compiler/dialect/VPUIPDPU/ops_interfaces.td"
@@ -22,7 +23,7 @@ class VPUIPDPU_Op<string mnemonic, list<Trait> traits = []> :
             !listconcat(
                 traits,
                 [
-                    DefinedInArch<"vpux::VPU::ArchKind::NPU40XX">
+                    DefinedInArch<"vpux::config::ArchKind::NPU40XX">
                 ]
             )
         >;
@@ -50,7 +51,7 @@ Setting this value will trigger pool_wt_rd_dis and disable reading of weights fr
 
 wt_plt_cfg - This config allows to specify the weight palletization in the IDU.
 
-quantiles_lut - Optiona attribute that stores the weight palletization table values, when palletization is enabled.
+quantiles_lut - Optional attribute that stores the weight palletization table values, when palletization is enabled.
          }];
 
     let arguments =(ins

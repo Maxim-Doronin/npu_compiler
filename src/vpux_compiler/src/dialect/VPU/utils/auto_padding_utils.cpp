@@ -15,39 +15,17 @@
 
 using namespace vpux;
 
-bool hasAutoPaddingOption(mlir::ModuleOp module, StringRef paddingMode) {
-    auto pipelineOptionOp = module.lookupSymbol<config::PipelineOptionsOp>(VPU::PIPELINE_OPTIONS);
-    if (pipelineOptionOp == nullptr) {
-        auto logger = vpux::Logger::global();
-        logger.trace("Failed to find PipelineOptions to fetch auto padding mode");
-        return false;
-    }
-
-    auto attrValue = pipelineOptionOp.lookupSymbol<config::OptionOp>(paddingMode);
-    if (attrValue == nullptr) {
-        auto logger = vpux::Logger::global();
-        logger.trace("Failed to find config.OptionOp to fetch auto padding mode");
-        return false;
-    }
-    auto boolAttr = mlir::dyn_cast<mlir::BoolAttr>(attrValue.getOptionValue());
-    if (boolAttr == nullptr) {
-        auto logger = vpux::Logger::global();
-        logger.trace("Failed to cast config.OptionOp to BoolAttr");
-        return false;
-    }
-    return boolAttr.getValue();
-}
-
 bool VPU::hasAutoPadding(mlir::ModuleOp module) {
-    return hasAutoPaddingOption(module, AUTO_PADDING_IDU) || hasAutoPaddingOption(module, AUTO_PADDING_ODU);
+    return VPU::tryGetBoolPassOption(module, AUTO_PADDING_IDU).value_or(false) ||
+           VPU::tryGetBoolPassOption(module, AUTO_PADDING_ODU).value_or(false);
 }
 
 bool VPU::hasAutoPaddingIDU(mlir::ModuleOp module) {
-    return hasAutoPaddingOption(module, AUTO_PADDING_IDU);
+    return VPU::tryGetBoolPassOption(module, AUTO_PADDING_IDU).value_or(false);
 }
 
 bool VPU::hasAutoPaddingODU(mlir::ModuleOp module) {
-    return hasAutoPaddingOption(module, AUTO_PADDING_ODU);
+    return VPU::tryGetBoolPassOption(module, AUTO_PADDING_ODU).value_or(false);
 }
 
 bool VPU::areChannelsCompatibleWithIDUAutoPad(int64_t inputChannels, int64_t elemTypeBitWidth) {

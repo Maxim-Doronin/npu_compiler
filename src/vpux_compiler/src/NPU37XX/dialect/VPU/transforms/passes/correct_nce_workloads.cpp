@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/interfaces/workload_splitter_base.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::VPU::arch37xx {
 #define GEN_PASS_DECL_CORRECTNCEWORKLOADS
@@ -64,7 +65,7 @@ private:
 
 void CorrectNCEWorkloadsPass::safeRunOnFunc() {
     auto func = getOperation();
-    const auto arch = getArch(func);
+    const auto arch = config::getArch(func);
     auto sparsityConstraint = VPU::getSparsityConstraint(arch);
 
     WorkloadSplitter37XX splitter(func, _log);

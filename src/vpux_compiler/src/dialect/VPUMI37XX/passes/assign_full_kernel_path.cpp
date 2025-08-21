@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUMI37XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/utils/core/format.hpp"
 
@@ -53,7 +54,7 @@ void AssignFullKernelPathPass::safeRunOnFunc() {
 
         auto kernelParamsOpInputs = kernelParamsOp.getInputs();
         auto kernelPath = kernelParamsOp.getKernelType();
-        auto cpu = ELFNPU37XX::getSwKernelArchString(VPU::getArch(origOp));
+        auto cpu = ELFNPU37XX::getSwKernelArchString(config::getArch(origOp));
 
         std::string newKernelType;
         bool hasDDRInputBuffers = !VPUIP::getDDRBuffers(kernelParamsOpInputs).empty();

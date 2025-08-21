@@ -8,10 +8,9 @@
 #include "vpux/compiler/dialect/VPU/utils/setup_pipeline_options_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_constraint_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
-
-#include <cstddef>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_SETUPTILINGCONSTRAINT
@@ -90,7 +89,8 @@ void SetupTilingConstraintPass::safeRunOnModule() {
     optionsBuilder =
             mlir::OpBuilder::atBlockBegin(&pipelineOptionsOp.getOptions().front(), optionsBuilder.getListener());
 
-    auto largeFilterRatio = vpux::VPU::getFragmentationAvoidRatioPipeliningLargeWeights(VPU::getArch(getOperation()));
+    auto largeFilterRatio =
+            vpux::VPU::getFragmentationAvoidRatioPipeliningLargeWeights(config::getArch(getOperation()));
 
     addConstant(optionsBuilder, pipelineOptionsOp, VPU::FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS,
                 largeFilterRatio, _allowCustomValues);

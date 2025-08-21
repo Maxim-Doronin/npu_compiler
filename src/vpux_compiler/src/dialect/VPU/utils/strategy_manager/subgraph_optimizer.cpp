@@ -1,15 +1,16 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2022-2025 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/subgraph_optimizer.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
-#include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
-#include "vpux/compiler/utils/strings.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include "mlir/IR/Iterators.h"
@@ -285,6 +286,9 @@ double SubgraphOptimizer::getInputSpillingCostToMultiClusterLayer(VPU::Clustered
                     inputSpillingCost += getInputSpillingCostToMultiClusterLayer(origOp, concatInput, strategy, config);
                 }
                 return inputSpillingCost;
+            })
+            .Case<GatherDMAOp>([&](GatherDMAOp origOp) {
+                return getInputSpillingCostToMultiClusterLayer(origOp, origOp.getIndices(), strategy, config);
             })
             .Default([&](mlir::Operation* origOp) {
                 VPUX_THROW("Roll back strategy for op {0} at {1} is not supported", origOp->getName(),
@@ -663,7 +667,7 @@ bool SubgraphOptimizer::hasLongTermSpilling(VPU::ClusteredOpInterface origOp, VP
 
     SmallVector<Byte> buffersSize;
     buffersSize.push_back(reservedMem);
-    reservedMem = VPU::calculateAlignedBuffersMemoryRequirement(getArch(parentOp), buffersSize);
+    reservedMem = VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(parentOp), buffersSize);
     auto middleOpList = _shortcutsMap.at(user).second;
     SmallVector<mlir::Operation*> middleOps{&middleOpList[0], &middleOpList[middleOpList.size() - 1]};
 
@@ -695,6 +699,12 @@ bool SubgraphOptimizer::hasLongTermSpilling(VPU::ClusteredOpInterface origOp, VP
                             return concat.fitIntoCMX(outputType, reservedMem);
                         } else if (auto swOp = mlir::dyn_cast<VPU::SWOpInterface>(clusteredOp.getOperation())) {
                             return swOpFitsInCMX(swOp);
+                        } else if (auto gatherDMA = mlir::dyn_cast<VPU::GatherDMAOp>(clusteredOp.getOperation())) {
+                            const auto indicesType =
+                                    mlir::cast<vpux::NDTypeInterface>(gatherDMA.getIndices().getType());
+                            const auto outputType =
+                                    mlir::cast<vpux::NDTypeInterface>(gatherDMA->getResult(0).getType());
+                            return gatherDMA.fitIntoCMX(indicesType, outputType, reservedMem);
                         } else {
                             VPUX_THROW("Operation '{0}' at '{1}' has no MC strategy", clusteredOp->getName(),
                                        clusteredOp->getLoc());

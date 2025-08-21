@@ -6,7 +6,10 @@
 #include <mlir/Support/LLVM.h>
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#ifdef BACKGROUND_FOLDING_ENABLED
 #include "vpux/compiler/dialect/const/utils/constant_folding_cache.hpp"
+#endif
+#include "vpux/compiler/utils/attributes.hpp"
 
 namespace vpux::Const {
 namespace detail {

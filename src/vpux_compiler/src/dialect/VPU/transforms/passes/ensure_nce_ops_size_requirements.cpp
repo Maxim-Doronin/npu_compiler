@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
@@ -575,6 +576,18 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
             const auto outSizeWrongDims = getDimsOverKHWLimit(outputShape, outputDimThresholds);
             if (!outSizeWrongDims.empty()) {
                 _log.nest(2).debug("Output size has dims greater than HW requirements: {0}", outSizeWrongDims);
+            }
+
+            if (auto convOp = mlir::dyn_cast<VPU::NCEConvolutionOp>(op)) {
+                auto weightDequantizeOp = convOp.getFilter().getDefiningOp<VPU::DequantizeOp>();
+                if (weightDequantizeOp != nullptr) {
+                    if (auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(op)) {
+                        if (!clusteredOp.getMultiClusterStrategy().has_value()) {
+                            // Address VPU::Dequantize -> VPU::NCEConvolution post tiling and vf
+                            return true;
+                        }
+                    }
+                }
             }
             return inSizeWrongDims.empty() && outSizeWrongDims.empty();
         }

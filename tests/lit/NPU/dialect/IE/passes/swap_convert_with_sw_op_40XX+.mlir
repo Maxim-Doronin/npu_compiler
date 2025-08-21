@@ -123,3 +123,21 @@ func.func @NoSwapInterpolate(%arg0: tensor<1x8x128x128xf16, {order = #NHWC}>) ->
   // CHECK-SAME:    -> tensor<1x2048x1x256xf32>
   // CHECK:       return [[RET]]
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @SwapAddWithConvert
+// CHECK-SAME: ([[INPUT:%.+]]: tensor<1x16x270x54xsi32, {order = #NHWC}>)
+func.func @SwapAddWithConvert(%arg0: tensor<1x16x270x54xsi32, {order = #NHWC}>) -> tensor<1x16x270x54xf16, {order = #NHWC}> {
+  %cst_0 = const.Declare tensor<1x1x1x1xsi32, {order = #NHWC}> = dense<1> : tensor<1x1x1x1xsi32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<si32>, #const.Reorder<#NHWC>]
+  %0 = IE.Add(%arg0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x270x54xsi32, {order = #NHWC}>, tensor<1x1x1x1xsi32, {order = #NHWC}> -> tensor<1x16x270x54xsi32, {order = #NHWC}>
+  %1 = IE.Convert(%0) {dstElemType = f16} : tensor<1x16x270x54xsi32, {order = #NHWC}> -> tensor<1x16x270x54xf16, {order = #NHWC}>
+  return %1 : tensor<1x16x270x54xf16, {order = #NHWC}>
+
+  // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<1> : tensor<1x1x1x1xsi32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<si32>, #const.Reorder<#NHWC>, #const.ChangeShapeAndElemType<[1, 1, 1, 1], f16>]
+  // CHECK:       [[CONVERT:%.+]]  = IE.Convert([[INPUT]]) {dstElemType = f16} : tensor<1x16x270x54xsi32, {order = #NHWC}> -> tensor<1x16x270x54xf16, {order = #NHWC}>
+  // CHECK:       [[ADD:%.+]] = IE.Add([[CONVERT]], [[CST_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x270x54xf16, {order = #NHWC}>, tensor<1x1x1x1xf16, {order = #NHWC}> -> tensor<1x16x270x54xf16, {order = #NHWC}>
+
+  // CHECK:       return [[ADD]]
+}

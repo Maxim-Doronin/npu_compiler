@@ -4,6 +4,7 @@
 #
 
 add_vpux_dialect(VPUMI37XX)
+add_vpux_ops(VPUMI37XX GENERIC)
 add_vpux_ops_interface(VPUMI37XX dialect/VPUMI37XX/)
 add_vpux_attribute(VPUMI37XX ENABLE_VPUX_ENUMS ENABLE_VPUX_ATTR)
 add_vpux_type(VPUMI37XX)

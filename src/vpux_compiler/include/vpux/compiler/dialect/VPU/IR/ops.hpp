@@ -6,16 +6,38 @@
 #pragma once
 
 #include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
-
+#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/Interfaces/CallInterfaces.h>
 #include <mlir/Interfaces/CastInterfaces.h>
+#include <mlir/Interfaces/ControlFlowInterfaces.h>
+
+// E#173010: remove dependency on IE operations for VPU operations
+namespace vpux::IE {
+class AvgPoolOp;
+class AddOp;
+class BatchNormInferenceOp;
+class ConvolutionOp;
+class GroupConvolutionOp;
+class InterpolateOp;
+class LSTMCellOp;
+class LSTMSequenceOp;
+class MatMulOp;
+class MaxPoolOp;
+class MultiplyOp;
+class PermuteQuantizeOp;
+class SubtractOp;
+class TransposedConvolutionOp;
+class YuvToRgbOp;
+}  // namespace vpux::IE
 
 //
 // Generated
@@ -199,6 +221,7 @@ mlir::LogicalResult isDistributedCastCompatible(T inDistributedType, T outDistri
 
 bool isNCEWithInt4Weights(mlir::Operation* op);
 bool isNCEWithSEPActivation(mlir::Operation* op);
+
 std::optional<int64_t> getWeightsChannelsAutopad(mlir::Operation* op);
 
 }  // namespace VPU

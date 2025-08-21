@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cstdint>
+#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/passes.hpp"
+
+#include <cstdint>
 
 namespace vpux::ELF::arch40xx {
 #define GEN_PASS_DECL_ADDABIVERSION

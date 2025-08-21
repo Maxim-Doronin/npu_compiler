@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
+#include "vpux/compiler/dialect/VPUMI40XX/wlm_utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
@@ -24,12 +25,15 @@ namespace {
 
 class AddBootstrapWorkItemsPass : public VPUMI40XX::impl::AddBootstrapWorkItemsBase<AddBootstrapWorkItemsPass> {
 public:
-    explicit AddBootstrapWorkItemsPass(Logger log) {
+    explicit AddBootstrapWorkItemsPass(const WorkloadManagementMode workloadManagementMode, Logger log)
+            : _workloadManagementMode(workloadManagementMode) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnFunc() final;
+
+    WorkloadManagementMode _workloadManagementMode;
 };
 
 void reindexEnqueueOps(llvm::SmallVector<VPURegMapped::EnqueueOp> enquOps) {
@@ -54,7 +58,16 @@ void reindexEnqueueOps(llvm::SmallVector<VPURegMapped::EnqueueOp> enquOps) {
     return;
 }
 
-bool hasEnqueue(VPURegMapped::TaskOpInterface task) {
+bool hasEnqueue(VPURegMapped::TaskOpInterface task, std::optional<int64_t> firstTaskIdxWithEnqueueDma) {
+    // Check if task is enqueued by enqueue DMA (Full WLM)
+    if (firstTaskIdxWithEnqueueDma.has_value()) {
+        auto taskIdx = mlir::cast<VPURegMapped::IndexType>(task.getResult().getType()).getValue();
+        if (taskIdx >= firstTaskIdxWithEnqueueDma.value()) {
+            return true;
+        }
+    }
+
+    // Check if task is enqueued by EnqueueOp (Partial WLM)
     auto users = task.getResult().getUsers();
     auto enquIt = llvm::find_if(users, [](mlir::Operation* user) {
         return mlir::isa<VPURegMapped::EnqueueOp>(user);
@@ -63,7 +76,8 @@ bool hasEnqueue(VPURegMapped::TaskOpInterface task) {
 }
 
 int64_t addEnqueueForOp(mlir::MLIRContext* ctx, mlir::func::FuncOp netFunc, mlir::Value listHead,
-                        const VPURegMapped::TaskType taskType, VPURegMapped::EnqueueOp firstEnqueue) {
+                        const VPURegMapped::TaskType taskType, VPURegMapped::EnqueueOp firstEnqueueOp,
+                        std::optional<int64_t> firstTaskIdxWithEnqueueDma) {
     auto mpi = VPUMI40XX::getMPI(netFunc);
     auto builder = mlir::OpBuilder(mpi.getOperation());
     int64_t bootstrapWorkItems = 0;
@@ -72,11 +86,11 @@ int64_t addEnqueueForOp(mlir::MLIRContext* ctx, mlir::func::FuncOp netFunc, mlir
     }
 
     auto curTask = mlir::cast<VPURegMapped::TaskOpInterface>(listHead.getDefiningOp());
-    if (!hasEnqueue(curTask)) {
+    if (!hasEnqueue(curTask, firstTaskIdxWithEnqueueDma)) {
         auto startTask = curTask;
         auto endTask = curTask;
         while (auto nextTask = VPUMI40XX::getNextOp(endTask)) {
-            if (!hasEnqueue(nextTask)) {
+            if (!hasEnqueue(nextTask, firstTaskIdxWithEnqueueDma)) {
                 endTask = nextTask;
             } else {
                 break;
@@ -86,9 +100,9 @@ int64_t addEnqueueForOp(mlir::MLIRContext* ctx, mlir::func::FuncOp netFunc, mlir
         auto bootstrapEnqueue = builder.create<VPURegMapped::EnqueueOp>(
                 startTask->getLoc(), trivialIndexType, nullptr, nullptr, /*previousTaskIdxOnSameBarrier*/ nullptr,
                 taskType, startTask->getResult(0), endTask->getResult(0));
-        if (firstEnqueue) {
+        if (firstEnqueueOp) {
             bootstrapEnqueue.getOperation()->moveBefore(
-                    mlir::cast<VPURegMapped::EnqueueOp>(firstEnqueue).getOperation());
+                    mlir::cast<VPURegMapped::EnqueueOp>(firstEnqueueOp).getOperation());
         }
 
         bootstrapWorkItems++;
@@ -104,32 +118,84 @@ void AddBootstrapWorkItemsPass::safeRunOnFunc() {
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = IE::getTileExecutor(parentModule).getCount();
-    const auto shavesCountPerTile = IE::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+
+    if (workloadManagementModeOpt.hasValue()) {
+        _workloadManagementMode = workloadManagementModeOpt.getValue();
+    }
+
+    // Check if there are any Enqueue DMAs present in the schedule
+    mlir::DenseMap<VPUMI40XX::HwQueueType, int64_t> firstEnqueueDmaPerHwQueue;
+
+    if (_workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+        auto dmaTile0List0Task = mpi.getListHead(VPURegMapped::TaskType::DMA, 0, 0).getDefiningOp<VPUMI40XX::NNDMAOp>();
+        do {
+            auto enqueueDmaAttr = dmaTile0List0Task.getEnqueueDmaAttr();
+            if (enqueueDmaAttr.has_value()) {
+                auto taskType = VPUMI40XX::convertExecutorKindToExecutableTaskType(
+                        enqueueDmaAttr.value().getTargetExecutorKindAttr().getValue());
+                auto tileIdx = static_cast<uint32_t>(enqueueDmaAttr.value().getTileIdx().getValue().getSExtValue());
+                auto listIdx = static_cast<uint32_t>(enqueueDmaAttr.value().getListIdx().getValue().getSExtValue());
+                auto hwQueue = VPUMI40XX::HwQueueType{taskType, tileIdx, listIdx};
+
+                if (firstEnqueueDmaPerHwQueue.find(hwQueue) == firstEnqueueDmaPerHwQueue.end()) {
+                    auto firstTaskIdx = enqueueDmaAttr.value().getStartTaskIdx().getValue().getSExtValue();
+                    firstEnqueueDmaPerHwQueue[hwQueue] = firstTaskIdx;
+                    _log.trace("Found Enqueue DMA for task type {0} on tile {1}, list {2} with first task index {3}",
+                               taskType, tileIdx, listIdx, firstTaskIdx);
+                }
+            }
+            dmaTile0List0Task = VPUMI40XX::getNextOp(dmaTile0List0Task);
+        } while (dmaTile0List0Task);
+    }
 
     VPURegMapped::EnqueueOp firstEnqueue = nullptr;
     if (mpi.getWorkItemTasks()) {
         firstEnqueue = mlir::cast<VPURegMapped::EnqueueOp>(mpi.getWorkItemTasks().getDefiningOp());
     }
 
-    int totalNumberBootstrapworkItems = 0;
+    VPUX_THROW_WHEN(firstEnqueue != nullptr && !firstEnqueueDmaPerHwQueue.empty(),
+                    "Enqueue ops should not yet be present if there are enqueue DMAs");
 
-    for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
-        for (int64_t listIdx = 0; listIdx < 2; listIdx++) {
-            auto curHead = mpi.getListHead(VPURegMapped::TaskType::DMA, tileIdx, listIdx);
-            totalNumberBootstrapworkItems +=
-                    addEnqueueForOp(ctx, netFunc, curHead, VPURegMapped::TaskType::DMA, firstEnqueue);
-        }
-    }
+    int totalNumberBootstrapWorkItems = 0;
 
-    for (int64_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
-        auto curVariantHead = mpi.getListHead(VPURegMapped::TaskType::DPUVariant, tileIdx);
-        totalNumberBootstrapworkItems +=
-                addEnqueueForOp(ctx, netFunc, curVariantHead, VPURegMapped::TaskType::DPUVariant, firstEnqueue);
+    uint32_t shavesCountPerTile = 0;
+    auto actInvosCount = parseIntArrayOfArrayAttr<int64_t>(mpi.getActKernelInvocationsCount());
+    llvm::for_each(actInvosCount, [&](auto actInvosCountForTile) {
+        shavesCountPerTile = std::max(shavesCountPerTile, static_cast<uint32_t>(actInvosCountForTile.size()));
+    });
 
-        for (int64_t listIdx = 0; listIdx < shavesCountPerTile; listIdx++) {
-            auto curActKernelHead = mpi.getListHead(VPURegMapped::TaskType::ActKernelInvocation, tileIdx, listIdx);
-            totalNumberBootstrapworkItems += addEnqueueForOp(ctx, netFunc, curActKernelHead,
-                                                             VPURegMapped::TaskType::ActKernelInvocation, firstEnqueue);
+    uint32_t dmaCountPerTile = 0;
+    auto dmasCount = parseIntArrayOfArrayAttr<int64_t>(mpi.getDmaCount());
+    llvm::for_each(dmasCount, [&](auto dmasCountForTile) {
+        dmaCountPerTile = std::max(dmaCountPerTile, static_cast<uint32_t>(dmasCountForTile.size()));
+    });
+
+    const mlir::DenseSet<std::pair<VPURegMapped::TaskType, uint32_t>> taskTypesWithListCountPerTile = {
+            {{VPURegMapped::TaskType::DMA, dmaCountPerTile},
+             {VPURegMapped::TaskType::DPUVariant, 1},
+             {VPURegMapped::TaskType::ActKernelInvocation, shavesCountPerTile}}};
+
+    for (uint32_t tileIdx = 0; tileIdx < tilesCount; tileIdx++) {
+        for (const auto& [taskType, listCount] : taskTypesWithListCountPerTile) {
+            for (uint32_t listIdx = 0; listIdx < listCount; listIdx++) {
+                _log.trace("Check task type {0} on tile {1}, list {2} if bootstrap work items are needed", taskType,
+                           tileIdx, listIdx);
+                auto curHead = mpi.getListHead(taskType, tileIdx, listIdx);
+
+                auto hwQueue = VPUMI40XX::HwQueueType{taskType, tileIdx, listIdx};
+                std::optional<int64_t> firstTaskIdxWithEnqueueDma = std::nullopt;
+                if (_workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+                    auto firstTaskIdxWithEnqueueDmaIt = firstEnqueueDmaPerHwQueue.find(hwQueue);
+                    if (firstTaskIdxWithEnqueueDmaIt != firstEnqueueDmaPerHwQueue.end()) {
+                        firstTaskIdxWithEnqueueDma = firstTaskIdxWithEnqueueDmaIt->second;
+                    }
+                }
+
+                auto bootstrapWorkItems =
+                        addEnqueueForOp(ctx, netFunc, curHead, taskType, firstEnqueue, firstTaskIdxWithEnqueueDma);
+                _log.nest().trace("Added {0} bootstrap work items", bootstrapWorkItems);
+                totalNumberBootstrapWorkItems += bootstrapWorkItems;
+            }
         }
     }
 
@@ -138,7 +204,7 @@ void AddBootstrapWorkItemsPass::safeRunOnFunc() {
         reindexEnqueueOps(enquOps);
         mpi.getWorkItemTasksMutable().assign(enquOps[0].getResult());
         mpi.setWorkItemCount(enquOps.size());
-        mpi.setBootsrapWorkItemsCountAttr(builder.getI64IntegerAttr(totalNumberBootstrapworkItems));
+        mpi.setBootsrapWorkItemsCountAttr(builder.getI64IntegerAttr(totalNumberBootstrapWorkItems));
     } else {
         VPUX_THROW("We expect at least one enqueue operation in the function.");
     }
@@ -150,6 +216,7 @@ void AddBootstrapWorkItemsPass::safeRunOnFunc() {
 // createAddBootstrapWorkItemsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createAddBootstrapWorkItemsPass(Logger log) {
-    return std::make_unique<AddBootstrapWorkItemsPass>(log);
+std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createAddBootstrapWorkItemsPass(
+        WorkloadManagementMode workloadManagementMode, Logger log) {
+    return std::make_unique<AddBootstrapWorkItemsPass>(workloadManagementMode, log);
 }

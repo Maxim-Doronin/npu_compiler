@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/interfaces/dma_descriptor_generator.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -251,7 +252,7 @@ void ExpandDMARewriter::createTilesForLargeSize(VPUIP::ExpandDMAOp origOp,
     const auto singlePlaneSize = fullCopySize / numPlanesOfFullShape;
 
     // Deeply rooted in NPU2.7 representation
-    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(origOp));
+    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(origOp));
     const auto dmaMaxLength = dmaEngineLimits.getMaxLength();
     const auto numPlanesPerTile = (dmaMaxLength / singlePlaneSize.count());
     VPUX_THROW_UNLESS(numPlanesPerTile != 0,
@@ -345,7 +346,7 @@ mlir::LogicalResult ExpandDMARewriter::matchAndRewrite(VPUIP::ExpandDMAOp expand
         _log.trace("ExpandDMA's result is not DistributedBufferType");
 
         const auto dmaSize = static_cast<Byte>(getCompactSize(expandDmaOp.getInput()));
-        const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(expandDmaOp));
+        const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(expandDmaOp));
         const auto dmaMaxLength = dmaEngineLimits.getMaxLength();
         if (dmaSize > Byte(dmaMaxLength)) {
             _log.trace("ExpandDMA with input size '{0}' large than limitation '{1}' and need to tile", dmaSize,

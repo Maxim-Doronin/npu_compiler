@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -31,7 +32,7 @@ namespace {
 
 class SplitNNDMARewriter final : public mlir::OpRewritePattern<VPUIP::NNDMAOp> {
 public:
-    SplitNNDMARewriter(mlir::MLIRContext* ctx, int64_t dmaPortCount, Logger log, VPU::ArchKind arch)
+    SplitNNDMARewriter(mlir::MLIRContext* ctx, int64_t dmaPortCount, Logger log, config::ArchKind arch)
             : mlir::OpRewritePattern<VPUIP::NNDMAOp>(ctx), _log(log), _dmaPortCount(dmaPortCount), _arch(arch) {
         setDebugName("SplitNNDMARewriter");
 
@@ -47,7 +48,7 @@ private:
     Logger _log;
     int64_t _dmaPortCount;
     mlir::FlatSymbolRefAttr _cmxNameAttr;
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
 };
 
 Byte getDmaSize(VPUIP::NNDMAOp nndmaOp) {
@@ -226,7 +227,7 @@ void NNDMATilingPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     auto dmaOp = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();

@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
@@ -17,6 +16,7 @@
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/unified_func_inliner_interface.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>

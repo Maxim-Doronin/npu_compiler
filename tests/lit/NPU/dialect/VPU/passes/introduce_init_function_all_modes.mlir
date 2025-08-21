@@ -15,7 +15,7 @@
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
+            vpux_ow_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
         }
     }
 #-}
@@ -29,7 +29,7 @@ module @TestAllOptions {
     }
 
     func.func @main(%input: tensor<4x16xf16>) -> (tensor<2x2xf32>, tensor<4x16xf32>) {
-        %cst = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<4x4xf32>,
+        %cst = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>,
             [#const.Add<1.0 : f32>, #const.SubView<[2, 2], [2, 2]>]
         %out = IE.Convert(%input) {dstElemType = f32} : tensor<4x16xf16> -> tensor<4x16xf32>
         return %cst, %out : tensor<2x2xf32>, tensor<4x16xf32>
@@ -56,7 +56,7 @@ module @TestAllOptions {
 // CHECK-ALL-NEXT:          return [[SLICE]], [[CVT]]
 
 // CHECK-ALL:           func.func @wrapper_main([[IN:%.+]]: tensor<4x16xf16>) -> (tensor<2x2xf32>, tensor<4x16xf32>)
-// CHECK-ALL-NEXT:          [[CST:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<ov_1>
+// CHECK-ALL-NEXT:          [[CST:%.+]] = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_1>
 // CHECK-ALL-NEXT:          [[INIT_CST:%.+]] = call @init([[CST]])
 // CHECK-ALL-NEXT:          [[MAIN_RES:%.+]]:2 = call @main([[IN]], [[INIT_CST]])
 // CHECK-ALL-NEXT:          return [[MAIN_RES]]#0, [[MAIN_RES]]#1
@@ -65,9 +65,9 @@ module @TestAllOptions {
 // CHECK-INIT-LABEL:    @TestAllOptions
 // CHECK-INIT:          net.NetworkInfo entryPoint : @init
 // CHECK-INIT:              inputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "in_ov_1" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_ow_1" : tensor<4x4xf32>
 // CHECK-INIT:              outputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_tw_1_hash_11258667776708180655" : tensor<4x4xf32>
 
 // CHECK-INIT:          func.func @init([[ORIG_CST:%.+]]: tensor<4x4xf32>) -> tensor<4x4xf32>
 // CHECK-INIT-NEXT:         [[ADDEND:%.+]] = const.Declare tensor<1xf32>
@@ -82,7 +82,7 @@ module @TestAllOptions {
 // CHECK-MAIN:          net.NetworkInfo entryPoint : @main
 // CHECK-MAIN:              inputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "input1" : tensor<4x16xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
+// CHECK-MAIN-NEXT:             DataInfo "vpux_tw_1_hash_11258667776708180655" : tensor<4x4xf32>
 // CHECK-MAIN:              outputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "output1" : tensor<2x2xf32>
 // CHECK-MAIN-NEXT:             DataInfo "output2" : tensor<4x16xf32>
@@ -105,7 +105,7 @@ module @TestAllOptions {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
+            vpux_ow_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
         }
     }
 #-}
@@ -120,12 +120,12 @@ module @OutlinedConstants {
     }
 
     func.func private @main_part1() -> tensor<4x4xf32> {
-        %cst = const.Declare tensor<4x4xf32> = dense_resource<ov_1> : tensor<4x4xf32>, [#const.Add<5.0 : f32>]
+        %cst = const.Declare tensor<4x4xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>, [#const.Add<5.0 : f32>]
         return %cst : tensor<4x4xf32>
     }
 
     func.func @main(%input: tensor<4x16xf16>) -> (tensor<2x2xf32>, tensor<4x16xf16>, tensor<4x4xf32>) {
-        %cst = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<4x4xf32>,
+        %cst = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<4x4xf32>,
             [#const.Add<1.0 : f32>, #const.SubView<[2, 2], [2, 2]>]
         // Note: called twice to catch additional bugs
         %out = call @main_part1() : () -> tensor<4x4xf32>
@@ -151,10 +151,10 @@ module @OutlinedConstants {
 // CHECK-INIT-LABEL:    @OutlinedConstants
 // CHECK-INIT:          net.NetworkInfo entryPoint : @init
 // CHECK-INIT:              inputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "in_ov_1" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_ow_1" : tensor<4x4xf32>
 // CHECK-INIT:              outputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_4063002564071487318" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_tw_1_hash_11258667776708180655" : tensor<4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_tw_1_hash_4063002564071487318" : tensor<4x4xf32>
 
 // CHECK-INIT-NOT:      func.func private @main_part1
 // CHECK-INIT:          func.func @init
@@ -166,8 +166,8 @@ module @OutlinedConstants {
 // CHECK-MAIN:          net.NetworkInfo entryPoint : @main
 // CHECK-MAIN:              inputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "input1" : tensor<4x16xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_11258667776708180655" : tensor<4x4xf32>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_4063002564071487318" : tensor<4x4xf32>
+// CHECK-MAIN-NEXT:             DataInfo "vpux_tw_1_hash_11258667776708180655" : tensor<4x4xf32>
+// CHECK-MAIN-NEXT:             DataInfo "vpux_tw_1_hash_4063002564071487318" : tensor<4x4xf32>
 // CHECK-MAIN:              outputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "output1" : tensor<2x2xf32>
 // CHECK-MAIN-NEXT:             DataInfo "output2" : tensor<4x16xf16>
@@ -186,8 +186,8 @@ module @OutlinedConstants {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
-            ov_42: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
+            vpux_ow_1: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd",
+            vpux_ow_42: "0x0000000400aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbcc00aabbdd"
         }
     }
 #-}
@@ -202,12 +202,12 @@ module @HashConsistency {
     func.func @main(%input: tensor<1x1x4x4xf16>) -> tensor<1x1x4x4xf16> {
         // Note: {ov1, ov42}_common_hash share the exact same "in init"
         // transformations -> this means their hashes would match
-        %ov1_common_hash = const.Declare tensor<1x1x1x1xf16> = dense_resource<ov_1> : tensor<1x1x4x4xf32>,
+        %ov1_common_hash = const.Declare tensor<1x1x1x1xf16> = dense_resource<vpux_ow_1> : tensor<1x1x4x4xf32>,
             [#const.CastElemType<f16>, #const.Rescale<3.0>, #const.SubView<[0, 0, 0, 0], [1, 1, 1, 1]>]
-        %ov42_common_hash = const.Declare tensor<1x1x1x1xf16> = dense_resource<ov_42> : tensor<1x1x2x8xf32>,
+        %ov42_common_hash = const.Declare tensor<1x1x1x1xf16> = dense_resource<vpux_ow_42> : tensor<1x1x2x8xf32>,
             [#const.CastElemType<f16>, #const.Rescale<3.0>, #const.SubView<[0, 0, 2, 2], [1, 1, 1, 1]>]
 
-        %ov1_unique_hash = const.Declare tensor<1x1x1x1xf16> = dense_resource<ov_1> : tensor<1x1x4x4xf32>,
+        %ov1_unique_hash = const.Declare tensor<1x1x1x1xf16> = dense_resource<vpux_ow_1> : tensor<1x1x4x4xf32>,
             [#const.CastElemType<f16>, #const.Add<42.0>, #const.SubView<[0, 0, 0, 0], [1, 1, 1, 1]>]
 
         %0 = VPU.Add(%input, %ov1_common_hash) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
@@ -252,8 +252,8 @@ module @HashConsistency {
 
 
 // CHECK-ALL:   func.func @wrapper_main([[INPUT:%.+]]: tensor<1x1x4x4xf16>) -> tensor<1x1x4x4xf16>
-// CHECK-ALL:       [[OV_1:%.+]] = const.Declare tensor<1x1x4x4xf32> = dense_resource<ov_1>
-// CHECK-ALL:       [[OV_42:%.+]] = const.Declare tensor<1x1x2x8xf32> = dense_resource<ov_42>
+// CHECK-ALL:       [[OV_1:%.+]] = const.Declare tensor<1x1x4x4xf32> = dense_resource<vpux_ow_1>
+// CHECK-ALL:       [[OV_42:%.+]] = const.Declare tensor<1x1x2x8xf32> = dense_resource<vpux_ow_42>
 // CHECK-ALL:       [[INIT:%.+]]:3 = call @init([[OV_1]], [[OV_42]])
 // CHECK-ALL:       [[MAIN:%.+]] = call @main([[INPUT]], [[INIT]]#0, [[INIT]]#1, [[INIT]]#2)
 // CHECK-ALL:       return [[MAIN]]
@@ -262,12 +262,12 @@ module @HashConsistency {
 // CHECK-INIT-LABEL:    @HashConsistency
 // CHECK-INIT:          net.NetworkInfo entryPoint : @init
 // CHECK-INIT:              inputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "in_ov_42" : tensor<1x1x2x8xf32>
-// CHECK-INIT-NEXT:             DataInfo "in_ov_1" : tensor<1x1x4x4xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_ow_42" : tensor<1x1x2x8xf32>
+// CHECK-INIT-NEXT:             DataInfo "vpux_ow_1" : tensor<1x1x4x4xf32>
 // CHECK-INIT:              outputsInfo : {
-// CHECK-INIT-NEXT:             DataInfo "out_ov_42_hash_6705143075530545067" : tensor<1x1x2x8xf16>
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_7071254137056153727" : tensor<1x1x4x4xf16>
-// CHECK-INIT-NEXT:             DataInfo "out_ov_1_hash_6705143075530545067" : tensor<1x1x4x4xf16>
+// CHECK-INIT-NEXT:             DataInfo "vpux_tw_42_hash_6705143075530545067" : tensor<1x1x2x8xf16>
+// CHECK-INIT-NEXT:             DataInfo "vpux_tw_1_hash_7071254137056153727" : tensor<1x1x4x4xf16>
+// CHECK-INIT-NEXT:             DataInfo "vpux_tw_1_hash_6705143075530545067" : tensor<1x1x4x4xf16>
 
 // CHECK-INIT:  func.func @init([[OV_42:%.+]]: tensor<1x1x2x8xf32>, [[OV_1:%.+]]: tensor<1x1x4x4xf32>)
 // CHECK-INIT-SAME: -> (tensor<1x1x2x8xf16>, tensor<1x1x4x4xf16>, tensor<1x1x4x4xf16>)
@@ -277,9 +277,9 @@ module @HashConsistency {
 // CHECK-MAIN:          net.NetworkInfo entryPoint : @main
 // CHECK-MAIN:              inputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "input1" : tensor<1x1x4x4xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_7071254137056153727" : tensor<1x1x4x4xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_1_hash_6705143075530545067" : tensor<1x1x4x4xf16>
-// CHECK-MAIN-NEXT:             DataInfo "out_ov_42_hash_6705143075530545067" : tensor<1x1x2x8xf16>
+// CHECK-MAIN-NEXT:             DataInfo "vpux_tw_1_hash_7071254137056153727" : tensor<1x1x4x4xf16>
+// CHECK-MAIN-NEXT:             DataInfo "vpux_tw_1_hash_6705143075530545067" : tensor<1x1x4x4xf16>
+// CHECK-MAIN-NEXT:             DataInfo "vpux_tw_42_hash_6705143075530545067" : tensor<1x1x2x8xf16>
 // CHECK-MAIN:              outputsInfo : {
 // CHECK-MAIN-NEXT:             DataInfo "output1" : tensor<1x1x4x4xf16>
 

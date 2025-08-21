@@ -12,6 +12,10 @@
 
 #include <mlir/IR/BuiltinAttributes.h>
 
+namespace vpux::VPU {
+class ExecutorKindAttr;
+}  // namespace vpux::VPU
+
 //
 // Generated
 //

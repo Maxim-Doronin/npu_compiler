@@ -9,7 +9,7 @@
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -22,7 +22,7 @@ module @CastRegular {
     }
 
     func.func @main() -> tensor<2x2xf16> {
-        %cst = const.Declare tensor<2x2xf16> = dense_resource<ov_1> : tensor<2x2xf32>,
+        %cst = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf32>,
             [#const.CastElemType<f16>]
         return %cst : tensor<2x2xf16>
     }
@@ -37,7 +37,7 @@ module @CastRegular {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -53,7 +53,7 @@ module @CastToQuantizedType {
     }
 
     func.func @main() -> tensor<2x2xi8> {
-        %cst = const.Declare tensor<2x2x!qElemType> = dense_resource<ov_1> : tensor<2x2xf32>,
+        %cst = const.Declare tensor<2x2x!qElemType> = dense_resource<vpux_ow_1> : tensor<2x2xf32>,
             [#const.CastElemType<!qElemType>]
 
         // do quant-cast to satisfy compiler's requirement - output cannot be
@@ -76,7 +76,7 @@ module @CastToQuantizedType {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400112233"
+            vpux_ow_1: "0x0000000400112233"
         }
     }
 #-}
@@ -92,7 +92,7 @@ module @CastFromQuantizedType {
     }
 
     func.func @main() -> tensor<2x2xf32> {
-        %cst = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<2x2xi8>,
+        %cst = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<2x2xi8>,
             [#const.CastElemType<!qElemType>, #const.CastElemType<f32>]
         return %cst : tensor<2x2xf32>
     }
@@ -111,7 +111,7 @@ module @CastFromQuantizedType {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -133,7 +133,7 @@ module @PositiveZeroPointDelta {
 
     func.func @main() -> tensor<10x1x1x1xi8> {
         // Note: #const.CastElemType here is only used to satisfy the constraints of allowed @main function IO types.
-        %cst = const.Declare tensor<10x1x1x1xi8> = dense_resource<ov_1> : tensor<10x1x1x1xi8>,
+        %cst = const.Declare tensor<10x1x1x1xi8> = dense_resource<vpux_ow_1> : tensor<10x1x1x1xi8>,
             [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<i8>]
         return %cst : tensor<10x1x1x1xi8>
     }
@@ -154,7 +154,7 @@ module @PositiveZeroPointDelta {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -176,7 +176,7 @@ module @NegativeZeroPointDelta {
 
     func.func @main() -> tensor<10x1x1x1xi8> {
         // Note: #const.CastElemType here is only used to satisfy the constraints of allowed @main function IO types.
-        %cst = const.Declare tensor<10x1x1x1xi8> = dense_resource<ov_1> : tensor<10x1x1x1xi8>,
+        %cst = const.Declare tensor<10x1x1x1xi8> = dense_resource<vpux_ow_1> : tensor<10x1x1x1xi8>,
             [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<i8>]
         return %cst : tensor<10x1x1x1xi8>
     }
@@ -198,7 +198,7 @@ module @NegativeZeroPointDelta {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E30"
+        vpux_ow_0: "0x10000000AEB00E30"
     }
   }
 #-}
@@ -215,7 +215,7 @@ module @QuantizedPadValuePerAxis {
 
     func.func @main() -> (tensor<4x1x2x1xsi8>) {
         // Note: #const.CastElemType<si8> here is only used to satisfy the constraints of allowed @main function IO types.
-        %cst = const.Declare tensor<4x1x2x1xsi8> = dense_resource<ov_0> : tensor<4x1x1x1xsi8>,
+        %cst = const.Declare tensor<4x1x2x1xsi8> = dense_resource<vpux_ow_0> : tensor<4x1x1x1xsi8>,
                     [#const.CastElemType<!qElemType1>, #const.PadWithZero<[0, 0, 0, 0], [0, 0, 1, 0]>, #const.CastElemType<si8>]
         return %cst : tensor<4x1x2x1xsi8>
     }
@@ -232,7 +232,7 @@ module @QuantizedPadValuePerAxis {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E30"
+        vpux_ow_0: "0x10000000AEB00E30"
     }
   }
 #-}
@@ -249,7 +249,7 @@ module @QuantizedPadValue {
 
     func.func @main() -> (tensor<1x5x1x1xsi8>) {
         // Note: #const.CastElemType<si8> here is only used to satisfy the constraints of allowed @main function IO types.
-        %cst = const.Declare tensor<1x5x1x1xsi8> = dense_resource<ov_0> : tensor<1x4x1x1xsi8>,
+        %cst = const.Declare tensor<1x5x1x1xsi8> = dense_resource<vpux_ow_0> : tensor<1x4x1x1xsi8>,
             [#const.CastElemType<!qElemType1>, #const.PadWithZero<[0, 0, 0, 0], [0, 1, 0, 0]>, #const.CastElemType<si8>]
         return %cst : tensor<1x5x1x1xsi8>
     }
@@ -267,7 +267,7 @@ module @QuantizedPadValue {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -286,7 +286,7 @@ module @QuantizedToQuantizedCast {
 
     func.func @main() -> tensor<10x1x1x1xi8> {
         // Note: #const.CastElemType<i8> here is only used to satisfy the constraints of allowed @main function IO types.
-        %cst = const.Declare tensor<10x1x1x1xi8> = dense_resource<ov_1> : tensor<10x1x1x1xi8>,
+        %cst = const.Declare tensor<10x1x1x1xi8> = dense_resource<vpux_ow_1> : tensor<10x1x1x1xi8>,
             [#const.CastElemType<!qElemType1>, #const.CastElemType<!qElemType2>, #const.CastElemType<i8>]
         return %cst : tensor<10x1x1x1xi8>
     }
@@ -304,7 +304,7 @@ module @QuantizedToQuantizedCast {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -323,7 +323,7 @@ module @QuantizedToQuantizedConversion_1D {
 
     func.func @main() -> tensor<10xui8> {
         // Note: surrounding casts is to abide I/O requirements
-        %cst = const.Declare tensor<10xui8> = dense_resource<ov_1> : tensor<10xsi8>,
+        %cst = const.Declare tensor<10xui8> = dense_resource<vpux_ow_1> : tensor<10xsi8>,
         [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
         return %cst : tensor<10xui8>
     }
@@ -346,7 +346,7 @@ module @QuantizedToQuantizedConversion_1D {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -365,7 +365,7 @@ module @QuantizedToQuantizedConversion_5D {
 
     func.func @main() -> tensor<5x1x1x1x2xui8> {
         // Note: surrounding casts is to abide I/O requirements
-        %cst = const.Declare tensor<5x1x1x1x2xui8> = dense_resource<ov_1> : tensor<5x1x1x1x2xsi8>,
+        %cst = const.Declare tensor<5x1x1x1x2xui8> = dense_resource<vpux_ow_1> : tensor<5x1x1x1x2xsi8>,
         [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
         return %cst : tensor<5x1x1x1x2xui8>
     }
@@ -386,7 +386,7 @@ module @QuantizedToQuantizedConversion_5D {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -407,7 +407,7 @@ module @QuantizedToQuantizedConversionPerAxis_2D {
 
     func.func @main() -> tensor<2x5xui8> {
         // Note: surrounding casts is to abide I/O requirements
-        %cst = const.Declare tensor<2x5xui8> = dense_resource<ov_1> : tensor<2x5xsi8>,
+        %cst = const.Declare tensor<2x5xui8> = dense_resource<vpux_ow_1> : tensor<2x5xsi8>,
         [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
         return %cst : tensor<2x5xui8>
     }
@@ -435,7 +435,7 @@ module @QuantizedToQuantizedConversionPerAxis_2D {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -457,7 +457,7 @@ module @QuantizedToQuantizedConversionPerAxisNegativeZp {
 
     func.func @main() -> tensor<5x1x1x2xui8> {
         // Note: surrounding casts is to abide I/O requirements
-        %cst = const.Declare tensor<5x1x1x2xui8> = dense_resource<ov_1> : tensor<5x1x1x2xsi8>,
+        %cst = const.Declare tensor<5x1x1x2xui8> = dense_resource<vpux_ow_1> : tensor<5x1x1x2xsi8>,
         [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
         return %cst : tensor<5x1x1x2xui8>
     }
@@ -483,7 +483,7 @@ module @QuantizedToQuantizedConversionPerAxisNegativeZp {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -504,7 +504,7 @@ module @QuantizedToQuantizedConversionPerTensorNegativeZp {
 
     func.func @main() -> tensor<5x1x1x2xui8> {
         // Note: surrounding casts is to abide I/O requirements
-        %cst = const.Declare tensor<5x1x1x2xui8> = dense_resource<ov_1> : tensor<5x1x1x2xsi8>,
+        %cst = const.Declare tensor<5x1x1x2xui8> = dense_resource<vpux_ow_1> : tensor<5x1x1x2xsi8>,
         [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<ui8>]
         return %cst : tensor<5x1x1x2xui8>
     }
@@ -530,7 +530,7 @@ module @QuantizedToQuantizedConversionPerTensorNegativeZp {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000411223344551122334455"
+            vpux_ow_1: "0x0000000411223344551122334455"
         }
     }
 #-}
@@ -551,7 +551,7 @@ module @QuantizedToQuantizedConversionPerTensorNegativeOutZp {
 
     func.func @main() -> tensor<5x1x1x2xsi8> {
         // Note: surrounding casts is to abide I/O requirements
-        %cst = const.Declare tensor<5x1x1x2xsi8> = dense_resource<ov_1> : tensor<5x1x1x2xui8>,
+        %cst = const.Declare tensor<5x1x1x2xsi8> = dense_resource<vpux_ow_1> : tensor<5x1x1x2xui8>,
         [#const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType2>, #const.CastElemType<si8>]
         return %cst : tensor<5x1x1x2xsi8>
     }
@@ -577,7 +577,7 @@ module @QuantizedToQuantizedConversionPerTensorNegativeOutZp {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -590,12 +590,12 @@ module @Reverse {
     }
 
     func.func @main() -> tensor<2x2xf32> {
-        %NOT_supported = const.Declare tensor<2x2xf32> = dense_resource<ov_1> : tensor<2x2xf32>,
+        %NOT_supported = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<2x2xf32>,
             [#const.Reverse<0 : i64>]
 
         // Note: the "supported" constant is here to show that the exact same
         // constant, given a different transformation, ends up in init schedule
-        %supported = const.Declare tensor<2x2xf16> = dense_resource<ov_1> : tensor<2x2xf32>,
+        %supported = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf32>,
             [#const.CastElemType<f16>]
 
         return %NOT_supported : tensor<2x2xf32>
@@ -611,7 +611,7 @@ module @Reverse {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
         }
     }
 #-}
@@ -624,12 +624,12 @@ module @ExpandDilated {
     }
 
     func.func @main() -> tensor<1x1x3x3xf32> {
-        %NOT_supported = const.Declare tensor<1x1x3x3xf32> = dense_resource<ov_1> : tensor<1x1x2x2xf32>,
+        %NOT_supported = const.Declare tensor<1x1x3x3xf32> = dense_resource<vpux_ow_1> : tensor<1x1x2x2xf32>,
             [#const.ExpandDilated<[2, 2]>]
 
         // Note: the "supported" constant is here to show that the exact same
         // constant, given a different transformation, ends up in init schedule
-        %supported = const.Declare tensor<1x1x2x2xf16> = dense_resource<ov_1> : tensor<1x1x2x2xf32>,
+        %supported = const.Declare tensor<1x1x2x2xf16> = dense_resource<vpux_ow_1> : tensor<1x1x2x2xf32>,
             [#const.CastElemType<f16>]
 
         return %NOT_supported : tensor<1x1x3x3xf32>
@@ -645,7 +645,7 @@ module @ExpandDilated {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x00000004aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccd6"
+            vpux_ow_1: "0x00000004aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccd6"
         }
     }
 #-}
@@ -661,7 +661,7 @@ module @AffineReshape {
 
     func.func @main() -> tensor<1x1x3x3xf16, {order = #NCWH}> {
         // Note: CastElemType is only here to avoid this constant from being ignored as #const.AffineReshape is view-like.
-        %cst = const.Declare tensor<1x1x3x3xf16, {order = #NCWH}> = dense_resource<ov_1> : tensor<1x1x3x3xf32>,
+        %cst = const.Declare tensor<1x1x3x3xf16, {order = #NCWH}> = dense_resource<vpux_ow_1> : tensor<1x1x3x3xf32>,
             [#const.CastElemType<f16>, #const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
         return %cst : tensor<1x1x3x3xf16, {order = #NCWH}>
     }
@@ -676,9 +676,272 @@ module @AffineReshape {
 // -----
 
 {-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x01000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f7071727374757677"
+        }
+    }
+#-}
+
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+// CHECK: [[NCWH:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: [[NHWC:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK: module @LayoutCastAttr
+module @LayoutCastAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x3x4x5xui8, {order = #NHWC}>
+    }
+
+    func.func @main() -> tensor<2x3x4x5xui8, {order = #NHWC}> {
+        // Note: Reorder is only here to avoid this constant from being ignored as #const.LayoutCast is view-like.
+        %cst = const.Declare tensor<2x3x4x5xui8, {order = #NHWC}> = dense_resource<vpux_ow_1> : tensor<2x3x4x5xui8>, [#const.Reorder<#NCWH>, #const.LayoutCast<#NHWC>]
+        return %cst : tensor<2x3x4x5xui8, {order = #NHWC}>
+    }
+
+    // CHECK:           func.func @init([[CST:%.+]]: tensor<2x3x4x5xui8>) -> tensor<2x3x4x5xui8, {order = [[NHWC]]}>
+    // CHECK-NEXT:          [[REO:%.+]] = IE.Reorder([[CST]]) {dstOrder = [[NCWH]]}
+    // CHECK-NEXT:          [[L_CST:%.+]] = IE.LayoutCast([[REO]]) {dst_order = [[NHWC]]}
+    // CHECK-NEXT:          return [[L_CST]]
+
+}
+
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+        }
+    }
+#-}
+
+
+// CHECK: module @BroadcastAttr
+module @BroadcastAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<16x8xf32>
+    }
+
+    func.func @main() -> tensor<16x8xf32> {
+        %cst = const.Declare tensor<16x8xf32> = dense_resource<vpux_ow_1> : tensor<4x1xf32>,
+            [#const.Broadcast<0 : i64, 16 : i64>, #const.Broadcast<1 : i64, 8 : i64>]
+        return %cst : tensor<16x8xf32>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<4x1xf32>) -> tensor<16x8xf32>
+    // CHECK-NEXT:       [[SH_0:%.+]] = const.Declare tensor<2xi64> = dense<[16, 1]> : tensor<2xi64>
+    // CHECK-NEXT:       [[BR_0:%.+]] = IE.Broadcast([[IN]], [[SH_0]]) : tensor<4x1xf32>, tensor<2xi64> -> tensor<16x1xf32>
+    // CHECK-NEXT:       [[SH_1:%.+]] = const.Declare tensor<2xi64> = dense<[16, 8]> : tensor<2xi64>
+    // CHECK-NEXT:       [[BR_1:%.+]] = IE.Broadcast([[BR_0]], [[SH_1]]) : tensor<16x1xf32>, tensor<2xi64> -> tensor<16x8xf32>
+    // CHECK-NEXT:   return [[BR_1]]
+}
+
+
+// -----
+
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x04000000000000000000803f0000004000004040000080400000a0400000c0400000e04000000041000010410000204100003041"
+        }
+    }
+#-}
+
+
+// CHECK: module @AddAttr
+module @AddAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x3x2xf32>
+    }
+
+    func.func @main() -> tensor<2x3x2xf32> {
+        %cst = const.Declare tensor<2x3x2xf32> = dense_resource<vpux_ow_1> : tensor<2x3x2xf32>, [#const.Add<1.27e-03>]
+        return %cst : tensor<2x3x2xf32>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<2x3x2xf32>) -> tensor<2x3x2xf32> {
+    // CHECK-NEXT:       [[CST:%.+]] = const.Declare tensor<1xf32> = dense<1.270000e-03> : tensor<1xf32>, [#const.CastElemType<f32>]
+    // CHECK-NEXT:       [[RET:%.+]] = IE.Add([[IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-NEXT:       return [[RET]]
+}
+
+
+// -----
+
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x04000000000000000000803f0000004000004040000080400000a0400000c0400000e04000000041000010410000204100003041"
+        }
+    }
+#-}
+
+
+// CHECK: module @ZeroPadAttr
+module @ZeroPadAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<5x10x13xf32>
+    }
+
+    func.func @main() -> tensor<5x10x13xf32> {
+        %cst = const.Declare tensor<5x10x13xf32> = dense_resource<vpux_ow_1> : tensor<2x3x2xf32>, [#const.PadWithZero<[1, 3, 5], [2, 4, 6]>]
+        return %cst : tensor<5x10x13xf32>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<2x3x2xf32>) -> tensor<5x10x13xf32>
+    // CHECK-NEXT:       [[RET:%.+]] = IE.Pad([[IN]]) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [1, 3, 5], pads_end_attr = [2, 4, 6]}
+    // CHECK-NEXT:       return [[RET]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x04000000000000000000803f0000004000004040000080400000a0400000c0400000e04000000041000010410000204100003041"
+        }
+    }
+#-}
+
+// per axis quantization with zero point
+!qElemType = !quant.uniform<i8:f32:0, {0.05:21, 0.1:21}>
+// CHECK: [[QTYPE:!.+]] = !quant.uniform<i8:f32:0, {5.000000e-02:21,1.000000e-01:21}>
+// aligned with padded shape
+!qElemTypeP = !quant.uniform<i8:f32:0, {0.0:21, 0.05:21, 0.1:21, 0.0:21, 0.0:21}>
+// CHECK: [[QTYPEP:!.+]] = !quant.uniform<i8:f32:0, {5.000000e-02:21,5.000000e-02:21,1.000000e-01:21,1.000000e-01:21,1.000000e-01:21}>
+
+// CHECK: module @ZeroPadQuantized
+module @ZeroPadQuantized {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<5x10x13xi8>
+    }
+
+    func.func @main() -> tensor<5x10x13xi8> {
+        %cst = const.Declare tensor<5x10x13x!qElemTypeP> = dense_resource<vpux_ow_1> : tensor<2x3x2xf32>, [#const.CastElemType<!qElemType>, #const.PadWithZero<[1, 3, 5], [2, 4, 6]>]
+
+        // do quant-cast to satisfy compiler's requirement - output cannot be quantized type.
+        %workaround = VPU.QuantizeCast(%cst) { dstElemType = i8 }
+            : tensor<5x10x13x!qElemTypeP> -> tensor<5x10x13xi8>
+        return %workaround : tensor<5x10x13xi8>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<2x3x2xf32>) -> tensor<5x10x13xsi8>
+    // CHECK-NEXT:       [[DATA_I8:%.+]] = IE.Convert([[IN]]) {dstElemType = i8}
+    // CHECK-NEXT:       [[DATA_Q:%.+]] = IE.QuantizeCast([[DATA_I8]]) {dstElemType = [[QTYPE]]} : tensor<2x3x2xi8> -> tensor<2x3x2x[[QTYPE]]>
+    // CHECK-NEXT:       [[PADED:%.+]] = IE.Pad([[DATA_Q]]) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 2.100000e+01 : f64, pads_begin_attr = [1, 3, 5], pads_end_attr = [2, 4, 6]} : tensor<2x3x2x[[QTYPE]]> -> tensor<5x10x13x[[QTYPEP]]>
+    // CHECK-NEXT:       [[RET:%.+]] = IE.QuantizeCast([[PADED]]) {dstElemType = si8}
+    // CHECK-NEXT:       return [[RET]]
+}
+
+
+// -----
+
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x04000000000000000000803f0000004000004040000080400000a0400000c0400000e04000000041000010410000204100003041"
+        }
+    }
+#-}
+
+// CHECK: module @RescaleAttr
+module @RescaleAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x3x2xf32>
+    }
+
+    func.func @main() -> tensor<2x3x2xf32> {
+        %cst = const.Declare tensor<2x3x2xf32> = dense_resource<vpux_ow_1> : tensor<2x3x2xf32>, [#const.Rescale<0.66666666666666663e-05 : f32>]
+        return %cst : tensor<2x3x2xf32>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<2x3x2xf32>) -> tensor<2x3x2xf32>
+    // CHECK-NEXT:       [[CST:%.+]] = const.Declare tensor<1xf32> = dense<6.66666664E-6> : tensor<1xf32>, [#const.CastElemType<f32>]
+    // CHECK-NEXT:       [[RET:%.+]] = IE.Multiply([[IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-NEXT:       return [[RET]]
+}
+
+
+// -----
+
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x04000000000000000000803f0000004000004040000080400000a0400000c0400000e04000000041000010410000204100003041"
+        }
+    }
+#-}
+
+// Inverts all values in the tensor, i.e. 1 / x for each x in the tensor.
+// CHECK: module @ScalarMultInverseAttr
+module @ScalarMultInverseAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<2x3x2xf32>
+    }
+
+    func.func @main() -> tensor<2x3x2xf32> {
+        %cst = const.Declare tensor<2x3x2xf32> = dense_resource<vpux_ow_1> : tensor<2x3x2xf32>, [#const.ScalarMultInverse]
+        return %cst : tensor<2x3x2xf32>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<2x3x2xf32>) -> tensor<2x3x2xf32>
+    // CHECK-NEXT:       [[CST:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
+    // CHECK-NEXT:       [[RET:%.+]] = IE.Divide([[CST]], [[IN]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-NEXT:       return [[RET]]
+}
+
+// -----
+
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x04000000000000000000803f0000004000004040000080400000a0400000c0400000e04000000041000010410000204100003041"
+        }
+    }
+#-}
+
+#transpose_map = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
+// CHECK: [[HCW:#.+]] = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
+
+// CHECK: module @TransposeAttr
+module @TransposeAttr {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output1" : tensor<3x2x2xf32>
+    }
+
+    func.func @main() -> tensor<3x2x2xf32> {
+        %cst = const.Declare tensor<3x2x2xf32> = dense_resource<vpux_ow_1> : tensor<2x3x2xf32>, [#const.Transpose<#transpose_map>]
+        return %cst : tensor<3x2x2xf32>
+    }
+
+    // CHECK:        func.func @init([[IN:%.+]]: tensor<2x3x2xf32>) -> tensor<3x2x2xf32>
+    // CHECK-NEXT:       [[RET:%.+]] = IE.Transpose([[IN]]) {order_value = [[HCW]]} : tensor<2x3x2xf32> -> tensor<3x2x2xf32>
+    // CHECK-NEXT:       return [[RET]]
+}
+
+
+// -----
+
+{-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30"
+        vpux_ow_0: "0x10000000AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30"
     }
   }
 #-}
@@ -694,7 +957,7 @@ module @MemPermuteConversion {
     }
 
     func.func @main() -> (tensor<1x4x2x3xsi8>) {
-        %cst = const.Declare tensor<1x4x2x3xsi8> = dense_resource<ov_0> : tensor<1x2x3x4xsi8>,
+        %cst = const.Declare tensor<1x4x2x3xsi8> = dense_resource<vpux_ow_0> : tensor<1x2x3x4xsi8>,
                     [#const.MemPermute<#NCHW, #NWCH>]
         return %cst : tensor<1x4x2x3xsi8>
     }
@@ -712,7 +975,7 @@ module @MemPermuteConversion {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30"
+        vpux_ow_0: "0x10000000AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30AEB00E30"
     }
   }
 #-}
@@ -727,7 +990,7 @@ module @MemPermuteConversionNoTranspose {
     }
 
     func.func @main() -> (tensor<1x2x3x4xsi8, {order = #NHWC}>) {
-        %cst = const.Declare tensor<1x2x3x4xsi8, {order = #NHWC}> = dense_resource<ov_0> : tensor<1x2x3x4xsi8>,
+        %cst = const.Declare tensor<1x2x3x4xsi8, {order = #NHWC}> = dense_resource<vpux_ow_0> : tensor<1x2x3x4xsi8>,
                             [#const.MemPermute<#NHWC, #NHWC>]
         return %cst : tensor<1x2x3x4xsi8, {order = #NHWC}>
     }
@@ -745,7 +1008,7 @@ module @MemPermuteConversionNoTranspose {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E30AEB0"
+        vpux_ow_0: "0x10000000AEB00E30AEB0"
     }
   }
 #-}
@@ -761,7 +1024,7 @@ module @MemPermuteConversion3D {
     }
 
     func.func @main() -> (tensor<1x3x2xsi8>) {
-        %cst = const.Declare tensor<1x3x2xsi8> = dense_resource<ov_0> : tensor<1x2x3xsi8>,
+        %cst = const.Declare tensor<1x3x2xsi8> = dense_resource<vpux_ow_0> : tensor<1x2x3xsi8>,
                     [#const.MemPermute<#CHW, #map>]
         return %cst : tensor<1x3x2xsi8>
     }
@@ -779,7 +1042,7 @@ module @MemPermuteConversion3D {
 {-#
   dialect_resources: {
     builtin: {
-        ov_0: "0x10000000AEB00E30AEB0"
+        vpux_ow_0: "0x10000000AEB00E30AEB0"
     }
   }
 #-}
@@ -795,7 +1058,7 @@ module @MemPermuteConversionNoTranspose3D {
     }
 
     func.func @main() -> (tensor<1x2x3xsi8, {order = #map}>) {
-        %cst = const.Declare tensor<1x2x3xsi8, {order = #map}> = dense_resource<ov_0> : tensor<1x2x3xsi8>,
+        %cst = const.Declare tensor<1x2x3xsi8, {order = #map}> = dense_resource<vpux_ow_0> : tensor<1x2x3xsi8>,
                             [#const.MemPermute<#map, #map>]
         return %cst : tensor<1x2x3xsi8, {order = #map}>
     }
@@ -813,7 +1076,7 @@ module @MemPermuteConversionNoTranspose3D {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400112233"
+            vpux_ow_1: "0x0000000400112233"
         }
     }
 #-}
@@ -831,11 +1094,11 @@ module @DequantizePerAxis4D {
     }
 
     func.func @main() -> (tensor<2x2x1x1xf32>, tensor<2x2x1x1xi8>) {
-        %NOT_supported = const.Declare tensor<2x2x1x1xf32> = dense_resource<ov_1> : tensor<2x2x1x1xi8>,
+        %NOT_supported = const.Declare tensor<2x2x1x1xf32> = dense_resource<vpux_ow_1> : tensor<2x2x1x1xi8>,
             [#const.CastElemType<!qElemType>, #const.Dequantize]
 
         // Added the last cast to differentiate between the constants
-        %processed_cst = const.Declare tensor<2x2x1x1xi8> = dense_resource<ov_1> : tensor<2x2x1x1xi8>,
+        %processed_cst = const.Declare tensor<2x2x1x1xi8> = dense_resource<vpux_ow_1> : tensor<2x2x1x1xi8>,
             [#const.CastElemType<!qElemType1>, #const.Dequantize, #const.CastElemType<i8>]
 
         return %NOT_supported, %processed_cst : tensor<2x2x1x1xf32>, tensor<2x2x1x1xi8>
@@ -853,7 +1116,7 @@ module @DequantizePerAxis4D {
 {-#
     dialect_resources: {
         builtin: {
-            ov_1: "0x0000000400112233"
+            vpux_ow_1: "0x0000000400112233"
         }
     }
 #-}
@@ -871,11 +1134,11 @@ module @DequantizePerAxis5D {
     }
 
     func.func @main() -> (tensor<2x2x1x1x1xf32>, tensor<2x2x1x1x1xi8>) {
-        %NOT_supported = const.Declare tensor<2x2x1x1x1xf32> = dense_resource<ov_1> : tensor<2x2x1x1x1xi8>,
+        %NOT_supported = const.Declare tensor<2x2x1x1x1xf32> = dense_resource<vpux_ow_1> : tensor<2x2x1x1x1xi8>,
             [#const.CastElemType<!qElemType>, #const.Dequantize]
 
         // Added the last cast to differentiate between the constants
-        %processed_cst = const.Declare tensor<2x2x1x1x1xi8> = dense_resource<ov_1> : tensor<2x2x1x1x1xi8>,
+        %processed_cst = const.Declare tensor<2x2x1x1x1xi8> = dense_resource<vpux_ow_1> : tensor<2x2x1x1x1xi8>,
             [#const.CastElemType<!qElemType1>, #const.Dequantize, #const.CastElemType<i8>]
 
         return %NOT_supported, %processed_cst : tensor<2x2x1x1x1xf32>, tensor<2x2x1x1x1xi8>

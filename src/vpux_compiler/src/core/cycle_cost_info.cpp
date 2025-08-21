@@ -5,21 +5,19 @@
 
 #include "vpux/compiler/core/cycle_cost_info.hpp"
 
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
 
 CycleCostInfo::CycleCostInfo(mlir::func::FuncOp func)
-        : CycleCostInfo(VPU::CostModelConfig::createCostModel(VPU::getArch(func)), func) {
+        : CycleCostInfo(VPU::CostModelConfig::createCostModel(config::getArch(func)), func) {
 }
 
 CycleCostInfo::CycleCostInfo(std::shared_ptr<VPUNN::VPUCostModel> costModel, mlir::func::FuncOp func)
         : _log(Logger::global().nest("cycle-cost-info", 0)) {
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    _archKind = VPU::getArch(module);
+    _archKind = config::getArch(module);
     _costModel = std::move(costModel);
 
     _log.trace("Analyze cycle cost for Function '@{0}'", func.getName());

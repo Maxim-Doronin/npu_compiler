@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/core/layers.hpp"
@@ -14,11 +13,12 @@
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
@@ -35,27 +35,10 @@
 
 using namespace vpux;
 
-//
-// Wlm status utils
-//
-
-void vpux::VPUIP::setWlmStatus(mlir::ModuleOp module, vpux::VPUIP::WlmStatus status) {
-    module->setAttr(vpux::VPUIP::WlmStatusAttr::name, vpux::VPUIP::WlmStatusAttr::get(module->getContext(), status));
-}
-
-vpux::VPUIP::WlmStatus vpux::VPUIP::getWlmStatus(mlir::ModuleOp module) {
-    auto wlmStatus = vpux::VPUIP::WlmStatus::ENABLED;
-    if (module->hasAttr(vpux::VPUIP::WlmStatusAttr::name)) {
-        auto wlmAttr = module->getAttr(vpux::VPUIP::WlmStatusAttr::name);
-        wlmStatus = mlir::cast<vpux::VPUIP::WlmStatusAttr>(wlmAttr).getValue();
-    }
-    return wlmStatus;
-}
-
 uint16_t vpux::VPUIP::getProfWorkloadSize(mlir::ModuleOp module) {
     uint16_t profilingWorkloadSize;
-    switch (VPU::getArch(module)) {
-    case VPU::ArchKind::NPU37XX:
+    switch (config::getArch(module)) {
+    case config::ArchKind::NPU37XX:
         profilingWorkloadSize = VPUIP::HW_DPU_PROFILING_SIZE_BYTES_37XX;
         break;
     default:
@@ -86,11 +69,11 @@ double vpux::VPUIP::getMemoryDerateFactor(IE::MemoryResourceOp mem) {
     VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::MemoryKindAttr>(mem.getKind()), "Unsupported memory resource kind '{0}'",
                       mem.getKind());
 
-    auto attr = mem->getAttr(VPU::getMemoryDerateAttrName());
+    auto attr = mem->getAttr(config::getMemoryDerateAttrName());
     VPUX_THROW_UNLESS(attr != nullptr, "Memory resource '{0}' has no '{1}' attribute", mem.getKind(),
-                      VPU::getMemoryDerateAttrName());
+                      config::getMemoryDerateAttrName());
     VPUX_THROW_UNLESS(mlir::isa<mlir::FloatAttr>(attr), "Memory resource '{0}' has wrong '{1}' attribute : '{2}'",
-                      mem.getKind(), VPU::getMemoryDerateAttrName(), attr);
+                      mem.getKind(), config::getMemoryDerateAttrName(), attr);
 
     return mlir::cast<mlir::FloatAttr>(attr).getValueAsDouble();
 }
@@ -100,11 +83,11 @@ uint32_t vpux::VPUIP::getMemoryBandwidth(IE::MemoryResourceOp mem) {
     VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::MemoryKindAttr>(mem.getKind()), "Unsupported memory resource kind '{0}'",
                       mem.getKind());
 
-    auto attr = mem->getAttr(VPU::getMemoryBandwidthAttrName());
+    auto attr = mem->getAttr(config::getMemoryBandwidthAttrName());
     VPUX_THROW_UNLESS(attr != nullptr, "Memory resource '{0}' has no '{1}' attribute", mem.getKind(),
-                      VPU::getMemoryBandwidthAttrName());
+                      config::getMemoryBandwidthAttrName());
     VPUX_THROW_UNLESS(mlir::isa<mlir::IntegerAttr>(attr), "Memory resource '{0}' has wrong '{1}' attribute : '{2}'",
-                      mem.getKind(), VPU::getMemoryBandwidthAttrName(), attr);
+                      mem.getKind(), config::getMemoryBandwidthAttrName(), attr);
 
     return checked_cast<uint32_t>(mlir::cast<mlir::IntegerAttr>(attr).getInt());
 }
@@ -116,12 +99,12 @@ int64_t vpux::VPUIP::getNumTilesUsed(mlir::ModuleOp module) {
     return tileOp.getCount();
 }
 
-int64_t getMaxBarriersPerInference(VPU::ArchKind arch) {
+int64_t getMaxBarriersPerInference(config::ArchKind arch) {
     // TODO: E#78647 refactor to use api/vpu_cmx_info_{arch}.h
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return 64;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return 96;
     default:
         VPUX_THROW("Unable to get MaxBarriersPerInference for arch {0}", arch);
@@ -129,7 +112,7 @@ int64_t getMaxBarriersPerInference(VPU::ArchKind arch) {
 }
 
 int64_t vpux::VPUIP::getNumAvailableBarriers(mlir::Operation* parentOp) {
-    const auto arch = VPU::getArch(parentOp);
+    const auto arch = config::getArch(parentOp);
 
     auto module = parentOp->getParentOfType<mlir::ModuleOp>();
 
@@ -182,12 +165,12 @@ int64_t vpux::VPUIP::getNumberOfIndependentDmaQueues(mlir::Operation* parentOp) 
     VPUX_THROW_UNLESS(dmaPorts != nullptr, "Failed to get DMA information");
     auto dmaCount = dmaPorts.getCount();
 
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     // On VPU4+ there is a dedicated Link Agent exposed depending on DMA
     // channel (CMX and DDR) thus the number of independent DMA FIFOs that
     // compiler needs to track is twice the number of DMA ports
-    if (arch >= vpux::VPU::ArchKind::NPU40XX) {
+    if (arch >= vpux::config::ArchKind::NPU40XX) {
         return 2 * dmaCount;
     }
 
@@ -195,11 +178,11 @@ int64_t vpux::VPUIP::getNumberOfIndependentDmaQueues(mlir::Operation* parentOp) 
 }
 
 bool vpux::VPUIP::supportsPerVariantBarrierConfiguration(mlir::ModuleOp module) {
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     // If there are more than one DPU per tile, then all variants should consume/produce barriers. If there's only one
     // DPU per tile, then it is sufficient that only first variant of an invariant consumes a barrier and the last
     // variant of that invariant produces a barrier.
-    return arch >= VPU::ArchKind::NPU40XX;
+    return arch >= config::ArchKind::NPU40XX;
 }
 
 //
@@ -1218,11 +1201,15 @@ SmallVector<mlir::Value> vpux::VPUIP::getSplitBuffers(mlir::MLIRContext* ctx, ml
                       shapes.size(), splitNum);
     VPUX_THROW_UNLESS(shapeOffsets.size() == checked_cast<size_t>(splitNum),
                       "Mismatch in shape offsets '{0}' and buffers '{1}'", shapeOffsets.size(), splitNum);
-
-    const auto memSpaceId = declBuffType.getMemSpace().getIndex();
+    vpux::IndexedSymbolAttr symbolAttr;
     const auto memKind = declBuffType.getMemoryKind();
-    VPUX_THROW_UNLESS(memSpaceId.has_value(), "Failed to extract section id");
-    const auto symbolAttr = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(memKind), memSpaceId.value());
+    const auto memSpaceId = declBuffType.getMemSpace().getIndex();
+    if (memKind == VPU::MemoryKind::CMX_NN) {
+        VPUX_THROW_UNLESS(memSpaceId.has_value(), "Failed to extract section id");
+        symbolAttr = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(memKind), memSpaceId.value());
+    } else {
+        symbolAttr = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(memKind));
+    }
     const auto originStride = operandType.getStrides();
 
     auto insertionPoint = declBuff.getOperation();
@@ -1239,9 +1226,16 @@ SmallVector<mlir::Value> vpux::VPUIP::getSplitBuffers(mlir::MLIRContext* ctx, ml
         }
 
         const auto newLoc = appendLoc(loc, "_{0}_split_{1}", bufferName, bufferId);
-        auto newCmxBuffer =
-                VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, newLoc, cmxBuffType,
-                                                        declBuff.getSection(), memSpaceId.value(), cmxOffset.count());
+        VPURT::DeclareBufferOp newCmxBuffer;
+        if (memSpaceId.has_value()) {
+            newCmxBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, newLoc, cmxBuffType,
+                                                                   declBuff.getSection(), memSpaceId.value(),
+                                                                   cmxOffset.count());
+        } else {
+            newCmxBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, newLoc, cmxBuffType,
+                                                                   declBuff.getSection(), nullptr, cmxOffset.count(),
+                                                                   declBuff.getSwizzlingKeyAttr());
+        }
         insertionPoint = newCmxBuffer.getOperation();
 
         buffers[bufferId] = newCmxBuffer;
@@ -1905,7 +1899,7 @@ vpux::Dim vpux::VPUIP::getCopyDMATilingDimForLargePlaneNum(mlir::Operation* op) 
 // CopyOp or NNDMAop is split needed for large plane number in one of below two conditions:
 // 1.Input has level 2 stride and input plane number is larger than 255
 // 2.Output has level 2 stride and output plane number is larger than 255
-bool vpux::VPUIP::isSplitNeededForLargePlanesNum(const VPU::ArchKind arch, const vpux::NDTypeInterface& type,
+bool vpux::VPUIP::isSplitNeededForLargePlanesNum(const config::ArchKind arch, const vpux::NDTypeInterface& type,
                                                  ShapeRef shape) {
     const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(arch);
     const auto maxStridingLevel = dmaEngineLimits.getMaxStrideCount();
@@ -1931,7 +1925,7 @@ bool vpux::VPUIP::isSplitNeededForLargePlanesNum(const VPU::ArchKind arch, const
 bool vpux::VPUIP::isSplitNeededForLargePlanesNum(mlir::Operation* op) {
     VPUX_THROW_UNLESS((mlir::isa<VPUIP::CopyOp, VPUIP::NNDMAOp>(op)),
                       "isSplitNeededForLargePlanesNum: not a CopyOp or NNDMAOp");
-    const auto arch = VPU::getArch(op);
+    const auto arch = config::getArch(op);
     const auto inShape = getShape(op->getOperand(0));
     const auto inType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(op->getOperand(0)));
     const auto outShape = getShape(op->getResult(0));
@@ -1946,7 +1940,7 @@ bool vpux::VPUIP::isSplitNeededForLargePlanesNum(mlir::Operation* op) {
 bool vpux::VPUIP::hasLegalStridingLevel(mlir::Operation* op) {
     VPUX_THROW_WHEN(mlir::dyn_cast<VPUIP::CopyOp>(op) == nullptr && mlir::dyn_cast<VPUIP::NNDMAOp>(op) == nullptr,
                     "hasLegalStridingLevel: not a CopyOp or NNDMAOp");
-    const auto arch = VPU::getArch(op);
+    const auto arch = config::getArch(op);
     const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(arch);
     const auto maxStridingLevel = dmaEngineLimits.getMaxStrideCount();
     const auto inputStridingLevel = getStridingLevel(op->getOperand(0));
@@ -2294,7 +2288,7 @@ VPURT::TaskOp VPUIP::createBarProgDMA(mlir::OpBuilder& builder, mlir::Value inpu
 }
 
 int64_t vpux::VPUIP::getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t numClusters, bool isInputSparse,
-                                                  VPU::ArchKind arch) {
+                                                  config::ArchKind arch) {
     return VPU::getSOHMinimalHeightAlignment(shape, numClusters, isInputSparse, arch);
 }
 
@@ -2303,11 +2297,11 @@ int64_t vpux::VPUIP::getSOHMinimalHeightAlignment(vpux::ShapeRef shape, int64_t 
 //
 
 int64_t vpux::VPUIP::getMaximalSWKernelPrefetchDataSize(mlir::ModuleOp module) {
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUIP::MAX_SW_KERNEL_PREFETCH_DATA_SIZE_37XX;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return VPUIP::MAX_SW_KERNEL_PREFETCH_DATA_SIZE_40XX;
     default:
         VPUX_THROW("Unable to get MaximalSWKernelPrefetchDataSize for arch {0}", arch);
@@ -2323,22 +2317,6 @@ std::pair<int64_t, int64_t> vpux::VPUIP::getSplitPartSizes(NDTypeInterface buffe
     const int64_t firstPartSize = tileDimSize / 2;
     const int64_t secondPartSize = tileDimSize - firstPartSize;
     return {firstPartSize, secondPartSize};
-}
-
-//
-// Check user utils
-//
-
-bool VPUIP::hasOneOrSameUser(mlir::Operation* op) {
-    auto users = op->getUsers();
-    if (users.empty()) {
-        return false;
-    }
-
-    auto firstUser = *users.begin();
-    return std::all_of(std::next(users.begin()), users.end(), [&](mlir::Operation* userOp) {
-        return firstUser == userOp;
-    });
 }
 
 std::unordered_set<Dim> VPUIP::getConcatAxes(VPUIP::ConcatViewOp concatViewOp) {
@@ -2773,4 +2751,18 @@ bool vpux::VPUIP::isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subV
 
     // Be compatible if SubView does not shrink segmented axis
     return origShape[Dim(tileIndexVal)] == subShape[Dim(tileIndexVal)];
+}
+
+VPURT::TaskOp VPUIP::createEnqueueDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                                      mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                                      VPUIP::EnqueueDMAAttr enqueueDMAAttr, llvm::StringLiteral opName) {
+    auto ctx = builder.getContext();
+    auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, opName));
+    auto portAttr = vpux::getIntAttr(ctx, port);
+
+    auto enqueueDMAOp = VPURT::wrapIntoTaskOp<VPUIP::EnqueueDMAOp>(
+            builder, waitBarriers, updateBarriers, syncDmaLoc, input, output, portAttr,
+            /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
+            /*dmaProfilingMetaData*/ nullptr, enqueueDMAAttr);
+    return enqueueDMAOp->getParentOfType<VPURT::TaskOp>();
 }

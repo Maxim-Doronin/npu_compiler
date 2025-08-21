@@ -3,14 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -415,6 +417,60 @@ VPUIP::GenericReshapeOp convertMemPermuteHNWCAsDMA(VPUIP::SwKernelOp swKernelOp,
     return rewriter.create<VPUIP::GenericReshapeOp>(swKernelOp->getLoc(), outType, secondPermDmaOp);
 }
 
+//
+// Convert MemPermute NCHW->HCWN to 2 permuteDMAs
+// MemPermute NCHW->HCWN, Permute pattern: [d0, d1, d2, d3] -> [d2, d1, d3, d0]
+// For example, MemPermute NCHW->HCWN:
+//            Input                            :    128x2x36x68xf16#NCHW
+//              |
+//           MemPermute                        :    memPerm: (d0, d1, d2, d3) -> (d2, d1, d3, d0)
+//              |
+//            Output                           :    36x2x68x128xf16#NCHW
+// Convert to:
+//            Input                            :    128x2x36x68xf16#NCHW
+//              |
+//         GenericReshape 1                    :    1x256x36x68xf16#NCHW
+//              |
+//         PermuteDMA 1                        :    1x36x256x68xf16#NCHW ([1, 0, 2]: HWC->WHC)
+//              |
+//         GenericReshape 2                    :    1x36x128x136xf16#NCHW
+//              |
+//         PermuteDMA 2                        :    1x36x136x128xf16#NCHW ([0, 2, 1]: HWC->HCW)
+//              |
+//         GenericReshape 3                    :    36x2x68x128xf16#NCHW
+//              |
+//            Output                           :    36x2x68x128xf16#NCHW
+//
+VPUIP::GenericReshapeOp convertMemPermuteHCWNAsDMA(VPUIP::SwKernelOp swKernelOp, mlir::Value input,
+                                                   mlir::PatternRewriter& rewriter) {
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
+    // Create genericReshapeOp for first permuteDMAOp
+    const auto mergedPerm = DimsOrder::NHCW.toAffineMap(rewriter.getContext());
+    auto inGenReshapeOp = createGenericReshape(swKernelOp, input, outType, mergedPerm, rewriter);
+    auto inGenReshapeType = mlir::dyn_cast<vpux::NDTypeInterface>(inGenReshapeOp.getOutput().getType());
+    // Create first permuteDMAOp: permutation is [d0, d2, d1, d3]
+    auto dimsOrderDMA = DimsOrder::NHCW;
+    auto firstPermDmaOp =
+            createPermuteDMA(swKernelOp, inGenReshapeOp, inGenReshapeType, dimsOrderDMA, outType, rewriter);
+    auto firstPermDMAType = mlir::dyn_cast<vpux::NDTypeInterface>(firstPermDmaOp.getOutput().getType());
+    // Create genericReshapeOp for second permuteDMAOp
+    auto midGenReshapeType = firstPermDMAType;
+    auto outTypeMemShape = Shape(outType.getMemShape().raw());
+    auto midGenReshapeNewMemShape = Shape({1, outTypeMemShape[Dims4D::Act::N], outTypeMemShape[Dims4D::Act::W],
+                                           outTypeMemShape[Dims4D::Act::H] * outTypeMemShape[Dims4D::Act::C]});
+    midGenReshapeType =
+            VPUIP::changeShapeWithMemShape(&midGenReshapeType, midGenReshapeNewMemShape, outType.getDimsOrder());
+    auto midGenReshapeOp =
+            rewriter.create<VPUIP::GenericReshapeOp>(swKernelOp->getLoc(), midGenReshapeType, firstPermDmaOp);
+    auto midGenReshapeOutType = mlir::dyn_cast<vpux::NDTypeInterface>(midGenReshapeOp.getOutput().getType());
+    // Create second permuteDMAOp: permutation is [d0, d1, d3, d2]
+    auto secondDimsOrderDMA = DimsOrder::NCWH;
+    auto secondPermDmaOp =
+            createPermuteDMA(swKernelOp, midGenReshapeOp, midGenReshapeOutType, secondDimsOrderDMA, outType, rewriter);
+    // Create genericReshapeOp for output
+    return rewriter.create<VPUIP::GenericReshapeOp>(swKernelOp->getLoc(), outType, secondPermDmaOp);
+}
+
 mlir::LogicalResult ConvertToDMAPass::SwKernelMemPermuteConverter::matchAndRewrite(
         VPUIP::SwKernelOp swKernelOp, mlir::PatternRewriter& rewriter) const {
     if (!VPUIP::isMemPermSwKernel(swKernelOp)) {
@@ -435,6 +491,13 @@ mlir::LogicalResult ConvertToDMAPass::SwKernelMemPermuteConverter::matchAndRewri
     const auto outputBuf = swKernelOp.getOperand(1);
     // Check for inversed permutation which needs split into 2 consecutive permuteDMAs
     // e.g. pattern [d0, d1, d2, d3] -> [d0, d3, d2, d1]
+
+    if (config::getArch(swKernelOp.getOperation()) > config::ArchKind::NPU37XX) {
+        rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(swKernelOp, input, outputBuf,
+                                                         mlir::AffineMapAttr::get(memPerm.value()), nullptr);
+        return mlir::success();
+    }
+
     auto mergedPerm = vpux::VPUIP::getPermuteDMAMergedMemPerm(inType, memPerm.value());
     if (!VPUIP::isSplitNeededForPermuteDMA(inType, memPerm.value())) {
         rewriter.replaceOpWithNewOp<VPUIP::PermuteDMAOp>(swKernelOp, input, outputBuf,
@@ -461,6 +524,12 @@ mlir::LogicalResult ConvertToDMAPass::SwKernelMemPermuteConverter::matchAndRewri
     } else if (mergedPerm == DimsOrder::CWNH.toAffineMap(rewriter.getContext())) {
         // Convert MemPermute NCHW->CWNH to 3 permuteDMAs
         auto newOp = convertMemPermuteCWNH(swKernelOp, input, rewriter);
+        rewriter.replaceOp(swKernelOp, newOp.getOutput());
+
+        return mlir::success();
+    } else if (mergedPerm == DimsOrder::HCWN.toAffineMap(rewriter.getContext())) {
+        // Convert MemPermute NCHW->HCWN to 2 permuteDMAs
+        auto newOp = convertMemPermuteHCWNAsDMA(swKernelOp, input, rewriter);
         rewriter.replaceOp(swKernelOp, newOp.getOutput());
 
         return mlir::success();

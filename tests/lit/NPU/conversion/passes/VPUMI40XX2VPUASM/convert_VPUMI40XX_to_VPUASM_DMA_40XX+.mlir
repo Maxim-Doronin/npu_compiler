@@ -6,7 +6,7 @@
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_0d_to_0d inputsInfo : {
@@ -39,7 +39,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_1d_to_1d inputsInfo : {
@@ -72,7 +72,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_1d_to_3d inputsInfo : {
@@ -105,7 +105,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_2d_to_3d inputsInfo : {
@@ -138,7 +138,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_2d_to_3d_with_single_shape inputsInfo : {
@@ -171,7 +171,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_3d_to_2d inputsInfo : {
@@ -204,7 +204,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_3d_to_2d_with_single_shape inputsInfo : {
@@ -237,7 +237,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_3d_to_1d inputsInfo : {
@@ -272,7 +272,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 !qElemType = !quant.uniform<u8:f16, 0.038143169178682212:128>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_2d_to_3d_input_stride_on_the_highest_dim inputsInfo : {
@@ -308,7 +308,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 !qElemType = !quant.uniform<u8:f16, 0.038143169178682212:128>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_3d_to_2d_output_stride_on_the_highest_dim inputsInfo : {
@@ -344,7 +344,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @nndma_nf4 inputsInfo : {
@@ -377,7 +377,7 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 IE.ExecutorResource 1 of @DMA_NN
 IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @dma_writing_to_register inputsInfo : {
@@ -405,9 +405,9 @@ IE.TileResource 1 of @NCE at 6.000000e+02 MHz
   }
 
   // CHECK: ELF.CreateSection @buffer.Constant.0.constant aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-  // CHECK:   VPUASM.ConstBuffer @Declare0 !VPUASM.Buffer< "Constant"[0] <0> : memref<1024xui8> :  swizzling(0)> = dense<1> : tensor<1024xui8>
+  // CHECK:   VPUASM.ConstBuffer @Declare_0 !VPUASM.Buffer< "Constant"[0] <0> : memref<1024xui8> :  swizzling(0)> = dense<1> : tensor<1024xui8>
   // CHECK: ELF.CreateLogicalSection @reg.Register.0 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") secLocation(<Register>) {
-  // CHECK:   VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "Register"[0] <788594688> : memref<1024xui8, @Register> :  swizzling(0)>
+  // CHECK:   VPUASM.DeclareBuffer @DeclareBuffer_0 !VPUASM.Buffer< "Register"[0] <788594688> : memref<1024xui8, @Register> :  swizzling(0)>
 
   // CHECK: ELF.CreateLogicalSection @program.metadata.cmx aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
   // CHECK:   VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DMA>

@@ -400,7 +400,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEAveragePoo
     }
 
     mlir::UnitAttr isSmallKernelOptimizationAttr = nullptr;
-    if (VPU::NCEInvariant::isSmallKernelOptimizationSupported(VPU::getArch(origOp), origOp)) {
+    if (VPU::NCEInvariant::isSmallKernelOptimizationSupported(config::getArch(origOp), origOp)) {
         isSmallKernelOptimizationAttr = mlir::UnitAttr::get(ctx);
     }
 
@@ -462,7 +462,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEDepthConvo
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
 
-    auto arch = VPU::getArch(origOp);
+    auto arch = config::getArch(origOp);
     mlir::UnitAttr isSmallKernelOptimizationAttr = nullptr;
     if (VPU::NCEInvariant::isSmallKernelOptimizationSupported(arch, origOp)) {
         isSmallKernelOptimizationAttr = mlir::UnitAttr::get(ctx);
@@ -623,7 +623,6 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEReduceOp o
         isSuperdenseAttr = mlir::UnitAttr::get(ctx);
     }
 
-    auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
     const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
     auto nceOpInterface = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
     auto nceOp =
@@ -632,7 +631,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext* ctx, VPU::NCEReduceOp o
                                  /*weight_table_bias=*/nullptr, outputBuffers, nceTaskType,
                                  getIntArrayAttr(ctx, nceOpInterface.getKernelSizeVal()),
                                  getIntArrayAttr(ctx, nceOpInterface.getStridesVal()), nceOpInterface.getPad(),
-                                 origOp.getWorkloads(), isSuperdenseAttr, ppeAttr, dpuCostAttr,
+                                 origOp.getWorkloads(), isSuperdenseAttr, origOp.getPpeAttr(), dpuCostAttr,
                                  /*isInplace=*/nullptr,
                                  /*isPermuteQuantize=*/nullptr, /*cmSpPattern=*/nullptr,
                                  /*inputChannelsCompression=*/nullptr, /*isNCEPermute=*/false,

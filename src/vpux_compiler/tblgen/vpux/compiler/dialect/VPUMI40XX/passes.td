@@ -29,10 +29,7 @@ def SetupProfilingVPUMI40XX : PassBase<"setup-profiling-VPUMI40XX", "vpux::Modul
 
     let dependentDialects = [
         "vpux::VPUIP::VPUIPDialect",
-        "vpux::VPURT::VPURTDialect",
-        "vpux::VPUMI40XX::VPUMI40XXDialect",
-        "vpux::VPURegMapped::VPURegMappedDialect",
-        "vpux::ELFNPU37XX::ELFNPU37XXDialect"
+        "vpux::VPUMI40XX::VPUMI40XXDialect"
     ];
 }
 
@@ -174,6 +171,20 @@ def LinkEnqueueTargets : PassBase<"link-enqueue-targets", "vpux::FunctionPass"> 
     }];
 
     let constructor = "vpux::VPUMI40XX::createLinkEnqueueTargetsPass()";
+
+    let options = [
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
+            )}]
+        >
+    ];
 }
 
 def LinkAllOps : PassBase<"link-all-ops", "vpux::FunctionPass"> {
@@ -199,12 +210,12 @@ def UnrollFetchTaskOps : PassBase<"unroll-fetch-ops", "vpux::FunctionPass"> {
 }
 
 def SplitEnqueueOps : PassBase<"split-enqueue-ops", "vpux::FunctionPass"> {
-    let summary = [{ Split enqueue Ops fot avoid bug when we have last op in task buffer in LL }];
+    let summary = [{ Split enqueue Ops to avoid bug when we have last op in task buffer in LL }];
 
     let description = [{
         To account for preemption at a group boundary level scenario we have to leave last task in fetch group
-        unlinked. The problem with preemmption is due to concurrency between thread processing preemption and execution
-        thread, upon restore of previous state we can't realiably check if last task in group was linked, since it could be
+        unlinked. The problem with preemption is due to concurrency between thread processing preemption and execution
+        thread, upon restore of previous state we can't reliably check if last task in group was linked, since it could be
         replaced already with tasks from next group by execution thread. The solution is to leave last tasks in groups
         always unlinked.
 
@@ -215,6 +226,25 @@ def SplitEnqueueOps : PassBase<"split-enqueue-ops", "vpux::FunctionPass"> {
     }];
 
     let constructor = "vpux::VPUMI40XX::createSplitEnqueueOpsPass()";
+}
+
+def SplitEnqueueDmaOps : PassBase<"split-enqueue-dma-ops", "vpux::FunctionPass"> {
+    let summary = [{ Split enqueue Ops to avoid bug when we have last op in task buffer in LL }];
+
+    let description = [{
+        To account for preemption at a group boundary level scenario we have to leave last task in fetch group
+        unlinked. The problem with preemption is due to concurrency between thread processing preemption and execution
+        thread, upon restore of previous state we can't reliably check if last task in group was linked, since it could be
+        replaced already with tasks from next group by execution thread. The solution is to leave last tasks in groups
+        always unlinked.
+
+        This pass splits single enqueue dma operation into multiple based on special attribute
+        (lastSecondaryTaskInExecutionGroup) set by previous passes in the pipeline (group-execution-ops). Since single
+        enqueue operation may cover a range of tasks spanning through multiple Fetch groups, it may be split into more
+        than 2 enqueue dma operations.
+    }];
+
+    let constructor = "vpux::VPUMI40XX::createSplitEnqueueDmaOpsPass()";
 }
 
 def UnrollEnqueueOps : PassBase<"unroll-enqueue-ops", "vpux::FunctionPass"> {
@@ -231,7 +261,7 @@ def LinkEnqueueOpsForSameBarrier : PassBase<"link-enqueue-ops-for-same-barrier",
 
 def AddBootstrapBarriers : PassBase<"add-bootstrap-barriers", "vpux::FunctionPass"> {
     let summary = [{ Add Bootstrap Barriers}];
-    let description = [{Set the initial barriers to be used during inference, we set the first BootstrapOp and a count 
+    let description = [{Set the initial barriers to be used during inference, we set the first BootstrapOp and a count
                         of how bootstrap barriers. Bootstrap operation allow us start barriers in any order}];
 
     let constructor = "vpux::VPUMI40XX::createAddBootstrapBarriersPass()";
@@ -239,9 +269,27 @@ def AddBootstrapBarriers : PassBase<"add-bootstrap-barriers", "vpux::FunctionPas
 
 def AddBootstrapWorkItems : PassBase<"add-bootstrap-work-items", "vpux::FunctionPass"> {
     let summary = [{ Add Bootstrap WorkItems}];
-    let description = [{Set the bootstrap work items in the blob, these WorkiIems are enqueued by FW directly without a consumer interrupt}];
+    let description = [{
+        Analyze schedule and check presence of already present EnqueueOps (WorkItems) or enqueue DMAs. For initial range
+        of tasks not handled by those enqueues create bootstrap EnqueueOps that will be scheduled directly by FW
+        at the beginning of inference.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createAddBootstrapWorkItemsPass()";
+
+    let options = [
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
+            )}]
+        >
+    ];
 }
 
 def NextSameIdAssignment : PassBase<"next-same-id-assignment", "vpux::FunctionPass"> {
@@ -350,8 +398,8 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             This mode does everything done at WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED plus creates DMAs in the schedule at right place
             which will push barrier configurations to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program any barriers
 
-            In full Workload Management mode, it is recommended to enable the consumer interrupt on at least one barrier per page to maintain inference activity. 
-            This mechanism allows the firmware to send periodic heartbeat refresh to the host, indicating that the inference is still running. To reduce interrupt overhead, 
+            In full Workload Management mode, it is recommended to enable the consumer interrupt on at least one barrier per page to maintain inference activity.
+            This mechanism allows the firmware to send periodic heartbeat refresh to the host, indicating that the inference is still running. To reduce interrupt overhead,
             the consumer interrupt is typically set only on the first barrier within each page, though less frequent signaling may still be sufficient depending on system requirements.
 
     }];
@@ -398,6 +446,29 @@ def AddEnqueueDMAOps : PassBase<"add-enqueue-dma-ops", "vpux::FunctionPass"> {
         Based on this page, it finds a suitable DMAOp from the previous page to serve as the insertion point. The DMA is then
         created with appropriate parameters (e.g., fifo addr based on tile and list index) to enqueue the task correctly.
     }];
+}
+
+def UpdateEnqueueDMAInputAndOutput : PassBase<"update-enqueue-dma-input-and-output", "vpux::FunctionPass"> {
+    let summary = "Update input and output data for DMAOps that perform task enqueue";
+
+    let constructor = "vpux::VPUMI40XX::createUpdateEnqueueDMAInputAndOutput()";
+
+    let description = [{
+        For each DMA that perform task enqueue (has EnqueueDmaAttr) update its input with a constant that contains
+        the address of task descriptor in CMX metadata space and output with HW FIFO register for given task type
+    }];
+}
+
+def ConvertFetchDmasToFetchTaskOps : PassBase<"convert-fetch-dmas-to-fetch-task-ops", "vpux::FunctionPass"> {
+    let summary = [{ Insert Fetch operations using predefined placeholders }];
+
+    let description = [{
+        Insert FetchOps for DPU & Shv tasks
+        These tasks are responsible to copy descriptors for Variant,Invariant,ShaveInvocation and ShaveRange
+        to CMX Metadata space. Lower in the pipeline these tasks are lowered to NNDMAs
+    }];
+
+    let constructor = "vpux::VPUMI40XX::createConvertFetchDmasToFetchTaskOpsPass()";
 }
 
 #endif

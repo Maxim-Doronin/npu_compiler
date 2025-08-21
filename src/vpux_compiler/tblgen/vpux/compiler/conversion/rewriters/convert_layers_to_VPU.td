@@ -6,9 +6,43 @@
 #ifndef VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_LAYERS_TO_VPU
 #define VPUX_COMPILER_CONVERSION_REWRITERS_CONVERT_LAYERS_TO_VPU
 
-include "vpux/compiler/dialect/IE/ops.td"
+include "vpux/compiler/dialect/IE/ops/activation.td"
+include "vpux/compiler/dialect/IE/ops/arithmetic.td"
+include "vpux/compiler/dialect/IE/ops/bitwise.td"
+include "vpux/compiler/dialect/IE/ops/comparison.td"
+include "vpux/compiler/dialect/IE/ops/control_flow.td"
+include "vpux/compiler/dialect/IE/ops/convolution.td"
 include "vpux/compiler/dialect/IE/ops/data_movement.td"
-include "vpux/compiler/dialect/VPU/ops.td"
+include "vpux/compiler/dialect/IE/ops/data_type.td"
+include "vpux/compiler/dialect/IE/ops/eltwise.td"
+include "vpux/compiler/dialect/IE/ops/image.td"
+include "vpux/compiler/dialect/IE/ops/logical.td"
+include "vpux/compiler/dialect/IE/ops/normalization.td"
+include "vpux/compiler/dialect/IE/ops/pooling.td"
+include "vpux/compiler/dialect/IE/ops/recurrent.td"
+include "vpux/compiler/dialect/IE/ops/reduce.td"
+include "vpux/compiler/dialect/IE/ops/resources.td"
+include "vpux/compiler/dialect/IE/ops/shape_manipulation.td"
+include "vpux/compiler/dialect/IE/ops/specialized.td"
+
+include "vpux/compiler/dialect/VPU/ops/activation.td"
+include "vpux/compiler/dialect/VPU/ops/arithmetic.td"
+include "vpux/compiler/dialect/VPU/ops/bitwise.td"
+include "vpux/compiler/dialect/VPU/ops/comparison.td"
+include "vpux/compiler/dialect/VPU/ops/control_flow.td"
+include "vpux/compiler/dialect/VPU/ops/convolution.td"
+include "vpux/compiler/dialect/VPU/ops/data_movement.td"
+include "vpux/compiler/dialect/VPU/ops/data_type.td"
+include "vpux/compiler/dialect/VPU/ops/eltwise.td"
+include "vpux/compiler/dialect/VPU/ops/image.td"
+include "vpux/compiler/dialect/VPU/ops/internal.td"
+include "vpux/compiler/dialect/VPU/ops/logical.td"
+include "vpux/compiler/dialect/VPU/ops/normalization.td"
+include "vpux/compiler/dialect/VPU/ops/pooling.td"
+include "vpux/compiler/dialect/VPU/ops/recurrent.td"
+include "vpux/compiler/dialect/VPU/ops/reduce.td"
+include "vpux/compiler/dialect/VPU/ops/shape_manipulation.td"
+include "vpux/compiler/dialect/VPU/ops/specialized.td"
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
@@ -1427,22 +1461,6 @@ def RewritePad :
         >;
 
 //
-// IE.Copy -> VPU.Copy
-//
-
-def createCopyOp :
-        NativeCodeCall<[{
-            $_builder.create<vpux::VPU::CopyOp>(
-                $_loc, $0, $1)
-        }]>;
-
-def RewriteCopy :
-        Pat<
-            (IE_CopyOp $input, $out_mem_space),
-            (createCopyOp $input, $out_mem_space)
-        >;
-
-//
 // IE.Slice -> VPU.Slice
 //
 
@@ -2264,8 +2282,8 @@ def RewriteRoPE :
 
 def createSDPAOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::SDPAOp>($_loc, $0, $1, $2, 
-            $3.size() == 1 ? $3[0] : nullptr, 
+            $_builder.create<vpux::VPU::SDPAOp>($_loc, $0, $1, $2,
+            $3.size() == 1 ? $3[0] : nullptr,
             $4.size() == 1 ? $4[0] : nullptr,
             $5.size() == 1 ? $5[0] : nullptr,
             nullptr)

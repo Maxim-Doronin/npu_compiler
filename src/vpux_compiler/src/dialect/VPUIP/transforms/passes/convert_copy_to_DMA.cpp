@@ -3,11 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_CONVERTTRANSFEROPSTODMAS
@@ -25,7 +27,7 @@ namespace {
 
 class TimestampRewrite final : public mlir::OpRewritePattern<VPUIP::TimestampOp> {
 public:
-    TimestampRewrite(mlir::MLIRContext* ctx, vpux::VPU::ArchKind arch, Logger log)
+    TimestampRewrite(mlir::MLIRContext* ctx, vpux::config::ArchKind arch, Logger log)
             : mlir::OpRewritePattern<VPUIP::TimestampOp>(ctx), _log(log), _arch(arch) {
     }
 
@@ -34,7 +36,7 @@ public:
 
 private:
     Logger _log;
-    vpux::VPU::ArchKind _arch;
+    vpux::config::ArchKind _arch;
 };
 
 mlir::LogicalResult TimestampRewrite::matchAndRewrite(VPUIP::TimestampOp origOp,
@@ -49,7 +51,7 @@ mlir::LogicalResult TimestampRewrite::matchAndRewrite(VPUIP::TimestampOp origOp,
     uint32_t hwAddress = 0;
 
     switch (_arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         hwAddress = VPUIP::HW_TIMER_ABSOLUTE_ADDR_37XX;
         VPUX_THROW_UNLESS(origType.getElementType() == getUInt64Type(getContext()),
                           "Got wrong element type for TimestampOp");
@@ -112,7 +114,7 @@ void ConvertTransferOpsToDMAsPass::safeRunOnFunc() {
     auto func = getOperation();
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     mlir::ConversionTarget target(ctx);
     target.addIllegalOp<VPUIP::CopyOp>();

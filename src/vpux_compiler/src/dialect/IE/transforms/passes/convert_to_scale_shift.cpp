@@ -3,13 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
-#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -300,6 +302,36 @@ protected:
     Logger _log;
 };
 
+bool isBeneficialToConvertMultiplyToScaleShift(ShapeRef activationShape, ShapeRef weightsShape, ShapeRef outputShape,
+                                               const IE::MultiplyOp& mulOp, const Logger& log) {
+    const int64_t dimCShape = outputShape[Dim(Dims4D::Act::C)];
+    if (dimCShape <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
+        log.trace("Operations with C dimension <= 8192 can be converted to ScaleShift");
+        return true;
+    }
+
+    if (config::getArch(mulOp) <= config::ArchKind::NPU40XX) {
+        log.trace("Operations with C dimension > 8192 on NPU40xx and older is faster on SHAVE");
+        return false;
+    }
+
+    // Operations benefit from running on DPU when channel dimension size is less than
+    // 1.5x(experimental value) the standard limit
+    // E-171794 will introduce a comprehensive solution for choosing between different executors
+    constexpr double DPU_BENEFIT_FACTOR = 1.5;
+    const bool isBenefitOnDPU =
+            dimCShape < static_cast<int64_t>(VPU::NCEInvariant::VPU_DIMENSION_LIMIT * DPU_BENEFIT_FACTOR);
+    // Operations that do not need to be broadcasted can be decided to execute on DPU(NCEEltwise) or
+    // SHAVE(VPU.Multiply) in later passes
+    const bool needBroadcast = activationShape != weightsShape;
+    if (needBroadcast && isBenefitOnDPU) {
+        log.trace("Operations that need to be broadcasted with C dimension > 8192 can be converted to ScaleShift");
+        return true;
+    }
+
+    return false;
+}
+
 mlir::LogicalResult ConvertMultiplyToScaleShift::matchAndRewrite(IE::MultiplyOp mulOp,
                                                                  mlir::PatternRewriter& rewriter) const {
     _log.trace("Got op {0} at {1}", mulOp->getName(), mulOp->getLoc());
@@ -319,14 +351,14 @@ mlir::LogicalResult ConvertMultiplyToScaleShift::matchAndRewrite(IE::MultiplyOp 
 
     auto mulOutShape = getShape(mulOp.getOutput());
     auto weightsShape = getShape(weightsInput);
+    auto activationShape = getShape(activationInput);
 
     // Activation shape and scaleShift output shape should be consistent
-    if (getShape(activationInput) != mulOutShape) {
+    if (activationShape != mulOutShape) {
         return mlir::failure();
     }
 
-    if (mulOutShape[Dim(Dims4D::Act::C)] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
-        _log.trace("Multiply with C Dim > 8192 will not be converted to ScaleShift since it is faster on Shave.");
+    if (!isBeneficialToConvertMultiplyToScaleShift(activationShape, weightsShape, mulOutShape, mulOp, _log)) {
         return mlir::failure();
     }
 

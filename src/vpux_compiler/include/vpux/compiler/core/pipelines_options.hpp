@@ -19,170 +19,6 @@
 #include <string>
 
 namespace vpux {
-
-//
-// ReferenceSWMode
-//
-
-template <typename T>
-struct ReferenceSWOptions : mlir::PassPipelineOptions<T> {
-    BoolOption enableVerifiers{*this, "enable-verifiers", llvm::cl::desc("Enable verifiers execution after each pass"),
-                               llvm::cl::init(isDeveloperBuild())};
-
-    BoolOption enableMemoryUsageCollector{*this, "enable-memory-usage-collector",
-                                          llvm::cl::desc("Enable peak memory usage instrumentation after each pass"),
-                                          llvm::cl::init(isDeveloperBuild())};
-
-    BoolOption enableFunctionStatisticsInstrumentation{
-            *this, "enable-function-statistics-instrumentation",
-            llvm::cl::desc("Enable printing statistics for functions after each pass"), llvm::cl::init(false)};
-
-    BoolOption allowCustomValues{*this, "allow-custom-values",
-                                 ::llvm::cl::desc("[Optional] Allows keep predefined values in IR")};
-
-    BoolOption enableDummyOpReplacement{*this, "dummy-op-replacement",
-                                        llvm::cl::desc("Replace unsupported SW Kernel ops with Dummy ones"),
-                                        llvm::cl::init(false)};
-
-    BoolOption constantFoldingInBackground{*this, "constant-folding-in-background",
-                                           llvm::cl::desc("Fold constants in background threads"),
-                                           llvm::cl::init(false)};
-
-    IntOption constantFoldingInBackgroundNumThreads{
-            *this, "constant-folding-in-background-num-threads",
-            llvm::cl::desc("Number of background threads to use for constant folding in background. Ignored if "
-                           "`constant-folding-in-background` is disabled."),
-            llvm::cl::init(1)};
-
-    BoolOption constantFoldingInBackgroundCollectStatistics{
-            *this, "constant-folding-in-background-collect-statistics",
-            llvm::cl::desc("Toggle for the collection of statistics when folding constants in background. Ignored if "
-                           "`constant-folding-in-background` is disabled."),
-            llvm::cl::init(false)};
-
-    IntOption constantFoldingInBackgroundMemoryUsageLimit{
-            *this, "constant-folding-in-background-memory-usage-limit",
-            llvm::cl::desc("Fold constants in background memory usage limit (in MB)"), llvm::cl::init(3 * 1024)};
-
-    DoubleOption constantFoldingInBackgroundCacheCleanThreshold{
-            *this, "constant-folding-in-background-cache-clean-threshold",
-            llvm::cl::desc("Cache will be cleaned to this threshold when reach the memory usage limit"),
-            llvm::cl::init(0.8)};
-
-    BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
-
-    // This is a temporary option to enable running profiling passes along with outlining passes.
-    // It will be removed after all profiling engines are updated to support outlined functions.
-    // Ticket: E#159100
-    BoolOption enableProfilingWithOutlining{*this, "profiling-with-outlining",
-                                            llvm::cl::desc("Enable profiling with outlining"), llvm::cl::init(false)};
-
-    BoolOption enableMergeFakeQuant{*this, "merge-fake-quant", llvm::cl::desc("Enable merge-fake-quant pass"),
-                                    llvm::cl::init(true)};
-
-    BoolOption enableOptimizeReorders{*this, "optimize-reorders", llvm::cl::desc("Enable optimize-reorders pass"),
-                                      llvm::cl::init(false)};
-
-    BoolOption enableExperimentalSEPtrsOperations{*this, "enable-experimental-se-ptrs-operations",
-                                                  llvm::cl::desc("Enable the experimental operation of SEP"),
-                                                  llvm::cl::init(false)};
-
-    BoolOption enableFuseClampOperations{*this, "enable-fuse-clamp-op", llvm::cl::desc("Enable fuse clamp operations"),
-                                         llvm::cl::init(false)};
-
-    BoolOption enableConvertPrecisionToFP16{*this, "convert-precision-to-fp16",
-                                            llvm::cl::desc("Enable convert-precision-to-fp16 pass"),
-                                            llvm::cl::init(true)};
-
-    BoolOption enableConvertNonConstantPadToSliceAndConcat{
-            *this, "enable-convert-non-constant-pad-to-slice-and-concat",
-            llvm::cl::desc("Enable convert-non-constant-pad-to-slice-and-concat pass"), llvm::cl::init(true)};
-
-    BoolOption enableControlGraphSplit{*this, "enable-control-graph-split",
-                                       llvm::cl::desc("Enable split of control graph to simplify barrier scheduling"),
-                                       llvm::cl::init(true)};
-    IntOption controlGraphSplitBlockSize{
-            *this, "control-graph-split-block-size",
-            llvm::cl::desc("Maximal number of tasks in each block that control graph will be split into. Used to "
-                           "reduce memory consumption of barrier legalization pipeline for big models. Memory usage is "
-                           "roughly (control-graph-split-block-size)^2/8"),
-            llvm::cl::init(CONTROL_GRAPH_SPLIT_BLOCK_SIZE)};
-
-    BoolOption enableSimpleSchedule{*this, "simple-schedule", llvm::cl::desc("Enable schedule simplification"),
-                                    llvm::cl::init(true)};
-
-    BoolOption reduceParallelControlFlows{*this, "reduce-parallel-control-flows",
-                                          llvm::cl::desc("Reduce parallel overlapping control flows where possible"),
-                                          llvm::cl::init(true)};
-    BoolOption enableColorBinPhysicalBarrierAssignment{
-            *this, "enable-color-bin-physical-barrier-assignment",
-            llvm::cl::desc("Enable physical barrier assignment optimization"), llvm::cl::init(false)};
-
-    BoolOption enableSWKernelPrefetchingReserveMem{
-            *this, "enable-sw-kernel-prefetching-reserve-mem",
-            ::llvm::cl::desc("Reserve memory at the end of CMX for SW Kernel data prefetching"),
-            ::llvm::cl::init(true)};
-
-    BoolOption enableGroupedMatMul{*this, "enable-grouped-matmul",
-                                   llvm::cl::desc("Enable execution of grouped MatMul as a single operation."),
-                                   llvm::cl::init(false)};
-
-    BoolOption fuseScalesToAccumulate{
-            *this, "fuse-scales-to-accumulate",
-            llvm::cl::desc("Enable scales fusing to following Accumulate op from GPTQ Matmul unrolling"),
-            llvm::cl::init(false)};
-
-    BoolOption enableFP16CompressedConvolution{*this, "enable-fp16-compressed-convolution",
-                                               llvm::cl::desc("Enable FP16 Compressed convolution op"),
-                                               llvm::cl::init(false)};
-
-    BoolOption enableVPUNNPreSplit{*this, "enable-vpunn-pre-split", llvm::cl::desc("Enable VPUNN pre-split API"),
-                                   llvm::cl::init(false)};
-
-    BoolOption enableWeightsDynamicDequantization{*this, "enable-weights-dynamic-dequantization",
-                                                  llvm::cl::desc("Enable weights dequantization for weights as input"),
-                                                  llvm::cl::init(false)};
-
-    BoolOption enableRuntimeDequant{*this, "enable-runtime-dequant",
-                                    llvm::cl::desc("Enable runtime dequantization of asymmetricly quantized weight"),
-                                    llvm::cl::init(false)};
-    Int64Option runtimeDequantizationLimit{
-            *this, "runtime-dequantization-limit",
-            llvm::cl::desc("Lower limit on weight size for runtime dequantization"
-                           "Weights smaller than the limit will be statically dequantized"),
-            llvm::cl::init(524'288)};  // 512kb
-
-    BoolOption enableInPlaceBufferization{
-            *this, "enable-in-place-bufferization",
-            llvm::cl::desc("Enable in-place bufferization. Might eliminate some redundant buffer allocations at the "
-                           "cost of longer compile time"),
-            llvm::cl::init(false)};
-
-    BoolOption useMemrefForHostFunctionBufferization{
-            *this, "use-memref-for-host-function-bufferization",
-            llvm::cl::desc("Enable memref bufferization for host function ops"), llvm::cl::init(false)};
-
-    BoolOption enableMatmulMixedPrecisionDecomposition{
-            *this, "enable-matmul-mixed-precision-decomposition",
-            llvm::cl::desc("Enable mixed precision decomposition for matmul"), llvm::cl::init(true)};
-    DoubleOption matmulMixedPrecisionDecompositionRatio{
-            *this, "matmul-mixed-precision-decomposition-ratio",
-            llvm::cl::desc("Determines when to enable Matmul Mixed Precision Decomposition"
-                           "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
-            llvm::cl::init(250.0)};
-
-    bool enableForceZMajorConcat = false;
-    bool enableSwapTransposeWithFQ = false;
-    bool enableAlignScales = false;
-    bool fuseMvn6ScaleBias = false;
-    // TODO: remove option after E#-83187
-    bool enableFuseClamp = false;
-    bool enableConvertFCToConv = false;
-    bool enableAdjustNonZeroFakeQuant = false;
-    bool enableAdaptiveStripping = false;
-    bool enableExtraStaticShapeOps = false;
-};
-
 //
 // DefaultHWOptionsBase
 // This class must be inherited by all dialect-base options
@@ -404,6 +240,25 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
     BoolOption useMemrefForHostFunctionBufferization{
             *this, "use-memref-for-host-function-bufferization",
             llvm::cl::desc("Enable memref bufferization for host function ops"), llvm::cl::init(false)};
+
+    BoolOption enableMergeFakeQuant{*this, "merge-fake-quant", llvm::cl::desc("Enable merge-fake-quant pass"),
+                                    llvm::cl::init(true)};
+
+    BoolOption enableCompressActivationSpill{*this, "compress-activation-spill",
+                                             ::llvm::cl::desc("Enable compress-activation-spill feature"),
+                                             ::llvm::cl::init(false)};
+
+    BoolOption enableSWKernelInstructionPrefetch{*this, "enable-sw-kernels-instruction-prefetch",
+                                                 llvm::cl::desc("Enable SW kernels instruction prefetch"),
+                                                 llvm::cl::init(true)};
+
+    // TODO: Ideally, some of the passes in the HostCompile pipeline should not operate on the main function.
+    // The following option will skip processing of the main function in these passes. This will be refactored in the
+    // future. Track: E#168311
+    BoolOption disablePassOnEntryFunctionForHostCompile{
+            *this, "disable-pass-on-entry-function",
+            llvm::cl::desc("Disable certain passes for entry function operations for HostCompile pipeline"),
+            llvm::cl::init(false)};
 };
 
 //

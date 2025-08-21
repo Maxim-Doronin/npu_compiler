@@ -207,7 +207,7 @@ func.func @SplitNCEMaxPoolOverW(%arg0: tensor<1x128x1024x28xf16, {order = #NHWC}
 module @executors {
   IE.TileResource 4 of @NCE at 1.850000e+03 MHz {
         IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
   }
 
   // CHECK-LABEL: @pipeliningTilingForBigFilter

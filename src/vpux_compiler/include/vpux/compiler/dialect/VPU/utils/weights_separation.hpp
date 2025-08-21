@@ -14,6 +14,13 @@
 
 namespace vpux::VPU {
 
+/** @brief Internal prefix used for Init output
+
+    This prefix is part of the contract between the compiler and the plugin in the context of weights separation.
+    Be careful when changing it. "tw" stands for "transformed weights"
+*/
+constexpr const char* INIT_OUTPUT_PREFIX = "vpux_tw_";
+
 using MemPermuteConversionAttributes =
         std::tuple<mlir::AffineMap /*identityLayout*/, MemShape /*inMemShape*/, mlir::AffineMap /*memPermute*/,
                    mlir::AffineMap /*dstOrder*/, ShapeRef /*outShape*/>;
@@ -153,6 +160,18 @@ namespace detail {
 // Semi-private utility used in implementation and in tests.
 vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x);
 }  // namespace detail
+
+//! @brief Specifies whether a given constant is "trivial" within the scope of
+//! weights separation (e.g. has only view-like transformations).
+//!
+//! @note Used by isSuitableForWeightsSeparation().
+bool isTrivialForWeightsSeparation(Const::DeclareOp constOp);
+
+//! @brief Specifies whether a given constant is "move-worthy" within the scope
+//! of weights separation.
+//!
+//! @note Used internally in collectMoveWorthyConstants().
+bool isSuitableForWeightsSeparation(Const::DeclareOp constOp);
 
 //! @brief Collects all constant operations that are worth moving to the Init
 //! schedule.

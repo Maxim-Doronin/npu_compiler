@@ -7,6 +7,7 @@
 #define VPUX_COMPILER_DIALECT_VPUIPDPU_OPS
 
 include "vpux/compiler/dialect/VPU/ops_interfaces.td"
+include "vpux/compiler/dialect/config/ops_interfaces.td"
 include "vpux/compiler/dialect/VPUIPDPU/attributes.td"
 include "vpux/compiler/dialect/VPUIPDPU/dialect.td"
 include "vpux/compiler/dialect/VPUIPDPU/ops_interfaces.td"
@@ -22,7 +23,7 @@ class VPUIPDPU_Op<string mnemonic, list<Trait> traits = []> :
             !listconcat(
                 traits,
                 [
-                    DefinedInArch<"vpux::VPU::ArchKind::NPU37XX">
+                    DefinedInArch<"vpux::config::ArchKind::NPU37XX">
                 ]
             )
         >;
@@ -58,7 +59,7 @@ def VPUIPDPU_IDUWeights37XXOp :
         VPUIPDPU_Op<"IDUWeights37XX",
             [
                 HasParent<"vpux::VPUIPDPU::IDUCfgOp">,
-                LimitedToArch<["vpux::VPU::ArchKind::NPU37XX"]>
+                LimitedToArch<["vpux::config::ArchKind::NPU37XX"]>
             ]
         > {
     let summary = "IDU Weight offset NPU37XX";
@@ -532,7 +533,7 @@ def VPUIPDPU_IDUSESegmentOp :
         VPUIPDPU_Op<"IDUSESegment",
             [
                 HasParent<"vpux::VPUIPDPU::IDUCfgOp">,
-                LimitedToArch<["vpux::VPU::ArchKind::NPU37XX"]>
+                LimitedToArch<["vpux::config::ArchKind::NPU37XX"]>
 
             ]
         > {
@@ -576,7 +577,7 @@ def VPUIPDPU_IDUSPSegmentOp :
         VPUIPDPU_Op<"IDUSPSegment",
             [
                 HasParent<"vpux::VPUIPDPU::IDUCfgOp">,
-                LimitedToArch<["vpux::VPU::ArchKind::NPU37XX"]>
+                LimitedToArch<["vpux::config::ArchKind::NPU37XX"]>
             ]
         > {
     let summary = "IDU sparsity segmentation config";
@@ -1021,7 +1022,7 @@ def VPUIPDPU_ODUCastOp :
         VPUIPDPU_Op<"ODUCast",
             [
                 HasParent<"vpux::VPUIPDPU::ODUCfgOp">,
-                LimitedToArch<["vpux::VPU::ArchKind::NPU37XX"]>
+                LimitedToArch<["vpux::config::ArchKind::NPU37XX"]>
             ]
         > {
     let summary = "ODU cast config.";

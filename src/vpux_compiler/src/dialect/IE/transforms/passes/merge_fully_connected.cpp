@@ -4,7 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -1045,24 +1048,36 @@ std::optional<SmallVector<UnrolledMatMulBranch>> MergeFullyConnectedForDQPattern
     auto validateBranches = [this](mlir::Value inSource, mlir::Value weightsSource, ShapeRef matMulOutShape,
                                    SmallVector<UnrolledMatMulBranch>& unrolledMatMulBranch,
                                    IE::ConcatOp expectedOutConcat) {
-        for (auto inputUser : inSource.getUsers()) {
-            auto maybeInputSlice = mlir::dyn_cast<IE::SliceOp>(inputUser);
-            if (maybeInputSlice == nullptr || !maybeInputSlice->hasOneUse()) {
-                _log.trace("SliceOp is not found");
+        for (auto input : expectedOutConcat.getInputs()) {
+            auto reshapeOp = input.getDefiningOp<IE::ReshapeOp>();
+            if (reshapeOp == nullptr || !reshapeOp->hasOneUse()) {
+                _log.trace("The ReshapeOp is not found");
                 return false;
             }
 
-            auto maybeMatMul = getSingleUser<IE::FullyConnectedOp>(maybeInputSlice);
-            if (!maybeMatMul.has_value()) {
+            auto matmulOp = reshapeOp.getInput().getDefiningOp<IE::FullyConnectedOp>();
+            if (matmulOp == nullptr || !matmulOp->hasOneUse()) {
+                _log.trace("The FullyConnectedOp is not found");
                 return false;
             }
 
-            auto matMul = maybeMatMul.value();
-            auto weights = getMatMulWeights(matMul, matMulOutShape, expectedOutConcat);
+            auto sliceOp = matmulOp.getInput().getDefiningOp<IE::SliceOp>();
+            if (sliceOp == nullptr || !sliceOp->hasOneUse()) {
+                _log.trace("The sliceOp is not found");
+                return false;
+            }
+
+            if (sliceOp.getSource() != inSource) {
+                _log.trace("The input source is not the same");
+                return false;
+            }
+
+            auto weights = getMatMulWeights(matmulOp, matMulOutShape, expectedOutConcat);
             if (!weights.has_value() || weights.value()->getOperand(0) != weightsSource) {
+                _log.trace("The weights source is not the same");
                 return false;
             }
-            unrolledMatMulBranch.push_back({maybeInputSlice, weights.value(), matMul});
+            unrolledMatMulBranch.push_back({sliceOp, weights.value(), matmulOp});
         }
 
         auto weightsSplitUserSize = std::distance(weightsSource.getUsers().begin(), weightsSource.getUsers().end());
@@ -1254,12 +1269,12 @@ mlir::Value MergeFullyConnectedForDQPatternWithDequantize::buildNewMatMulInput(A
     inSliceOffsets[1] = checked_cast<int64_t>(batchOffset) * matMulInShape[Dim(1)];
     SmallVector<int64_t> inSliceSizes = to_small_vector(getShape(source));
     inSliceSizes[1] = checked_cast<int64_t>(batchSize) * matMulInShape[Dim(1)];
-    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "_slice_{0}", batchIdx), source,
+    auto slice = rewriter.create<IE::SliceOp>(appendLoc(matMul.getLoc(), "_slice_{0}", batchIdx), source,
                                               getIntArrayAttr(ctx, inSliceOffsets), getIntArrayAttr(ctx, inSliceSizes));
 
     SmallVector<int64_t> newInputShape{checked_cast<int64_t>(batchSize), matMulInShape[Dim(1)]};
     const auto reshapeOutShapeAttr = getIntArrayAttr(ctx, newInputShape);
-    return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(slice.getLoc(), "_reshape"), slice, nullptr, false,
+    return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(matMul.getLoc(), "_reshape"), slice, nullptr, false,
                                                 reshapeOutShapeAttr);
 }
 

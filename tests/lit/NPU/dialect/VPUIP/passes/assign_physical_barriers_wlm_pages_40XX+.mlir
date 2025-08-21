@@ -8,7 +8,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module attributes {VPUIP.wlm_status = #VPUIP.wlm_status<ENABLED>} {
+module {
 func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     %bar0 = VPURT.DeclareVirtualBarrier {isStartBarrier, wlmPage = 0 : i64} -> !VPURT.Barrier
     %bar1 = VPURT.DeclareVirtualBarrier {wlmPage = 0 : i64} -> !VPURT.Barrier

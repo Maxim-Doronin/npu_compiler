@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cstring>
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
+#include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
+#include "vpux/compiler/dialect/ELFNPU37XX/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 namespace vpux::ELFNPU37XX {

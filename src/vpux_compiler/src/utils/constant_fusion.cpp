@@ -7,7 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/utils/core/custom_float.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
 

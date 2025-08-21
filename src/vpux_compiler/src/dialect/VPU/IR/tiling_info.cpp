@@ -4,11 +4,13 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/tiling_info.hpp"
-#include <mlir/Support/LogicalResult.h>
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/utils/core/error.hpp"
+
+#include <mlir/Support/LogicalResult.h>
 
 namespace vpux::VPU {
 

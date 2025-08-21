@@ -7,12 +7,11 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -186,7 +185,7 @@ void sortTasksAndCreateTaskMap(VPURT::TaskConfigVec& allTasks, QueueIDToTaskConf
     }
 }
 
-size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, VPU::ArchKind arch,
+size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, config::ArchKind arch,
                              const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     size_t static constexpr COST_MAX = std::numeric_limits<size_t>::max();
 
@@ -214,7 +213,7 @@ size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, VPU::ArchKind arch,
 
     const auto nnTensor =
             VPUNN::VPUTensor({checked_cast<unsigned int>(Shape(splitShape).totalSize()), 1, 1, 1}, nnType.value());
-    return costModel->DMA(getVPUDeviceType(arch), {nnTensor}, {nnTensor}, getMemoryLocation(inputType),
+    return costModel->DMA(VPU::getVPUDeviceType(arch), {nnTensor}, {nnTensor}, getMemoryLocation(inputType),
                           getMemoryLocation(outputType));
 }
 
@@ -260,7 +259,7 @@ private:
 void DetectDMASplitCandidate::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
 
     auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);

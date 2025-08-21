@@ -6,6 +6,7 @@
 #include "vpux/compiler/utils/VPU/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
 
 using namespace vpux;
@@ -229,6 +230,12 @@ void VFOutliningSplitter::createOutliningInstanceFromStorage(ValueOrderedSet& st
         } else if (mlir::isa<VPU::SparseTensorType>(operand.getType())) {
             // TODO: E#140551 support GroupSparseTensorOp as function arg
             return;
+        } else if (auto constOp = operand.getDefiningOp<Const::DeclareOp>()) {
+            if (Const::hasSparsifyTransformation(constOp)) {
+                // If a constant op has sparsify transformation, its user must be the VPU.GroupSparseTensor op
+                // TODO: E#173628 duplicating the Const::DeclareOp and VPU.GroupSparseTensorOp for function outlining
+                return;
+            }
         }
     }
 
@@ -307,7 +314,7 @@ SmallVector<OutliningInstance> VFOutliningSplitter::getOutliningInstances(mlir::
         return instanceOps.find(op) != instanceOps.end();
     };
 
-    const auto isParallelConcatInput = [&](mlir::Operation* op) {
+    const auto isParallelConcatInput = [&](mlir::Operation* op, bool tiledOnMultiDims) {
         /*                          ... ...  Op
                                       \  |  /  \
         Check for pattern:      ...    Concat  Concat
@@ -326,8 +333,10 @@ SmallVector<OutliningInstance> VFOutliningSplitter::getOutliningInstances(mlir::
                         if (user == concatOp || !mlir::isa_and_nonnull<VPU::ConcatOp>(user)) {
                             continue;
                         }
-                        if (vfOpInStorage == concatOpInStorage &&
+                        if (!tiledOnMultiDims && vfOpInStorage == concatOpInStorage &&
                             concatOpInStorage == isOpInCurrentOutliningInstance(user)) {
+                            // if VF is tiled on multiple dimensions, need to further avoid separating VF ops into
+                            // different function ops
                             continue;
                         }
                         // VFOp is a consumer of parallel concat, can not outline since
@@ -345,10 +354,13 @@ SmallVector<OutliningInstance> VFOutliningSplitter::getOutliningInstances(mlir::
             const auto tilingStrategy = parseIntArrayAttr<size_t>(vfOp.getTilingStrategy());
             const auto numTiles =
                     std::accumulate(tilingStrategy.begin(), tilingStrategy.end(), size_t(1), std::multiplies<size_t>());
+            const auto tiledOnMultiDims = llvm::count_if(tilingStrategy, [](auto value) {
+                                              return value > 1;
+                                          }) > 1;
             if (numTiles < _verticalFusionTileThreshold) {
                 return false;
             }
-            if (isParallelConcatInput(op)) {
+            if (isParallelConcatInput(op, tiledOnMultiDims)) {
                 return false;
             }
             return true;

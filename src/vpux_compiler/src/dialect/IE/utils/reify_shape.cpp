@@ -7,8 +7,7 @@
 
 #include <mlir/CAPI/Support.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reify_shape.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -19,7 +18,6 @@
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 #include <openvino/util/common_util.hpp>
-#include <utility>
 
 using namespace vpux;
 

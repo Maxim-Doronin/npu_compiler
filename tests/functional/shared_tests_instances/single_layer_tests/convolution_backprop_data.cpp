@@ -144,6 +144,21 @@ const auto se_conv2DParams_OutputPadding = ::testing::Combine(
         ::testing::ValuesIn(sePadEnds), ::testing::ValuesIn(seDilations), ::testing::ValuesIn(numOutChannels),
         ::testing::Values(ov::op::PadType::EXPLICIT), ::testing::ValuesIn(seOutputPadding));
 
+/* ============= 2D ConvolutionBackpropData SETable Patch SEP Op ============= */
+const std::vector<std::vector<ov::Shape>> seTablePatchInputShapes = {{{1, 16, 4, 4}}};
+
+const std::vector<std::vector<size_t>> seTablePatchKernels = {{3, 3}};
+const std::vector<std::vector<size_t>> seTablePatchStrides = {{1, 1}};
+const std::vector<std::vector<ptrdiff_t>> seTablePatchPadBegins = {{1, 1}};
+const std::vector<std::vector<ptrdiff_t>> seTablePatchPadEnds = {{1, 1}};
+const std::vector<std::vector<size_t>> seTablePatchDilations = {{1, 1}};
+
+const auto se_conv2DParams_SETablePatch =
+        ::testing::Combine(::testing::ValuesIn(seTablePatchKernels), ::testing::ValuesIn(seTablePatchStrides),
+                           ::testing::ValuesIn(seTablePatchPadBegins), ::testing::ValuesIn(seTablePatchPadEnds),
+                           ::testing::ValuesIn(seTablePatchDilations), ::testing::ValuesIn(numOutChannels),
+                           ::testing::Values(ov::op::PadType::EXPLICIT), ::testing::ValuesIn(emptyOutputPadding));
+
 // ------ NPU3720 ------
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_SEP_ConvolutionBackpropData2D_ExplicitPadding,
                          ConvolutionBackpropDataSEPLayerTest_NPU3720,
@@ -173,6 +188,13 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_SEP_ConvolutionBackpropData2D_OutputPad
                                             ::testing::ValuesIn(static_shapes_to_test_representation(seInputShapes)),
                                             ::testing::ValuesIn(emptyOutputShape), ::testing::Values(DEVICE_NPU)),
                          ConvolutionBackpropDataSEPLayerTest_NPU4000::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_precommit_SEP_ConvolutionBackpropData2D_SETablePatch, ConvolutionBackpropDataSEPLayerTest_NPU4000,
+        ::testing::Combine(se_conv2DParams_SETablePatch, ::testing::ValuesIn(netPrecisions),
+                           ::testing::ValuesIn(static_shapes_to_test_representation(seTablePatchInputShapes)),
+                           ::testing::ValuesIn(emptyOutputShape), ::testing::Values(DEVICE_NPU)),
+        ConvolutionBackpropDataSEPLayerTest_NPU4000::getTestCaseName);
 /* ============= 2D ConvolutionBackpropData with outputShape Convert to SEP Op ============= */
 const std::vector<std::vector<ov::Shape>> seInputShapesWithOS = {{{1, 16, 128, 128}}};
 const std::vector<ov::Shape> seSpecifiedOutputShape = {{128, 128}};

@@ -353,7 +353,7 @@ module @Test {
 
 IE.TileResource 1 of @NCE {
 IE.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
-IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
 }
 
 func.func @NotBuildOutOfLimitNumTiles(%arg0: tensor<1x512x92x120x!qElemType, {order = #NHWC}>) -> tensor<1x256x92x120x!qElemType, {order = #NHWC}> {
@@ -812,4 +812,41 @@ func.func @BuildSubtractMultiplySubgraph(%arg0: tensor<1x4x160x160xf16, {order =
     //CHECK:  VPU.Yield [[SUB]]
 
     //CHECK: return [[VERTICAL_FUSION]] : tensor<1x4x160x160xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+//CHECK-LABEL: @BuildSubgraphMemPermuteClustered
+//CHECK-SAME:  [[INPUT:%.+]]: tensor<1x16x256x256xf16, {order = #NWCH}>
+func.func @BuildSubgraphMemPermuteClustered(%arg0: tensor<1x16x256x256xf16, {order = #NWCH}>) -> tensor<1x32x256x256xf16, {order = #NHWC}> {
+    %cst_0 = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<32x16x1x1xf16, {order = #NHWC}>
+    %cst_1 = const.Declare tensor<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
+    %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x256x256xf16, {order = #NWCH}>) attributes {tilingStrategy = [1, 1, 4, 1]} -> tensor<1x16x256x256xf16, {order = #NHWC}> {
+      %3 = VPU.MemPermute(%arg1)
+        {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         dst_order = #NHWC, mem_perm = #NWCH} : tensor<1x16x256x256xf16, {order = #NWCH}> -> tensor<1x16x256x256xf16, {order = #NHWC}>
+      VPU.Yield %3
+    }
+    %1 = VPU.VerticalFusion (%0 as %arg1: tensor<1x16x256x256xf16, {order = #NHWC}>, %cst_0 as %arg2: tensor<32x16x1x1xf16, {order = #NHWC}>, %cst_1 as %arg3: tensor<32x1x1x4xsi32>) attributes {tilingStrategy = [1, 1, 4, 1]} -> tensor<1x32x256x256xf16, {order = #NHWC}> {
+      %3 = VPU.NCE.Convolution(%arg1, %arg2, %arg3)
+        {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        ppe = #VPU.PPEStub<>,
+        rawFilterShape = [32, 16, 1, 1], strides = [1, 1]} : tensor<1x16x256x256xf16, {order = #NHWC}>, tensor<32x16x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x256x256xf16, {order = #NHWC}>
+      VPU.Yield %3
+    }
+    return %1 : tensor<1x32x256x256xf16, {order = #NHWC}>
+    // CHECK:      [[CST_0:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x1x1xf16, {order = #NHWC}>
+    // CHECK:      [[CST_1:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
+    // CHECK:      [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion
+    // CHECK:          [[INPUT]] as %arg1
+    // CHECK:          [[CST_0]] as %arg2
+    // CHECK:          [[CST_1]] as %arg3
+    // CHECK:      [[PERMUTE:%.+]] = VPU.MemPermute
+    // CHECK:      [[CONV:%.+]] = VPU.NCE.Convolution([[PERMUTE]], %arg2, %arg3)
+    // CHECK:      return [[VERTICAL_FUSION]] : tensor<1x32x256x256xf16, {order = #NHWC}>
 }

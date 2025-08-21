@@ -17,6 +17,9 @@
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/operation_strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_opt_alg.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_state_provider.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -48,7 +51,7 @@ private:
     SmallVector<std::pair<Strategy, StrategyCost>> getOperationOptions(mlir::Operation* operation,
                                                                        SiblingOpsAnalysis& siblingsAnalysis,
                                                                        size_t numTiles);
-    SmallVector<VPU::MultiClusterStrategy> getAvailiableStrategies(ArchKind arch) const;
+    SmallVector<VPU::MultiClusterStrategy> getAvailiableStrategies(config::ArchKind arch) const;
     bool checkDefaultStrategy(MultiClusterStrategy strategy) const;
     void fillInOptions(TilingOptions& options) const;
     bool mcTilingNeeded() const;
@@ -214,7 +217,7 @@ SmallVector<std::pair<Strategy, StrategyCost>> StrategyManagerImplPass::getOpera
     return strategies;
 }
 
-SmallVector<VPU::MultiClusterStrategy> StrategyManagerImplPass::getAvailiableStrategies(ArchKind arch) const {
+SmallVector<VPU::MultiClusterStrategy> StrategyManagerImplPass::getAvailiableStrategies(config::ArchKind arch) const {
     auto mcListGetter = createMCStrategyGetter(arch, _numTiles);
 
     SmallVector<VPU::MultiClusterStrategy> strategies;
@@ -228,7 +231,7 @@ void StrategyManagerImplPass::safeRunOnFunc() {
     auto siblingsAnalysis = getAnalysis<SiblingOpsAnalysis>();
     _costModel = std::make_shared<LayerVPUNNCost>(func);
     _numTiles = IE::getTileExecutor(module).getCount();
-    _archStrategies = getAvailiableStrategies(VPU::getArch(module));
+    _archStrategies = getAvailiableStrategies(config::getArch(module));
 
     // calculate cost for all possible strategies
     // assign strategy with min cost

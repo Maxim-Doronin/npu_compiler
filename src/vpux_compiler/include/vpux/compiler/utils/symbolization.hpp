@@ -83,6 +83,42 @@ public:
         }
     }
 
+    // helper to unify approach to build unique symbolic names
+    llvm::SmallVector<mlir::FlatSymbolRefAttr> createSymbolicName(
+            SourceOp op, std::optional<std::string> taskTypeString = std::nullopt,
+            std::optional<size_t> counter = std::nullopt) {
+        auto fullName = SourceOp::getOperationName();
+        auto opName = op->getName().stripDialect();
+
+        mlir::Operation* base = op.getOperation();
+        VPUX_THROW_UNLESS(base->getResults().size() == 1,
+                          "Default symbolic converter only supports ops with exactly one result. For {0} got {1}",
+                          fullName, base->getResults().size());
+
+        llvm::SmallVector<std::string, 4> suffixes;
+        if (taskTypeString.has_value()) {
+            suffixes.push_back(taskTypeString.value());
+        }
+        if (auto indexType = mlir::dyn_cast<vpux::VPURegMapped::IndexType>(base->getResult(0).getType())) {
+            suffixes.push_back(std::to_string(indexType.getTileIdx()));
+            suffixes.push_back(std::to_string(indexType.getListIdx()));
+            suffixes.push_back(std::to_string(indexType.getValue()));
+            VPUX_THROW_WHEN(counter.has_value(),
+                            "Unexpected counter value ({0}) was provided which is of no use for the "
+                            "current operation {1}",
+                            counter.value(), op);
+        } else if (counter.has_value()) {
+            suffixes.push_back(std::to_string(counter.value()));
+        }
+
+        std::stringstream opSuffixStream;
+        for (auto& suffix : suffixes) {
+            opSuffixStream << "_" << suffix;
+        }
+        auto symName = mlir::StringAttr::get(op.getContext(), opName + opSuffixStream.str());
+        return {mlir::FlatSymbolRefAttr::get(symName)};
+    }
+
     std::pair<mlir::ArrayAttr, mlir::ArrayAttr> processDynamicShapes(mlir::MLIRContext* context,
                                                                      mlir::OperandRangeRange inputShapes,
                                                                      mlir::OperandRangeRange outputShapes) const;

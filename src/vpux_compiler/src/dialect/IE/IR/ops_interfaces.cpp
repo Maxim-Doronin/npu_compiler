@@ -4,23 +4,18 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include <vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp>
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-
-#include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/IRMapping.h>
-#include <vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp>
-#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 
 using namespace vpux;
 

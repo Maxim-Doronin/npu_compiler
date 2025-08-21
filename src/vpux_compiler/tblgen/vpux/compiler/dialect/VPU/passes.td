@@ -14,7 +14,6 @@ include "mlir/Pass/PassBase.td"
 
 def InitResources : PassBase<"init-resources", "vpux::ModulePass"> {
     let summary = "Initializes compiler for VPU platforms";
-
     let description = [{
         This pass attaches VPU related compilation parameters to Module attributes and
         initializes run-time resources information.
@@ -63,6 +62,103 @@ def InitResources : PassBase<"init-resources", "vpux::ModulePass"> {
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
     ];
+}
+
+//
+// DMATaskProfilingReserveMem
+//
+
+def DMATaskProfilingReserveMem : PassBase<"dma-task-profiling-reserve-mem", "vpux::ModulePass"> {
+    let summary = "DMA task profiling memory reserving";
+
+    let description = [{
+        This pass adds in ModuleOp information about reserved memory for DMA profiling.
+    }];
+
+    let options = [
+        Option<
+            "enableDMAProfiling", "dma-profiling",
+            "std::string", [{"false"}],
+            "Enable DMA task profiling (true|static|false)"
+        >
+    ];
+
+    let constructor = "vpux::VPU::createDMATaskProfilingReserveMemPass()";
+}
+
+//
+// Reserve memory for compressed DMA
+//
+
+def CompressDmaReserveMem : PassBase<"compress-dma-reserve-mem", "vpux::ModulePass"> {
+    let summary = "Reserve memory for additional compressedDMA metadata";
+
+    let description = [{
+        Reserve memory in CMX where additional metadata is stored for compressed DMAs handling activation spilling.
+        In this memory Compressed DMA wil store a LUT with actual compressed data sizee that is later to be used
+        by decompress DMA
+    }];
+
+    let constructor = "vpux::VPU::createCompressDmaReserveMemPass()";
+}
+
+//
+// SWKernelDataPrefetchReserveMem
+//
+
+def SWKernelDataPrefetchReserveMem : PassBase<"sw-kernel-data-prefetch-reserve-mem", "vpux::ModulePass"> {
+    let summary = "Reserve memory for SW Kernel data prefetching";
+
+    let description = [{
+        SW Kernel reads extra few bytes of data for better performance.
+        When input buffer is at the end of CMX, reading extra data would cause ACT SHAVE read violation.
+        Now we reserve CMX for profiling and activation compression at the end of CMX.
+        This pass checks the total reserved memory size and inserts a dummy section if necessary, to ensure
+        the total reserved memory size is safe for SW Kenel data prefetching.
+
+        This pass eliminates the risk of ACT SHAVE read violation, but model performance might be impacted.
+        One case is described in E#122488, where DMA and DPU execution pipeline is impacted by the memory layout adjustment.
+        This can be optimized in the future by CMX allocation improvement.
+    }];
+
+    let constructor = "vpux::VPU::createSWKernelDataPrefetchReserveMemPass()";
+}
+
+//
+// SWKernelInstructionPrefetchReserveMemForDummyKernels
+//
+
+def SWKernelInstructionPrefetchReserveMemForDummyKernels : PassBase<"sw-kernel-instruction-prefetch-reserve-mem-for-dummy-kernels", "vpux::ModulePass"> {
+    let summary = "Reserve I/O memory for dummy SW kernels used instruction prefetching";
+
+    let description = [{
+        Dummy SW kernel is used to mimic SW instruction prefetch feature.
+        To build these tasks up some reserved mememory is required as dummy I/O space.
+    }];
+
+    let constructor = "vpux::VPU::createSWKernelInstructionPrefetchReserveMemForDummyKernelsPass()";
+}
+
+//
+// SCFVerticalFusion
+//
+
+def SCFVerticalFusion : PassBase<"scf-vertical-fusion", "vpux::FunctionPass"> {
+    let summary = "Apply VF to operations and convert it to scf representation";
+
+    let description = [{
+        Applies scf tiling to operation and searches for its parents to merge
+        to the loop.
+        For all operations which might be fused the optimal number of tiles is calculated.
+        For the largest dimension the number is chosen so that VF passes memory requirements to be optimally fused.
+
+        Current algorithm doesn't compare cost of VF among different dimensions tiling and
+        it doesn't compare the cost of VF vs operations without VF.
+        Algorithm provides greedy approach to merge as much as possible based on same limitations which
+        non-scf algorithm has (aligned MC stratgies). To be extended to cost comparison further.
+    }];
+
+    let constructor = "vpux::VPU::createSCFVerticalFusionPass()";
 }
 
 //
@@ -265,6 +361,19 @@ def WrapVerticalFusionRegion : PassBase<"wrap-in-vertical-fusion", "vpux::Functi
     }];
 
     let constructor = "vpux::VPU::createWrapVerticalFusionRegionPass()";
+
+    let options = [
+        Option<
+            "workloadManagementModeOpt", "workload-management-mode",
+            "vpux::WorkloadManagementMode", "",
+            "Setting which controls mode of WLM",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT enabled"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT disabled"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+            )}]
+        >
+    ];
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
@@ -1407,6 +1516,11 @@ def OptimizeConcat : PassBase<"optimize-concat", "vpux::FunctionPass"> {
             "optimizeOnlyOuterConcat", "optimize-only-outer-concat",
             "bool", "false",
             "Flag to check dimension and only optimize concat when the dimension is the highest."
+        >,
+        Option<
+            "disablePassOnEntryFunction", "disable-pass-on-entry-function",
+            "bool", "false",
+            "Flag to disable the pass on entry function for host compilation."
         >
     ];
 
@@ -1468,9 +1582,14 @@ def SetupNpuConstraint : PassBase<"setup-npu-constraint", "vpux::ModulePass"> {
 
     let options = [
         Option<
-            "workloadManagementEnable", "workload-management-enable",
-            "bool", "false",
-            "[Optional] Set partial workload management to true/false"
+            "workloadManagementStatus", "workload-management-status",
+            "vpux::VPU::WorkloadManagementStatus", "vpux::VPU::WorkloadManagementStatus::ENABLED",
+            "[Optional] Set workload management status",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::VPU::WorkloadManagementStatus::ENABLED, "ENABLED", "workload management enabled"),
+                clEnumValN(vpux::VPU::WorkloadManagementStatus::DISABLED, "DISABLED", "workload management disabled"),
+                clEnumValN(vpux::VPU::WorkloadManagementStatus::FAILED, "FAILED", "workload management attempted, but failed")
+            )}]
         >,
         Option<
             "allowCustomValues", "allow-custom-values",
@@ -1521,17 +1640,17 @@ def SetupMaxKernelSize : PassBase<"setup-max-kernel-size", "vpux::ModulePass"> {
 }
 
 //
-// SetupChannelsAutoPadding
+// SetTargetIndependentPassOptions
 //
 
-def SetupChannelsAutoPadding : PassBase<"setup-channels-auto-padding", "vpux::ModulePass"> {
-    let summary = "Enable the auto padding for input/output channels and store it in the model/IR";
+def SetTargetIndependentPassOptions : PassBase<"set-target-independent-options", "vpux::ModulePass"> {
+    let summary = "Enable pass options and store it in the Module/IR";
 
     let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
+        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally. Adds several Symbols aka Options to PipelineOptions sumbol table
     }];
 
-    let constructor = "vpux::VPU::createSetupChannelsAutoPaddingPass()";
+    let constructor = "vpux::VPU::createSetTargetIndependentPassOptionsPass()";
 
     let options = [
         Option<
@@ -1545,134 +1664,59 @@ def SetupChannelsAutoPadding : PassBase<"setup-channels-auto-padding", "vpux::Mo
             "[Optional] Set auto padding for IDU to true/false"
         >,
         Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// SetupIsReduceSupported
-//
-
-def SetupIsReduceSupported : PassBase<"setup-is-reduce-supported", "vpux::ModulePass"> {
-    let summary = "Enable Reduce operations to be supported on NCE";
-
-    let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
-    }];
-
-    let constructor = "vpux::VPU::createSetupIsReduceSupportedPass()";
-
-    let options = [
-        Option<
             "enableIsReduceSupported", "enable-is-reduce-supported",
             "bool", "false",
             "[Optional] Set IsReduceSupported for NCE to true/false"
         >,
         Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// SetupEnableSEPtrsOperations
-//
-
-def SetupEnableSEPtrsOperations : PassBase<"setup-enable-se-ptrs-operations", "vpux::ModulePass"> {
-    let summary = "Enable SEPtrs operations to be supported";
-
-    let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
-    }];
-
-    let constructor = "vpux::VPU::createSetupEnableSEPtrsOperationsPass()";
-
-    let options = [
+            "enableFP16CompressedConvolution", "enable-fp16-compressed-convolution",
+            "bool", "false",
+            "Enable FP16 Compressed convolution op"
+        >,
+        Option<
+            "enableVPUNNPreSplit", "enable-vpunn-pre-split",
+            "bool", "false",
+            "Enable VPUNN pre-split API"
+        >,
+        Option<
+            "weightsTableReuseMode", "weights-table-reuse-mode",
+            "vpux::WeightsTableReuseMode", "",
+            "Setting the weights table reuse mode",
+            [{::llvm::cl::values(
+                clEnumValN(vpux::WeightsTableReuseMode::ENABLED, "ENABLED", "Weights table can be reused for all operations that support it"),
+                clEnumValN(vpux::WeightsTableReuseMode::VF_ENABLED, "VF_ENABLED", "Weights table can be reused for operations in pure-vertical-fusion region, to avoid possible memory fragmentation"),
+                clEnumValN(vpux::WeightsTableReuseMode::DISABLED, "DISABLED", "Weights table cannot be reused")
+            )}]
+        >,
         Option<
             "enableSEPtrsOperations", "enable-se-ptrs-operations",
             "bool", "false",
             "[Optional] Set SEPtrsOperations to true/false"
         >,
         Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >,
-        Option<
             "enableExperimentalSEPtrsOperations", "enable-experimental-se-ptrs-operations",
             "bool", "false",
             "[Optional] Set ExperimentalSEPtrsOperations to true/false"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// SetupEnableAdaptiveStripping
-//
-
-def SetupEnableAdaptiveStripping : PassBase<"setup-enable-adaptive-stripping", "vpux::ModulePass"> {
-    let summary = "Enable adaptive stripping";
-
-    let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
-    }];
-
-    let constructor = "vpux::VPU::createSetupEnableAdaptiveStrippingPass()";
-
-    let options = [
+        >,
         Option<
             "enableAdaptiveStripping", "enable-adaptive-stripping",
             "bool", "false",
             "[Optional] Set AdaptiveStripping to true/false"
         >,
         Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-
-//
-// SetupEnableExtraStaticShapeOps
-//
-
-def SetupEnableExtraStaticShapeOps : PassBase<"setup-enable-extra-static-shape-ops", "vpux::ModulePass"> {
-    let summary = "Enable extra shape bound ops";
-
-    let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
-    }];
-
-    let constructor = "vpux::VPU::createSetupEnableExtraStaticShapeOpsPass()";
-
-    let options = [
-        Option<
             "enableExtraStaticShapeOps", "enable-extra-static-shape-ops",
             "bool", "true",
             "[Optional] Set ExtraStaticShapeOps to true/false"
+        >,
+        Option<
+            "enableSprLUT", "enable-sprlut",
+            "bool", "false",
+            "[Optional] Set sprLUT to true/false"
+        >,
+        Option<
+            "enableDCIM", "enable-dcim",
+            "bool", "false",
+            "[Optional] Set EnableDCIM for NCE to true/false"
         >,
         Option<
             "allowCustomValues", "allow-custom-values",
@@ -1905,103 +1949,7 @@ def ConvertConstArgsToMultiConstants : PassBase<"convert-const-args-to-multi-con
     ];
 }
 
-//
-// SetupEnableFP16CompressedConv
-//
 
-def SetupEnableFP16CompressedConv : PassBase<"setup-enable-fp16-compressed-conv", "vpux::ModulePass"> {
-    let summary = "Enable fp16 compressed convolution and store it in the model/IR";
-
-    let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally
-    }];
-
-    let constructor = "vpux::VPU::createSetupEnableFP16CompressedConvPass()";
-
-    let options = [
-        Option<
-            "enableFP16CompressedConvolution", "enable-fp16-compressed-convolution",
-            "bool", "false",
-            "Enable FP16 Compressed convolution op"
-        >,
-        Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// SetupEnableVPUNNPreSplit
-//
-
-def SetupEnableVPUNNPreSplit : PassBase<"setup-vpunn-pre-split", "vpux::ModulePass"> {
-    let summary = "Enable VPUNN pre-split API and store it in the model/IR";
-
-    let description = [{
-        Use the pre-split VPUNN API for cost
-    }];
-
-    let constructor = "vpux::VPU::createSetupEnableVPUNNPreSplitPass()";
-
-    let options = [
-        Option<
-            "enableVPUNNPreSplit", "enable-vpunn-pre-split",
-            "bool", "false",
-            "Enable VPUNN pre-split API"
-        >,
-        Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// SetupWeightsTableReuseMode
-//
-
-def SetupWeightsTableReuseMode : PassBase<"setup-weights-table-reuse-mode", "vpux::ModulePass"> {
-    let summary = "Set the option of enabling weights table reuse and store it in the model/IR";
-
-    let description = [{
-        Set the option of enabling weights table reuse in the model/IR.
-    }];
-
-    let constructor = "vpux::VPU::createSetupWeightsTableReuseModePass()";
-
-    let options = [
-        Option<
-            "weightsTableReuseMode", "weights-table-reuse-mode",
-            "vpux::WeightsTableReuseMode", "",
-            "Setting the weights table reuse mode",
-            [{::llvm::cl::values(
-                clEnumValN(vpux::WeightsTableReuseMode::ENABLED, "ENABLED", "Weights table can be reused for all operations that support it"),
-                clEnumValN(vpux::WeightsTableReuseMode::VF_ENABLED, "VF_ENABLED", "Weights table can be reused for operations in pure-vertical-fusion region, to avoid possible memory fragmentation"),
-                clEnumValN(vpux::WeightsTableReuseMode::DISABLED, "DISABLED", "Weights table cannot be reused")
-            )}]
-        >,
-        Option<
-            "allowCustomValues", "allow-custom-values",
-            "bool", "",
-            "[Optional] Allows keep predefined values in IR"
-        >
-    ];
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
 
 //
 // ConcatRepeatingBlocksOutlining
@@ -2218,6 +2166,20 @@ def QueryWSInfo : PassBase<"query-ws-info", "vpux::ModulePass"> {
     ];
 
     let constructor = "vpux::VPU::createQueryWSInfoPass()";
+}
+
+def ConcatInitInputs : PassBase<"concat-init-inputs", "vpux::ModulePass"> {
+    let summary = "Concatenates init function inputs into a single tensor";
+
+    let description = [{
+        This pass concatenates the inputs of init function into a single tensor,
+        reducing the overall number of weights passed to init to a single
+        concatenated weight (note: it is currently highly preferred to limit the
+        amount of inputs, when possible, as every schedule input uses CMX-placed
+        meta information).
+    }];
+
+    let constructor = "vpux::VPU::createConcatInitInputsPass()";
 }
 
 def ConcatInitResults : PassBase<"concat-init-results", "vpux::ModulePass"> {
@@ -2450,4 +2412,33 @@ def MoveReflectPadToCMX : PassBase<"move-reflect-pad-to-cmx", "vpux::FunctionPas
     }];
 
     let constructor = "vpux::VPU::createMoveReflectPadToCMXPass()";
+}
+
+//
+//
+//
+
+def ConvertDynamicToStaticKernels : PassBase<"convert-dynamic-to-static-kernels", "vpux::ModulePass"> {
+    let summary = "Converts compute function ops with dynamic tensor shapes to static shapes";
+
+    let description = [{
+        The pass identifies scf.for loops where the iteration space is determined by dynamic dimensions of input tensors for compute functions.
+        Using the step size of the loop and tensor slice operations, the pass will convert the dynamic tensor shapes
+        to static shapes by using index adjustments through backtracking. NPU compute function / kernel will be transformed
+        to use static shapes instead of dynamic shapes, based on the static shape inferred from the previous step. For the cases
+        where backtracking is not possible, the pass throws a runtime error. Pass currently does not support padding of the input tensors.
+
+        This conversion enables better optimization and scheduling as static shapes allow for
+        more effective tiling and resource allocation during compilation.
+    }];
+
+    let constructor = "vpux::VPU::createConvertDynamicToStaticKernelsPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::arith::ArithDialect",
+        "mlir::scf::SCFDialect",
+        "mlir::cf::ControlFlowDialect",
+    ];
 }

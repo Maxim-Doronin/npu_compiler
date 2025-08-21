@@ -6,7 +6,6 @@
 #pragma once
 
 #include "vpux/compiler/core/pipelines_options.hpp"
-#include "vpux/compiler/core/profiling.hpp"
 
 #include "vpux/utils/logger/logger.hpp"
 
@@ -17,6 +16,10 @@
 #include <functional>
 #include <memory>
 #include <optional>
+
+namespace vpux::VPU {
+enum class MemoryKind : uint64_t;
+}
 
 namespace vpux {
 namespace VPUIP {
@@ -61,16 +64,14 @@ std::unique_ptr<mlir::Pass> createCopyOpTilingPass(Logger log = Logger::global()
 std::unique_ptr<mlir::Pass> createSetMemorySpacePass(MemKindCreateFunc memKindCb, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertEltwiseToInPlacePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertSprLUTToConstPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createConvertPalletLUTToConstPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertDynamicReshapeToInPlacePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInsertCopyForEltwiseInPlaceInputPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLinearizationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createBreakDataFlowPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPatchWeightsTablePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPatchPopulateWeightTableWithShavePass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createDMATaskProfilingReserveMemPass(
-        DMAProfilingMode dmaProfilingMode = DMAProfilingMode::DISABLED, Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createDMATaskProfilingAfterBarrierSchedPass(
-        DMAProfilingMode dmaProfilingMode = DMAProfilingMode::DISABLED, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createDMATaskProfilingAfterBarrierSchedPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCaptureWorkpointPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDPUProfilingPass(MemKindCreateFunc memKindCb, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createM2IProfilingPass(Logger log = Logger::global());
@@ -99,8 +100,6 @@ std::unique_ptr<mlir::Pass> createTileActShaveKernelTaskPass(Logger log = Logger
 std::unique_ptr<mlir::Pass> createSetZeroOffsetWeightsTablePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSegmentHalosPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustSpillSizePass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createCompressDmaReserveMemPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSWKernelPrefetchingReserveMemPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseDDRCopiesIntoConcats(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createLegalizeRepeatingFuncCallsPass(Logger log = Logger::global());
@@ -163,10 +162,11 @@ std::unique_ptr<mlir::Pass> createBatchMatMulToMatMulPass(Logger log = Logger::g
 std::unique_ptr<mlir::Pass> createUnrollDMAAnalysisPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createUnrollUpsamplingDMAPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createUnrollPermuteToNNDMAPass(Logger log = Logger::global());
+
 std::unique_ptr<mlir::Pass> createUnrollExpandDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollPerAxisTileDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInvalidateUnrollDMAAnalysisPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnrollGatherDMAPass(Logger log = Logger::global());
 
 //
 // DefaultHWOptions(for all devices)

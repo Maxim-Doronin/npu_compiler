@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <base/ov_behavior_test_utils.hpp>
+#include <shared_test_classes/base/ov_behavior_test_utils.hpp>
 #include <string>
 #include <vector>
 #include "common/functions.h"
@@ -33,6 +33,7 @@ public:
         std::replace(targetDevice.begin(), targetDevice.end(), ':', '.');
         std::ostringstream result;
         result << "targetDevice=" << targetDevice << "_";
+        result << "targetPlatform=" << LayerTestsUtils::getTestsPlatformFromEnvironmentOr(targetDevice) << "_";
         if (!configuration.empty()) {
             using namespace ov::test::utils;
             for (auto& configItem : configuration) {
@@ -60,8 +61,8 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithBatchUnrollingDefa
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithBatchUnrollingSkipBatchOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
-                "batch-compile-method=unroll batch-unroll-settings={skip-unroll-batch=true}";
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] = "batch-compile-method=unroll "
+                                                                  "batch-unroll-settings={skip-unroll-batch=true}";
         OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
     }
 }
@@ -78,7 +79,8 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationWithDebatchNonDefaultO
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
         cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
-                "batch-compile-method=debatch debatcher-settings={debatching-inlining-method=reordering}";
+                "batch-compile-method=debatch "
+                "debatcher-settings={debatching-inlining-method=reordering}";
         OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
     }
 }
@@ -87,32 +89,26 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationMixUnrollWithDebatchNo
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
         cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
-                "batch-compile-method=unroll debatcher-settings={debatching-inlining-method=reordering}";
-        std::string device_id = cfg["DEVICE_ID"].as<std::string>();
-        if (device_id.find("3720") != std::string::npos) {
-            OV_ASSERT_NO_THROW(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg));
-        } else {
-            OV_EXPECT_THROW_HAS_SUBSTRING(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg),
-                                          std::runtime_error, "is inconsistent");
-        }
+                "batch-compile-method=unroll "
+                "debatcher-settings={debatching-inlining-method=reordering}";
+        OV_EXPECT_THROW_HAS_SUBSTRING(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg),
+                                      std::runtime_error, "is inconsistent");
     }
 }
 
 TEST_P(CompilationPipelineCfgConsistencyTests, CompilationMixDebatchWithBatchUnrollingSkipBatchOptions) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED() {
         auto cfg = configuration;
-        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] =
-                "batch-compile-method=debatch batch-unroll-settings={skip-unroll-batch=true}";
-        std::string device_id = cfg["DEVICE_ID"].as<std::string>();
+        cfg[ov::intel_npu::batch_compiler_mode_settings.name()] = "batch-compile-method=debatch "
+                                                                  "batch-unroll-settings={skip-unroll-batch=true}";
         OV_EXPECT_THROW_HAS_SUBSTRING(auto compiled_model = core->compile_model(ov_stub_model, target_device, cfg),
                                       std::runtime_error, "is inconsistent");
     }
 }
 
 const std::vector<ov::AnyMap> configs = {
-        {{ov::device::id("3720")}, ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::MLIR)},
-        {{ov::device::id("4000")}, ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::MLIR)},
-};
+        {{ov::intel_npu::platform(ov::test::utils::getTestsPlatformCompilerInPlugin())},
+         ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::MLIR)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTest, CompilationPipelineCfgConsistencyTests,
                          ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NPU),

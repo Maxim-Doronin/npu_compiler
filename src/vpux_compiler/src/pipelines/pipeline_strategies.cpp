@@ -95,7 +95,11 @@ void ReferenceSWStrategy::buildPipeline(mlir::OpPassManager& pm) {
     auto strategy = _createPipelineStrategy(config::CompilationMode::ReferenceSW);
 
     strategy->initializePipeline(pm, _log);
-    strategy->buildReferenceSWPipeline(pm, _log);
+    strategy->buildIEPipeline(pm, _log);
+    strategy->buildLowerIE2VPUPipeline(pm, _log);
+    strategy->buildVPUPipeline(pm, _log);
+    strategy->buildLowerVPU2VPUIPPipeline(pm, _log);
+    strategy->buildVPUIPPipeline(pm, _log);
 }
 
 //
@@ -121,6 +125,7 @@ void WSMonolithicStrategy::buildPipeline(mlir::OpPassManager& pm) {
     auto& nestedPm = pm.nest<mlir::ModuleOp>();
     {
         auto initStrategy = _createPipelineStrategy(config::CompilationMode::WSInit);
+        nestedPm.addPass(vpux::Core::createAddNetInfoToModulePass(_log, true /* hasTensorSemantics */));
         initStrategy->initializePipeline(nestedPm, _log);
         initStrategy->buildIEPipeline(nestedPm, _log);
         initStrategy->buildLowerIE2VPUPipeline(nestedPm, _log);

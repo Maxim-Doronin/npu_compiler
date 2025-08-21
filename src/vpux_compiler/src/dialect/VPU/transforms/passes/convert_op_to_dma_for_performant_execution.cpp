@@ -7,12 +7,12 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/convert_op_to_dma_for_performant_execution_getter.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/DialectConversion.h>
-#include <cstdint>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_CONVERTOPTODMAFORPERFORMANTEXECUTION
@@ -43,7 +43,7 @@ void ConvertOpToDMAForPerformantExecutionPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    const auto arch = VPU::getArch(func);
+    const auto arch = config::getArch(func);
     auto conversionStrategy = VPU::createConvertOpToDMAForPerformantExecutionStrategy(arch);
 
     mlir::ConversionTarget target(ctx);

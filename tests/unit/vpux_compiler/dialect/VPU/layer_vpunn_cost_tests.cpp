@@ -3,15 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "common/utils.hpp"
+#include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
-
-#include "common/utils.hpp"
-#include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Parser/Parser.h>
@@ -20,7 +20,7 @@
 
 #include <gtest/gtest.h>
 
-using vpux::VPU::ArchKind;
+using vpux::config::ArchKind;
 using vpux::VPU::MultiClusterStrategy;
 using namespace vpux;
 
@@ -28,7 +28,7 @@ using MLIR_VPU_LayerVPUNNCost = vpux::VPU::arch37xx::UnitTest;
 
 VPU::StrategyCost getSWVPUNNCost(std::shared_ptr<VPUNN::SWOperation> vpunnLayer, mlir::ModuleOp module,
                                  VPU::MultiClusterStrategy mcStrategy) {
-    const auto archKind = VPU::getArch(module);
+    const auto archKind = config::getArch(module);
     const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
 
     auto tileOp = IE::getTileExecutor(module);
@@ -44,7 +44,7 @@ VPU::StrategyCost getSWVPUNNCost(std::shared_ptr<VPUNN::SWOperation> vpunnLayer,
 
 VPUNN::CyclesInterfaceType getHWVPUNNCost(VPUNN::DPULayer& vpunnLayer, mlir::ModuleOp module,
                                           VPU::MultiClusterStrategy mcStrategy) {
-    const auto archKind = VPU::getArch(module);
+    const auto archKind = config::getArch(module);
     const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
 
     auto tileOp = IE::getTileExecutor(module);
@@ -73,7 +73,7 @@ VPUNN::CyclesInterfaceType getWeightsDMACost(VPU::NCEOpInterface nceOp, mlir::Mo
         return 0;
     }
     const auto weightsType = mlir::cast<vpux::NDTypeInterface>(weightsVal.getType());
-    const auto archKind = VPU::getArch(module);
+    const auto archKind = config::getArch(module);
     const auto vpunnCostModel = VPU::CostModelConfig::createCostModel(archKind);
     const auto vpunnDevice = VPU::getVPUDeviceType(archKind);
     const auto numDMAPorts = IE::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();

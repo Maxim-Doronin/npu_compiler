@@ -4,9 +4,12 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -449,13 +452,45 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
 
     const SmallVector<mlir::Value> branches = eltwiseOp->getOperands();
 
-    auto newAlignedShape = getNewAlignedShapeForPermuteCast(eltwiseOp, memPermuteOp);
-    if (!newAlignedShape.has_value()) {
+    auto newAlignedShapeValue = getNewAlignedShapeForPermuteCast(eltwiseOp, memPermuteOp);
+    if (!newAlignedShapeValue.has_value()) {
         return matchFailed(_log, rewriter, memPermuteOp, "The shape is not channel aligned");
+    }
+    const auto newAlignedShape = newAlignedShapeValue.value();
+
+    auto attr = eltwiseOp->getAttr("auto_broadcast");
+    auto autoBroadcastType = IE::AutoBroadcastType::NONE_OR_EXPLICIT;
+    if (auto autoBroadcastAttr = mlir::dyn_cast_or_null<IE::AutoBroadcastTypeAttr>(attr)) {
+        autoBroadcastType = autoBroadcastAttr.getValue();
+    }
+
+    auto inferredOutShape = IE::broadcastEltwiseShape(newAlignedShape[0].raw(), newAlignedShape[1].raw(),
+                                                      autoBroadcastType, eltwiseOp->getLoc());
+    if (mlir::failed(inferredOutShape)) {
+        return matchFailed(_log, rewriter, memPermuteOp,
+                           "Inferred shape for eltwise operation failed when propagating MemPermute");
+    }
+
+    SmallVector<Shape> newShapeCastShape = newAlignedShape;
+    const auto& leftShape = newAlignedShape[0].raw();
+    const auto& rightShape = newAlignedShape[1].raw();
+    if (leftShape[0] != 1 && rightShape[0] != 1) {
+        newShapeCastShape[0][Dims4D::Act::N] = 1;
+        newShapeCastShape[1][Dims4D::Act::N] = 1;
+        bool isBroadcasted = false;
+        for (size_t i = 1; i < leftShape.size(); ++i) {
+            const auto leftMul = leftShape[i] * leftShape[0];
+            const auto rightMul = rightShape[i] * rightShape[0];
+            // If the left and right shapes are equal, we can merge them.
+            if (leftMul == rightMul && !isBroadcasted) {
+                newShapeCastShape[0][Dim(i)] = leftMul;
+                newShapeCastShape[1][Dim(i)] = rightMul;
+                isBroadcasted = true;
+            }
+        }
     }
 
     SmallVector<mlir::Value> newAddInputs;
-
     for (size_t inputIdx = 0; inputIdx < branches.size(); inputIdx++) {
         auto branchInput = branches[inputIdx];
 
@@ -475,22 +510,18 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
             //     IE.MemPermute -> IE.ShapeCast -> IE.Add -> IE.ShapeCast -> IE.MemPermute
             // the ShapeCast input will be replaced with PermuteCast:
             //     IE.MemPermute -> IE.MemPermute -> IE.PermuteCast -> IE.Add -> ...
-            newInput = createNewInputWithAlignedShape(newMemPermuteOp, eltwiseOp, newAlignedShape.value()[inputIdx],
-                                                      rewriter);
+            newInput = createNewInputWithAlignedShape(newMemPermuteOp, eltwiseOp, newAlignedShape[inputIdx], rewriter);
         }
 
-        if (newAlignedShape.value()[inputIdx][Dims4D::Act::N] != 1) {
-            auto newInputAlignedShape = getShape(newInput).raw();
-            SmallVector<int64_t> newInputShape = {1, newInputAlignedShape[1],
-                                                  newInputAlignedShape[0] * newInputAlignedShape[2],
-                                                  newInputAlignedShape[3]};
-            newInput = rewriter.createOrFold<IE::ShapeCastOp>(memPermuteOp.getLoc(), newInput,
-                                                              getIntArrayAttr(rewriter.getContext(), newInputShape));
+        if (newAlignedShape[inputIdx][Dims4D::Act::N] != 1) {
+            newInput = rewriter.createOrFold<IE::ShapeCastOp>(
+                    memPermuteOp.getLoc(), newInput,
+                    getIntArrayAttr(rewriter.getContext(), newShapeCastShape[inputIdx]));
         }
 
         newAddInputs.push_back(newInput);
     }
-    createNewOutputWithAlignedShape(memPermuteOp, eltwiseOp, newAlignedShape.value().back(), newAddInputs, rewriter);
+    createNewOutputWithAlignedShape(memPermuteOp, eltwiseOp, newAlignedShape.back(), newAddInputs, rewriter);
     return mlir::success();
 }
 

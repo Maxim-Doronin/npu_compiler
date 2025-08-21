@@ -5,10 +5,11 @@
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
-
 #include "vpux/utils/core/optional.hpp"
 
 #include <vpux_elf/writer.hpp>
+
+#include <mlir/IR/Builders.h>
 
 using namespace vpux;
 

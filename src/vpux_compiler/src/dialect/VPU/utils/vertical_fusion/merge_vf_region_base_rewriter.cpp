@@ -5,20 +5,13 @@
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/merge_vf_region_base_rewriter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_case.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_case.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
-#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vf_axis_increment.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/VPU/tile_utils.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 #include <llvm/ADT/SmallSet.h>
@@ -67,7 +60,7 @@ bool isSingleTileOpCompatibleWithDistributedOutput(VPU::TilingBuilderOpInterface
         operationNDTypes.push_back(mlir::cast<NDTypeInterface>(type).getTotalAllocSize());
     }
     const auto totalAvailableCMXSize = getTotalCMXSize(op.getOperation());
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(getArch(op.getOperation()), operationNDTypes) >
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(op.getOperation()), operationNDTypes) >
            totalAvailableCMXSize;
 }
 
@@ -313,7 +306,6 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
             }
 
             auto inferredCurrInDistType = inferInputDistributedType(prevOutDistType, currInputViewLikeOps);
-
             if (areDistributionAttrsCompatible(inferredCurrInDistType, actualCurrInDistType, true).failed()) {
                 return false;
             }

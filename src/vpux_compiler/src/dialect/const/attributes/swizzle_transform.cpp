@@ -19,7 +19,7 @@ using namespace vpux::BufferTransform;
 //
 // vpux::BufferTransform::BufferSwizzleTransform
 //
-BufferSwizzleTransform::BufferSwizzleTransform(uint32_t swizzleKey, VPU::ArchKind archKind)
+BufferSwizzleTransform::BufferSwizzleTransform(uint32_t swizzleKey, config::ArchKind archKind)
         : _addressTransform(swizzleKey, archKind) {
 }
 
@@ -42,12 +42,12 @@ void AddressTransform::setStaggerBits(uint32_t bits) {
     _shift = LOG2_RAM_CUT_BYTES - _staggerAddressBits;
 
     switch (_archKind) {
-    case VPU::ArchKind::NPU40XX:  // NPU40XX - NN CMX ram cut data width = 32B
+    case config::ArchKind::NPU40XX:  // NPU40XX - NN CMX ram cut data width = 32B
         _shift++;
         _log2RamCutDataWidth++;
         _ramCutAddressMask = (1u << (LOG2_RAM_CUT_BYTES + 1)) - 1u;
         break;
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         break;
     default:
         VPUX_THROW("Unsuported ArchKind {0}", _archKind);
@@ -128,7 +128,7 @@ mlir::Attribute vpux::Const::SwizzleConstantAttr::parse(mlir::AsmParser& parser,
 
 vpux::NDTypeInterface vpux::Const::SwizzleConstantAttr::inferOutputType(vpux::NDTypeInterface inputType) const {
     const uint32_t arch = static_cast<int32_t>(*getArch().getValue().getRawData());
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(arch);
+    config::ArchKind archKind = static_cast<config::ArchKind>(arch);
     const auto newSize =
             alignSizeForSwizzling(inputType.getTotalAllocSize().count(), getSizeAlignmentForSwizzling(archKind));
     // Create a flat type with aligned size based on HW requirements
@@ -164,7 +164,7 @@ Const::Content vpux::Const::SwizzleConstantAttr::transform(vpux::Const::Content&
     const uint32_t swizzleKey = checked_cast<int32_t>(*getSwizzleKey().getValue().getRawData());
     const uint32_t dataWidth = checked_cast<uint32_t>(input.getType().getElemTypeSize().count());
     const uint32_t arch = static_cast<int32_t>(getArch().getValue().getSExtValue());
-    VPU::ArchKind archKind = static_cast<VPU::ArchKind>(arch);
+    config::ArchKind archKind = static_cast<config::ArchKind>(arch);
     auto outputType = inferOutputType(input.getType());
 
     BufferSwizzleTransform bufferSwizzleTransform{swizzleKey, archKind};

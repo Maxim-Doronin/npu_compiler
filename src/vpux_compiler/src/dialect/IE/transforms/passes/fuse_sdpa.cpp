@@ -3,11 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -195,9 +199,9 @@ bool isLegalSDPA(mlir::Value inputQ) {
 
 void FuseSDPAPass::safeRunOnFunc() {
     auto func = getOperation();
-    const auto arch = VPU::getArch(func);
+    const auto arch = config::getArch(func);
     // Force to fuse only on 40XX for now
-    if (arch != VPU::ArchKind::NPU40XX) {
+    if (arch != config::ArchKind::NPU40XX) {
         return;
     }
     func->walk([&](IE::SDPAOp sdpaOp) {

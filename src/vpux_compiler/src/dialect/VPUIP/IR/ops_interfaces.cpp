@@ -4,18 +4,13 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/types.hpp"
 
-#include "vpux/compiler/core/attributes/stride_reqs.hpp"
-#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-
-#include "vpux/utils/core/format.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
 
@@ -386,8 +381,8 @@ mlir::LogicalResult vpux::VPUIP::verifySameOperandsAndResultElementType(mlir::Op
 
 std::optional<VPUIP::DmaChannelType> vpux::VPUIP::getChannelType(mlir::Operation* op) {
     // Configure DMA channel only for VPU4 for now
-    const auto arch = VPU::getArch(op);
-    if (arch < VPU::ArchKind::NPU40XX) {
+    const auto arch = config::getArch(op);
+    if (arch < config::ArchKind::NPU40XX) {
         return std::nullopt;
     }
 

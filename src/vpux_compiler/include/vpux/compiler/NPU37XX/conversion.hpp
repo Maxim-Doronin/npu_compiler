@@ -29,6 +29,8 @@ void buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm, Logger log = Logger::g
 void buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool enableInPlaceBufferization,
                                  bool useMemrefForHostFunctionBufferization, Logger log = Logger::global());
 
+void buildLowerIE2VPUPipelineReferenceSW(mlir::OpPassManager& pm, Logger log = Logger::global());
+
 //
 // Registration
 //

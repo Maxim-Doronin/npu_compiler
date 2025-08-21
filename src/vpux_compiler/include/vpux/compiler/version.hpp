@@ -10,12 +10,15 @@
 // This version is exposed via L0 API and reported as (read-only) plugin property NPU_COMPILER_VERSION
 //
 #define NPU_COMPILER_VERSION_MAJOR 7
-#define NPU_COMPILER_VERSION_MINOR 21
+#define NPU_COMPILER_VERSION_MINOR 22
 
 /*
 
 Change Log:
 -----------
+NPU Compiler 7.22.0
+  - UD32
+
 NPU Compiler 7.21.0
   - UD28
 

@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPUIPDPU/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/ops_interfaces.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/traits_utils.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
@@ -29,7 +30,7 @@ using namespace mlir;
 //
 
 mlir::LogicalResult vpux::VPUIPDPU::DPUInvariantOp::verify() {
-    if (!hasMandatorySingleInstanceChildren<DPUInvariantOp, IDUCfgOp, PPECfgOp, ODUCfgOp>(*this)) {
+    if (!hasMandatorySingleInstanceChildren<DPUInvariantOp, IDUCfgOp, ODUCfgOp>(*this)) {
         return errorAt(getLoc(), "Operation {0}: missing mandatory child ops", getOperationName());
     }
     if (!hasOptionalSingleInstanceChildren<DPUInvariantOp, MPECfgOp>(*this)) {

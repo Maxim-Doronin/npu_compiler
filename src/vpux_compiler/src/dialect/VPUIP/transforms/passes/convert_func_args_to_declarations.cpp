@@ -3,20 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
-
-#include "vpux/compiler/core/aliases_info.hpp"
-#include "vpux/compiler/utils/error.hpp"
-
-#include <mlir/Transforms/DialectConversion.h>
-
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/hash.hpp"
-#include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+
+#include <mlir/Interfaces/ViewLikeInterface.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_CONVERTFUNCARGSTODECLARATIONS
@@ -82,6 +81,10 @@ private:
 
 void ConvertFuncArgsToDeclarationsPass::safeRunOnModule() {
     auto moduleOp = getOperation();
+
+    if (moduleOp.getOps<net::NetworkInfoOp>().empty()) {
+        return;
+    }
 
     const auto buildNewDecl = [](mlir::OpBuilder& argBuilder, mlir::Value val, VPURT::BufferSection section,
                                  int64_t sectionIndex) {

@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "common/utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/utils/IE/function_outlining_splitter.hpp"
-
-#include "common/utils.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Parser/Parser.h>

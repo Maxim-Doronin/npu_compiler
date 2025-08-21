@@ -6,7 +6,7 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-module @OneDMAWithoutAttributes attributes {VPU.arch = #VPU.arch_kind<NPU40XX>} {
+module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>} {
   IE.ExecutorResource 1 of @M2I
   IE.ExecutorResource 1 of @DMA_NN
   IE.TileResource 6 of @NCE at 6.000000e+02 MHz

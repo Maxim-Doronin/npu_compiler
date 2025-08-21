@@ -43,10 +43,10 @@
 #include <openvino/runtime/intel_npu/level_zero/level_zero.hpp>
 #include <overload/overload_test_utils_npu.hpp>
 
-#include "base/ov_behavior_test_utils.hpp"
 #include "behavior/ov_infer_request/infer_request_dynamic.hpp"
 #include "common/npu_test_env_cfg.hpp"
 #include "common/utils.hpp"
+#include "shared_test_classes/base/ov_behavior_test_utils.hpp"
 
 namespace ov {
 namespace test {

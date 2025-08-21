@@ -6,19 +6,14 @@
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
-#include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/split_cost_getter.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
-#include "vpux/utils/core/enums.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -39,7 +34,7 @@ namespace {
 
 class NCEWorkloadSplitRewrite final : public mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface> {
 public:
-    NCEWorkloadSplitRewrite(mlir::MLIRContext* ctx, int64_t numDPU, VPU::ArchKind arch,
+    NCEWorkloadSplitRewrite(mlir::MLIRContext* ctx, int64_t numDPU, config::ArchKind arch,
                             std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log)
             : mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface>(ctx),
               _numDPU(numDPU),
@@ -53,7 +48,7 @@ public:
 
 private:
     int64_t _numDPU;
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     std::shared_ptr<VPUNN::VPUCostModel> _costModel;
     Logger _log;
 };
@@ -69,7 +64,7 @@ mlir::LogicalResult NCEWorkloadSplitRewrite::matchAndRewrite(VPU::NCEOpInterface
 
 class NCEWorkloadSplitPreSplitRewrite final : public mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface> {
 public:
-    NCEWorkloadSplitPreSplitRewrite(mlir::MLIRContext* ctx, int64_t numDPU, int64_t numTiles, VPU::ArchKind arch,
+    NCEWorkloadSplitPreSplitRewrite(mlir::MLIRContext* ctx, int64_t numDPU, int64_t numTiles, config::ArchKind arch,
                                     std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModel,
                                     std::shared_ptr<VPUNN::VPUCostModel> costModel, Logger log)
             : mlir::OpInterfaceRewritePattern<VPU::NCEOpInterface>(ctx),
@@ -91,7 +86,7 @@ private:
     int64_t _numDPU;
     int64_t _numTiles;
 
-    VPU::ArchKind _arch;
+    config::ArchKind _arch;
     std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel;
     std::shared_ptr<VPUNN::VPUCostModel> _costModel;
 
@@ -179,7 +174,7 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
 
     auto nceCluster = IE::getTileExecutor(module);
     VPUX_THROW_UNLESS(nceCluster != nullptr, "Failed to get NCE_Cluster information");

@@ -3,18 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/interfaces/d2s_to_transposed_conv_verifier.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
-#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -279,7 +276,7 @@ void ConvertDepth2SpaceToTransposedConvPass::safeRunOnFunc() {
     auto func = getOperation();
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto benefitVerifier = IE::createD2SToTransposedConvVerifier(VPU::getArch(module));
+    auto benefitVerifier = IE::createD2SToTransposedConvVerifier(config::getArch(module));
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<ConvertDepth2SpaceToTransposedConv>(&ctx, std::move(benefitVerifier), _log);

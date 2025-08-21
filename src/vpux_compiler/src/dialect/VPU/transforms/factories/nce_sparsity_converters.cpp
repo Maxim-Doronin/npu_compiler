@@ -10,27 +10,27 @@
 
 using namespace vpux;
 
-VPU::NCESparsity::PPEConverterCb VPU::NCESparsity::getPPEConverterCb(VPU::ArchKind arch,
+VPU::NCESparsity::PPEConverterCb VPU::NCESparsity::getPPEConverterCb(config::ArchKind arch,
                                                                      [[maybe_unused]] bool isNewWeightTableFormat) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
-    case VPU::ArchKind::NPU40XX: {
+    case config::ArchKind::NPU37XX:
+    case config::ArchKind::NPU40XX: {
         return VPU::arch37xx::getScale;
     }
-    case VPU::ArchKind::UNKNOWN:
+    case config::ArchKind::UNKNOWN:
     default: {
         VPUX_THROW("Unexpected architecture {0}", arch);
     }
     }
 }
 
-VPU::NCESparsity::BiasConverterCb VPU::NCESparsity::getBiasConverterCb(VPU::ArchKind arch,
+VPU::NCESparsity::BiasConverterCb VPU::NCESparsity::getBiasConverterCb(config::ArchKind arch,
                                                                        [[maybe_unused]] bool isNewWeightTableFormat) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU37XX:
+    case config::ArchKind::NPU40XX:
         return VPU::arch37xx::getBias;
-    case VPU::ArchKind::UNKNOWN:
+    case config::ArchKind::UNKNOWN:
     default: {
         VPUX_THROW("Unexpected architecture {0}", arch);
     }

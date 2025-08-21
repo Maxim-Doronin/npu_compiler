@@ -9,10 +9,12 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/net/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -103,12 +105,25 @@ void BoundedTensorsToDynamicDimsMask::safeRunOnModule() {
     // pipeline, this pass is executed on the main function, which contains host-side code as well. Ideally, this pass
     // should not operate on the main function in the HostCompile pipeline. This will be refactored in the future.
     // Track: E#168311
+    auto hostCompileMode = (config::getCompilationMode(module) == config::CompilationMode::HostCompile);
     target.addLegalDialect<mlir::scf::SCFDialect>();
-    target.addLegalDialect<mlir::affine::AffineDialect>();
     target.addLegalOp<mlir::tensor::ExtractSliceOp>();
-    target.addLegalOp<mlir::tensor::InsertSliceOp>();
+    if (hostCompileMode) {
+        target.addLegalDialect<mlir::tensor::TensorDialect>();
+        target.addLegalDialect<mlir::affine::AffineDialect>();
+        target.addLegalOp<mlir::tensor::DimOp>();
+        target.addLegalOp<mlir::cf::AssertOp>();
+        target.addLegalOp<mlir::UnrealizedConversionCastOp>();
+        target.addLegalOp<mlir::func::ReturnOp>();
+        target.addLegalOp<mlir::tensor::InsertSliceOp>();
+    }
 
+    const auto entryFuncOp = vpux::net::findEntryPointFunc(module, _log);
     target.addDynamicallyLegalOp<mlir::func::FuncOp>([&](mlir::func::FuncOp funcOp) {
+        if (hostCompileMode && (funcOp == entryFuncOp)) {
+            _log.trace("Skipping function {0} in HostCompile mode", funcOp.getName());
+            return true;
+        }
         return typeConverter.isSignatureLegal(funcOp.getFunctionType());
     });
 

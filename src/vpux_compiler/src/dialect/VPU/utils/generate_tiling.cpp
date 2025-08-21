@@ -10,17 +10,20 @@
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_constraint_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/dilated_utils.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -486,7 +489,7 @@ std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bo
 }
 
 std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseOutput(
-        VPU::ArchKind arch, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels) {
+        config::ArchKind arch, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels) {
     auto getWorkloadNum = [&](int64_t channelSupported) {
         size_t wlMaxNumPerCluster = 0;
         size_t wlNumInTotal = 0;
@@ -607,8 +610,8 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
                 return false;
             }
         }
-        const auto workloadInformation =
-                getWorkLoadInformationForNCEWithSparseOutput(getArch(nceOp), perClusterShapes, supportedChannels);
+        const auto workloadInformation = getWorkLoadInformationForNCEWithSparseOutput(
+                config::getArch(nceOp), perClusterShapes, supportedChannels);
         if (!workloadInformation.has_value()) {
             return false;
         }
@@ -717,9 +720,8 @@ std::vector<StrategyWithCost> getHwLayerTilingStrategiesWithCost(mlir::Operation
     VPUX_THROW_WHEN(nceOp == nullptr, "Operation '{0}' doesn't implement NCEop Interface", op->getName());
     const auto tileDimOrder = getTileDimOrder(op, tilingMode, log);
 
-    // Temporarily not apply cost-based tiling strategy to NCE ops with INT4 weights based on VPUNN cost.
-    // This can be removed when VPUNN is upgraded to support INT4 data type, tracked in E#113316.
-    if (VPU::isNCEWithInt4Weights(op)) {
+    auto costModelUtils = VPU::getICostModelUtilsInterface(op->getContext());
+    if (VPU::isNCEWithInt4Weights(op) && !costModelUtils->isNCEWithInt4WeightsSupported()) {
         auto strategy = getHWLayerTilingStrategyWithTileDimOrder(op, tilingMode, tileDimOrder, log);
         if (mlir::failed(strategy)) {
             return {};

@@ -5,9 +5,10 @@
 
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
-
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -158,8 +159,8 @@ VPU::SparsityRemovalFlag VPU::shouldRemoveOutputSparsity(mlir::Operation* op) {
     return SparsityRemovalFlag::CatchAllFail;
 }
 
-bool VPU::isSEOnlyWithoutSMSupported(VPU::ArchKind arch) {
-    return arch != VPU::ArchKind::NPU37XX && arch != VPU::ArchKind::NPU40XX;
+bool VPU::isSEOnlyWithoutSMSupported(config::ArchKind arch) {
+    return arch != config::ArchKind::NPU37XX && arch != config::ArchKind::NPU40XX;
 }
 
 mlir::Type VPU::getEffectiveSparseOutputType(mlir::Type sparseType) {

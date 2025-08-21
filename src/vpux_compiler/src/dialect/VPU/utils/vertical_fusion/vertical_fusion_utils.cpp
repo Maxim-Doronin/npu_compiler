@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vf_axis_increment.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 #include <llvm/ADT/TypeSwitch.h>
@@ -56,79 +57,6 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(VPU::VerticalFu
     return calculateTilingRegions(lastOp, tiles, log, opStorage);
 }
 
-mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation* operation, const OutputTiling& tiles,
-                                                                 Logger log,
-                                                                 const TilingOperationStorage::UPtr& opStorage,
-                                                                 std::optional<size_t> numTile) {
-    TilingStorage storage;
-
-    for (const auto& item : tiles | indexed) {
-        auto tile = item.value();
-
-        auto inputTiling = TilingInfo(ArrayRef({tile}));
-        try {
-            if (auto tilingBuilderOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(operation)) {
-                inputTiling = tilingBuilderOp.backInferTileInfo(tile, log);
-                if (opStorage != nullptr && !inputTiling.tiles.empty()) {
-                    auto allValues = opStorage->gatherValue(operation);
-                    const auto sameTile = [&](auto& tiling) {
-                        return tiling.second.shape == tile.shape &&
-                               tiling.first.tiles[0].shape == inputTiling.tiles[0].shape;
-                    };
-                    if (llvm::none_of(allValues, sameTile)) {
-                        if (auto tilingInfoOp = mlir::dyn_cast<VPU::TilingInfoOpInterface>(operation)) {
-                            if (!isMultiClusterCompatibleForTiling(operation, {tile}, log) ||
-                                !tilingInfoOp.isSupportedTiling({tile}, TilingMode::ISOLATED, log)) {
-                                return mlir::failure();
-                            }
-                        }
-                    }
-                }
-            } else if (auto tilingViewLikeOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(operation)) {
-                if (!tilingViewLikeOp.isSupportedOutTile(tile)) {
-                    return mlir::failure();
-                }
-                inputTiling = tilingViewLikeOp.backInferTileInfo(tile, log);
-            } else {
-                VPUX_THROW("Unsupported operation type {0} for VF", operation->getName());
-            }
-        } catch (Exception&) {
-            return mlir::failure();
-        }
-
-        const auto tileNumber = numTile.value_or(item.index());
-
-        if (opStorage != nullptr) {
-            opStorage->insert(operation, tileNumber, std::make_pair(inputTiling, tile));
-            log.trace("TileInfo inserted for operation {0} tile {1}, {2}", *operation, tileNumber, tile);
-        }
-
-        for (const auto& op : operation->getOperands() | indexed) {
-            const auto operand = op.value();
-            const auto indexOp = op.index();
-
-            if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
-                storage.insert(arg.getArgNumber(), tileNumber, inputTiling.tiles[indexOp]);
-                log.trace("TileInfo inserted for argument {0} tile {1}, {2}", arg.getArgNumber(), tileNumber,
-                          inputTiling.tiles[indexOp]);
-                continue;
-            }
-
-            auto& oneTile = inputTiling.tiles[indexOp];
-            auto inputTile = TileInfo(oneTile.shape, oneTile.offsets, tile.axis, tile.isCompletedTile);
-            auto innerStorage = calculateTilingRegions(operand.getDefiningOp(), {std::move(inputTile)}, log, opStorage,
-                                                       numTile.value_or(item.index()));
-            if (mlir::failed(innerStorage)) {
-                return mlir::failure();
-            }
-
-            storage.merge(innerStorage.value());
-        }
-    }
-
-    return storage;
-}
-
 mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(VPU::VerticalFusionOp vfOp,
                                                                  ArrayRef<int64_t> tilingStrategy, Logger log,
                                                                  const TilingOperationStorage::UPtr& opStorage) {
@@ -143,7 +71,98 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(VPU::VerticalFu
     return calculateTilingRegions(vfOp, tiles.value(), log, opStorage);
 }
 
-int64_t vpux::VPU::getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operations) {
+mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation* operation, const OutputTiling& tiles,
+                                                                 Logger log,
+                                                                 const TilingOperationStorage::UPtr& opStorage,
+                                                                 const llvm::SetVector<mlir::Operation*>& fusedOps) {
+    TilingStorage storage;
+
+    // Work queue of (operation, tile, tileNumber)
+    using WorkItem = std::tuple<mlir::Operation*, TileInfo, size_t>;
+    std::queue<WorkItem> workQueue;
+
+    // Initialize the queue with the starting operation and its tiles
+    for (const auto& item : tiles | indexed) {
+        auto& tile = item.value();
+        const auto tileNumber = item.index();
+        workQueue.push(std::make_tuple(operation, tile, tileNumber));
+    }
+
+    // Process all operations in the queue
+    while (!workQueue.empty()) {
+        auto workItem = workQueue.front();
+        auto& currentOp = std::get<0>(workItem);
+        auto& tile = std::get<1>(workItem);
+        auto& tileNumber = std::get<2>(workItem);
+        workQueue.pop();
+
+        auto inputTiling = TilingInfo(ArrayRef({tile}));
+        try {
+            if (auto tilingBuilderOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(currentOp)) {
+                inputTiling = tilingBuilderOp.backInferTileInfo(tile, log);
+                if (opStorage != nullptr && !inputTiling.tiles.empty()) {
+                    auto& allValues = opStorage->gatherValue(currentOp);
+                    const auto sameTile = [&](auto& item) {
+                        auto& tiling = item.second;
+                        return tiling.second.shape == tile.shape &&
+                               tiling.first.tiles[0].shape == inputTiling.tiles[0].shape;
+                    };
+                    if (llvm::none_of(allValues, sameTile)) {
+                        if (auto tilingInfoOp = mlir::dyn_cast<VPU::TilingInfoOpInterface>(currentOp)) {
+                            if (!isMultiClusterCompatibleForTiling(currentOp, {tile}, log) ||
+                                !tilingInfoOp.isSupportedTiling({tile}, TilingMode::ISOLATED, log)) {
+                                return mlir::failure();
+                            }
+                        }
+                    }
+                }
+            } else if (auto tilingViewLikeOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(currentOp)) {
+                if (!tilingViewLikeOp.isSupportedOutTile(tile)) {
+                    return mlir::failure();
+                }
+                inputTiling = tilingViewLikeOp.backInferTileInfo(tile, log);
+            } else {
+                VPUX_THROW("Unsupported operation type {0} for VF", currentOp->getName());
+            }
+        } catch (Exception&) {
+            return mlir::failure();
+        }
+
+        // Store the tiling info for the current operation
+        if (opStorage != nullptr) {
+            opStorage->insert(currentOp, tileNumber, std::make_pair(inputTiling, tile));
+            log.trace("TileInfo inserted for operation at loc {0} tile {1}, {2}", currentOp->getLoc(), tileNumber,
+                      tile);
+        }
+
+        // Process each operand of the current operation
+        for (const auto& op : currentOp->getOperands() | indexed) {
+            const auto operand = op.value();
+            const auto indexOp = op.index();
+
+            if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
+                // Store block argument info
+                storage.insert(arg.getArgNumber(), tileNumber, inputTiling.tiles[indexOp]);
+                log.trace("TileInfo inserted for argument {0} tile {1}, {2}", arg.getArgNumber(), tileNumber,
+                          inputTiling.tiles[indexOp]);
+                continue;
+            }
+
+            if (!fusedOps.empty() && !fusedOps.contains(operand.getDefiningOp())) {
+                continue;
+            }
+
+            // Create the tile for the operand and add it to the work queue
+            auto& oneTile = inputTiling.tiles[indexOp];
+            auto inputTile = TileInfo(oneTile.shape, oneTile.offsets, tile.axis, tile.isCompletedTile);
+            workQueue.push(std::make_tuple(operand.getDefiningOp(), inputTile, tileNumber));
+        }
+    }
+
+    return storage;
+}
+
+int64_t vpux::VPU::getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operations, bool tilingOnHW) {
     SmallVector<int64_t> axisLengthsOfNonChannelAlignedOps;
     SmallVector<int64_t> axisLengthsOfChannelAlignedOps;
     auto hasChannelAxis = axis == Dims4D::Act::C;
@@ -158,7 +177,11 @@ int64_t vpux::VPU::getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operation
 
         auto limit = getMaxNumTiles(curOp)[curAxis.ind()];
         if (curAxis.ind() >= Dims4D::Act::getSpatialDim(0).ind()) {
-            limit /= MINIMUM_LENGTH_TILING;
+            if (tilingOnHW) {
+                limit = divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING));
+            } else {
+                limit = limit / MINIMUM_LENGTH_TILING;
+            }
         }
         limit = std::min(limit, VPU::NCEInvariant::VPU_DIMENSION_LIMIT / MINIMUM_LENGTH_TILING);
         if (mlir::isa<IE::AlignedChannelsOpInterface>(curOp)) {
@@ -189,71 +212,6 @@ int64_t vpux::VPU::getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operation
     VPUX_THROW_WHEN(axisIncrement == nullptr, "Cannot get functions to get values for axis {0}", axis);
 
     return axisIncrement->getLimitValue(axisLengthsOfChannelAlignedOps, axisLengthsOfNonChannelAlignedOps);
-}
-
-// get a valid tiling strategy for VF block between the given range of tiling strategy
-// it returns mlir::failure() if all tiling strategies in this range can't be supported by all operations or operations
-// can't fit in CMX
-// otherwise, return the valid strategy that is close to the lower or upper boundary according to closeToUpperLimit
-// parameter
-mlir::FailureOr<SmallVector<int64_t>> getValidTilingStrategyFromRange(
-        VPU::VerticalFusionOp op, ArrayRef<int64_t> lowerTilingStrategy, ArrayRef<int64_t> upperTilingStrategy,
-        bool closeToUpperLimit, Dim tilingAxis, TilingOperationStorage::UPtr& opStorage, Logger log) {
-    SmallVector<int64_t> validTilingStrategy =
-            closeToUpperLimit ? to_small_vector(upperTilingStrategy) : to_small_vector(lowerTilingStrategy);
-
-    auto notBeyondBoundary = [](int64_t value, int64_t lowerLimit, int64_t upperLimit, bool closeToUpperLimit) {
-        return closeToUpperLimit ? value >= lowerLimit : value <= upperLimit;
-    };
-
-    auto axisIncrement = getVFAxisIncrement(tilingAxis);
-    VPUX_THROW_WHEN(axisIncrement == nullptr, "Cannot get functions to get values for axis {0}", tilingAxis);
-
-    while (notBeyondBoundary(validTilingStrategy[tilingAxis.ind()], lowerTilingStrategy[tilingAxis.ind()],
-                             upperTilingStrategy[tilingAxis.ind()], closeToUpperLimit)) {
-        auto curOpStorage = std::make_unique<TilingOperationStorage>();
-        auto tilingRegions = calculateTilingRegions(op, validTilingStrategy, log, curOpStorage);
-        if (!mlir::failed(tilingRegions)) {
-            // a valid strategy is found
-            opStorage.reset(curOpStorage.release());
-            return validTilingStrategy;
-        }
-
-        auto currentValue = validTilingStrategy[tilingAxis.ind()];
-
-        if (closeToUpperLimit) {
-            axisIncrement->decreasedValue(validTilingStrategy[tilingAxis.ind()], lowerTilingStrategy[tilingAxis.ind()]);
-        } else {
-            axisIncrement->increasedValue(validTilingStrategy[tilingAxis.ind()], upperTilingStrategy[tilingAxis.ind()]);
-        }
-
-        if (currentValue == validTilingStrategy[tilingAxis.ind()]) {
-            return mlir::failure();
-        }
-    }
-
-    // no valid strategy can be found
-    return mlir::failure();
-}
-
-// get a maximal valid tiling strategy for VF block between the given range of tiling strategy
-// it returns mlir::failure() if all tiling strategies in this range can't be supported by all operations or operations
-// can't fit in CMX
-mlir::FailureOr<SmallVector<int64_t>> vpux::VPU::getMaximalValidTilingStrategyFromRange(
-        VPU::VerticalFusionOp op, ArrayRef<int64_t> lowerTilingStrategy, ArrayRef<int64_t> upperTilingStrategy,
-        Dim tilingAxis, TilingOperationStorage::UPtr& opStorage, Logger log) {
-    return getValidTilingStrategyFromRange(op, lowerTilingStrategy, upperTilingStrategy, true, tilingAxis, opStorage,
-                                           log);
-}
-
-// get a minimal valid tiling strategy for VF block between the given range of tiling strategy
-// it returns mlir::failure() if all tiling strategies in this range can't be supported by all operations or operations
-// can't fit in CMX
-mlir::FailureOr<SmallVector<int64_t>> vpux::VPU::getMinimalValidTilingStrategyFromRange(
-        VPU::VerticalFusionOp op, ArrayRef<int64_t> lowerTilingStrategy, ArrayRef<int64_t> upperTilingStrategy,
-        Dim tilingAxis, TilingOperationStorage::UPtr& opStorage, Logger log) {
-    return getValidTilingStrategyFromRange(op, lowerTilingStrategy, upperTilingStrategy, false, tilingAxis, opStorage,
-                                           log);
 }
 
 std::optional<Dim> vpux::VPU::getVFTilingDim(ArrayRef<int64_t> tilingStrategy) {
@@ -613,7 +571,7 @@ bool vpux::VPU::isPrevOperationEarlyScheduled(mlir::Operation* prevOp, mlir::Ope
     return false;
 }
 
-bool vpux::VPU::spillingCopyOpsCanBeOverlapped(VPU::ArchKind arch) {
+bool vpux::VPU::spillingCopyOpsCanBeOverlapped(config::ArchKind arch) {
     return getDMAChannelsWithIndependentLinkAgents(arch) !=
            SmallVector<VPUIP::DmaChannelType>{VPUIP::DmaChannelType::NOT_SPECIFIED};
 }

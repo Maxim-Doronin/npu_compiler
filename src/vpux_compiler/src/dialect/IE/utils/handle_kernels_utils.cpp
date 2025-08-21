@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/handle_kernels_utils.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 using namespace vpux;

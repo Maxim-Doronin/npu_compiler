@@ -5,7 +5,10 @@
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
@@ -56,11 +59,19 @@ mlir::LogicalResult vpux::VPU::TransposedConvolutionOp::inferReturnTypes(
         auto outType = featureType.changeShape(Shape(mlirOutputShape));
         inferredReturnTypes.push_back(outType);
     } else {
-        const auto mlirOutputShape =
-                inferTransposedConvBackpropOutputShape(featureShape, filterShape, windowStrides, dataPaddingBelow,
-                                                       dataPaddingAbove, windowDilations, outputPadding);
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(convBackpropData.getInput().getType());
+        const auto filterType = mlir::cast<vpux::NDTypeInterface>(convBackpropData.getFilter().getType());
 
-        auto outType = featureType.changeShape(Shape(mlirOutputShape));
+        const auto inShapeInfo = ShapeInfo::fromNDType(inputType);
+        const auto filterShapeInfo = ShapeInfo::fromNDType(filterType);
+
+        auto shapeInfo = inferTransposedConvBackpropOutputShapeInfo(inShapeInfo, filterShapeInfo, windowStrides,
+                                                                    dataPaddingBelow, dataPaddingAbove, windowDilations,
+                                                                    outputPadding);
+
+        const auto outDesc =
+                vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, Bounds(shapeInfo.bounds));
+        const auto outType = mlir::RankedTensorType::get(shapeInfo.shape, inputType.getElementType(), outDesc);
         inferredReturnTypes.push_back(outType);
     }
 

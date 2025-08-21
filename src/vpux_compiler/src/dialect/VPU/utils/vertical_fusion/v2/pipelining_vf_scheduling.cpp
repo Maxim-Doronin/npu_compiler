@@ -6,10 +6,9 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/pipelining_vf_scheduling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_pipeline_container.hpp"
 #include "vpux/compiler/utils/VPU/tile_utils.hpp"
+#include "vpux/utils/core/string_ref.hpp"
 
 static constexpr double PIPELINING_AVAILABLE_RATIO = 0.95;
-
-constexpr StringLiteral isInPlace = "is_inplace";  // inplace attribute name
 
 struct OpIndexWithCost {
     size_t tileIdx;

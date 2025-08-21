@@ -72,7 +72,7 @@ public:
         return _costModel;
     }
 
-    inline VPU::ArchKind getArchKind() const {
+    inline config::ArchKind getArchKind() const {
         return _archKind;
     }
 
@@ -100,7 +100,7 @@ private:
     std::shared_ptr<VPUNN::VPUCostModel> _costModel;
     std::set<std::string> _layersWithInvalidCost;
     size_t _numOfTasksWithInvalidCost = 0;
-    VPU::ArchKind _archKind;
+    config::ArchKind _archKind;
     CycleCosts _cycleCosts;
 
     Logger _log;

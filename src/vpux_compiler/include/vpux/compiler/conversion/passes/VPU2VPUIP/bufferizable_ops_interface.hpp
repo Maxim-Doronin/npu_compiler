@@ -4,14 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/utils/core/array_ref.hpp"
-#include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h>
 #include <mlir/Dialect/Bufferization/IR/Bufferization.h>
@@ -118,8 +113,6 @@ mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::ShapeCastOp origOp,
                                 mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::LayoutCastOp origOp, VPU::LayoutCastOp::Adaptor newArgs,
                                 mlir::RewriterBase& rewriter);
-mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::WorkloadCastOp origOp,
-                                VPU::WorkloadCastOp::Adaptor newArgs, mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::UpsamplingOp origOp, VPU::UpsamplingOp::Adaptor newArgs,
                                 mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::ConcatOp origOp, VPU::ConcatOp::Adaptor newArgs,

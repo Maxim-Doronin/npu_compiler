@@ -5,12 +5,14 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/IR/IRMapping.h>
+
+namespace vpux::VPU {
+class NCEOpInterface;
+class TilingBuilderOpInterface;
+}  // namespace vpux::VPU
 
 namespace vpux {
 namespace VPU {
@@ -40,11 +42,11 @@ bool prefetchTilingConditionSatisfied(mlir::Operation* op, Logger log);
 bool largeConstPipelineConditionSatisfied(mlir::Operation* op, Logger log);
 bool hasMultiBranches(mlir::Operation* op);
 
-bool archSupportsSwLayerTiling(VPU::ArchKind arch);
+bool archSupportsSwLayerTiling(config::ArchKind arch);
 bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& outputTile);
 std::optional<DimArr> getSEPConvTilingOrder(mlir::Operation* op);
 std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseOutput(
-        VPU::ArchKind arch, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels);
+        config::ArchKind arch, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels);
 
 /**
  * @brief Get the best hardware layer tiling strategy based on the VPUNN cost model

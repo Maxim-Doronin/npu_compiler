@@ -516,11 +516,11 @@ func.func @ConvertSubtractWithFQConstantMultiplyInput(%arg0: tensor<1x1x1x1xf16>
 // CHECK-LABEL: @DynamicSubtract
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}>
 func.func @DynamicSubtract(%arg0: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>) -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}> {
-    %cst = const.Declare tensor<1x1x1x1xf32> = dense_resource<ov> : tensor<1x1x1x1xf32> isSplat
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense_resource<vpux_ow_1> : tensor<1x1x1x1xf32> isSplat
     %0 = IE.Subtract(%cst, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf32>, tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}>
     return %0 : tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}>
 
-  // CHECK: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense_resource<ov> : tensor<1x1x1x1xf32> isSplat
+  // CHECK: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense_resource<vpux_ow_1> : tensor<1x1x1x1xf32> isSplat
   // CHECK: [[SUB:%.+]] = IE.Subtract([[CST]], [[INPUT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
   // CHECK-SAME:    tensor<1x1x1x1xf32>, tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}>
   // CHECK: return [[SUB]] : tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 64]> : tensor<4xsi64>, order = #NCHW}>
@@ -530,7 +530,7 @@ func.func @DynamicSubtract(%arg0: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64
 {-#
   dialect_resources: {
     builtin: {
-      ov: "0x1000000000004040"
+      vpux_ow_1: "0x1000000000004040"
     }
   }
 #-}

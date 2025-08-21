@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 namespace vpux {
@@ -205,6 +206,21 @@ std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType) {
 
 int64_t getRangeSize(int64_t start, int64_t end) {
     return end - start + 1;
+}
+
+int64_t getZeroPoint(vpux::NDTypeInterface type) {
+    int64_t zeroPointVal = 0;
+    auto elemType = type.getElementType();
+    if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
+        if (auto intType = mlir::dyn_cast<mlir::IntegerType>(qType.getStorageType())) {
+            if (intType.getWidth() == 8) {
+                zeroPointVal = VPUIPDPU::getZeroPoints<uint8_t>(type.getElementType())[0];
+            } else if (intType.getWidth() == 16) {
+                zeroPointVal = VPUIPDPU::getZeroPoints<uint16_t>(type.getElementType())[0];
+            }
+        }
+    }
+    return zeroPointVal;
 }
 
 }  // namespace VPUIPDPU

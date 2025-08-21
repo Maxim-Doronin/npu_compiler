@@ -4,19 +4,22 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
-#include <llvm/ADT/StringRef.h>
-#include <mlir/IR/AffineMap.h>
-#include <mlir/IR/BuiltinTypes.h>
-#include <mlir/Support/LLVM.h>
-#include <optional>
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/tiling_info.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/utils/core/range.hpp"
+
+#include <llvm/ADT/StringRef.h>
+#include <mlir/IR/AffineMap.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/Support/LLVM.h>
+
+#include <optional>
 
 namespace vpux {
 namespace VPUIP {
@@ -162,7 +165,7 @@ mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, VPU::LayerOpInt
                                         kernelInfo.sourceFileName, kernelInfo.layerName, log);
 }
 
-void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpux::VPU::ArchKind arch) {
+void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpux::config::ArchKind arch) {
     auto vpuswModule = getVPUSWModule(module, log);
 
     static const SmallString runtimeKernelName{"runtime"};
@@ -201,7 +204,7 @@ void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpu
     constexpr int nShavePerTile = 2;
     auto tilesUsed = VPUIP::getNumTilesUsed(module);
     auto maxShaves = tilesUsed * nShavePerTile;
-    if (arch == vpux::VPU::ArchKind::NPU40XX) {
+    if (arch == vpux::config::ArchKind::NPU40XX) {
         maxShaves = std::min(maxShaves, static_cast<int64_t>(12));
     }
     SmallVector<int64_t> stacksArray(maxShaves, defaultStackSize);
@@ -294,6 +297,20 @@ SmallVector<int64_t> reversePermutation(mlir::AffineMap map) {
     }
 
     return revPerm;
+}
+
+// special format of dims/order available only on kernel-FW side
+int64_t computeReverseMemDim(mlir::Value tensorArg, int64_t dimIdx) {
+    const auto inOrder = DimsOrder::fromValue(tensorArg);
+    // Negative value means counting dimension from the end
+    if (dimIdx < 0) {
+        dimIdx += inOrder.numDims();
+    }
+    MemDim md = inOrder.toMemDim(Dim(dimIdx));
+
+    const auto shape = getShape(tensorArg);
+    auto nDims = checked_cast<uint32_t>(shape.size());
+    return nDims - 1 - md.ind();
 }
 
 void initSwKernel(VPUIP::SwKernelOp swKernelOp, VPUIP::SwKernelRun swKernelRunOp, const vpux::Logger& log) {
@@ -459,6 +476,99 @@ bool isStridedDataAccessSupported(VPUIP::SwKernelOp swKernelOp) {
         return true;
     }
     return false;
+}
+
+namespace {
+
+uint64_t getFloatBits(vpux::type::float16 val) {
+    return static_cast<uint64_t>(val.to_bits());
+}
+
+uint64_t getFloatBits(float val) {
+    uint32_t f32Bits = llvm::bit_cast<uint32_t>(val);
+    return static_cast<uint64_t>(f32Bits);
+}
+
+template <class IT, class OT>
+void packAsFpIntoU64(const SmallVector<IT>& values, SmallVector<int64_t>& params) {
+    static constexpr uint32_t PACKED_VALUES_COUNT = sizeof(int64_t) / sizeof(OT);
+    static constexpr uint64_t bitWidth = sizeof(OT) * CHAR_BIT;
+    OT fltValue[PACKED_VALUES_COUNT];
+    size_t packIdx = 0;
+
+    auto pack = [](OT fltVals[PACKED_VALUES_COUNT]) -> uint64_t {
+        uint64_t ret = 0;
+        for (uint32_t i = 0; i < PACKED_VALUES_COUNT; i++) {
+            ret |= getFloatBits(fltVals[i]) << (bitWidth * i);
+        }
+        return ret;
+    };
+
+    for (const auto val : values) {
+        fltValue[packIdx++] = static_cast<OT>(val);
+        if (packIdx == PACKED_VALUES_COUNT) {
+            params.push_back(pack(fltValue));
+            packIdx = 0;  // reset pack index
+        }
+    }
+
+    // Store trailing elements
+    if (packIdx) {
+        // Pad with zeros up to U64 alignment
+        while (packIdx < PACKED_VALUES_COUNT) {
+            fltValue[packIdx++] = 0;
+        }
+        params.push_back(pack(fltValue));
+    }
+}
+
+}  // namespace
+
+void getQuantParamsAttr(mlir::Value qValue, mlir::Type pType, mlir::ArrayAttr& paramsAttr, int64_t tileSize,
+                        int64_t tileOffset) {
+    SmallVector<double> scales;
+    SmallVector<int64_t> zeroes;
+    int64_t quantDim = -1;
+    const auto qType = mlir::cast<vpux::NDTypeInterface>(qValue.getType()).getElementType();
+
+    if (mlir::isa<mlir::quant::UniformQuantizedType>(qType)) {
+        auto quantParams = mlir::cast<mlir::quant::UniformQuantizedType>(qType);
+        scales = {quantParams.getScale()};
+        zeroes = {quantParams.getZeroPoint()};
+    } else if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(qType)) {
+        auto quantParams = mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(qType);
+        quantDim = computeReverseMemDim(qValue, quantParams.getQuantizedDimension());
+        scales = {quantParams.getScales().begin(), quantParams.getScales().end()};
+        zeroes = {quantParams.getZeroPoints().begin(), quantParams.getZeroPoints().end()};
+    } else {
+        VPUX_THROW("Unsupported quantized type {0}", qType);
+    }
+
+    typedef decltype(scales)::value_type TS;
+    typedef decltype(zeroes)::value_type TZ;
+
+    // Convert & pack float values into u64 words for serialization
+
+    if (tileSize != 0) {  // Multi-Cluster/Shave tiling context:
+        VPUX_THROW_UNLESS(tileOffset + tileSize <= (int64_t)scales.size(), "Slice exceeds full size");
+        scales = SmallVector<double>(scales.begin() + tileOffset, scales.begin() + tileOffset + tileSize);
+        zeroes = SmallVector<int64_t>(zeroes.begin() + tileOffset, zeroes.begin() + tileOffset + tileSize);
+    }
+
+    llvm::SmallVector<int64_t> params;
+    params.push_back(quantDim);
+    params.push_back(scales.size());
+    if (pType.isF16()) {
+        packAsFpIntoU64<TS, vpux::type::float16>(scales, params);
+        packAsFpIntoU64<TZ, vpux::type::float16>(zeroes, params);
+    } else if (pType.isF32()) {
+        packAsFpIntoU64<TS, float>(scales, params);
+        packAsFpIntoU64<TZ, float>(zeroes, params);
+    } else {
+        pType.dump();
+        VPUX_THROW("Supported non-quantized type : f16/f32");
+    }
+    paramsAttr = getIntArrayAttr(qValue.getContext(), std::move(params));
 }
 
 namespace {
@@ -915,6 +1025,41 @@ SmallVector<mlir::Attribute> getPadSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp
     newAttrs[0] = getIntArrayAttr(swKernelOp->getContext(), permuteIntArrayAttr(order, padsBegin));
     newAttrs[1] = getIntArrayAttr(swKernelOp->getContext(), permuteIntArrayAttr(order, padsEnd));
     return newAttrs;
+}
+
+SmallVector<mlir::Attribute> getDequantizeSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp swKernelOp,
+                                                                      ArrayRef<mlir::Attribute> origAttr,
+                                                                      const TileInfo& outTile, Logger log) {
+    auto kernelRun = *swKernelOp.getBody().getOps<VPUIP::SwKernelRun>().begin();
+    auto attrs = kernelRun.getAttrs().value();
+    VPUX_THROW_UNLESS(origAttr.size() == attrs.size(), "Unmatched attr size found at '{0}'", swKernelOp);
+
+    const auto input = swKernelOp.getInputs()[0];
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    const auto elementType = inType.getElementType();
+
+    Dim quantDim;
+    bool attrNeedUpdates = false;
+    if (auto quantParams = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
+        auto quantAxis = quantParams.getQuantizedDimension();
+        quantDim = Dim(quantAxis);
+        if (outTile.axis[quantDim] > 1) {
+            log.trace("update attrs for Dequantize SwKernel Op at '{0}' for out tile {1}", swKernelOp, outTile);
+            attrNeedUpdates = true;
+        }
+    }
+
+    if (!attrNeedUpdates) {
+        return SmallVector<mlir::Attribute>{origAttr};
+    }
+
+    const auto oType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOutputs()[0].getType());
+    int64_t sliceSize = outTile.shape[quantDim];
+    int64_t sliceOffset = outTile.offsets[quantDim];
+    mlir::ArrayAttr paramsAttr;
+    getQuantParamsAttr(input, oType.getElementType(), paramsAttr, sliceSize, sliceOffset);
+
+    return SmallVector<mlir::Attribute>{paramsAttr};
 }
 
 SmallVector<mlir::Attribute> getLstmSequenceSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp swKernelOp,
@@ -1440,7 +1585,7 @@ InputTiling backInferMvn1NormSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, con
 InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const SmallVector<vpux::TileInfo>& outputTiles,
                                        int tileId, Logger log) {
     auto kernelEntryName = getSwKernelEntryName(swKernelOp);
-    const auto arch = VPU::getArch(swKernelOp);
+    const auto arch = config::getArch(swKernelOp);
     const auto& outputTile = outputTiles[tileId];
     if (kernelEntryName == "interpolate") {
         return backInferInterpolateSwKernelInputTile(swKernelOp, outputTile, log);
@@ -1488,7 +1633,7 @@ InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const Small
         return backInferRandomUniformSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "roll") {
         return backInferRollSwKernelInputTile(swKernelOp, outputTile, log);
-    } else if ((kernelEntryName == "detection_output_sort") && (arch == VPU::ArchKind::NPU37XX)) {
+    } else if ((kernelEntryName == "detection_output_sort") && (arch == config::ArchKind::NPU37XX)) {
         return vpux::VPU::DetectionOutputSortOpInputTilingOnShave(swKernelOp, outputTile, tileId, outputTiles.size(),
                                                                   log);
     } else if (kernelEntryName == "reorder") {
@@ -1531,6 +1676,8 @@ SmallVector<mlir::Attribute> getSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp sw
         return getLstmSequenceSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
     } else if (kernelEntryName == "gatherND") {
         return getGatherNDSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
+    } else if (kernelEntryName == "dequantize") {
+        return getDequantizeSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
     } else {
         return SmallVector<mlir::Attribute>(origAttr.begin(), origAttr.end());
     }
@@ -1771,8 +1918,8 @@ bool hasInputsInDDR(VPUIP::SwKernelOp swKernelTask) {
     });
 }
 
-int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, VPU::ArchKind arch) {
-    if (arch == VPU::ArchKind::NPU37XX) {
+int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, config::ArchKind arch) {
+    if (arch == config::ArchKind::NPU37XX) {
         return 1;
     }
 
@@ -1783,10 +1930,10 @@ int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, VPU::Arc
     return NPU40XX_SW_KERNEL_ADDRESS_ALIGNMENT;
 }
 
-std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(VPU::ArchKind arch) {
+std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(config::ArchKind arch) {
     // Return {useDummyKernelForInstructionPrefetch, minimumShaveStartTimeForPrefetch}
     switch (arch) {
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return std::make_pair(true, MIN_FREE_CYCLES_FOR_PREFETCH_280K);
     default:
         VPUX_THROW("Unsupported Arch {0} to do Shave Instruction Prefetch", arch);

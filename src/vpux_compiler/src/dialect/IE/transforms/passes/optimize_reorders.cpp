@@ -3,23 +3,27 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/expand_with_layer_rewriter.hpp"
-
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
-#include "vpux/utils/core/dense_map.hpp"
 #include "vpux/utils/core/range.hpp"
+
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTIMIZEREORDERS
 #define GEN_PASS_DEF_OPTIMIZEREORDERS
@@ -1584,7 +1588,8 @@ mlir::LogicalResult ReorderWithReadValue::matchAndRewrite(IE::ReadValueOp origRe
     auto newReorderOp = rewriter.create<IE::ReorderOp>(origReorderOp->getLoc(), origReadValueOp.getInput(),
                                                        origReorderOp.getDstOrderAttr());
 
-    rewriter.replaceOpWithNewOp<IE::ReadValueOp>(origReorderOp, newReorderOp.getOutput(), origReadValueOp.getName());
+    rewriter.replaceOpWithNewOp<IE::ReadValueOp>(origReorderOp, newReorderOp.getOutput(), origReadValueOp.getName(),
+                                                 origReadValueOp.getElementTypeAttr(), origReadValueOp.getShapeAttr());
     // erase readvalue ops which has no more nodes next
     rewriter.eraseOp(origReadValueOp);
 
@@ -1699,6 +1704,159 @@ mlir::LogicalResult ReorderWithHWAdd<ConcreteOp>::matchAndRewrite(IE::ReorderOp 
     _log.trace("Replace by IE::LayoutCastOp with DimsOrder: {0}", orderOutAttr);
 
     rewriter.replaceOpWithNewOp<IE::LayoutCastOp>(origOp, newAdd, orderOutAttr);
+    return mlir::success();
+}
+
+//
+// ReorderWithHWAddSlice
+//
+//  The beneficial pattern:
+//
+// Reorder    Reorder or Const  Reorder     Reorder
+//        \     /                  |           |
+//         Add             =>   Reorder     Reorder
+//          |                      |           |
+//   (QuantizeCast)             LayoutCast  LayoutCast  or Const(changed dims order)
+//          |                         \     /
+//        Slice                         Add
+//                                       |
+//                                   LayoutCast
+//                                       |
+//                                 (QuantizeCast)
+//                                       |
+//                                    Reorder
+//                                       |
+//                                     Slice
+
+class ReorderWithHWAddSlice final : public mlir::OpRewritePattern<IE::AddOp> {
+public:
+    ReorderWithHWAddSlice(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::AddOp>(ctx), _log(log) {
+        this->setDebugName("ReorderWithHWAddSlice");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult ReorderWithHWAddSlice::matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got IE::AddOp at {1}", this->getDebugName(), origOp->getLoc());
+
+    // E#122076: ReorderWithHWAdd only supports HW AddOp (DimOrder::NHWC) who could be converted to NCE.Eltwise.Add
+    // ReorderWithHWAdd should only be a temporary solution. ReorderWithHWAdd rewriter should work for any DimOrder
+    const auto targetInOutOrder = DimsOrder::NHWC;
+    const auto origDimsOrder = DimsOrder::fromValue(origOp.getOutput());
+    if (origDimsOrder != targetInOutOrder) {
+        return mlir::failure();
+    }
+
+    // Check [Reorder] - Add
+    auto input1Op = origOp.getInput1().getDefiningOp();
+    auto input2Op = origOp.getInput2().getDefiningOp();
+    IE::ReorderOp inputReorder = nullptr;
+    if ((inputReorder = mlir::dyn_cast_or_null<IE::ReorderOp>(input1Op))) {
+        // Check if input2 is Reorder or Constant
+        if (!mlir::isa_and_nonnull<IE::ReorderOp, Const::DeclareOp>(input2Op)) {
+            return mlir::failure();
+        }
+    } else if ((inputReorder = mlir::dyn_cast_or_null<IE::ReorderOp>(input2Op))) {
+        // Check if input1 is Constant
+        if (!mlir::isa_and_nonnull<Const::DeclareOp>(input1Op)) {
+            return mlir::failure();
+        }
+    } else {
+        // Both inputs are not Reorder
+        return mlir::failure();
+    }
+
+    // Check no branches
+    if (!hasOneUniqueUser(input1Op) || !hasOneUniqueUser(input2Op)) {
+        return mlir::failure();
+    }
+
+    bool bothInputsSame = inputReorder.getResult().hasOneUse() ? false : true;
+
+    // Check Reorder - Add - [(QuantizeCast)]
+    auto consumerOp = *(origOp.getResult().getUsers().begin());
+    auto quantCast = mlir::dyn_cast<IE::QuantizeCastOp>(consumerOp);
+    if (quantCast != nullptr) {
+        consumerOp = *(consumerOp->getResult(0).getUsers().begin());
+    }
+
+    // Check Reorder - Add - (QuantizeCast) - [Slice]
+    if (mlir::dyn_cast<IE::SliceOp>(consumerOp) == nullptr) {
+        return mlir::failure();
+    }
+
+    auto sliceParent = consumerOp->getOperand(0);
+    const auto origShape = getShape(sliceParent);
+    const auto newDimsOrder = DimsOrder::fromValue(inputReorder.getInput());
+    const auto reorderInputPerm = newDimsOrder.toPermutation();
+    const auto reorderOutputPerm = origDimsOrder.toPermutation();
+
+    // Get Slice DMA width
+    auto getSliceWidth = [](ShapeRef shapeBeforeSlice, ShapeRef shapeAfterSlice, DimArr permutation) -> int64_t {
+        int64_t width = 1;
+        for (int i = shapeBeforeSlice.size() - 1; i > 0; i--) {
+            auto dim = permutation[i];
+            width *= shapeAfterSlice[dim];
+            if (shapeBeforeSlice[dim] != shapeAfterSlice[dim]) {  // Slice dimension
+                break;
+            }
+        }
+        return width;
+    };
+
+    for (auto* user : llvm::make_early_inc_range(sliceParent.getUsers())) {
+        // All users must be Slices
+        auto userSliceOp = mlir::dyn_cast<IE::SliceOp>(user);
+        if (userSliceOp == nullptr) {
+            return mlir::failure();
+        }
+
+        // Test adding Reorder and make sure the added Reorder-Slice can be further optimized into Slice-PermuteCast
+        auto sliceShape = getShape(userSliceOp.getResult());
+        if (!isTrivialReorder(newDimsOrder, origDimsOrder, sliceShape)) {
+            return mlir::failure();
+        }
+
+        // After Reorder-Slice swap, the new slice should not have a smaller DMA width than the original
+        int64_t origSliceWidth = getSliceWidth(origShape, sliceShape, reorderOutputPerm);
+        int64_t newSliceWidth = getSliceWidth(origShape, sliceShape, reorderInputPerm);
+        if (newSliceWidth < origSliceWidth) {
+            return mlir::failure();
+        }
+    }
+
+    // Pattern matched
+    const auto origOrderMap = origDimsOrder.toAffineMap(rewriter.getContext());
+    const auto newOrderMap = newDimsOrder.toAffineMap(rewriter.getContext());
+    auto reorderInput1 = rewriter.createOrFold<IE::ReorderOp>(origOp->getLoc(), origOp.getInput1(), newOrderMap);
+    auto newIn1 = rewriter.create<IE::LayoutCastOp>(origOp.getLoc(), reorderInput1, origOrderMap);
+    auto newIn2 = newIn1;
+    if (!bothInputsSame) {
+        auto reorderInput2 = rewriter.createOrFold<IE::ReorderOp>(origOp->getLoc(), origOp.getInput2(), newOrderMap);
+        newIn2 = rewriter.create<IE::LayoutCastOp>(origOp.getLoc(), reorderInput2, origOrderMap);
+    }
+    mlir::Value newAdd = rewriter.create<IE::AddOp>(
+            origOp.getLoc(), origOp.getType(), newIn1, newIn2, origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
+            origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+    _log.trace("New AddOp: {0}", newAdd);
+    auto newOut = rewriter.create<IE::LayoutCastOp>(origOp.getLoc(), newAdd, newOrderMap);
+    auto newReorderOp = rewriter.create<IE::ReorderOp>(origOp->getLoc(), newOut, origOrderMap);
+
+    if (quantCast != nullptr) {
+        auto outputTypeQuantize = mlir::cast<mlir::ShapedType>(quantCast.getType());
+        auto outElemType = outputTypeQuantize.getElementType();
+        auto newQuantCast = rewriter.create<IE::QuantizeCastOp>(origOp.getLoc(), newReorderOp, outElemType);
+        sliceParent.replaceAllUsesWith(newQuantCast.getResult());
+        _log.trace("Replace by IE::QuantizeCastOp: {0}", newQuantCast);
+    } else {
+        sliceParent.replaceAllUsesWith(newReorderOp.getResult());
+        _log.trace("Replace by IE::ReorderOp {0}", newReorderOp);
+    }
+
     return mlir::success();
 }
 
@@ -1970,6 +2128,7 @@ void OptimizeReordersPass::safeRunOnFunc() {
     patterns.add<ReorderWithLayer>(&ctx, _log, _seOpsEnabled, _seExperimentalOpsEnabled);
     patterns.add<ReorderWithPermuteCast>(&ctx, _log);
     patterns.add<ReorderWithHWAdd<IE::MVNOp>>(&ctx, _log);
+    patterns.add<ReorderWithHWAddSlice>(&ctx, _log);
     patterns.add<ReorderWithGroupConv>(&ctx, _log);
     IE::ReorderOp::getCanonicalizationPatterns(patterns, &ctx);
 

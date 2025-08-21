@@ -1407,14 +1407,6 @@ func.func @StridedConcat(%input0: tensor<1x16x16x16xf16>, %input1: tensor<1x16x1
 !type_DDR_tensor = tensor<1x32x16x16xf16, {mem_space = @DDR, order = #NHWC}>
 !type_CMX_tensor = tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
-// Copy operation with memref output
-// Original operation before lowering:
-// func.func @CopyOpTensorResult(%input0: !type_DDR_tensor) -> !type_CMX_tensor{
-//     %tensor_cmx = IE.Copy(%input0) { out_mem_space = @CMX_NN } : !type_DDR_tensor -> !type_CMX_tensor
-
-//     return %tensor_cmx : !type_CMX_tensor
-// }
-
 // CHECK-LABEL: @CopyOpTensorResult
 // CHECK-SAME: ([[ARG0:%.+]]: memref<1x32x16x16xf16, #NHWC, @DDR>)
 func.func @CopyOpTensorResult(%input0: !type_DDR_tensor) -> !type_CMX_tensor{
@@ -1478,16 +1470,6 @@ func.func @CopyOpDistributedResult(%input0: !type_DDR_tensor) -> !typeCmxDistrib
 !type_DDR_memref = memref<1x32x16x16xf16, #NHWC, @DDR>
 !type_CMX_tensor = tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
 !type_CMX_memref = memref<1x32x16x16xf16, #NHWC, @CMX_NN>
-
-// 2 Operations with distributed type passed in between
-// Original operation before lowering
-// func.func @DistributedCopy2CopyOp(%input0: !type_DDR_tensor) -> !type_DDR_tensor {
-//     %tensor_distributed_cmx = IE.Copy(%input0) { out_mem_space = @CMX_NN } : !type_DDR_tensor -> !typeCMXDistributed
-
-//     %tensor_ddr = IE.Copy(%tensor_distributed_cmx) { out_mem_space = @DDR } : !typeCMXDistributed -> !type_DDR_tensor
-
-//     return %tensor_ddr : !type_DDR_tensor
-// }
 
 // CHECK-LABEL: @DistributedCopy2CopyOp
 // CHECK-SAME: ([[ARG0:%.+]]: memref<1x32x16x16xf16, #NHWC, @DDR>)

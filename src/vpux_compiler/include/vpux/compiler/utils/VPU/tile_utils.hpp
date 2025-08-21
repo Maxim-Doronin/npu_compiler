@@ -7,12 +7,11 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/utils/core/small_string.hpp"
-#include "vpux/utils/logger/logger.hpp"
-
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 namespace vpux {
 namespace VPU {

@@ -5,7 +5,7 @@
 
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 
 using namespace vpux;

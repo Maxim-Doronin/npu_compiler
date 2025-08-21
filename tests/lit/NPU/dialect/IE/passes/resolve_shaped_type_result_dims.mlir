@@ -105,8 +105,8 @@ func.func @ReifySoftmaxShape(%IN: !BoundedType) -> (!BoundedType, index) {
 func.func @ReifyMaxPoolShape(%IN: !BoundedType) -> (tensor<1x16x30x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 30, 64]> : tensor<4xsi64>, order = #NCHW}>, index) {
     // CHECK: [[IN:%.+]]: tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
     %C3 = arith.constant 3 : index
+    // CHECK-DAG: [[C2:%.+]] = arith.constant -2 : index
     // CHECK-DAG: [[C3:%.+]] = arith.constant 3 : index
-    // CHECK-DAG: [[C2:%.+]] = arith.constant 2 : index
 
     %MAXPOOL = IE.MaxPool(%IN) {
             kernel_size = [3, 3], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]
@@ -115,10 +115,10 @@ func.func @ReifyMaxPoolShape(%IN: !BoundedType) -> (tensor<1x16x30x?xf16, {bound
 
     %DIM = tensor.dim %MAXPOOL, %C3 : tensor<1x16x30x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 30, 64]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C3]]
-    // CHECK: [[DIM_SUB:%.+]] = arith.subi [[DIM]], [[C2]]
+    // CHECK: [[OUTPUTSHAPE:%.+]] = arith.addi [[DIM]], [[C2]] : index
 
     return %MAXPOOL, %DIM : tensor<1x16x30x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 30, 64]> : tensor<4xsi64>, order = #NCHW}>, index
-    // CHECK: return [[MAXPOOL]], [[DIM_SUB]]
+    // CHECK: return [[MAXPOOL]], [[OUTPUTSHAPE]]
 }
 
 // -----
@@ -131,8 +131,8 @@ func.func @ReifyMaxPoolShape(%IN: !BoundedType) -> (tensor<1x16x30x?xf16, {bound
 func.func @ReifyMaxPoolShape(%IN: !InBoundedType) -> (!OutBoundedType, index) {
     // CHECK: [[IN:%.+]]: tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
     %C3 = arith.constant 3 : index
-    // CHECK-DAG: [[C3:%.+]] = arith.constant 3 : index
     // CHECK-DAG: [[C2:%.+]] = arith.constant 2 : index
+    // CHECK-DAG: [[C3:%.+]] = arith.constant 3 : index
 
     %MAXPOOL = IE.MaxPool(%IN) {
             kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]
@@ -141,10 +141,10 @@ func.func @ReifyMaxPoolShape(%IN: !InBoundedType) -> (!OutBoundedType, index) {
 
     %DIM = tensor.dim %MAXPOOL, %C3 : !OutBoundedType
     // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C3]]
-    // CHECK: [[DIM_DIV:%.+]] = arith.divsi [[DIM]], [[C2]]
+    // CHECK: [[OUTPUTSHAPE:%.+]] = arith.divsi [[DIM]], [[C2]] : index
 
     return %MAXPOOL, %DIM : !OutBoundedType, index
-    // CHECK: return [[MAXPOOL]], [[DIM_DIV]]
+    // CHECK: return [[MAXPOOL]], [[OUTPUTSHAPE]]
 }
 
 // -----
@@ -166,10 +166,10 @@ func.func @ReifyMaxPoolShape(%IN: !InBoundedType) -> (!OutBoundedType, index) {
 
     %DIM = tensor.dim %MAXPOOL, %C2 : !OutBoundedType
     // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C2]]
-    // CHECK: [[DIM_DIV:%.+]] = arith.divsi [[DIM]], [[C2]]
+    // CHECK: [[OUTPUTSHAPE:%.+]] = arith.divsi [[DIM]], [[C2]]
 
     return %MAXPOOL, %DIM : !OutBoundedType, index
-    // CHECK: return [[MAXPOOL]], [[DIM_DIV]]
+    // CHECK: return [[MAXPOOL]], [[OUTPUTSHAPE]]
 }
 
 // -----
@@ -192,7 +192,6 @@ func.func @ReifyConvShape(%IN: tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64E
 
     %DIM = tensor.dim %CONV, %C3 : tensor<1x32x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C3]]
-
     return %CONV, %DIM : tensor<1x32x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 32, 64]> : tensor<4xsi64>, order = #NCHW}>, index
     // CHECK: return [[CONV]], [[DIM]]
 }
@@ -206,8 +205,8 @@ func.func @ReifyMaxPoolConvReLUMaxPoolConvShape(%IN: tensor<1x16x64x?xf16, {boun
     -> (tensor<1x16x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 16, 64]> : tensor<4xsi64>, order = #NCHW}>, index) {
     // CHECK: [[IN:%.+]]: tensor<1x16x64x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 64, 64]> : tensor<4xsi64>, order = #NCHW}>
     %C3 = arith.constant 3 : index
-    // CHECK-DAG: [[C3:%.+]] = arith.constant 3 : index
     // CHECK-DAG: [[C2:%.+]] = arith.constant 2 : index
+    // CHECK-DAG: [[C3:%.+]] = arith.constant 3 : index
     %CST1 = const.Declare tensor<32x16x3x3xf16, {order = #NCHW}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>
     %CST2 = const.Declare tensor<16x32x1x1xf16, {order = #NCHW}> = dense<1.000000e+00> : tensor<16x32x1x1xf16>
     // CHECK-DAG: [[CST1:%.+]] = const.Declare
@@ -245,11 +244,11 @@ func.func @ReifyMaxPoolConvReLUMaxPoolConvShape(%IN: tensor<1x16x64x?xf16, {boun
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[MAXPOOL2]], [[CST2]])
 
     // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C3]]
-    // CHECK: [[DIM_DIV_1:%.+]] = arith.divsi [[DIM]], [[C2]]
-    // CHECK: [[DIM_DIV_2:%.+]] = arith.divsi [[DIM_DIV_1]], [[C2]]
+    // CHECK: [[PADDED:%.+]] = arith.divsi [[DIM]], [[C2]] : index
+    // CHECK: [[SHAPE:%.+]] = arith.divsi [[PADDED]], [[C2]] : index
 
     return %CONV2, %DIM : tensor<1x16x16x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 16, 64]> : tensor<4xsi64>, order = #NCHW}>, index
-    // CHECK: return [[CONV2]], [[DIM_DIV_2]]
+    // CHECK: return [[CONV2]], [[SHAPE]]
 }
 
 // -----
@@ -964,7 +963,6 @@ func.func @ReifyFqConvFqShape(%IN: tensor<1x16x32x?xf16, {bounds = #const.Opaque
 
     %CST0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
     %CST1 = const.Declare tensor<1x1x1x1xf16> = dense<5.000000e+00> : tensor<1x1x1x1xf16>
-
     // CHECK: [[C3:%.+]] = arith.constant 3 : index
 
     // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<32x16x3x3xf16, {order = #NCHW}> = dense<1.000000e+00>
@@ -995,7 +993,6 @@ func.func @ReifyFqConvFqShape(%IN: tensor<1x16x32x?xf16, {bounds = #const.Opaque
     // CHECK: [[FQ1:%.+]] = IE.FakeQuantize([[CONV]], [[CST0]], [[CST1]], [[CST0]], [[CST1]])
 
     // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C3]]
-
     return %FQ1, %DIM : tensor<1x32x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 32, 64]> : tensor<4xsi64>, order = #NCHW}>, index
     // CHECK: return [[FQ1]], [[DIM]]
 }

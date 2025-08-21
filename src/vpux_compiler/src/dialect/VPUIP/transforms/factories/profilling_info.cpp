@@ -10,15 +10,15 @@
 
 using namespace vpux;
 
-VPUIP::TimestampTypeCb VPUIP::getTimestampTypeCb(VPU::ArchKind arch) {
-    if (arch == VPU::ArchKind::NPU37XX) {
+VPUIP::TimestampTypeCb VPUIP::getTimestampTypeCb(config::ArchKind arch) {
+    if (arch == config::ArchKind::NPU37XX) {
         return VPUIP::arch37xx::getTimestampType;
     }
     VPUX_THROW("Unexpected architecture {0}", arch);
 }
 
-VPUIP::SetWorkloadIdsCb VPUIP::setWorkloadsIdsCb(VPU::ArchKind arch) {
-    if (arch >= VPU::ArchKind::NPU37XX) {
+VPUIP::SetWorkloadIdsCb VPUIP::setWorkloadsIdsCb(config::ArchKind arch) {
+    if (arch >= config::ArchKind::NPU37XX) {
         return VPUIP::arch37xx::setWorkloadIds;
     }
     VPUX_THROW("Unexpected architecture {0}", arch);

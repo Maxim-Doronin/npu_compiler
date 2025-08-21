@@ -207,7 +207,11 @@ def VPUIP_BoundedBuffer :
         "BoundedBuffer",
         [
             DeclareTypeInterfaceMethods<NDTypeInterface>,
-            DeclareTypeInterfaceMethods<BaseMemRefTypeInterface>
+            DeclareTypeInterfaceMethods<BaseMemRefTypeInterface>,
+            DeclareTypeInterfaceMethods<VPU_DistributedTypeInterface,
+                ["containsDistributedTypes", "getDistributedTypes", "changeShapeForExplicitDistribution",
+                 "changeShapeElemTypeForExplicitDistribution", "changeTypeComponentsForExplicitDistribution",
+                 "extractDenseTileForExplicitDistribution", "extractViewTileForExplicitDistribution"]>
         ]
     > {
     let summary = "VPUIP Bounded Buffer Type";

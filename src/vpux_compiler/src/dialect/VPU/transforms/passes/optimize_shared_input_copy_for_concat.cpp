@@ -74,15 +74,6 @@ NDTypeInterface getConcatDistributedType(VPU::DistributedTypeInterface origType,
     return mlir::cast<vpux::NDTypeInterface>(origType).changeTypeComponents(typeComponents);
 }
 
-int64_t getSliceDimSize(VPU::SliceOp sliceOp) {
-    auto sliceInShape = getShape(sliceOp.getSource());
-    auto sliceOutShape = getShape(sliceOp.getResult());
-    auto sliceDimSize = llvm::count_if(irange(sliceInShape.size()), [&](auto idx) {
-        return sliceInShape[Dim(idx)] != sliceOutShape[Dim(idx)];
-    });
-    return sliceDimSize;
-}
-
 //
 // SharedCopyInputRewriter
 //
@@ -207,10 +198,6 @@ bool SharedCopyInputRewriter::meetConcatPattern(VPU::ConcatOp concatOp) const {
         }
         auto maybeSliceOp = mlir::dyn_cast<VPU::SliceOp>(user);
         if (maybeSliceOp == nullptr || !maybeSliceOp->hasOneUse()) {
-            return false;
-        }
-        auto sliceDimSize = getSliceDimSize(maybeSliceOp);
-        if (sliceDimSize != 1) {
             return false;
         }
 

@@ -4,9 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/unsqueeze.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
 using namespace vpux;
 

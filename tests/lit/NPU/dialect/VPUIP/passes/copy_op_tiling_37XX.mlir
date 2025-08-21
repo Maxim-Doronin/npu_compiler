@@ -366,9 +366,9 @@ func.func @SplitByChannelsSparseBuffers(%arg0: !SparseType, %arg1: !SparseType) 
 
     // CHECK:       [[ARG_0_TILE_1:%.*]] = VPUIP.SubView %arg0 [0, 160, 0, 0] [1, 160, 32, 16] :
     // CHECK-SAME:         !VPUIP.SparseBuffer<data=memref<1x320x32x16xf16, {order = #NCHW, strides = [655360, 2048, 32, 1]}>,
-    // CHECK-SMAE:                             sparsity_map=memref<1x320x32x16xi1, {order = #NCHW, strides = [655360, 2048, 32, 1]}>> to
+    // CHECK-SAME:                             sparsity_map=memref<1x320x32x16xi1, {order = #NCHW, strides = [655360, 2048, 32, 1]}>> to
     // CHECK-SAME:         !VPUIP.SparseBuffer<data=memref<1x160x32x16xf16, {order = #NCHW, strides = [655360, 2048, 32, 1]}>,
-    // CHECK-SMAE:                             sparsity_map=memref<1x160x32x16xi1, {order = #NCHW, strides = [655360, 2048, 32, 1]}>>
+    // CHECK-SAME:                             sparsity_map=memref<1x160x32x16xi1, {order = #NCHW, strides = [655360, 2048, 32, 1]}>>
 
     // CHECK:       [[ARG_1_TILE_1:%.*]] = VPUIP.SubView %arg1 [0, 160, 0, 0] [1, 160, 32, 16] :
     // CHECK-SAME:         !VPUIP.SparseBuffer<data=memref<1x320x32x16xf16, {order = #NCHW, strides = [655360, 2048, 32, 1]}>,

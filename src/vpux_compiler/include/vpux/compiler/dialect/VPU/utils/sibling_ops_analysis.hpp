@@ -5,14 +5,15 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinTypes.h>
+
 #include <set>
 #include <vector>
 
-#include <mlir/Dialect/Func/IR/FuncOps.h>
 namespace vpux::VPU {
-
-class ClusteredOpInterface;
 
 // Analysis which finds clustered op siblings and consumers set.
 // Siblings and consumers are computed lazily and cached in _siblingGroups.

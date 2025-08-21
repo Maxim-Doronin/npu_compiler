@@ -5,9 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/utils/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/utils/core/numeric.hpp"
+
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 namespace IE {

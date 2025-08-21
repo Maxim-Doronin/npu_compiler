@@ -4,8 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+
 using namespace vpux;
 
 bool IE::isLegalReorderAddPattern(IE::ReorderOp origOp) {
@@ -192,11 +195,12 @@ bool IE::isODUPermuteEffectiveForShape(const ShapeRef shape, const int64_t align
     return IH * IW % alignment == 0 || IW >= minimalEffectiveWidth;
 }
 
-bool IE::canConvertToNCHWInOrderWithPermuteCast(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType) {
+bool IE::canConvertToNCHWInOrderWithPermuteCast(vpux::NDTypeInterface inType, mlir::AffineMap memPerm) {
     const auto inOrder = inType.getDimsOrder();
     const auto inShape = inType.getShape();
-    const auto outOrder = outType.getDimsOrder();
-    return inOrder == DimsOrder::CNHW && inShape[Dims4D::Act::N] == 1 && outOrder == DimsOrder::NHWC;
+
+    return inOrder == DimsOrder::CNHW && inShape[Dims4D::Act::N] == 1 &&
+           DimsOrder::fromAffineMap(memPerm) == DimsOrder::CHWN;
 }
 
 bool IE::checkNCEPermuteShapeCompatibility(ShapeRef inShape, ShapeRef outShape, int64_t alignment) {

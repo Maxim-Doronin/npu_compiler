@@ -5,6 +5,10 @@
 
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+
 #include <mlir/IR/PatternMatch.h>
 
 namespace {
@@ -233,6 +237,21 @@ Shape getNewShapeAfterStrideFolding(ShapeRef origShape, int64_t SX) {
     newShape[Dims4D::Act::C] *= SX;
 
     return newShape;
+}
+
+mlir::Value createDynamicReshape(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
+                                 BoundedShape outputShape) {
+    const auto ctx = builder.getContext();
+    const auto shape = extractShape(outputShape);
+    const auto bounds = outputShape.toRepresentation();
+    const auto outputRank = checked_cast<int64_t>(outputShape.size());
+    const auto shapeType = mlir::RankedTensorType::get({outputRank}, getSInt32Type(ctx));
+    const auto shapeValues = IE::replaceDynamicDimsWithValue<int32_t>(shape.raw(), -1);
+
+    const auto shapeTensor = Const::createConst<int32_t>(builder, appendLoc(loc, "shape"), shapeType, shapeValues);
+    return builder.createOrFold<IE::DynamicReshapeOp>(loc, input, shapeTensor, builder.getI64ArrayAttr(shape.raw()),
+                                                      builder.getI64ArrayAttr(bounds.raw()),
+                                                      /*only_set_shape=*/true);
 }
 
 }  // namespace IE

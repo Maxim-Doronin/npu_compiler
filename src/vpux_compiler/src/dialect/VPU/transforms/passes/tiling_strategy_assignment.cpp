@@ -7,13 +7,13 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_TILINGSTRATEGYASSIGNMENT
@@ -101,9 +101,10 @@ std::vector<vpux::VPU::StrategyWithCost> TilingStrategyAssignmentPass::getStrate
 
     std::vector<vpux::VPU::StrategyWithCost> strategies{};
 
-    // Temporarily not apply cost-based tiling strategy to NCE ops with INT4 weights based on VPUNN cost.
-    // This can be removed when VPUNN is upgraded to support INT4 data type, tracked in E#113316.
-    if (!_enableVpunnCostForTiling || !mlir::isa<VPU::NCEOpInterface>(op) || VPU::isNCEWithInt4Weights(op) ||
+    // Cost based strategy assignment is not applied to NCEMatMulOp yet #E126102
+    auto costModelUtils = VPU::getICostModelUtilsInterface(op->getContext());
+    if (!_enableVpunnCostForTiling || !mlir::isa<VPU::NCEOpInterface>(op) ||
+        (VPU::isNCEWithInt4Weights(op) && !costModelUtils->isNCEWithInt4WeightsSupported()) ||
         mlir::isa<VPU::NCEMatMulOp>(op)) {
         auto strategy = origOp.getTilingStrategy(tilingMode, _log);
         if (mlir::succeeded(strategy)) {
@@ -120,7 +121,7 @@ void TilingStrategyAssignmentPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
     auto layerCostModel =
             VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);

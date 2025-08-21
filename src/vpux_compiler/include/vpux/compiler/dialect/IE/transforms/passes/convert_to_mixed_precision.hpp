@@ -3,15 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-
-#include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/passes.hpp"
-#include "vpux/compiler/utils/types.hpp"
-#include "vpux/utils/core/numeric.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <mlir/IR/IRMapping.h>
 
@@ -200,10 +197,16 @@ mlir::LogicalResult MixedFloatInQuantWeightsRewriter<ConcreteOp>::matchAndRewrit
         return mlir::isa<IE::ReLUOp>(op);
     });
 
-    if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(quantFilterDequantizeType) &&
-        (hasReLUConsumer || IE::hasReLUPostOp(convOp)) &&
-        IE::hasNegativeScales(quantFilterDequantizeType)) {  // ReLU post-op with negative scales introduces inaccuracy.
-                                                             // Tracking number [E#174751]
+    // Check for problematic combination: per-axis quantization + ReLU postOp + negative quant scales on MTL and LNL
+    const auto arch = config::getArch(convOp);
+    const bool isPerAxisQuantized = mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(quantFilterDequantizeType);
+    const bool hasReLUConsumerOrPostOp = hasReLUConsumer || IE::hasReLUPostOp(convOp);
+    const bool hasNegativeQuantScales = IE::hasNegativeScales(quantFilterDequantizeType);
+    const bool isProblematicPlatform = (arch == config::ArchKind::NPU37XX || arch == config::ArchKind::NPU40XX);
+
+    if (isPerAxisQuantized && hasReLUConsumerOrPostOp && hasNegativeQuantScales && isProblematicPlatform) {
+        // ReLU post-op with negative quant scales introduces inaccuracy for NPU3720 (MTL) and NPU4000 (LNL)
+        // Tracking number [E#174751]
         return mlir::failure();
     }
 

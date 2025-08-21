@@ -8,12 +8,7 @@
 #include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/core/attributes/dim_values.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/core/attributes/strides.hpp"
-
 #include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/format.hpp"
-#include "vpux/utils/core/mem_size.hpp"
-#include "vpux/utils/core/optional.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/IR/AffineMap.h>
@@ -68,6 +63,8 @@ public:
     static const DimsOrder HNWC;
     static const DimsOrder CWNH;
     static const DimsOrder CNHW;
+    static const DimsOrder CHWN;
+    static const DimsOrder HCWN;
 
     // Orders for 2D Convolution weights
     static const DimsOrder OIYX;

@@ -10,10 +10,10 @@
 
 using namespace vpux;
 
-VPU::MaxKernelSizeConstant VPU::getMaxKernelSizeConstant(VPU::ArchKind arch) {
+VPU::MaxKernelSizeConstant VPU::getMaxKernelSizeConstant(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
-    case VPU::ArchKind::NPU40XX: {
+    case config::ArchKind::NPU37XX:
+    case config::ArchKind::NPU40XX: {
         return VPU::arch37xx::MaxKernelSizeConstant{};
     }
     default: {

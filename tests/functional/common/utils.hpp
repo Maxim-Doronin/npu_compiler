@@ -1,12 +1,14 @@
+//
 // Copyright (C) 2021-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <filesystem>
+#include <common_test_utils/unicode_utils.hpp>
 #include <openvino/runtime/core.hpp>
-#include "common_test_utils/unicode_utils.hpp"
+
+#include <filesystem>
 
 std::string getBackendName(const ov::Core& core);
 

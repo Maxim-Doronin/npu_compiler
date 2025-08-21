@@ -23,7 +23,7 @@ public:
         VPUX_THROW_UNLESS(funcInputs.size() == 1, "Only 1 input is supported");
         const auto& inputStaticShape = inputShapes[0];
         const auto totalSize = ov::shape_size(inputStaticShape);
-        const auto inputTensor = ov::Tensor{ov::element::f32, inputStaticShape};
+        auto inputTensor = ov::Tensor{ov::element::f32, inputStaticShape};
         auto inputData = inputTensor.data<ov::element_type_traits<ov::element::f32>::value_type>();
         for (size_t i = 0; i < totalSize; i++) {
             inputData[i] = 1 + i % 7;

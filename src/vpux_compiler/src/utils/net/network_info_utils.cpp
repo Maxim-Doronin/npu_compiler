@@ -34,4 +34,26 @@ void eraseSectionEntries(mlir::Region& section, size_t begin) {
     }
 }
 
+mlir::func::FuncOp findEntryPointFunc(mlir::Operation* op, Logger& log) {
+    if (op == nullptr) {
+        return nullptr;
+    }
+
+    auto topModuleOp = getTopModuleOp(op);
+    auto netOps = to_small_vector(topModuleOp.getOps<net::NetworkInfoOp>());
+    if (netOps.size() != 1) {
+        log.warning("Expected exactly one net::NetworkInfoOp, found {0}", netOps.size());
+        return nullptr;
+    }
+
+    auto netInfo = netOps.front();
+    auto netFunc = topModuleOp.lookupSymbol<mlir::func::FuncOp>(netInfo.getEntryPointAttr());
+    if (netFunc == nullptr) {
+        log.warning("Entry point function '{0}' not found", netInfo.getEntryPoint());
+        return nullptr;
+    }
+
+    return netFunc;
+}
+
 }  // namespace vpux::net

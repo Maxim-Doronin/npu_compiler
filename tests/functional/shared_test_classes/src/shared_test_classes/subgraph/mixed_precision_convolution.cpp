@@ -65,7 +65,7 @@ void MixedPrecisionConvSubGraphTest::SetUp() {
 
     mixedPrecisionConvSpecificParams mixedPrecisionConvParams;
     std::vector<size_t> inputShape;
-    auto modelType = ov::element::undefined;
+    auto modelType = ov::element::dynamic;
 
     std::tie(mixedPrecisionConvParams, modelType, inputShape, std::ignore) = this->GetParam();
 

@@ -11,7 +11,7 @@
 namespace vpux {
 namespace VPU {
 
-VPU::MaxKernelSizeConstant getMaxKernelSizeConstant(VPU::ArchKind arch);
+VPU::MaxKernelSizeConstant getMaxKernelSizeConstant(config::ArchKind arch);
 
 }  // namespace VPU
 }  // namespace vpux

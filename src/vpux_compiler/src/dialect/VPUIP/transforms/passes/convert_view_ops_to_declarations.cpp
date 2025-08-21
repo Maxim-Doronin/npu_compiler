@@ -5,9 +5,13 @@
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -69,9 +73,9 @@ Byte ViewLikeRewrite::calculateOffset(mlir::Value val) const {
 
 mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface origOp,
                                                      mlir::PatternRewriter& rewriter) const {
-    if (!mlir::isa<VPUIP::GenericReshapeOp, VPUIP::SubViewOp, VPUIP::PermuteCastOp, VPUIP::QuantizeCastOp,
-                   VPUIP::DistributedCastOp, VPUIP::NonDistributedCastOp, VPUIP::ShapeCastOp, VPUIP::StubOp,
-                   VPUIP::ViewOp, VPUIP::WorkloadCastOp, VPUIP::ExtractFlatSliceOp>(origOp.getOperation())) {
+    if (!mlir::isa<Core::ReinterpretCastOp, VPUIP::GenericReshapeOp, VPUIP::SubViewOp, VPUIP::PermuteCastOp,
+                   VPUIP::QuantizeCastOp, VPUIP::DistributedCastOp, VPUIP::NonDistributedCastOp, VPUIP::ShapeCastOp,
+                   VPUIP::StubOp, VPUIP::ViewOp, VPUIP::ExtractFlatSliceOp>(origOp.getOperation())) {
         return matchFailed(rewriter, origOp, "Unknown view-like operation '{0}'", origOp->getName());
     }
 
@@ -139,9 +143,9 @@ void ConvertViewOpsToDeclarationsPass::safeRunOnFunc() {
     target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
     // The logic for ConcatView has been moved to BreakDataFlow pass
     // Leave ConcatView illegal here for sanity check
-    target.addIllegalOp<VPUIP::GenericReshapeOp, VPUIP::SubViewOp, VPUIP::ConcatViewOp, VPUIP::PermuteCastOp,
-                        VPUIP::QuantizeCastOp, VPUIP::DistributedCastOp, VPUIP::NonDistributedCastOp,
-                        VPUIP::ShapeCastOp, VPUIP::StubOp, VPUIP::ViewOp, VPUIP::WorkloadCastOp,
+    target.addIllegalOp<Core::ReinterpretCastOp, VPUIP::GenericReshapeOp, VPUIP::SubViewOp, VPUIP::ConcatViewOp,
+                        VPUIP::PermuteCastOp, VPUIP::QuantizeCastOp, VPUIP::DistributedCastOp,
+                        VPUIP::NonDistributedCastOp, VPUIP::ShapeCastOp, VPUIP::StubOp, VPUIP::ViewOp,
                         VPUIP::ExtractFlatSliceOp>();
     target.addLegalOp<VPUIP::SwKernelOp>();
     target.markOpRecursivelyLegal<VPUIP::SwKernelOp>([&](mlir::Operation*) {

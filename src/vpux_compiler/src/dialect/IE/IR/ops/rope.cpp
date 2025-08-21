@@ -3,9 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-
-#include "vpux/utils/core/small_vector.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 
 using namespace vpux;
 

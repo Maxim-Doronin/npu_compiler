@@ -4,13 +4,14 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
-
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
@@ -139,7 +140,7 @@ mlir::LogicalResult UpsamplingDMARewriter::matchAndRewrite(VPUIP::UpsamplingDMAO
         }
     }
 
-    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(upsamplingDMAOp));
+    const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(upsamplingDMAOp));
     const auto dmaMaxLength = dmaEngineLimits.getMaxLength();
     const auto dmaMaxNumPlanes = dmaEngineLimits.getMaxNumPlanes();
 

@@ -37,11 +37,11 @@ bool vpux::VPUASM::DPUVariantOp::hasMemoryFootprint() {
     return true;
 }
 
-size_t vpux::VPUASM::DPUInvariantOp_37XX::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::DPUInvariantOp_37XX::getBinarySize(config::ArchKind) {
     return sizeof(npu40xx::nn_public::VpuDPUInvariant);
 }
 
-size_t vpux::VPUASM::DPUInvariantOp_37XX::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::DPUInvariantOp_37XX::getAlignmentRequirements(config::ArchKind) {
     return alignof(npu40xx::nn_public::VpuDPUInvariant);
 }
 
@@ -57,11 +57,11 @@ bool vpux::VPUASM::DPUInvariantOp_37XX::hasMemoryFootprint() {
     return true;
 }
 
-size_t vpux::VPUASM::DPUVariantOp_37XX::getBinarySize(VPU::ArchKind) {
+size_t vpux::VPUASM::DPUVariantOp_37XX::getBinarySize(config::ArchKind) {
     return sizeof(npu40xx::nn_public::VpuDPUVariant);
 }
 
-size_t vpux::VPUASM::DPUVariantOp_37XX::getAlignmentRequirements(VPU::ArchKind) {
+size_t vpux::VPUASM::DPUVariantOp_37XX::getAlignmentRequirements(config::ArchKind) {
     return alignof(npu40xx::nn_public::VpuDPUVariant);
 }
 

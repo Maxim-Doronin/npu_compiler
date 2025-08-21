@@ -176,16 +176,16 @@ module @ActShaveProfilingMulticluster {
     //CHECK-NEXT:   DataInfo "actshave" : tensor<16xui32>
     //CHECK:         @main(%arg0: memref<1x4x512x1xf16, #NCWH, @DDR>, %arg1: memref<1x4x512x1xf16, #NCWH, @DDR>, %arg2: memref<16xui32>) -> (memref<1x4x512x1xf16, #NCWH, @DDR>, memref<16xui32>)
     //CHECK:        [[PROF_BUF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
-    //CHECK:        [[PROF_BUF_SLOT:%.+]] = VPUIP.SubView [[PROF_BUF]] [0] [16] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}> to !VPUIP.DistributedBuffer<16xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
+    //CHECK:        [[PROF_BUF_SLOT:%.+]] = VPUIP.SubView [[PROF_BUF]] [0] [16] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}> to !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
 
     //CHECK:       [[OP_RESULT:%.*]], [[OP_RESULT_PROF:%.*]] = VPUIP.SW.Kernel
     //CHECK-SAME:       @VPU.SW::@builtin_MVN
-    //CHECK-SAME:       profiling_data([[PROF_BUF_SLOT]] : !VPUIP.DistributedBuffer<16xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>) on tile 0 -> (!VPUIP.DistributedBuffer<1x4x512x1xf16, #NCWH, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<16xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
+    //CHECK-SAME:       profiling_data([[PROF_BUF_SLOT]] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>) on tile 0 -> (!VPUIP.DistributedBuffer<1x4x512x1xf16, #NCWH, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
     //CHECK-NEXT:           VPUIP.SW.Kernel.run
 
     //CHECK:        [[PROF_OUTPUT:%.+]] = VPUIP.SubView %arg2 [0] [16] : memref<16xui32> to memref<16xui32
     //CHECK:        [[CONCAT_PROF_RES:%.+]] = VPUIP.ConcatView
-    //CHECK-SAME:       inputs([[OP_RESULT_PROF]] : !VPUIP.DistributedBuffer<16xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
+    //CHECK-SAME:       inputs([[OP_RESULT_PROF]] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
     //CHECK-SAME:       outputs([[PROF_BUF]] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
 
     //CHECK:       [[NCE_RES_COPY:%.+]] = VPUIP.NNDMA {profiling_buffer_mgmt} inputs([[CONCAT_PROF_RES]] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>) outputs([[PROF_OUTPUT]] : memref<16xui32>) -> memref<16xui32>
@@ -254,17 +254,17 @@ module @ActShaveProfilingMulticlusterMultitile {
     //CHECK-NEXT:   DataInfo "actshave" : tensor<32xui32>
     //CHECK:         @main(%arg0: memref<1x128x64x32xf16, #NWHC, @DDR>, %arg1: memref<1x128x64x32xf16, #NWHC, @DDR>, %arg2: memref<32xui32>) -> (memref<1x128x64x32xf16, #NWHC, @DDR>, memref<32xui32>)
     //CHECK:        [[PROF_BUF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
-    //CHECK:        [[PROF_BUF_SLOT:%.+]] = VPUIP.SubView [[PROF_BUF]] [0] [32] : !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}> to !VPUIP.DistributedBuffer<32xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
+    //CHECK:        [[PROF_BUF_SLOT:%.+]] = VPUIP.SubView [[PROF_BUF]] [0] [32] : !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}> to !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
 
     //CHECK:       [[OP_RESULT:%.*]], [[OP_RESULT_PROF:%.*]] = VPUIP.SW.Kernel
     //CHECK-SAME:       @VPU.SW::@builtin_MVN
-    //CHECK-SAME:       profiling_data([[PROF_BUF_SLOT]] : !VPUIP.DistributedBuffer<32xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
+    //CHECK-SAME:       profiling_data([[PROF_BUF_SLOT]] : !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
     //CHECK-NEXT:           VPUIP.SW.Kernel.run
     //CHECK-NEXT:           VPUIP.SW.Kernel.run
 
     //CHECK:        [[PROF_OUTPUT:%.+]] = VPUIP.SubView %arg2 [0] [32] : memref<32xui32> to memref<32xui32
     //CHECK:        [[CONCAT_PROF_RES:%.+]] = VPUIP.ConcatView
-    //CHECK-SAME:       inputs([[OP_RESULT_PROF]] : !VPUIP.DistributedBuffer<32xui32, {order = #C, strides = [1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
+    //CHECK-SAME:       inputs([[OP_RESULT_PROF]] : !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
     //CHECK-SAME:       outputs([[PROF_BUF]] : !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
 
     //CHECK:       [[NCE_RES_COPY:%.+]] = VPUIP.NNDMA {profiling_buffer_mgmt} inputs([[CONCAT_PROF_RES]] : !VPUIP.DistributedBuffer<32xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>) outputs([[PROF_OUTPUT]] : memref<32xui32>) -> memref<32xui32>

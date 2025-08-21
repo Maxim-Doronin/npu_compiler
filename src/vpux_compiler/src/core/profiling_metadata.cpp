@@ -4,16 +4,14 @@
 //
 
 #include "vpux/compiler/core/profiling_metadata.hpp"
-#include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/device.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
-#include "vpux/utils/core/optional.hpp"
 #include "vpux/utils/profiling/common.hpp"
 #include "vpux/utils/profiling/metadata.hpp"
 
@@ -25,11 +23,11 @@ using namespace vpux;
 
 namespace {
 
-VPUIP::TargetDevice mapTargetDevice(VPU::ArchKind kind) {
+VPUIP::TargetDevice mapTargetDevice(config::ArchKind kind) {
     switch (kind) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUIP::TargetDevice::TargetDevice_VPUX37XX;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return VPUIP::TargetDevice::TargetDevice_VPUX40XX;
     default:
         VPUX_THROW("Unsupported architecture '{0}'", kind);
@@ -420,7 +418,7 @@ flatbuffers::Offset<ProfilingFB::ProfilingBuffer> createProfilingBufferOffset(Pr
     return ProfilingFB::CreateProfilingBuffer(builder, sectionsOffset, sectionTotalSizeBytes);
 }
 
-flatbuffers::Offset<ProfilingFB::Platform> createPlatformOffset(VPU::ArchKind arch,
+flatbuffers::Offset<ProfilingFB::Platform> createPlatformOffset(config::ArchKind arch,
                                                                 flatbuffers::FlatBufferBuilder& builder) {
     auto targetDevice = mapTargetDevice(arch);
     return ProfilingFB::CreatePlatform(builder, (int8_t)targetDevice);
@@ -436,7 +434,7 @@ flatbuffers::DetachedBuffer buildProfilingMetaGeneric(net::NetworkInfoOp netInfo
 
     const auto barriers = getBarriers<BarrierOp>(funcOp);
     ProfilingConfiguration profilingCfg(netInfo);
-    const auto arch = VPU::getArch(funcOp);
+    const auto arch = config::getArch(funcOp);
 
     auto dmaOffset = getDmaTasksOffset<DialectProvider, DmaType>(
             profilingCfg, builder, DialectProvider::template extractOp<DmaType>(funcOp), barriers);
@@ -467,9 +465,9 @@ flatbuffers::DetachedBuffer buildProfilingMetaVPURTGeneral(net::NetworkInfoOp ne
 }
 
 flatbuffers::DetachedBuffer buildProfilingMeta(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp, Logger log) {
-    const auto arch = VPU::getArch(funcOp);
+    const auto arch = config::getArch(funcOp);
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return ::buildProfilingMetaVPURTGeneral<RtDialectProvider37XX>(netInfo, funcOp, log);
     default:
         return ::buildProfilingMetaVPURTGeneral<RtDialectProvider40XX>(netInfo, funcOp, log);

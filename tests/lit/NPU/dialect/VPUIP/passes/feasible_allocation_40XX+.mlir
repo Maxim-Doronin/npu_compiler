@@ -18,7 +18,7 @@
 module @Spilling {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -179,7 +179,7 @@ func.func @main(%in: !act_type_DDR, %out: !act_type_DDR) -> !act_type_DDR {
 module @SpillingOpWith2Outputs {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -357,7 +357,7 @@ func.func @main(%in: !act_type_DDR, %out: !act_type_DDR) -> !act_type_DDR {
 module @SpillingOfSubViewBuffer {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -650,7 +650,7 @@ func.func @main(%in: !act_type_DDR, %out: !act_type_DDR) -> !act_type_DDR {
 module @ControlEdgeOverlapMemory {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -793,7 +793,7 @@ func.func @main(%in: !act_type_DDR, %out0: !act_type_DDR, %out1: !act_type_DDR) 
 module @ControlEdgeOverlapMemoryCheckProdCons {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1018,7 +1018,7 @@ func.func @main(%in: !act_type_DDR, %out: !act_type_DDR) -> !act_type_DDR {
 module @SingleConvWithClusteringAndDmaPortDistribution {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1172,7 +1172,7 @@ func.func @main(%input: !Input_DDR) -> !Output_DDR {
 module @SpillingWithClustering {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1366,7 +1366,7 @@ func.func @main(%input: !BufMemrefDDR) -> !BufMemrefDDR {
 module @Prefetching {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1507,7 +1507,7 @@ func.func @main(%in: memref<1x32x16x16xf16, #NHWC>, %out: memref<1x128x4x4xf16, 
 module @PipelineShaveAct {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1526,7 +1526,7 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 module @VPU.SW  {
     IE.ExecutorResource 2 of @DMA_NN
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 1 of @DPU
     }
 
@@ -1700,7 +1700,7 @@ func.func @main(%in0: memref<1x32x48x48xf16, #NHWC>, %in1: memref<1x32x48x48xf16
 module @PrefetchNoActSpillAtEndAndWrongOrder {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1717,7 +1717,7 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 module @VPU.SW  {
     IE.ExecutorResource 2 of @DMA_NN
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 1 of @DPU
     }
 
@@ -1825,7 +1825,7 @@ func.func @main(%arg0: memref<1x1x1x1000xf16, @DDR>, %arg1: memref<1x1x1x1000xf1
 module @MultiBufferSpillingFromOp {
 IE.ExecutorResource 2 of @DMA_NN
 IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-    IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+    IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     IE.ExecutorResource 1 of @DPU
 }
 
@@ -1843,7 +1843,7 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
 module @VPU.SW  {
     IE.ExecutorResource 2 of @DMA_NN
     IE.TileResource 6 of @NCE at 1.700000e+03 MHz {
-        IE.MemoryResource 1474560 bytes of @CMX_NN {VPU.bandwidth = 64 : i64, VPU.derateFactor = 1.000000e+00 : f64}
+        IE.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
         IE.ExecutorResource 1 of @DPU
     }
 
@@ -1894,24 +1894,24 @@ func.func @main(%arg0: memref<1x1x640x128xf16, @DDR>, %arg1: memref<1x1x640x128x
       async.yield %10 : memref<4xsi32, [@CMX_NN, 0]>
     }
     %token_6, %results_7:2 = async.execute [%token, %token_0, %token_2, %token_4] (
-        %results as %arg2: !async.value<memref<1x1x640x128xf16, [@CMX_NN, 0]>>, 
-        %results_1 as %arg3: !async.value<memref<1x1x640x128xf16, [@CMX_NN, 0]>>, 
-        %results_3 as %arg4: !async.value<memref<4xsi32, [@CMX_NN, 0]>>, 
-        %results_5 as %arg5: !async.value<memref<4xsi32, [@CMX_NN, 0]>>) 
-            -> (!async.value<memref<1x2x640x128xf16, [@CMX_NN, 0]>>, 
-                !async.value<memref<4xsi32, [@CMX_NN, 0]>>) 
-                attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 4 : i64, cycleCost = 1 : i64} {                
-                    %results_20, %dynamicOutputShapes = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, 1>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>} @VPU.SW::@builtin_Concat 
+        %results as %arg2: !async.value<memref<1x1x640x128xf16, [@CMX_NN, 0]>>,
+        %results_1 as %arg3: !async.value<memref<1x1x640x128xf16, [@CMX_NN, 0]>>,
+        %results_3 as %arg4: !async.value<memref<4xsi32, [@CMX_NN, 0]>>,
+        %results_5 as %arg5: !async.value<memref<4xsi32, [@CMX_NN, 0]>>)
+            -> (!async.value<memref<1x2x640x128xf16, [@CMX_NN, 0]>>,
+                !async.value<memref<4xsi32, [@CMX_NN, 0]>>)
+                attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 4 : i64, cycleCost = 1 : i64} {
+                    %results_20, %dynamicOutputShapes = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, 1>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>} @VPU.SW::@builtin_Concat
                         inputs(
-                            %arg2 as %arg10: memref<1x1x640x128xf16, [@CMX_NN, 0]>, 
-                            %arg3 as %arg11: memref<1x1x640x128xf16, [@CMX_NN, 0]>) 
+                            %arg2 as %arg10: memref<1x1x640x128xf16, [@CMX_NN, 0]>,
+                            %arg3 as %arg11: memref<1x1x640x128xf16, [@CMX_NN, 0]>)
                         dynamicInputShapes(
-                            %arg4 : memref<4xsi32, [@CMX_NN, 0]>, 
-                            %arg5 : memref<4xsi32, [@CMX_NN, 0]>) 
+                            %arg4 : memref<4xsi32, [@CMX_NN, 0]>,
+                            %arg5 : memref<4xsi32, [@CMX_NN, 0]>)
                         outputs(
-                            %out_CMX_0 as %arg12: memref<1x2x640x128xf16, [@CMX_NN, 0]>) 
+                            %out_CMX_0 as %arg12: memref<1x2x640x128xf16, [@CMX_NN, 0]>)
                         dynamicOutputShapes(
-                            %ds_out_CMX_0 : memref<4xsi32, [@CMX_NN, 0]>) 
+                            %ds_out_CMX_0 : memref<4xsi32, [@CMX_NN, 0]>)
                         on tile 0 -> (memref<1x2x640x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
                             VPUIP.SW.Kernel.run {attrs = [[0, 0, 0, 0], [0, 0, 1, 0]]}(%arg10, %arg11, %arg12) : memref<1x1x640x128xf16, [@CMX_NN, 0]>, memref<1x1x640x128xf16, [@CMX_NN, 0]>, memref<1x2x640x128xf16, [@CMX_NN, 0]>
                         }
@@ -1958,10 +1958,10 @@ func.func @main(%arg0: memref<1x1x640x128xf16, @DDR>, %arg1: memref<1x1x640x128x
     // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <327680> -> memref<4xsi32, [@CMX_NN, 0]>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute
-    // CHECK:       VPUIP.SW.Kernel 
+    // CHECK:       VPUIP.SW.Kernel
     // CHECK:           inputs(
     // CHECK:           dynamicInputShapes(
-    // CHECK:           outputs([[BUF0]] as %arg9: memref<1x2x640x128xf16, [@CMX_NN, 0]>) 
+    // CHECK:           outputs([[BUF0]] as %arg9: memref<1x2x640x128xf16, [@CMX_NN, 0]>)
     // CHECK:           dynamicOutputShapes([[BUF1]] : memref<4xsi32, [@CMX_NN, 0]>)
 
     // check dynamic spill writes for outputs of the same operation

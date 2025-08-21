@@ -5,21 +5,13 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/profiling/common.hpp"
-
 #include "vpux/compiler/core/profiling.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
 
 #include <deque>
 #include <iterator>
-#include <sstream>
 #include <string>
 
 // E#171862: merge NCETiledActShaveProfiler and UniformNonTiledActShaveProfiler

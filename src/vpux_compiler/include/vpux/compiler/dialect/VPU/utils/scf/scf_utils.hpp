@@ -5,22 +5,20 @@
 
 #pragma once
 
-#include <mlir/Dialect/Arith/IR/Arith.h>
-#include <mlir/Dialect/Tensor/IR/Tensor.h>
-#include "mlir/Dialect/Affine/Utils.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
-#include "mlir/Interfaces/TilingInterface.h"
-
 #include "vpux/compiler/NPU40XX/dialect/VPU/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
-
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+
+#include <mlir/Dialect/Affine/Utils.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/Dialect/Utils/StaticValueUtils.h>
+#include <mlir/Interfaces/TilingInterface.h>
 
 namespace vpux::VPU {
 
@@ -65,9 +63,18 @@ struct SCFTileInfo {
     }
 };
 
-using OpTilingOperandsFunc = std::function<void(SmallVector<SCFTileInfo>&)>;
+struct SCFTilingInfo {
+    SCFTilingInfo(ArrayRef<SCFTileInfo> tilesValue): tiles(tilesValue) {
+    }
+    SCFTilingInfo(ArrayRef<SCFTileInfo> tilesValue, SCFShapeRef padsValue): tiles(tilesValue), pads(padsValue) {
+    }
+
+    SmallVector<SCFTileInfo> tiles;
+    std::optional<SCFShape> pads;
+};
+
+using OpTilingOperandsFunc = std::function<void(SCFTilingInfo&)>;
 using OpGeneratorFunc = std::function<mlir::Operation*()>;
-using SCFTilingInfo = SmallVector<SCFTileInfo>;
 
 // @brief Dim value of input/output/weights shape
 mlir::OpFoldResult getDimValue(mlir::OpBuilder& builder, mlir::Operation* operation, int64_t dim);
@@ -78,12 +85,27 @@ SCFTileInfo getWeightsTableSCFTile(mlir::Type origWeightsTableType, mlir::OpBuil
 
 /** @brief Restores input tiling from output tile data
 
-    The function calculates input shape and offset based on
+    The function calculates input shape, offset and bounds based on
     parameters and shape and offset of output tile
 */
-mlir::Range solutionForOutputRange(mlir::Location loc, mlir::OpBuilder& builder, const SCFTileInfo& outputTile, Dim dim,
-                                   const int64_t kernel, const int64_t stride,
-                                   const std::pair<int64_t, int64_t>& origPadding);
+std::pair<std::optional<mlir::Range>, std::optional<int64_t>> solutionForOutputRange(
+        mlir::Location loc, mlir::OpBuilder& builder, const SCFTileInfo& outputTile, Dim dim, const int64_t kernel,
+        const int64_t stride, const int64_t origInputSize, const std::pair<int64_t, int64_t>& origPadding,
+        mlir::OpFoldResult& padBefore, mlir::OpFoldResult& padAfter);
+
+/** @brief Generate slice based on tiling information
+
+    The function generates ExtractSliceOp based on offset and size in tile info
+*/
+mlir::Value generateTile(mlir::Location loc, mlir::OpBuilder& builder, mlir::Value origInput,
+                         const SCFTileInfo& inputTileInfo);
+
+/** @brief Return result type after tiling to new shape
+
+    The function extracts result type of operation
+    after changing shape
+*/
+mlir::Type extractResultType(mlir::Type origType, SCFShapeRef newShape, BoundsRef bounds);
 
 /** @brief create operation with padding adjustment
 
@@ -94,99 +116,117 @@ mlir::Range solutionForOutputRange(mlir::Location loc, mlir::OpBuilder& builder,
 */
 template <class ConcreteOp>
 mlir::Operation* createTiledPaddedOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
-                                            mlir::OpBuilder& builder, SCFTilingInfo& inputTiling,
-                                            const SCFTileInfo& outputTile, Dim dim, SCFShapeRef origShape,
-                                            mlir::Operation* origOperation, ShapeRef tiling) {
-    if (dim == Dims4D::Act::C) {
+                                            mlir::OpBuilder& builder, SCFTilingInfo& inputTiling, DimArrRef dims,
+                                            SmallVector<mlir::Value>& tiledOperands, mlir::Operation* operation) {
+    const auto isSpatialDim = [](auto dim) {
+        return dim.ind() >= static_cast<int32_t>(Dims4D::Act::numSpatialDims);
+    };
+    if (llvm::none_of(dims, isSpatialDim) || !inputTiling.pads.has_value()) {
         operandsGenerator(inputTiling);
         return opGenerator();
     }
-    auto padInfo = toPadInfo(mlir::cast<ConcreteOp>(origOperation).getPad());
+    auto padInfo = toPadInfo(mlir::cast<ConcreteOp>(operation).getPad());
     if (!padInfo.enabled()) {
         operandsGenerator(inputTiling);
         return opGenerator();
     }
 
-    auto numTiles = tiling[dim];
-    if (numTiles == 1) {
-        operandsGenerator(inputTiling);
-        return opGenerator();
-    }
-
-    VPUX_THROW_WHEN(static_cast<size_t>(dim.ind()) < Dims4D::Act::numSpatialDims, "Incorrect tiling spacial dim {0}",
-                    dim);
-
-    const auto spatialDimIdx = dim.ind() - Dims4D::Act::numSpatialDims;
-    auto loc = origOperation->getLoc();
-
-    auto zeroOffset = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "zero"), 0);
-    auto interValue =
-            mlir::getValueOrCreateConstantIndexOp(builder, appendLoc(loc, "offset"), outputTile.offsets[dim.ind()]);
-
-    auto isFirstIndex = builder.create<mlir::arith::CmpIOp>(appendLoc(loc, "equal"), mlir::arith::CmpIPredicate::eq,
-                                                            interValue, zeroOffset);
-
-    const auto createOperation = [&](bool trimBegin, bool trimEnd) {
-        auto poolingOp = mlir::cast<ConcreteOp>(opGenerator());
-
-        std::array<int64_t, Dims4D::Act::numSpatialDims> padsBegin = {padInfo.top, padInfo.left};
-        std::array<int64_t, Dims4D::Act::numSpatialDims> padsEnd = {padInfo.bottom, padInfo.right};
-
-        if (trimBegin) {
-            padsBegin[spatialDimIdx] = 0;
-        }
-
-        if (trimEnd) {
-            padsEnd[spatialDimIdx] = 0;
-        }
-
-        poolingOp.setPadAttr(getPaddingAttr(builder.getContext(), padsBegin[1], padsEnd[1], padsBegin[0], padsEnd[0]));
-        builder.create<mlir::scf::YieldOp>(appendLoc(loc, "yield"), poolingOp.getResult());
-    };
+    auto loc = operation->getLoc();
 
     operandsGenerator(inputTiling);
+    VPUX_THROW_WHEN(tiledOperands.empty(), "Empty tiled operation for operation");
+    auto tiledInput = tiledOperands.front();
+    auto tiledType = mlir::cast<vpux::NDTypeInterface>(tiledInput.getType());
 
-    const auto firstTileCreator = [&](mlir::OpBuilder&, mlir::Location) {
-        return createOperation(/*trimBegin=*/false, /*trimEnd=*/true);
-    };
+    auto paddingValue = builder.create<mlir::arith::ConstantOp>(loc, builder.getZeroAttr(tiledType.getElementType()));
+    auto adjustedBounds = Bounds();
+    if (auto boundedType = mlir::dyn_cast<vpux::Core::BoundedTensorType>(tiledType)) {
+        adjustedBounds = boundedType.getBounds();
+    }
 
-    const auto lastTileCreator = [&](mlir::OpBuilder&, mlir::Location) {
-        return createOperation(/*trimBegin=*/true, /*trimEnd=*/false);
-    };
+    SmallVector<mlir::OpFoldResult> lows(tiledType.getRank(), builder.getIndexAttr(0));
+    SmallVector<mlir::OpFoldResult> highs(tiledType.getRank(), builder.getIndexAttr(0));
 
-    const auto medianTileCreator = [&](mlir::OpBuilder& opBuilder, mlir::Location opLocation) {
-        auto newInfo = inputTiling;
-        auto& inputTile = newInfo[0];
-        mlir::AffineExpr d0;
-        bindDims(opBuilder.getContext(), d0);
-        std::array<int64_t, Dims4D::Act::numSpatialDims> padsEnd = {padInfo.bottom, padInfo.right};
-        auto addMap = mlir::AffineMap::get(1, 0, {d0 + padsEnd[spatialDimIdx]}, opBuilder.getContext());
-        inputTile.shape[dim.ind()] = mlir::affine::makeComposedFoldedAffineApply(
-                opBuilder, appendLoc(opLocation, "paddedShape"), addMap, {inputTile.shape[dim.ind()]});
-        operandsGenerator(newInfo);
-        return createOperation(/*trimBegin=*/true, /*trimEnd=*/true);
-    };
-
-    const auto elseBlockCreator = [&](mlir::OpBuilder& opBuilder, mlir::Location opLocation) {
-        if (numTiles == 2) {
-            return createOperation(/*trimBegin=*/true, /*trimEnd=*/false);
+    auto padsByDims = padInfo.toPadByDims();
+    // bounds are not updated for dynamic dimensions, as the pad value is calculated at runtime based on the loop index
+    for (auto index : irange(Dims4D::Act::numSpatialDims)) {
+        const auto spatialDim = Dims4D::Act::getSpatialDim(index);
+        if (llvm::find(dims, spatialDim) != dims.end()) {
+            lows[spatialDim.ind()] = inputTiling.pads.value()[index];
+            // the order of pads is "left, top, right, bottom"
+            // so, to get padding of other side, get +2 to current index
+            highs[spatialDim.ind()] = inputTiling.pads.value()[index + 2];
+        } else {
+            lows[spatialDim.ind()] = builder.getIndexAttr(padsByDims[spatialDim.ind()].first);
+            highs[spatialDim.ind()] = builder.getIndexAttr(padsByDims[spatialDim.ind()].second);
+            if (!adjustedBounds.raw().empty()) {
+                adjustedBounds[spatialDim] += padsByDims[spatialDim.ind()].first + padsByDims[spatialDim.ind()].second;
+            }
         }
+    }
 
-        auto maxValue = mlir::getValueOrCreateConstantIndexOp(opBuilder, appendLoc(opLocation, "maxValue"),
-                                                              origShape[dim.ind()]);
-        auto lastIndex = opBuilder.create<mlir::arith::SubIOp>(appendLoc(opLocation, "sub"), maxValue, interValue);
+    tiledOperands[0] = builder.create<mlir::tensor::PadOp>(loc, /*result=*/mlir::Type(), tiledInput, lows, highs,
+                                                           paddingValue, /*nofold=*/false);
+    const auto tensorDesc = vpux::getTensorAttr(tiledType.getContext(), tiledType.getDimsOrder(),
+                                                tiledType.getMemSpace(), adjustedBounds);
+    SmallVector<int64_t> staticDims;
+    auto rankedType = mlir::cast<mlir::RankedTensorType>(tiledOperands[0].getType());
+    staticDims.reserve(rankedType.getRank());
+    llvm::transform(llvm::seq<size_t>(0, rankedType.getRank()), std::back_inserter(staticDims), [&](auto i) {
+        if (rankedType.isDynamicDim(i)) {
+            return mlir::ShapedType::kDynamic;
+        }
+        return rankedType.getDimSize(i);
+    });
 
-        auto isLastIndex = opBuilder.create<mlir::arith::CmpIOp>(appendLoc(opLocation, "equal"),
-                                                                 mlir::arith::CmpIPredicate::eq, interValue, lastIndex);
-        auto innerIfOp = opBuilder.create<mlir::scf::IfOp>(appendLoc(opLocation, "innerIf"), isLastIndex,
-                                                           lastTileCreator, medianTileCreator);
-        opBuilder.create<mlir::scf::YieldOp>(appendLoc(opLocation, "yield"), innerIfOp.getResult(0));
+    tiledOperands[0].setType(mlir::RankedTensorType::get(staticDims, tiledType.getElementType(), tensorDesc));
+    const auto createOperation = [&]() {
+        auto generatedOp = mlir::cast<ConcreteOp>(opGenerator());
+        generatedOp.setPadAttr(getPaddingAttr(builder.getContext(), 0, 0, 0, 0));
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(generatedOp->getResult(0).getType());
+        auto outputShape = to_small_vector(outputType.getShape().raw());
+        for (auto staticDim : staticDims | indexed) {
+            if (staticDim.value() == mlir::ShapedType::kDynamic) {
+                outputShape[staticDim.index()] = mlir::ShapedType::kDynamic;
+            }
+        }
+        outputType = outputType.changeShape(Shape(outputShape));
+        generatedOp->getResult(0).setType(outputType);
+        return generatedOp;
     };
-
-    auto ifOp = builder.create<mlir::scf::IfOp>(appendLoc(loc, "outerIf"), isFirstIndex, firstTileCreator,
-                                                elseBlockCreator);
-
-    return ifOp.getOperation();
+    return createOperation();
 }
+
+/** @brief adjust padded output
+ * In case the PadOp has been added, but operation used to be with static output
+ * generated by scf tiling functions, result sizes has to be corrected to be dynamic too
+ * It doesn't affect the result type of the loop, only result size in InsertSliceOp
+ */
+template <class ConcreteOp>
+void correctPaddedOutput(mlir::OpBuilder& builder, ConcreteOp operation, SmallVector<mlir::OpFoldResult>& resultSizes) {
+    auto padInfo = toPadInfo(operation.getPad());
+    if (padInfo.enabled() && operation->hasAttr(tilingStrategy)) {
+        auto padsByDims = padInfo.toPadByDims();
+        const auto strategy =
+                Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy))));
+        auto tilingDims = getNonOneDim(strategy);
+        for (auto dim : tilingDims) {
+            auto sizeValue = mlir::getConstantIntValue(resultSizes[dim.ind()]);
+            if (sizeValue.has_value() && padsByDims.contains(dim.ind()) &&
+                (padsByDims[dim.ind()].first != 0 || padsByDims[dim.ind()].second != 0)) {
+                resultSizes[dim.ind()] = builder.create<mlir::arith::ConstantOp>(
+                                                        operation->getLoc(), builder.getIndexAttr(sizeValue.value()))
+                                                 .getResult();
+            }
+        }
+    }
+}
+
+/** @brief Checks if two operations might be vertically fused
+
+    The function checks if there are some spills already between operations
+    To be extended to more complex checks
+*/
+bool checkFusion(mlir::OpOperand& consumer, mlir::OpResult producerCandidate);
 
 }  // namespace vpux::VPU

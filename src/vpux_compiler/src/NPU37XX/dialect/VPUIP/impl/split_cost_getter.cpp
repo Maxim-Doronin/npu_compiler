@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/impl/split_cost_getter.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 
 using namespace vpux;
 

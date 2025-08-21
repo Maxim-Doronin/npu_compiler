@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/utils/wlm_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+
 #include <mlir/Pass/AnalysisManager.h>
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-#include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
 
 namespace vpux {
 
@@ -173,6 +173,40 @@ bool inSameTaskBlock(size_t task1, size_t task2, const BlockRange& blockRange) {
     return std::any_of(blockRange.begin(), blockRange.end(), [&](const std::pair<size_t, size_t>& range) {
         return (task1 >= range.first && task1 <= range.second) && (task2 >= range.first && task2 <= range.second);
     });
+}
+
+/// Utils for adding placeholder fetch DMAs
+
+// Function returns index of a task
+size_t getIndexOfTask(IndexType indexType, ArrayRef<VPURT::TaskOp> dummyDMAs, BarrierInfo& barrierInfo) {
+    if (indexType.second == Type::Dummy) {
+        return barrierInfo.getIndex(dummyDMAs[indexType.first]);
+    }
+    return indexType.first;
+}
+
+// Function returns index of a barrier
+size_t getIndexOfBarrier(IndexType indexType, ArrayRef<VPURT::DeclareVirtualBarrierOp> dummyBarriers,
+                         BarrierInfo& barrierInfo) {
+    if (indexType.second == Type::Dummy) {
+        return barrierInfo.getIndex(dummyBarriers[indexType.first]);
+    }
+    return indexType.first;
+}
+
+VPURT::TaskOp createFetchDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                             mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
+                             VPUIP::FetchDMAAttr fetchDMAAttr, llvm::StringLiteral opName) {
+    auto* ctx = builder.getContext();
+    auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, opName));
+    auto portAttr = vpux::getIntAttr(ctx, port);
+
+    auto fetchDMAOp = VPURT::wrapIntoTaskOp<VPUIP::FetchDMAOp>(
+            builder, waitBarriers, updateBarriers, syncDmaLoc, input, output, portAttr,
+            /*isOutOfOrder*/ nullptr, /*isCritical*/ nullptr, /*dmaHwpId*/ nullptr,
+            /*dmaProfilingMetaData*/ nullptr, fetchDMAAttr);
+
+    return fetchDMAOp->getParentOfType<VPURT::TaskOp>();
 }
 
 }  // namespace vpux

@@ -5,7 +5,13 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/resources.hpp"
+
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+
+namespace vpux::VPU {
+enum class ExecutorKind : uint64_t;
+}
 
 namespace vpux {
 namespace IE {
@@ -57,6 +63,9 @@ SmallVector<IE::MemoryResourceOp> getReservedMemoryResources(mlir::ModuleOp main
 
 SmallVector<std::pair<uint64_t, uint64_t>> getReservedMemOffsetAndSizeVec(mlir::ModuleOp module,
                                                                           mlir::SymbolRefAttr memSpaceAttr);
+
+size_t getReservedMemorySize(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace);
+
 //
 // DMA profiling reserved memory
 //
@@ -112,22 +121,24 @@ memory_resource_if<Enum> getSWKernelPrefetchingReservedMemory(mlir::ModuleOp mai
 SmallVector<MemoryResourceOp> getSWKernelPrefetchingReservedMemory(mlir::ModuleOp mainModule);
 
 //
-// SW Kernel cache prefetching reserved memory
+// Dummy SW kernels for instruction prefetch reserved memory
 //
-static constexpr StringLiteral swKernelCachePrefetchingResMemModuleName = "SWKernelCachePrefetchingReservedMemory";
+static constexpr StringLiteral dummySwKernelsForInstructionPrefetchResMemModuleName =
+        "DummySWKernelsForInstructionPrefetchReservedMemory";
 
-IE::MemoryResourceOp setSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace,
-                                                               int64_t size);
+IE::MemoryResourceOp setDummySwKernelsForInstructionPrefetchReservedMemory(mlir::ModuleOp mainModule,
+                                                                           mlir::SymbolRefAttr memSpace, int64_t size);
 
-IE::MemoryResourceOp getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace);
+IE::MemoryResourceOp getDummySwKernelsForInstructionPrefetchReservedMemory(mlir::ModuleOp mainModule,
+                                                                           mlir::SymbolRefAttr memSpace);
 
 template <typename Enum>
-memory_resource_if<Enum> getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule, Enum kind) {
-    return getSWKernelCachePrefetchingReservedMemory(
+memory_resource_if<Enum> getDummySwKernelsForInstructionPrefetchReservedMemory(mlir::ModuleOp mainModule, Enum kind) {
+    return getDummySwKernelsForInstructionPrefetchReservedMemory(
             mainModule, mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(kind)));
 }
 
-SmallVector<MemoryResourceOp> getSWKernelCachePrefetchingReservedMemory(mlir::ModuleOp mainModule);
+SmallVector<MemoryResourceOp> getDummySwKernelsForInstructionPrefetchReservedMemory(mlir::ModuleOp mainModule);
 
 //
 // ExecutorResourceOp

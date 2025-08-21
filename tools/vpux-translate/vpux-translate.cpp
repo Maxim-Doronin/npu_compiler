@@ -7,8 +7,8 @@
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/import.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
@@ -76,6 +76,10 @@ llvm::cl::opt<bool> dynamicShapeToStatic{
                        "like this: tensor<1x?x3xf32, {bounds = [1, 18, 3], ..}>."),
         llvm::cl::init(false)};
 
+llvm::cl::opt<bool> enableWeightsSeparationPath{
+        "weights-separation-path",
+        llvm::cl::desc("Disables constants folding for more \"Const->Convert->{Op}\" patterns"), llvm::cl::init(false)};
+
 enum class NetworkIOType { INPUT, OUTPUT };
 
 //
@@ -140,8 +144,15 @@ mlir::OwningOpRef<mlir::ModuleOp> importIE(llvm::SourceMgr& sourceMgr, mlir::MLI
         // constants in MLIR protects the code from use-after-free errors.
         constexpr bool useSharedConstants = false;
 
-        module = IE::importNetwork(ctx, model, IE::buildOVParams(model), IE::buildOVResults(model), useSharedConstants,
-                                   rootTiming, vpuxProfiling, enableDummyOpReplacement, dynamicShapeToStatic);
+        IE::ImportNetworkConfig importCfg;
+        importCfg.sharedConstants = useSharedConstants;
+        importCfg.enableProfiling = vpuxProfiling;
+        importCfg.stubLayers = enableDummyOpReplacement;
+        importCfg.dynamicShapeToStatic = dynamicShapeToStatic;
+        importCfg.enableWeightsSeparationPath = enableWeightsSeparationPath;
+
+        module = IE::importNetwork(ctx, model, IE::buildOVParams(model), IE::buildOVResults(model), rootTiming,
+                                   importCfg);
     } catch (const std::exception& ex) {
         printTo(llvm::errs(), "Failed to translate IE IR {0} to MLIR : {1}", netFileName, ex.what());
         return nullptr;
@@ -193,16 +204,16 @@ mlir::LogicalResult exportELF(mlir::ModuleOp module, llvm::raw_ostream& output) 
 
     mlir::DefaultTimingManager tm;
 
-    auto arch = VPU::getArch(module.getOperation());
+    auto arch = config::getArch(module.getOperation());
 
-    if (arch == VPU::ArchKind::NPU37XX) {
+    if (arch == config::ArchKind::NPU37XX) {
         const auto buf = ELFNPU37XX::exportToELF(module);
         output.write(reinterpret_cast<const char*>(buf.data()), buf.size());
-    } else if (arch >= VPU::ArchKind::NPU40XX) {
+    } else if (arch >= config::ArchKind::NPU40XX) {
         const auto buf = ELF::exportToELF(module);
         output.write(reinterpret_cast<const char*>(buf.data()), buf.size());
     } else {
-        VPUX_THROW("ELF Flow not supported for ARCH {0}", VPU::stringifyArchKind(arch));
+        VPUX_THROW("ELF Flow not supported for ARCH {0}", config::stringifyArchKind(arch));
     }
 
     return mlir::success();

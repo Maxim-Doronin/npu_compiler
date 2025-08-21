@@ -4,22 +4,17 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/utils/IE/private_properties.hpp"
-
-#include "vpux/compiler/core/attributes/stride_reqs.hpp"
-#include "vpux/compiler/core/tiling.hpp"
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/resources.hpp"
 #include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/platform_resources.hpp"
-
-#include "vpux/utils/core/error.hpp"
+#include "vpux/utils/IE/private_properties.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -44,32 +39,11 @@ void VPU::VPUDialect::registerAttributes() {
             >();
 }
 
-//
-// Run-time resources
-//
-
-namespace {
-
-constexpr StringLiteral derateFactorAttrName = "VPU.derateFactor";
-constexpr StringLiteral bandwidthAttrName = "VPU.bandwidth"; /*!< This attribute corresponds to a single JSON field
-                      nested at header>resources>memory_bandwidth>number in the deserialized version of the blob.
-                      */
-
-}  // namespace
-
-StringLiteral vpux::VPU::getMemoryDerateAttrName() {
-    return derateFactorAttrName;
-}
-
-StringLiteral vpux::VPU::getMemoryBandwidthAttrName() {
-    return bandwidthAttrName;
-}
-
-uint32_t vpux::VPU::getMaxArchDPUClusterNum(ArchKind arch) {
+uint32_t vpux::VPU::getMaxArchDPUClusterNum(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUX37XX_MAX_DPU_GROUPS;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return VPUX40XX_MAX_DPU_GROUPS;
     default:
         VPUX_THROW("Unsupported architecture '{0}'", arch);
@@ -77,23 +51,23 @@ uint32_t vpux::VPU::getMaxArchDPUClusterNum(ArchKind arch) {
 }
 
 uint32_t vpux::VPU::getMaxArchDPUClusterNum(mlir::Operation* op) {
-    return VPU::getMaxArchDPUClusterNum(VPU::getArch(op));
+    return VPU::getMaxArchDPUClusterNum(config::getArch(op));
 }
 
-uint32_t vpux::VPU::getMaxDMAPorts(ArchKind arch) {
+uint32_t vpux::VPU::getMaxDMAPorts(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUX37XX_MAX_DMA_PORTS;
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return VPUX40XX_MAX_DMA_PORTS;
     default:
         VPUX_THROW("Unsupported architecture '{0}'", arch);
     }
 }
 
-double vpux::VPU::getDMABandwidth(ArchKind arch, VPU::RevisionID rev) {
+double vpux::VPU::getDMABandwidth(config::ArchKind arch, config::RevisionID rev) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_2_7) / VPU::getDpuFrequency(arch, rev);
     default:
         if (VPUNN::PerformanceMode::forceLegacy_G4) {
@@ -108,14 +82,14 @@ double vpux::VPU::getNCEThroughput() {
     return 8000000.0;
 }
 
-unsigned int vpux::VPU::getDpuFrequency(vpux::VPU::ArchKind arch, vpux::VPU::RevisionID rev) {
+unsigned int vpux::VPU::getDpuFrequency(vpux::config::ArchKind arch, vpux::config::RevisionID rev) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return VPUNN::get_dpu_fclk(VPUNN::VPUDevice::VPU_2_7); /*!< The value 1300 corresponds to Highvcc of dpuclk.
                 (See VPUX37XX HAS #voltage-and-frequency-targets section).
                  */
-    case VPU::ArchKind::NPU40XX:
-        if (rev >= VPU::RevisionID::REVISION_B) {
+    case config::ArchKind::NPU40XX:
+        if (rev >= config::RevisionID::REVISION_B) {
             return 1850;  // MHz; TODO: switch to the value from vpunn, once this frequency is implemented. E#127567
         }
         return VPUNN::get_dpu_fclk(VPUNN::VPUDevice::VPU_4_0);
@@ -125,14 +99,14 @@ unsigned int vpux::VPU::getDpuFrequency(vpux::VPU::ArchKind arch, vpux::VPU::Rev
 }
 
 double vpux::VPU::getDmaBandwidthGBps(mlir::ModuleOp module) {
-    const ArchKind arch = getArch(module);
+    const auto arch = config::getArch(module);
     return getDmaBandwidthGBps(arch);
 }
 
-double vpux::VPU::getDmaBandwidthGBps(vpux::VPU::ArchKind arch) {
+double vpux::VPU::getDmaBandwidthGBps(vpux::config::ArchKind arch) {
     double BW = 0;
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         BW = VPUNN::get_dram_bandwidth_MBps(VPUNN::VPUDevice::VPU_2_7);  // 27000 MB/s
         break;
     default:
@@ -148,19 +122,23 @@ double vpux::VPU::getDmaBandwidthGBps(vpux::VPU::ArchKind arch) {
     return BW;
 }
 
+// NOTE: This function is expected to be called only after all CMX memory reservation.
 Byte vpux::VPU::getTotalCMXSize(mlir::ModuleOp module) {
-    auto cmxRes = IE::getAvailableMemory(module, VPU::MemoryKind::CMX_NN);
-
     // This function is used to determine the best tile size. It tries to put maximum data in CMX.
-    // Available CMX memory is decreased by two profilingBufferSize even if profiling is disabled
+    // Available CMX memory will be decreased by the size of statically allocated reserved buffers(all reservations
+    // need to happen before this function is called) and by dynamic profling buffers which are not represented in
+    // the IR. Available CMX memory is decreased by two dynamicProfilingBufferSize even if profiling is disabled
     // because we want to get exactly same compiled networks with profiling enabled and disabled.
     // Two buffer sizes are required in case when profiling allocates new buffer and old buffer
     // is still not disposed. Second buffer can be treated as an optimisation that prevents spilling.
-    int64_t profilingBufferSize = vpux::VPUIP::HW_DMA_PROFILING_MAX_BUFFER_SIZE +
-                                  vpux::VPUIP::HW_DPU_PROFILING_MAX_BUFFER_SIZE +
-                                  vpux::VPUIP::HW_ACT_SHAVE_PROFILING_MAX_BUFFER_SIZE;
+    int64_t dynamicProfilingBufferSize =
+            vpux::VPUIP::HW_DPU_PROFILING_MAX_BUFFER_SIZE + vpux::VPUIP::HW_ACT_SHAVE_PROFILING_MAX_BUFFER_SIZE;
 
-    return cmxRes.size() - Byte(2 * profilingBufferSize);
+    auto cmxSpaceAttr = mlir::SymbolRefAttr::get(module.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN));
+    auto cmxSize = IE::getAvailableMemory(module, VPU::MemoryKind::CMX_NN).size();
+    auto reservedCMXSize = IE::getReservedMemorySize(module, cmxSpaceAttr);
+
+    return cmxSize - Byte(reservedCMXSize) - Byte(2 * dynamicProfilingBufferSize);
 }
 
 Byte vpux::VPU::getTotalCMXSize(mlir::Operation* op) {
@@ -172,7 +150,7 @@ Byte vpux::VPU::getTotalCMXFragmentationAwareSize(mlir::ModuleOp module) {
                                          mlir::SymbolRefAttr::get(module.getContext(), VPU::CMX_NN_FragmentationAware));
     VPUX_THROW_UNLESS(cmxRes != nullptr, "Can't get information about {0} memory", VPU::CMX_NN_FragmentationAware);
 
-    const ArchKind arch = getArch(module);
+    const auto arch = config::getArch(module);
 
     // This function is used to determine the best tile size. It tries to put maximum data in CMX.
     // Available CMX memory is decreased by two profilingBufferSize even if profiling is disabled
@@ -181,7 +159,7 @@ Byte vpux::VPU::getTotalCMXFragmentationAwareSize(mlir::ModuleOp module) {
     // is still not disposed. Second buffer can be treated as an optimisation that prevents spilling.
     const int64_t profilingBufferSize =
             vpux::VPUIP::HW_DMA_PROFILING_MAX_BUFFER_SIZE + vpux::VPUIP::HW_DPU_PROFILING_MAX_BUFFER_SIZE +
-            ((arch == VPU::ArchKind::NPU37XX) ? vpux::VPUIP::HW_ACT_SHAVE_PROFILING_MAX_BUFFER_SIZE : 0);
+            ((arch == config::ArchKind::NPU37XX) ? vpux::VPUIP::HW_ACT_SHAVE_PROFILING_MAX_BUFFER_SIZE : 0);
 
     return cmxRes.size() - Byte(2 * profilingBufferSize);
 }
@@ -192,268 +170,6 @@ Byte vpux::VPU::getTotalCMXFragmentationAwareSize(mlir::Operation* op) {
 
 Byte vpux::VPU::getTotalCMXVFPipelineFragmentationAwareSize(mlir::Operation* op) {
     return Byte(static_cast<double>(getTotalCMXSize(op).count()) * vpux::FRAGMENTATION_AVOID_RATIO_VF_PIPELINING);
-}
-
-//
-// ArchKind
-//
-
-namespace {
-
-constexpr StringLiteral archAttrName = "VPU.arch";
-
-constexpr Byte DDR_HEAP_SIZE = 64000_MB;
-
-struct Resources {
-    int numOfDPUGroups = 1;
-    std::optional<int> numOfDMAPorts = std::nullopt;
-    std::optional<vpux::Byte> availableCMXMemory = std::nullopt;
-
-    Resources(int numOfDPUGroups, std::optional<int> numOfDMAPorts, std::optional<vpux::Byte> availableCMXMemory)
-            : numOfDPUGroups(numOfDPUGroups), numOfDMAPorts(numOfDMAPorts), availableCMXMemory(availableCMXMemory) {
-    }
-};
-
-struct SetResoursesFuncs {
-    using AddExecutorFuncType = FuncRef<IE::ExecutorResourceOp(VPU::ExecutorKind, size_t)>;
-    using AddTileExecutorFuncType = FuncRef<IE::TileResourceOp(size_t)>;
-    using AddSubExecutorFuncType = FuncRef<IE::ExecutorResourceOp(IE::TileResourceOp, VPU::ExecutorKind, size_t)>;
-    using AddMemoryFuncType = FuncRef<IE::MemoryResourceOp(mlir::SymbolRefAttr, Byte)>;
-    using AddMemoryWithAttrsFuncType = FuncRef<void(mlir::SymbolRefAttr, Byte, double, size_t)>;
-    using AddInnerMemoryFuncType = FuncRef<IE::MemoryResourceOp(IE::TileResourceOp, mlir::SymbolRefAttr, Byte)>;
-    using AddInnerMemoryWithAttrsFuncType =
-            FuncRef<void(IE::TileResourceOp, mlir::SymbolRefAttr, Byte, double, size_t)>;
-
-    AddExecutorFuncType addExecutor;
-    AddTileExecutorFuncType addTileExecutor;
-    AddSubExecutorFuncType addSubExecutor;
-    AddMemoryFuncType addMemory;
-    AddMemoryWithAttrsFuncType addMemoryWithAttrs;
-    AddInnerMemoryFuncType addInnerMemory;
-    AddInnerMemoryWithAttrsFuncType addInnerMemoryWithAttrs;
-
-    SetResoursesFuncs(AddExecutorFuncType addExecutor, AddTileExecutorFuncType addTileExecutor,
-                      AddSubExecutorFuncType addSubExecutor, AddMemoryFuncType addMemory,
-                      AddMemoryWithAttrsFuncType addMemoryWithAttrs, AddInnerMemoryFuncType addInnerMemory,
-                      AddInnerMemoryWithAttrsFuncType addInnerMemoryWithAttrs)
-            : addExecutor(addExecutor),
-              addTileExecutor(addTileExecutor),
-              addSubExecutor(addSubExecutor),
-              addMemory(addMemory),
-              addMemoryWithAttrs(addMemoryWithAttrs),
-              addInnerMemory(addInnerMemory),
-              addInnerMemoryWithAttrs(addInnerMemoryWithAttrs) {
-    }
-};
-
-void setArch(mlir::ModuleOp module, VPU::ArchKind kind, const Resources& res, const SetResoursesFuncs& funcs,
-             bool allowCustom) {
-    VPUX_THROW_WHEN(!allowCustom && module->hasAttr(archAttrName),
-                    "Architecture is already defined, probably you run '--init-compiler' twice");
-
-    if (!module->hasAttr(archAttrName)) {
-        module->setAttr(archAttrName, VPU::ArchKindAttr::get(module.getContext(), kind));
-    }
-
-    auto numOfDPUGroups = res.numOfDPUGroups;
-    auto numOfDMAPorts = res.numOfDMAPorts;
-    auto availableCMXMemory = res.availableCMXMemory;
-
-    const auto getNumOfDMAPortsVal = [&](int maxDmaPorts) {
-        int numOfDMAPortsVal = numOfDMAPorts.has_value() ? numOfDMAPorts.value() : maxDmaPorts;
-        return numOfDMAPortsVal;
-    };
-
-    IE::TileResourceOp nceCluster;
-
-    const auto ddrSymbolAttr = mlir::SymbolRefAttr::get(module.getContext(), stringifyEnum(VPU::MemoryKind::DDR));
-    const auto cmxSymbolAttr = mlir::SymbolRefAttr::get(module.getContext(), stringifyEnum(VPU::MemoryKind::CMX_NN));
-    const auto cmxFragAwareSymbolAttr = mlir::SymbolRefAttr::get(module.getContext(), VPU::CMX_NN_FragmentationAware);
-
-    switch (kind) {
-    case VPU::ArchKind::NPU37XX: {
-        const auto workspaceCMXSize =
-                availableCMXMemory.has_value() ? availableCMXMemory.value() : VPUX37XX_CMX_WORKSPACE_SIZE;
-        const auto workspaceFragmentationAwareSize =
-                availableCMXMemory.has_value()
-                        ? Byte(static_cast<double>(availableCMXMemory.value().count()) * FRAGMENTATION_AVOID_RATIO)
-                        : VPUX37XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE;
-
-        funcs.addMemoryWithAttrs(ddrSymbolAttr, DDR_HEAP_SIZE, 0.6, 8);
-
-        // Have NN_DMA as shared resource across clusters
-        funcs.addExecutor(VPU::ExecutorKind::DMA_NN, getNumOfDMAPortsVal(VPUX37XX_MAX_DMA_PORTS));
-        nceCluster = funcs.addTileExecutor(numOfDPUGroups);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::DPU, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_NN, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_ACT, 2);
-        funcs.addInnerMemoryWithAttrs(nceCluster, cmxSymbolAttr, workspaceCMXSize, 1.0, 32);
-        funcs.addInnerMemory(nceCluster, cmxFragAwareSymbolAttr, workspaceFragmentationAwareSize);
-
-        break;
-    }
-    case VPU::ArchKind::NPU40XX: {
-        const auto workspaceCMXSize =
-                availableCMXMemory.has_value() ? availableCMXMemory.value() : VPUX40XX_CMX_WORKSPACE_SIZE;
-        const auto workspaceFragmentationAwareSize =
-                availableCMXMemory.has_value()
-                        ? Byte(static_cast<double>(availableCMXMemory.value().count()) * FRAGMENTATION_AVOID_RATIO)
-                        : VPUX40XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE;
-
-        funcs.addMemoryWithAttrs(ddrSymbolAttr, DDR_HEAP_SIZE, 0.6, 64);
-
-        // Have NN_DMA as shared resource across clusters
-        auto numClusters = numOfDPUGroups;
-        funcs.addExecutor(VPU::ExecutorKind::DMA_NN,
-                          getNumOfDMAPortsVal(std::min(numClusters, VPUX40XX_MAX_DMA_PORTS)));
-        funcs.addExecutor(VPU::ExecutorKind::M2I, 1);
-        nceCluster = funcs.addTileExecutor(numClusters);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::DPU, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_ACT, 2);
-        funcs.addInnerMemoryWithAttrs(nceCluster, cmxSymbolAttr, workspaceCMXSize, 1.0, 64);
-        funcs.addInnerMemory(nceCluster, cmxFragAwareSymbolAttr, workspaceFragmentationAwareSize);
-
-        break;
-    }
-    default:
-        VPUX_THROW("Unsupported architecture '{0}'", kind);
-    }
-
-    VPUX_THROW_WHEN(!allowCustom && nceCluster.hasProcessorFrequency(),
-                    "Processor frequencyis already defined, probably you run '--init-compiler' twice");
-}
-
-}  // namespace
-
-void vpux::VPU::setArch(mlir::ModuleOp module, ArchKind kind, int numOfDPUGroups, std::optional<int> numOfDMAPorts,
-                        std::optional<vpux::Byte> availableCMXMemory, bool allowCustomValues) {
-    const auto addExecutor = [&](VPU::ExecutorKind kind, size_t count) {
-        VPUX_THROW_WHEN(!allowCustomValues && IE::hasExecutor(module, kind),
-                        "Available executor kind '{0}' was already added", kind);
-        if (IE::hasExecutor(module, kind)) {
-            return IE::getAvailableExecutor(module, kind);
-        }
-
-        return IE::addAvailableExecutor(module, kind, count);
-    };
-
-    const auto addTileExecutor = [&](size_t count) {
-        VPUX_THROW_WHEN(!allowCustomValues && IE::hasTileExecutor(module), "Available tile executor was already added");
-        if (IE::hasTileExecutor(module)) {
-            return IE::getTileExecutor(module);
-        }
-
-        return IE::addTileExecutor(module, count);
-    };
-
-    const auto addSubExecutor = [&](IE::TileResourceOp tileResOp, VPU::ExecutorKind kind, size_t count) {
-        VPUX_THROW_WHEN(!allowCustomValues && tileResOp.hasSubExecutor(kind),
-                        "Available executor kind '{0}' was already added", kind);
-        if (tileResOp.hasSubExecutor(kind)) {
-            return tileResOp.getSubExecutor(kind);
-        }
-
-        return tileResOp.addSubExecutor(kind, count);
-    };
-
-    const auto addAvailableMemory = [&](mlir::SymbolRefAttr memSpace, Byte size) {
-        VPUX_THROW_WHEN(!allowCustomValues && IE::hasAvailableMemory(module, memSpace),
-                        "Available memory kind '{0}' was already added", memSpace);
-        if (IE::hasAvailableMemory(module, memSpace)) {
-            return IE::getAvailableMemory(module, memSpace);
-        }
-
-        return IE::addAvailableMemory(module, memSpace, size);
-    };
-
-    const auto addMemWithAttrs = [&](mlir::SymbolRefAttr memSpace, Byte size, double derateFactor, size_t bandwidth) {
-        auto mem = addAvailableMemory(memSpace, size);
-        if (!mem->hasAttr(derateFactorAttrName)) {
-            mem->setAttr(derateFactorAttrName, getFPAttr(module.getContext(), derateFactor));
-        }
-
-        if (!mem->hasAttr(bandwidthAttrName)) {
-            mem->setAttr(bandwidthAttrName, getIntAttr(module.getContext(), bandwidth));
-        }
-    };
-
-    const auto addInnerAvailableMemory = [&](IE::TileResourceOp tileResOp, mlir::SymbolRefAttr memSpace, Byte size) {
-        VPUX_THROW_WHEN(!allowCustomValues && tileResOp.hasAvailableMemory(memSpace),
-                        "Available memory kind '{0}' was already added", memSpace);
-        if (tileResOp.hasAvailableMemory(memSpace)) {
-            return tileResOp.getAvailableMemory(memSpace);
-        }
-
-        return tileResOp.addAvailableMemory(memSpace, size);
-    };
-
-    const auto addInnerAvailableMemoryWithAttrs = [&](IE::TileResourceOp tileResOp, mlir::SymbolRefAttr memSpace,
-                                                      Byte size, double derateFactor, size_t bandwidth) {
-        auto mem = addInnerAvailableMemory(tileResOp, memSpace, size);
-        if (!mem->hasAttr(derateFactorAttrName)) {
-            mem->setAttr(derateFactorAttrName, getFPAttr(module.getContext(), derateFactor));
-        }
-
-        if (!mem->hasAttr(bandwidthAttrName)) {
-            mem->setAttr(bandwidthAttrName, getIntAttr(module.getContext(), bandwidth));
-        }
-    };
-
-    ::Resources res(numOfDPUGroups, numOfDMAPorts, availableCMXMemory);
-    ::SetResoursesFuncs funcs(addExecutor, addTileExecutor, addSubExecutor, addAvailableMemory, addMemWithAttrs,
-                              addInnerAvailableMemory, addInnerAvailableMemoryWithAttrs);
-
-    return ::setArch(module, kind, res, funcs, allowCustomValues);
-}
-
-VPU::ArchKind vpux::VPU::getArch(mlir::Operation* op) {
-    auto module = getModuleOp(op);
-
-    if (auto attr = module->getAttr(archAttrName)) {
-        VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::ArchKindAttr>(attr),
-                          "Module attribute '{0}' has unsupported value '{1}'", archAttrName, attr);
-        return mlir::cast<vpux::VPU::ArchKindAttr>(attr).getValue();
-    }
-
-    return VPU::ArchKind::UNKNOWN;
-}
-
-// To discern between VPUX3XXX and later on architectures
-bool vpux::VPU::isArchVPUX3XXX(VPU::ArchKind arch) {
-    return (arch == VPU::ArchKind::NPU37XX);
-}
-
-//
-// RevisionID
-//
-
-namespace {
-
-constexpr StringLiteral revisionIDAttrName = "VPU.revisionID";
-
-}  // namespace
-
-void vpux::VPU::setRevisionID(mlir::ModuleOp module, RevisionID revisionID) {
-    module->setAttr(revisionIDAttrName, VPU::RevisionIDAttr::get(module.getContext(), revisionID));
-}
-
-bool vpux::VPU::hasRevisionID(mlir::ModuleOp module) {
-    return module->hasAttr(revisionIDAttrName);
-}
-
-VPU::RevisionID vpux::VPU::getRevisionID(mlir::Operation* op) {
-    auto module = getModuleOp(op);
-
-    if (module->hasAttr(revisionIDAttrName)) {
-        if (auto attr = module->getAttr(revisionIDAttrName)) {
-            VPUX_THROW_UNLESS(mlir::isa<vpux::VPU::RevisionIDAttr>(attr),
-                              "Module attribute '{0}' has unsupported value '{1}'", revisionIDAttrName, attr);
-
-            return mlir::cast<vpux::VPU::RevisionIDAttr>(attr).getValue();
-        }
-    }
-
-    return VPU::RevisionID::REVISION_NONE;
 }
 
 //
@@ -822,7 +538,7 @@ bool vpux::VPU::isDistributionWithExplicitShapesAndOffsets(const VPU::Distributi
 }
 
 bool vpux::VPU::isUniformDistributedSegmentsSupported(mlir::Operation* op) {
-    return !VPU::isArchVPUX3XXX(VPU::getArch(op));
+    return !config::isArchVPUX3XXX(config::getArch(op));
 }
 
 //

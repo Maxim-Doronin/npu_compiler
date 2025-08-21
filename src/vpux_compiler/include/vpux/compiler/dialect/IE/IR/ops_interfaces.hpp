@@ -5,18 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
-
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
-#include "vpux/utils/core/optional.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
-#include <mlir/Dialect/Quant/QuantTypes.h>
 #include <mlir/IR/OpDefinition.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/ValueRange.h>

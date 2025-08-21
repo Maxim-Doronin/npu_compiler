@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/passes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 namespace vpux::VPURegMapped {
@@ -54,7 +55,7 @@ void DeduceDynamicMappedInferenceVersion::safeRunOnModule() {
         return maxVersion;
     };
 
-    const auto newVersion = getVersionFromOps(elfMain);
+    auto newVersion = getVersionFromOps(elfMain);
 
     auto setNewVersion = [&](ELF::MainOp main) -> void {
         for (auto dataSection : main.getOps<ELF::DataSectionOp>()) {

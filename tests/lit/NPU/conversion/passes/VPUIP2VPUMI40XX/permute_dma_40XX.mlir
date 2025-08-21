@@ -6,143 +6,292 @@
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-VPUIP-to-VPUMI40XX %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
+// Based on PermuteDMAWithNHWCToNCHW from VPUIP PermuteDMA unrolling
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
 module @permuteDMA {
   net.NetworkInfo entryPoint : @main inputsInfo : {
-    DataInfo "input_0" : tensor<16x256xf16>
+    DataInfo "input_0" : tensor<1xf16>  // Dummy value
   } outputsInfo : {
-    DataInfo "output_0" : tensor<16x256xf16>
+    DataInfo "output_0" : tensor<1xf16> // Dummy value
   }
-  func.func @main(%arg0: memref<16x256xf16, @DDR>, %arg1: memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR> {
-    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<16x256xf16, @DDR>
-    %1 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<256x16xf16, @DDR>
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %3 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR>
+
+  // Func simply returns arg1 without copying any PermuteDMA results to it beforehand
+  func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memref<1xf16, @DDR> {
+    %0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>
+    %1 = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>
+
+    %2 = VPURT.DeclareBuffer <CMX_NN> [0] <4096> -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
+    %3 = VPURT.DeclareBuffer <CMX_NN> [0] <4352> -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
+
+    VPURT.Task {
+      %4 = VPUIP.PermuteDMA {
+              internalDataFlow = #VPUIP.InternalDataFlowAttr<
+                  inputType = memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>,
+                  outputType = memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>,
+                  mappingOrder = #NCHW, loopOrder = #NHWC
+              >,
+              port = 0 : i64
+          } 
+          inputs(%0 : memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>)
+          outputs(%2 : memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>)
+          -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
     }
 
-    // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: %[[VAL0:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:0>
-
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %4 =  VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR>
+    VPURT.Task {
+      %4 = VPUIP.PermuteDMA {
+              internalDataFlow = #VPUIP.InternalDataFlowAttr<
+                  inputType = memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>,
+                  outputType = memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>,
+                  mappingOrder = #NCHW, loopOrder = #NHWC
+              >,
+              port = 1 : i64
+          }
+          inputs(%1 : memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>)
+          outputs(%3 : memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>)
+          -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
     }
 
-    // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: %[[VAL1:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) previousDMA(%[[VAL0]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:1>
+    return %arg1 : memref<1xf16, @DDR>
 
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %5 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) -> memref<256x16xf16, @DDR>
-    }
+    // CHECK: [[INPUT_BUFFER_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[INPUT_TYPE_0:.+]]
+    // CHECK: [[INPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[INPUT_TYPE_1:.+]]
 
-    // CHECK-NOT: VPUIP.PermuteDMA
-    // CHECK: %[[VAL2:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) previousDMA(%[[VAL1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:2>
+    // CHECK: [[OUTPUT_BUFFER_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <4096> -> [[OUTPUT_TYPE_0:.+]]
+    // CHECK: [[OUTPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <4352> -> [[OUTPUT_TYPE_1:.+]]
 
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %6 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) -> memref<256x16xf16, @DDR>
-    }
+    // CHECK-NOT:   VPUIP.NNDMA
+    // CHECK:       [[DMA_0:%.+]] = VPUMI40XX.NNDMA
+    // CHECK-SAME:      allow_different_in_out_shapes
+    // CHECK-SAME:      port = 0
+    // CHECK-SAME:      inputs([[INPUT_BUFFER_0]] : [[INPUT_TYPE_0]])
+    // CHECK-SAME:      outputs([[OUTPUT_BUFFER_0]] : [[OUTPUT_TYPE_0]])
+    // CHECK-SAME:      start_after(0)
+    // CHECK-SAME:      clean_after(0)
+    // CHECK-SAME:      acceleration_mode(<DISABLE>)
+    // CHECK-SAME:      dma_transaction
+    // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
+    // CHECK-SAME:              inputType = [[INPUT_TYPE_0]]
+    // CHECK-SAME:              outputType = [[OUTPUT_TYPE_0]]
+    // CHECK-SAME:              mappingOrder = #NCHW
+    // CHECK-SAME:              loopOrder = #NHWC
+    // CHECK-SAME:  -> !VPURegMapped.Index<0:1:0>
 
-    // CHECK-NOT: VPUIP.PermuteDMA
-    // CHECK: %[[VAL3:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) previousDMA(%[[VAL2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:3>
-
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %7 =  VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR>
-    }
-
-    // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: %[[VAL4:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) previousDMA(%[[VAL3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:4>
-
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %8 =  VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR>
-    }
-
-    // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: %[[VAL5:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) previousDMA(%[[VAL4]] : !VPURegMapped.Index<0:0:4>)  start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:5>
-
-    return %arg1 : memref<16x256xf16, @DDR>
+    // CHECK-NOT:   VPUIP.NNDMA
+    // CHECK:       [[DMA_1:%.+]] = VPUMI40XX.NNDMA
+    // CHECK-SAME:      allow_different_in_out_shapes
+    // CHECK-SAME:      port = 1
+    // CHECK-SAME:      inputs([[INPUT_BUFFER_1]] : [[INPUT_TYPE_1]])
+    // CHECK-SAME:      outputs([[OUTPUT_BUFFER_1]] : [[OUTPUT_TYPE_1]])
+    // CHECK-SAME:      start_after(0)
+    // CHECK-SAME:      clean_after(0)
+    // CHECK-SAME:      acceleration_mode(<DISABLE>)
+    // CHECK-SAME:      dma_transaction
+    // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
+    // CHECK-SAME:              inputType = [[INPUT_TYPE_1]]
+    // CHECK-SAME:              outputType = [[OUTPUT_TYPE_1]]
+    // CHECK-SAME:              mappingOrder = #NCHW
+    // CHECK-SAME:              loopOrder = #NHWC
+    // CHECK-SAME:  -> !VPURegMapped.Index<1:1:0>
   }
 }
 
 // -----
 
+// Based on PermuteDMAFromTranspose from VPUIP PermuteDMA unrolling
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
+
 module @permuteDMA {
   net.NetworkInfo entryPoint : @main inputsInfo : {
-    DataInfo "input_0" : tensor<16x256xf16>
+    DataInfo "input_0" : tensor<1xf16>  // Dummy value
   } outputsInfo : {
-    DataInfo "output_0" : tensor<16x256xf16>
+    DataInfo "output_0" : tensor<1xf16> // Dummy value
   }
-  func.func @main(%arg0: memref<16x256xf16, @DDR>, %arg1: memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR> {
-    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<16x256xf16, @DDR>
-    %1 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<256x16xf16, @DDR>
 
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %2 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) -> memref<256x16xf16, @DDR>
+  // Func simply returns arg1 without copying any PermuteDMA results to it beforehand
+  func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memref<1xf16, @DDR> {
+    %0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>
+    %1 = VPURT.DeclareBuffer <CMX_NN> [0] <256> -> memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>
+
+    %2 = VPURT.DeclareBuffer <CMX_NN> [0] <4096> -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
+    %3 = VPURT.DeclareBuffer <CMX_NN> [0] <4128> -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
+
+    VPURT.Task {
+      %4 = VPUIP.PermuteDMA {
+              internalDataFlow = #VPUIP.InternalDataFlowAttr<
+                  inputType = memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>,
+                  outputType = memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>,
+                  mappingOrder = #NWHC,
+                  loopOrder = #NHWC
+              >,
+              port = 0 : i64
+          }
+          inputs(%0 : memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>)
+          outputs(%2 : memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>)
+          -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
     }
 
-    // CHECK-NOT: VPUIP.PermuteDMA
-    // CHECK: %[[VAL0:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:0>
-
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %3 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) -> memref<256x16xf16, @DDR>
+    VPURT.Task {
+      %4 = VPUIP.PermuteDMA {
+              internalDataFlow = #VPUIP.InternalDataFlowAttr<
+                  inputType = memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>,
+                  outputType = memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>,
+                  mappingOrder = #NWHC,
+                  loopOrder = #NHWC
+              >,
+              port = 1 : i64
+          }
+          inputs(%1 : memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>)
+          outputs(%3 : memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>)
+          -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
     }
 
-    // CHECK-NOT: VPUIP.PermuteDMA
-    // CHECK: %[[VAL1:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) previousDMA(%[[VAL0]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:1>
+    return %arg1 : memref<1xf16, @DDR>
 
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR>
-    }
+    // CHECK: [[INPUT_BUFFER_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[INPUT_TYPE_0:.+]]
+    // CHECK: [[INPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <256> -> [[INPUT_TYPE_1:.+]]
 
-    // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: %[[VAL2:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) previousDMA(%[[VAL1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:2>
+    // CHECK: [[OUTPUT_BUFFER_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <4096> -> [[OUTPUT_TYPE_0:.+]]
+    // CHECK: [[OUTPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <4128> -> [[OUTPUT_TYPE_1:.+]]
 
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %5 =  VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) -> memref<16x256xf16, @DDR>
-    }
+    // CHECK-NOT:   VPUIP.NNDMA
+    // CHECK:       [[DMA_0:%.+]] = VPUMI40XX.NNDMA
+    // CHECK-SAME:      allow_different_in_out_shapes
+    // CHECK-SAME:      port = 0
+    // CHECK-SAME:      inputs([[INPUT_BUFFER_0]] : [[INPUT_TYPE_0]])
+    // CHECK-SAME:      outputs([[OUTPUT_BUFFER_0]] : [[OUTPUT_TYPE_0]])
+    // CHECK-SAME:      start_after(0)
+    // CHECK-SAME:      clean_after(0)
+    // CHECK-SAME:      acceleration_mode(<DISABLE>)
+    // CHECK-SAME:      dma_transaction
+    // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
+    // CHECK-SAME:              inputType = [[INPUT_TYPE_0]]
+    // CHECK-SAME:              outputType = [[OUTPUT_TYPE_0]]
+    // CHECK-SAME:              mappingOrder = #NWHC
+    // CHECK-SAME:              loopOrder = #NHWC
+    // CHECK-SAME:  -> !VPURegMapped.Index<0:1:0>
 
-    // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: %[[VAL3:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%0 : memref<16x256xf16, @DDR>) previousDMA(%[[VAL2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:3>
-
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %6 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) -> memref<256x16xf16, @DDR>
-    }
-
-    // CHECK-NOT: VPUIP.PermuteDMA
-    // CHECK: %[[VAL4:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) previousDMA(%[[VAL3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:4>
-
-    VPURT.Task attributes {isTrailingSWLayer = false} {
-      %7 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) -> memref<256x16xf16, @DDR>
-    }
-
-    // CHECK-NOT: VPUIP.PermuteDMA
-    // CHECK: %[[VAL5:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%0 : memref<16x256xf16, @DDR>) outputs(%1 : memref<256x16xf16, @DDR>) previousDMA(%[[VAL4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:5>
-
-    return %arg1 : memref<16x256xf16, @DDR>
+    // CHECK-NOT:   VPUIP.NNDMA
+    // CHECK:       [[DMA_1:%.+]] = VPUMI40XX.NNDMA
+    // CHECK-SAME:      allow_different_in_out_shapes
+    // CHECK-SAME:      port = 1
+    // CHECK-SAME:      inputs([[INPUT_BUFFER_1]] : [[INPUT_TYPE_1]])
+    // CHECK-SAME:      outputs([[OUTPUT_BUFFER_1]] : [[OUTPUT_TYPE_1]])
+    // CHECK-SAME:      start_after(0)
+    // CHECK-SAME:      clean_after(0)
+    // CHECK-SAME:      acceleration_mode(<DISABLE>)
+    // CHECK-SAME:      dma_transaction
+    // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
+    // CHECK-SAME:              inputType = [[INPUT_TYPE_1]]
+    // CHECK-SAME:              outputType = [[OUTPUT_TYPE_1]]
+    // CHECK-SAME:              mappingOrder = #NWHC
+    // CHECK-SAME:              loopOrder = #NHWC
+    // CHECK-SAME:  -> !VPURegMapped.Index<1:1:0>
   }
 }
 
 // -----
 
-#NC = affine_map<(d0, d1) -> (d0, d1)>
+// Based on ClusterPermuteDMAWithDistributedInputAndOutput from VPUIP PermuteDMA unrolling
+
+!qElemType = !quant.uniform<u8:f16, 0.0173492431640625:114>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
 module @permuteDMA {
-net.NetworkInfo entryPoint : @UnrollDistributedPermuteDMAOutput inputsInfo : {
-  DataInfo "input_0" : tensor<1x16x16x16xf16>
+net.NetworkInfo entryPoint : @main inputsInfo : {
+  DataInfo "input_0" : tensor<1xf16>  // Dummy value
 } outputsInfo : {
-  DataInfo "output_0" : tensor<64x32x1x1xf16>
+  DataInfo "output_0" : tensor<1xf16> // Dummy value
 }
-func.func @UnrollDistributedPermuteDMAOutput(%arg0: memref<1x16x16x16xf16, @DDR>, %arg1: memref<64x32x1x1xf16, @DDR>) -> memref<64x32x1x1xf16, @DDR> {
-  %cst = const.Declare memref<16x256xf16, #NC, @DDR> = dense<1.000000e+00> : tensor<16x256xf16>, [#const.Reorder<#NC>]
-  // CHECK-DAG: %[[CST:.*]] = const.Declare memref<16x256xf16, @DDR>
+func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memref<1xf16, @DDR> {
+    %0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>
+    %1 = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>
 
-  %3 = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<16x256xf16, {order = #NC, strides = [256, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>
-  // CHECK-NOT: VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<16x256xf16, {order = #NC, strides = [256, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>
+    %2 = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2000> -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    %3 = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2032> -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-  VPURT.Task attributes {isTrailingSWLayer = false} {
-    %4 = VPUIP.PermuteDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%cst : memref<16x256xf16, #NC, @DDR>) outputs(%3 : !VPUIP.DistributedBuffer<16x256xf16, {order = #NC, strides = [256, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>) -> !VPUIP.DistributedBuffer<16x256xf16, {order = #NC, strides = [256, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments}>
+    VPURT.Task {
+      %4 = VPUIP.PermuteDMA {
+              internalDataFlow = #VPUIP.InternalDataFlowAttr<
+                  inputType = memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>,
+                  outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
+                  mappingOrder = #NCHW, loopOrder = #NHWC
+              >,
+              port = 0 : i64
+          }
+          inputs(%0 : memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>)
+          outputs(%2 : !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+          -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    }
+    VPURT.Task {
+      %4 = VPUIP.PermuteDMA {
+              internalDataFlow = #VPUIP.InternalDataFlowAttr<
+                      inputType = memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>,
+                      outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
+                      mappingOrder = #NCHW,
+                      loopOrder = #NHWC
+                  >,
+              port = 1 : i64
+          }
+          inputs(%1 : memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>)
+          outputs(%3 : !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+          -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    }
+
+    return %arg1: memref<1xf16, @DDR>
+
+    // CHECK: [[INPUT_BUFFER_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[INPUT_TYPE_0:.+]]
+    // CHECK: [[INPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> [[INPUT_TYPE_1:.+]]
+
+    // CHECK: [[OUTPUT_BUFFER_0_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2000> -> [[OUTPUT_TYPE_0_0:.+]]
+    // CHECK: [[OUTPUT_BUFFER_0_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <2000> -> [[OUTPUT_TYPE_0_1:.+]]
+
+    // CHECK-NOT:   VPUIP.NNDMA
+    // CHECK:       [[DMA_0:%.+]] = VPUMI40XX.NNDMA
+    // CHECK-SAME:      allow_different_in_out_shapes
+    // CHECK-SAME:      port = 0
+    // CHECK-SAME:      inputs([[INPUT_BUFFER_0]] : [[INPUT_TYPE_0]])
+    // CHECK-SAME:      outputs([[OUTPUT_BUFFER_0_0]], [[OUTPUT_BUFFER_0_1]] : [[OUTPUT_TYPE_0_0]], [[OUTPUT_TYPE_0_1]])
+    // CHECK-SAME:      start_after(0)
+    // CHECK-SAME:      clean_after(0)
+    // CHECK-SAME:      acceleration_mode(<DISABLE>)
+    // CHECK-SAME:      dma_transaction
+    // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
+    // CHECK-SAME:              inputType = [[INPUT_TYPE_0]]
+
+    // PermuteDMATransaction type does not get updated here
+    // CHECK-SAME:              outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    
+    // CHECK-SAME:              mappingOrder = #NCHW
+    // CHECK-SAME:              loopOrder = #NHWC
+    // CHECK-SAME:  -> !VPURegMapped.Index<0:1:0>
+
+    // CHECK: [[OUTPUT_BUFFER_1_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2032> -> [[OUTPUT_TYPE_1_0:.+]]
+    // CHECK: [[OUTPUT_BUFFER_1_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <2032> -> [[OUTPUT_TYPE_1_1:.+]]
+
+    // CHECK-NOT:   VPUIP.NNDMA
+    // CHECK:       [[DMA_1:%.+]] = VPUMI40XX.NNDMA
+    // CHECK-SAME:      allow_different_in_out_shapes
+    // CHECK-SAME:      port = 1
+    // CHECK-SAME:      inputs([[INPUT_BUFFER_1]] : [[INPUT_TYPE_1]])
+    // CHECK-SAME:      outputs([[OUTPUT_BUFFER_1_0]], [[OUTPUT_BUFFER_1_1]] : [[OUTPUT_TYPE_1_0]], [[OUTPUT_TYPE_1_1]])
+    // CHECK-SAME:      start_after(0)
+    // CHECK-SAME:      clean_after(0)
+    // CHECK-SAME:      acceleration_mode(<DISABLE>)
+    // CHECK-SAME:      dma_transaction
+    // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
+    // CHECK-SAME:              inputType = [[INPUT_TYPE_1]]
+    
+    // PermuteDMATransaction type does not get updated here
+    // CHECK-SAME:              outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK-SAME:              mappingOrder = #NCHW
+    // CHECK-SAME:              loopOrder = #NHWC
+    // CHECK-SAME:  -> !VPURegMapped.Index<1:1:0>
   }
-  // CHECK: %[[BUFF_TILE_0:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<16x256xf16, [@CMX_NN, 0]>
-  // CHECK: %[[BUFF_TILE_1:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<16x256xf16, [@CMX_NN, 1]>
-  // CHECK-NOT: VPURT.Task
-  // CHECK: %[[DMA0:.*]] = VPUMI40XX.NNDMA {allow_different_in_out_shapes, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 16 : i64, len = 512 : i64, srcWidth = 512 : i64, srcStride = 2 : i64, srcPlaneStride = 512 : i64, dstWidth = 2 : i64, dstStride = 32 : i64, dstPlaneStride = 2 : i64>, port = 0 : i64} inputs(%[[CST]] : memref<16x256xf16, @DDR>) outputs(%[[BUFF_TILE_0]], %[[BUFF_TILE_1]] : memref<16x256xf16, [@CMX_NN, 0]>, memref<16x256xf16, [@CMX_NN, 1]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:0>
-
-  return %arg1 : memref<64x32x1x1xf16, @DDR>
-}
 }

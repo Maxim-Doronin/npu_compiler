@@ -3,17 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <common_test_utils/test_constants.hpp>
 #include <string>
 
 #include "intel_npu/npu_private_properties.hpp"
 #include "utils.hpp"
 
 std::string getBackendName(const ov::Core& core) {
-    return core.get_property("NPU", ov::intel_npu::backend_name.name()).as<std::string>();
+    return core.get_property(ov::test::utils::DEVICE_NPU, ov::intel_npu::backend_name.name()).as<std::string>();
 }
 
 std::vector<std::string> getAvailableDevices(const ov::Core& core) {
-    return core.get_property("NPU", ov::available_devices.name()).as<std::vector<std::string>>();
+    return core.get_property(ov::test::utils::DEVICE_NPU, ov::available_devices.name()).as<std::vector<std::string>>();
 }
 
 std::string modelPriorityToString(const ov::hint::Priority priority) {

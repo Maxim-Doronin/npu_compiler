@@ -5,8 +5,24 @@
 
 #pragma once
 
-#include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
+#include "vpux/utils/core/small_vector.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/Types.h>
+
+#include <optional>
+
+namespace vpux {
+class NDTypeInterface;
+}
+namespace vpux::config {
+enum class ArchKind : uint64_t;
+}
+namespace vpux::VPUIP {
+enum class NCETaskType : uint64_t;
+}
 
 namespace vpux::VPUIPDPU::arch40xx::IDU {
 
@@ -78,7 +94,7 @@ mlir::LogicalResult buildIDUConfig(mlir::OpBuilder& builder, const mlir::Locatio
 
 mlir::LogicalResult configureEltwiseCfg(const Logger& log, IDUConfig::EltWiseCfg& config, VPUIP::NCETaskType taskType,
                                         mlir::Type inActType, mlir::Type weightsType, const PPETask& ppeTask,
-                                        VPU::ArchKind arch);
+                                        config::ArchKind arch);
 
 mlir::LogicalResult configureDepthWiseCfg(const Logger& log, IDUConfig::DepthWiseCfg& config,
                                           VPUIP::NCETaskType taskType, std::optional<bool> smallKernelOptimization);

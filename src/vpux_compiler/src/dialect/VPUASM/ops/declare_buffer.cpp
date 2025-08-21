@@ -12,12 +12,12 @@ using namespace vpux;
 // DeclareBufferOp
 //
 
-size_t VPUASM::DeclareBufferOp::getBinarySize(VPU::ArchKind) {
+size_t VPUASM::DeclareBufferOp::getBinarySize(config::ArchKind) {
     const auto type = mlir::cast<vpux::NDTypeInterface>(getBufferType().getMemref());
     return ELF::getOpBinarySize(type);
 }
 
-size_t VPUASM::DeclareBufferOp::getAlignmentRequirements(VPU::ArchKind) {
+size_t VPUASM::DeclareBufferOp::getAlignmentRequirements(config::ArchKind) {
     // DeclareBuffers are addressed by the mem-schedulers, so can't override anything
     return ELF::VPUX_NO_ALIGNMENT;
 }

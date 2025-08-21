@@ -345,23 +345,6 @@ def VPUIP_CompressionStateAttr : VPUIP_EnumAttr<VPUIP_CompressionState, "Compres
         }];
     }
 
-//
-// WlmStatus
-//
-
-def VPUIP_WlmStatus :
-    VPUIP_I64EnumAttr<
-        "WlmStatus",
-        "WLM status",
-        [
-            I64EnumAttrCase<"ENABLED",  0>,
-            I64EnumAttrCase<"DISABLED", 1>,
-            I64EnumAttrCase<"FAILED",   2>
-        ]
-    > {
-}
-
-def VPUIP_WlmStatusAttr : VPUIP_EnumAttr<VPUIP_WlmStatus, "wlm_status">;
 
 //
 // VPUIPInlinerDispatch
@@ -499,6 +482,58 @@ def VPUIP_DynamicScaleConfigAttr : VPUIP_Attr<"DynamicScaleConfig"> {
         OptionalParameter<"mlir::ArrayAttr">:$invariantPrimitiveId // IDs for invariant primitives A and B
     );
     let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//
+// VPUIP_FetchDMAAttr
+//
+
+def VPUIP_FetchDMAAttr : VPUIP_Attr<"FetchDMA"> {
+    let description = [{
+        "Represents attributes required to correctly lower with NNDMAs for fetch task descriptors"
+    }];
+
+    let parameters = (ins
+        "vpux::VPU::ExecutorKindAttr":$targetExecutorKindAttr,
+        "mlir::IntegerAttr":$tileIdx,
+        "mlir::IntegerAttr":$listIdx,
+        "mlir::IntegerAttr":$execGroupIdx
+    );
+
+    let assemblyFormat = [{
+        `<`
+            $targetExecutorKindAttr `,`
+            `tile` `=` $tileIdx `,`
+            `list` `=` $listIdx `,`
+            `group` `=` $execGroupIdx
+        `>`
+    }];
+}
+
+//
+// VPUIP_EnqueueDMAAttr
+//
+
+def VPUIP_EnqueueDMAAttr : VPUIP_Attr<"EnqueueDMA"> {
+    let description = [{
+        "Represents attributes required for identifying what operation is to be enqueued using this DMA"
+    }];
+
+    let parameters = (ins
+        "vpux::VPU::ExecutorKindAttr":$targetExecutorKindAttr,
+        "mlir::IntegerAttr":$tileIdx,
+        "mlir::IntegerAttr":$listIdx,
+        "mlir::IntegerAttr":$startTaskIdx,
+        "mlir::IntegerAttr":$endTaskIdx
+    );
+
+    let assemblyFormat = [{
+        `<` $targetExecutorKindAttr `,`
+            `tile` `=` $tileIdx `,`
+            `list` `=` $listIdx `,`
+            `startTask` `=` $startTaskIdx `,`
+            `endTask` `=` $endTaskIdx `>`
+    }];
 }
 
 #endif

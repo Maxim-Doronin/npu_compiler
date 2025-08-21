@@ -9,6 +9,6 @@
 
 namespace vpux::VPUIP {
 
-std::unique_ptr<ICaptureWorkpointStrategy> createCaptureWorkpointStrategy(VPU::ArchKind arch);
+std::unique_ptr<ICaptureWorkpointStrategy> createCaptureWorkpointStrategy(config::ArchKind arch);
 
 }  // namespace vpux::VPUIP

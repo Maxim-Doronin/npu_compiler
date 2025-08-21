@@ -5,9 +5,11 @@
 
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/attributes/dim.hpp"
-#include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
@@ -16,8 +18,8 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/allocate_buffers.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
-#include "vpux/compiler/utils/reshape_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/Operation.h>
@@ -25,7 +27,6 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-#include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_OPTIMIZECONCATVIEWCOPIES
@@ -244,7 +245,7 @@ mlir::LogicalResult AvoidConcatExtraChannel::checkConcatInputs(mlir::ValueRange 
         auto sizes = parseIntArrayAttr<int64_t>(subview.getStaticSizesAttr());
 
         auto concatDims = getConcatDims(Shape(sizes), concatOutShape);
-        if (concatDims.size() != 1) {
+        if (concatDims.size() != 1 && llvm::find(concatDims, Dims4D::Act::C) != concatDims.end()) {
             return mlir::failure();
         }
 
@@ -881,7 +882,7 @@ bool ReuseConcatViewAsInput::isLegalConcatViewInputPattern(VPUIP::ConcatViewOp c
         return false;
     }
 
-    if (!VPUIP::hasOneOrSameUser(concatViewOp.getOperation())) {
+    if (!hasOneUniqueUser(concatViewOp.getOperation())) {
         log.nest().nest().trace("ConcatViewOp has more than one user");
         return false;
     }
@@ -2522,7 +2523,7 @@ private:
                                                     const PatternParamsInfo& params, size_t index) const = 0;
 
     virtual bool isValidSegment(SmallVector<VPUIP::SubViewOp>& views, SmallVector<VPUIP::CopyOp>& distributedCopies,
-                                Dim newConcatDim, int64_t leftConcatInputSize) const = 0;
+                                Dim newConcatDim, int64_t leftConcatInputSize, int64_t rightConcatInputSize) const = 0;
 
     virtual VPUIP::DistributedBufferType updateDistributedType(mlir::Value dst, mlir::Value dstView,
                                                                ShapeRef copyShape) const = 0;
@@ -3024,7 +3025,8 @@ public:
         }
 
         // check the segmented distribution alignment without explicit compute shapes and memory offsets
-        if (!isValidSegment(views, distributedCopies, params.newConcatDim, params.leftConcatInputSize)) {
+        if (!isValidSegment(views, distributedCopies, params.newConcatDim, params.leftConcatInputSize,
+                            params.rightInputSize)) {
             nestedLog.trace("Segmented tiling is not aligned.");
             return mlir::failure();
         }
@@ -3116,7 +3118,8 @@ private:
         return newConcatDim.ind() != tilingDim;
     }
 
-    bool isValidSegment(SmallVector<VPUIP::SubViewOp>&, SmallVector<VPUIP::CopyOp>&, Dim, int64_t) const override {
+    bool isValidSegment(SmallVector<VPUIP::SubViewOp>&, SmallVector<VPUIP::CopyOp>&, Dim, int64_t,
+                        int64_t) const override {
         return true;
     }
 
@@ -3290,7 +3293,7 @@ private:
     }
 
     bool isValidSegment(SmallVector<VPUIP::SubViewOp>& views, SmallVector<VPUIP::CopyOp>& distributedCopies,
-                        Dim newConcatDim, int64_t leftConcatInputSize) const override {
+                        Dim newConcatDim, int64_t leftConcatInputSize, int64_t rightConcatInputSize) const override {
         for (size_t i = 0; i < distributedCopies.size(); ++i) {
             VPUIP::CopyOp distributedCopy = distributedCopies[i];
             VPUX_THROW_UNLESS(vpux::VPUIP::hasDistributedOperand(distributedCopy), "Expected a distributed Copy op");
@@ -3300,8 +3303,22 @@ private:
                 auto dstDistribution = dstDistributedType.getDistribution();
                 auto dstDistributionInfo = VPU::DistributionInfo::getClassFromAttr(dstDistribution);
 
+                const auto bufferShape = dstDistributedType.getShape();
+                auto maybeTileIndex = VPUIP::getTilingDimIndex(dstDistributedType);
+                if (!maybeTileIndex.has_value()) {
+                    return false;
+                }
+                const auto tileDim = Dim(maybeTileIndex.value());
+                if (leftConcatInputSize >= bufferShape[tileDim]) {
+                    return false;
+                }
+
                 if (isDistributionWithExplicitShapesAndOffsets(dstDistributionInfo)) {
-                    return true;
+                    const auto computeShapes = VPU::arrayAttrToVecOfShapes(dstDistribution.getComputeShapes());
+                    // After optimization, if the tensor is not evenly split, the distributed copy for the left
+                    // concatenation data will result in a smaller compute shape on the last cluster.
+                    // Ensure that the left branch has sufficient data for the last cluster.
+                    return computeShapes.back()[newConcatDim] > rightConcatInputSize;
                 }
 
                 const auto distributionMode = dstDistributionInfo.getDistributionMode();
@@ -3552,7 +3569,14 @@ private:
         return newConcatDim.ind() == tilingDim;
     }
 
-    bool isValidSegment(SmallVector<VPUIP::SubViewOp>&, SmallVector<VPUIP::CopyOp>&, Dim, int64_t) const override {
+    bool isValidSegment(SmallVector<VPUIP::SubViewOp>& subviews, SmallVector<VPUIP::CopyOp>&, Dim newConcatDim,
+                        int64_t leftConcatInputSize, int64_t rightConcatInputSize) const override {
+        for (auto subview : subviews) {
+            auto outShape = getShape(subview.getResult());
+            if (leftConcatInputSize + rightConcatInputSize != outShape[newConcatDim]) {
+                return false;
+            }
+        }
         return true;
     }
 

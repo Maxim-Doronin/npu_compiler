@@ -5,11 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
-#include "vpux/compiler/dialect/const/attributes/content.hpp"
-#include "vpux/compiler/utils/subspaces.hpp"
-#include "vpux/compiler/utils/types.hpp"
-#include "vpux/utils/core/format.hpp"
+#include "vpux/compiler/dialect/const/utils/content.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include <mlir/Dialect/Quant/QuantTypes.h>
 

@@ -48,7 +48,7 @@ mlir::FailureOr<SymbolizationResult> KernelParamsRewriter::symbolize(VPUMI40XX::
 
 llvm::SmallVector<mlir::FlatSymbolRefAttr> KernelParamsRewriter::getSymbolicNames(VPUMI40XX::KernelParamsOp op,
                                                                                   size_t) {
-    return getSymbolicNamesByTileListValue(op);
+    return createSymbolicName(op);
 }
 
 }  // namespace vpumi40xx2vpuasm

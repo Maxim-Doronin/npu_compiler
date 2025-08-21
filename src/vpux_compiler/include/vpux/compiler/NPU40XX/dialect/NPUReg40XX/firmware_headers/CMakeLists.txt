@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2023-2025 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
 #
 
 add_library(npu_40xx_firmware_headers INTERFACE)

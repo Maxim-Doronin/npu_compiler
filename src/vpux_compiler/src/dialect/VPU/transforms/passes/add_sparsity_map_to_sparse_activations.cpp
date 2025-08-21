@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -76,7 +77,7 @@ void AddSparsityMapToSparseActivationsPass::safeRunOnFunc() {
 
             auto isSEOnlyOp = mlir::isa<VPU::GroupSparseTensorOp>(op) && sparseType.getSparsityMap() == nullptr &&
                               sparseType.getStorageElementTable() != nullptr;
-            if (VPU::isSEOnlyWithoutSMSupported(VPU::getArch(op)) && isSEOnlyOp) {
+            if (VPU::isSEOnlyWithoutSMSupported(config::getArch(op)) && isSEOnlyOp) {
                 return;
             }
 

@@ -9,7 +9,9 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassInstrumentation.h>
 
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/utils/options.hpp"
 
 using namespace vpux;
 
@@ -86,7 +88,7 @@ public:
             return;
         }
         auto module = op->getParentOfType<mlir::ModuleOp>();
-        if (vpux::VPUIP::getWlmStatus(module) == vpux::VPUIP::WlmStatus::FAILED) {
+        if (VPU::getWorkloadManagementStatus(module) == VPU::WorkloadManagementStatus::FAILED) {
             _log.warning("WLM Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
         } else {
             _log.error("Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());

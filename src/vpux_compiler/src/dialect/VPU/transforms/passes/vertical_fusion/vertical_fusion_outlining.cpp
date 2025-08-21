@@ -65,7 +65,10 @@ void VerticalFusionOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<Smal
         const auto vfNum = llvm::count_if(slice.operations, [](auto* op) {
             return mlir::isa_and_nonnull<VPU::VerticalFusionOp>(op);
         });
-        return vfNum == 1;
+        const auto clusteredOpNum = llvm::count_if(slice.operations, [](auto* op) {
+            return mlir::isa_and_nonnull<VPU::ClusteredOpInterface>(op);
+        });
+        return vfNum == 1 && clusteredOpNum == 0;
     };
     for (const auto& [targetIdx, slices] : outlinedTargets | indexed) {
         const auto& slice = slices.front();

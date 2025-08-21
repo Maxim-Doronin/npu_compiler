@@ -21,8 +21,8 @@ int64_t vpux::getDMAPortValue(mlir::Operation* wrappedTaskOp) {
     VPUX_THROW("Could not cast to DMA task '{0}'", *wrappedTaskOp);
 }
 
-SmallVector<VPUIP::DmaChannelType> vpux::getDMAChannelsWithIndependentLinkAgents(VPU::ArchKind arch) {
-    if (arch <= VPU::ArchKind::NPU37XX) {
+SmallVector<VPUIP::DmaChannelType> vpux::getDMAChannelsWithIndependentLinkAgents(config::ArchKind arch) {
+    if (arch <= config::ArchKind::NPU37XX) {
         return {VPUIP::DmaChannelType::NOT_SPECIFIED};
     }
 
@@ -40,8 +40,8 @@ int64_t vpux::getDMAQueueIdEncoding(std::optional<vpux::VPUIP::DmaChannelType> c
     return getDMAQueueIdEncoding(0, static_cast<int64_t>(channel.value_or(VPUIP::DmaChannelType::NOT_SPECIFIED)));
 }
 
-int64_t vpux::getDMAQueueIdEncoding(VPU::MemoryKind srcMemKind, VPU::ArchKind arch) {
-    if (arch <= VPU::ArchKind::NPU37XX) {
+int64_t vpux::getDMAQueueIdEncoding(VPU::MemoryKind srcMemKind, config::ArchKind arch) {
+    if (arch <= config::ArchKind::NPU37XX) {
         return getDMAQueueIdEncoding(std::nullopt);
     }
 
@@ -55,24 +55,24 @@ int64_t vpux::getDMAPortFromEncodedId(int64_t dmaQueueIdEncoding) {
     return dmaQueueIdEncoding / (VPUIP::getMaxEnumValForDmaChannelType() + 1);
 }
 
-VPUIP::DmaChannelType vpux::getDMAChannelTypeFromEncodedId(int64_t dmaQueueIdEncoding, VPU::ArchKind arch) {
-    if (arch <= VPU::ArchKind::NPU37XX) {
+VPUIP::DmaChannelType vpux::getDMAChannelTypeFromEncodedId(int64_t dmaQueueIdEncoding, config::ArchKind arch) {
+    if (arch <= config::ArchKind::NPU37XX) {
         return VPUIP::DmaChannelType::NOT_SPECIFIED;
     }
 
     return static_cast<VPUIP::DmaChannelType>(dmaQueueIdEncoding % (VPUIP::getMaxEnumValForDmaChannelType() + 1));
 }
 
-std::string vpux::getDMAChannelTypeAsString(VPUIP::DmaChannelType channelType, VPU::ArchKind arch) {
-    if (arch <= VPU::ArchKind::NPU37XX) {
+std::string vpux::getDMAChannelTypeAsString(VPUIP::DmaChannelType channelType, config::ArchKind arch) {
+    if (arch <= config::ArchKind::NPU37XX) {
         return "";
     }
 
     return stringifyEnum(channelType).str();
 }
 
-std::string vpux::getDMAChannelTypeAsString(int64_t dmaQueueIdEncoding, VPU::ArchKind arch) {
-    if (arch <= VPU::ArchKind::NPU37XX) {
+std::string vpux::getDMAChannelTypeAsString(int64_t dmaQueueIdEncoding, config::ArchKind arch) {
+    if (arch <= config::ArchKind::NPU37XX) {
         return "";
     }
 

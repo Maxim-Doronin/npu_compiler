@@ -4,6 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/layer_post_ops_utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/utils/core/numeric.hpp"
 

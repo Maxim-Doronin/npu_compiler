@@ -7,7 +7,9 @@
 
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/PatternMatch.h>
 
 namespace vpux {
 namespace VPURT {

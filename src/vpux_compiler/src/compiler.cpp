@@ -14,13 +14,18 @@
 #include "vpux/compiler/NPU40XX/dialect/ELF/export.hpp"
 #include "vpux/compiler/NPU40XX/dialect_pipeline_strategy.hpp"
 #include "vpux/compiler/compilation_options.hpp"
+#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
+#include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
+#include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/workload_management_status_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_in_background.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/frontend/ov_batch_detection.hpp"
@@ -29,6 +34,7 @@
 #include "vpux/compiler/pipelines/developer_config.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/utils/logging.hpp"
+#include "vpux/compiler/utils/options.hpp"
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include "vpux/utils/IE/itt.hpp"
@@ -88,11 +94,11 @@ constexpr uint32_t SUPPORTED_OPSET = 11;
 StrategyFactoryFn createDialectPipelineStrategyFn(const intel_npu::Config& config) {
     auto arch = getArchKind(config);
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return [&](config::CompilationMode compilationMode) {
             return createDialectPipelineStrategy37XX(compilationMode, config);
         };
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return [&](config::CompilationMode compilationMode) {
             return createDialectPipelineStrategy40XX(compilationMode, config);
         };
@@ -113,15 +119,22 @@ void buildPipeline(const intel_npu::Config& config, mlir::PassManager& pm, Logge
     pipelineFactory->buildPipeline(pm);
 }
 
+void buildCompileHostExecPipeline(mlir::PassManager& pm, const intel_npu::Config& config, Logger log) {
+    const auto compilationMode = getCompilationMode(config);
+    if (compilationMode == config::CompilationMode::HostCompile) {
+        vpux::HostExec::buildHostExecPipeline(pm, log);
+    }
+}
+
 //
 // createBackendPipelineStrategy
 //
 
-std::unique_ptr<IBackendPipelineStrategy> createBackendPipelineStrategy(VPU::ArchKind arch) {
+std::unique_ptr<IBackendPipelineStrategy> createBackendPipelineStrategy(config::ArchKind arch) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return std::make_unique<BackendPipelineStrategy37XX>();
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return std::make_unique<BackendPipelineStrategy40XX>();
     default:
         VPUX_THROW("Unsupported arch kind: {0}", arch);
@@ -176,15 +189,18 @@ namespace {
 auto importNetwork(mlir::MLIRContext* ctx, const std::shared_ptr<ov::Model>& model,
                    const std::vector<std::shared_ptr<const ov::Node>>& originalParameters,
                    const std::vector<std::shared_ptr<const ov::Node>>& originalResults, const intel_npu::Config& config,
-                   const DeveloperConfig& devConf, mlir::TimingScope& rootTiming, Logger log) {
+                   const DeveloperConfig& devConf, mlir::TimingScope& rootTiming, Logger log,
+                   bool enableWeightsSeparationPath = false) {
     auto importTiming = rootTiming.nest("Import network");
 
-    const auto dynamicShapeToStatic = config.get<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
-    const auto dummyOpReplacement = getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED);
+    IE::ImportNetworkConfig importCfg;
+    importCfg.sharedConstants = devConf.useSharedConstants();
+    importCfg.enableProfiling = config.get<intel_npu::PERF_COUNT>();
+    importCfg.stubLayers = getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED);
+    importCfg.dynamicShapeToStatic = config.get<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
+    importCfg.enableWeightsSeparationPath = enableWeightsSeparationPath;
 
-    return IE::importNetwork(ctx, model, originalParameters, originalResults, devConf.useSharedConstants(),
-                             importTiming, config.get<intel_npu::PERF_COUNT>(), dummyOpReplacement,
-                             dynamicShapeToStatic, log.nest());
+    return IE::importNetwork(ctx, model, originalParameters, originalResults, importTiming, importCfg, log.nest());
 }
 
 mlir::LogicalResult compileNetwork(mlir::ModuleOp module, mlir::PassManager& pm, mlir::TimingScope& nestTiming) {
@@ -215,11 +231,12 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
     devConf.setup(elfPm, config);
 
     mlir::LogicalResult compileResult = mlir::failure();
-    auto wlmStatus = vpux::VPUIP::getWlmStatus(vpuipModule.get());
-    auto wlmStillEnabled = wlmStatus == vpux::VPUIP::WlmStatus::ENABLED;
+    auto wlmStatus = VPU::getWorkloadManagementStatus(vpuipModule.get());
+    auto wlmStillEnabled = wlmStatus == VPU::WorkloadManagementStatus::ENABLED;
     auto backendPipelineStrategy = createBackendPipelineStrategy(getArchKind(config));
     backendPipelineStrategy->buildELFPipeline(!hostCompilationMode ? elfPm : elfPm.nest<mlir::ModuleOp>(), config,
                                               elfTiming, log, wlmStillEnabled);
+    buildCompileHostExecPipeline(elfPm, config, log);
     if (getWlmRollback(config).value_or(false)) {
         auto backupModule = mlir::OwningOpRef<mlir::ModuleOp>(vpuipModule.get().clone());
         // We moved away from the exception-based fallback mechanism because the MLIRContext remained in an invalid
@@ -227,8 +244,8 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
         // compile time stats. Now we rely on the PassManager::run result and WLM status attribute to decide if we need
         // to rollback. This allows MLIR to run the pass instrumentation and set the context to the correct state.
         compileResult = compileNetwork(vpuipModule.get(), elfPm, elfTiming);
-        wlmStatus = vpux::VPUIP::getWlmStatus(vpuipModule.get());
-        if (mlir::failed(compileResult) && wlmStatus == vpux::VPUIP::WlmStatus::FAILED) {
+        wlmStatus = VPU::getWorkloadManagementStatus(vpuipModule.get());
+        if (mlir::failed(compileResult) && wlmStatus == VPU::WorkloadManagementStatus::FAILED) {
             log.warning("Failed to export to ELF with current config, reverting to simple ELF pipeline");
             vpuipModule = std::move(backupModule);
             mlir::PassManager simpleElfPm(vpuipModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
@@ -236,7 +253,8 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
             backendPipelineStrategy->buildELFPipeline(
                     !hostCompilationMode ? simpleElfPm : simpleElfPm.nest<mlir::ModuleOp>(), config, elfTiming, log,
                     /*useWlm=*/false);
-            vpux::VPUIP::setWlmStatus(vpuipModule.get(), vpux::VPUIP::WlmStatus::DISABLED);
+            VPU::setWorkloadManagementStatus(vpuipModule.get(), VPU::WorkloadManagementStatus::DISABLED);
+            buildCompileHostExecPipeline(simpleElfPm, config, log);
             VPUX_THROW_UNLESS(mlir::succeeded(compileNetwork(vpuipModule.get(), simpleElfPm, elfTiming)),
                               "Compilation failed");
         } else {
@@ -249,9 +267,9 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
 }
 
 auto exportToELF(mlir::ModuleOp module, Logger log) {
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return vpux::ELFNPU37XX::exportToELF(module, log);
     default:
         return vpux::ELF::exportToELF(module, log);
@@ -259,9 +277,9 @@ auto exportToELF(mlir::ModuleOp module, Logger log) {
 }
 
 auto exportToELF(mlir::ModuleOp module, Logger log, BlobAllocator& allocator) {
-    const auto arch = VPU::getArch(module);
+    const auto arch = config::getArch(module);
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return vpux::ELFNPU37XX::exportToELF(module, allocator, log);
     default:
         return vpux::ELF::exportToELF(module, allocator, log);
@@ -431,11 +449,11 @@ bool isTypeSupportedNPU40xx(ov::element::Type_t elemType) {
     }
 }
 
-bool isTypeSupported(VPU::ArchKind arch, ov::element::Type_t elemType) {
+bool isTypeSupported(config::ArchKind arch, ov::element::Type_t elemType) {
     switch (arch) {
-    case VPU::ArchKind::NPU37XX:
+    case config::ArchKind::NPU37XX:
         return isTypeSupportedNPU37xx(elemType);
-    case VPU::ArchKind::NPU40XX:
+    case config::ArchKind::NPU40XX:
         return isTypeSupportedNPU40xx(elemType);
     default:
         VPUX_THROW("Unsupported arch kind: {0}", arch);
@@ -466,8 +484,11 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
 
     checkDataTypes(model, config);
 
-    mlir::OwningOpRef<mlir::ModuleOp> module =
-            importNetwork(&ctx, model, originalParameters, originalResults, config, devConf, rootTiming, log);
+    // This will allow preserving as many original constants in the model as possible after nGraph passes, making the
+    // pipeline close to WS "Init" mode.
+    const auto isWSMonolithic = getCompilationMode(config) == config::CompilationMode::WSMonolithic;
+    mlir::OwningOpRef<mlir::ModuleOp> module = importNetwork(&ctx, model, originalParameters, originalResults, config,
+                                                             devConf, rootTiming, log, isWSMonolithic);
 
     OV_ITT_TASK_NEXT(COMPILER_IMPLEMENTATION, "PassManager");
 
@@ -483,12 +504,6 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
 #endif
 
     OV_ITT_TASK_NEXT(COMPILER_IMPLEMENTATION, "compileNetwork");
-
-    // Load VPUIP dialect before first compilation to set initial WlmStatus based on config
-    ctx.loadDialect<VPUIP::VPUIPDialect>();
-    auto wlmEnabled = getWlmEnabled(config).value_or(false);
-    vpux::VPUIP::setWlmStatus(module.get(),
-                              wlmEnabled ? vpux::VPUIP::WlmStatus::ENABLED : vpux::VPUIP::WlmStatus::DISABLED);
 
     // applies each pass in the pipeline
     auto compileNetworkTiming = rootTiming.nest("Compile network");

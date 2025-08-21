@@ -8,10 +8,9 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/max_kernel_size_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
-
-#include <cstddef>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_SETUPMAXKERNELSIZE
@@ -90,7 +89,7 @@ void SetupMaxKernelSizePass::safeRunOnModule() {
     optionsBuilder =
             mlir::OpBuilder::atBlockBegin(&pipelineOptionsOp.getOptions().front(), optionsBuilder.getListener());
 
-    auto maxKernelSizeConstant = vpux::VPU::getMaxKernelSizeConstant(VPU::getArch(getOperation()));
+    auto maxKernelSizeConstant = vpux::VPU::getMaxKernelSizeConstant(config::getArch(getOperation()));
     auto maxKernelSize = maxKernelSizeConstant.getMaxKernelSize();
 
     addConstant(optionsBuilder, pipelineOptionsOp, VPU::MAX_KERNEL_SIZE, maxKernelSize, _allowCustomValues);

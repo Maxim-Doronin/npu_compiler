@@ -27,6 +27,7 @@ enum class WorkloadManagementBarrierProgrammingMode {
     UNKNOWN = 255
 };
 enum class DMAFifoType { SW = 0, HW = 1 };
+
 /**
  * @brief This enum is used to specify the mode of weights table reuse.
  *
@@ -41,6 +42,6 @@ StringLiteral stringifyEnum(WorkloadManagementBarrierProgrammingMode val);
 StringLiteral stringifyEnum(DMAFifoType val);
 StringLiteral stringifyEnum(WeightsTableReuseMode val);
 std::optional<std::string> convertToOptional(const StrOption& strOption);
+StringLiteral stringifyEnum(WorkloadManagementMode val);
 bool isOptionEnabled(const BoolOption& option);
-
 }  // namespace vpux

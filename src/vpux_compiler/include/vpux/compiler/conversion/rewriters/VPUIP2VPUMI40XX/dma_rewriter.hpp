@@ -104,4 +104,16 @@ struct BarrierProgDMARewriter : DMARewriterBase<VPUIP::BarProgDMAOp> {
                                         mlir::ConversionPatternRewriter& rewriter) const override;
 };
 
+struct FetchDMARewriter : DMARewriterBase<VPUIP::FetchDMAOp> {
+    using DMARewriterBase::DMARewriterBase;
+    mlir::LogicalResult matchAndRewrite(VPUIP::FetchDMAOp fetchDMAOp, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const override;
+};
+
+struct EnqueueDMARewriter : DMARewriterBase<VPUIP::EnqueueDMAOp> {
+    using DMARewriterBase::DMARewriterBase;
+    mlir::LogicalResult matchAndRewrite(VPUIP::EnqueueDMAOp enqueueDMAOp, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const override;
+};
+
 }  // namespace vpux::vpuip2vpumi40xx

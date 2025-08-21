@@ -9,6 +9,7 @@
 
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
@@ -96,7 +97,7 @@ SparsityMap getSparsityMapBuffTileMask(VPUASM::NNDMAOp dmaOp, ELF::SymbolReferen
 
         if (auto buffer = mlir::dyn_cast_if_present<VPUASM::DeclareBufferOp>(sparsityMapBufferRef)) {
             sparsityMap.tileSelectMaskForBuffer = getTileSelectMaskForBuffer(buffer);
-            sparsityMap.size = buffer.getBinarySize(VPU::getArch(dmaOp));
+            sparsityMap.size = buffer.getBinarySize(config::getArch(dmaOp));
         }
     }
     return sparsityMap;

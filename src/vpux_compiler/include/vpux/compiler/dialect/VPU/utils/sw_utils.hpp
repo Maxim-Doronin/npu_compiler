@@ -138,6 +138,9 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RollOp rollOp, int64_t numClu
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::DynamicQuantizeOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::MemPermuteOp mempermuteOp,
+                                              int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy);
 
 }  // namespace VPU
 }  // namespace vpux

@@ -7,14 +7,18 @@
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/logging.hpp"
 
 #include <llvm/ADT/SmallVector.h>
+
+namespace vpux::VPU {
+enum class MultiClusterStrategy : uint64_t;
+class NCEConvolutionOp;
+class TransposedConvolutionOp;
+}  // namespace vpux::VPU
 
 namespace vpux::VPU {
 

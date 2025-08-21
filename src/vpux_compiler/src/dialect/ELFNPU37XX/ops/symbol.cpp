@@ -6,6 +6,8 @@
 #include <vpux_elf/writer.hpp>
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+
 namespace {
 mlir::Operation* getParentSectionOp(mlir::Value val) {
     // If one of the users of the value is a PutOpInSection op, then we are interested in its encapsulating section.

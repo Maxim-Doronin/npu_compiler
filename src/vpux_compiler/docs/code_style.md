@@ -449,7 +449,7 @@ So we get a dangling pointer:
         inputShape = computerShape.tiles[0].shape; // 'inputShape' stores a copy of field of local variable
     }
 
-    return isSOHSupportedByDPU(inputShape, _numTiles, false, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputShape, _numTiles, false, config::getArch(nceOp.getOperation()));
 
     // BAD: The result from 'computerShape' object is stored in an instance of ShapeRef type that does not own memory
     auto inputShape = getShape(origOp.input()); // The return type of 'getShape' is ShapeRef
@@ -460,7 +460,7 @@ So we get a dangling pointer:
     }
 
     // The lifetime of 'computerShape' is over. 'inputShape' contains a dangling pointer
-    return isSOHSupportedByDPU(inputShape, _numTiles, false, VPU::getArch(nceOp.getOperation()));
+    return isSOHSupportedByDPU(inputShape, _numTiles, false, config::getArch(nceOp.getOperation()));
 ```
 
 ### Working with dynamic shapes

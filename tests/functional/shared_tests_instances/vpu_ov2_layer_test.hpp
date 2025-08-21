@@ -1,19 +1,20 @@
+//
 // Copyright (C) 2023-2025 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <common/utils.hpp>
-#include <functional>
-#include <intel_npu/npu_private_properties.hpp>
-#include <optional>
-#include <shared_test_classes/base/ov_subgraph.hpp>
-#include <sstream>
-#include <vpux/utils/logger/logger.hpp>
 #include "common/npu_test_env_cfg.hpp"
-#include "common/utils.hpp"
 #include "vpu_test_tool.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <intel_npu/npu_private_properties.hpp>
+#include <shared_test_classes/base/ov_subgraph.hpp>
+
+#include <functional>
+#include <optional>
+#include <sstream>
 
 namespace ov::test::utils {
 

@@ -3,27 +3,26 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/utils/resources.hpp"
-
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
 #include "vpux/compiler/core/profiling_metadata.hpp"
+#include "vpux/compiler/dialect/IE/utils/resources.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
-
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/llvm_to_binary.hpp"
 
+#include <llvm/Support/FileSystem.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-
-#include <llvm/Support/FileSystem.h>
 
 #include <vector>
 
@@ -147,7 +146,7 @@ private:
         _log.trace("VPUIP_VPUMI37XX pass: replaceVPURTTaskOpWithNNDMAOp()");
 
         const auto dmaExecCount = IE::getAvailableExecutor(moduleOp, VPU::ExecutorKind::DMA_NN).getCount();
-        const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(VPU::getArch(moduleOp));
+        const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(moduleOp));
         const auto dmaMaxNumPlanes = dmaEngineLimits.getMaxNumPlanes();
 
         llvm::SmallVector<std::optional<VPUMI37XX::NNDMAOp>> previousDMA(dmaExecCount);

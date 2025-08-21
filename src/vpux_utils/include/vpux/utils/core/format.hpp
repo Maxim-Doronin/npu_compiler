@@ -17,6 +17,7 @@
 #include <llvm/Support/raw_os_ostream.h>
 
 #include <array>
+#include <cstddef>
 #include <iostream>
 #include <list>
 #include <map>
@@ -27,8 +28,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <cstddef>
 
 namespace vpux {
 

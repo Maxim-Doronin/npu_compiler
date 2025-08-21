@@ -5,8 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
+#include <llvm/Support/raw_ostream.h>
+#include <mlir/IR/MLIRContext.h>
+
+namespace vpux::VPU {
+class PaddingAttr;
+}  // namespace vpux::VPU
 
 namespace vpux {
 namespace VPU {
@@ -41,37 +45,11 @@ public:
         return right;
     }
 
-    static Padding getClassFromAttr(PaddingAttr paddingAttr) {
-        if (paddingAttr == nullptr) {
-            return {};
-        }
+    static Padding getClassFromAttr(PaddingAttr paddingAttr);
 
-        auto left = paddingAttr.getLeft().getInt();
-        auto right = paddingAttr.getRight().getInt();
-        auto top = paddingAttr.getTop().getInt();
-        auto bottom = paddingAttr.getBottom().getInt();
+    static PaddingAttr getAttrFromClass(mlir::MLIRContext* ctx, const Padding& padding);
 
-        return Padding(left, right, top, bottom);
-    }
-
-    static PaddingAttr getAttrFromClass(mlir::MLIRContext* ctx, const Padding& padding) {
-        auto topAttr = vpux::getIntAttr(ctx, padding.top);
-        auto bottomAttr = vpux::getIntAttr(ctx, padding.bottom);
-        auto leftAttr = vpux::getIntAttr(ctx, padding.left);
-        auto rightAttr = vpux::getIntAttr(ctx, padding.right);
-
-        return PaddingAttr::get(ctx, leftAttr, rightAttr, topAttr, bottomAttr);
-    };
-
-    void printFormat(llvm::raw_ostream& stream) const {
-        std::unordered_map<std::string, int64_t> map;
-        map["left"] = left;
-        map["right"] = right;
-        map["top"] = top;
-        map["bottom"] = bottom;
-        printTo(stream, "pads = ");
-        vpux::MapFormatProvider::format(map, stream, {});
-    }
+    void printFormat(llvm::raw_ostream& stream) const;
 };
 }  // namespace VPU
 }  // namespace vpux

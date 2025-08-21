@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -53,7 +54,7 @@ private:
 
 private:
     bool fitIntoCMX(VPU::LSTMSequenceOp op) const;
-    bool fitIntoCMX(SmallVector<Byte>& bufferSizes, int64_t totalAvailableCMXSize, VPU::ArchKind archKind) const;
+    bool fitIntoCMX(SmallVector<Byte>& bufferSizes, int64_t totalAvailableCMXSize, config::ArchKind archKind) const;
 
     mlir::FailureOr<int> getNumSplits(VPU::LSTMSequenceOp op) const;
     void tileLSTMSequence(VPU::LSTMSequenceOp op, mlir::PatternRewriter& rewriter, int numSplits) const;
@@ -75,11 +76,11 @@ bool TileLSTMSequence::fitIntoCMX(VPU::LSTMSequenceOp op) const {
     }
 
     const auto totalAvailableCMXSize = getTotalCMXSize(op).count();
-    return fitIntoCMX(bufferSizes, totalAvailableCMXSize, getArch(op));
+    return fitIntoCMX(bufferSizes, totalAvailableCMXSize, config::getArch(op));
 }
 
 bool TileLSTMSequence::fitIntoCMX(SmallVector<Byte>& bufferSizes, int64_t totalAvailableCMXSize,
-                                  VPU::ArchKind archKind) const {
+                                  config::ArchKind archKind) const {
     return vpux::VPU::calculateAlignedBuffersMemoryRequirement(archKind, bufferSizes).count() <= totalAvailableCMXSize;
 }
 
@@ -137,7 +138,7 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
     }
 
     const auto totalAvailableCMXSize = getTotalCMXSize(op).count();
-    const auto archKind = getArch(op);
+    const auto archKind = config::getArch(op);
 
     if (fitIntoCMX(bufferSizes, totalAvailableCMXSize, archKind)) {
         return 1;  // numSplits
