@@ -120,6 +120,7 @@ jobs:
             ${{ inputs.driver-cmake-options }} \
             -DENABLE_OPENVINO_PACKAGE=ON \
             -DENABLE_NPU_COMPILER_BUILD=ON \
+            -DENABLE_OFFLINE_COMPILATION_SUPPORT=ON \
             -DCMAKE_INSTALL_PREFIX=$(realpath ${NPU_DRIVER_INSTALL_DIR}) \
             -S ${NPU_DRIVER_REPO} \
             -B ${NPU_DRIVER_BUILD_DIR}
