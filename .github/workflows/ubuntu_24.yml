@@ -26,11 +26,11 @@ jobs:
       os: ubuntu_24_04
       build-runner: ubuntu-latest-32-cores
       test-runner: ubuntu-latest-8-cores
-      build-cache: true
+      build-cache: false
       build-cache-key-suffix: cache_${{ github.ref_name }}_1
       build-mlir: false
       build-driver: false
-      build-cid: true
+      build-cid: false
       run-unit-tests: true
       run-lit-tests: true
       run-compilation-tests: true

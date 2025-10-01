@@ -130,7 +130,7 @@ jobs:
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         uses: openvinotoolkit/openvino/.github/actions/system_info@c01cd93e24d1cd78bfbb401eed51c08fb93e0816 # 2025.2.0
 
-      - name: Install python deps (optional)
+      - name: Install python deps
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         run: |
           python3 -m pip install --require-hashes -r ${NPU_COMPILER_REPO}/.github/requirements-dev.txt
@@ -215,7 +215,10 @@ jobs:
             -D CPACK_COMPONENTS_ALL=CiD \
             -D CPACK_CMAKE_GENERATOR=Ninja \
             -D CPACK_PACKAGE_FILE_NAME="${CID_PACKAGE_BASE_NAME}"
-          mv "${CID_PACKAGE_ARTIFACTS_DIR}/${CID_PACKAGE_BASE_NAME}-CiD.tar.gz" \
+
+      - name: CiD Package renaming
+        run: |
+          mv "${CID_PACKAGE_ARTIFACTS_DIR}/"*.tar.gz \
             "${CID_PACKAGE_ARTIFACTS_DIR}/${CID_PACKAGE_FULL_NAME}"
 
       - name: Cache CiD artifacts
