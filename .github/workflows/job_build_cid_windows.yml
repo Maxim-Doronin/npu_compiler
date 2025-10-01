@@ -72,8 +72,8 @@ jobs:
       NPU_COMPILER_REPO: ./npu_compiler
       OPENVINO_BUILD_DIR: ./openvino_build
       CID_PACKAGE_ARTIFACTS_DIR: ./cid_artifacts
-      CID_PACKAGE_BASE_NAME: l_cid_${{ inputs.os }}_${{ github.sha }}
-      CID_PACKAGE_FULL_NAME: l_cid_${{ inputs.os }}_${{ github.sha }}.tar.gz
+      CID_PACKAGE_BASE_NAME: w_cid_${{ inputs.os }}_${{ github.sha }}
+      CID_PACKAGE_FULL_NAME: w_cid_${{ inputs.os }}_${{ github.sha }}.zip
 
     steps:
       - name: Prepare artifact dir
@@ -83,7 +83,7 @@ jobs:
         if: ${{ inputs.build-cache }}
         id: cache-key
         run: |
-          cache_key="l_cid_${{ inputs.os }}_cache_${{ inputs.build-cache-key-suffix || github.sha }}"
+          cache_key="w_cid_${{ inputs.os }}_cache_${{ inputs.build-cache-key-suffix || github.sha }}"
           echo "cache-key=$cache_key" >> $GITHUB_OUTPUT
 
       - name: Restore CiD artifacts from cache
@@ -202,6 +202,7 @@ jobs:
             -D BUILD_COMPILER_FOR_DRIVER=ON \
             -D ENABLE_PRIVATE_TESTS=OFF \
             -D ENABLE_NPU_LSP_SERVER=OFF \
+            -D CMAKE_TOOLCHAIN_FILE=$(realpath ${OPENVINO_REPO})/cmake/toolchains/onecoreuap.toolchain.cmake \
             ${EXTRA_OPTS} \
             ${{ inputs.openvino-cmake-options }} \
             -S ${OPENVINO_REPO} \
@@ -222,7 +223,7 @@ jobs:
           cpack -V \
             --config "${OPENVINO_BUILD_DIR}/CPackConfig.cmake" \
             -C "${CMAKE_BUILD_TYPE}" \
-            -G TGZ \
+            -G ZIP \
             -B "${CID_PACKAGE_ARTIFACTS_DIR}" \
             -D CPACK_COMPONENTS_ALL=CiD \
             -D CPACK_CMAKE_GENERATOR=Ninja \
@@ -230,7 +231,7 @@ jobs:
 
       - name: CiD Package renaming
         run: |
-          mv "${CID_PACKAGE_ARTIFACTS_DIR}/"*.tar.gz \
+          mv "${CID_PACKAGE_ARTIFACTS_DIR}/"*.zip \
             "${CID_PACKAGE_ARTIFACTS_DIR}/${CID_PACKAGE_FULL_NAME}"
 
       - name: Cache CiD artifacts
