@@ -79,7 +79,7 @@ runs:
       run: |
         NPU_REPO=${{ steps.get-npu-sha.outputs.npu-compiler-repository }}
         NPU_SHA=${{ steps.get-npu-sha.outputs.npu-compiler-sha }}
-        JSON=$(curl -s \
+        JSON=$(curl -sS --fail --retry 5 --retry-delay 2 \
           -H "Accept: application/vnd.github.v3.raw" \
           https://api.github.com/repos/${NPU_REPO}/contents/validation/openvino_config.json?ref=${NPU_SHA} \
         )
@@ -96,7 +96,7 @@ runs:
       run: |
         NPU_REPO=${{ steps.get-npu-sha.outputs.npu-compiler-repository }}
         NPU_SHA=${{ steps.get-npu-sha.outputs.npu-compiler-sha }}
-        JSON=$(curl -s \
+        JSON=$(curl -sS --fail --retry 5 --retry-delay 2 \
           -H "Accept: application/vnd.github.v3.raw" \
           https://api.github.com/repos/${NPU_REPO}/contents/validation/linux_npu_driver_config.json?ref=${NPU_SHA} \
         )
@@ -113,7 +113,7 @@ runs:
       run: |
         OV_REPO=${{ steps.read-openvino-sha.outputs.openvino-repository }}
         OV_SHA=${{ steps.read-openvino-sha.outputs.openvino-sha }}
-        JSON=$(curl -s \
+        JSON=$(curl -sS --fail --retry 5 --retry-delay 2 \
           -H "Accept: application/vnd.github.v3.raw" \
           https://api.github.com/repos/${OV_REPO}/contents/src/plugins/intel_npu/tools/omz_version.json?ref=${OV_SHA} \
         )
