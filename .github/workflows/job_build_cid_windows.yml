@@ -217,7 +217,7 @@ jobs:
             --config "${CMAKE_BUILD_TYPE}" \
             --target npu_driver_compiler compilerTest profilingTest vpuxCompilerL0Test loaderTest
 
-      - name: Cmake cpack - CiD
+      - name: CMake cpack - CiD target
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         run: |
           cpack -V \
