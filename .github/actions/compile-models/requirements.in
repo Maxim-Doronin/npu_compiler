@@ -10,6 +10,7 @@ onnxruntime-tools>=1.7.0
 
 # Hugging Face Hub
 huggingface_hub>=0.35.3
+hf-xet>=1.1.10
 
 # Utils
 pillow>=11.3.0
