@@ -141,23 +141,6 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, std::unique_ptr<llvm::Modu
     auto llvmFuncOpNameStr = llvmFuncOp.getName().str();
     ShaveBinaryResources& sbr = ShaveBinaryResources::getInstance();
 
-#if defined(_WIN32) || defined(_WIN64)
-    // Write the llvm module to a buffer.
-    llvm::SmallVector<char, 1024> llvmBlob;
-    llvm::BitcodeWriter writer(llvmBlob);
-    writer.writeModule(*llvmModule);
-    writer.writeStrtab();
-
-    // Compile the module using the movicompile pipeline.
-    ComputeBinary::CompiledElf output;
-    ComputeBinary::CompileOptions opts;
-    if (!ComputeBinary::compileInput(arch, llvmBlob, llvmFuncOpNameStr, opts, output, log)) {
-        VPUX_THROW("Could not compile shave binary");
-    }
-    sbr.addCompiledElf(llvmFuncOpNameStr, std::move(output.elfBinary), output.size, arch, true);
-    return;
-#endif
-
     auto archArgument = sbr.getSwKernelArchString(arch);
 
     // We write llvmModule to file sw_layer.ll.
