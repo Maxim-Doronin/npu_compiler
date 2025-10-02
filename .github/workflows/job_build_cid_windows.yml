@@ -203,6 +203,7 @@ jobs:
             -D ENABLE_PRIVATE_TESTS=OFF \
             -D ENABLE_NPU_LSP_SERVER=OFF \
             -D CMAKE_TOOLCHAIN_FILE=$(realpath ${OPENVINO_REPO})/cmake/toolchains/onecoreuap.toolchain.cmake \
+            -D ENABLE_PDB_IN_RELEASE=ON \
             ${EXTRA_OPTS} \
             ${{ inputs.openvino-cmake-options }} \
             -S ${OPENVINO_REPO} \
