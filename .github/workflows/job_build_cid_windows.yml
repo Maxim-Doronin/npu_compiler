@@ -3,30 +3,30 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: 'OS in the form of "windows_2022"'
+        description: 'OS in the form of "windows_2022".'
         type: string
         required: true
         default: windows_2022
       build-runner:
-        description: 'Machine on which the builds will run'
+        description: 'Runner tag on which the builds will run.'
         type: string
         required: true
         default: windows-2022-16-core
       openvino-cmake-options:
-        description: 'Extra OpenVINO CMake options (appended last)'
+        description: 'Extra OpenVINO CMake options (appended last, whitespace separated).'
         type: string
         required: false
       build-cache:
-        description: 'Cache produced CiD artifact directory'
+        description: 'Push packages to cache for the first run, use them in the following runs.'
         type: boolean
         required: false
         default: true
       build-cache-key-suffix:
-        description: 'Cache key suffix'
+        description: 'Cache identifier. Merge commit hash by default.'
         type: string
         required: false
       publish-release-assets:
-        description: 'If true, find a release tag for the commit and upload assets'
+        description: 'Find the release tag associated with the commit and upload release assets.'
         type: boolean
         required: false
         default: false
@@ -34,24 +34,24 @@ on:
   workflow_call:
     inputs:
       os:
-        description: 'OS that is used for building in the form of "windows_2022"'
+        description: 'OS in the form of "windows_2022".'
         type: string
         required: true
       build-runner:
-        description: 'Machine on which the builds will run'
+        description: 'Runner tag on which the builds will run.'
         type: string
         required: true
       openvino-cmake-options:
-        description: 'Extra OpenVINO CMake options (appended last)'
+        description: 'Extra OpenVINO CMake options (appended last, whitespace separated).'
         type: string
         required: false
       build-cache:
-        description: 'Cache produced CiD artifact directory'
+        description: 'Push packages to cache for the first run, use them in the following runs.'
         type: boolean
         required: false
         default: false
       build-cache-key-suffix:
-        description: 'Cache key suffix'
+        description: 'Cache identifier. Merge commit hash by default.'
         type: string
         required: false
       tbb-root:
@@ -59,7 +59,7 @@ on:
         type: string
         required: false
       publish-release-assets:
-        description: 'The workflow will find a release tag associated with the commit and push the release asset.'
+        description: 'Find the release tag associated with the commit and upload release assets.'
         type: boolean
         required: false
         default: false
@@ -125,7 +125,6 @@ jobs:
           path: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}
 
       - name: Checkout versions action
-        if: ${{ !steps.cache-restore.outputs.cache-hit }}
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: ${{ env.NPU_ACTIONS_DIR }}
@@ -134,7 +133,6 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Get versions
-        if: ${{ !steps.cache-restore.outputs.cache-hit }}
         uses: ./npu_actions/.github/actions/versions
         id: versions
 
@@ -289,7 +287,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.release_token || secrets.RELEASE_WRITER_TOKEN }}
         run: |
           NPU_TAG="${{ steps.versions.outputs.npu-compiler-tag }}"
+          NPU_REPO="${{ steps.versions.outputs.npu-compiler-repository }}"
           CID_ASSET="${CID_PACKAGE_ARTIFACTS_DIR}/${CID_PACKAGE_FULL_NAME}"
 
-          gh release upload "$NPU_TAG" "$CID_ASSET" --clobber
+          gh release upload "$NPU_TAG" "$CID_ASSET" --clobber --repo "$NPU_REPO"
           echo "Uploaded $CID_ASSET to release $NPU_TAG"
