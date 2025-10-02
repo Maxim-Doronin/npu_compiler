@@ -26,5 +26,5 @@ jobs:
       os: windows_2022
       build-runner: windows-2022-16-core
       build-cache: true
-      build-cache-key-suffix: cache_${{ github.ref_name }}
+      build-cache-key-suffix: ${{ github.sha }}
       build-cid: true

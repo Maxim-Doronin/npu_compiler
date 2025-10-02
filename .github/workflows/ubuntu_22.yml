@@ -28,8 +28,8 @@ jobs:
       test-runner: ubuntu-22.04-8-cores
       build-cache: false
       build-cache-key-suffix: cache_${{ github.ref_name }}
-      build-mlir: false
-      build-driver: false
+      build-mlir: true
+      build-driver: true
       run-unit-tests: true
       run-lit-tests: true
       run-compilation-tests: true
