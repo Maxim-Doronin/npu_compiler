@@ -13,7 +13,7 @@ concurrency:
 permissions: read-all
 
 jobs:
-  Ubuntu2404:
+  Windows2022:
     name: Main Trigger
     uses: ./.github/workflows/job_windows.yml
     permissions:
