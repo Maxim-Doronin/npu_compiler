@@ -104,6 +104,16 @@ jobs:
       CID_PACKAGE_ARTIFACTS_DIR: ./cid_artifacts
 
     steps:
+      - name: Dump event info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Full event payload:"
+          echo '${{ toJson(github.event) }}' | jq .
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Workflow dispatch inputs:"
+            echo '${{ toJson(github.event.inputs) }}' | jq .
+          fi
+
       - name: Prepare artifact dir
         run: cmake -E make_directory "${CID_PACKAGE_ARTIFACTS_DIR}"
 
