@@ -160,7 +160,7 @@ jobs:
           VERSION="${{ steps.versions.outputs.npu-compiler-version }}"
           EXTENSION=${{ steps.package-params.outputs.package-extension }}
 
-          cid_package_base_name="${BASE_PREFIX}_vpux_compiler_l0_${PLATFORM}_${VERSION}-${CMAKE_BUILD_TYPE}"
+          cid_package_base_name="${BASE_PREFIX}_vpux_compiler_l0_${PLATFORM}-${VERSION}-${CMAKE_BUILD_TYPE}"
           cid_package_base_name+="_dyntbb_${CI_CONTEXT}_cid_${{ github.sha }}_${TIME_STAMP}"
           cid_package_full_name="${cid_package_base_name}.${EXTENSION}"
 
