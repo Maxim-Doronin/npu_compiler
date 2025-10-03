@@ -1,14 +1,14 @@
-name: Linux NPU CiD Build
+name: NPU CiD Build
 on:
   workflow_dispatch:
     inputs:
       os:
-        description: 'OS in the form of "ubuntu_20_04".'
+        description: 'OS in the form of "ubuntu_20_04" or "windows_2022".'
         type: string
         required: true
         default: ubuntu_24_04
       build-runner:
-        description: 'Runner tag on which the builds will run.'
+        description: 'Runner tag on which the builds will run. Example: "ubuntu-latest-32-cores" or "windows-2022-16-core"'
         type: string
         required: true
         default: ubuntu-latest-32-cores
@@ -34,11 +34,11 @@ on:
   workflow_call:
     inputs:
       os:
-        description: 'OS in the form of "ubuntu_20_04".'
+        description: 'OS in the form of "ubuntu_20_04" or "windows_2022".'
         type: string
         required: true
       build-runner:
-        description: 'Runner tag on which the builds will run.'
+        description: 'Runner tag on which the builds will run. Example: "ubuntu-latest-32-cores" or "windows-2022-16-core"'
         type: string
         required: true
       openvino-cmake-options:
@@ -96,6 +96,7 @@ jobs:
       build-package: ${{ steps.set-build-package-name.outputs.build-package }}
     env:
       DEBIAN_FRONTEND: noninteractive
+      IS_WINDOWS: ${{ startsWith(inputs.os, 'windows_') && '1' || '0' }}
       CMAKE_BUILD_TYPE: Release
       OPENVINO_REPO: ./openvino
       NPU_ACTIONS_DIR: ./npu_actions
@@ -114,8 +115,9 @@ jobs:
             echo '${{ toJson(github.event.inputs) }}' | jq .
           fi
 
-      - name: Prepare artifact dir
-        run: mkdir -p "${CID_PACKAGE_ARTIFACTS_DIR}"
+      - name: Prepare artifact dir (portable)
+        run: |
+          cmake -E make_directory "${CID_PACKAGE_ARTIFACTS_DIR}"
 
       - name: Checkout versions action
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -129,6 +131,21 @@ jobs:
         uses: ./npu_actions/.github/actions/versions
         id: versions
 
+      - name: Compute packaging params
+        id: package-params
+        run: |
+          if [[ "${{ env.IS_WINDOWS }}" == "1" ]]; then
+            echo "package-prefix=w" >> $GITHUB_OUTPUT
+            echo "package-platform-tag=win" >> $GITHUB_OUTPUT
+            echo "package-extension=zip" >> $GITHUB_OUTPUT
+            echo "cpack-generator=ZIP" >> $GITHUB_OUTPUT
+          else
+            echo "package-prefix=l" >> $GITHUB_OUTPUT
+            echo "package-platform-tag=linux" >> $GITHUB_OUTPUT
+            echo "package-extension=tar.gz" >> $GITHUB_OUTPUT
+            echo "cpack-generator=TGZ" >> $GITHUB_OUTPUT
+          fi
+
       - name: Get package name
         id: package-name
         run: |
@@ -138,8 +155,14 @@ jobs:
             CI_CONTEXT="postcommit"
           fi
           TIME_STAMP=$(date +'%y%m%d_%H%M')
-          cid_package_base_name="l_vpux_compiler_l0_linux_${{ steps.versions.outputs.npu-compiler-version }}-${CMAKE_BUILD_TYPE}_dyntbb_${CI_CONTEXT}_cid_${{ github.sha }}_${TIME_STAMP}"
-          cid_package_full_name="${cid_package_base_name}.tar.gz"
+          BASE_PREFIX="${{ steps.package-params.outputs.package-prefix }}"
+          PLATFORM="${{ steps.package-params.outputs.package-platform-tag }}"
+          VERSION="${{ steps.versions.outputs.npu-compiler-version }}"
+          EXTENSION=${{ steps.package-params.outputs.package-extension }}
+
+          cid_package_base_name="${BASE_PREFIX}_vpux_compiler_l0_${PLATFORM}_${VERSION}-${CMAKE_BUILD_TYPE}"
+          cid_package_base_name+="_dyntbb_${CI_CONTEXT}_cid_${{ github.sha }}_${TIME_STAMP}"
+          cid_package_full_name="${cid_package_base_name}.${EXTENSION}"
 
           echo "CiD package will be generated with the following name: $cid_package_full_name"
           echo "cid-package-base-name=$cid_package_base_name" >> $GITHUB_OUTPUT
@@ -149,7 +172,8 @@ jobs:
         if: ${{ inputs.build-cache }}
         id: cache-key
         run: |
-          cache_key="l_cid_${{ inputs.os }}_cache_${{ inputs.build-cache-key-suffix || github.sha }}"
+          BASE_PREFIX="${{ steps.package-params.outputs.package-prefix }}"
+          cache_key="${BASE_PREFIX}_cid_${{ inputs.os }}_cache_${{ inputs.build-cache-key-suffix || github.sha }}"
           echo "cache-key=$cache_key" >> $GITHUB_OUTPUT
 
       - name: Restore CiD artifacts from cache
@@ -191,7 +215,13 @@ jobs:
       - name: Install python deps
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         run: |
-          python3 -m pip install --require-hashes -r ${NPU_COMPILER_REPO}/.github/requirements-dev.txt
+          python -m pip install --require-hashes -r ${NPU_COMPILER_REPO}/.github/requirements-dev.txt
+
+      - name: Setup MSVC env (x64)
+        if: ${{ !steps.cache-restore.outputs.cache-hit && env.IS_WINDOWS == '1' }}
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
 
       - name: Prepare environment
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -202,6 +232,12 @@ jobs:
             echo "EXTRA_OPTS=-DTBBROOT=${TBB_ROOT_OPT}" >> "$GITHUB_ENV"
           else
             echo "EXTRA_OPTS=" >> "$GITHUB_ENV"
+          fi
+          if [[ "${IS_WINDOWS}" == "1" ]]; then
+            EXTRA_OPTS_VALUE="\$EXTRA_OPTS"
+            EXTRA_OPTS_VALUE+=" -D CMAKE_TOOLCHAIN_FILE=\$(realpath ${OPENVINO_REPO})/cmake/toolchains/onecoreuap.toolchain.cmake"
+            EXTRA_OPTS_VALUE+=" -D ENABLE_PDB_IN_RELEASE=ON"
+            echo "EXTRA_OPTS=${EXTRA_OPTS_VALUE}" >> "$GITHUB_ENV"
           fi
 
       - name: CMake configure - OpenVINO + NPU
@@ -258,7 +294,7 @@ jobs:
         run: |
           cmake \
             --build ${OPENVINO_BUILD_DIR} \
-            --parallel $(nproc) \
+            --parallel \
             --config ${CMAKE_BUILD_TYPE} \
             --target npu_driver_compiler compilerTest profilingTest vpuxCompilerL0Test loaderTest
 
@@ -268,7 +304,7 @@ jobs:
           cpack -V \
             --config "${OPENVINO_BUILD_DIR}/CPackConfig.cmake" \
             -C "${CMAKE_BUILD_TYPE}" \
-            -G TGZ \
+            -G "${{ steps.package-params.outputs.cpack-generator }}" \
             -B "${CID_PACKAGE_ARTIFACTS_DIR}" \
             -D CPACK_COMPONENTS_ALL=CiD \
             -D CPACK_CMAKE_GENERATOR=Ninja \
@@ -276,7 +312,7 @@ jobs:
 
       - name: CiD Package renaming
         run: |
-          mv "${CID_PACKAGE_ARTIFACTS_DIR}/"*.tar.gz \
+          mv "${CID_PACKAGE_ARTIFACTS_DIR}/"*.${{ steps.package-params.outputs.package-extension }} \
             "${CID_PACKAGE_ARTIFACTS_DIR}/${{ steps.package-name.outputs.cid-package-full-name }}"
 
       - name: Cache CiD artifacts
