@@ -115,7 +115,7 @@ jobs:
             echo '${{ toJson(github.event.inputs) }}' | jq .
           fi
 
-      - name: Prepare artifact dir (portable)
+      - name: Prepare artifact dir
         run: |
           cmake -E make_directory "${CID_PACKAGE_ARTIFACTS_DIR}"
 
@@ -234,9 +234,9 @@ jobs:
             echo "EXTRA_OPTS=" >> "$GITHUB_ENV"
           fi
           if [[ "${IS_WINDOWS}" == "1" ]]; then
-            EXTRA_OPTS_VALUE="\$EXTRA_OPTS"
-            EXTRA_OPTS_VALUE+=" -D CMAKE_TOOLCHAIN_FILE=\$(realpath ${OPENVINO_REPO})/cmake/toolchains/onecoreuap.toolchain.cmake"
-            EXTRA_OPTS_VALUE+=" -D ENABLE_PDB_IN_RELEASE=ON"
+            OPENVINO_ABS="$(realpath "${OPENVINO_REPO}")"
+            TOOLCHAIN_FILE="${OPENVINO_ABS}/cmake/toolchains/onecoreuap.toolchain.cmake"
+            EXTRA_OPTS_VALUE="-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN_FILE} -DENABLE_PDB_IN_RELEASE=ON ${EXTRA_OPTS:-}"
             echo "EXTRA_OPTS=${EXTRA_OPTS_VALUE}" >> "$GITHUB_ENV"
           fi
 
