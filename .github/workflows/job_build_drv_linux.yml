@@ -52,13 +52,13 @@ jobs:
       NPU_DRIVER_REPO: ./npu_driver
       NPU_DRIVER_BUILD_DIR: ./npu_driver_build
       NPU_DRIVER_INSTALL_DIR: ./npu_driver_install
-      NPU_DRIVER_BUILD_PACKAGE: l_ov_drv_${{ inputs.os }}_npu_${{ github.sha }}
+      NPU_DRIVER_BUILD_PACKAGE: l_drv_${{ inputs.os }}_npu_${{ github.sha }}
     steps:
       - name: Get cache key
         if: ${{ inputs.build-cache }}
         id: cache-key
         run: |
-          cache_key="l_ov_drv_${{ inputs.os }}_cache_${{ inputs.build-cache-key-suffix || github.sha }}"
+          cache_key="l_drv_${{ inputs.os }}_cache_${{ inputs.build-cache-key-suffix || github.sha }}"
           echo "cache-key=$cache_key" >> $GITHUB_OUTPUT
 
       - name: Restore Driver package from cache
