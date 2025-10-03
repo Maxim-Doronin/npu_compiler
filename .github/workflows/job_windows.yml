@@ -50,7 +50,7 @@ jobs:
   BuildCiD:
     name: CiD / Build
     if: ${{ inputs.build-cid }}
-    uses: ./.github/workflows/job_build_cid_windows.yml
+    uses: ./.github/workflows/job_build_cid.yml
     with:
       os: ${{ inputs.os }}
       build-runner: ${{ inputs.build-runner }}
