@@ -22,6 +22,7 @@ jobs:
       packages: read
       statuses: read
       security-events: write
+      id-token: write
     with:
       os: windows_2022
       build-runner: windows-2022-16-core
