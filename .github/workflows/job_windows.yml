@@ -51,6 +51,12 @@ jobs:
     name: CiD / Build
     if: ${{ inputs.build-cid }}
     uses: ./.github/workflows/job_build_cid.yml
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      statuses: read
+      id-token: write
     with:
       os: ${{ inputs.os }}
       build-runner: ${{ inputs.build-runner }}
