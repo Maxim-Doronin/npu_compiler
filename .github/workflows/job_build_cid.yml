@@ -357,10 +357,12 @@ jobs:
         env:
           ARCHIVE: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
         run: |
+          NPU_TAG="${{ steps.versions.outputs.npu-compiler-tag }}"
+          NPU_REPO="${{ steps.versions.outputs.npu-compiler-repository }}"
           cosign verify-blob \
             --bundle "${ARCHIVE}.sigstore.json" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity https://github.com/openvinotoolkit/npu_compiler/.github/workflows/job_build_cid.yml@refs/tags/${{ steps.versions.outputs.npu-compiler-tag }} \
+            --certificate-identity https://github.com/$NPU_REPO/.github/workflows/job_build_cid.yml@refs/tags/$NPU_TAG \
             "${ARCHIVE}"
 
       - name: Upload asset to existing release tag
