@@ -23,6 +23,7 @@ jobs:
       statuses: read
       security-events: write
       id-token: write
+      attestations: write
     with:
       os: ubuntu_24_04
       build-runner: ubuntu-latest-32-cores
