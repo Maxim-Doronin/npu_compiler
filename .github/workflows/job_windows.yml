@@ -57,6 +57,7 @@ jobs:
       packages: read
       statuses: read
       id-token: write
+      attestations: write
     with:
       os: ${{ inputs.os }}
       build-runner: ${{ inputs.build-runner }}

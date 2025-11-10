@@ -23,6 +23,7 @@ jobs:
       statuses: read
       security-events: write
       id-token: write
+      attestations: write
     with:
       os: windows_2022
       build-runner: windows-2022-16-core
