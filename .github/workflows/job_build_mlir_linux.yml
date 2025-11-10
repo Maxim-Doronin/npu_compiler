@@ -152,7 +152,7 @@ jobs:
 
       - name: Initialize CodeQL
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/init@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3.30.5
+        uses: github/codeql-action/init@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v4.31.0
         with:
           languages: c-cpp
           build-mode: manual
@@ -239,7 +239,7 @@ jobs:
       - name: Perform CodeQL Analysis
         id: codeql-analyze
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/analyze@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3.30.5
+        uses: github/codeql-action/analyze@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v4.31.0
         with:
           category: "/language:c-cpp"
           output: ${{ env.CODEQL_OUTPUTS }}
@@ -262,14 +262,14 @@ jobs:
 
       - name: Upload CodeQL SARIF
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/upload-sarif@3599b3baa15b485a2e49ef411a7a4bb2452e7f93 # v3.30.5
+        uses: github/codeql-action/upload-sarif@4e94bd11f71e507f7f87df81788dff88d1dacbfb # v4.31.0
         with:
           sarif_file: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
           checkout_path: ${{ env.NPU_COMPILER_REPO }}
 
       - name: Upload CodeQL loc as a Build Artifact
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ env.CODEQL_ARTIFACT_NAME }}
           path: ${{ env.CODEQL_OUTPUTS }}
@@ -283,7 +283,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.cache-key }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           path: ${{ env.OPENVINO_INSTALL_DIR }}
           name: ${{ env.OPENVINO_BUILD_PACKAGE }}

@@ -93,6 +93,7 @@ jobs:
       packages: read
       statuses: read
       id-token: write
+      attestations: write
     outputs:
       build-package: ${{ steps.set-build-package-name.outputs.build-package }}
     env:
@@ -157,8 +158,8 @@ jobs:
           VERSION="${{ steps.versions.outputs.npu-compiler-version }}"
           EXTENSION="${{ steps.package-params.outputs.package-extension }}"
 
-          cid_package_base_name="${BASE_PREFIX}_vpux_compiler_l0_${PLATFORM}-${VERSION}-${CMAKE_BUILD_TYPE}"
-          cid_package_base_name+="_dyntbb_${CI_CONTEXT}_cid_${{ github.sha }}_${TIME_STAMP}"
+          cid_package_base_name="${BASE_PREFIX}_vpux_compiler_l0_${PLATFORM}_${{ inputs.os }}-${VERSION}-"
+          cid_package_base_name+="${CMAKE_BUILD_TYPE}_dyntbb_${CI_CONTEXT}_cid_${{ github.sha }}_${TIME_STAMP}"
           cid_package_full_name="${cid_package_base_name}.${EXTENSION}"
 
           echo "CiD package will be generated with the following name: $cid_package_full_name"
@@ -320,7 +321,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.cache-key }}
 
       - name: Upload CiD package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: ${{ steps.package-name.outputs.cid-package-full-name }}
           path: |
@@ -331,9 +332,15 @@ jobs:
         run: |
             echo "build-package=${{ steps.package-name.outputs.cid-package-full-name }}" >> $GITHUB_OUTPUT
       
+      - name: Generate build provenance attestation
+        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
+
       - name: Install cosign
         if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
-        uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
 
       - name: Sign CiD package with cosign
         if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
@@ -342,8 +349,18 @@ jobs:
         run: |
           cosign sign-blob \
             --yes \
-            --output-signature "${ARCHIVE}.sig" \
-            --output-certificate "${ARCHIVE}.pem" \
+            --bundle "${ARCHIVE}.sigstore.json" \
+            "${ARCHIVE}"
+
+      - name: Verify CiD bundle (keyless)
+        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
+        env:
+          ARCHIVE: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
+        run: |
+          cosign verify-blob \
+            --bundle "${ARCHIVE}.sigstore.json" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity https://github.com/openvinotoolkit/npu_compiler/.github/workflows/job_build_cid.yml@refs/tags/${{ steps.versions.outputs.npu-compiler-tag }} \
             "${ARCHIVE}"
 
       - name: Upload asset to existing release tag
@@ -354,8 +371,7 @@ jobs:
           NPU_TAG="${{ steps.versions.outputs.npu-compiler-tag }}"
           NPU_REPO="${{ steps.versions.outputs.npu-compiler-repository }}"
           CID_ASSET="${CID_PACKAGE_ARTIFACTS_DIR}/${{ steps.package-name.outputs.cid-package-full-name }}"
-          CID_SIG="${CID_ASSET}.sig"
-          CID_CERT="${CID_ASSET}.pem"
+          CID_BUNDLE="${CID_ASSET}.sigstore.json"
 
-          gh release upload "$NPU_TAG" "$CID_ASSET" "$CID_SIG" "$CID_CERT" --clobber --repo "$NPU_REPO"
-          echo "Uploaded $CID_ASSET with $CID_SIG and $CID_CERT to release $NPU_TAG"
+          gh release upload "$NPU_TAG" "$CID_ASSET" "$CID_BUNDLE" --clobber --repo "$NPU_REPO"
+          echo "Uploaded $CID_ASSET with $CID_BUNDLE to release $NPU_TAG"
