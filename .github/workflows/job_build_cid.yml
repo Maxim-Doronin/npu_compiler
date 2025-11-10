@@ -349,8 +349,18 @@ jobs:
         run: |
           cosign sign-blob \
             --yes \
-            --output-signature "${ARCHIVE}.sig" \
-            --output-certificate "${ARCHIVE}.pem" \
+            --bundle "${ARCHIVE}.sigstore.json" \
+            "${ARCHIVE}"
+
+      - name: Verify CiD bundle (keyless)
+        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
+        env:
+          ARCHIVE: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
+        run: |
+          cosign verify-blob \
+            --bundle "${ARCHIVE}.sigstore.json" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity https://github.com/openvinotoolkit/npu_compiler/.github/workflows/job_build_cid.yml@refs/tags/${{ steps.versions.outputs.npu-compiler-tag }} \
             "${ARCHIVE}"
 
       - name: Upload asset to existing release tag
@@ -361,8 +371,7 @@ jobs:
           NPU_TAG="${{ steps.versions.outputs.npu-compiler-tag }}"
           NPU_REPO="${{ steps.versions.outputs.npu-compiler-repository }}"
           CID_ASSET="${CID_PACKAGE_ARTIFACTS_DIR}/${{ steps.package-name.outputs.cid-package-full-name }}"
-          CID_SIG="${CID_ASSET}.sig"
-          CID_CERT="${CID_ASSET}.pem"
+          CID_BUNDLE="${CID_ASSET}.sigstore.json"
 
-          gh release upload "$NPU_TAG" "$CID_ASSET" "$CID_SIG" "$CID_CERT" --clobber --repo "$NPU_REPO"
-          echo "Uploaded $CID_ASSET with $CID_SIG and $CID_CERT to release $NPU_TAG"
+          gh release upload "$NPU_TAG" "$CID_ASSET" "$CID_BUNDLE" --clobber --repo "$NPU_REPO"
+          echo "Uploaded $CID_ASSET with $CID_BUNDLE to release $NPU_TAG"
