@@ -1,5 +1,5 @@
 name: Attest, sign and release artifacts
-description: Generate build provenance attestation, verify it, cosign-sign theartifact, verify and upload to release
+description: Generate build provenance attestation, verify it, cosign-sign the artifact, verify and upload to release
 
 inputs:
   artifact-path:
@@ -65,6 +65,7 @@ runs:
         ARTIFACT: ${{ inputs.artifact-path }}
         TAG: ${{ inputs.release-tag }}
         REPO: ${{ inputs.repository }}
+        WORKFLOW: ${{ inputs.workflow-path }}
       shell: bash
       run: |
         set -e
