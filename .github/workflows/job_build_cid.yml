@@ -117,12 +117,12 @@ jobs:
         run: |
           cmake -E make_directory "${CID_PACKAGE_ARTIFACTS_DIR}"
 
-      - name: Checkout versions action
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Checkout actions
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           path: ${{ env.NPU_ACTIONS_DIR }}
           sparse-checkout: |
-            .github/actions/versions
+            .github/actions
           sparse-checkout-cone-mode: false
 
       - name: Get versions
@@ -184,7 +184,7 @@ jobs:
 
       - name: Clone OpenVINO
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         timeout-minutes: 15
         with:
           repository: ${{ steps.versions.outputs.openvino-repository }}
@@ -194,7 +194,7 @@ jobs:
 
       - name: Checkout NPU Compiler
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           path: ${{ env.NPU_COMPILER_REPO }}
           submodules: true
@@ -331,49 +331,13 @@ jobs:
         id: set-build-package-name
         run: |
             echo "build-package=${{ steps.package-name.outputs.cid-package-full-name }}" >> $GITHUB_OUTPUT
-      
-      - name: Generate build provenance attestation
+
+      - name: Attest, sign & upload CiD release package
         if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        uses: ./npu_actions/.github/actions/sign-and-release
         with:
-          subject-path: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
-
-      - name: Install cosign
-        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-
-      - name: Sign CiD package with cosign
-        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
-        env:
-          ARCHIVE: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
-        run: |
-          cosign sign-blob \
-            --yes \
-            --bundle "${ARCHIVE}.sigstore.json" \
-            "${ARCHIVE}"
-
-      - name: Verify CiD bundle (keyless)
-        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
-        env:
-          ARCHIVE: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
-        run: |
-          NPU_TAG="${{ steps.versions.outputs.npu-compiler-tag }}"
-          NPU_REPO="${{ steps.versions.outputs.npu-compiler-repository }}"
-          cosign verify-blob \
-            --bundle "${ARCHIVE}.sigstore.json" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity https://github.com/$NPU_REPO/.github/workflows/job_build_cid.yml@refs/tags/$NPU_TAG \
-            "${ARCHIVE}"
-
-      - name: Upload asset to existing release tag
-        if: ${{ github.event_name != 'pull_request' && inputs.publish-release-assets }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.release_token || secrets.RELEASE_WRITER_TOKEN }}
-        run: |
-          NPU_TAG="${{ steps.versions.outputs.npu-compiler-tag }}"
-          NPU_REPO="${{ steps.versions.outputs.npu-compiler-repository }}"
-          CID_ASSET="${CID_PACKAGE_ARTIFACTS_DIR}/${{ steps.package-name.outputs.cid-package-full-name }}"
-          CID_BUNDLE="${CID_ASSET}.sigstore.json"
-
-          gh release upload "$NPU_TAG" "$CID_ASSET" "$CID_BUNDLE" --clobber --repo "$NPU_REPO"
-          echo "Uploaded $CID_ASSET with $CID_BUNDLE to release $NPU_TAG"
+          artifact-path: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}/${{ steps.package-name.outputs.cid-package-full-name }}
+          release-tag: ${{ steps.versions.outputs.npu-compiler-tag }}
+          repository: ${{ steps.versions.outputs.npu-compiler-repository }}
+          release-token: ${{ secrets.release_token || secrets.RELEASE_WRITER_TOKEN }}
+          workflow-path: ".github/workflows/job_build_cid.yml"
