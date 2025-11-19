@@ -20,6 +20,7 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <llvm/Bitcode/BitcodeWriter.h>
+
 #endif
 
 #include <fstream>
@@ -171,19 +172,20 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, std::unique_ptr<llvm::Modu
 
     auto mvToolsPathCompleteStr = mvToolsDirStrWoNull + "/" + mvToolsVersionStrWoNull;
 
-    auto prgMCStr = std::string(mvToolsPathCompleteStr) + "/linux64/bin/moviCompile";
-    llvm::StringRef prgMC = prgMCStr;
-    auto mcpuStr = vpux::SmallString("-mcpu=") + archArgument;
+    const auto prgMCStr = std::string(mvToolsPathCompleteStr) + "/linux64/bin/moviCompile";
+    const auto prgMC = StringRef(prgMCStr);
+    const auto mcpuStr = vpux::SmallString("-mcpu=") + archArgument;
+    const auto mcpu = mcpuStr.str();
 
-    llvm::SmallVector<llvm::StringRef> runArgsMC = {prgMC,          // Movicompile tool
-                                                    mcpuStr.str(),  // CPU
-                                                    "-S",           // Only run preprocess and compilation steps
-                                                    "-o",           // Write output to:
-                                                    "sw_layer.s",   // file sw_layer.s
-                                                    "-x",           // Treat subsequent input files as having:
-                                                    "ir",           // type ir
-                                                    "-O3",          // optimize code
-                                                    "-mllvm",       // Next option is for llvm
+    llvm::SmallVector<llvm::StringRef> runArgsMC = {prgMC,         // Movicompile tool
+                                                    mcpu,          // CPU
+                                                    "-S",          // Only run preprocess and compilation steps
+                                                    "-o",          // Write output to:
+                                                    "sw_layer.s",  // file sw_layer.s
+                                                    "-x",          // Treat subsequent input files as having:
+                                                    "ir",          // type ir
+                                                    "-O3",         // optimize code
+                                                    "-mllvm",      // Next option is for llvm
                                                     "-enable-loop-flatten",  // Enable the loop flatten optimization
                                                     "sw_layer.ll"};          // Input file
 
