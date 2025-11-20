@@ -19,7 +19,7 @@
 namespace vpux {
 #define GEN_PASS_DECL_CONVERTDYNAMICQUANTTOVPUNCE
 #define GEN_PASS_DEF_CONVERTDYNAMICQUANTTOVPUNCE
-#include "vpux/compiler/conversion/passes.hpp.inc"
+#include "vpux/compiler/conversion/passes.hpp.inc"  
 }  // namespace vpux
 
 using namespace vpux;
@@ -32,9 +32,9 @@ namespace {
 
 class DynamicQuantToVPUNCE final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
 public:
-    DynamicQuantToVPUNCE(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx), _log(log) {
-    }
+DynamicQuantToVPUNCE(mlir::MLIRContext* ctx, Logger log)
+        : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx), _log(log) {
+}
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
