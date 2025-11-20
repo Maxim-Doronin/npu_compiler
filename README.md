@@ -17,6 +17,7 @@
 [![NPU Linux Driver](https://img.shields.io/badge/NPU-Linux_Drivers-lightblue)](https://github.com/intel/linux-npu-driver/releases)
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/openvinotoolkit/npu_compiler/badge)](https://scorecard.dev/viewer/?uri=github.com/openvinotoolkit/npu_compiler)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10402/badge)](https://www.bestpractices.dev/projects/10402)
 
 </div>
 
