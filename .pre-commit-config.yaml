@@ -14,7 +14,7 @@ repos:
         stages: [pre-commit]
         args: ["-style=file"]
         types: [c++]
-        exclude: 'thirdparty/.*|sw_runtime_kernels/.*'
+        exclude: 'docs/.*|thirdparty/.*|sw_runtime_kernels/.*'
         require_serial: false
         additional_dependencies: ['clang-format==18.1.8']
 
@@ -24,9 +24,9 @@ repos:
     -   id: check-json
         exclude: .*tests/lit/.*
     -   id: trailing-whitespace
-        exclude: 'thirdparty/.*|sw_runtime_kernels/.*|.*.md'
+        exclude: 'docs/.*|thirdparty/.*|sw_runtime_kernels/.*|.*.md'
     -   id: end-of-file-fixer
-        exclude: 'thirdparty/.*|sw_runtime_kernels/.*|.*.bin$|.*.cpp|.*.hpp|.*.db|.*.svg|.*.js'
+        exclude: 'docs/.*|thirdparty/.*|sw_runtime_kernels/.*|.*.bin$|.*.cpp|.*.hpp|.*.db|.*.svg|.*.js'
 
 -   repo: https://github.com/hhatto/autopep8
     rev: v2.3.1
@@ -38,4 +38,4 @@ repos:
         - --in-place
         - --ignore
         - E402
-        exclude: 'thirdparty/.*|sw_runtime_kernels/.*|npuw/.*|.*.bin$'
+        exclude: 'docs/.*|thirdparty/.*|sw_runtime_kernels/.*|.*.bin$'
