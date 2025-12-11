@@ -54,6 +54,8 @@ jobs:
             models-config: ./validation/public_models_3720_${{ inputs.compiler-type }}.json
           - npu-platform: NPU.4000
             models-config: ./validation/public_models_4000_${{ inputs.compiler-type }}.json
+          - npu-platform: NPU.5010
+            models-config: ./validation/public_models_5010_${{ inputs.compiler-type }}.json
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
