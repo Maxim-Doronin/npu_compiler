@@ -30,7 +30,6 @@ func.func @FuseFakeQuantizeAndMultiplyF8E4M3FN(%input: tensor<1x288x20x20xf32>) 
 
     return %3 : tensor<1x288x20x20xf32>
 
-    //CHECK-DAG:    [[SHAPE:%.+]] = const.Declare tensor<5xsi64> = dense<[18, 16, 16, 3, 3]> : tensor<5xsi64>
     //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<288x16x3x3xf32> = dense<1.000000e+00> : tensor<288x16x3x3xf32>
     //CHECK-DAG:    [[IN_LOW:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<-4.480000e+02> : tensor<1x1x1x1xf32>
     //CHECK-DAG:    [[IN_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<4.480000e+02> : tensor<1x1x1x1xf32>
@@ -40,6 +39,7 @@ func.func @FuseFakeQuantizeAndMultiplyF8E4M3FN(%input: tensor<1x288x20x20xf32>) 
     //CHECK:    [[FQ:%.+]] = IE.FakeQuantize([[WEIGHTS]], [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]])
     // CHECK-SAME:  {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, low_fp_type = f8E4M3FN} : tensor<288x16x3x3xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<288x1x1x1xf32>, tensor<288x1x1x1xf32> -> tensor<288x16x3x3xf32>
 
+    //CHECK:    [[SHAPE:%.+]] = const.Declare tensor<5xsi64> = dense<[18, 16, 16, 3, 3]> : tensor<5xsi64>
     //CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[FQ]], [[SHAPE]]) : tensor<288x16x3x3xf32>, tensor<5xsi64> -> tensor<18x16x16x3x3xf32>
     //CHECK:    [[CONV:%.+]] = IE.GroupConvolution([[INPUT]], [[RESHAPE]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x288x20x20xf32>, tensor<18x16x16x3x3xf32> -> tensor<1x288x20x20xf32>
 

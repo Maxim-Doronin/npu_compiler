@@ -17,7 +17,6 @@
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -326,7 +325,7 @@ mlir::Value MoveEltwiseBeforeSlice<EltwiseOp>::permuteCastToIdentityOrder(mlir::
     const auto identityOrder = DimsOrder::fromNumDims(inputShape.size());
     const auto identityOrderMap = identityOrder.toAffineMap(ctx);
     return rewriter.createOrFold<IE::PermuteCastOp>(
-            appendLoc(input.getLoc(), "_identity_permute_cast"), input, identityOrderMap,
+            appendLoc(input.getLoc(), "identity_permute_cast"), input, identityOrderMap,
             mlir::AffineMap::getMultiDimIdentityMap(identityOrder.numDims(), ctx));
 }
 
@@ -354,9 +353,9 @@ mlir::Operation* MoveEltwiseBeforeSlice<EltwiseOp>::createNewLayerOp(ArrayRef<El
     targetShape[sliceDimPos] = targetShape[sliceDimPos] / checked_cast<int64_t>(siblingLayerOps.size());
     targetShape.insert(targetShape.begin() + sliceDimPos, checked_cast<int64_t>(siblingLayerOps.size()));
 
-    auto newLhs = rewriter.create<IE::ReshapeOp>(appendLoc(source.getLoc(), "_reshape_for_lhs"), canonicalPermuteCast,
-                                                 nullptr, false,
-                                                 getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
+    auto newLhs =
+            rewriter.create<IE::ReshapeOp>(appendLoc(source.getLoc(), "reshape_for_lhs"), canonicalPermuteCast, nullptr,
+                                           false, getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
 
     // To ensure we merge multiply ops in the correct order, we need to sort them by the offset of the slice
     auto compareSliceOps = [sliceDim](IE::SliceOp a, IE::SliceOp b) {
@@ -387,28 +386,28 @@ mlir::Operation* MoveEltwiseBeforeSlice<EltwiseOp>::createNewLayerOp(ArrayRef<El
         auto input2TargetShape = SmallVector<int64_t>(targetShape.size(), 1);
         // Reshape input2 to handle the case when 2 inputs have different ranks
         auto input2Reshape = rewriter.createOrFold<IE::ReshapeOp>(
-                appendLoc(source.getLoc(), "_reshape_rhs"), rhsPermuteCast, nullptr, false,
+                appendLoc(source.getLoc(), "reshape_rhs"), rhsPermuteCast, nullptr, false,
                 getIntArrayAttr(rewriter.getContext(), ShapeRef(input2TargetShape)));
 
         concatRhs.push_back(input2Reshape);
     }
     auto newRhs =
-            rewriter.create<IE::ConcatOp>(appendLoc(source.getLoc(), "_concat_for_rhs"), concatRhs, Dim(sliceDimPos));
+            rewriter.create<IE::ConcatOp>(appendLoc(source.getLoc(), "concat_for_rhs"), concatRhs, Dim(sliceDimPos));
 
     // Create new eltwiseOp
     auto multiply =
-            rewriter.create<EltwiseOp>(appendLoc(source.getLoc(), "_merged_eltwise"), newLhs, newRhs,
+            rewriter.create<EltwiseOp>(appendLoc(source.getLoc(), "merged_eltwise"), newLhs, newRhs,
                                        firstMultiply.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
 
     // Reshape to the original source MemShape
     auto outputReshape =
-            rewriter.create<IE::ReshapeOp>(appendLoc(multiply.getLoc(), "_output_reshape"), multiply, nullptr, false,
+            rewriter.create<IE::ReshapeOp>(appendLoc(multiply.getLoc(), "output_reshape"), multiply, nullptr, false,
                                            getIntArrayAttr(rewriter.getContext(), getMemShape(source)));
 
     // Cast to the original dims order
     const auto sourceShape = getShape(source);
     auto outPermuteCast = rewriter.createOrFold<IE::PermuteCastOp>(
-            appendLoc(multiply.getLoc(), "_output_permute_cast"), outputReshape, dimsOrder.toAffineMap(ctx),
+            appendLoc(multiply.getLoc(), "output_permute_cast"), outputReshape, dimsOrder.toAffineMap(ctx),
             mlir::AffineMap::getMultiDimIdentityMap(sourceShape.size(), ctx));
 
     _log.trace("[{0}] Successfully merged parallel Eltwise operations", this->getDebugName());
@@ -979,7 +978,7 @@ void MoveFCAfterConcat::createNewSubgraphAndReplace(ArrayRef<IE::FullyConnectedO
 
     auto targetShape = getShape(origOp.getOutput());
     auto outputReshape = rewriter.createOrFold<IE::ReshapeOp>(
-            appendLoc(origOp->getLoc(), "_output_reshape"), newFullyConnected.getOutput(), nullptr, false,
+            appendLoc(origOp->getLoc(), "output_reshape"), newFullyConnected.getOutput(), nullptr, false,
             getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
 
     rewriter.replaceOp(origOp, outputReshape);

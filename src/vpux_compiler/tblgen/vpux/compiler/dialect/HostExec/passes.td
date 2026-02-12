@@ -161,4 +161,139 @@ def SerializeNetworkMetadata : PassBase<"serialize-network-metadata", "vpux::Mod
     ];
 }
 
+//
+// ExtractReturnShapes
+//
+
+def ExtractReturnShapes : PassBase<"extract-return-shapes", "vpux::ModulePass"> {
+    let summary = "Extract shapes info from return op operands of the main func";
+
+    let description = [{
+        This pass looks for all return op operands of the main func and creates `tensor.dim` ops
+        for each dimension of the current operand with dynamic output shape. To avoid unused tensor/arith ops elimination,
+        `tensor.from_elements` ops are created with `tensor.dim` ops as arguments and returned in the main func.
+        Later in the pipeline in the pass `outline-dim-operations` these tensor and arith operations will be moved
+        to a separate function (`func.func @output_shape`) and removed from the main func's return op and from `NetworkInfo`.
+
+        BEFORE:
+        ```MLIR
+            func.func @main(%arg: tensor<1x2x3x?xf32, {bounds = []}>) -> tensor<1x4x3x?xf32, {bounds = []}> {
+                ...
+                %0 = some_op(%arg) : tensor<1x2x3x?xf32, {bounds = []}> -> tensor<1x4x3x?xf32, {bounds = []}>
+                ...
+                return %0 : tensor<1x4x3x?xf32, {bounds = []}>
+            }
+        ```
+
+        AFTER:
+        ```MLIR
+            func.func @main(%arg: tensor<1x2x3x?xf32, {bounds = []}>) -> (tensor<1x4x3x?xf32, {bounds = []}>, tensor<4xsi64>) {
+                ...
+                %0 = some_op(%arg) : tensor<1x2x3x?xf32, {bounds = []}> -> tensor<1x4x3x?xf32, {bounds = []}>
+                ...
+
+                %IDX_0 = arith.constant 0 : index
+                %DIM_0 = tensor.dim %0, %IDX_0 : !BoundedType // '1'
+                %IDX_CAST_0 = arith.index_cast %DIM_0 : index to i64
+
+                %IDX_1 = arith.constant 1 : index
+                %DIM_1 = tensor.dim %0, %IDX_1 : !BoundedType // '4'
+                %IDX_CAST_1 = arith.index_cast %DIM_1 : index to i64
+
+                %IDX_2 = arith.constant 2 : index
+                %DIM_2 = tensor.dim %0, %IDX_2 : !BoundedType // '3'
+                %IDX_CAST_2 = arith.index_cast %DIM_2 : index to i64
+
+                %IDX_3 = arith.constant 3 : index
+                %DIM_3 = tensor.dim %0, %IDX_3 : !BoundedType // '?'
+                %IDX_CAST_3 = arith.index_cast %DIM_3 : index to i64
+
+                %FROM_ELEMENTS = tensor.from_elements [[IDX_CAST_0]], [[IDX_CAST_1]], [[IDX_CAST_2]], [[IDX_CAST_3]] : tensor<4xi64>
+
+                return %0, %FROM_ELEMENTS : tensor<1x4x3x?xf32, {bounds = []}>, tensor<4xsi64>
+            }
+        ```
+    }];
+
+    let constructor = "vpux::HostExec::createExtractReturnShapesPass()";
+
+    let dependentDialects = [
+        "vpux::HostExec::HostExecDialect",
+        "mlir::func::FuncDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::arith::ArithDialect"
+    ];
+}
+
+//
+// OutlineDimOperations
+//
+
+def OutlineDimOperations : PassBase<"outline-dim-operations", "vpux::ModulePass"> {
+    let summary = "Outline tensor shape operations to a separate function";
+
+    let description = [{
+        This pass collects all tensor and arith operations that calculate return shapes and outlines them
+        to a separate `output_shape` func. No `func.call` op is inserted that is differenct from other outlining passes.
+
+        BEFORE:
+        ```MLIR
+            func.func @main(%arg: tensor<1x4x3x?xf32, {bounds = []}>) -> (tensor<1x2x3x?xf32, {bounds = []}>, tensor<4xsi64>) {
+                ...
+                %0 = some_op(%arg) : tensor<1x4x3x?xf32, {bounds = []}> -> tensor<1x2x3x?xf32, {bounds = []}>
+                ...
+
+                %CST_1_i64 = arith.constant 1 : i64
+                %CST_2_i64 = arith.constant 2 : i64
+                %CST_3_i64 = arith.constant 3 : i64
+
+                %CST_2 = arith.constant 2 : index
+                %IDX = arith.constant 3 : index
+                %DIM = tensor.dim %0, %IDX : !BoundedType   // '?'
+                %DIV = arith.divsi %DIM, %CST_2 : index     // this operation comes from `resolve-shaped-type-result-dims`
+                                                            // pass that resolves `tensor.dim` of result of operations
+                %IDX_CAST = arith.index_cast %DIV : index to i64
+
+                %FROM_ELEMENTS = tensor.from_elements [[CST_1_i64]], [[CST_2_i64]], [[CST_3_i64]], [[IDX_CAST]] : tensor<4xi64>
+
+                return %0, %FROM_ELEMENTS : tensor<1x2x3x?xf32, {bounds = []}>, tensor<4xsi64>
+            }
+        ```
+
+        AFTER:
+        ```MLIR
+            func.func @output_shape(%arg: tensor<1x4x3x?xf32, {bounds = []}>) -> tensor<4xsi64> {
+                %CST_1_i64 = arith.constant 1 : i64
+                %CST_2_i64 = arith.constant 2 : i64
+                %CST_3_i64 = arith.constant 3 : i64
+
+                %CST_2 = arith.constant 2 : index
+                %IDX = arith.constant 3 : index
+                %DIM = tensor.dim %0, %IDX : !BoundedType // '?'
+                %DIV = arith.divsi %DIM, %CST_2 : index
+                %IDX_CAST = arith.index_cast %DIV : index to i64
+
+                %FROM_ELEMENTS = tensor.from_elements [[CST_1_i64]], [[CST_2_i64]], [[CST_3_i64]], [[IDX_CAST]] : tensor<4xi64>
+                return %FROM_ELEMENTS : tensor<4xsi64>
+            }
+
+            func.func @main(%arg: tensor<1x4x3x?xf32, {bounds = []}>) -> tensor<1x2x3x?xf32, {bounds = []}> {
+                ...
+                %0 = some_op(%arg) : tensor<1x4x3x?xf32, {bounds = []}> -> tensor<1x2x3x?xf32, {bounds = []}>
+                ...
+                return %0 : tensor<1x2x3x?xf32, {bounds = []}>
+            }
+        ```
+    }];
+
+    let constructor = "vpux::HostExec::createOutlineDimOperationsPass()";
+
+    let dependentDialects = [
+        "vpux::HostExec::HostExecDialect",
+        "mlir::func::FuncDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::arith::ArithDialect"
+    ];
+}
+
 #endif

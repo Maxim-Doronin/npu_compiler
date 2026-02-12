@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,7 +33,7 @@ func.func @FuseWithReshape(%arg0: tensor<1x16xf32>) -> tensor<4x1x4x1xf32> {
     %1 = IE.Unsqueeze(%0) { axes_value = [1, 3] } : tensor<4x4xf32> -> tensor<4x1x4x1xf32>
     return %1 : tensor<4x1x4x1xf32>
 
-    // CHECK: [[VAL0:%.*]] = IE.Reshape(%arg0) {shape_value = [4, 1, 4, 1]} : tensor<1x16xf32> -> tensor<4x1x4x1xf32>
+    // CHECK: [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [4, 1, 4, 1]} : tensor<1x16xf32> -> tensor<4x1x4x1xf32>
     // CHECK: return [[VAL0]] : tensor<4x1x4x1xf32>
 }
 

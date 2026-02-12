@@ -6,6 +6,8 @@
 #pragma once
 
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -14,12 +16,7 @@
 
 namespace vpux::VPUIP {
 class DMATypeOpInterface;
-class ProfilingSectionOp;
 }  // namespace vpux::VPUIP
-
-namespace vpux::VPURT {
-class TaskOp;
-}  // namespace vpux::VPURT
 
 namespace vpux {
 
@@ -57,7 +54,7 @@ public:
         }
         _counter[strLoc]++;
         _log.warning("Duplicate location attribute: '{0}'", baseLoc);
-        return appendLoc(baseLoc, formatv("Duplicated_{0}", _counter[strLoc]));
+        return appendLoc(baseLoc, "Duplicated_{0}", _counter[strLoc]);
     }
 
 private:

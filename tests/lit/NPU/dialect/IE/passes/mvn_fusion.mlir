@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -34,13 +34,13 @@ func.func @FuseMVNInsideSqrt(%arg0: tensor<1x1500x512xf32>) -> tensor<1500x512xf
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[PRE_RESHAPE:%.*]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
     // CHECK:        tensor<1x1500x512xf32> -> tensor<1x1500x512x1xf32>
-    // CHECK:  [[MVN:%.*]] = IE.MVN([[PRE_RESHAPE]])
+    // CHECK:  [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
     // CHECK-SAME:    across_channels = false,
     // CHECK:         eps
     // CHECK-SAME:    normalize_variance = true} : tensor<1x1500x512x1xf32> -> tensor<1x1500x512x1xf32>
-    // CHECK:  [[POST_RESHAPE:%.*]] = IE.AffineReshape([[MVN]])
+    // CHECK:  [[POST_RESHAPE:%.+]] = IE.AffineReshape([[MVN]])
     // CHECK:       tensor<1x1500x512x1xf32> -> tensor<1500x512xf32>
     // CHECK:  return [[POST_RESHAPE]] : tensor<1500x512xf32>
 }
@@ -73,13 +73,13 @@ func.func @FuseMVNOutsideSqrt(%arg0: tensor<1500x512xf32>) -> tensor<1500x512xf3
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[PRE_RESHAPE:%.*]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
     // CHECK:        tensor<1500x512xf32> -> tensor<1x1500x512x1xf32>
-    // CHECK:  [[MVN:%.*]] = IE.MVN([[PRE_RESHAPE]])
+    // CHECK:  [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
     // CHECK-SAME:    across_channels = false,
     // CHECK:         eps
     // CHECK-SAME:    normalize_variance = true} : tensor<1x1500x512x1xf32> -> tensor<1x1500x512x1xf32>
-    // CHECK:  [[POST_RESHAPE:%.*]] = IE.AffineReshape([[MVN]])
+    // CHECK:  [[POST_RESHAPE:%.+]] = IE.AffineReshape([[MVN]])
     // CHECK:       tensor<1x1500x512x1xf32> -> tensor<1500x512xf32>
     // CHECK:  return [[POST_RESHAPE]] : tensor<1500x512xf32>
 }
@@ -112,13 +112,13 @@ func.func @FuseMVNAxes2D(%arg0: tensor<16x1500x512xf32>) -> tensor<16x1500x512xf
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[PRE_RESHAPE:%.*]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
     // CHECK:        tensor<16x1500x512xf32> -> tensor<1x16x1500x512xf32>
-    // CHECK:  [[MVN:%.*]] = IE.MVN([[PRE_RESHAPE]])
+    // CHECK:  [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
     // CHECK-SAME:    across_channels = false,
     // CHECK:         eps
     // CHECK-SAME:    normalize_variance = true} : tensor<1x16x1500x512xf32> -> tensor<1x16x1500x512xf32>
-    // CHECK:  [[POST_RESHAPE:%.*]] = IE.AffineReshape([[MVN]])
+    // CHECK:  [[POST_RESHAPE:%.+]] = IE.AffineReshape([[MVN]])
     // CHECK:       tensor<1x16x1500x512xf32> -> tensor<16x1500x512xf32>
     // CHECK:  return [[POST_RESHAPE]] : tensor<16x1500x512xf32>
 }
@@ -151,7 +151,7 @@ func.func @FuseMVNAcrossChannel(%arg0: tensor<1x16x1500x512xf32>) -> tensor<1x16
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[MVN:%.*]] = IE.MVN(%arg0)
+    // CHECK:  [[MVN:%.+]] = IE.MVN(%arg0)
     // CHECK-SAME:    across_channels = true,
     // CHECK:         eps
     // CHECK-SAME:    normalize_variance = true} : tensor<1x16x1500x512xf32> -> tensor<1x16x1500x512xf32>
@@ -164,8 +164,8 @@ func.func @FuseMVNAcrossChannel(%arg0: tensor<1x16x1500x512xf32>) -> tensor<1x16
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x32x15x64xf16>
 func.func @FuseOvRefMvnPow(%arg0: tensor<1x32x15x64xf16>) -> tensor<1x32x15x64xf16> {
     %cst_axes = const.Declare tensor<2xsi32> = dense<[2,-1]> : tensor<2xsi32>
-    %cst_two = const.Declare tensor<1xf16> = dense<2.0>  : tensor<1xf16> isSplat
-    %cst_eps = const.Declare tensor<1xf16> = dense<0.00002>  : tensor<1xf16> isSplat
+    %cst_two = const.Declare tensor<1xf16> = dense<2.0>  : tensor<1xf16>
+    %cst_eps = const.Declare tensor<1xf16> = dense<0.00002>  : tensor<1xf16>
 
     %0 = IE.ReduceMean(%arg0, %cst_axes) {keep_dims} : tensor<1x32x15x64xf16>, tensor<2xsi32> -> tensor<1x32x1x1xf16>
     %1 = IE.Subtract(%arg0, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x15x64xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x15x64xf16>
@@ -188,7 +188,7 @@ func.func @FuseOvRefMvnPow(%arg0: tensor<1x32x15x64xf16>) -> tensor<1x32x15x64xf
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x32x15x64xf16>
 func.func @FuseOvRefMvnMul(%arg0: tensor<1x32x15x64xf16>) -> tensor<1x32x15x64xf16> {
     %cst_axes = const.Declare tensor<3xsi32> = dense<[1,2,3]> : tensor<3xsi32>
-    %cst_eps = const.Declare tensor<1xf16> = dense<0.00002>  : tensor<1xf16> isSplat
+    %cst_eps = const.Declare tensor<1xf16> = dense<0.00002>  : tensor<1xf16>
 
     %0 = IE.ReduceMean(%arg0, %cst_axes) {keep_dims} : tensor<1x32x15x64xf16>, tensor<3xsi32> -> tensor<1x1x1x1xf16>
     %1 = IE.Subtract(%arg0, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x15x64xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x15x64xf16>
@@ -210,8 +210,8 @@ func.func @FuseOvRefMvnMul(%arg0: tensor<1x32x15x64xf16>) -> tensor<1x32x15x64xf
 // CHECK-LABEL: @FuseOvRefMvn3D
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<151x1x768xf32>
 func.func @FuseOvRefMvn3D(%arg0: tensor<151x1x768xf32>) -> tensor<151x1x768xf32> {
-    %cst_two = const.Declare tensor<1x1x1xf32> = dense<2.0>  : tensor<1x1x1xf32> isSplat
-    %cst_eps = const.Declare tensor<1xf32> = dense<0.00002>  : tensor<1xf32> isSplat
+    %cst_two = const.Declare tensor<1x1x1xf32> = dense<2.0>  : tensor<1x1x1xf32>
+    %cst_eps = const.Declare tensor<1xf32> = dense<0.00002>  : tensor<1xf32>
 
     %0 = IE.ReduceMean(%arg0) {axes_value = [2], keep_dims} : tensor<151x1x768xf32> -> tensor<151x1x1xf32>
     %1 = IE.Subtract(%arg0, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<151x1x768xf32>, tensor<151x1x1xf32> -> tensor<151x1x768xf32>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,9 +38,9 @@ config::ResourcesOp getResources(mlir::ModuleOp mainModule, mlir::SymbolRefAttr 
 }
 
 bool isNceTileExecutor(mlir::SymbolRefAttr executor) {
-    auto nceExecutorList =
-            SmallVector<StringRef>({stringifyEnum(VPU::ExecutorKind::DPU), stringifyEnum(VPU::ExecutorKind::SHAVE_ACT),
-                                    stringifyEnum(VPU::ExecutorKind::SHAVE_NN)});
+    auto nceExecutorList = SmallVector<StringRef>({stringifyEnum(config::ExecutorKind::DPU),
+                                                   stringifyEnum(config::ExecutorKind::SHAVE_ACT),
+                                                   stringifyEnum(config::ExecutorKind::SHAVE_NN)});
     auto executorStr = executor.getLeafReference().getValue();
     return std::find(nceExecutorList.begin(), nceExecutorList.end(), executorStr) != nceExecutorList.end();
 }
@@ -160,7 +160,7 @@ config::MemoryResourceOp getReservedMemoryResource(mlir::ModuleOp mainModule, ml
 }  // namespace
 
 bool vpux::config::isNceTile(mlir::SymbolRefAttr executor) {
-    return executor.getLeafReference().getValue() == stringifyEnum(VPU::ExecutorKind::NCE);
+    return executor.getLeafReference().getValue() == stringifyEnum(config::ExecutorKind::NCE);
 }
 
 config::MemoryResourceOp vpux::config::getAvailableMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace) {
@@ -267,6 +267,21 @@ config::MemoryResourceOp vpux::config::getDummySwKernelsForInstructionPrefetchRe
 }
 
 //
+// Shave stacks reserved memory
+//
+
+config::MemoryResourceOp vpux::config::setShaveStacksReservedMemory(mlir::ModuleOp mainModule,
+                                                                    mlir::SymbolRefAttr memSpace, int64_t size,
+                                                                    size_t alignment) {
+    return addReservedMemoryResource(mainModule, shaveStacksResMemModuleName, memSpace, size, alignment);
+}
+
+config::MemoryResourceOp vpux::config::getShaveStacksReservedMemory(mlir::ModuleOp mainModule,
+                                                                    mlir::SymbolRefAttr memSpace) {
+    return getReservedMemoryResource(mainModule, shaveStacksResMemModuleName, memSpace);
+}
+
+//
 // ExecutorResourceOp
 //
 
@@ -343,7 +358,19 @@ mlir::LogicalResult vpux::config::ResourcesOp::verify() {
 // EngineResources
 //
 
-int64_t vpux::config::getTotalNumOfEngines(mlir::ModuleOp moduleOp, VPU::ExecutorKind execKind) {
+int64_t vpux::config::getNumOfEnginesOnTile(mlir::ModuleOp moduleOp, config::ExecutorKind execKind) {
+    auto tileOp = getTileExecutor(moduleOp);
+    VPUX_THROW_UNLESS(tileOp != nullptr, "Expected tileOp executor in order to query {0} executor.", execKind);
+    auto executorPerTile = tileOp.getSubExecutor(execKind);
+    VPUX_THROW_UNLESS(executorPerTile != nullptr, "Failed to get {0} information", execKind);
+    return executorPerTile.getCount();
+}
+
+int64_t vpux::config::getNumOfEnginesOnTile(mlir::Operation* op, config::ExecutorKind execKind) {
+    return getNumOfEnginesOnTile(op->getParentOfType<mlir::ModuleOp>(), execKind);
+}
+
+int64_t vpux::config::getTotalNumOfEngines(mlir::ModuleOp moduleOp, config::ExecutorKind execKind) {
     auto tileOp = getTileExecutor(moduleOp);
     VPUX_THROW_UNLESS(tileOp != nullptr, "Expected tileOp executor in order to query {0} executor.", execKind);
     auto executorPerTile = tileOp.getSubExecutor(execKind);
@@ -351,7 +378,7 @@ int64_t vpux::config::getTotalNumOfEngines(mlir::ModuleOp moduleOp, VPU::Executo
     return tileOp.getCount() * executorPerTile.getCount();
 }
 
-int64_t vpux::config::getTotalNumOfEngines(mlir::Operation* op, VPU::ExecutorKind execKind) {
+int64_t vpux::config::getTotalNumOfEngines(mlir::Operation* op, config::ExecutorKind execKind) {
     return getTotalNumOfEngines(op->getParentOfType<mlir::ModuleOp>(), execKind);
 }
 
@@ -359,17 +386,17 @@ config::ResourcesOp config::addTileExecutor(mlir::ModuleOp mainModule, size_t co
     VPUX_THROW_UNLESS(count > 0, "Trying to set zero count of tile resource kind.");
 
     auto builder = mlir::OpBuilder::atBlockBegin(mainModule.getBody());
-    return builder.create<config::ResourcesOp>(appendLoc(mainModule.getLoc(), "_tile_resources"),
-                                               stringifyEnum(VPU::ExecutorKind::NCE), count);
+    return builder.create<config::ResourcesOp>(appendLoc(mainModule.getLoc(), "tile_resources"),
+                                               stringifyEnum(config::ExecutorKind::NCE), count);
 }
 
 bool config::hasTileExecutor(mlir::ModuleOp mainModule) {
-    auto res = mainModule.lookupSymbol<config::ResourcesOp>(stringifyEnum(VPU::ExecutorKind::NCE));
+    auto res = mainModule.lookupSymbol<config::ResourcesOp>(stringifyEnum(config::ExecutorKind::NCE));
     return res != nullptr;
 }
 
 config::ResourcesOp config::getTileExecutor(mlir::ModuleOp mainModule) {
-    return mainModule.lookupSymbol<config::ResourcesOp>(stringifyEnum(VPU::ExecutorKind::NCE));
+    return mainModule.lookupSymbol<config::ResourcesOp>(stringifyEnum(config::ExecutorKind::NCE));
 }
 
 config::ResourcesOp config::getTileExecutor(mlir::func::FuncOp funcOp) {
@@ -385,7 +412,7 @@ static constexpr auto GLOBAL_RESOURCE_NAME = "global";
 
 config::ResourcesOp config::addGlobalResource(mlir::ModuleOp moduleOp) {
     auto builder = mlir::OpBuilder::atBlockBegin(moduleOp.getBody());
-    return builder.create<config::ResourcesOp>(appendLoc(moduleOp.getLoc(), "_global_resources"), GLOBAL_RESOURCE_NAME);
+    return builder.create<config::ResourcesOp>(appendLoc(moduleOp.getLoc(), "global_resources"), GLOBAL_RESOURCE_NAME);
 }
 
 bool config::hasGlobalResource(mlir::ModuleOp moduleOp) {

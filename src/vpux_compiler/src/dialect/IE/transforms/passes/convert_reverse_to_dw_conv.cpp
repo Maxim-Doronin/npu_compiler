@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -15,6 +16,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTREVERSETODWCONV
@@ -183,7 +185,7 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
             std::iter_swap(permIn->end() - 1, itAxis1);
         }
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permIn.value(), ctx));
-        curInput = rewriter.create<IE::TransposeOp>(appendLoc(location, "_transpose_in"), curInput,
+        curInput = rewriter.create<IE::TransposeOp>(appendLoc(location, "transpose_in"), curInput,
                                                     /*order=*/nullptr, orderAttr);
     }
 
@@ -193,7 +195,7 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
     const SmallVector<int64_t> newInShape = {1, curInputShape[Dims4D::Act::N],
                                              curInputShape[Dims4D::Act::C] * curInputShape[Dims4D::Act::H],
                                              curInputShape[Dims4D::Act::W]};
-    auto inShapeCast = rewriter.create<IE::ShapeCastOp>(appendLoc(location, "_shapeCast_in"), curInput,
+    auto inShapeCast = rewriter.create<IE::ShapeCastOp>(appendLoc(location, "shapeCast_in"), curInput,
                                                         getIntArrayAttr(ctx, newInShape));
 
     // Create corresponding number of weights for DWConv, the weights number is 'H x W'
@@ -214,7 +216,7 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
             weightsArray[i][j * kernelSize + kernelSize - (i + 1)] = checked_cast<float>(1.f);
         }
 
-        declareWeights.push_back(Const::buildWeightsConst(rewriter, appendLoc(location, "_filter_{0}", i), weightsType,
+        declareWeights.push_back(Const::buildWeightsConst(rewriter, appendLoc(location, "filter_{0}", i), weightsType,
                                                           ArrayRef(weightsArray[i])));
     }
 
@@ -229,7 +231,7 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
 
     for (std::size_t i = 0; i < weightsArray.size(); ++i) {
         auto dwConv = rewriter.create<IE::GroupConvolutionOp>(
-                appendLoc(location, "_dwConv_{0}", i), inShapeCast, declareWeights[i],
+                appendLoc(location, "dwConv_{0}", i), inShapeCast, declareWeights[i],
                 /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
                 /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr,
                 /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
@@ -238,18 +240,18 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
     }
 
     // Create Concat for DWConv
-    auto concatDWConvs = rewriter.createOrFold<IE::ConcatOp>(appendLoc(location, "_concat"), dwConvs, Dims4D::Act::N);
+    auto concatDWConvs = rewriter.createOrFold<IE::ConcatOp>(appendLoc(location, "concat"), dwConvs, Dims4D::Act::N);
 
     // Create Transpose for reversed axes
     DimArr permConcat{Dims4D::Act::W, Dims4D::Act::C, Dims4D::Act::H, Dims4D::Act::N};
     auto order = DimsOrder::fromPermutation(ArrayRef(permConcat));
     auto orderAttr = mlir::AffineMapAttr::get(order.toAffineMap(ctx));
-    auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(location, "_transpose_out"), concatDWConvs,
+    auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(location, "transpose_out"), concatDWConvs,
                                                         /*order=*/nullptr, orderAttr);
 
     if (isTwoAxesNonHW(axisArray) || isOneAxisNonW(axisArray)) {
         // Create ShapeCast for output
-        auto outShapeCast = rewriter.create<IE::ShapeCastOp>(appendLoc(location, "_shapeCast_out"), transposeOp,
+        auto outShapeCast = rewriter.create<IE::ShapeCastOp>(appendLoc(location, "shapeCast_out"), transposeOp,
                                                              getIntArrayAttr(ctx, curInputShape.raw()));
 
         // Create Transpose for output
@@ -292,14 +294,11 @@ private:
 
 void ConvertReverseToDWConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ReverseOpConverter>(&ctx, _log);
-
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

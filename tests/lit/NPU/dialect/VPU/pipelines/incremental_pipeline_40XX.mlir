@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -314,32 +314,32 @@ func.func @ConvTanHIncrementalPipeline(%arg0: tensor<1x64x28x28xf16, {order = #N
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL:   func.func @InterpolateIncrementalPipeline(
-// CHECK-SAME:                    %[[VAL_0:.+]]: tensor<1x2x540x1920xf16>) -> tensor<1x2x256x512xf16> {
+// CHECK-SAME:                    [[VAL_0:%.+]]: tensor<1x2x540x1920xf16>) -> tensor<1x2x256x512xf16> {
 func.func @InterpolateIncrementalPipeline(%arg0: tensor<1x2x540x1920xf16>) -> tensor<1x2x256x512xf16> {
     %0 = VPU.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>, scales_attr = [1.3333300352096558, 1.3333300352096558], sizes_attr = [256, 512]} : tensor<1x2x540x1920xf16> -> tensor<1x2x256x512xf16>
     return %0 : tensor<1x2x256x512xf16>
 
-    // CHECK:   %[[VAL_3:.*]] = VPU.Copy(%[[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x2x540x1920xf16> ->
+    // CHECK:   [[VAL_3:%.+]] = VPU.Copy([[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x2x540x1920xf16> ->
     // CHECK-SAME:  !VPU.DistributedTensor<1x2x540x1920xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME{LITERAL}: compute_shapes = [[1, 2, 90, 1920], [1, 2, 91, 1920], [1, 2, 91, 1920], [1, 2, 91, 1920], [1, 2, 89, 1920], [1, 2, 88, 1920]],
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 90, 0], [0, 0, 181, 0], [0, 0, 272, 0], [0, 0, 363, 0], [0, 0, 452, 0]],
     // CHECK-SAME{LITERAL}: memory_shapes = [[1, 2, 90, 1920], [1, 2, 91, 1920], [1, 2, 91, 1920], [1, 2, 91, 1920], [1, 2, 89, 1920], [1, 2, 88, 1920]],
     // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 90, 0], [0, 0, 181, 0], [0, 0, 272, 0], [0, 0, 363, 0], [0, 0, 452, 0]]}>
-    // CHECK:   %[[VAL_1:.*]] = const.Declare tensor<1x1x1x512xsi32> = dense<
-    // CHECK:   %[[VAL_4:.*]] = VPU.Copy(%[[VAL_1]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x512xsi32> ->
+    // CHECK:   [[VAL_1:%.+]] = const.Declare tensor<1x1x1x512xsi32> = dense<
+    // CHECK:   [[VAL_4:%.+]] = VPU.Copy([[VAL_1]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x512xsi32> ->
     // CHECK-SAME:  !VPU.DistributedTensor<1x1x1x512xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512]],
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     // CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512], [1, 1, 1, 512]],
     // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-    // CHECK:   %[[VAL_2:.*]] = const.Declare tensor<1x1x1x1024xf16> = dense<
-    // CHECK:   %[[VAL_5:.*]] = VPU.Copy(%[[VAL_2]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x1024xf16> ->
+    // CHECK:   [[VAL_2:%.+]] = const.Declare tensor<1x1x1x1024xf16> = dense<
+    // CHECK:   [[VAL_5:%.+]] = VPU.Copy([[VAL_2]]) {out_mem_space = @CMX_NN} : tensor<1x1x1x1024xf16> ->
     // CHECK-SAME:  !VPU.DistributedTensor<1x1x1x1024xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024]],
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     // CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024], [1, 1, 1, 1024]],
     // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-    // CHECK:   %[[VAL_6:.*]] = VPU.Interpolate(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_output_dims_attr = [1, 2, 256, 512], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [1.3333300352096558, 1.3333300352096558], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]} :
+    // CHECK:   [[VAL_6:%.+]] = VPU.Interpolate([[VAL_3]], [[VAL_4]], [[VAL_5]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ALIGN_CORNERS>, nearest_mode = <ROUND_PREFER_FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], initial_input_dims_attr = [1, 2, 540, 1920], initial_output_dims_attr = [1, 2, 256, 512], operandSegmentSizes = array<i32: 1, 0, 0, 0, 1, 1>, scales_attr = [1.3333300352096558, 1.3333300352096558], sizes_attr = [256, 512], tile_offset_attr = [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]} :
     // CHECK-SAME:  !VPU.DistributedTensor<1x2x540x1920xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME{LITERAL}: compute_shapes = [[1, 2, 90, 1920], [1, 2, 91, 1920], [1, 2, 91, 1920], [1, 2, 91, 1920], [1, 2, 89, 1920], [1, 2, 88, 1920]],
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 90, 0], [0, 0, 181, 0], [0, 0, 272, 0], [0, 0, 363, 0], [0, 0, 452, 0]],
@@ -360,13 +360,13 @@ func.func @InterpolateIncrementalPipeline(%arg0: tensor<1x2x540x1920xf16>) -> te
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 43, 0], [0, 0, 86, 0], [0, 0, 129, 0], [0, 0, 172, 0], [0, 0, 214, 0]],
     // CHECK-SAME{LITERAL}: memory_shapes = [[1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 42, 512], [1, 2, 42, 512]],
     // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 43, 0], [0, 0, 86, 0], [0, 0, 129, 0], [0, 0, 172, 0], [0, 0, 214, 0]]}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_6]]) :
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_6]]) :
     // CHECK-SAME:  !VPU.DistributedTensor<1x2x256x512xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME{LITERAL}: compute_shapes = [[1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 42, 512], [1, 2, 42, 512]],
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 43, 0], [0, 0, 86, 0], [0, 0, 129, 0], [0, 0, 172, 0], [0, 0, 214, 0]],
     // CHECK-SAME{LITERAL}: memory_shapes = [[1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 43, 512], [1, 2, 42, 512], [1, 2, 42, 512]],
     // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 43, 0], [0, 0, 86, 0], [0, 0, 129, 0], [0, 0, 172, 0], [0, 0, 214, 0]]}> -> tensor<1x2x256x512xf16>
-    // CHECK:   return %[[VAL_7]] : tensor<1x2x256x512xf16>
+    // CHECK:   return [[VAL_7]] : tensor<1x2x256x512xf16>
 }
 
 // -----
@@ -374,13 +374,13 @@ func.func @InterpolateIncrementalPipeline(%arg0: tensor<1x2x540x1920xf16>) -> te
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceSumSOK(
-// CHECK-SAME:      %[[VAL_0:.+]]: tensor<1x1024x7x7xf32>) -> tensor<1x1024xf32> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf32>) -> tensor<1x1024xf32> {
 func.func @ReduceSumSOK(%arg0: tensor<1x1024x7x7xf32>) -> tensor<1x1024xf32> {
   %0 = VPU.ReduceSum(%arg0) {axes_value = [2, 3], keep_dims} : tensor<1x1024x7x7xf32> -> tensor<1x1024x1x1xf32>
   %1 = VPU.AffineReshape(%0) {dim_mapping = [[0], [1], [1], [1]], shape_value = [1, 1024]} : tensor<1x1024x1x1xf32> -> tensor<1x1024xf32>
   return %1 : tensor<1x1024xf32>
 
-    // CHECK:           %[[VAL_1:.+]] =  VPU.Copy(%[[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x1024x7x7xf32>
+    // CHECK:           [[VAL_1:%.+]] =  VPU.Copy([[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x1024x7x7xf32>
     // CHECK-SAME:   -> !VPU.DistributedTensor<1x1024x7x7xf32, #NCHW, @CMX_NN,
     // CHECK-SAME:   {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME:   compute_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]],
@@ -388,7 +388,7 @@ func.func @ReduceSumSOK(%arg0: tensor<1x1024x7x7xf32>) -> tensor<1x1024xf32> {
     // CHECK-SAME:   memory_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]],
     // CHECK-SAME:   memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
 
-    // CHECK:           %[[VAL_2:.+]] = VPU.ReduceSum(%[[VAL_1]]) {axes_value = [2, 3], keep_dims}
+    // CHECK:           [[VAL_2:%.+]] = VPU.ReduceSum([[VAL_1]]) {axes_value = [2, 3], keep_dims}
     // CHECK-SAME:   : !VPU.DistributedTensor<1x1024x7x7xf32, #NCHW, @CMX_NN,
     // CHECK-SAME:   {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME:   compute_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]],
@@ -402,15 +402,15 @@ func.func @ReduceSumSOK(%arg0: tensor<1x1024x7x7xf32>) -> tensor<1x1024xf32> {
     // CHECK-SAME:   memory_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]],
     // CHECK-SAME:   memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
 
-    // CHECK:           %[[VAL_3:.+]] = VPU.Copy(%[[VAL_2]]) : !VPU.DistributedTensor<1x1024x1x1xf32, #NCHW, @CMX_NN,
+    // CHECK:           [[VAL_3:%.+]] = VPU.Copy([[VAL_2]]) : !VPU.DistributedTensor<1x1024x1x1xf32, #NCHW, @CMX_NN,
     // CHECK-SAME:   {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME:   compute_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]],
     // CHECK-SAME:   compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]],
     // CHECK-SAME:   memory_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]],
     // CHECK-SAME:   memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
     // CHECK-SAME:   -> tensor<1x1024x1x1xf32>
-    // CHECK:           %[[VAL_4:.+]] = VPU.AffineReshape(%[[VAL_3]]) {dim_mapping = {{\[\[}}0], [1], [1], [1]], shape_value = [1, 1024]} : tensor<1x1024x1x1xf32> -> tensor<1x1024xf32>
-    // CHECK:           return %[[VAL_4]] : tensor<1x1024xf32>
+    // CHECK:           [[VAL_4:%.+]] = VPU.AffineReshape([[VAL_3]]) {dim_mapping = {{\[\[}}0], [1], [1], [1]], shape_value = [1, 1024]} : tensor<1x1024x1x1xf32> -> tensor<1x1024xf32>
+    // CHECK:           return [[VAL_4]] : tensor<1x1024xf32>
     // CHECK:      }
 }
 
@@ -419,19 +419,19 @@ func.func @ReduceSumSOK(%arg0: tensor<1x1024x7x7xf32>) -> tensor<1x1024xf32> {
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceSumSOH(
-// CHECK-SAME:      %[[VAL_0:.+]]: tensor<1x16x32x64xf32>) -> tensor<1x1x32x1xf32> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x16x32x64xf32>) -> tensor<1x1x32x1xf32> {
 func.func @ReduceSumSOH(%arg0: tensor<1x16x32x64xf32>) -> tensor<1x1x32x1xf32> {
   %0 = VPU.ReduceSum(%arg0) {axes_value = [1, 3], keep_dims} : tensor<1x16x32x64xf32> -> tensor<1x1x32x1xf32>
   return %0 : tensor<1x1x32x1xf32>
 
-    // CHECK:           %[[VAL_1:.+]] = VPU.Copy(%[[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x16x32x64xf32>
+    // CHECK:           [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]) {out_mem_space = @CMX_NN} : tensor<1x16x32x64xf32>
     // CHECK-SAME:   -> !VPU.DistributedTensor<1x16x32x64xf32, #NCHW, @CMX_NN,
     // CHECK-SAME:   {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME:   compute_shapes = {{\[\[}}1, 16, 6, 64], [1, 16, 6, 64], [1, 16, 5, 64], [1, 16, 5, 64], [1, 16, 5, 64], [1, 16, 5, 64]],
     // CHECK-SAME:   compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 6, 0], [0, 0, 12, 0], [0, 0, 17, 0], [0, 0, 22, 0], [0, 0, 27, 0]],
     // CHECK-SAME:   memory_shapes = {{\[\[}}1, 16, 6, 64], [1, 16, 6, 64], [1, 16, 5, 64], [1, 16, 5, 64], [1, 16, 5, 64], [1, 16, 5, 64]],
     // CHECK-SAME:   memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 6, 0], [0, 0, 12, 0], [0, 0, 17, 0], [0, 0, 22, 0], [0, 0, 27, 0]]}>
-    // CHECK:           %[[VAL_2:.+]] = VPU.ReduceSum(%[[VAL_1]]) {axes_value = [1, 3], keep_dims}
+    // CHECK:           [[VAL_2:%.+]] = VPU.ReduceSum([[VAL_1]]) {axes_value = [1, 3], keep_dims}
     // CHECK-SAME:   : !VPU.DistributedTensor<1x16x32x64xf32, #NCHW, @CMX_NN,
     // CHECK-SAME:   {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME:   compute_shapes = {{\[\[}}1, 16, 6, 64], [1, 16, 6, 64], [1, 16, 5, 64], [1, 16, 5, 64], [1, 16, 5, 64], [1, 16, 5, 64]],
@@ -445,14 +445,14 @@ func.func @ReduceSumSOH(%arg0: tensor<1x16x32x64xf32>) -> tensor<1x1x32x1xf32> {
     // CHECK-SAME:   memory_shapes = {{\[\[}}1, 1, 6, 1], [1, 1, 6, 1], [1, 1, 5, 1], [1, 1, 5, 1], [1, 1, 5, 1], [1, 1, 5, 1]],
     // CHECK-SAME:   memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 6, 0], [0, 0, 12, 0], [0, 0, 17, 0], [0, 0, 22, 0], [0, 0, 27, 0]]}>
 
-    // CHECK:           %[[VAL_3:.+]] = VPU.Copy(%[[VAL_2]]) : !VPU.DistributedTensor<1x1x32x1xf32, #NCHW, @CMX_NN,
+    // CHECK:           [[VAL_3:%.+]] = VPU.Copy([[VAL_2]]) : !VPU.DistributedTensor<1x1x32x1xf32, #NCHW, @CMX_NN,
     // CHECK-SAME:   {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     // CHECK-SAME:   compute_shapes = {{\[\[}}1, 1, 6, 1], [1, 1, 6, 1], [1, 1, 5, 1], [1, 1, 5, 1], [1, 1, 5, 1], [1, 1, 5, 1]],
     // CHECK-SAME:   compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 6, 0], [0, 0, 12, 0], [0, 0, 17, 0], [0, 0, 22, 0], [0, 0, 27, 0]],
     // CHECK-SAME:   memory_shapes = {{\[\[}}1, 1, 6, 1], [1, 1, 6, 1], [1, 1, 5, 1], [1, 1, 5, 1], [1, 1, 5, 1], [1, 1, 5, 1]],
     // CHECK-SAME:   memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 6, 0], [0, 0, 12, 0], [0, 0, 17, 0], [0, 0, 22, 0], [0, 0, 27, 0]]}>
     // CHECK-SAME:   -> tensor<1x1x32x1xf32>
-    // CHECK:           return %[[VAL_3]] : tensor<1x1x32x1xf32>
+    // CHECK:           return [[VAL_3]] : tensor<1x1x32x1xf32>
     // CHECK:      }
 }
 
@@ -628,7 +628,7 @@ func.func @CumSumIncrementalPipelineCheck(%arg0: tensor<1x9x16x13500xf16>) -> te
     //CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]],
     //CHECK-SAME{LITERAL}:        memory_shapes = [[1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 2, 6750], [1, 9, 2, 6750]],
     //CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]]}>
-    //CHECK: [[CUMSUM_0:%.+]] = VPU.CumSum([[COPY_IN_0]]) {axis_value = 1 : i64} : !VPU.DistributedTensor<1x9x16x6750xf16, #NCHW, @CMX_NN,
+    //CHECK: [[CUMSUM_0:%.+]] = VPU.CumSum([[COPY_IN_0]]) {axis_value = 1 : i64, tiling_loop_index = 0 : i64} : !VPU.DistributedTensor<1x9x16x6750xf16, #NCHW, @CMX_NN,
     //CHECK-SAME{LITERAL}:        compute_shapes = [[1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 2, 6750], [1, 9, 2, 6750]],
     //CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]],
     //CHECK-SAME{LITERAL}:        memory_shapes = [[1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 2, 6750], [1, 9, 2, 6750]],
@@ -642,7 +642,7 @@ func.func @CumSumIncrementalPipelineCheck(%arg0: tensor<1x9x16x13500xf16>) -> te
     //CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]],
     //CHECK-SAME{LITERAL}:        memory_shapes = [[1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 2, 6750], [1, 9, 2, 6750]],
     //CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]]}>
-    //CHECK: [[CUMSUM_1:%.+]] = VPU.CumSum([[COPY_IN_1]]) {axis_value = 1 : i64} : !VPU.DistributedTensor<1x9x16x6750xf16, #NCHW, @CMX_NN,
+    //CHECK: [[CUMSUM_1:%.+]] = VPU.CumSum([[COPY_IN_1]]) {axis_value = 1 : i64, tiling_loop_index = 0 : i64} : !VPU.DistributedTensor<1x9x16x6750xf16, #NCHW, @CMX_NN,
     //CHECK-SAME:                 {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
     //CHECK-SAME{LITERAL}:        compute_shapes = [[1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 3, 6750], [1, 9, 2, 6750], [1, 9, 2, 6750]],
     //CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 0, 3, 0], [0, 0, 6, 0], [0, 0, 9, 0], [0, 0, 12, 0], [0, 0, 14, 0]],

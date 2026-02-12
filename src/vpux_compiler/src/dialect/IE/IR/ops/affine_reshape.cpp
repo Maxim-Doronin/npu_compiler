@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
@@ -59,6 +60,18 @@ mlir::LogicalResult vpux::IE::AffineReshapeOp::inferReturnTypeComponents(
 }
 
 //
+// ShaveCodeGenSupportedOpInterface
+//
+
+bool vpux::IE::AffineReshapeOp::shouldJITCompile() {
+    return false;
+}
+
+bool vpux::IE::AffineReshapeOp::shouldJITCompileToEnableFusion() {
+    return vpux::ShaveCodeGen::hasOnlySupportedTypes(*this);
+}
+
+//
 // verify
 //
 
@@ -104,7 +117,10 @@ mlir::OpFoldResult vpux::IE::AffineReshapeOp::fold(FoldAdaptor adaptor) {
 namespace {
 class FuseAffineReshapes final : public mlir::OpRewritePattern<IE::AffineReshapeOp> {
 public:
-    using mlir::OpRewritePattern<IE::AffineReshapeOp>::OpRewritePattern;
+    FuseAffineReshapes(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::AffineReshapeOp>(ctx, benefit) {
+        this->setDebugName("FuseAffineReshapes");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::AffineReshapeOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -163,7 +179,10 @@ mlir::LogicalResult FuseAffineReshapes::matchAndRewrite(IE::AffineReshapeOp orig
 namespace {
 class FuseWithReshape final : public mlir::OpRewritePattern<IE::AffineReshapeOp> {
 public:
-    using mlir::OpRewritePattern<IE::AffineReshapeOp>::OpRewritePattern;
+    FuseWithReshape(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::AffineReshapeOp>(ctx, benefit) {
+        this->setDebugName("FuseWithReshape");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::AffineReshapeOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -198,4 +217,10 @@ mlir::LogicalResult FuseWithReshape::matchAndRewrite(IE::AffineReshapeOp origOp,
 void vpux::IE::AffineReshapeOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns, mlir::MLIRContext* ctx) {
     patterns.add<FuseAffineReshapes>(ctx);
     patterns.add<FuseWithReshape>(ctx);
+}
+
+void vpux::IE::registerAffineReshapeOpRewriters(RewriterRegistry& registry,
+                                                ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index) {
+    registry.registerRewriter<FuseAffineReshapes>("fuse-affine-reshapes", benefitLevels[index]);
+    registry.registerRewriter<FuseWithReshape>("fuse-with-reshape", benefitLevels[index]);
 }

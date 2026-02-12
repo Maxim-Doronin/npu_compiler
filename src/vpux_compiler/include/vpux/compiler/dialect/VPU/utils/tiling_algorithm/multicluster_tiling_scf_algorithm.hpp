@@ -1,0 +1,24 @@
+//
+// Copyright (C) 2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#pragma once
+
+#include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_alg_interface.hpp"
+namespace vpux {
+namespace VPU {
+//
+// MulticlusterTilingSCFAlgorithm
+//
+
+// Multicluster Tiling algorithm with using SCF dialect
+class MulticlusterTilingSCFAlgorithm : public ITilingAlgorithm {
+public:
+    mlir::LogicalResult applyTiling(mlir::Operation* operation, mlir::RewriterBase& builder, Logger log) override;
+
+    SmallVector<mlir::Operation*> applySCFTilingAndFusion(mlir::Operation* operation, mlir::RewriterBase& builder,
+                                                          Logger log) override;
+};
+}  // namespace VPU
+}  // namespace vpux

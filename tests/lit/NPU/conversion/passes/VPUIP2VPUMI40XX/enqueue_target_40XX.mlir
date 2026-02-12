@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,10 +47,10 @@ func.func private @barrier_counters(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>, 
     %m10 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x500xf32, [@CMX_NN, 0]>
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
+        %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b0 : !VPURT.Barrier) updates(%b1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
+        %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b1 : !VPURT.Barrier) updates(%b2 : !VPURT.Barrier) enqueueTarget(%b0 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
         %t0 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 33741 : i64, task_type = #VPUIP.nce_task_type<CONV>} input(%m1 : memref<1x16x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weights(%m3 : memref<96x16x1x1x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weight_table(%m4 : memref<96x1x1x4xsi32, {order = #NCHW}, [@CMX_NN, 0]>) parent_input(%m1 : memref<1x16x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) parent_output(%m2 : memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) outputs(%m2 : memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) -> memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]> variants : {
@@ -76,23 +76,23 @@ func.func private @barrier_counters(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>, 
 }
 }
 
-// CHECK: [[BAR0:%.*]] = VPUMI40XX.ConfigureBarrier
+// CHECK: [[BAR0:%.+]] = VPUMI40XX.ConfigureBarrier
 // CHECK-SAME: VPURegMapped.Index<0:0:0>
-// CHECK: [[BAR1:%.*]] = VPUMI40XX.ConfigureBarrier
+// CHECK: [[BAR1:%.+]] = VPUMI40XX.ConfigureBarrier
 // CHECK-SAME: VPURegMapped.Index<0:0:1>
-// CHECK: [[BAR2:%.*]] = VPUMI40XX.ConfigureBarrier
+// CHECK: [[BAR2:%.+]] = VPUMI40XX.ConfigureBarrier
 // CHECK-SAME: VPURegMapped.Index<0:0:2>
-// CHECK: [[BAR3:%.*]] = VPUMI40XX.ConfigureBarrier
+// CHECK: [[BAR3:%.+]] = VPUMI40XX.ConfigureBarrier
 // CHECK-SAME: VPURegMapped.Index<0:0:3>
-// CHECK: [[D0:%.*]] = VPUMI40XX.NNDMA
+// CHECK: [[D0:%.+]] = VPUMI40XX.NNDMA
 
-// CHECK: [[D1:%.*]] = VPUMI40XX.NNDMA
+// CHECK: [[D1:%.+]] = VPUMI40XX.NNDMA
 
-// CHECK: [[DPU0:%.*]] = VPUMI40XX.DPUInvariant
+// CHECK: [[DPU0:%.+]] = VPUMI40XX.DPUInvariant
 // CHECK-SAME: enqueueBarrier([[BAR0]]
 
-// CHECK: [[DPU1:%.*]] = VPUMI40XX.DPUInvariant
+// CHECK: [[DPU1:%.+]] = VPUMI40XX.DPUInvariant
 // CHECK-SAME: enqueueBarrier([[BAR0]]
 
-// CHECK: [[SHV0:%.*]] = VPUMI40XX.ActKernelInvocation
+// CHECK: [[SHV0:%.+]] = VPUMI40XX.ActKernelInvocation
 // CHECK-SAME: enqueueBarrier([[BAR1]]

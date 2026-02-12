@@ -93,7 +93,7 @@ void TaskList::sortByStartTime() {
 }
 
 unsigned TaskList::getClusterCount() const {
-    return 1 + std::accumulate(begin(), end(), 0u, [&](unsigned n, auto task) {
+    return 1 + std::accumulate(begin(), end(), 0u, [&](unsigned n, const TaskInfo& task) {
                return std::max(n, task.clusterId);
            });
 }

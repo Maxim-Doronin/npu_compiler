@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -168,6 +169,9 @@ void VPUIP::DistributedBufferType::print(mlir::AsmPrinter& printer) const {
     if (distribution.getEqualMemoryAndComputeView() != nullptr) {
         printer << ", equal_memory_and_compute_view";
     }
+    if (distribution.getMemoryNumTiles() != nullptr) {
+        printer << ", memory_num_tiles = " << distribution.getMemoryNumTiles();
+    }
     printer << "}";
     if (getSparsityCompression() != nullptr) {
         printer << ", " << getSparsityCompression();
@@ -255,6 +259,7 @@ mlir::Type VPUIP::DistributedBufferType::parse(mlir::AsmParser& parser) {
     mlir::ArrayAttr memoryShapes;
     mlir::ArrayAttr memoryOffsets;
     mlir::UnitAttr equalComputeAndMemoryView;
+    mlir::ArrayAttr memoryNumTiles;
 
     while (parser.parseOptionalRBrace()) {
         if (parser.parseComma()) {
@@ -322,6 +327,10 @@ mlir::Type VPUIP::DistributedBufferType::parse(mlir::AsmParser& parser) {
             if (parser.parseAttribute(memoryShapes)) {
                 return Type();
             }
+        } else if (attrName == "memory_num_tiles") {
+            if (parser.parseAttribute(memoryNumTiles)) {
+                return Type();
+            }
         } else {
             return Type();
         }
@@ -337,10 +346,10 @@ mlir::Type VPUIP::DistributedBufferType::parse(mlir::AsmParser& parser) {
     if (parser.parseGreater()) {
         return Type();
     }
-    auto distributedAttr =
-            VPU::DistributionInfoAttr::get(parser.getContext(), distributionModeAttr, numTiles, kernel, pads, strides,
-                                           numClusters, alignment, uniformDistributedSegments, computeShapes,
-                                           computeOffsets, memoryShapes, memoryOffsets, equalComputeAndMemoryView);
+    auto distributedAttr = VPU::DistributionInfoAttr::get(
+            parser.getContext(), distributionModeAttr, numTiles, kernel, pads, strides, numClusters, alignment,
+            uniformDistributedSegments, computeShapes, computeOffsets, memoryShapes, memoryOffsets,
+            equalComputeAndMemoryView, memoryNumTiles);
     return static_cast<mlir::Type>(get(parser.getContext(), ArrayRef(shape), elemType, layout, memSpace,
                                        distributedAttr, sparsityCompression));
 }
@@ -412,7 +421,7 @@ mlir::LogicalResult VPUIP::DistributedBufferType::verify(FuncRef<mlir::InFlightD
 
 mlir::MemRefType VPUIP::DistributedBufferType::getCompactType() const {
     auto distributionMode = getDistribution().getMode().getValue();
-    auto swizzlingSchemeAttr = vpux::getSwizzlingSchemeAttr(*this);
+    auto swizzlingSchemeAttr = VPUIP::getSwizzlingSchemeAttr(*this);
 
     // Compact shapes from SEGMENTED/OVERLAPPED buffers may require more memory after their individual sizeAlignment and
     // thus the producer segmented buffer may require extra adjustment in sizeAlignment
@@ -532,7 +541,7 @@ mlir::Type getQuantTypeForExplicitDistribution(mlir::quant::UniformQuantizedPerA
 SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterComputeShapes() const {
     auto distribution = getDistribution();
     if (distribution.getComputeShapes() == nullptr) {
-        return VPU::getPerClusterComputeShapes(getShape(), distribution);
+        return VPU::getPerClusterComputeShapes(getShape(), distribution, getElementType());
     }
 
     return VPU::arrayAttrToVecOfShapes(distribution.getComputeShapes());
@@ -545,7 +554,7 @@ SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterComputeShapes() co
 SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterComputeShapeOffsets() const {
     auto distribution = getDistribution();
     if (distribution.getComputeOffsets() == nullptr) {
-        return VPU::getPerClusterComputeShapeOffsets(getShape(), distribution);
+        return VPU::getPerClusterComputeShapeOffsets(getShape(), distribution, getElementType());
     }
 
     return VPU::arrayAttrToVecOfShapes(distribution.getComputeOffsets());
@@ -563,7 +572,8 @@ SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterComputeShapeOffset
 SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterMemoryShapes() const {
     auto distribution = getDistribution();
     if (distribution.getMemoryShapes() == nullptr) {
-        auto optionalPerClusterMemoryShapes = VPU::getPerClusterMemoryShapes(getShape(), distribution);
+        auto optionalPerClusterMemoryShapes =
+                VPU::getPerClusterMemoryShapes(getShape(), distribution, getElementType());
         VPUX_THROW_UNLESS(optionalPerClusterMemoryShapes.has_value(),
                           "Cannot get per cluster memory shapes. Unsupported distribution: {0}", distribution);
         return optionalPerClusterMemoryShapes.value();
@@ -579,7 +589,7 @@ SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterMemoryShapes() con
 SmallVector<Shape> VPUIP::DistributedBufferType::getPerClusterMemoryShapeOffsets() const {
     auto distribution = getDistribution();
     if (distribution.getMemoryOffsets() == nullptr) {
-        return VPU::getPerClusterMemoryShapeOffsets(getShape(), distribution);
+        return VPU::getPerClusterMemoryShapeOffsets(getShape(), distribution, getElementType());
     }
 
     return VPU::arrayAttrToVecOfShapes(distribution.getMemoryOffsets());

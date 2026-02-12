@@ -9,9 +9,9 @@
 // CHECK-LABEL: @FuseDQ
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x304x560xf32>
 func.func @FuseDQ(%arg0: tensor<1x304x560xf32>) -> (tensor<1x304x560xui8>, tensor<1xf32>, tensor<1xui8>) {
-    %cst = const.Declare tensor<1x1x1xf32> = dense<255.> : tensor<1x1x1xf32> isSplat
-    %cst_0 = const.Declare tensor<1xf32> = dense<0.0039215> : tensor<f32> isSplat, [#const.Reshape<[1]>]
-    %cst_1 = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %cst = const.Declare tensor<1x1x1xf32> = dense<255.> : tensor<1x1x1xf32>
+    %cst_0 = const.Declare tensor<1xf32> = dense<0.0039215> : tensor<f32>, [#const.Reshape<[1]>]
+    %cst_1 = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[1]>]
     %0 = IE.ReduceMin(%arg0) {axes_value = [0, 1, 2]} : tensor<1x304x560xf32> -> tensor<1xf32>
     %1 = IE.Clamp(%0) {max = 0.000000e+00 : f64, min = -6.550400e+04 : f64} : tensor<1xf32> -> tensor<1xf32>
     %2 = IE.Subtract(%cst_1, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<1xf32> -> tensor<1xf32>

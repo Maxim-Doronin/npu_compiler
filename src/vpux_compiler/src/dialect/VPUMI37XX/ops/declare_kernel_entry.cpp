@@ -24,7 +24,7 @@ using namespace vpux;
 uint32_t vpux::VPUMI37XX::DeclareKernelEntryOp::getKernelEntry() {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const auto elfBlob = kernelInfo.getElf(kernel);
 
     auto accessor = elf::DDRAccessManager<elf::DDRAlwaysEmplace>(elfBlob.data(), elfBlob.size());

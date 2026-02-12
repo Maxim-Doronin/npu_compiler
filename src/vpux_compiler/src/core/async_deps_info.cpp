@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,17 +10,100 @@
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/range.hpp"
 
+#include <llvm/ADT/BitVector.h>
+#include <llvm/ADT/DenseSet.h>
+
+#include <variant>
+
 using namespace vpux;
-/**
- * @brief For large-scale models simplified graph optimization is performed due to N^2 memory
- * complexity required by the algorithm for fast and full optimization of the dependencies graph.
- * The threshold is set so as to enable simplified (partial) optimization for very large models.
- *
- * For the number of operations above the threshold, the optimization of the graph is partial with
- * benefit of smaller memory usage. At the optimization threshold the largest allocated structure
- * size will be of the order 800MB.
- */
-#define SIMPLIFIED_OPTIMIZATION_OP_COUNT_THRESHOLD 10000
+
+// DepsMapClosure represents the transitive closure of the initial dependencies graph.
+class DepsMapClosure {
+    /**
+     * @brief For large-scale models simplified graph optimization is performed due to N^2 memory
+     * complexity required by the algorithm for fast and full optimization of the dependencies graph.
+     * The threshold is set so as to enable simplified (partial) optimization for very large models.
+     *
+     * For the number of operations above the threshold, the optimization of the graph is partial with
+     * benefit of smaller memory usage. At the optimization threshold the largest allocated structure
+     * size will be of the order 800MB.
+     */
+    static constexpr size_t simplifiedOptimizationOpCountThreshold = 10000;
+
+public:
+    DepsMapClosure(Logger& log): _log(log) {};
+    ~DepsMapClosure() = default;
+
+    // Computes the transitive closure of the dependencies graph.
+    // Uses BitVector for small graphs (full closure), DenseSet for large graphs (partial closure).
+    void computeTransitiveClosure(const llvm::SmallVector<llvm::DenseSet<size_t>>& depsMap) {
+        _storageType = (depsMap.size() > simplifiedOptimizationOpCountThreshold) ? StorageType::DenseSet
+                                                                                 : StorageType::BitVector;
+        _log.trace("Using {0} for dependencies {1} closure computation for tasks count: {2}",
+                   (_storageType == StorageType::BitVector) ? "BitVector" : "DenseSet",
+                   (_storageType == StorageType::BitVector) ? "full" : "partial", depsMap.size());
+        if (_storageType == StorageType::BitVector) {
+            _depsMapClosure = computeFullClosureWithBitVector(depsMap);
+        } else {
+            _depsMapClosure = computePartialClosureWithDenseSet(depsMap);
+        }
+    }
+
+    // Returns true if 'ind' has a (direct or transitive) dependency on 'depInd'.
+    bool hasDependency(size_t ind, size_t depInd) const {
+        if (_storageType == StorageType::BitVector) {
+            return std::get<llvm::SmallVector<llvm::BitVector>>(_depsMapClosure)[ind].test(depInd);
+
+        } else {
+            return std::get<llvm::SmallVector<llvm::DenseSet<size_t>>>(_depsMapClosure)[ind].count(depInd) > 0;
+        }
+    }
+
+private:
+    // Partial optimization using DenseSet: only second-order dependencies are added.
+    llvm::SmallVector<llvm::DenseSet<size_t>> computePartialClosureWithDenseSet(
+            const llvm::SmallVector<llvm::DenseSet<size_t>>& depsMap) {
+        llvm::SmallVector<llvm::DenseSet<size_t>> depsMapClosure = depsMap;
+        const auto& refDeps = depsMap;
+
+        for (size_t i = 0; i + 1 < depsMapClosure.size(); ++i) {
+            auto& curDeps = depsMapClosure[i];
+            for (auto curDepInd : llvm::DenseSet<size_t>(curDeps)) {
+                const auto& depOfDeps = refDeps[curDepInd];
+                curDeps.insert(depOfDeps.begin(), depOfDeps.end());
+            }
+        }
+        return depsMapClosure;
+    }
+
+    // Full optimization using BitVector: computes full transitive closure.
+    llvm::SmallVector<llvm::BitVector> computeFullClosureWithBitVector(
+            const llvm::SmallVector<llvm::DenseSet<size_t>>& depsMap) {
+        llvm::SmallVector<llvm::BitVector> depsMapClosure(depsMap.size(), llvm::BitVector(depsMap.size(), false));
+        const auto& refDeps = depsMapClosure;
+
+        for (size_t i = 0; i < depsMap.size(); ++i) {
+            for (auto dep : depsMap[i]) {
+                depsMapClosure[i].set(dep);
+            }
+        }
+        for (size_t i = 0; i + 1 < depsMapClosure.size(); ++i) {
+            auto& curDeps = depsMapClosure[i];
+            const llvm::BitVector refCurDeps = curDeps;
+            for (int curDepInd = refCurDeps.find_first(); curDepInd >= 0; curDepInd = refCurDeps.find_next(curDepInd)) {
+                const auto& depOfDeps = refDeps[curDepInd];
+                curDeps |= depOfDeps;
+            }
+        }
+        return depsMapClosure;
+    }
+
+private:
+    Logger& _log;
+    enum class StorageType { DenseSet, BitVector };
+    StorageType _storageType = StorageType::BitVector;
+    std::variant<llvm::SmallVector<llvm::DenseSet<size_t>>, llvm::SmallVector<llvm::BitVector>> _depsMapClosure;
+};
 
 //
 // Constructor
@@ -128,12 +211,16 @@ void vpux::AsyncDepsInfo::addExecOp(mlir::async::ExecuteOp execOp) {
 //
 
 void vpux::AsyncDepsInfo::addDependency(mlir::async::ExecuteOp from, mlir::async::ExecuteOp to) {
-    const auto fromInd = getIndex(from);
-    const auto toInd = getIndex(to);
-    _depsMap[toInd].insert(fromInd);
+    const auto fromOpIdx = getIndex(from);
+    const auto toOpIdx = getIndex(to);
+    addDependency(fromOpIdx, toOpIdx);
+}
+
+void vpux::AsyncDepsInfo::addDependency(size_t fromOpIdx, size_t toOpIdx) {
+    _depsMap[toOpIdx].insert(fromOpIdx);
     if (!_consumerMap.empty()) {
         // also update consumer map if build
-        _consumerMap[fromInd].insert(toInd);
+        _consumerMap[fromOpIdx].insert(toOpIdx);
     }
 }
 
@@ -151,36 +238,20 @@ void vpux::AsyncDepsInfo::optimizeDepsMap() {
     // Algorithm is divided into two steps:
     //  step 1 - transitive closure
     //  step 2 - transitive reduction
-    // Worst case complexity is O(N^3) but expected time will be proportional to ~N*E*k, where k represents the size of
-    // _curDeps, E denotes the size of _depsMapClosure, and N is the number of operations. So in case of sparse graphs
-    // which is a usual case for NN models expected time shouldn't be as bad as N^3
+    // Worst case complexity is O(N^3) but expected time will be proportional to ~N*E*k, where k represents the size
+    // of _curDeps, E denotes the size of _depsMapClosure, and N is the number of operations. So in case of sparse
+    // graphs which is a usual case for NN models expected time shouldn't be as bad as N^3
 
     // Step 1: Transitive closure
-    // Update all dependencies in a new depsMapClosure to represent transitive closure
-    // of initial dependencies graph. For each node starting from beginning it will go
-    // though its dependencies, take their dependencies and update its own.
-    // In this step even if initial graph was sparse, after it, it will be dense for the case of
-    // full optimization. Partial optimization does not build cumulatively the full history of all tasks ancestors
-    // but limits the scope to second order dependencies (E102917).
-    auto depsMapClosure = _depsMap;
-    bool performSimplifiedOptimization = _depsMap.size() > SIMPLIFIED_OPTIMIZATION_OP_COUNT_THRESHOLD;
-    SmallVector<llvm::DenseSet<size_t>>& refDeps = performSimplifiedOptimization ? _depsMap : depsMapClosure;
-    unsigned i = 0;
-    for (auto& curDeps : depsMapClosure) {
-        if (i == depsMapClosure.size() - 1) {
-            break;  // during optimization we don't use the last entry because an operation cannot depend on itself.
-        }
-        for (auto curDepInd : llvm::DenseSet<size_t>(curDeps)) {
-            const auto& depOfDeps = refDeps[curDepInd];
-            curDeps.insert(depOfDeps.begin(), depOfDeps.end());
-        }
-        i++;
-    }
+    DepsMapClosure depsMapClosure(_log);
+    depsMapClosure.computeTransitiveClosure(_depsMap);
 
     // Step 2: Transitive reduction
-    // Remove all unnecessary edges.
-    // Go through each node starting from the end and remove dependencies if those dependencies
-    // that are already represented in its dependant nodes
+    // For each node starting from the end of the list, go through its dependencies
+    // and check if any of its dependencies has other dependencies which are also
+    // dependencies of the current node. If yes, then such dependencies can be removed
+    // from the current node dependencies list. This way we will have minimal set of dependencies
+    // which will still preserve original execution order.
     for (int depInd = (static_cast<int>(_depsMap.size()) - 1); depInd >= 0; depInd--) {
         auto& curDeps = _depsMap[depInd];
 
@@ -190,12 +261,11 @@ void vpux::AsyncDepsInfo::optimizeDepsMap() {
         }
 
         for (auto curDepInd : llvm::DenseSet<size_t>(curDeps)) {
-            const auto& depOfDeps = depsMapClosure[curDepInd];
-            // In the context of neural network (NN) models, the size of the _depsMapClosure (E) significantly surpasses
-            // that of _curDeps (k). By strategically constraining the traversal of _curDeps to a maximum of k edges per
-            // operation, we have achieved a refined computational complexity of ~N×E×k.
+            // In the context of neural network (NN) models, the size of the _depsMapClosure (E) significantly
+            // surpasses that of _curDeps (k). By strategically constraining the traversal of _curDeps to a
+            // maximum of k edges per operation, we have achieved a refined computational complexity of ~N×E×k.
             for (auto dep : llvm::DenseSet<size_t>(curDeps)) {
-                if (depOfDeps.count(dep) == 1) {
+                if (depsMapClosure.hasDependency(curDepInd, dep)) {
                     curDeps.erase(dep);
                 }
             }
@@ -300,4 +370,53 @@ std::unordered_map<size_t, size_t> vpux::AsyncDepsInfo::calculateOpOutDegreeTabl
         opOutDegree[i] = static_cast<size_t>(_consumerMap[i].size());
     }
     return opOutDegree;
+}
+
+//
+// verifyAcyclic
+//
+
+void vpux::AsyncDepsInfo::verifyAcyclic() const {
+    VPUX_THROW_WHEN(hasCycle(), "Dependency graph contains a cycle - this would cause a deadlock in async execution");
+}
+
+// Detects cycles in the dependency graph using DFS with three-color marking.
+// Time Complexity: O(V + E), where V = number of operations, E = number of dependency edges.
+// Space Complexity: O(V) for the color array and recursion stack.
+bool vpux::AsyncDepsInfo::hasCycle() const {
+    // White (0): not visited
+    // Gray (1): currently being processed
+    // Black (2): completely processed
+    enum class Color { White, Gray, Black };
+    SmallVector<Color> colors(_execOpCount, Color::White);
+
+    std::function<bool(size_t)> detectCyclesHelper = [&](size_t node) -> bool {
+        colors[node] = Color::Gray;
+
+        // Visit all dependencies
+        for (auto dep : _depsMap[node]) {
+            if (colors[dep] == Color::Gray) {
+                // Back edge detected - cycle found
+                return true;
+            }
+            if (colors[dep] == Color::White) {
+                if (detectCyclesHelper(dep)) {
+                    return true;
+                }
+            }
+        }
+
+        colors[node] = Color::Black;
+        return false;
+    };
+
+    for (size_t i = 0; i < _execOpCount; ++i) {
+        if (colors[i] == Color::White) {
+            if (detectCyclesHelper(i)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }

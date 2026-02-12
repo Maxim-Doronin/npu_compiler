@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/IR/ops/data_movement_fwd.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
 #include <mlir/IR/Builders.h>
@@ -15,13 +17,10 @@ class ChannelPaddingAttr;
 class DepthToSpaceModeAttr;
 class SpaceToDepthModeAttr;
 }  // namespace vpux::IE
-namespace vpux::VPU {
-class DepthToSpaceOp;
-}  // namespace vpux::VPU
+
 namespace vpux::VPUIP {
 class DMADescriptorAttr;
 class DistributedBufferType;
-class SwKernelOp;
 }  // namespace vpux::VPUIP
 
 namespace vpux {

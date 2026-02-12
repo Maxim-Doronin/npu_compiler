@@ -86,10 +86,11 @@ tensor2_act_sparse - set if eltwise tensor2 is sparse
          }];
 
     let arguments =(ins
-        UnitAttr:$tensor2_act_sparse
+        UnitProp:$tensor2_act_sparse
         );
 
     let assemblyFormat = [{
+        prop-dict
         attr-dict
     }];
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,9 +32,9 @@ func.func @ConvertAddToScaleShiftWithReshape(%arg0: tensor<1x16x64x64xf16>) -> t
 
     return %0 : tensor<1x16x64x64xf16>
 
-    // CHECK-DAG:       %[[BIAS:.*]] = const.Declare tensor<1x16x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x16xf16>, [#const.Reshape<[1, 16, 1, 1]>]
-    // CHECK:       %[[VAL0:.*]] = IE.ScaleShift(%arg0, %[[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x16x64x64xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x64x64xf16>
-    // CHECK:       return %[[VAL0]]
+    // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x16xf16>, [#const.Reshape<[1, 16, 1, 1]>]
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x16x64x64xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x64x64xf16>
+    // CHECK:       return [[VAL0]]
 }
 
 // -----
@@ -565,7 +565,7 @@ func.func @CopyInputChainIncludingReshape(%arg0: tensor<64x3x300x300xf16>) -> (t
 // CHECK-LABEL: @ConvertMultiplyToScaleShiftWithHSplatWeights
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x2400x12x2xf16>
 func.func @ConvertMultiplyToScaleShiftWithHSplatWeights(%arg0: tensor<1x2400x12x2xf16>) -> tensor<1x2400x12x2xf16> {
-    %weights = const.Declare tensor<1x1x12x1xf16> = dense<0.17> : tensor<1x1x12x1xf16> isSplat
+    %weights = const.Declare tensor<1x1x12x1xf16> = dense<0.17> : tensor<1x1x12x1xf16>
     %0 = IE.Multiply(%arg0, %weights)
         { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
         tensor<1x2400x12x2xf16>, tensor<1x1x12x1xf16> -> tensor<1x2400x12x2xf16>
@@ -583,7 +583,7 @@ func.func @ConvertMultiplyToScaleShiftWithHSplatWeights(%arg0: tensor<1x2400x12x
 // CHECK-LABEL: @ConvertMultiplyToScaleShiftWithWSplatWeights
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x2400x12x2xf16>
 func.func @ConvertMultiplyToScaleShiftWithWSplatWeights(%arg0: tensor<1x2400x12x2xf16>) -> tensor<1x2400x12x2xf16> {
-    %weights = const.Declare tensor<1x1x1x2xf16> = dense<0.17> : tensor<1x1x1x2xf16> isSplat
+    %weights = const.Declare tensor<1x1x1x2xf16> = dense<0.17> : tensor<1x1x1x2xf16>
     %0 = IE.Multiply(%arg0, %weights)
         { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
         tensor<1x2400x12x2xf16>, tensor<1x1x1x2xf16> -> tensor<1x2400x12x2xf16>
@@ -692,4 +692,23 @@ func.func @ConvertMultiplyToScaleShiftWithWExpandedAndTransposeInput(%arg0: tens
     // CHECK:       [[SCALESHIFT:%.+]] = IE.ScaleShift([[TRANSPOSE_ACTIVATION_1]], [[TRANSPOSE_WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x1536x1024x1xf16>, tensor<1x1536x1x1xf16> -> tensor<1x1536x1024x1xf16>
     // CHECK:       [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[SCALESHIFT]]) {order_value = #NHWC} : tensor<1x1536x1024x1xf16> -> tensor<1x1024x1x1536xf16>
     // CHECK:       return [[TRANSPOSE_OUT]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @NoConvertMultiplyToScaleShiftWithDynamicShape
+// CHECK-SAME:  ([[INPUT:%.+]]: tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>)
+func.func @NoConvertMultiplyToScaleShiftWithDynamicShape(%arg0: tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}> {
+    %cst = const.Declare tensor<1x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf16>
+    %0 = IE.Multiply(%arg0, %cst)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
+        tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x1x1xf16> -> tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
+
+    return %0 : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf16>
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x1x1xf16> -> tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:       return [[MULTIPLY]] : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,6 +20,10 @@
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Linalg/Utils/Utils.h>
 #include <mlir/Dialect/Math/IR/Math.h>
+#include <mlir/Dialect/Quant/IR/Quant.h>
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -516,6 +520,121 @@ mlir::Value emitLinalgRegion<IE::PReluOp>(IE::PReluOp op, mlir::ValueRange args,
     return rewriter.create<mlir::arith::AddFOp>(loc, max, slopeMulMin);
 }
 
+// Quantize Layer
+mlir::Value emitQuantize(mlir::Value val, mlir::quant::QuantizedType resultType, mlir::PatternRewriter& rewriter) {
+    auto loc = val.getLoc();
+    auto elementType = val.getType();
+
+    // Using UniformQuantizedType class to limit only to per-layer case:
+    // !quant<uniform[StorageType:ExpressedType]{Scale:ZeroPoint}>
+    auto quantizeType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(resultType);
+
+    // This implementation supports only per-layer(per-tensor) quantization for now
+    if (!quantizeType) {
+        VPUX_THROW("Not implemented for this quantization type");
+    }
+
+    auto floatType = mlir::cast<mlir::FloatType>(quantizeType.getExpressedType());
+    auto storageType = quantizeType.getStorageType();
+    bool isUnsigned = storageType.isUnsignedInteger();
+    auto bw = storageType.getIntOrFloatBitWidth();
+
+    // Math/arith dialects only accept signless integer types.
+    // If the storage type is not signless, convert it to a signless integer type with the same bit width.
+    if (!storageType.isSignlessInteger()) {
+        storageType = mlir::IntegerType::get(rewriter.getContext(), bw);
+    }
+
+    auto minVal = quantizeType.getStorageTypeMin();
+    auto maxVal = quantizeType.getStorageTypeMax();
+    auto minConst = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), elementType,
+                                                             rewriter.getFloatAttr(floatType, minVal));
+    auto maxConst = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), elementType,
+                                                             rewriter.getFloatAttr(floatType, maxVal));
+    auto fmFlagsMinMax = mlir::arith::FastMathFlagsAttr::get(
+            rewriter.getContext(), mlir::arith::FastMathFlags::nnan | mlir::arith::FastMathFlags::nsz);
+
+    auto scale = quantizeType.getScale();
+    mlir::Value scaleConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, floatType, rewriter.getFloatAttr(floatType, scale));
+
+    auto zeroPoint = quantizeType.getZeroPoint();
+    mlir::Value zeroPointConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, floatType, rewriter.getFloatAttr(floatType, zeroPoint));
+
+    // Compute this as clamp(x/scale + zeroPoint, minStorage, maxStorage)
+    auto div = rewriter.create<mlir::arith::DivFOp>(loc, val, scaleConst);
+    auto add = rewriter.create<mlir::arith::AddFOp>(loc, div, zeroPointConst);
+    auto clampedMin = rewriter.create<mlir::arith::MaximumFOp>(loc, add, minConst, fmFlagsMinMax);
+    auto clamped = rewriter.create<mlir::arith::MinimumFOp>(loc, clampedMin, maxConst, fmFlagsMinMax);
+
+    if (isUnsigned) {
+        return rewriter.create<mlir::arith::FPToUIOp>(loc, storageType, clamped);
+    }
+
+    return rewriter.create<mlir::arith::FPToSIOp>(loc, storageType, clamped);
+}
+
+// Dequantize Layer
+mlir::Value emitDequantize(mlir::Value val, mlir::quant::QuantizedType inputType, mlir::PatternRewriter& rewriter) {
+    auto loc = val.getLoc();
+
+    // Using UniformQuantizedType class to limit only to per-layer case:
+    // !quant<uniform[StorageType:ExpressedType]{Scale:ZeroPoint}>
+    auto quantizeType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inputType);
+
+    // This implementation supports only per-layer(per-tensor) quantization for now
+    if (!quantizeType) {
+        VPUX_THROW("Not implemented for this quantization type");
+    }
+
+    auto floatType = mlir::cast<mlir::FloatType>(quantizeType.getExpressedType());
+    auto storageType = mlir::cast<mlir::IntegerType>(quantizeType.getStorageType());
+    bool isUnsigned = storageType.isUnsignedInteger();
+    auto bw = storageType.getIntOrFloatBitWidth();
+
+    // Math/arith dialects only accept signless integer types.
+    // If the storage type is not signless, convert it to a signless integer type with the same bit width.
+    if (!storageType.isSignlessInteger()) {
+        storageType = mlir::IntegerType::get(rewriter.getContext(), bw);
+    }
+
+    auto scale = quantizeType.getScale();
+    mlir::Value scaleConst =
+            rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), floatType, rewriter.getFloatAttr(floatType, scale));
+
+    auto zeroPoint = quantizeType.getZeroPoint();
+    mlir::Value zeroPointConst = rewriter.create<mlir::arith::ConstantOp>(val.getLoc(), floatType,
+                                                                          rewriter.getFloatAttr(floatType, zeroPoint));
+
+    mlir::Value valFloat = isUnsigned ? (mlir::Value)rewriter.create<mlir::arith::UIToFPOp>(loc, floatType, val)
+                                      : (mlir::Value)rewriter.create<mlir::arith::SIToFPOp>(loc, floatType, val);
+
+    // Compute this as (x - zeroPoint)* scale
+    auto sub = rewriter.create<mlir::arith::SubFOp>(loc, valFloat, zeroPointConst);
+
+    return rewriter.create<mlir::arith::MulFOp>(loc, scaleConst, sub);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::QuantizeOp>(IE::QuantizeOp op, mlir::ValueRange args,
+                                             llvm::ArrayRef<mlir::Type> resultTypes, mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto resElementType = mlir::cast<NDTypeInterface>(op->getResultTypes().front()).getElementType();
+    auto qElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(resElementType);
+    return emitQuantize(args[0], qElemType, rewriter);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::DequantizeOp>(IE::DequantizeOp op, mlir::ValueRange args,
+                                               llvm::ArrayRef<mlir::Type> resultTypes,
+                                               mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto resElementType = mlir::cast<NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+    auto qElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(resElementType);
+    return emitDequantize(args[0], qElemType, rewriter);
+}
+
 // Add/Sub/Mul
 
 template <typename SrcIOp, typename SrcFOp>
@@ -831,7 +950,7 @@ static BroadcastType getBroadcastType(mlir::Operation* op, mlir::Value operand, 
 }
 
 static mlir::LogicalResult emitLinalgEltwiseHelper(mlir::Operation* op, EmitBodyCallback callback,
-                                                   mlir::PatternRewriter& rewriter) {
+                                                   mlir::ValueRange convertedArgs, mlir::PatternRewriter& rewriter) {
     auto resultType = mlir::cast<mlir::RankedTensorType>(op->getResultTypes().front());
     auto outputShape = mlir::cast<vpux::NDTypeInterface>(op->getResultTypes().front()).getShape();
     auto linalgResultElTy = ShaveCodeGen::getLinalgElementType(resultType, rewriter.getContext());
@@ -923,10 +1042,6 @@ static mlir::LogicalResult emitLinalgEltwiseHelper(mlir::Operation* op, EmitBody
     // Add the affine map for the output tensor as well.
     affineMaps.push_back(rewriter.getMultiDimIdentityMap(rank));
 
-    auto linalgOperands = llvm::map_to_vector(op->getOperands(), [&](mlir::Value operand) {
-        return ShaveCodeGen::convertToLinalgValue(operand, rewriter);
-    });
-
     // Compute the output tensor shape with an identity layout which has a memory layout that matches our
     // original output tensor.
     auto ndResultTy = mlir::cast<NDTypeInterface>(resultType);
@@ -936,30 +1051,31 @@ static mlir::LogicalResult emitLinalgEltwiseHelper(mlir::Operation* op, EmitBody
 
     llvm::SmallVector<mlir::utils::IteratorType> loopAttrs(rank, mlir::utils::IteratorType::parallel);
     auto linalgOp = rewriter.create<mlir::linalg::GenericOp>(
-            op->getLoc(), outputTensor.getType(), linalgOperands, outputTensor, affineMaps, loopAttrs,
+            op->getLoc(), outputTensor.getType(), convertedArgs, outputTensor, affineMaps, loopAttrs,
             [&](mlir::OpBuilder& opBuilder, mlir::Location loc, mlir::ValueRange blockArgs) {
                 mlir::Value opResult =
                         callback(op, blockArgs.take_front(op->getNumOperands()), {linalgResultElTy}, rewriter);
                 opBuilder.create<mlir::linalg::YieldOp>(loc, opResult);
             });
+    rewriter.replaceOp(op, linalgOp);
 
-    rewriter.replaceOp(
-            op, ShaveCodeGen::convertFromLinalgValue(linalgOp->getResult(0), op->getResult(0).getType(), rewriter)
-                        .getDefiningOp());
     return mlir::success();
 }
 
 template <typename SrcOp>
-class IEEltwiseToLinalg : public mlir::OpRewritePattern<SrcOp> {
+class IEEltwiseToLinalg : public mlir::OpConversionPattern<SrcOp> {
 public:
-    using mlir::OpRewritePattern<SrcOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<SrcOp>::OpConversionPattern;
+    using OpAdaptor = typename mlir::OpConversionPattern<SrcOp>::OpAdaptor;
 
-    mlir::LogicalResult matchAndRewrite(SrcOp op, mlir::PatternRewriter& rewriter) const final {
+    mlir::LogicalResult matchAndRewrite(SrcOp op, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const final {
+        mlir::ValueRange convertedArgs = adaptor.getOperands();
         auto emitBody = [](mlir::Operation* op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> types,
                            mlir::PatternRewriter& rewriter) {
             return emitLinalgRegion<SrcOp>(mlir::cast<SrcOp>(op), args, types, rewriter);
         };
-        return emitLinalgEltwiseHelper(op, emitBody, rewriter);
+        return emitLinalgEltwiseHelper(op, emitBody, convertedArgs, rewriter);
     }
 };
 
@@ -1060,15 +1176,17 @@ mlir::Value emitLinalgRegion<IE::SignOp>(IE::SignOp op, mlir::ValueRange args, l
     auto msbMask = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(intTy, msbMaskVal));
     auto signBit = rewriter.create<mlir::arith::AndIOp>(loc, casted, msbMask);
 
-    auto shift = rewriter.create<mlir::arith::ShLIOp>(loc, casted,
-                                                      rewriter.create<mlir::arith::ConstantIntOp>(loc, 1, intTy));
-    auto isZero = rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, shift,
-                                                       rewriter.create<mlir::arith::ConstantIntOp>(loc, 0, intTy));
+    auto shift = rewriter.create<mlir::arith::ShLIOp>(
+            loc, casted, rewriter.create<mlir::arith::ConstantIntOp>(loc, 1, intTy.getWidth()));
+
+    auto isZero =
+            rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, shift,
+                                                 rewriter.create<mlir::arith::ConstantIntOp>(loc, 0, intTy.getWidth()));
 
     auto signHandled = rewriter.create<mlir::arith::SelectOp>(
             loc,
             rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::ne, signBit,
-                                                 rewriter.create<mlir::arith::ConstantIntOp>(loc, 0, intTy)),
+                                                 rewriter.create<mlir::arith::ConstantIntOp>(loc, 0, intTy.getWidth())),
             negOne, posOne);
 
     return rewriter.create<mlir::arith::SelectOp>(loc, isZero, zero, signHandled);
@@ -1212,63 +1330,258 @@ mlir::Value emitLinalgRegion<IE::MishOp>(IE::MishOp op, mlir::ValueRange args, l
     return rewriter.create<mlir::arith::MulFOp>(loc, input, tanh_softplus);
 }
 
+enum class RoundMode { FLOOR, CEIL };
+
+mlir::Value emitRoundRegion(mlir::Operation* op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                            mlir::PatternRewriter& rewriter, RoundMode mode) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op->getLoc();
+    auto input = args[0];
+    auto inputType = mlir::cast<mlir::FloatType>(input.getType());
+
+    const int FP16_FRACTBITS = 10;
+    const int FP16_BIAS = 15;
+    const int FP16_TOTALBITS = 16;
+    const int FP16_GREATINT = (FP16_BIAS + FP16_FRACTBITS) << FP16_FRACTBITS;  // 0x6400
+
+    auto i16Type = rewriter.getIntegerType(16);
+
+    auto signMask = rewriter.create<mlir::arith::ConstantOp>(
+            loc, rewriter.getIntegerAttr(i16Type, 1u << (FP16_TOTALBITS - 1)));                           // 0x8000
+    auto ones = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, 0x3C00));  // FP16(1.0)
+    auto notSignMask = rewriter.create<mlir::arith::XOrIOp>(
+            loc, signMask, rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, -1)));
+
+    auto allOnes = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, 0xFFFF));
+    auto zeroI16 = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, 0x0000));
+    auto oneI16 = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, 0x0001));
+    auto shiftSign =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, FP16_TOTALBITS - 1));
+    auto shiftFractBits =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, FP16_FRACTBITS));
+    auto biasVal = rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, FP16_BIAS));
+    auto greatIntMinusOne = rewriter.create<mlir::arith::ConstantOp>(
+            loc, rewriter.getIntegerAttr(i16Type, (FP16_GREATINT - 1) & 0xFFFF));
+    auto truncFractConst =
+            rewriter.create<mlir::arith::ConstantOp>(loc, rewriter.getIntegerAttr(i16Type, 0xFC00));  // (~0x03FF)
+
+    auto xInt = rewriter.create<mlir::arith::BitcastOp>(loc, i16Type, input);
+    // xSign = xInt & signMask
+    auto xSign = rewriter.create<mlir::arith::AndIOp>(loc, xInt, signMask);
+    // xAbs = xInt & ~signMask
+    auto xAbs = rewriter.create<mlir::arith::AndIOp>(loc, xInt, notSignMask);
+    // xExpo = (xAbs >> 10) - 15
+    auto shifted = rewriter.create<mlir::arith::ShRSIOp>(loc, xAbs, shiftFractBits);
+    auto xExpo = rewriter.create<mlir::arith::SubIOp>(loc, shifted, biasVal);
+    // truncMask = (0xFC00 >> xExpo)
+    auto truncMask = rewriter.create<mlir::arith::ShRSIOp>(loc, truncFractConst, xExpo);
+
+    // isSign = xInt >> 15
+    auto isSign = rewriter.create<mlir::arith::ShRSIOp>(loc, xInt, shiftSign);
+
+    // isZero = (xAbs - 1) >> 15
+    auto xAbsMinusOne = rewriter.create<mlir::arith::SubIOp>(loc, xAbs, oneI16);
+    auto isZero = rewriter.create<mlir::arith::ShRSIOp>(loc, xAbsMinusOne, shiftSign);
+
+    // isSmall = ((xAbs - ones) >> 15) & ~isZero
+    auto xAbsMinusOnes = rewriter.create<mlir::arith::SubIOp>(loc, xAbs, ones);
+    auto isSmallShifted = rewriter.create<mlir::arith::ShRSIOp>(loc, xAbsMinusOnes, shiftSign);
+    auto notIsZero = rewriter.create<mlir::arith::XOrIOp>(loc, isZero, allOnes);
+    auto isSmall = rewriter.create<mlir::arith::AndIOp>(loc, isSmallShifted, notIsZero);
+
+    // isGreat = ((0x63FF - xAbs) >> 15)
+    auto diff = rewriter.create<mlir::arith::SubIOp>(loc, greatIntMinusOne, xAbs);
+    auto isGreat = rewriter.create<mlir::arith::ShRSIOp>(loc, diff, shiftSign);
+
+    // isExact = isGreat | isZero
+    auto isExact = rewriter.create<mlir::arith::OrIOp>(loc, isGreat, isZero);
+
+    // isRoundMode (isFloor or isCeil)
+    auto isExactOrSmall = rewriter.create<mlir::arith::OrIOp>(loc, isExact, isSmall);
+    auto isRoundMode = rewriter.create<mlir::arith::XOrIOp>(loc, isExactOrSmall, allOnes);
+
+    // xTrunc = (xAbs & truncMask)
+    auto xTrunc = rewriter.create<mlir::arith::AndIOp>(loc, xAbs, truncMask);
+
+    // isInexact = mask(xTrunc != xAbs)
+    auto isEqual = rewriter.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::eq, xTrunc, xAbs);
+    auto isInexact = rewriter.create<mlir::arith::SelectOp>(loc, isEqual, zeroI16, allOnes);
+
+    mlir::Value adjustment;
+    mlir::Value xSmall;
+
+    if (mode == RoundMode::FLOOR) {
+        // Floor: decrement for negative and inexact numbers
+        auto adjustmentCond = rewriter.create<mlir::arith::AndIOp>(loc, isSign, isInexact);
+        adjustment = rewriter.create<mlir::arith::AndIOp>(loc, adjustmentCond, ones);
+
+        // xSmall for floor: -1.0 for negative and small numbers
+        auto xSmallCond = rewriter.create<mlir::arith::AndIOp>(loc, isSign, isSmall);
+        xSmall = rewriter.create<mlir::arith::AndIOp>(loc, xSmallCond, ones);
+    } else {
+        // Ceil: increment for positive and inexact numbers
+        auto notIsSign = rewriter.create<mlir::arith::XOrIOp>(loc, isSign, allOnes);
+        auto adjustmentCond = rewriter.create<mlir::arith::AndIOp>(loc, notIsSign, isInexact);
+        adjustment = rewriter.create<mlir::arith::AndIOp>(loc, adjustmentCond, ones);
+
+        // xSmall for ceil: +1.0 for positive and small numbers
+        auto xSmallCond = rewriter.create<mlir::arith::AndIOp>(loc, notIsSign, isSmall);
+        xSmall = rewriter.create<mlir::arith::AndIOp>(loc, xSmallCond, ones);
+    }
+
+    // xRounded = xTrunc + adjustment (FP16)
+    auto xTruncFloat = rewriter.create<mlir::arith::BitcastOp>(loc, inputType, xTrunc);
+    auto adjustmentFloat = rewriter.create<mlir::arith::BitcastOp>(loc, inputType, adjustment);
+    auto xRoundedFloat = rewriter.create<mlir::arith::AddFOp>(loc, xTruncFloat, adjustmentFloat);
+    auto xRounded = rewriter.create<mlir::arith::BitcastOp>(loc, i16Type, xRoundedFloat);
+
+    // Final result
+    auto exactPart = rewriter.create<mlir::arith::AndIOp>(loc, isExact, xInt);
+    auto roundPart = rewriter.create<mlir::arith::AndIOp>(loc, isRoundMode, xRounded);
+    auto smallPart = rewriter.create<mlir::arith::AndIOp>(loc, isSmall, xSmall);
+
+    auto roundOrSmall = rewriter.create<mlir::arith::OrIOp>(loc, roundPart, smallPart);
+    auto signOrRoundSmall = rewriter.create<mlir::arith::OrIOp>(loc, xSign, roundOrSmall);
+    auto finalInt = rewriter.create<mlir::arith::OrIOp>(loc, exactPart, signOrRoundSmall);
+
+    return rewriter.create<mlir::arith::BitcastOp>(loc, inputType, finalInt);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::FloorOp>(IE::FloorOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                          mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op.getLoc();
+    auto input = args[0];
+    auto elTy = mlir::cast<NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+
+    if (mlir::isa<mlir::Float16Type>(elTy)) {
+        return emitRoundRegion(op, args, resultTypes, rewriter, RoundMode::FLOOR);
+    }
+    // For other floating-point types, use the math library
+    return rewriter.create<mlir::math::FloorOp>(loc, input);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::CeilingOp>(IE::CeilingOp op, mlir::ValueRange args,
+                                            llvm::ArrayRef<mlir::Type> resultTypes, mlir::PatternRewriter& rewriter) {
+    VPUX_UNUSED(resultTypes);
+    auto loc = op.getLoc();
+    auto input = args[0];
+    auto elTy = mlir::cast<NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+
+    if (mlir::isa<mlir::Float16Type>(elTy)) {
+        return emitRoundRegion(op, args, resultTypes, rewriter, RoundMode::CEIL);
+    }
+    // For other floating-point types, use the math library
+    return rewriter.create<mlir::math::CeilOp>(loc, input);
+}
+
+// Type conversion patterns
+class YieldOpTypeConversion : public mlir::OpConversionPattern<IE::CGCYieldOp> {
+public:
+    using mlir::OpConversionPattern<IE::CGCYieldOp>::OpConversionPattern;
+
+    mlir::LogicalResult matchAndRewrite(IE::CGCYieldOp op, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const final {
+        rewriter.modifyOpInPlace(op, [&] {
+            op->setOperands(adaptor.getOperands());
+        });
+        return mlir::success();
+    }
+};
+
+// Asinh layer
+
+template <>
+mlir::Value emitLinalgRegion<IE::AsinhOp>(IE::AsinhOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                          mlir::PatternRewriter& rewriter) {
+    return rewriter.create<mlir::math::AsinhOp>(op->getLoc(), resultTypes[0], args[0], mlir::arith::FastMathFlags::afn);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::AcoshOp>(IE::AcoshOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                          mlir::PatternRewriter& rewriter) {
+    return rewriter.create<mlir::math::AcoshOp>(op->getLoc(), resultTypes[0], args[0], mlir::arith::FastMathFlags::afn);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::AsinOp>(IE::AsinOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                         mlir::PatternRewriter& rewriter) {
+    return rewriter.create<mlir::math::AsinOp>(op->getLoc(), resultTypes[0], args[0], mlir::arith::FastMathFlags::afn);
+}
+
+template <>
+mlir::Value emitLinalgRegion<IE::AcosOp>(IE::AcosOp op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> resultTypes,
+                                         mlir::PatternRewriter& rewriter) {
+    return rewriter.create<mlir::math::AcosOp>(op->getLoc(), resultTypes[0], args[0], mlir::arith::FastMathFlags::afn);
+}
+
 void ConvertEltwiseLayers2MathPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    mlir::ConversionTarget target(ctx);
+    mlir::TypeConverter typeConverter;
+    typeConverter.addConversion([](mlir::RankedTensorType type) -> mlir::Type {
+        return ShaveCodeGen::normalizeType(type);
+    });
+    const auto argConvert = [](mlir::OpBuilder&, mlir::RankedTensorType dstType, mlir::ValueRange inputs,
+                               mlir::Location) -> mlir::Value {
+        // Only capsule block arguments should need this and we should not be
+        // able to reach this otherwise.
+        auto input = inputs[0];
+        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(input)) {
+            if (!mlir::isa<IE::CodeGenCapsuleOp>(blockArg.getOwner()->getParentOp())) {
+                VPUX_THROW("Unexpected block argument conversion");
+            }
+            input.setType(dstType);
+            return input;
+        }
+        VPUX_THROW("Unexpected type materialization required");
+    };
+    typeConverter.addTargetMaterialization(argConvert);
 
+    mlir::ConversionTarget target(ctx);
     target.addLegalDialect<mlir::arith::ArithDialect, mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
-                           mlir::math::MathDialect, mlir::func::FuncDialect>();
+                           mlir::math::MathDialect, mlir::func::FuncDialect, mlir::quant::QuantDialect>();
 
     target.addIllegalDialect<IE::IEDialect>();
     target.addLegalOp<IE::CodeGenCapsuleOp>();
-    target.addLegalOp<IE::CGCYieldOp>();
-    target.addDynamicallyLegalOp<IE::PermuteCastOp>([&](IE::PermuteCastOp op) {
-        // Legal with identity mapping mem permute, otherwise needs decomposing
-        // since it performs an additional reshape.
-        // This should always be illegal after E#187489.
-        if (op.getMemPerm().isIdentity()) {
-            return true;
-        }
-        return false;
+    target.addDynamicallyLegalOp<IE::CGCYieldOp>([&](IE::CGCYieldOp op) {
+        return typeConverter.isLegal(op);
     });
 
-    auto populatePatterns = [&](mlir::RewritePatternSet& patternSet) {
-        patternSet.add<IEEltwiseToLinalg<IE::MaximumOp>, IEEltwiseToLinalg<IE::MinimumOp>,
-                       IEEltwiseToLinalg<IE::DivideOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::LogOp>, IEEltwiseToLinalg<IE::ExpOp>, IEEltwiseToLinalg<IE::SqrtOp>,
-                       IEEltwiseToLinalg<IE::TanhOp>, IEEltwiseToLinalg<IE::AtanOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::BitwiseAndOp>, IEEltwiseToLinalg<IE::BitwiseOrOp>,
-                       IEEltwiseToLinalg<IE::BitwiseXorOp>, IEEltwiseToLinalg<IE::BitwiseNotOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::LogicalOrOp>, IEEltwiseToLinalg<IE::LogicalXorOp>,
-                       IEEltwiseToLinalg<IE::AndOp>, IEEltwiseToLinalg<IE::LogicalNotOp>,
-                       IEEltwiseToLinalg<IE::SelectOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::EqualOp>, IEEltwiseToLinalg<IE::NotEqualOp>, IEEltwiseToLinalg<IE::LessOp>,
-                       IEEltwiseToLinalg<IE::LessEqualOp>, IEEltwiseToLinalg<IE::GreaterOp>,
-                       IEEltwiseToLinalg<IE::GreaterEqualOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::SquaredDifferenceOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::ErfOp>, IEEltwiseToLinalg<IE::RoundOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::SinOp>, IEEltwiseToLinalg<IE::CosOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::PReluOp>, IEEltwiseToLinalg<IE::ReLUOp>,
-                       IEEltwiseToLinalg<IE::LeakyReluOp>, IEEltwiseToLinalg<IE::ClampOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::AddOp>, IEEltwiseToLinalg<IE::MultiplyOp>,
-                       IEEltwiseToLinalg<IE::SubtractOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::ConvertOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::TanOp>, IEEltwiseToLinalg<IE::AtanhOp>, IEEltwiseToLinalg<IE::SinhOp>,
-                       IEEltwiseToLinalg<IE::CoshOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::AbsOp>, IEEltwiseToLinalg<IE::NegativeOp>, IEEltwiseToLinalg<IE::SignOp>,
-                       IEEltwiseToLinalg<IE::HSwishOp>, IEEltwiseToLinalg<IE::HSigmoidOp>>(&ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::EluOp>, IEEltwiseToLinalg<IE::GeluOp>, IEEltwiseToLinalg<IE::SeluOp>>(
-                &ctx);
-        patternSet.add<IEEltwiseToLinalg<IE::SoftPlusOp>, IEEltwiseToLinalg<IE::MishOp>>(&ctx);
-    };
-
     mlir::RewritePatternSet patterns(&ctx);
-    populatePatterns(patterns);
-    ShaveCodeGen::populateIEReduceToLinalgPatterns(patterns);
-    ShaveCodeGen::populateIEDataMovementToTensorPatterns(patterns);
-    ShaveCodeGen::populateIEShapeManipulationToTensorPatterns(patterns);
+    // Add type conversion patterns.
+    patterns.add<YieldOpTypeConversion>(typeConverter, &ctx);
+
+    // Add element-wise patterns.
+    patterns.add<IEEltwiseToLinalg<IE::MaximumOp>, IEEltwiseToLinalg<IE::MinimumOp>, IEEltwiseToLinalg<IE::DivideOp>,
+                 IEEltwiseToLinalg<IE::LogOp>, IEEltwiseToLinalg<IE::ExpOp>, IEEltwiseToLinalg<IE::SqrtOp>,
+                 IEEltwiseToLinalg<IE::TanhOp>, IEEltwiseToLinalg<IE::AtanOp>, IEEltwiseToLinalg<IE::BitwiseAndOp>,
+                 IEEltwiseToLinalg<IE::BitwiseOrOp>, IEEltwiseToLinalg<IE::BitwiseXorOp>,
+                 IEEltwiseToLinalg<IE::BitwiseNotOp>, IEEltwiseToLinalg<IE::LogicalOrOp>,
+                 IEEltwiseToLinalg<IE::LogicalXorOp>, IEEltwiseToLinalg<IE::AndOp>, IEEltwiseToLinalg<IE::LogicalNotOp>,
+                 IEEltwiseToLinalg<IE::SelectOp>, IEEltwiseToLinalg<IE::EqualOp>, IEEltwiseToLinalg<IE::NotEqualOp>,
+                 IEEltwiseToLinalg<IE::LessOp>, IEEltwiseToLinalg<IE::LessEqualOp>, IEEltwiseToLinalg<IE::GreaterOp>,
+                 IEEltwiseToLinalg<IE::GreaterEqualOp>, IEEltwiseToLinalg<IE::SquaredDifferenceOp>,
+                 IEEltwiseToLinalg<IE::ErfOp>, IEEltwiseToLinalg<IE::RoundOp>, IEEltwiseToLinalg<IE::SinOp>,
+                 IEEltwiseToLinalg<IE::CosOp>, IEEltwiseToLinalg<IE::PReluOp>, IEEltwiseToLinalg<IE::ReLUOp>,
+                 IEEltwiseToLinalg<IE::LeakyReluOp>, IEEltwiseToLinalg<IE::ClampOp>, IEEltwiseToLinalg<IE::AddOp>,
+                 IEEltwiseToLinalg<IE::MultiplyOp>, IEEltwiseToLinalg<IE::SubtractOp>, IEEltwiseToLinalg<IE::ConvertOp>,
+                 IEEltwiseToLinalg<IE::TanOp>, IEEltwiseToLinalg<IE::AtanhOp>, IEEltwiseToLinalg<IE::SinhOp>,
+                 IEEltwiseToLinalg<IE::CoshOp>, IEEltwiseToLinalg<IE::AbsOp>, IEEltwiseToLinalg<IE::NegativeOp>,
+                 IEEltwiseToLinalg<IE::SignOp>, IEEltwiseToLinalg<IE::HSwishOp>, IEEltwiseToLinalg<IE::HSigmoidOp>,
+                 IEEltwiseToLinalg<IE::EluOp>, IEEltwiseToLinalg<IE::GeluOp>, IEEltwiseToLinalg<IE::SeluOp>,
+                 IEEltwiseToLinalg<IE::SoftPlusOp>, IEEltwiseToLinalg<IE::MishOp>, IEEltwiseToLinalg<IE::CeilingOp>,
+                 IEEltwiseToLinalg<IE::FloorOp>, IEEltwiseToLinalg<IE::QuantizeOp>, IEEltwiseToLinalg<IE::DequantizeOp>,
+                 IEEltwiseToLinalg<IE::AsinhOp>, IEEltwiseToLinalg<IE::AcoshOp>, IEEltwiseToLinalg<IE::AsinOp>,
+                 IEEltwiseToLinalg<IE::AcosOp>>(typeConverter, &ctx);
+
+    ShaveCodeGen::populateIEReduceToLinalgPatterns(patterns, typeConverter);
+    ShaveCodeGen::populateIEDataMovementToTensorPatterns(patterns, typeConverter);
+    ShaveCodeGen::populateIEShapeManipulationToTensorPatterns(patterns, typeConverter);
+    ShaveCodeGen::populateIESoftmaxToLinalgPatterns(patterns, typeConverter);
     mlir::FrozenRewritePatternSet frozenPatterns(std::move(patterns));
 
     // E#172607 [ShaveCodeGen] Make Linalg lowering pass run on CodeGenCapsuleOps

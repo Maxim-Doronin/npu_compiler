@@ -87,7 +87,7 @@ void vpux::VPURT::EnqueueBarrierHandler::initPrevPhysBarrierData(SmallVector<siz
 
 void vpux::VPURT::EnqueueBarrierHandler::findShvTasksWithDpu(size_t numClusters) {
     for (auto& [queueType, taskVec] : _taskQueueTypeMap) {
-        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT) {
+        if (queueType.type != config::ExecutorKind::SHAVE_ACT) {
             continue;
         }
 
@@ -463,7 +463,7 @@ void vpux::VPURT::EnqueueBarrierHandler::optimizeEnqueueIfPossible(std::optional
 // If some previously enqueued op is enqueued at later barrier adjust the enqueue target
 // to be equal to that of previous enqueue
 mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnFifoState(
-        size_t taskInd, std::optional<size_t>& enqBarOpt,
+        size_t taskInd, VPURT::TaskQueueType taskQueueType, std::optional<size_t>& enqBarOpt,
         std::vector<std::optional<size_t>>& outstandingEnqueuesTaskIndexVec,
         std::vector<std::optional<size_t>>& outstandingEnqueuesTaskWaitBarIndexVec, size_t outstandingEnquOpsCounter) {
     auto oldestTaskIndexOpt = outstandingEnqueuesTaskIndexVec[outstandingEnquOpsCounter];
@@ -535,7 +535,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnF
                 barrierSet = _barrierInfo.getWaitBarriers(currTaskIndexOpt.value());
                 auto updateBars = _barrierInfo.getUpdateBarriers(currTaskIndexOpt.value());
                 barrierSet.insert(updateBars.begin(), updateBars.end());
-                currTaskIndexOpt = _barrierInfo.getNextTaskOnSameQueue(currTaskIndexOpt.value());
+                currTaskIndexOpt = _barrierInfo.getNextTaskOnQueue(currTaskIndexOpt.value(), taskQueueType);
             }
 
             VPUX_THROW_WHEN(barrierSet.empty(), "Did not find next task with any barrier");
@@ -580,7 +580,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::delayEnqIfNeededBasedOnF
             return mlir::success();
         }
 
-        taskIndexInFifo = _barrierInfo.getNextTaskOnSameQueue(taskIndexInFifo.value());
+        taskIndexInFifo = _barrierInfo.getNextTaskOnQueue(taskIndexInFifo.value(), taskQueueType);
     } while (taskIndexInFifo.has_value() && taskIndexInFifo.value() < taskInd);
 
     // Could not reliably set and delay enqueue barrier due to fifo size of task
@@ -694,14 +694,14 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::findInitialEnqWithLcaFor
 }
 
 mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers(
-        const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorEnqAtBootstrap) {
+        const mlir::DenseSet<vpux::config::ExecutorKind>& executorEnqAtBootstrap) {
     _tasksEnqBar.resize(_barrierInfo.getNumOfTasks());
 
     // Processed queue types
     llvm::DenseSet<VPURT::TaskQueueType> processedQueues;
 
     for (auto& [queueType, taskVec] : _taskQueueTypeMap) {
-        _log.trace("Enqueue tasks for {0}:{1}", VPU::stringifyExecutorKind(queueType.type), queueType.id);
+        _log.trace("Enqueue tasks for {0}:{1}", config::stringifyExecutorKind(queueType.type), queueType.id);
 
         // Check if for given queue it is requested to enqueue all tasks at bootstrap
         // In that case skip processing of this queue as default _tasksEnqBar value is nullopt = BOOTSTRAP
@@ -726,7 +726,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
         bool optimizeAndMergeEnq = _optimizeAndMergeEnqFlag;
 
         // Configure based on difference in handling different engines
-        if (queueType.type == VPU::ExecutorKind::DMA_NN) {
+        if (queueType.type == config::ExecutorKind::DMA_NN) {
             outstandingEnqueueLimit = _dmaFifoDepth;
             outstandingEnqueuesTaskWaitBarIndexVec.resize(outstandingEnqueueLimit);
             outstandingEnqueuesTaskIndexVec.resize(outstandingEnqueueLimit);
@@ -734,7 +734,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             // Only DMA tasks can be enqueued at bootstrap as they do not require
             // descriptor fetching
             supportEnqAtBootstrap = true;
-        } else if (queueType.type == VPU::ExecutorKind::SHAVE_ACT) {
+        } else if (queueType.type == config::ExecutorKind::SHAVE_ACT) {
             // There are 2 SHV engines in single cluster and compiler has no explicit control
             // over which engine is going to be used unless dedicated FIFOs per SHV engine feature is enabled. In such
             // a case the algorithm cannot assume that ShaveTaskN blocks execution of ShaveTaskN+1. The optimization is
@@ -742,7 +742,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
             optimizeAndMergeEnq &= _swFifosPerShaveEngineEnabled;
         }
 
-        bool dpuEnqCheckForShv = queueType.type == VPU::ExecutorKind::DPU && !_shvTasksWithDpuPerTile.empty() &&
+        bool dpuEnqCheckForShv = queueType.type == config::ExecutorKind::DPU && !_shvTasksWithDpuPerTile.empty() &&
                                  !_shvTasksWithDpuPerTile[queueType.id].empty();
 
         if (dpuEnqCheckForShv) {
@@ -863,7 +863,7 @@ mlir::LogicalResult vpux::VPURT::EnqueueBarrierHandler::calculateEnqueueBarriers
                 if (outstandingEnqueueLimit > 0 && enqBarOpt.has_value()) {
                     if (!previousEnqBarOpt.has_value() || enqBarOpt.value() != previousEnqBarOpt.value()) {
                         const auto res = delayEnqIfNeededBasedOnFifoState(
-                                taskInd, enqBarOpt, outstandingEnqueuesTaskIndexVec,
+                                taskInd, queueType, enqBarOpt, outstandingEnqueuesTaskIndexVec,
                                 outstandingEnqueuesTaskWaitBarIndexVec, outstandingEnquOpsCounter);
                         if (mlir::failed(res)) {
                             _log.info("Could not reliably set and delay enqueue barrier due to fifo size of task: {0}, "

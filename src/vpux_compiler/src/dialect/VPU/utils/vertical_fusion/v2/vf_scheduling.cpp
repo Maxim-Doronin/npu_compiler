@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -183,7 +183,7 @@ Byte VFScheduling::calculateSharedSize(VFConfig& config, mlir::Operation* operat
             break;
         }
         if (mlir::isa<mlir::BlockArgument>(operand)) {
-            auto canBeShared = isOperandSharedWeightsForTiling(operation, operand, tiledTypes[operandIdx].getShape());
+            auto canBeShared = isOperandSharedWeightsForTiling(operation, operand, inTile.tiles[operandIdx]);
             if (canBeShared) {
                 size += tiledTypes[operandIdx].getTotalAllocSize();
             }
@@ -238,12 +238,14 @@ StrategyCost VFScheduling::getParentCost(mlir::Operation* operation,
 
 void VFScheduling::correctOutputSpillCost(StrategyCost& /*spillCost*/, VFConfig& /*config*/,
                                           const DenseMap<mlir::Operation*, StrategyCost>& /*isolatedOperCost*/,
-                                          const int64_t /*index*/, const int64_t /*tilesNumber*/) const {
+                                          SmallVector<StrategyCost>& /*prefetchCostList*/, const int64_t /*index*/,
+                                          const int64_t /*tilesNumber*/) const {
 }
 
 void VFScheduling::correctInputPrefetchingCost(StrategyCost& /*prefetchCost*/, mlir::Operation* /*operation*/,
                                                VFConfig& /*config*/,
                                                const DenseMap<mlir::Operation*, StrategyCost>& /*isolatedOperCost*/,
+                                               SmallVector<StrategyCost>& /*prefetchCostList*/,
                                                const size_t /*index*/) const {
 }
 
@@ -267,15 +269,21 @@ StrategyCost VFScheduling::getPrefetchingCost(mlir::Operation* operation, VFConf
     }
 
     const auto sharedWeightsEnabled = isSharedWeightsSupported(config);
+    auto tileAxis = inputTiling.value().second.axis;
+    tileAxis[Dims4D::Act::C] = 1;
+    auto tileSizeOnSpatialDims = tileAxis.totalSize();
+
+    auto isWeightsSharedWithPreviousTile =
+            index == 0 ? false : index / tileSizeOnSpatialDims == (index - 1) / tileSizeOnSpatialDims;
 
     for (auto input : operation->getOperands() | indexed) {
         if (input.index() >= inputTiling.value().first.tiles.size()) {
             break;
         }
         auto inputOperand = input.value();
-        auto inTiledShape = inputTiling.value().first.tiles[input.index()].shape;
-        auto isAlreadyShared = index != 0 && sharedWeightsEnabled &&
-                               isOperandSharedWeightsForTiling(operation, inputOperand, inTiledShape);
+        const auto& inTile = inputTiling.value().first.tiles[input.index()];
+        auto isAlreadyShared = isWeightsSharedWithPreviousTile && sharedWeightsEnabled &&
+                               isOperandSharedWeightsForTiling(operation, inputOperand, inTile);
         if (isAlreadyShared) {
             continue;
         }
@@ -296,7 +304,8 @@ StrategyCost VFScheduling::getPrefetchingCost(mlir::Operation* operation, VFConf
 VFLinearContainer VFScheduling::calculateLinearTimeIntervals(
         VFConfig& config, int64_t tilesNumber, const TilingOperationStorage::UPtr& tilingInfo,
         const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction) const {
-    _prefetchedCost.clear();
+    // prefetch cost per tiles, size is tilesNumber + 1 to avoid out of range access when handling last tile
+    SmallVector<StrategyCost> prefetchCostList(tilesNumber + 1, 0);
     StrategyCost fullCost = 0;
     VFLinearContainer linearTimeIntervals;
     auto inputs = config.getInputs();
@@ -341,7 +350,8 @@ VFLinearContainer VFScheduling::calculateLinearTimeIntervals(
                 }
                 _log.trace("opIndex {0} original output spill cost {1}", opIndex, outputCost);
                 correctedOutputCost = outputCost;
-                correctOutputSpillCost(correctedOutputCost, config, isolatedOperCost, index, tilesNumber);
+                correctOutputSpillCost(correctedOutputCost, config, isolatedOperCost, prefetchCostList, index,
+                                       tilesNumber);
                 _log.trace("opIndex {0} corrected output spill cost {1}", opIndex, correctedOutputCost);
                 fullCost += correctedOutputCost;
             }
@@ -357,7 +367,8 @@ VFLinearContainer VFScheduling::calculateLinearTimeIntervals(
             }
             if (_prefetching && prefetchedCost > 0) {
                 _log.trace("opIndex {0} original prefetch spill cost {1}", opIndex, prefetchedCost);
-                correctInputPrefetchingCost(correctedPrefetchedCost, op, config, isolatedOperCost, index);
+                correctInputPrefetchingCost(correctedPrefetchedCost, op, config, isolatedOperCost, prefetchCostList,
+                                            index);
                 _log.trace("opIndex {0} corrected prefetch spill cost {1}", opIndex, correctedPrefetchedCost);
             }
             fullCost += correctedPrefetchedCost;
@@ -502,12 +513,12 @@ StrategyCost VFScheduling::getInternalSliceCopyCost(mlir::Operation* op, VFConfi
 }
 
 void VFScheduling::reduceCostWithPrefetchedDMA(StrategyCost& parentCost, const StrategyCost& prefetchCost,
-                                               const size_t index) const {
+                                               StrategyCost& accumuatedPrefetchCost) const {
     // reduce the cost with dmas prefetched for this tile
-    if (_prefetchedCost[index] <= parentCost) {
-        parentCost -= _prefetchedCost[index];
+    if (accumuatedPrefetchCost <= parentCost) {
+        parentCost -= accumuatedPrefetchCost;
     }
-    _prefetchedCost[index] += prefetchCost;
+    accumuatedPrefetchCost += prefetchCost;
 }
 
 SmallVector<TimelineInterval> VFScheduling::getTimeIntervals(

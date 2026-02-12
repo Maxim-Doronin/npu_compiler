@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -16,9 +16,7 @@ endif()
 add_subdirectory(profiling_parser)
 
 add_subdirectory(vpux-binutils)
-if (ENABLE_MLIR_COMPILER)
-    add_subdirectory(npureg-tblgen)
-endif()
+add_subdirectory(npureg-tblgen)
 
 #
 # install python tools

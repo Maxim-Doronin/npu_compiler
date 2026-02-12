@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -51,7 +51,7 @@ func.func @CheckConv(%input: !InputDistributed, %weights: !WeightsDistributed,
     return %convOut : !OutputDistributed
 }
 
-//CHECK:        [[CONV:%.*]] = VPU.NCE.Convolution([[INPUT]], [[WEIGHTS]], [[WT]])
+//CHECK:        [[CONV:%.+]] = VPU.NCE.Convolution([[INPUT]], [[WEIGHTS]], [[WT]])
 //CHECK-SAME:                           {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
 //CHECK-SAME:                           pad = #VPU.Padding<left = 1 : i64, right = 1 : i64,
 //CHECK-SAME:                                   top = 1 : i64, bottom = 1 : i64>,
@@ -98,7 +98,7 @@ func.func @CheckDepthConv(%input: !InputDistributed, %weights: !WeightsDistribut
     return %depthConvOut : !OutputDistributed
 }
 
-//CHECK:        [[DCONV:%.*]] = VPU.NCE.DepthConvolution([[INPUT]], [[WEIGHTS]])
+//CHECK:        [[DCONV:%.+]] = VPU.NCE.DepthConvolution([[INPUT]], [[WEIGHTS]])
 //CHECK-SAME:                           {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
 //CHECK-SAME:                            ppe = #VPU.PPEStub<>, rawFilterShape = [32, 1, 3, 3], strides = [1, 1]}
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x14x14xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
@@ -159,7 +159,7 @@ func.func @CheckCompressConv(%input: !InputDistributed, %weights: !WeightsDistri
     return %compressConvOut : !OutputDistributed
 }
 
-//CHECK:        [[COMPCONV:%.*]] = VPU.NCE.CompressConvolution([[INPUT]], [[WEIGHTS]], [[WT]])
+//CHECK:        [[COMPCONV:%.+]] = VPU.NCE.CompressConvolution([[INPUT]], [[WEIGHTS]], [[WT]])
 //CHECK-SAME:                          {cm_sp_pattern = 15 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
 //CHECK-SAME:                          pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
 //CHECK-SAME:                          ppe = #VPU.PPEStub<>,
@@ -197,7 +197,7 @@ func.func @CheckAvgPool(%input: !InputDistributed) -> !OutputDistributed {
     return %avgPoolOut : !OutputDistributed
 }
 
-//CHECK:        [[AVERAGEPOOL:%.*]] = VPU.NCE.AveragePool([[INPUT]]) {
+//CHECK:        [[AVERAGEPOOL:%.+]] = VPU.NCE.AveragePool([[INPUT]]) {
 //CHECK-SAME:                           kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]}
 
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x320x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
@@ -234,7 +234,7 @@ func.func @CheckMaxPool(%input: !InputDistributed) -> !OutputDistributed {
     return %maxPoolOut : !OutputDistributed
 }
 
-//CHECK:        [[MAXPOOL:%.*]] = VPU.NCE.MaxPool([[INPUT]]) {
+//CHECK:        [[MAXPOOL:%.+]] = VPU.NCE.MaxPool([[INPUT]]) {
 //CHECK-SAME:                           kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]}
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x112x112xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED",  num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
@@ -275,7 +275,7 @@ func.func @CheckEltwise(%input0: !InputDistributed0, %input1: !InputDistributed1
     return %eltwiseOut : !OutputDistributed
 }
 
-//CHECK:        [[ELTWISE:%.*]] = VPU.NCE.Eltwise([[INPUT0]], [[INPUT1]]) {op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEStub<>}
+//CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[INPUT0]], [[INPUT1]]) {op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEStub<>}
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x112x112xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED",  num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
 //CHECK:        return [[ELTWISE]] : !VPU.DistributedTensor<1x32x112x112xf16, #NHWC, @CMX_NN,
@@ -317,7 +317,7 @@ func.func @CheckPermute(%input: !InputDistributed) -> !OutputDistributed {
     return %permuteOut : !OutputDistributed
 }
 
-//CHECK:        [[PERMUTE:%.*]] = VPU.NCE.Permute([[INPUT0]]) {dstElemType = !qElemType, dstOrder = #NHWC, expandedChannels = 4 : i64,
+//CHECK:        [[PERMUTE:%.+]] = VPU.NCE.Permute([[INPUT0]]) {dstElemType = !qElemType, dstOrder = #NHWC, expandedChannels = 4 : i64,
 //CHECK-SAME:                           multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>, ppe = #VPU.PPEStub<>}
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x4x256x224x!qElemType, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
@@ -355,7 +355,7 @@ func.func @CheckSigmoid(%input: !InputDistributed) -> !OutputDistributed {
     return %sigmoidOut : !OutputDistributed
 }
 
-//CHECK:        [[SIGMOID:%.*]] = VPU.Sigmoid(%arg0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>}
+//CHECK:        [[SIGMOID:%.+]] = VPU.Sigmoid(%arg0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>}
 //CHECK-SAME:                           : !VPU.DistributedTensor<1x320x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x320x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 

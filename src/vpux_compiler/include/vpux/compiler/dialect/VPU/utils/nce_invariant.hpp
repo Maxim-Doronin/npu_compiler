@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -75,8 +75,9 @@ bool isOutputActTypeSupported(vpux::NDTypeInterface type, int64_t alignment, Log
 
 Byte getWeightsTableSize(int64_t OC);
 
-SmallVector<Byte> getWeightsTableSize(int64_t OC, mlir::Value weightsTable, mlir::Value weightTableScale,
-                                      mlir::Value weightTableBias);
+SmallVector<Byte> getWeightsTableSize(mlir::Operation* op, int64_t OC, mlir::Value weightsTable,
+                                      mlir::Value weightTableScale, mlir::Value weightTableBias,
+                                      mlir::Value weightTableZeroPoints);
 
 mlir::LogicalResult getWeightTableBuffers(mlir::Operation* op, SmallVector<Byte>& buffers, int64_t OC);
 

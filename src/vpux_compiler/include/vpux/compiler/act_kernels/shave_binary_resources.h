@@ -76,7 +76,7 @@ private:
 
 class ShaveBinaryResourcesCache final : public mlir::DialectInterface::Base<ShaveBinaryResourcesCache> {
 private:
-    ShaveBinaryResources _cache;
+    ShaveBinaryResources _resources;
 
 public:
     MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ShaveBinaryResourcesCache)
@@ -84,7 +84,11 @@ public:
     ShaveBinaryResourcesCache(mlir::Dialect* dialect): Base(dialect) {
     }
 
-    static ShaveBinaryResources& getCache(mlir::MLIRContext* ctx);
+    ShaveBinaryResources& getResources() {
+        return _resources;
+    }
 };
+
+ShaveBinaryResources& getShaveBinaryResources(mlir::MLIRContext* ctx);
 
 }  // namespace vpux

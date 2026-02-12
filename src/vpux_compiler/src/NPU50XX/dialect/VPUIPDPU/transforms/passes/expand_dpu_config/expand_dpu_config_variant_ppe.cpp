@@ -15,7 +15,7 @@ mlir::LogicalResult vpux::VPUIPDPU::arch50xx::buildDPUVariantPPE(
         return mlir::success();
     }
 
-    if (auto lutReadAttr = origVarOp.getSprLutReadAttr()) {
+    if (origVarOp.getSprLutRead()) {
         builder.create<PPEsprLUTReadOp>(origVarOp.getLoc());
     }
 

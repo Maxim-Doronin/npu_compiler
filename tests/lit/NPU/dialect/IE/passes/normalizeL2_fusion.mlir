@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,5 +15,5 @@ func.func @main(%arg0: tensor<1x192xf32>) -> tensor<1x192xf32> {
 
 
     // CHECK-NOT: IE.ReduceL2
-    // CHECK:   [[NORMALIZEL2:%.*]] = IE.NormalizeL2(%arg0) {axes_value = [1], eps = 9.999999960041972E-13 : f64, eps_mode = #IE.eps_mode<ADD>} : tensor<1x192xf32> -> tensor<1x192xf32>
+    // CHECK:   [[NORMALIZEL2:%.+]] = IE.NormalizeL2(%arg0) {axes_value = [1], eps = 9.999999960041972E-13 : f64, eps_mode = #IE.eps_mode<ADD>} : tensor<1x192xf32> -> tensor<1x192xf32>
 }

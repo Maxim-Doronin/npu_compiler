@@ -48,14 +48,10 @@ bool vpux::VPU::ConvertOp::areCastCompatible(mlir::TypeRange inputs, mlir::TypeR
         return false;
     }
 
-    const auto input = mlir::dyn_cast<vpux::NDTypeInterface>(inputs.front());
-    const auto output = mlir::dyn_cast<vpux::NDTypeInterface>(outputs.front());
+    const auto input = mlir::dyn_cast_or_null<vpux::NDTypeInterface>(inputs.front());
+    const auto output = mlir::dyn_cast_or_null<vpux::NDTypeInterface>(outputs.front());
 
-    if (!input || !output || input.getShape() != output.getShape()) {
-        return false;
-    }
-
-    return true;
+    return input && output && input.getShape() == output.getShape();
 }
 
 bool vpux::VPU::ConvertOp::checkStrategyCompatibility(vpux::VPU::MultiClusterStrategy strategy, size_t) {
@@ -84,10 +80,26 @@ bool vpux::VPU::ConvertOp::checkStrategyCompatibility(vpux::VPU::MultiClusterStr
 vpux::VPU::DistributionInfo vpux::VPU::ConvertOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
+    // For Convert op, select the elementType with smaller bit width for alignment calculation
+    // This is necessary for sub-byte type conversions (e.g., i4 <-> u4, i2 <-> u2)
+    auto selectElementTypeForAlignment = [](mlir::Type inputElemType, mlir::Type outputElemType) -> mlir::Type {
+        auto inputBitWidth = vpux::getElemTypeSize(inputElemType).count();
+        auto outputBitWidth = vpux::getElemTypeSize(outputElemType).count();
+
+        if (inputBitWidth < 8 || outputBitWidth < 8) {
+            return inputBitWidth <= outputBitWidth ? inputElemType : outputElemType;
+        }
+        return outputElemType;
+    };
+    auto inputType = mlir::dyn_cast<vpux::NDTypeInterface>(getInput().getType());
+    auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(getOutput().getType());
+    auto elementType = selectElementTypeForAlignment(inputType.getElementType(), outputType.getElementType());
+
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
-                                              overlapParams);
+                                              overlapParams, elementType);
 }
 
 mlir::LogicalResult vpux::VPU::ConvertOp::reifyResultShapes(mlir::OpBuilder& builder,

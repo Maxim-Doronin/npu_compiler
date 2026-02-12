@@ -28,13 +28,11 @@ class VpuTestEnvConfig {
 public:
     std::string IE_NPU_TESTS_DEVICE_NAME;
     std::string IE_NPU_TESTS_DUMP_PATH;
-    std::string IE_NPU_TESTS_LOG_LEVEL;
     std::string IE_NPU_TESTS_PLATFORM;
     std::string OV_NPU_TESTS_SKIP_CONFIG_FILE = "npu_skip_func_tests.xml";
 
     bool IE_NPU_TESTS_RUN_COMPILER = true;
     bool IE_NPU_TESTS_RUN_EXPORT = false;
-    bool IE_NPU_TESTS_RUN_IMPORT = false;
     bool IE_NPU_TESTS_RUN_INFER = true;
     bool IE_NPU_TESTS_EXPORT_INPUT = false;
     bool IE_NPU_TESTS_EXPORT_OUTPUT = false;
@@ -43,7 +41,6 @@ public:
     bool IE_NPU_TESTS_IMPORT_REF = false;
     bool IE_NPU_SINGLE_CLUSTER_MODE = false;
 
-    bool IE_NPU_TESTS_RAW_EXPORT = false;
     bool IE_NPU_TESTS_LONG_FILE_NAME = false;
 
 public:
@@ -60,6 +57,7 @@ std::string getTestsPlatformCompilerInPlugin();
 std::string getDeviceNameTestCase(const std::string& str);
 std::string getDeviceName();
 std::string getDeviceNameID(const std::string& str);
+std::string getTestDeviceId();
 
 // Current version of gtest seems to fail when parsing template functions for getTestCaseName
 // To overcome this issue, programmer must make sure to wrap in paratheses this function when

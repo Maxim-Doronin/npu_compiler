@@ -34,4 +34,3 @@ func.func @sepInterpolate(%arg0: tensor<1x512x8x8xf16>) -> tensor<1x512x16x16xf1
 
 }
 }
-

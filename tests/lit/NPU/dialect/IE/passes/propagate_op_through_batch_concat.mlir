@@ -467,3 +467,101 @@ func.func @NotPropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x1
 
     // CHECK:       return [[MUL]] : tensor<2x16x1x128xf16>
 }
+
+// -----
+
+// CHECK-LABEL: @PropagateMatMul4D
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1x577x577xf32>, [[ARG1:%.+]]: tensor<1x1x577x577xf32>, [[ARG2:%.+]]: tensor<1x1x577x577xf32>, [[ARG3:%.+]]: tensor<1x3x577x64xf32>)
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+func.func @PropagateMatMul4D(%arg0: tensor<1x1x577x577xf32>, %arg1: tensor<1x1x577x577xf32>, %arg2: tensor<1x1x577x577xf32>, %arg3: tensor<1x3x577x64xf32>) -> tensor<1x3x577x64xf32> {
+  %0 = IE.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
+  %1 = IE.SoftMax(%arg1) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
+  %2 = IE.SoftMax(%arg2) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
+
+  %3 = IE.Concat(%0, %1, %2) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x577x577xf32>, tensor<1x1x577x577xf32>, tensor<1x1x577x577xf32> -> tensor<1x3x577x577xf32>
+  %4 = IE.Transpose(%arg3) {order_value = #NCWH} : tensor<1x3x577x64xf32> -> tensor<1x3x64x577xf32>
+  %5 = IE.MatMul(%3, %4) {transpose_b} : tensor<1x3x577x577xf32>, tensor<1x3x64x577xf32> -> tensor<1x3x577x64xf32>
+
+  return %5 : tensor<1x3x577x64xf32>
+
+  // CHECK:       [[SOFTMAX0:%.+]] = IE.SoftMax([[ARG0]]) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
+  // CHECK:       [[SOFTMAX1:%.+]] = IE.SoftMax([[ARG1]]) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
+  // CHECK:       [[SOFTMAX2:%.+]] = IE.SoftMax([[ARG2]]) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
+  // CHECK:       [[TRANSPOSE:%.+]] = IE.Transpose([[ARG3]]) {order_value = #NCWH} : tensor<1x3x577x64xf32> -> tensor<1x3x64x577xf32>
+
+  // CHECK:       [[SLICE0:%.+]] = IE.Slice [[TRANSPOSE]] [0, 0, 0, 0] [1, 1, 64, 577] : tensor<1x3x64x577xf32> to tensor<1x1x64x577xf32>
+  // CHECK:       [[MATMUL0:%.+]] = IE.MatMul([[SOFTMAX0]], [[SLICE0]]) {transpose_b} : tensor<1x1x577x577xf32>, tensor<1x1x64x577xf32> -> tensor<1x1x577x64xf32>
+
+  // CHECK:       [[SLICE1:%.+]] = IE.Slice [[TRANSPOSE]] [0, 1, 0, 0] [1, 1, 64, 577] : tensor<1x3x64x577xf32> to tensor<1x1x64x577xf32>
+  // CHECK:       [[MATMUL1:%.+]] = IE.MatMul([[SOFTMAX1]], [[SLICE1]]) {transpose_b} : tensor<1x1x577x577xf32>, tensor<1x1x64x577xf32> -> tensor<1x1x577x64xf32>
+
+  // CHECK:       [[SLICE2:%.+]] = IE.Slice [[TRANSPOSE]] [0, 2, 0, 0] [1, 1, 64, 577] : tensor<1x3x64x577xf32> to tensor<1x1x64x577xf32>
+  // CHECK:       [[MATMUL2:%.+]] = IE.MatMul([[SOFTMAX2]], [[SLICE2]]) {transpose_b} : tensor<1x1x577x577xf32>, tensor<1x1x64x577xf32> -> tensor<1x1x577x64xf32>
+
+  // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MATMUL0]], [[MATMUL1]], [[MATMUL2]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x577x64xf32>, tensor<1x1x577x64xf32>, tensor<1x1x577x64xf32> -> tensor<1x3x577x64xf32>
+  // CHECK:       return [[CONCAT]] : tensor<1x3x577x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @PropagateMatMul3D
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x128x128xf16>, [[ARG1:%.+]]: tensor<1x128x128xf16>, [[ARG2:%.+]]: tensor<2x64x128xf16>)
+func.func @PropagateMatMul3D(%arg0: tensor<1x128x128xf16>, %arg1: tensor<1x128x128xf16>, %arg2: tensor<2x64x128xf16>) -> tensor<2x128x64xf16> {
+  %0 = IE.SoftMax(%arg0) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  %1 = IE.SoftMax(%arg1) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x128x128xf16>, tensor<1x128x128xf16> -> tensor<2x128x128xf16>
+  %3 = IE.MatMul(%2, %arg2) {transpose_b} : tensor<2x128x128xf16>, tensor<2x64x128xf16> -> tensor<2x128x64xf16>
+
+  return %3 : tensor<2x128x64xf16>
+
+  // CHECK:       [[SOFTMAX0:%.+]] = IE.SoftMax([[ARG0]]) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  // CHECK:       [[SOFTMAX1:%.+]] = IE.SoftMax([[ARG1]]) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+
+  // CHECK:       [[RHS_SLICE0:%.+]] = IE.Slice [[ARG2]] [0, 0, 0] [1, 64, 128] : tensor<2x64x128xf16> to tensor<1x64x128xf16>
+  // CHECK:       [[MATMUL0:%.+]] = IE.MatMul([[SOFTMAX0]], [[RHS_SLICE0]]) {transpose_b} : tensor<1x128x128xf16>, tensor<1x64x128xf16> -> tensor<1x128x64xf16>
+
+  // CHECK:       [[RHS_SLICE1:%.+]] = IE.Slice [[ARG2]] [1, 0, 0] [1, 64, 128] : tensor<2x64x128xf16> to tensor<1x64x128xf16>
+  // CHECK:       [[MATMUL1:%.+]] = IE.MatMul([[SOFTMAX1]], [[RHS_SLICE1]]) {transpose_b} : tensor<1x128x128xf16>, tensor<1x64x128xf16> -> tensor<1x128x64xf16>
+
+  // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MATMUL0]], [[MATMUL1]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x128x64xf16>, tensor<1x128x64xf16> -> tensor<2x128x64xf16>
+  // CHECK:       return [[CONCAT]] : tensor<2x128x64xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotPropagateMatMulWrongAxis
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x2x64x128xf16>, [[ARG1:%.+]]: tensor<1x2x64x128xf16>, [[ARG2:%.+]]: tensor<1x2x64x128xf16>)
+func.func @NotPropagateMatMulWrongAxis(%arg0: tensor<1x2x64x128xf16>, %arg1: tensor<1x2x64x128xf16>, %arg2: tensor<1x2x64x128xf16>) -> tensor<1x2x128x64xf16> {
+  %0 = IE.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<1x2x64x128xf16> -> tensor<1x2x64x128xf16>
+  %1 = IE.SoftMax(%arg1) {axisInd = 3 : i64} : tensor<1x2x64x128xf16> -> tensor<1x2x64x128xf16>
+  %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x2x64x128xf16>, tensor<1x2x64x128xf16> -> tensor<1x2x128x128xf16>
+  %3 = IE.MatMul(%2, %arg2) {transpose_b} : tensor<1x2x128x128xf16>, tensor<1x2x64x128xf16> -> tensor<1x2x128x64xf16>
+
+  return %3 : tensor<1x2x128x64xf16>
+
+  // CHECK:       [[SOFTMAX0:%.+]] = IE.SoftMax([[ARG0]]) {axisInd = 3 : i64} : tensor<1x2x64x128xf16> -> tensor<1x2x64x128xf16>
+  // CHECK:       [[SOFTMAX1:%.+]] = IE.SoftMax([[ARG1]]) {axisInd = 3 : i64} : tensor<1x2x64x128xf16> -> tensor<1x2x64x128xf16>
+  // CHECK:       [[CONCAT:%.+]] = IE.Concat([[SOFTMAX0]], [[SOFTMAX1]]) {per_axis = #IE.Concat<axis = 2 : i64>}
+  // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[CONCAT]], [[ARG2]]) {transpose_b}
+  // CHECK:       return [[MATMUL]] : tensor<1x2x128x64xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotPropagateMatMulMultipleUses
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x128x128xf16>, [[ARG1:%.+]]: tensor<1x128x128xf16>, [[ARG2:%.+]]: tensor<2x64x128xf16>)
+func.func @NotPropagateMatMulMultipleUses(%arg0: tensor<1x128x128xf16>, %arg1: tensor<1x128x128xf16>, %arg2: tensor<2x64x128xf16>) -> (tensor<2x128x64xf16>, tensor<2x128x128xf16>) {
+  %0 = IE.SoftMax(%arg0) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  %1 = IE.SoftMax(%arg1) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x128x128xf16>, tensor<1x128x128xf16> -> tensor<2x128x128xf16>
+  %3 = IE.MatMul(%2, %arg2) {transpose_b} : tensor<2x128x128xf16>, tensor<2x64x128xf16> -> tensor<2x128x64xf16>
+
+  return %3, %2 : tensor<2x128x64xf16>, tensor<2x128x128xf16>
+
+  // CHECK:       [[SOFTMAX0:%.+]] = IE.SoftMax([[ARG0]]) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  // CHECK:       [[SOFTMAX1:%.+]] = IE.SoftMax([[ARG1]]) {axisInd = 2 : i64} : tensor<1x128x128xf16> -> tensor<1x128x128xf16>
+  // CHECK:       [[CONCAT:%.+]] = IE.Concat([[SOFTMAX0]], [[SOFTMAX1]]) {per_axis = #IE.Concat<axis = 0 : i64>}
+  // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[CONCAT]], [[ARG2]]) {transpose_b}
+  // CHECK:       return [[MATMUL]], [[CONCAT]] : tensor<2x128x64xf16>, tensor<2x128x128xf16>
+}

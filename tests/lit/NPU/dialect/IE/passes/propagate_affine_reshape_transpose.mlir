@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -114,7 +114,7 @@ func.func @PropagateAffineReshapeAndTransposeThroughAddWithConvertInput(%arg0: t
 
 #map = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
-// CHECK: [[MAP:#.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
+// CHECK: [[MAP:#.+]] = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
 // CHECK: func.func @PropagateAsymmetricAffineReshapeAndTransposeThroughAdd([[ARG0:%.+]]: tensor<1x1024x1024x1xf16>, [[ARG1:%.+]]: tensor<1x1x1024x1024xf32>)
 func.func @PropagateAsymmetricAffineReshapeAndTransposeThroughAdd(%arg0: tensor<1x1024x1024x1xf16>, %arg1: tensor<1x1x1024x1024xf32>) -> tensor<1x1x1024x1024xf16> {
@@ -147,7 +147,7 @@ func.func @PropagateAsymmetricAffineReshapeAndTransposeThroughAdd(%arg0: tensor<
 
 #map = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
-// CHECK: [[MAP:#.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
+// CHECK: [[MAP:#.+]] = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
 // CHECK: func.func @PropagateAffineReshapeAndTransposeThroughAddSDPAOptimization([[ARG0:%.+]]: tensor<1x128x256x1xf16>, [[ARG1:%.+]]: tensor<1x1x256x1024xf32>, [[ARG2:%.+]]: tensor<1x1x256x1024xf32>)
 func.func @PropagateAffineReshapeAndTransposeThroughAddSDPAOptimization(%arg0: tensor<1x128x256x1xf16>, %arg1: tensor<1x1x256x1024xf32>, %arg2: tensor<1x1x256x1024xf32>) -> tensor<1x2x256x1024xf16> {

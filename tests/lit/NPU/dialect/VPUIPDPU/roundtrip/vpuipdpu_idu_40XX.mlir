@@ -15,7 +15,8 @@ module @Test_1 {
     VPUASM.DeclareBuffer @DeclareBuffer_SEIn !VPUASM.Buffer< "CMX_NN"[0] <204928> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
     VPUASM.DeclareBuffer @DeclareBuffer_SparseIn !VPUASM.Buffer< "CMX_NN"[0] <213120> : memref<1x16x16x16xi1, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
 
-    VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, input_sparsity_map = @DeclareBuffer_SparseIn, input_storage_element_table = @DeclareBuffer_SEIn, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}
+    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, input_sparsity_map = @DeclareBuffer_SparseIn, input_storage_element_table = @DeclareBuffer_SEIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>,
+    output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}>
         DPUCfg : {
             ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                  %act_in_seg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
@@ -62,7 +63,7 @@ module @Test_1 {
     }
 }
 
-// CHECK:    VPUIPDPU.DPUInvariant @DPUInvariant_0 {input = @DeclareBuffer_ActIn, input_sparsity_map = @DeclareBuffer_SparseIn, input_storage_element_table = @DeclareBuffer_SEIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @DeclareBuffer_ActOut, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, task_index = !VPURegMapped.Index<0:0:0>} DPUCfg : {
+// CHECK:    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, input_sparsity_map = @DeclareBuffer_SparseIn, input_storage_element_table = @DeclareBuffer_SEIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
 // CHECK:    ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg3: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg4: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg5: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg6: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg7: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg8: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg9: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg10: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg11: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg12: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg13: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:      VPUIPDPU.IDUCfg {
 // CHECK:        VPUIPDPU.IDUStorageElement se_size(32)

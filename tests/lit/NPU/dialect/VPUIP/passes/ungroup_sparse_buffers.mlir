@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --ungroup-sparse-buffers %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-ungroup-buffer-section-rewriters="rewriter=ungroup-sparse-buffer" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK:       func.func @SparseCopy([[ARG0:%.+]]: memref<32x16x3x3xf16>, [[ARG1:%.+]]: memref<32x16x3x3xi1>)
@@ -58,12 +58,12 @@ func.func @SparseConv(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref<1x16x6
 
     %cst_weights = const.Declare memref<32x16x3x3xf16, #NHWC> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare memref<32x1x1x256xi1> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC>, sparsity_map=memref<32x1x1x256xi1>, is_weights>
 
     %weights_data_cmx = memref.alloc() : memref<32x16x3x3xf16, #NHWC, @CMX_NN>
     %weights_sm_cmx = memref.alloc() : memref<32x1x1x256xi1, @CMX_NN>
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC, @CMX_NN>, sparsity_map=memref<32x1x1x256xi1, @CMX_NN>, is_weights>
 
     %weights = VPUIP.Copy inputs(%weights_sparse : !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC>, sparsity_map=memref<32x1x1x256xi1>, is_weights>)
@@ -191,11 +191,11 @@ func.func @SparseConv(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref<1x16x6
 // CHECK-SAME:      -> (!VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
 // CHECK-SAME:          !VPUIP.DistributedBuffer<32x1x1x256xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
 func.func @SparseCopyDistributed(%arg0: !Data_DDR, %arg1: !SM_DDR) -> (!Data_Distributed, !SM_Distributed) {
-    %0 = VPUIP.GroupSparseBuffer (%arg0, %arg1) {is_weights} -> !VPUIP.SparseBuffer<data=!Data_DDR, sparsity_map=!SM_DDR, is_weights>
+    %0 = VPUIP.GroupSparseBuffer (%arg0, %arg1) <{is_weights}> -> !VPUIP.SparseBuffer<data=!Data_DDR, sparsity_map=!SM_DDR, is_weights>
 
     %1 = VPURT.AllocDistributed -> !Data_Distributed
     %2 = VPURT.AllocDistributed -> !SM_Distributed
-    %3 = VPUIP.GroupSparseBuffer(%1, %2) {is_weights} -> !VPUIP.SparseBuffer<data=!Data_Distributed, sparsity_map=!SM_Distributed, is_weights>
+    %3 = VPUIP.GroupSparseBuffer(%1, %2) <{is_weights}> -> !VPUIP.SparseBuffer<data=!Data_Distributed, sparsity_map=!SM_Distributed, is_weights>
 
     %4 = VPUIP.Copy inputs(%0 : !VPUIP.SparseBuffer<data=!Data_DDR, sparsity_map=!SM_DDR, is_weights>)
                                outputs(%3 : !VPUIP.SparseBuffer<data=!Data_Distributed, sparsity_map=!SM_Distributed, is_weights>)
@@ -267,7 +267,7 @@ func.func @SparseConvDistributed(%arg0: !IODistributed, %arg1: !IOSMDistributed,
     %input_sparse = VPUIP.GroupSparseBuffer (%arg0, %arg1)
         -> !VPUIP.SparseBuffer<data=!IODistributed, sparsity_map=!IOSMDistributed>
 
-    %weights_sparse = VPUIP.GroupSparseBuffer (%arg2, %arg3) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%arg2, %arg3) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
 
     %out_data = VPURT.AllocDistributed -> !IODistributed

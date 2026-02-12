@@ -201,7 +201,7 @@ IE::ShapeCastOp buildShapeCast(mlir::Location loc, mlir::Value input, ArrayRef<i
 
 bool isEligibleToFoldStrideKernel(vpux::NDTypeInterface inputType, vpux::NDTypeInterface outputType, int64_t kernelX,
                                   int64_t strideX, int64_t strideY, int64_t inAlignment, int64_t outAlignment,
-                                  const Logger& log) {
+                                  int64_t padLeft, int64_t padRight, const Logger& log) {
     auto inDimOrder = inputType.getDimsOrder();
     if (DimsOrder::NHWC != inDimOrder) {
         return false;
@@ -227,6 +227,11 @@ bool isEligibleToFoldStrideKernel(vpux::NDTypeInterface inputType, vpux::NDTypeI
     const auto OC = outputShape[Dims4D::Act::C];
     if ((IC % inAlignment) == 0 && (OC % outAlignment) == 0) {
         log.trace("The input/output channels are already aligned");
+        return false;
+    }
+
+    if (padLeft > 0 || padRight > 0) {
+        log.trace("Padding is not supported for stride folding");
         return false;
     }
 

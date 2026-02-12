@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -143,9 +144,7 @@ void AdjustNonZeroFakeQuantPass::safeRunOnFunc() {
     patterns.add<AdjustFakeQuant>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

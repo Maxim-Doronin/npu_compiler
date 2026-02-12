@@ -1,14 +1,14 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPURT/utils/wlm_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux::VPURT {
 #define GEN_PASS_DECL_BARRIERSIMULATION
@@ -21,20 +21,11 @@ using namespace vpux;
 namespace {
 
 void setBarrierAttributes(mlir::MLIRContext* ctx, BarrierInfo& barrierInfo, const ExecutionGroupList& fifoExecGroups,
-                          size_t blockIdx, SmallVector<llvm::BitVector>& taskControlMap, size_t controlMapOffset,
+                          size_t blockIdx, std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+                          std::optional<size_t>& blockIdxOfTaskControlMap,
                           SmallVector<size_t> barConsumptionReadyOrder = {}) {
     auto hasPath = [&](size_t taskA, size_t taskB) {
-        if (barrierInfo.getControlGraphBlockIndex(taskB) < barrierInfo.getControlGraphBlockIndex(taskA)) {
-            // For any given block there is no path from any task executed within any following block to any task in the
-            // given block
-            return false;
-        } else if (barrierInfo.getControlGraphBlockIndex(taskB) > barrierInfo.getControlGraphBlockIndex(taskA)) {
-            // For any given block there is always a path from any task executed within the block to any task executed
-            // in any following block
-            return true;
-        }
-        return barrierInfo.controlPathExistsBetweenTasksInSameBlock(taskControlMap, taskA - controlMapOffset,
-                                                                    taskB - controlMapOffset, false);
+        return barrierInfo.isDepFromTaskAToTaskB(taskA, taskB, taskControlMapAndOffset, blockIdxOfTaskControlMap);
     };
 
     auto hasNoConsumersDependentOnGrandChildGrp = [&](size_t grpIdx, size_t barIdx) {
@@ -97,13 +88,15 @@ void setBarrierAttributes(mlir::MLIRContext* ctx, BarrierInfo& barrierInfo, cons
             continue;
         }
 
-        if (grpIdx + 1 == numberOfGroups) {
-            // for tasks from the last group return final barrier
+        if (grpIdx + 2 >= numberOfGroups) {
+            // for tasks from the last or last but one execution group, return the final barrier, as the last but one
+            // execution group may not have an update barrier.
             cleanAfter = barrierInfo.getNumOfBarrierOps() - 1;
         } else {
             auto endGrpUpdBars = barrierInfo.getUpdateBarriers(lastTaskInGroup);
-            VPUX_THROW_WHEN(endGrpUpdBars.empty(), "Last task in execution group {0} does not have update barrier",
-                            grpIdx);
+            VPUX_THROW_WHEN(endGrpUpdBars.empty(),
+                            "Last task ({0}) in execution group {1}/{2} does not have update barrier", lastTaskInGroup,
+                            grpIdx, numberOfGroups);
 
             if (endGrpUpdBars.size() == 1) {
                 cleanAfter = *endGrpUpdBars.begin();
@@ -144,11 +137,11 @@ void setBarrierAttributes(mlir::MLIRContext* ctx, BarrierInfo& barrierInfo, cons
 
 class BarrierSimulationPass final : public VPURT::impl::BarrierSimulationBase<BarrierSimulationPass> {
 public:
-    explicit BarrierSimulationPass(const bool wlmRollbackFlag, Logger log): _wlmRollbackFlag(wlmRollbackFlag) {
+    explicit BarrierSimulationPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    void verifyCleanAfterAttribute(BarrierInfo& barrierInfo, VPU::ExecutorKind execType) {
+    void verifyCleanAfterAttribute(BarrierInfo& barrierInfo, config::ExecutorKind execType) {
         for (size_t taskIdx = 0; taskIdx < barrierInfo.getNumOfTasks(); ++taskIdx) {
             auto taskOp = barrierInfo.getTaskOpAtIndex(taskIdx);
             if (taskOp.getExecutorKind() != execType) {
@@ -167,10 +160,6 @@ public:
 
 private:
     void safeRunOnFunc() final;
-
-    // Store information about WLM rollback so that together with WLM status is can be
-    // determined if nonWLM configurations needs to be applied
-    const bool _wlmRollbackFlag = false;
 };
 
 void BarrierSimulationPass::safeRunOnFunc() {
@@ -184,15 +173,13 @@ void BarrierSimulationPass::safeRunOnFunc() {
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
     auto wlmFlag = config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::ENABLED;
 
-    if (wlmFlag && _wlmRollbackFlag == false) {
+    if (wlmFlag) {
         // No need to set clean_after fields as they are needed only in case of nonWLM config
         configureDescriptorFieldsForTaskFetch = false;
     }
 
     if (configureDescriptorFieldsForTaskFetch) {
         auto barrierInfo = vpux::BarrierInfo{funcOp};
-        // tasks must be ordered by barrier production order
-        VPURT::orderExecutionTasksAndBarriers(funcOp, barrierInfo, _log);
         // For non-WLM mode, task descriptor fields clean_after need to be set so as to ensure descriptors buffer is
         // released for fetching the next set of tasks
         ExecutionGroupAnalysis execGroupAnalysis(funcOp, /* ignoreVariantLimit */ true,
@@ -201,33 +188,29 @@ void BarrierSimulationPass::safeRunOnFunc() {
         auto barConsumptionReadyOrder =
                 VPURT::getBarriersOrder(funcOp, barrierInfo, /* orderByConsumptionReady */ true);
 
-        mlir::DenseSet<vpux::VPU::ExecutorKind> executorKind = {
-                VPU::ExecutorKind::DPU,
-                VPU::ExecutorKind::DMA_NN,
-                VPU::ExecutorKind::SHAVE_ACT,
-        };
-        barrierInfo.initializeTaskQueueTypeMap(executorKind);
+        barrierInfo.buildTaskQueueTypeMap();
 
         for (size_t taskBlockIndex = 0; taskBlockIndex < barrierInfo.getControlGraphBlockCount(); ++taskBlockIndex) {
             // build task control map for current block and all executor kinds
-            auto [taskControlMapFifo, controlMapOffset] =
+            auto taskControlMapAndOffset =
                     barrierInfo.buildTaskControlMap(taskBlockIndex, /* considerTaskFifoDependency */ true);
+            std::optional<size_t> blockIdxOfTaskControlMap = taskBlockIndex;
 
             _log.trace("Set barrier attributes for DPU in block {0}", taskBlockIndex);
             for (const auto& [queue, fifoExecGroups] : execGroupAnalysis.getDPUExecutionGroups()) {
-                setBarrierAttributes(ctx, barrierInfo, fifoExecGroups, taskBlockIndex, taskControlMapFifo,
-                                     controlMapOffset, barConsumptionReadyOrder);
+                setBarrierAttributes(ctx, barrierInfo, fifoExecGroups, taskBlockIndex, taskControlMapAndOffset,
+                                     blockIdxOfTaskControlMap, barConsumptionReadyOrder);
             }
 
             _log.trace("Set barrier attributes for SHV in block {0}", taskBlockIndex);
             for (const auto& [queue, fifoExecGroups] : execGroupAnalysis.getActShvExecutionGroups()) {
-                setBarrierAttributes(ctx, barrierInfo, fifoExecGroups, taskBlockIndex, taskControlMapFifo,
-                                     controlMapOffset, barConsumptionReadyOrder);
+                setBarrierAttributes(ctx, barrierInfo, fifoExecGroups, taskBlockIndex, taskControlMapAndOffset,
+                                     blockIdxOfTaskControlMap, barConsumptionReadyOrder);
             }
         }
 
-        verifyCleanAfterAttribute(barrierInfo, VPU::ExecutorKind::DPU);
-        verifyCleanAfterAttribute(barrierInfo, VPU::ExecutorKind::SHAVE_ACT);
+        verifyCleanAfterAttribute(barrierInfo, config::ExecutorKind::DPU);
+        verifyCleanAfterAttribute(barrierInfo, config::ExecutorKind::SHAVE_ACT);
         barrierInfo.clearAttributes();
     }
 
@@ -258,6 +241,6 @@ void BarrierSimulationPass::safeRunOnFunc() {
 // createBarrierSimulationPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::createBarrierSimulationPass(const bool wlmRollbackFlag, Logger log) {
-    return std::make_unique<BarrierSimulationPass>(wlmRollbackFlag, log);
+std::unique_ptr<mlir::Pass> vpux::VPURT::createBarrierSimulationPass(Logger log) {
+    return std::make_unique<BarrierSimulationPass>(log);
 }

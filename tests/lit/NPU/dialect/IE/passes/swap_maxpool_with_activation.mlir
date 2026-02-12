@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,10 +32,10 @@ func.func @MaxPoolWithReluTest(%arg0: tensor<1x16x5x5xf16>) -> tensor<1x16x3x3xf
 
     return %2 : tensor<1x16x3x3xf16>
 
-    // CHECK-DAG:       [[FILTERS:%.*]] = const.Declare
-    // CHECK:       [[VAR0:%.*]] = IE.Convolution(%arg0, [[FILTERS]])
-    // CHECK:       [[VAR1:%.*]] = IE.ReLU([[VAR0]])
-    // CHECK:       [[VAR2:%.*]] = IE.MaxPool([[VAR1]])
+    // CHECK-DAG:       [[FILTERS:%.+]] = const.Declare
+    // CHECK:       [[VAR0:%.+]] = IE.Convolution(%arg0, [[FILTERS]])
+    // CHECK:       [[VAR1:%.+]] = IE.ReLU([[VAR0]])
+    // CHECK:       [[VAR2:%.+]] = IE.MaxPool([[VAR1]])
 
     // CHECK:       return [[VAR2]] : tensor<1x16x3x3xf16>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,7 +13,7 @@ func.func @ConvertConstToAttr(%arg0: tensor<1x16x300x300xf32>) -> tensor<1x16x30
         tensor<1x16x300x300xf32>, tensor<1x16xf32> -> tensor<1x16x300x300xf32>
     return %1 : tensor<1x16x300x300xf32>
 
-    // CHECK:       %[[VAL0:.*]] = IE.Swish(%arg0)
+    // CHECK:       [[VAL0:%.+]] = IE.Swish(%arg0)
     // CHECK-SAME:      beta_value = 1.000000e+00
-    // CHECK:       return %[[VAL0]]
+    // CHECK:       return [[VAL0]]
 }

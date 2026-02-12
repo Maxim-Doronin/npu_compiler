@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -16,6 +16,8 @@ endif()
 ov_option(ENABLE_PRIVATE_TESTS "NPU private unit, behavior and functional tests" OFF)
 
 ov_dependent_option(ENABLE_NPU_FUZZ_TESTS "NPU Fuzz tests" OFF "ENABLE_TESTS" OFF)
+
+ov_dependent_option(ENABLE_CLANG_TIDY_PLUGIN "Use clang-tidy together with custom checks plugin during build" OFF "ENABLE_DEVELOPER_BUILD" OFF)
 
 if(NOT ENABLE_LTO)
     set(ENABLE_LTO OFF)
@@ -34,17 +36,11 @@ ov_dependent_option(ENABLE_CPPLINT "Enable cpplint checks during the build" ${EN
 
 ov_option(ENABLE_EXPORT_SYMBOLS "Enable compiler -fvisibility=default and linker -export-dynamic options" OFF)
 
-ov_option(ENABLE_MLIR_COMPILER "Enable compilation of npu_mlir_compiler libraries" ON)
-
-ov_option(BUILD_COMPILER_FOR_DRIVER "Enable build of VPUXCompilerL0" OFF)
+ov_option(BUILD_COMPILER_FOR_DRIVER "Build npu_driver_compiler for CiD driver integration instead of openvino_intel_npu_compiler for CiP OpenVINO integrations" OFF)
 
 ov_option(ENABLE_PRODUCTION_BUILD "Enable production build with extra control" OFF)
 
 ov_dependent_option(ENABLE_DRIVER_COMPILER_ADAPTER "Enable VPUX Compiler inside driver" ON "NOT BUILD_COMPILER_FOR_DRIVER" OFF)
-
-if(NOT BUILD_SHARED_LIBS AND NOT ENABLE_MLIR_COMPILER AND NOT ENABLE_DRIVER_COMPILER_ADAPTER)
-    message(FATAL_ERROR "No compiler found for static build!")
-endif()
 
 ov_option(ENABLE_DEVELOPER_BUILD "Enable developer build with extra validation/logging functionality" OFF)
 
@@ -82,6 +78,9 @@ if(NOT DEFINED ENABLE_NPU_MICRO_BENCHMARKS)
     set(ENABLE_NPU_MICRO_BENCHMARKS ${ENABLE_DEVELOPER_BUILD})
 endif()
 ov_option(ENABLE_NPU_MICRO_BENCHMARKS "NPU micro benchmarks" ${ENABLE_NPU_MICRO_BENCHMARKS})
+
+# Enable NPU Execution Engine only for developer build as it is an experimental feature
+ov_dependent_option(ENABLE_NPU_EXECUTION_ENGINE "Enable NPU Execution Engine" ON "ENABLE_DEVELOPER_BUILD" OFF)
 
 if(ENABLE_VPUX_DOCS)
     find_package(Doxygen)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,8 +9,7 @@
 
 namespace vpux::bitc {
 // clang-format off
-enum class ArchType : uint32_t { NPU27, NPU4
-    , NPU5
+enum class ArchType : uint32_t { NPU27, NPU4, NPU5
 };
 
 struct BitCompactorConfig {

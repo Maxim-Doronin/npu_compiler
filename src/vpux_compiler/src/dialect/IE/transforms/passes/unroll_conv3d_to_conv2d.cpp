@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,21 +41,21 @@ auto createFQ(mlir::PatternRewriter& rewriter, mlir::Value input, IE::FakeQuanti
         const auto newFqInputShapeAttr = getIntArrayAttr(rewriter.getContext(), newFqInputShape);
         const auto inputOffsetsAttr = getIntArrayAttr(rewriter.getContext(), inputOffsets);
         const auto inputSlice = rewriter.createOrFold<IE::SliceOp>(
-                takeOpLoc(fq, StringLiteral("slice_dim{0}_{1}_{2}"), index, composedIndex, locSuffix), fqInput,
-                inputOffsetsAttr, newFqInputShapeAttr);
+                takeOpLoc(fq, "slice_dim{0}_{1}_{2}", index, composedIndex, locSuffix), fqInput, inputOffsetsAttr,
+                newFqInputShapeAttr);
         newFqInputShape.erase(newFqInputShape.begin() + index);
         const auto newFqInputShapeSqueezedAttr = getIntArrayAttr(rewriter.getContext(), newFqInputShape);
 
         return rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(fq, StringLiteral("reshape_in_dim{0}_{1}_{2}"), index, composedIndex, locSuffix), inputSlice,
-                nullptr, false, newFqInputShapeSqueezedAttr);
+                takeOpLoc(fq, "reshape_in_dim{0}_{1}_{2}", index, composedIndex, locSuffix), inputSlice, nullptr, false,
+                newFqInputShapeSqueezedAttr);
     };
     auto inputLow = sliceFqConstInput(fq.getInputLow(), "in_low");
     auto inputHigh = sliceFqConstInput(fq.getInputHigh(), "in_high");
     auto outputLow = sliceFqConstInput(fq.getOutputLow(), "out_low");
     auto outputHigh = sliceFqConstInput(fq.getOutputHigh(), "out_high");
-    return rewriter.create<IE::FakeQuantizeOp>(takeOpLoc(fq, StringLiteral("fq_in_dim{0}_{1}"), index, composedIndex),
-                                               input, inputLow, inputHigh, outputLow, outputHigh, fq.getLevelsAttr(),
+    return rewriter.create<IE::FakeQuantizeOp>(takeOpLoc(fq, "fq_in_dim{0}_{1}", index, composedIndex), input, inputLow,
+                                               inputHigh, outputLow, outputHigh, fq.getLevelsAttr(),
                                                fq.getLowFpTypeAttr(), fq.getAutoBroadcast());
 }
 
@@ -68,18 +68,18 @@ auto createDQ(mlir::PatternRewriter& rewriter, IE::DequantizeOp dq, int64_t inde
         const auto newDqInputShapeAttr = getIntArrayAttr(rewriter.getContext(), newDqInputShape);
         const auto inputOffsetsAttr = getIntArrayAttr(rewriter.getContext(), inputOffsets);
         const auto inputSlice = rewriter.createOrFold<IE::SliceOp>(
-                takeOpLoc(dq, StringLiteral("slice_dim{0}_{1}_{2}"), index, composedIndex, locSuffix), dqInput,
-                inputOffsetsAttr, newDqInputShapeAttr);
+                takeOpLoc(dq, "slice_dim{0}_{1}_{2}", index, composedIndex, locSuffix), dqInput, inputOffsetsAttr,
+                newDqInputShapeAttr);
         newDqInputShape.erase(newDqInputShape.begin() + index);
         const auto newDqInputShapeSqueezedAttr = getIntArrayAttr(rewriter.getContext(), newDqInputShape);
 
         return rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(dq, StringLiteral("reshape_in_dim{0}_{1}_{2}"), index, composedIndex, locSuffix), inputSlice,
-                nullptr, false, newDqInputShapeSqueezedAttr);
+                takeOpLoc(dq, "reshape_in_dim{0}_{1}_{2}", index, composedIndex, locSuffix), inputSlice, nullptr, false,
+                newDqInputShapeSqueezedAttr);
     };
     auto slicedInput = sliceDqConstInput(dq.getInput(), "in_slice");
-    return rewriter.create<IE::DequantizeOp>(takeOpLoc(dq, StringLiteral("dq_in_dim{0}_{1}"), index, composedIndex),
-                                             slicedInput, dq.getDstElemTypeAttr());
+    return rewriter.create<IE::DequantizeOp>(takeOpLoc(dq, "dq_in_dim{0}_{1}", index, composedIndex), slicedInput,
+                                             dq.getDstElemTypeAttr());
 }
 
 SmallVector<mlir::Value> getSlicedFilters(mlir::PatternRewriter& rewriter, mlir::Operation* origOp, mlir::Value input,
@@ -324,15 +324,14 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
             SmallVector<int64_t> sliceShape{inputShape[Dims5D::Act::N], inputShape[Dims5D::Act::C], 1,
                                             inputShape[Dims5D::Act::H], inputShape[Dims5D::Act::W]};
             auto slicedActivation =
-                    rewriter.create<IE::SliceOp>(
-                                    takeOpLoc(origOp, StringLiteral("slice_{0}_{1}"), actIndex, depthIndex), input,
-                                    getIntArrayAttr(ctx, offsets.raw()), getIntArrayAttr(ctx, sliceShape))
+                    rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "slice_{0}_{1}", actIndex, depthIndex), input,
+                                                 getIntArrayAttr(ctx, offsets.raw()), getIntArrayAttr(ctx, sliceShape))
                             .getResult();
             SmallVector<int64_t> reshapeShape{inputShape[Dims5D::Act::N], inputShape[Dims5D::Act::C],
                                               inputShape[Dims5D::Act::H], inputShape[Dims5D::Act::W]};
             auto reshapeSlicedActivation = rewriter.create<IE::ReshapeOp>(
-                    takeOpLoc(origOp, StringLiteral("reshape_{0}_{1}"), actIndex, depthIndex), slicedActivation,
-                    nullptr, false, getIntArrayAttr(ctx, reshapeShape));
+                    takeOpLoc(origOp, "reshape_{0}_{1}", actIndex, depthIndex), slicedActivation, nullptr, false,
+                    getIntArrayAttr(ctx, reshapeShape));
             mlir::Operation* lastOp = reshapeSlicedActivation;
 
             mlir::Builder builder(origOp->getContext());
@@ -351,7 +350,7 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
             }
 
             mlir::Operation* newConvOp;
-            auto newLoc = takeOpLoc(origOp, StringLiteral("conv_{0}_{1}"), actIndex, depthIndex);
+            auto newLoc = takeOpLoc(origOp, "conv_{0}_{1}", actIndex, depthIndex);
             if (auto groupConv = mlir::dyn_cast_or_null<IE::GroupConvolutionOp>(origOp.getOperation())) {
                 newConvOp = rewriter.create<IE::GroupConvolutionOp>(
                         newLoc, lastOp->getResult(0), slicedFilters[depthIndex],
@@ -362,8 +361,8 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
             } else {
                 auto conv = mlir::dyn_cast_or_null<IE::ConvolutionOp>(origOp.getOperation());
                 newConvOp = rewriter.create<IE::ConvolutionOp>(
-                        newLoc, lastOp->getResult(0), slicedFilters[depthIndex], /*bias=*/nullptr, stridesAttr,
-                        padBeginAttr, padEndAttr, dilationsAttr,
+                        newLoc, lastOp->getResult(0), slicedFilters[depthIndex], /*bias=*/nullptr, /*scale*/ nullptr,
+                        stridesAttr, padBeginAttr, padEndAttr, dilationsAttr,
                         /*post_opAttr=*/nullptr, /*clamp=*/nullptr, conv.getStaticScaleAttr(),
                         origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
             }
@@ -380,9 +379,8 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
             mlir::Value add = newSubConvs.front();
             for (size_t i = 1; i < newSubConvs.size(); i++) {
                 const auto isLast = (i == newSubConvs.size() - 1);
-                add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, StringLiteral("add_{0}_{1}"), actIndex, i), add,
-                                                 newSubConvs[i], broadcastType,
-                                                 isLast ? origOp.getPostOpAttr() : nullptr,
+                add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, "add_{0}_{1}", actIndex, i), add, newSubConvs[i],
+                                                 broadcastType, isLast ? origOp.getPostOpAttr() : nullptr,
                                                  isLast ? origOp.getClampAttr() : nullptr,
                                                  origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr())
                               ->getResult(0);
@@ -402,8 +400,8 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
                                         outputShape[Dims5D::Act::H] * outputShape[Dims5D::Act::W]};
     for (auto subConv : newConvs) {
         auto subOutputReshape =
-                rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, StringLiteral("reshape_in_{0}"), concatInputs.size()),
-                                               subConv, nullptr, false, getIntArrayAttr(ctx, subOutputShape))
+                rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}", concatInputs.size()), subConv,
+                                               nullptr, false, getIntArrayAttr(ctx, subOutputShape))
                         .getOutput();
         concatInputs.push_back(subOutputReshape);
     }
@@ -486,15 +484,14 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
             SmallVector<int64_t> sliceShape{inputShape[Dims5D::Act::N], inputShape[Dims5D::Act::C], 1,
                                             inputShape[Dims5D::Act::H], inputShape[Dims5D::Act::W]};
             auto slicedActivation =
-                    rewriter.create<IE::SliceOp>(
-                                    takeOpLoc(origOp, StringLiteral("slice_in_{0}_{1}"), actIndex, depthIndex), input,
-                                    getIntArrayAttr(ctx, offsets.raw()), getIntArrayAttr(ctx, sliceShape))
+                    rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "slice_in_{0}_{1}", actIndex, depthIndex), input,
+                                                 getIntArrayAttr(ctx, offsets.raw()), getIntArrayAttr(ctx, sliceShape))
                             .getResult();
             SmallVector<int64_t> reshapeShape{inputShape[Dims5D::Act::N], inputShape[Dims5D::Act::C],
                                               inputShape[Dims5D::Act::H], inputShape[Dims5D::Act::W]};
             auto reshapeSlicedActivation = rewriter.create<IE::ReshapeOp>(
-                    takeOpLoc(origOp, StringLiteral("reshape_in_{0}_{1}"), actIndex, depthIndex), slicedActivation,
-                    nullptr, false, getIntArrayAttr(ctx, reshapeShape));
+                    takeOpLoc(origOp, "reshape_in_{0}_{1}", actIndex, depthIndex), slicedActivation, nullptr, false,
+                    getIntArrayAttr(ctx, reshapeShape));
             mlir::Operation* lastOp = reshapeSlicedActivation;
 
             if (inputFQ != nullptr) {
@@ -503,7 +500,7 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                 lastOp = newFakeQuantizeOp;
             }
             auto newConvOp = rewriter.create<IE::TransposedConvolutionOp>(
-                    takeOpLoc(origOp, StringLiteral("tconv_{0}_{1}"), actIndex, depthIndex), lastOp->getResult(0),
+                    takeOpLoc(origOp, "tconv_{0}_{1}", actIndex, depthIndex), lastOp->getResult(0),
                     slicedFilters[depthIndex], /*output_shape=*/nullptr,
                     /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, outputPaddingAttr,
                     /*post_opAttr=*/nullptr, /*clamp=*/nullptr,
@@ -524,8 +521,8 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                     } else {
                         const auto broadcastType = vpux::IE::AutoBroadcastTypeAttr::get(
                                 origOp->getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
-                        add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, StringLiteral("add_{0}_{1}"), i, addId++),
-                                                         add, conv->first, broadcastType,
+                        add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, "add_{0}_{1}", i, addId++), add, conv->first,
+                                                         broadcastType,
                                                          /*post_opAttr=*/nullptr,
                                                          /*clamp=*/nullptr,
                                                          /*outputPadding*/ nullptr, /*inputPadding*/ nullptr)

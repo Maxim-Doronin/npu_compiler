@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <cmath>
@@ -128,6 +128,7 @@ TEST_P(FuseRMSReduceSumTestUnstripped, NPU4000_HW) {
     setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
+
 TEST_P(FuseRMSReduceSumTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     // TODO E####-159644
@@ -142,6 +143,7 @@ TEST_P(FuseRMSReduceSumTestUnstripped, NPU5010_HW) {
     setBatchCompilerMode("unroll");
     run(Platform::NPU5010);
 }
+
 namespace {
 const std::vector<ov::element::Type> inputPrecisions = {ov::element::f32};
 

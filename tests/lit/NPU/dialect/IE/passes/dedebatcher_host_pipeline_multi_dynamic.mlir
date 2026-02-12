@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,12 +26,12 @@ func.func @SingleInputMultipleOutputMultiDynamicDimDeBatched(%arg0: tensor<?x3x?
     %3 = builtin.unrealized_conversion_cast %1#1: tensor<1x48x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 48, 60, 60]> : tensor<4xsi64>}> to tensor<?x48x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 48, 60, 60]> : tensor<4xsi64>}>
     return %2, %3 : tensor<?x48x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 48, 60, 60]> : tensor<4xsi64>}>, tensor<?x48x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 48, 60, 60]> : tensor<4xsi64>}>
 
-    // CHECK: func.func @SingleInputMultipleOutputMultiDynamicDimDeBatched([[ARG0:%.+]]: tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>) {
+    // CHECK: func.func @SingleInputMultipleOutputMultiDynamicDimDeBatched([[ARG0:%.+]]: tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>)
     // CHECK:   [[DYN_W_IDX:%.+]] = arith.constant 3 : index
     // CHECK:   [[DYN_H_IDX:%.+]] = arith.constant 2 : index
     // CHECK:   [[STEP:%.+]] = arith.constant 1 : index
     // CHECK:   [[BEGIN:%.+]] = arith.constant 0 : index
-    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.*]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
+    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[DYN_MIN_H:%.+]] = tensor.dim [[ARG0]], [[DYN_H_IDX]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[DYN_MIN_W:%.+]] = tensor.dim [[ARG0]], [[DYN_W_IDX]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_0:%.+]] = tensor.empty([[END]], [[DYN_MIN_H]], [[DYN_MIN_W]]) : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>
@@ -70,12 +70,12 @@ func.func @MultipleInputMultipleOutputMultiDynamicDimDeBatched(%arg0: tensor<?x3
     %4 = builtin.unrealized_conversion_cast %2#1: tensor<1x48x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 48, 60, 60]> : tensor<4xsi64>}> to tensor<?x48x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 48, 60, 60]> : tensor<4xsi64>}>
     return %3, %4 : tensor<?x48x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 48, 60, 60]> : tensor<4xsi64>}>, tensor<?x48x?x?xf16, {bounds = #const.OpaqueI64Elements<[3, 48, 60, 60]> : tensor<4xsi64>}>
 
-    // CHECK: func.func @MultipleInputMultipleOutputMultiDynamicDimDeBatched([[ARG0:%.+]]: tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>, [[ARG1:%.+]]: tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>) {
+    // CHECK: func.func @MultipleInputMultipleOutputMultiDynamicDimDeBatched([[ARG0:%.+]]: tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>, [[ARG1:%.+]]: tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>)
     // CHECK:   [[DYN_W_IDX:%.+]] = arith.constant 3 : index
     // CHECK:   [[DYN_H_IDX:%.+]] = arith.constant 2 : index
     // CHECK:   [[STEP:%.+]] = arith.constant 1 : index
     // CHECK:   [[BEGIN:%.+]] = arith.constant 0 : index
-    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.*]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
+    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[DYN_MIN_H:%.+]] = tensor.dim [[ARG0]], [[DYN_H_IDX]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[DYN_MIN_W:%.+]] = tensor.dim [[ARG0]], [[DYN_W_IDX]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_0:%.+]] = tensor.empty([[END]], [[DYN_MIN_H]], [[DYN_MIN_W]]) : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>
@@ -95,4 +95,3 @@ func.func @MultipleInputMultipleOutputMultiDynamicDimDeBatched(%arg0: tensor<?x3
     // CHECK:       scf.yield [[O_SLICE_0]], [[O_SLICE_1]] : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>
     // CHECK:   return [[RET]]#0, [[RET]]#1 : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>
 }
-

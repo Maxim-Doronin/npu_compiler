@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -173,9 +173,9 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
             op.getInputSparsityMapAttr(), op.getInputStorageElementTableAttr(), op.getWeightsAttr(),
             op.getWeightsSparsityMapAttr(), op.getWeightTableAttr(), op.getWeightTableDataPtrAttr(),
             op.getWeightTableScaleAttr(), op.getSprLookupTableAttr(), op.getPalletLookupTableAttr(), op.getOutputAttr(),
-            op.getOutputSparsityMapAttr(), op.getProfilingDataAttr(), op.getIsZeroOffsetWeightsTableAttr(),
+            op.getOutputSparsityMapAttr(), op.getProfilingDataAttr(), op.getIsZeroOffsetWeightsTable(),
             op.getMaxPerXyAttr(), op.getMinPerXyAttr(), op.getMinMaxPerTensorAttr(), op.getDynamicSequenceLengthAttr(),
-            op.getNceTaskTypeAttr(), op.getIsContinuedAttr());
+            op.getNceTaskTypeAttr(), op.getIsContinued());
 
     auto& invRegion = inv.getRegion();
     auto invBlock = rewriter.createBlock(&invRegion);
@@ -208,6 +208,7 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
                     .failed()) {
             return mlir::failure();
         }
+
         if (insertEntryBlock<VPUIPDPU::MPECfgOp>(rewriter, invBlock, op.getLoc(), _log).failed()) {
             return mlir::failure();
         }
@@ -224,6 +225,7 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
                     .failed()) {
             return mlir::failure();
         }
+
         if (insertEntryBlock<VPUIPDPU::ODUCfgOp>(rewriter, invBlock, op.getLoc(), _log).failed()) {
             return mlir::failure();
         }

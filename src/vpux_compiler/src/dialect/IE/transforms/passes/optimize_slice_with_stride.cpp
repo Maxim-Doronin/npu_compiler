@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,9 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -180,10 +182,8 @@ IE::ConvolutionOp SliceOpConverter::createConvolution(IE::SliceOp origOp, mlir::
 
     const auto convOutType = origOutType.changeShape(convOutShape).changeElemType(convOutElemType);
 
-    return rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), convOutType, activation, weights,
-                                              /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
-                                              /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
+    return rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), convOutType, activation, weights, strides,
+                                              kernelPadsBegin, kernelPadsEnd, dilations);
 }
 
 mlir::Value SliceOpConverter::composeWeights(IE::SliceOp origOp, const mlir::Type convolutionInputType,
@@ -357,10 +357,8 @@ IE::ConvolutionOp SliceConcatRewriter::createIdentityConvolution(IE::SliceOp sli
     const auto orderMap = DimsOrder::OYXI.toAffineMap(ctx);
     auto reorderOut = rewriter.createOrFold<IE::ReorderOp>(reorderLoc, reorderType, declOp.getOutput(), orderMap);
 
-    return rewriter.create<IE::ConvolutionOp>(sliceOp.getLoc(), convOutType, sliceOp.getSource(), reorderOut,
-                                              /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
-                                              /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
+    return rewriter.create<IE::ConvolutionOp>(sliceOp.getLoc(), convOutType, sliceOp.getSource(), reorderOut, strides,
+                                              kernelPadsBegin, kernelPadsEnd, dilations);
 }
 
 bool doesSliceConcatMeetRequirement(IE::SliceOp sliceOp, IE::ConcatOp concatOp) {
@@ -504,11 +502,9 @@ mlir::LogicalResult SliceConcatRewriter::matchAndRewrite(IE::ConcatOp concatOp, 
     auto cstContentAttrFilter = cstContentAttrFilterSetup.get();
     auto newFilter = rewriter.create<Const::DeclareOp>(filterCst.getLoc(), cstContentAttrFilter.getType(),
                                                        std::move(cstContentAttrFilter));
-    auto newConvOp = rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
-            inConvOp, inConvOp.getOutput().getType(), inConvOp.getInput(), newFilter, inConvOp.getBias(),
-            inConvOp.getStrides(), inConvOp.getPadsBegin(), inConvOp.getPadsEnd(), inConvOp.getDilations(),
-            inConvOp.getPostOpAttr(), inConvOp.getClampAttr(), inConvOp.getStaticScaleAttr(),
-            inConvOp.getOutputPaddingAttr(), inConvOp.getInputPaddingAttr());
+    auto newConvOp =
+            cloneConvolutionOp(rewriter, inConvOp, inConvOp.getOutput().getType(), inConvOp.getInput(), newFilter);
+    rewriter.replaceOp(inConvOp, newConvOp.getOutput());
     sliceOp.getResult().replaceAllUsesWith(sliceOp.getSource());
 
     // Replace Concat with Add.
@@ -622,11 +618,9 @@ mlir::LogicalResult FuseSliceWithConvRewriter::matchAndRewrite(IE::SliceOp slice
 
     const auto origOutType = mlir::cast<vpux::NDTypeInterface>(inConvOp.getOutput().getType());
     const auto newOutType = origOutType.changeShape(sliceOutputShape);
-    auto newConv = rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
-            inConvOp, newOutType, inConvOp.getInput(), newFilter, newBias, inConvOp.getStrides(),
-            inConvOp.getPadsBegin(), inConvOp.getPadsEnd(), inConvOp.getDilations(), inConvOp.getPostOpAttr(),
-            inConvOp.getClampAttr(), inConvOp.getStaticScaleAttr(), inConvOp.getOutputPaddingAttr(),
-            inConvOp.getInputPaddingAttr());
+    auto newConv = cloneConvolutionOp(rewriter, inConvOp, newOutType, inConvOp.getInput(), newFilter, newBias,
+                                      inConvOp.getScale());
+    rewriter.replaceOp(inConvOp, newConv.getOutput());
     sliceOp.getResult().replaceAllUsesWith(newConv.getOutput());
 
     _log.trace("[{0}] Successfully Fuse Slice into Conv '{1}' at '{2}'", getDebugName(), newConv->getName(),
@@ -733,7 +727,7 @@ mlir::LogicalResult SliceOpWithLayoutConverter::matchAndRewrite(IE::SliceOp orig
 
     // Step 1: Convert input to NHWC using PermuteCast
     auto inputToNHWC =
-            rewriter.create<IE::PermuteCastOp>(appendLoc(origOp.getLoc(), "_input_to_nhwc"), origOp.getSource(),
+            rewriter.create<IE::PermuteCastOp>(appendLoc(origOp.getLoc(), "input_to_nhwc"), origOp.getSource(),
                                                mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(ctx)),
                                                mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx)));
 
@@ -760,12 +754,12 @@ mlir::LogicalResult SliceOpWithLayoutConverter::matchAndRewrite(IE::SliceOp orig
     const auto nhwcSliceOutShape = ShapeRef(nhwcSliceSize);
     const auto nhwcSliceOutType = sliceInType.changeDimsOrder(nhwcOrder).changeShape(nhwcSliceOutShape);
 
-    auto nhwcSliceOp = rewriter.create<IE::SliceOp>(appendLoc(origOp.getLoc(), "_nhwc_slice"), nhwcSliceOutType,
+    auto nhwcSliceOp = rewriter.create<IE::SliceOp>(appendLoc(origOp.getLoc(), "nhwc_slice"), nhwcSliceOutType,
                                                     inputToNHWC.getResult(), nhwcSliceOffsetAttr, nhwcSliceSizeAttr);
 
     // Step 4: Convert output back to original layout using PermuteCast
     auto outputToOriginal = rewriter.create<IE::PermuteCastOp>(
-            appendLoc(origOp.getLoc(), "_output_to_original"), nhwcSliceOp.getResult(),
+            appendLoc(origOp.getLoc(), "output_to_original"), nhwcSliceOp.getResult(),
             mlir::AffineMapAttr::get(originalLayout.toAffineMap(ctx)),
             mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx)));
 

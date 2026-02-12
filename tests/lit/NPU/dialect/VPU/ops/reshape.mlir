@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,7 +25,7 @@ func.func @ConvertToShapeCast(%arg0 : tensor<1x2x3x4xf16>) -> tensor<1x3x2x4xf16
     %0 = VPU.Reshape(%arg0) {shape_value = [1, 3, 2, 4]} : tensor<1x2x3x4xf16> -> tensor<1x3x2x4xf16>
     return %0 : tensor<1x3x2x4xf16>
 
-    // CHECK:    [[SHAPE_CAST:%.*]] = VPU.ShapeCast {shape = [1, 3, 2, 4]} inputs(%arg0 : tensor<1x2x3x4xf16>) -> tensor<1x3x2x4xf16>
+    // CHECK:    [[SHAPE_CAST:%.+]] = VPU.ShapeCast {shape = [1, 3, 2, 4]} inputs(%arg0 : tensor<1x2x3x4xf16>) -> tensor<1x3x2x4xf16>
     // CHECK:    return [[SHAPE_CAST]]
 }
 
@@ -38,7 +38,7 @@ func.func @NotConvertToShapeCastWithNotIdentityLayout(%arg0 : tensor<1x2x3x4xf16
     %0 = VPU.Reshape(%arg0) {shape_value = [1, 3, 2, 4]} : tensor<1x2x3x4xf16, {order = #NHWC}> -> tensor<1x3x2x4xf16>
     return %0 : tensor<1x3x2x4xf16>
 
-    // CHECK:    [[RESHAPE:%.*]] = VPU.Reshape(%arg0) {shape_value = [1, 3, 2, 4]} : tensor<1x2x3x4xf16, {order = #NHWC}> -> tensor<1x3x2x4xf16>
+    // CHECK:    [[RESHAPE:%.+]] = VPU.Reshape(%arg0) {shape_value = [1, 3, 2, 4]} : tensor<1x2x3x4xf16, {order = #NHWC}> -> tensor<1x3x2x4xf16>
     // CHECK:    return [[RESHAPE]]
 }
 

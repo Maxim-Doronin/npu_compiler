@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -154,6 +154,8 @@ mlir::Operation* getRootConst(mlir::Value val);
 using outputBuffers = SmallVector<mlir::Value>;
 using outputItiBuffers = SmallVector<SmallVector<mlir::Value>>;
 
+std::optional<std::pair<Shape, Shape>> getOverlappedRegion(const Shape& computeOffset, const Shape& memoryOffset,
+                                                           const Shape& computeShape, const Shape& memoryShape);
 SmallVector<mlir::Value> getPerClusterMemoryBuffers(mlir::MLIRContext* ctx, mlir::Location loc, StringRef bufferName,
                                                     mlir::Value operand, int64_t numClusters, mlir::OpBuilder& builder,
                                                     bool allowDiscontinuousBuffers = false);
@@ -249,7 +251,7 @@ VPU::DistributionInfoAttr getSOHDistAttrWithNewShape(mlir::MLIRContext* ctx, Dis
                 ctx, origDistAttr.getMode(), origDistAttr.getNumTiles(), origDistAttr.getKernel(),
                 origDistAttr.getPads(), origDistAttr.getStrides(), origDistAttr.getNumClusters(), nullptr,
                 origDistAttr.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr,
-                origDistAttr.getEqualMemoryAndComputeView());
+                origDistAttr.getEqualMemoryAndComputeView(), origDistAttr.getMemoryNumTiles());
         auto newDistType = DistType::get(ctx, newShape, origDistType.getElementType(),
                                          mlir::AffineMapAttr::get(origDistType.getDimsOrder().toAffineMap(ctx)),
                                          origDistType.getMemSpace(), notAlignedDistAttr);
@@ -258,7 +260,7 @@ VPU::DistributionInfoAttr getSOHDistAttrWithNewShape(mlir::MLIRContext* ctx, Dis
                     ctx, origDistAttr.getMode(), origDistAttr.getNumTiles(), origDistAttr.getKernel(),
                     origDistAttr.getPads(), origDistAttr.getStrides(), origDistAttr.getNumClusters(), newAlignment,
                     origDistAttr.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr,
-                    origDistAttr.getEqualMemoryAndComputeView());
+                    origDistAttr.getEqualMemoryAndComputeView(), origDistAttr.getMemoryNumTiles());
         }
         return notAlignedDistAttr;
     }
@@ -266,22 +268,24 @@ VPU::DistributionInfoAttr getSOHDistAttrWithNewShape(mlir::MLIRContext* ctx, Dis
     // When DistributionInfoAttr has explicit per cluster memory/compute shapes, recompute them for the new shape
     // Since this method throws for any distribution mode other than SEGMENTED over H, it is safe to recompute the
     // memory/compute view
-    auto optionalPerClusterMemoryShapes = VPU::getPerClusterMemoryShapes(newShape, origDistAttr);
+    auto optionalPerClusterMemoryShapes =
+            VPU::getPerClusterMemoryShapes(newShape, origDistAttr, origDistType.getElementType());
     VPUX_THROW_UNLESS(optionalPerClusterMemoryShapes.has_value(),
                       "Cannot get per cluster memory shapes. Unsupported distribution: {0}", origDistAttr);
     auto perClusterMemoryShapes = vpux::getIntArrayOfArray(ctx, optionalPerClusterMemoryShapes.value());
-    auto perClusterMemoryOffsets =
-            vpux::getIntArrayOfArray(ctx, VPU::getPerClusterMemoryShapeOffsets(newShape, origDistAttr));
-    auto perClusterComputeShapes =
-            vpux::getIntArrayOfArray(ctx, VPU::getPerClusterComputeShapes(newShape, origDistAttr));
-    auto perClusterComputeOffsets =
-            vpux::getIntArrayOfArray(ctx, VPU::getPerClusterComputeShapeOffsets(newShape, origDistAttr));
+    auto perClusterMemoryOffsets = vpux::getIntArrayOfArray(
+            ctx, VPU::getPerClusterMemoryShapeOffsets(newShape, origDistAttr, origDistType.getElementType()));
+    auto perClusterComputeShapes = vpux::getIntArrayOfArray(
+            ctx, VPU::getPerClusterComputeShapes(newShape, origDistAttr, origDistType.getElementType()));
+    auto perClusterComputeOffsets = vpux::getIntArrayOfArray(
+            ctx, VPU::getPerClusterComputeShapeOffsets(newShape, origDistAttr, origDistType.getElementType()));
 
     return VPU::DistributionInfoAttr::get(
             ctx, origDistAttr.getMode(), origDistAttr.getNumTiles(), origDistAttr.getKernel(), origDistAttr.getPads(),
             origDistAttr.getStrides(), origDistAttr.getNumClusters(), newAlignment,
             origDistAttr.getUniformDistributedSegments(), perClusterComputeShapes, perClusterComputeOffsets,
-            perClusterMemoryShapes, perClusterMemoryOffsets, origDistAttr.getEqualMemoryAndComputeView());
+            perClusterMemoryShapes, perClusterMemoryOffsets, origDistAttr.getEqualMemoryAndComputeView(),
+            origDistAttr.getMemoryNumTiles());
 }
 
 template <typename DistType>
@@ -413,11 +417,11 @@ VPU::DistributionInfoAttr getOverlappedOverHDistAttrWithNewShape(mlir::MLIRConte
     }
 
     if (!VPU::isDistributedAttrWithExplicitShapesAndOffsets(origDistAttr)) {
-        return VPU::DistributionInfoAttr::get(ctx, origDistAttr.getMode(), origDistAttr.getNumTiles(),
-                                              origDistAttr.getKernel(), origDistAttr.getPads(),
-                                              origDistAttr.getStrides(), origDistAttr.getNumClusters(), nullptr,
-                                              origDistAttr.getUniformDistributedSegments(), nullptr, nullptr, nullptr,
-                                              nullptr, origDistAttr.getEqualMemoryAndComputeView());
+        return VPU::DistributionInfoAttr::get(
+                ctx, origDistAttr.getMode(), origDistAttr.getNumTiles(), origDistAttr.getKernel(),
+                origDistAttr.getPads(), origDistAttr.getStrides(), origDistAttr.getNumClusters(), nullptr,
+                origDistAttr.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr,
+                origDistAttr.getEqualMemoryAndComputeView(), origDistAttr.getMemoryNumTiles());
     }
 
     // When DistributionInfoAttr has explicit per cluster memory/compute shapes, recompute them for the new shape
@@ -427,17 +431,18 @@ VPU::DistributionInfoAttr getOverlappedOverHDistAttrWithNewShape(mlir::MLIRConte
     auto perClusterMemoryOffsets =
             vpux::getIntArrayOfArray(ctx, VPU::getOverlappedPerClusterNewMemoryShapeOffsets(newShape, origDistAttr));
 
-    auto perClusterComputeShapes =
-            vpux::getIntArrayOfArray(ctx, VPU::getPerClusterComputeShapes(newShape, origDistAttr));
+    auto perClusterComputeShapes = vpux::getIntArrayOfArray(
+            ctx, VPU::getPerClusterComputeShapes(newShape, origDistAttr, origDistType.getElementType()));
 
-    auto perClusterComputeOffsets =
-            vpux::getIntArrayOfArray(ctx, VPU::getPerClusterComputeShapeOffsets(newShape, origDistAttr));
+    auto perClusterComputeOffsets = vpux::getIntArrayOfArray(
+            ctx, VPU::getPerClusterComputeShapeOffsets(newShape, origDistAttr, origDistType.getElementType()));
 
     return VPU::DistributionInfoAttr::get(
             ctx, origDistAttr.getMode(), origDistAttr.getNumTiles(), origDistAttr.getKernel(), origDistAttr.getPads(),
             origDistAttr.getStrides(), origDistAttr.getNumClusters(), nullptr,
             origDistAttr.getUniformDistributedSegments(), perClusterComputeShapes, perClusterComputeOffsets,
-            perClusterMemoryShapes, perClusterMemoryOffsets, origDistAttr.getEqualMemoryAndComputeView());
+            perClusterMemoryShapes, perClusterMemoryOffsets, origDistAttr.getEqualMemoryAndComputeView(),
+            origDistAttr.getMemoryNumTiles());
 }
 
 template <typename DistType>
@@ -664,9 +669,9 @@ VPU::DistributionInfoAttr getDistributedAttrAfterShapeCast(VPU::DistributedTypeI
         if (VPU::bitEnumContainsAny(distMode, VPU::DistributionMode::DUPLICATED) ||
             VPU::bitEnumContainsAny(distMode, VPU::DistributionMode::MULTICASTED)) {
             auto duplicatedOutputMode = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::DUPLICATED);
-            return VPU::getNonOverlappedDistributedAttr(ShapeRef(outShape), duplicatedOutputMode, nullptr,
-                                                        origDistribution.getNumClusters(), nullptr,
-                                                        origDistribution.getUniformDistributedSegments(), ctx);
+            return VPU::getNonOverlappedDistributedAttr(
+                    ShapeRef(outShape), duplicatedOutputMode, nullptr, origDistribution.getNumClusters(), nullptr,
+                    origDistribution.getUniformDistributedSegments(), ndTypeIf.getElementType(), ctx);
         }
 
         const auto numClusters = checked_cast<size_t>(origDistribution.getNumClusters().getInt());
@@ -698,7 +703,7 @@ VPU::DistributionInfoAttr getDistributedAttrAfterShapeCast(VPU::DistributedTypeI
                 origDistribution.getStrides(), origDistribution.getNumClusters(), origDistribution.getAlignment(),
                 origDistribution.getUniformDistributedSegments(), perClusterShapesAttr,
                 origDistribution.getMemoryOffsets(), perClusterShapesAttr, origDistribution.getMemoryOffsets(),
-                origDistribution.getEqualMemoryAndComputeView());
+                origDistribution.getEqualMemoryAndComputeView(), origDistribution.getMemoryNumTiles());
     }
 
     if (distMode == VPU::DistributionMode::SEGMENTED) {
@@ -724,7 +729,7 @@ VPU::DistributionInfoAttr getDistributedAttrAfterShapeCast(VPU::DistributedTypeI
         const auto duplicatedMode = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::DUPLICATED);
         return VPU::DistributionInfoAttr::get(
                 ctx, duplicatedMode, nullptr, nullptr, nullptr, nullptr, origDistribution.getNumClusters(), nullptr,
-                origDistribution.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr, nullptr);
+                origDistribution.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     }
 
     VPUX_THROW_WHEN((distMode == VPU::DistributionMode::OVERLAPPED) && clusteringDimChanges,
@@ -765,12 +770,6 @@ size_t getUniqueMembersSize(llvm::iterator_range<T> range) {
     return container.size();
 }
 
-//
-// Move Declarations to the top
-//
-
-void moveDeclarationsToTop(mlir::func::FuncOp& netFunc);
-
 mlir::Type getCompactBufferType(mlir::Type originalType);
 
 //
@@ -799,7 +798,7 @@ mlir::SmallVector<int64_t> getDefaultLoopOrder(int64_t numDims);
 mlir::SmallVector<int64_t> getLinearMemOrder(vpux::NDTypeInterface ndType);
 
 mlir::SmallVector<int64_t> getLoopOrder(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
-                                        mlir::AffineMap mappingOrder);
+                                        mlir::AffineMap mappingOrder, bool stridedInput, bool stridedOutput);
 
 void splitSpaceToDepth(mlir::PatternRewriter& rewriter,
                        const std::function<void(mlir::MemRefType, VPURT::DeclareBufferOp, mlir::MemRefType,

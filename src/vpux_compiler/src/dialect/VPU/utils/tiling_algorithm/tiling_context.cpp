@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_context.hpp"
 
+#include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/multicluster_tiling_scf_algorithm.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_general_algorithm.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_scf_algorithm.hpp"
 
@@ -30,11 +31,10 @@ mlir::LogicalResult TilingContext::applyTiling(mlir::RewriterBase& builder, Logg
     return _tilingAlgorithm->applyTiling(_operation, builder, log);
 }
 
-mlir::FailureOr<SmallVector<mlir::Operation*>> TilingContext::applyVerticalFusion(mlir::RewriterBase& builder,
-                                                                                  Logger log) {
+SmallVector<mlir::Operation*> TilingContext::applySCFTilingAndFusion(mlir::RewriterBase& builder, Logger log) {
     VPUX_THROW_WHEN(_tilingAlgorithm == nullptr, "Tiling algorithm is not specified");
 
-    return _tilingAlgorithm->applyVerticalFusion(_operation, builder, log);
+    return _tilingAlgorithm->applySCFTilingAndFusion(_operation, builder, log);
 }
 
 bool isSCFSupported(mlir::Operation* operation) {
@@ -56,14 +56,20 @@ bool isSCFSupported(mlir::Operation* operation) {
     return true;
 }
 
-TilingContext vpux::VPU::createTilingContext(mlir::Operation* operation, bool enableSCFTiling) {
+TilingContext vpux::VPU::createTilingContext(mlir::Operation* operation, const TilingContextOptions& options) {
     TilingContext context(operation);
 
     std::unique_ptr<ITilingAlgorithm> algorithm;
 
-    if (enableSCFTiling && mlir::isa<mlir::TilingInterface>(operation) && isSCFSupported(operation)) {
-        algorithm = std::make_unique<TilingSCFAlgorithm>();
+    if (options.enableSCFTiling && mlir::isa<mlir::TilingInterface>(operation) && isSCFSupported(operation)) {
+        if (options.type == TilingContextOptions::ContextType::MULTICLUSTERING) {
+            algorithm = std::make_unique<MulticlusterTilingSCFAlgorithm>();
+        } else {
+            algorithm = std::make_unique<TilingSCFAlgorithm>();
+        }
     } else {
+        VPUX_THROW_WHEN(options.type != TilingContextOptions::ContextType::TILING,
+                        "TilingContext without scf can only be of TILING type.");
         algorithm = std::make_unique<TilingGeneralAlgorithm>();
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -117,9 +117,10 @@ TEST_P(ComparisonLayerTestDynamic, NPU4000_SW) {
 
 TEST_P(ShaveCodeGenComparisonLayerTestCommon, NPU4000) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
+
 TEST_P(ComparisonLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
@@ -132,9 +133,10 @@ TEST_P(ComparisonLayerTestDynamic, NPU5010_SW) {
 
 TEST_P(ShaveCodeGenComparisonLayerTestCommon, NPU5010) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 
@@ -146,10 +148,9 @@ std::vector<ComparisonTypes> comparisonOpTypes_MLIR = {
         ComparisonTypes::NOT_EQUAL, ComparisonTypes::GREATER, ComparisonTypes::GREATER_EQUAL,
 };
 
-std::vector<ComparisonTypes> comparisonOpTypesDynamic_MLIR = {
-        ComparisonTypes::LESS,
-        ComparisonTypes::LESS_EQUAL,
-};
+std::vector<ComparisonTypes> comparisonOpTypesDynamic_MLIR = {ComparisonTypes::LESS, ComparisonTypes::LESS_EQUAL,
+                                                              ComparisonTypes::EQUAL, ComparisonTypes::GREATER,
+                                                              ComparisonTypes::GREATER_EQUAL};
 
 std::vector<InputLayerType> secondInputTypes = {
         InputLayerType::PARAMETER,
@@ -243,4 +244,37 @@ INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_tiling_Comparison, ShaveCodeGenCompa
 INSTANTIATE_TEST_SUITE_P(smoke_ComparisonDynamic, ComparisonLayerTestDynamic, comparison_params_dynamic,
                          ComparisonLayerTestDynamic::getTestCaseName);
 
+// isNaN tests
+
+std::vector<std::vector<ov::Shape>> input_shapes_is_ops_static = {{{1}, {1}},
+                                                                  {{1, 2}, {1}},
+                                                                  {{3, 1}, {1}},
+                                                                  {{2, 2}, {1}},
+                                                                  {{1, 5, 1}, {1}},
+                                                                  {{2, 1, 1, 3, 1}, {1}},
+                                                                  {{7, 1, 1, 1, 1}, {1}},
+                                                                  {{2, 2, 2}, {1}},
+                                                                  {{3, 1, 3, 3}, {1}},
+                                                                  {{17}, {1}},
+                                                                  {{2, 18}, {1}},
+                                                                  {{1, 3, 20}, {1}},
+                                                                  {{2, 200}, {1}},
+                                                                  {{2, 17, 3, 4}, {1}}};
+
+std::vector<ov::element::Type> is_precision = {
+        ov::element::f32,
+        ov::element::f16,
+};
+
+std::vector<ov::test::utils::ComparisonTypes> comparisonOpTypesIs = {ov::test::utils::ComparisonTypes::IS_NAN,
+                                                                     ov::test::utils::ComparisonTypes::IS_INF};
+
+const auto ComparisonTestParamsIs = ::testing::Combine(
+        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(input_shapes_is_ops_static)),
+        ::testing::ValuesIn(comparisonOpTypesIs), ::testing::Values(ov::test::utils::InputLayerType::CONSTANT),
+        ::testing::ValuesIn(is_precision), ::testing::Values(test_utils::TARGET_DEVICE),
+        ::testing::Values(additionalConfig));
+
+INSTANTIATE_TEST_SUITE_P(smoke_IsOp, ComparisonLayerTestCommon, ComparisonTestParamsIs,
+                         ComparisonLayerTestCommon::getTestCaseName);
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -265,14 +266,14 @@ mlir::LogicalResult ConvBackpropDataToTransConvConversion::matchAndRewrite(IE::C
 
         // Create transposeOp
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "_transpose"), filterTensor,
+        auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose"), filterTensor,
                                                             /*order=*/nullptr, orderAttr);
 
         // Create reverseOp
         const auto axesAttr = getIntArrayAttr(getContext(), axes);
         IE::ReverseModeAttr modeAttr = IE::ReverseModeAttr::get(getContext(), IE::ReverseMode::INDEX);
-        auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "_reverse"),
-                                                        transposeOp.getOutput(), nullptr, axesAttr, modeAttr);
+        auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "reverse"), transposeOp.getOutput(),
+                                                        nullptr, axesAttr, modeAttr);
 
         newFilter = reverseOp.getOutput();
 
@@ -328,9 +329,8 @@ mlir::LogicalResult ConvBackpropDataToTransConvConversion::matchAndRewrite(IE::C
                                            }));
         std::swap(permutation[Dims4D::Filter::OC.ind()], permutation[Dims4D::Filter::IC.ind()]);
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(
-                takeOpLoc(filterOp, StringLiteral("transpose_{0}"), locSuffix), fqInput,
-                /*order=*/nullptr, orderAttr);
+        auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(filterOp, "transpose_{0}", locSuffix), fqInput,
+                                                            /*order=*/nullptr, orderAttr);
         return transposeOp.getOutput();
     };
 
@@ -571,9 +571,8 @@ mlir::LogicalResult ConvBackpropDataToMultipleConvConversion::matchAndRewrite(IE
                                            }));
         std::swap(permutation[Dims4D::Filter::OC.ind()], permutation[Dims4D::Filter::IC.ind()]);
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(
-                takeOpLoc(filterOp, StringLiteral("transpose_{0}"), locSuffix), fqInput,
-                /*order=*/nullptr, orderAttr);
+        auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(filterOp, "transpose_{0}", locSuffix), fqInput,
+                                                            /*order=*/nullptr, orderAttr);
         return transposeOp.getOutput();
     };
 
@@ -610,12 +609,7 @@ mlir::LogicalResult ConvBackpropDataToMultipleConvConversion::matchAndRewrite(IE
         std::string suffix = "_split_" + std::to_string(splitIdx + 1);
         auto convOp = rewriter.create<IE::ConvolutionOp>(
                 appendLoc(origOp->getLoc(), "Convolution" + suffix), origOp.getInput(), weightsConstOps[splitIdx],
-                /*bias=*/nullptr, newStrides, padsBegin[splitIdx], padsEnd[splitIdx], origOp.getDilationsAttr(),
-                /*postOp=*/nullptr,
-                /*clamp=*/nullptr,
-                /*static_scale=*/nullptr,
-                /*outputPadding=*/nullptr,
-                /*inputPadding=*/nullptr);
+                newStrides, padsBegin[splitIdx], padsEnd[splitIdx], origOp.getDilationsAttr());
         convOutputs.push_back(convOp.getOutput());
     }
 
@@ -721,15 +715,15 @@ mlir::LogicalResult ConvBackpropDataToGroupTransConvConversion::matchAndRewrite(
         std::swap(permutation[IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX],
                   permutation[IE::GROUP_TRANSPOSED_CONV_C_OUT_DIM_INDEX]);
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "_transpose"), filterTensor,
+        auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose"), filterTensor,
                                                             /*order=*/nullptr, orderAttr);
 
         const auto rank = filterTensorType.getRank();
         const auto axes = SmallVector<int64_t>{rank - 2, rank - 1};
         const auto axesAttr = getIntArrayAttr(getContext(), axes);
         IE::ReverseModeAttr modeAttr = IE::ReverseModeAttr::get(getContext(), IE::ReverseMode::INDEX);
-        auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "_reverse"),
-                                                        transposeOp.getOutput(), nullptr, axesAttr, modeAttr);
+        auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "reverse"), transposeOp.getOutput(),
+                                                        nullptr, axesAttr, modeAttr);
 
         auto newFilter = reverseOp.getOutput();
 
@@ -772,9 +766,8 @@ mlir::LogicalResult ConvBackpropDataToGroupTransConvConversion::matchAndRewrite(
         std::swap(permutation[IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX],
                   permutation[IE::GROUP_TRANSPOSED_CONV_C_OUT_DIM_INDEX]);
         auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(
-                takeOpLoc(filterOp, StringLiteral("transpose_{0}"), locSuffix), fqInput,
-                /*order=*/nullptr, orderAttr);
+        auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(filterOp, "transpose_{0}", locSuffix), fqInput,
+                                                            /*order=*/nullptr, orderAttr);
         return transposeOp.getOutput();
     };
 
@@ -831,9 +824,7 @@ void LegalizeConvBackpropDataPass::safeRunOnFunc() {
     patterns.add<ConvBackpropDataToGroupTransConvConversion>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

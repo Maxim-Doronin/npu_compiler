@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/utils/declaration_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -196,9 +197,9 @@ mlir::LogicalResult AllocDistributedRewrite::matchAndRewrite(VPURT::AllocDistrib
 class FeasibleAllocationPass final : public VPUIP::impl::FeasibleAllocationBase<FeasibleAllocationPass> {
 public:
     FeasibleAllocationPass(VPUIP::MemKindCreateFunc memKindCb, VPUIP::MemKindCreateFunc secondLevelmemKindCb,
-                           bool linearizeSchedule, bool enablePipelining, bool enablePrefetching,
-                           bool optimizeFragmentation, bool optimizeDynamicSpilling, bool enableMultiScheduleHeuristic,
-                           Logger log);
+                           bool linearizeSchedule, bool enableLoopAllocation, bool enablePipelining,
+                           bool enablePrefetching, bool optimizeFragmentation, bool optimizeDynamicSpilling,
+                           bool enableMultiScheduleHeuristic, Logger log);
 
 public:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
@@ -222,6 +223,7 @@ private:
     VPU::MemoryKind _secondLvlMemKind{vpux::VPU::MemoryKind::DDR};
     mlir::SymbolRefAttr _memKindAttr;
     bool _linearizeSchedule{false};
+    bool _enableLoopAllocation{false};
     bool _enablePipelining{true};
     bool _enablePrefetching{true};
     bool _enableScheduleStatistics{false};
@@ -232,12 +234,13 @@ private:
 
 FeasibleAllocationPass::FeasibleAllocationPass(VPUIP::MemKindCreateFunc memKindCb,
                                                VPUIP::MemKindCreateFunc secondLvlmemKindCb, bool linearizeSchedule,
-                                               bool enablePipelining, bool enablePrefetching,
+                                               bool enableLoopAllocation, bool enablePipelining, bool enablePrefetching,
                                                bool optimizeFragmentation, bool optimizeDynamicSpilling,
                                                bool enableMultiScheduleHeuristic, Logger log)
         : _memKindCb(std::move(memKindCb)),
           _secondLvlMemKindCb(std::move(secondLvlmemKindCb)),
           _linearizeSchedule(linearizeSchedule),
+          _enableLoopAllocation(enableLoopAllocation),
           _enablePipelining(enablePipelining),
           _enablePrefetching(enablePrefetching),
           _optimizeFragmentation(optimizeFragmentation),
@@ -282,6 +285,10 @@ mlir::LogicalResult FeasibleAllocationPass::initialize(mlir::MLIRContext* ctx) {
         _linearizeSchedule = linearizeSchedule.getValue();
     }
 
+    if (enableLoopAllocation.hasValue()) {
+        _enableLoopAllocation = enableLoopAllocation.getValue();
+    }
+
     return mlir::success();
 }
 
@@ -312,7 +319,7 @@ void FeasibleAllocationPass::updateAsyncExecuteOpPosition(
         prevAsyncOp = asyncOp;
     }
 
-    VPUIP::moveDeclarationsToTop(netFunc);
+    vpux::moveDeclarationsToTop(netFunc);
 }
 
 // This method will insert defined not scheduled operations after current operation and update reScheduled ops
@@ -352,7 +359,7 @@ void FeasibleAllocationPass::updateAsyncExecuteOpPositionOfSpillOps(
     std::map<size_t, std::set<size_t>> spillDepMap;
     std::map<size_t, FeasibleMemoryScheduler::ScheduledOpInfo*> spillToOpInfoMap;
     for (auto schedOp = scheduledOps.begin(); schedOp != scheduledOps.end(); ++schedOp) {
-        if (schedOp->queueType.execKind != VPU::ExecutorKind::DMA_NN) {
+        if (schedOp->queueType.execKind != config::ExecutorKind::DMA_NN) {
             continue;
         }
 
@@ -391,7 +398,7 @@ void FeasibleAllocationPass::updateAsyncExecuteOpPositionOfSpillOps(
             insertSpillOps(schedOp->op_, insertAfterOp, spillToOpInfoMap, reScheduledOps, newOrder);
         }
 
-        if (schedOp->queueType.execKind != VPU::ExecutorKind::DMA_NN) {
+        if (schedOp->queueType.execKind != config::ExecutorKind::DMA_NN) {
             newOrder.push_back(*schedOp);
             continue;
         }
@@ -421,7 +428,7 @@ void FeasibleAllocationPass::assignCyclesToExecOps(AsyncDepsInfo& depsInfo,
         execOp->setAttr(cycleBegin, getIntAttr(execOp->getContext(), schedOp.cycleBegin_));
         execOp->setAttr(cycleEnd, getIntAttr(execOp->getContext(), schedOp.cycleEnd_));
         // update instance mask for DMAs
-        if (schedOp.queueType.execKind == VPU::ExecutorKind::DMA_NN) {
+        if (schedOp.queueType.execKind == config::ExecutorKind::DMA_NN) {
             SmallVector<uint64_t> executorInstanceMaskVec;
             for (auto portIdx : schedOp.executorInstanceMask.set_bits()) {
                 executorInstanceMaskVec.push_back(portIdx);
@@ -600,7 +607,7 @@ void FeasibleAllocationPass::linearizeComputeOps(bool linearizeSchedule, bool en
                                                  mlir::func::FuncOp& netFunc, AsyncDepsInfo& depsInfo) {
     // various linearization options
     mlir::async::ExecuteOp prevExecOp = nullptr;
-    llvm::DenseMap<VPU::ExecutorKind, mlir::async::ExecuteOp> prevExecOpMap;
+    llvm::DenseMap<config::ExecutorKind, mlir::async::ExecuteOp> prevExecOpMap;
     netFunc->walk([&](mlir::async::ExecuteOp execOp) {
         const auto currExecutor = VPUIP::VPUIPDialect::getExecutorKind(execOp);
         if (!linearizeSchedule && !VPUIP::VPUIPDialect::isComputeExecutorKind(currExecutor)) {
@@ -637,7 +644,7 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     VPUX_THROW_UNLESS(tileOp != nullptr, "Failed to get NCE_Cluster information");
     auto tileCount = tileOp.getCount();
 
-    auto dmaPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     VPUX_THROW_UNLESS(dmaPorts != nullptr, "Failed to get DMA information");
     auto dmaCount = dmaPorts.getCount();
 
@@ -659,8 +666,9 @@ void FeasibleAllocationPass::safeRunOnFunc() {
 
     // VPUNN cost model
     const auto arch = config::getArch(module);
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
 
     // If schedule analysis is enabled dynamic spilling stats will be gathered
     vpux::SpillStats dynamicSpillingBeforePrefetching;
@@ -668,8 +676,8 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     vpux::SpillStats dynamicSpillingAfterSpillOptimizations;
 
     // feasible memory scheduler - list scheduler
-    FeasibleMemoryScheduler scheduler(_memKind, _secondLvlMemKind, liveRangeInfo, depsInfo, _log, scan, arch, costModel,
-                                      tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
+    FeasibleMemoryScheduler scheduler(_memKind, _secondLvlMemKind, liveRangeInfo, depsInfo, _log, scan, arch, vpuDevice,
+                                      costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
                                       /*activelySpillForPrefetching*/ false);
 
     // 1. initial schedule
@@ -683,7 +691,7 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     if (_enablePrefetching && !_linearizeSchedule) {
         PrefetchDataOps prefetching(scheduledOps, depsInfo);
         if (prefetching.enableDataOpPrefetching()) {
-            VPUIP::moveDeclarationsToTop(func);
+            vpux::moveDeclarationsToTop(func);
             // prefetching logic has reordered IR, depsInfo needs to be regenerated since
             // scheduling depends on incrementing value of async-deps-info along IR
             depsInfo = AsyncDepsInfo{func};
@@ -702,10 +710,10 @@ void FeasibleAllocationPass::safeRunOnFunc() {
                                         LinearScan<mlir::Value, LinearScanHandler>& taskScan,
                                         MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>& liveRange)
                     -> FeasibleMemoryScheduler::ScheduledOpInfoVec {
-                FeasibleMemoryScheduler schedulerWithPrefetch(_memKind, _secondLvlMemKind, liveRange, taskDepsInfo,
-                                                              _log, taskScan, arch, costModel, tileCount, dmaCount,
-                                                              _enableScheduleStatistics, _optimizeFragmentation,
-                                                              /*activelySpillForPrefetching*/ false);
+                FeasibleMemoryScheduler schedulerWithPrefetch(
+                        _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, vpuDevice,
+                        costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
+                        /*activelySpillForPrefetching*/ false);
                 return schedulerWithPrefetch.generateSchedule();
             };
             tasks.emplace_back(scheduleFuncBase, depsInfo, prefetchScan, liveRange);
@@ -721,8 +729,8 @@ void FeasibleAllocationPass::safeRunOnFunc() {
                                                   MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>& liveRange)
                         -> FeasibleMemoryScheduler::ScheduledOpInfoVec {
                     FeasibleMemoryScheduler schedulerWithAggressivePrefetch(
-                            _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, costModel,
-                            tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
+                            _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, vpuDevice,
+                            costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
                             /*activelySpillForPrefetching*/ true);
                     const auto& res = schedulerWithAggressivePrefetch.generateSchedule();
                     if (_enableScheduleStatistics) {
@@ -789,7 +797,7 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     // Linearize DMA tasks before unrolling will introduce additional dependency across different DMA engines.
     // But it's fine for single DMA engine. So insert dependency to simplify barrier scheduling.
     if (dmaCount == 1) {
-        controlEdges.insertScheduleOrderDepsForExecutor(scheduledOps, VPU::ExecutorKind::DMA_NN);
+        controlEdges.insertScheduleOrderDepsForExecutor(scheduledOps, config::ExecutorKind::DMA_NN);
     }
     linearizeComputeOps(_linearizeSchedule, _enablePipelining, func, depsInfo);
     controlEdges.updateDependenciesInIR();
@@ -806,6 +814,10 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     scheduler.cleanUpAndLogSchedule(scheduledOps);
     //  8.3. Use final order
     updateAsyncExecuteOpPosition(func, depsInfo, scheduledOps);
+#ifdef VPUX_DEVELOPER_BUILD
+    //  8.4. Verify no cycles in dependencies
+    depsInfo.verifyAcyclic();
+#endif
 
     if (_enableScheduleStatistics) {
         // verify all dependencies preserved for correct analysis
@@ -861,9 +873,11 @@ void FeasibleAllocationPass::safeRunOnFunc() {
 
 std::unique_ptr<mlir::Pass> vpux::VPUIP::createFeasibleAllocationPass(
         MemKindCreateFunc memKindCb, MemKindCreateFunc secondLvlmemKindCb, const bool linearizeSchedule,
-        const bool enablePrefetching, const bool enablePipelining, const bool optimizeFragmentation,
-        const bool optimizeDynamicSpilling, const bool enableMultiScheduleHeuristic, Logger log) {
-    return std::make_unique<FeasibleAllocationPass>(
-            std::move(memKindCb), std::move(secondLvlmemKindCb), linearizeSchedule, enablePipelining, enablePrefetching,
-            optimizeFragmentation, optimizeDynamicSpilling, enableMultiScheduleHeuristic, log);
+        const bool enableLoopAllocation, const bool enablePrefetching, const bool enablePipelining,
+        const bool optimizeFragmentation, const bool optimizeDynamicSpilling, const bool enableMultiScheduleHeuristic,
+        Logger log) {
+    return std::make_unique<FeasibleAllocationPass>(std::move(memKindCb), std::move(secondLvlmemKindCb),
+                                                    linearizeSchedule, enableLoopAllocation, enablePipelining,
+                                                    enablePrefetching, optimizeFragmentation, optimizeDynamicSpilling,
+                                                    enableMultiScheduleHeuristic, log);
 }

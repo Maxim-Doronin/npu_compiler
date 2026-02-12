@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ module @TwoDMAs {
       DataInfo "output" : tensor<5xf16>
     }
 
-    // CHECK: func.func @main([[ARG0:%.*]]: memref<10xf16, @DDR>, [[ARG1:%.*]]: memref<5xf16, @DDR>) -> memref<5xf16, @DDR> {
+    // CHECK: func.func @main([[ARG0:%.+]]: memref<10xf16, @DDR>, [[ARG1:%.+]]: memref<5xf16, @DDR>) -> memref<5xf16, @DDR> {
     func.func @main(%arg0: memref<10xf16, @DDR>, %arg1: memref<5xf16, @DDR>) -> memref<5xf16, @DDR> {
         %in_subview = VPUIP.SubView %arg0 [0] [5] : memref<10xf16, @DDR> to memref<5xf16, @DDR>
         %buf0 = VPUIP.StaticAlloc<0> -> memref<5xf16, [@CMX_NN, 0]>
@@ -128,23 +128,23 @@ module @ThreeFunctions {
         DataInfo "output2" : tensor<1x1x20x60xf16>
     }
 
-    // CHECK: func.func @foo1([[ARG0:%.*]]: memref<1x8x60x60xf16, @DDR>, [[ARG1:%.*]]: memref<1x4x60x60xf16, @DDR>, [[ARG2:%.*]]: memref<1x2x60x60xf16, @DDR>)
+    // CHECK: func.func @foo1([[ARG0:%.+]]: memref<1x8x60x60xf16, @DDR>, [[ARG1:%.+]]: memref<1x4x60x60xf16, @DDR>, [[ARG2:%.+]]: memref<1x2x60x60xf16, @DDR>)
     func.func @foo1(%arg0: memref<1x8x60x60xf16, @DDR>, %arg1: memref<1x4x60x60xf16, @DDR>, %arg2: memref<1x2x60x60xf16, @DDR>) -> (memref<1x4x60x60xf16, @DDR>, memref<1x2x60x60xf16, @DDR>) {
         %0 = VPUIP.StaticAlloc<28800> -> memref<1x4x60x60xf16, @DDR>
         %token, %bodyResults = async.execute -> !async.value<memref<1x4x60x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1936 : i64, cycleEnd = 1936 : i64} {
             %3 = VPUIP.SubView %arg0 [0, 2, 0, 0] [1, 4, 60, 60] : memref<1x8x60x60xf16, @DDR> to memref<1x4x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%3 : memref<1x4x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs(%0 : memref<1x4x60x60xf16, @DDR>) -> memref<1x4x60x60xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%3 : memref<1x4x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs(%0 : memref<1x4x60x60xf16, @DDR>) -> memref<1x4x60x60xf16, @DDR>
             async.yield %0 : memref<1x4x60x60xf16, @DDR>
         }
 
         %token_0, %bodyResults_1 = async.execute -> !async.value<memref<1x2x60x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1], "async-deps-index" = 1 : i64, cycleBegin = 0 : i64, cycleCost = 1936 : i64, cycleEnd = 1936 : i64} {
             %3 = VPUIP.SubView %arg0 [0, 4, 0, 0] [1, 2, 60, 60] : memref<1x8x60x60xf16, @DDR> to memref<1x2x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%3 : memref<1x2x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs(%arg2 : memref<1x2x60x60xf16, @DDR>) -> memref<1x2x60x60xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%3 : memref<1x2x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs(%arg2 : memref<1x2x60x60xf16, @DDR>) -> memref<1x2x60x60xf16, @DDR>
             async.yield %arg2 : memref<1x2x60x60xf16, @DDR>
         }
 
         %token_2, %bodyResults_3 = async.execute [%token] (%bodyResults as %arg3: !async.value<memref<1x4x60x60xf16, @DDR>>) -> !async.value<memref<1x4x60x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64, cycleBegin = 1936 : i64, cycleCost = 2629 : i64, cycleEnd = 4565 : i64} {
-            %3 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg3 : memref<1x4x60x60xf16, @DDR>) outputs(%arg1 : memref<1x4x60x60xf16, @DDR>) -> memref<1x4x60x60xf16, @DDR>
+            %3 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg3 : memref<1x4x60x60xf16, @DDR>) outputs(%arg1 : memref<1x4x60x60xf16, @DDR>) -> memref<1x4x60x60xf16, @DDR>
             async.yield %arg1 : memref<1x4x60x60xf16, @DDR>
         }
 
@@ -161,41 +161,41 @@ module @ThreeFunctions {
         // CHECK-DAG: [[BARR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BARR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN_SUBVIEW1]] : memref<1x4x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs([[TMP]] : memref<1x4x60x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN_SUBVIEW1]] : memref<1x4x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs([[TMP]] : memref<1x4x60x60xf16, @DDR>)
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[IN_SUBVIEW2]] : memref<1x2x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs([[OUT2]] : memref<1x2x60x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[IN_SUBVIEW2]] : memref<1x2x60x60xf16, {order = #NCHW, strides = [28800, 3600, 60, 1]}, @DDR>) outputs([[OUT2]] : memref<1x2x60x60xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[TMP]] : memref<1x4x60x60xf16, @DDR>) outputs([[OUT1]] : memref<1x4x60x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[TMP]] : memref<1x4x60x60xf16, @DDR>) outputs([[OUT1]] : memref<1x4x60x60xf16, @DDR>)
 
         // CHECK: return [[ARG1]], [[ARG2]] : memref<1x4x60x60xf16, @DDR>, memref<1x2x60x60xf16, @DDR>
     }
 
-    // CHECK: func.func @foo2([[ARG0:%.*]]: memref<1x4x60x60xf16, @DDR>, [[ARG1:%.*]]: memref<1x3x60x60xf16, @DDR>, [[ARG2:%.*]]: memref<1x1x20x60xf16, @DDR>)
+    // CHECK: func.func @foo2([[ARG0:%.+]]: memref<1x4x60x60xf16, @DDR>, [[ARG1:%.+]]: memref<1x3x60x60xf16, @DDR>, [[ARG2:%.+]]: memref<1x1x20x60xf16, @DDR>)
     func.func @foo2(%arg0: memref<1x4x60x60xf16, @DDR>, %arg1: memref<1x3x60x60xf16, @DDR>, %arg2: memref<1x1x20x60xf16, @DDR>) -> (memref<1x3x60x60xf16, @DDR>, memref<1x1x20x60xf16, @DDR>) {
         %0 = VPUIP.StaticAlloc<52864> -> memref<1x3x60x60xf16, @DDR>
         %1 = VPUIP.StaticAlloc<74496> -> memref<1x1x20x60xf16, @DDR>
 
         %token, %bodyResults = async.execute -> !async.value<memref<1x3x60x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1936 : i64, cycleEnd = 1936 : i64} {
             %4 = VPUIP.SubView %arg0 [0, 1, 0, 0] [1, 3, 60, 60] : memref<1x4x60x60xf16, @DDR> to memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
-            %5 = VPUIP.NNDMA {port = 0 : i64} inputs(%4 : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs(%0 : memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
+            %5 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%4 : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs(%0 : memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
             async.yield %0 : memref<1x3x60x60xf16, @DDR>
         }
 
         %token_0, %bodyResults_1 = async.execute -> !async.value<memref<1x1x20x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1], "async-deps-index" = 1 : i64, cycleBegin = 0 : i64, cycleCost = 1936 : i64, cycleEnd = 1936 : i64} {
             %4 = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 20, 60] : memref<1x4x60x60xf16, @DDR> to memref<1x1x20x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
-            %5 = VPUIP.NNDMA {port = 1 : i64} inputs(%4 : memref<1x1x20x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs(%1 : memref<1x1x20x60xf16, @DDR>) -> memref<1x1x20x60xf16, @DDR>
+            %5 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%4 : memref<1x1x20x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs(%1 : memref<1x1x20x60xf16, @DDR>) -> memref<1x1x20x60xf16, @DDR>
             async.yield %1 : memref<1x1x20x60xf16, @DDR>
         }
 
         %token_2, %bodyResults_3 = async.execute [%token] (%bodyResults as %arg3: !async.value<memref<1x3x60x60xf16, @DDR>>) -> !async.value<memref<1x3x60x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64, cycleBegin = 1936 : i64, cycleCost = 2629 : i64, cycleEnd = 4565 : i64} {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg3 : memref<1x3x60x60xf16, @DDR>) outputs(%arg1 : memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg3 : memref<1x3x60x60xf16, @DDR>) outputs(%arg1 : memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
             async.yield %arg1 : memref<1x3x60x60xf16, @DDR>
         }
 
         %token_4, %bodyResults_5 = async.execute [%token_0] (%bodyResults_1 as %arg3: !async.value<memref<1x1x20x60xf16, @DDR>>) -> !async.value<memref<1x1x20x60xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1], "async-deps-index" = 3 : i64, cycleBegin = 1936 : i64, cycleCost = 2629 : i64, cycleEnd = 4565 : i64} {
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%arg3 : memref<1x1x20x60xf16, @DDR>) outputs(%arg2 : memref<1x1x20x60xf16, @DDR>) -> memref<1x1x20x60xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%arg3 : memref<1x1x20x60xf16, @DDR>) outputs(%arg2 : memref<1x1x20x60xf16, @DDR>) -> memref<1x1x20x60xf16, @DDR>
             async.yield %arg2 : memref<1x1x20x60xf16, @DDR>
         }
 
@@ -214,34 +214,34 @@ module @ThreeFunctions {
         // CHECK-DAG: [[BARR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BARR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN_SUBVIEW1]] : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs([[TMP1]] : memref<1x3x60x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN_SUBVIEW1]] : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs([[TMP1]] : memref<1x3x60x60xf16, @DDR>)
 
         // CHECK: VPURT.Task updates([[BARR2]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[IN_SUBVIEW2]] : memref<1x1x20x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs([[TMP2]] : memref<1x1x20x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[IN_SUBVIEW2]] : memref<1x1x20x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) outputs([[TMP2]] : memref<1x1x20x60xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[TMP1]] : memref<1x3x60x60xf16, @DDR>) outputs([[OUT1]] : memref<1x3x60x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[TMP1]] : memref<1x3x60x60xf16, @DDR>) outputs([[OUT1]] : memref<1x3x60x60xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR2]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP2]] : memref<1x1x20x60xf16, @DDR>) outputs([[OUT2]] : memref<1x1x20x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP2]] : memref<1x1x20x60xf16, @DDR>) outputs([[OUT2]] : memref<1x1x20x60xf16, @DDR>)
 
         // CHECK: return [[ARG1]], [[ARG2]] : memref<1x3x60x60xf16, @DDR>, memref<1x1x20x60xf16, @DDR>
     }
 
-    // CHECK: func.func @foo3([[ARG0:%.*]]: memref<1x3x60x60xf16, @DDR>, [[ARG1:%.*]]: memref<1x4x60x60xf16, @DDR>)
+    // CHECK: func.func @foo3([[ARG0:%.+]]: memref<1x3x60x60xf16, @DDR>, [[ARG1:%.+]]: memref<1x4x60x60xf16, @DDR>)
     func.func @foo3(%arg0: memref<1x3x60x60xf16, @DDR>, %arg1: memref<1x4x60x60xf16, @DDR>) -> memref<1x4x60x60xf16, @DDR> {
         %0 = VPUIP.StaticAlloc<0> -> memref<1x4x60x60xf16, @DDR>
         %1 = VPUIP.StaticAlloc<50432> -> memref<1x1x60x60xf16, @DDR>
 
         %token, %bodyResults = async.execute -> !async.value<memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1936 : i64, cycleEnd = 1936 : i64} {
             %3 = VPUIP.SubView %0 [0, 1, 0, 0] [1, 3, 60, 60] : memref<1x4x60x60xf16, @DDR> to memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x60x60xf16, @DDR>) outputs(%3 : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) -> memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x60x60xf16, @DDR>) outputs(%3 : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) -> memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
             async.yield %3 : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
         }
 
         %token_0, %bodyResults_1 = async.execute [%token] -> !async.value<memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1], "async-deps-index" = 1 : i64, cycleBegin = 1936 : i64, cycleCost = 1936 : i64, cycleEnd = 3872 : i64} {
             %3 = VPUIP.SubView %0 [0, 0, 0, 0] [1, 1, 60, 60] : memref<1x4x60x60xf16, @DDR> to memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x1x60x60xf16, @DDR>) outputs(%3 : memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) -> memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x1x60x60xf16, @DDR>) outputs(%3 : memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>) -> memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
             async.yield %3 : memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>
         }
 
@@ -267,10 +267,10 @@ module @ThreeFunctions {
         // CHECK-DAG: [[BARR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BARR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x60x60xf16, @DDR>) outputs([[TMP_SUBVIEW1]] : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x60x60xf16, @DDR>) outputs([[TMP_SUBVIEW1]] : memref<1x3x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR1]] : !VPURT.Barrier) updates([[BARR2]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[INTERNAL_DATA]] : memref<1x1x60x60xf16, @DDR>) outputs([[TMP_SUBVIEW2]] : memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[INTERNAL_DATA]] : memref<1x1x60x60xf16, @DDR>) outputs([[TMP_SUBVIEW2]] : memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[TMP]] as %arg2: memref<1x4x60x60xf16, @DDR>) outputs([[OUT]] as %arg3: memref<1x4x60x60xf16, @DDR>) on tile 0
@@ -279,7 +279,7 @@ module @ThreeFunctions {
         // CHECK: return [[ARG1]] : memref<1x4x60x60xf16, @DDR>
     }
 
-    // CHECK: func.func @main([[ARG0:%.*]]: memref<1x8x60x60xf16, @DDR>, [[ARG1:%.*]]: memref<1x4x60x60xf16, @DDR>, [[ARG2:%.*]]: memref<1x2x60x60xf16, @DDR>, [[ARG3:%.*]]: memref<1x1x20x60xf16, @DDR>)
+    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x8x60x60xf16, @DDR>, [[ARG1:%.+]]: memref<1x4x60x60xf16, @DDR>, [[ARG2:%.+]]: memref<1x2x60x60xf16, @DDR>, [[ARG3:%.+]]: memref<1x1x20x60xf16, @DDR>)
     func.func @main(%arg0: memref<1x8x60x60xf16, @DDR>, %arg1: memref<1x4x60x60xf16, @DDR>, %arg2: memref<1x2x60x60xf16, @DDR>, %arg3: memref<1x1x20x60xf16, @DDR>) -> (memref<1x4x60x60xf16, @DDR>, memref<1x2x60x60xf16, @DDR>, memref<1x1x20x60xf16, @DDR>) {
         %0 = VPUIP.StaticAlloc<0> -> memref<1x4x60x60xf16, @DDR>
         %1 = VPUIP.StaticAlloc<28800> -> memref<1x3x60x60xf16, @DDR>
@@ -310,7 +310,7 @@ module @ThreeFunctions {
         %token_4, %bodyResults_5 = async.execute [%token_0] (%bodyResults_1#1 as %arg4: !async.value<memref<1x1x20x60xf16, @DDR>>)
                                         -> !async.value<memref<1x1x20x60xf16, @DDR>>
                                             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64, cycleBegin = 2 : i64, cycleCost = 2629 : i64, cycleEnd = 2631 : i64} {
-            %6 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg4 : memref<1x1x20x60xf16, @DDR>) outputs(%arg3 : memref<1x1x20x60xf16, @DDR>) -> memref<1x1x20x60xf16, @DDR>
+            %6 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg4 : memref<1x1x20x60xf16, @DDR>) outputs(%arg3 : memref<1x1x20x60xf16, @DDR>) -> memref<1x1x20x60xf16, @DDR>
             async.yield %arg3 : memref<1x1x20x60xf16, @DDR>
         }
 
@@ -339,9 +339,9 @@ module @ThreeFunctions {
         // CHECK:   func.call @foo3([[TMP_DDR2]], [[OUT1]]) : (memref<1x3x60x60xf16, @DDR>, memref<1x4x60x60xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR2]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[TMP_DDR3]] : memref<1x1x20x60xf16, @DDR>) outputs([[OUT3]] : memref<1x1x20x60xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[TMP_DDR3]] : memref<1x1x20x60xf16, @DDR>) outputs([[OUT3]] : memref<1x1x20x60xf16, @DDR>)
 
-        // CHECK: return [[ARG1:%.*]], [[ARG2:%.*]], [[ARG3:%.*]] : memref<1x4x60x60xf16, @DDR>, memref<1x2x60x60xf16, @DDR>, memref<1x1x20x60xf16, @DDR>
+        // CHECK: return [[ARG1:%.+]], [[ARG2:%.+]], [[ARG3:%.+]] : memref<1x4x60x60xf16, @DDR>, memref<1x2x60x60xf16, @DDR>, memref<1x1x20x60xf16, @DDR>
     }
 }
 

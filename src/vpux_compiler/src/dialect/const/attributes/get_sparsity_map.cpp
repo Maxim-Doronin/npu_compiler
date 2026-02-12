@@ -132,5 +132,5 @@ Const::details::PositionRequirement Const::GetSparsityMapAttr::getPositionRequir
 //
 
 llvm::hash_code vpux::Const::GetSparsityMapAttr::getStableHashValue() const {
-    return llvm::hash_combine(getMnemonic());
+    VPUX_THROW("Not implemented. It requires an equivalent representation in IE dialect.");
 }

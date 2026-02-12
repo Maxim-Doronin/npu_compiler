@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,7 +22,9 @@ module @mainModule {
     %2 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x32x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
     %3 = VPURT.DeclareBuffer <CMX_NN> [0] <100352> -> memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>
     %4 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x32x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
-    %10 = VPUMI37XX.DPUInvariant {clean_after = 0 : ui64, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_8x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<ELTWISE>} input(%0 : memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>) weights(%1 : memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>) parent_input(%3 : memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>) parent_output(%4 : memref<1x32x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>) outputs(%2 : memref<1x32x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>) -> <0:0:0> PPE : {
+    %10 = VPUMI37XX.DPUInvariant <{clean_after = 0 : ui64, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_8x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    input(%0 : memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>) weights(%1 : memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>) parent_input(%3 : memref<1x32x56x56x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    parent_output(%4 : memref<1x32x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>) outputs(%2 : memref<1x32x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>) -> <0:0:0> PPE : {
       VPUMI37XX.PPETask { ppe = #VPU.PPEStub<> }
     }
     %11 = "VPUMI37XX.DPUVariant"(%10) {end = [55, 55, 31], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]} : (!VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
@@ -32,11 +34,11 @@ module @mainModule {
 }
 
 // CHECK: func.func @singleEltwise
-// CHECK: %[[VAL10:.*]] = VPUMI37XX.DPUInvariant
-// CHECK: %[[VAL11:.*]] = "VPUMI37XX.DPUVariant"
+// CHECK: [[VAL10:%.+]] = VPUMI37XX.DPUInvariant
+// CHECK: [[VAL11:%.+]] = "VPUMI37XX.DPUVariant"
 
-// CHECK: ELFNPU37XX.CreateSection {{.*}} secName = ".text.DPUInvariants"
-// CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL10]]
+// CHECK: ELFNPU37XX.CreateSection {{.+}} secName = ".text.DPUInvariants"
+// CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL10]]
 
-// CHECK: ELFNPU37XX.CreateSection {{.*}} secName = ".text.DPUVariants"
-// CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL11]]
+// CHECK: ELFNPU37XX.CreateSection {{.+}} secName = ".text.DPUVariants"
+// CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL11]]

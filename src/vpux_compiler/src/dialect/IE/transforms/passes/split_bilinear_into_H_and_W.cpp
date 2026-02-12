@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -230,12 +230,12 @@ mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::m
     auto interpolateHOutputType = outputType.changeShape(interpolateHShape);
 
     auto interpolateOnH = rewriter.create<IE::InterpolateOp>(
-            appendLoc(loc, "_interpolateOnH"), interpolateHOutputType, origOp.getInput(), origOp.getSizes(),
+            appendLoc(loc, "interpolateOnH"), interpolateHOutputType, origOp.getInput(), origOp.getSizes(),
             origOp.getScales(), origOp.getAxes(), newSizesAttrAttr, newScalesAttrAttr, origOp.getAxesAttrAttr(),
             origOp.getTileOffsetAttrAttr(), origOp.getInitialInputDimsAttrAttr(), origOp.getInitialOutputDimsAttrAttr(),
             origOp.getAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
-    auto interpOnWLoc = appendLoc(loc, "_interpolateOnW");
+    auto interpOnWLoc = appendLoc(loc, "interpolateOnW");
 
     auto interpolateOnHOutputShape = getShape(interpolateOnH.getOutput());
 
@@ -285,8 +285,7 @@ mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::m
     auto padsEnd = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
     auto convOp = rewriter.create<IE::ConvolutionOp>(interpOnWLoc, convOutputType, interpolateOnH.getOutput(), weight,
-                                                     nullptr, strides, padsBegin, padsEnd, dilations, nullptr, nullptr,
-                                                     nullptr, nullptr, nullptr);
+                                                     strides, padsBegin, padsEnd, dilations);
 
     const SmallVector<int64_t> reshapeOutputShape = {
             convOutputShape[Dims4D::Act::N], convOutputShape[Dims4D::Act::C] / 2, convOutputShape[Dims4D::Act::H],

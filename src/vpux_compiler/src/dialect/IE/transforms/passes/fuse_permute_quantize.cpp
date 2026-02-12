@@ -1,18 +1,25 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/IR/PatternMatch.h>
@@ -47,6 +54,44 @@ private:
     Logger _log;
 };
 
+// Check if an operation has overlapped tiled inputs when tiling the output
+// Example: For a Conv with kernel=3x3, stride=1x1, no padding, input=1x16x8x8, output=1x16x6x6.
+// When splitting output into two tiles along height (1x16x3x6 each), the input tiles become:
+//   - Tile 1: 1x16x0:5x8 (rows 0-4, needs 5 rows to produce 3 output rows)
+//   - Tile 2: 1x16x3:8x8 (rows 3-7, needs 5 rows to produce 3 output rows)
+// Rows 3-4 are overlapped between tiles (HALO region) because kernel_size > stride.
+bool hasOverlappedInput(mlir::Operation* op) {
+    if (op == nullptr) {
+        return false;
+    }
+
+    mlir::Value filter;
+    mlir::ArrayAttr stridesAttr;
+
+    if (auto convOp = mlir::dyn_cast<IE::ConvolutionOp>(op)) {
+        filter = convOp.getFilter();
+        stridesAttr = convOp.getStrides();
+    } else if (auto groupConvOp = mlir::dyn_cast<IE::GroupConvolutionOp>(op)) {
+        filter = groupConvOp.getFilter();
+        stridesAttr = groupConvOp.getStrides();
+    } else if (auto transposedConvOp = mlir::dyn_cast<IE::TransposedConvolutionOp>(op)) {
+        filter = transposedConvOp.getFilter();
+        stridesAttr = transposedConvOp.getStrides();
+    } else {
+        // Not a supported convolution operation
+        return false;
+    }
+
+    const auto filterShape = getShape(filter);
+    const auto strides = parseIntArrayAttr<int64_t>(stridesAttr);
+    const auto KY = filterShape[Dims4D::Filter::KY];
+    const auto KX = filterShape[Dims4D::Filter::KX];
+    const auto SY = strides[Dims4D::Strides::Y.ind()];
+    const auto SX = strides[Dims4D::Strides::X.ind()];
+
+    return (KY > SY) || (KX > SX);
+}
+
 mlir::LogicalResult FusePermuteQuantizeBase::matchAndRewrite(IE::ReorderOp origOp,
                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
@@ -72,13 +117,56 @@ mlir::LogicalResult FusePermuteQuantizeBase::matchAndRewrite(IE::ReorderOp origO
         return mlir::failure();
     }
 
-    // check if reorder will not be removed
-    auto inOrder = DimsOrder::fromValue(origOp.getInput());
-    auto outOrder = DimsOrder::fromValue(origOp.getOutput());
-    if (inOrder == outOrder) {
+    // check if a legal PermuteQuantize pattern starts with a trivial Reorder and not beneficial to convert
+    auto isTrivialReorderAndNotBeneficialConvertToPermuteQuantize = [](IE::ReorderOp reorderOp) -> bool {
+        if (!isTrivialReorder(reorderOp)) {
+            return false;
+        }
+
+        // TODO: E#200373 Fix it to remove the following beneficial ConvertToPermuteQuantize case
+
+        // At this point, we got a legal PermuteQuantize pattern starting with a trivial Reorder:
+        //     TrivialReorder -> Add / AvgPool -> (QuantizeCast) -> User
+        // If we convert it, we will later get:
+        //     NCE.Permute -> (QuantizeCast) -> User
+        // Otherwise, we will later get:
+        //     PermuteCast -> ShapeCast -> Add / AvgPool -> ShapeCast -> (QuantizeCast) -> User
+        // The added ShapeCast will speed up the quantization process by Add/AvgPool,
+        // However, it will also break the sibling connection between the quantization op and its potential NCE user.
+        // If the user has overlapped inputs (HALO), the quantization op (Add/AvgPool) will not consider it,
+        // and thus introduces additional copies which may outweigh the benefit of faster quantization process.
+
+        // Traverse through Add or AvgPool
+        auto quantizeOp = *reorderOp.getOutput().getUsers().begin();
+        VPUX_THROW_UNLESS(mlir::isa<IE::AddOp>(quantizeOp) || mlir::isa<IE::AvgPoolOp>(quantizeOp),
+                          "Expected quantizeOp to be IE::AddOp or IE::AvgPoolOp");
+        mlir::Value output = quantizeOp->getResult(0);
+
+        // Traverse through single user QuantizeCastOps
+        while (output) {
+            if (!output.hasOneUse()) {
+                return true;
+            }
+            auto user = *output.getUsers().begin();
+
+            if (mlir::isa<IE::QuantizeCastOp>(user)) {
+                output = user->getResult(0);
+            } else if (hasOverlappedInput(user)) {
+                // Found a user has overlapped inputs (HALO)
+                return false;
+            } else {
+                return true;
+            }
+        }
+        return true;
+    };
+    if (isTrivialReorderAndNotBeneficialConvertToPermuteQuantize(origOp)) {
         return mlir::failure();
     }
+
     // check and add pass for verified orders and scenarios
+    auto inOrder = DimsOrder::fromValue(origOp.getInput());
+    auto outOrder = DimsOrder::fromValue(origOp.getOutput());
     if (!((inOrder == DimsOrder::NCHW) && (outOrder == DimsOrder::NHWC))) {
         return mlir::failure();
     }
@@ -147,7 +235,7 @@ bool FusePermuteQuantizeForAdd::isLegalPattern(IE::ReorderOp origOp) const {
 
 mlir::Type FusePermuteQuantizeForAdd::getNceOutType(mlir::Operation* opNce) const {
     // QuantizeToAddRewriter multiplies output scale by 2. It is necessary to cancel out this factor.
-    return rescaleUniformQuantizedType(opNce->getResult(0).getType(), 0.5);
+    return IE::rescaleUniformQuantizedType(opNce->getResult(0).getType(), 0.5);
 }
 
 void FusePermuteQuantizeForAdd::replaceByNewOp(mlir::Operation* opNce, mlir::Value input,
@@ -166,9 +254,9 @@ void FusePermuteQuantizeForAdd::replaceByNewOp(mlir::Operation* opNce, mlir::Val
     // IE.PermuteQuantize qType1 -> IE.QuantizeCast qType2 -> IE.Dequantize
     for (auto user : make_early_inc_range(opNce->getResult(0).getUsers())) {
         auto originalQuantizeCast = mlir::dyn_cast<IE::QuantizeCastOp>(user);
-        auto quantCast =
-                rewriter.create<IE::QuantizeCastOp>(opNce->getLoc(), input, originalQuantizeCast.getDstElemTypeAttr());
-        rewriter.replaceOp(originalQuantizeCast, quantCast.getOutput());
+        auto quantCast = rewriter.createOrFold<IE::QuantizeCastOp>(opNce->getLoc(), input,
+                                                                   originalQuantizeCast.getDstElemTypeAttr());
+        rewriter.replaceOp(originalQuantizeCast, quantCast);
     }
 }
 
@@ -276,9 +364,7 @@ void FusePermuteQuantizePass::safeRunOnFunc() {
 
     mlir::ConversionTarget target(ctx);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

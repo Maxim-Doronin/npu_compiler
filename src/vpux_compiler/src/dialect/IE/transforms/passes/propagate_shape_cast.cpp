@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -369,7 +370,8 @@ private:
 template <class ConvBasedOp>
 mlir::LogicalResult MoveThroughConvBasedOp<ConvBasedOp>::matchAndRewrite(IE::ShapeCastOp origOp,
                                                                          mlir::PatternRewriter& rewriter) const {
-    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+    const auto origOpLoc = origOp->getLoc();
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOpLoc);
 
     auto inputOp = origOp->getOperand(0).getDefiningOp();
     while (mlir::isa_and_nonnull<IE::ShapeCastOp, IE::AffineReshapeOp, IE::PermuteCastOp>(inputOp) &&
@@ -440,20 +442,19 @@ mlir::LogicalResult MoveThroughConvBasedOp<ConvBasedOp>::matchAndRewrite(IE::Sha
                 inputs.push_back(inputOp->getResult(0));
             } else {
                 auto newShapeCastOp = rewriter.create<IE::ShapeCastOp>(
-                        origOp->getLoc(), input,
-                        getIntArrayAttr(rewriter.getContext(), getShape(inputOp->getResult(0))));
+                        origOpLoc, input, getIntArrayAttr(rewriter.getContext(), getShape(inputOp->getResult(0))));
                 inputs.push_back(newShapeCastOp.getResult());
             }
         }
 
         const auto outType = mlir::cast<vpux::NDTypeInterface>(userEltwiseOp.getType());
         const auto newType = outType.changeShape(getShape(inputs[0]));
-        auto newAddOp = rewriter.create<IE::AddOp>(origOp->getLoc(), newType, inputs[0], inputs[1],
+        auto newAddOp = rewriter.create<IE::AddOp>(origOpLoc, newType, inputs[0], inputs[1],
                                                    userEltwiseOp.getAutoBroadcastAttr(), userEltwiseOp.getPostOpAttr(),
                                                    userEltwiseOp.getClampAttr(), nullptr, nullptr);
 
         auto newOutShapeCastOp = rewriter.create<IE::ShapeCastOp>(
-                origOp->getLoc(), newAddOp.getResult(),
+                origOpLoc, newAddOp.getResult(),
                 getIntArrayAttr(rewriter.getContext(), getShape(userEltwiseOp.getResult())));
         rewriter.replaceOp(userEltwiseOp, newOutShapeCastOp.getResult());
 
@@ -486,7 +487,44 @@ mlir::LogicalResult MoveThroughConvBasedOp<ConvBasedOp>::matchAndRewrite(IE::Sha
             rewriter.create<IE::ShapeCastOp>(origOp.getLoc(), inputOp->getResult(0), origOp.getShapeAttr());
     rewriter.replaceOp(origOp, newShapeCastOp.getResult());
 
-    _log.trace("[{0}] Successfully remove viewLike ops before '{1}'", getDebugName(), origOp->getLoc());
+    _log.trace("[{0}] Successfully remove viewLike ops before '{1}'", getDebugName(), origOpLoc);
+    return mlir::success();
+}
+
+//
+// MoveThroughSoftmax
+//
+
+class MoveThroughSoftmax final : public mlir::OpRewritePattern<IE::SoftMaxOp> {
+public:
+    MoveThroughSoftmax(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::SoftMaxOp>(ctx), _log(log) {
+        this->setDebugName("MoveThroughSoftmax");
+    }
+
+private:
+    mlir::LogicalResult matchAndRewrite(IE::SoftMaxOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult MoveThroughSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    auto shapeCastOp = origOp.getInput().getDefiningOp<IE::ShapeCastOp>();
+    auto newSoftmaxAxis = getNewSoftmaxAxisAfterSwappingWithShapeCast(origOp, shapeCastOp, _log);
+    if (!newSoftmaxAxis.has_value()) {
+        return mlir::failure();
+    }
+
+    auto newSoftmaxAxisValue = newSoftmaxAxis.value();
+    auto newSoftmaxOp =
+            rewriter.create<IE::SoftMaxOp>(origOp.getLoc(), shapeCastOp.getInput().getType(), shapeCastOp.getInput(),
+                                           getIntAttr(getContext(), newSoftmaxAxisValue), origOp.getPadSizeAttr());
+    auto newShapeCastOp = rewriter.create<IE::ShapeCastOp>(shapeCastOp.getLoc(), newSoftmaxOp.getOutput(),
+                                                           shapeCastOp.getShapeAttr());
+    origOp.replaceAllUsesWith(newShapeCastOp.getOutput());
+
     return mlir::success();
 }
 
@@ -538,6 +576,7 @@ void PropagateShapeCast::safeRunOnFunc() {
     patterns.add<MoveThroughEltwiseOp<IE::MultiplyOp>>(&ctx, _log);
     patterns.add<MoveThroughMVNOp>(&ctx, _log);
     patterns.add<MoveThroughConvBasedOp<IE::GroupConvolutionOp>>(&ctx, _log);
+    patterns.add<MoveThroughSoftmax>(&ctx, _log);
     IE::ShapeCastOp::getCanonicalizationPatterns(patterns, &ctx);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

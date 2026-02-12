@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,8 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
@@ -14,6 +16,57 @@
 
 namespace vpux {
 namespace IE {
+
+// Broadcasting
+
+template <typename T>
+void broadcastRange(SmallVectorImpl<T>& lowVals, SmallVectorImpl<T>& highVals, IE::AutoBroadcastType broadcast) {
+    if (lowVals.size() == highVals.size()) {
+        return;
+    }
+    if (broadcast == IE::AutoBroadcastType::NONE_OR_EXPLICIT) {
+        return;
+    }
+
+    const auto numpyBroadcast = [](SmallVectorImpl<T>& smaller, SmallVectorImpl<T>& larger) {
+        VPUX_THROW_UNLESS(smaller.size() == 1, "One of the dimensions should be 1 for broadcasting.");
+        return SmallVector<T>(larger.size(), smaller[0]);
+    };
+
+    if (broadcast == IE::AutoBroadcastType::NUMPY) {
+        if (lowVals.size() < highVals.size()) {
+            lowVals = numpyBroadcast(lowVals, highVals);
+        } else {
+            highVals = numpyBroadcast(highVals, lowVals);
+        }
+        return;
+    }
+
+    VPUX_THROW("Unsupported broadcast type '{0}'", broadcast);
+}
+
+//
+// Derive new UniformQuantizedType. Multiply scale by specified factor.
+//
+
+mlir::Type rescaleUniformQuantizedType(const mlir::Type tensorType, const double factor);
+
+void getFakeQuantParams(vpux::NDTypeInterface qType, int64_t& levels, mlir::RankedTensorType& attrType,
+                        mlir::DenseElementsAttr& rMinAttr, mlir::DenseElementsAttr& rMaxAttr);
+
+mlir::quant::QuantizedType getQuantizedType(const Const::ContentAttr& lowConst, const Const::ContentAttr& highConst,
+                                            std::optional<int64_t> levels, std::optional<mlir::Type> lowFpType,
+                                            mlir::FloatType expressedType, bool isSigned, mlir::Location loc,
+                                            IE::AutoBroadcastType broadcast = IE::AutoBroadcastType::NONE_OR_EXPLICIT,
+                                            bool ignoreZPCheck = false, const Logger& log = Logger::global());
+
+mlir::FailureOr<int32_t> getQuantizedDimension(ShapeRef lowShape, ShapeRef highShape, IE::AutoBroadcastType broadcast,
+                                               mlir::Location loc, const Logger& log);
+
+mlir::FailureOr<std::tuple<SmallVector<double>, SmallVector<int64_t>>> getScalesAndZeroPointsFromContentAttr(
+        const Const::ContentAttr& lowContentAttr, const Const::ContentAttr& highContentAttr,
+        IE::AutoBroadcastType broadcast, const std::optional<int64_t> levels, const std::optional<mlir::Type> lowFpType,
+        bool isSigned, const Logger& log = Logger::global());
 
 static constexpr float QUANT_RANGE_RATIO = 5.0;
 
@@ -87,8 +140,13 @@ mlir::LogicalResult checkRescaledBiasRange(ConcreteOp op) {
 
 // Parses the IR upwards looking for a possibly quantized splat constant and returns its folded dequantized value.
 mlir::FailureOr<double> getQuantizedSplatConstant(mlir::Value input);
+int64_t getMaximumQuantizationLevels(int64_t currentLevels, mlir::Operation* op);
 
 bool isNCEOpCandidatesWithWeights(mlir::Operation* op);
 bool keepIntTypeForSIWeightsAsInput(mlir::Operation* op);
+bool isQuantizationSupported(IE::QuantizeOp quantizeOp, mlir::Operation* mainOp,
+                             IE::TypeComparisonMode elemComparisonMode);
+bool isInputQuantizationSupported(mlir::Value activationInput, mlir::Value filterInput);
+
 }  // namespace IE
 }  // namespace vpux

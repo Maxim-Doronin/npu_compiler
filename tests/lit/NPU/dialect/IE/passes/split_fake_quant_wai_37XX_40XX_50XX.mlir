@@ -12,10 +12,10 @@
 // CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x256x2048xf32>
 // CHECK-SAME:  [[INPUT1:%.+]]: tensor<2048x2048xsi8>
   func.func @SplitFakeQuantToI8ForSI8WeightsAsInputs(%arg0: tensor<1x256x2048xf32>, %arg1: tensor<2048x2048xsi8>) -> tensor<256x2048x1x1xf16> {
-    %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
 
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 256, 2048]} : tensor<1x256x2048xf32> -> tensor<1x1x256x2048xf32>
     %1 = IE.Convert(%0) {dstElemType = f16} : tensor<1x1x256x2048xf32> -> tensor<1x1x256x2048xf16>
@@ -54,10 +54,10 @@
 // CHECK-SAME:  [[INPUT1:%.+]]: tensor<2048x2048xsi8>
 // CHECK-SAME:  [[INPUT2:%.+]]: tensor<1024x2048xsi8>
   func.func @SplitFakeQuantToI8ForAllUsersHaveSI8WeightsAsInputs(%arg0: tensor<1x256x2048x1xf16>, %arg1: tensor<2048x2048xsi8>, %arg2: tensor<1024x2048xsi8>) -> (tensor<256x2048x1x1xf16>, tensor<256x1024x1x1xf16>) {
-    %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
 
     %0 = IE.FakeQuantize(%arg0, %cst_3, %cst_2, %cst_1, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x256x2048x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x256x2048x1xf16>
     %1 = IE.QuantizeCast(%arg1) {dstElemType = !quant.uniform<i8:f32, 1.000000e+00>} : tensor<2048x2048xsi8> -> tensor<2048x2048x!quant.uniform<i8:f32, 1.000000e+00>>
@@ -108,10 +108,10 @@
 // CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x256x2048x1xf16>
 // CHECK-SAME:  [[INPUT1:%.+]]: tensor<2048x2048xsi8>
   func.func @SplitFakeQuantToU8ForNotAllUsersHaveSI8WeightsAsInputs(%arg0: tensor<1x256x2048x1xf16>, %arg1: tensor<2048x2048xsi8>) -> (tensor<256x2048x1x1xf16>, tensor<256x2048x1x1xf16>) {
-    %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-    %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+    %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
 
     %0 = IE.FakeQuantize(%arg0, %cst_3, %cst_2, %cst_1, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x256x2048x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x256x2048x1xf16>
     %1 = IE.QuantizeCast(%arg1) {dstElemType = !quant.uniform<i8:f32, 1.000000e+00>} : tensor<2048x2048xsi8> -> tensor<2048x2048x!quant.uniform<i8:f32, 1.000000e+00>>
@@ -160,10 +160,10 @@
 // CHECK-SAME:    [[INPUT0:%.+]]: tensor<1x256x2048xf32>
 // CHECK-SAME:    [[INPUT1:%.+]]: tensor<2048x2048xsi4>
 func.func @SplitFakeQuantToI8ForSI4WeightsAsInputs(%arg0: tensor<1x256x2048xf32>, %arg1: tensor<2048x2048xsi4>) -> tensor<256x2048x1x1xf16> {
-  %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-  %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-  %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-  %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
 
   %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 256, 2048]} : tensor<1x256x2048xf32> -> tensor<1x1x256x2048xf32>
   %1 = IE.Convert(%0) {dstElemType = f16} : tensor<1x1x256x2048xf32> -> tensor<1x1x256x2048xf16>
@@ -199,10 +199,10 @@ func.func @SplitFakeQuantToI8ForSI4WeightsAsInputs(%arg0: tensor<1x256x2048xf32>
 // CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x256x2048xf32>
 // CHECK-SAME:  [[INPUT1:%.+]]: tensor<4096x2048xsi8>
 func.func @SplitFakeQuantToI8ForSlicedIntWeightsAsInputs(%arg0: tensor<1x256x2048xf32>, %arg1: tensor<4096x2048xsi8>) -> tensor<256x2048x1x1xf16> {
-  %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-  %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-  %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
-  %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32> isSplat, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<7.62890625> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
+  %cst_3 = const.Declare tensor<1x1x1x1xf16> = dense<-7.6875> : tensor<1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>]
 
   %reshape0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 1, 256, 2048]} : tensor<1x256x2048xf32> -> tensor<1x1x256x2048xf32>
   %convert = IE.Convert(%reshape0) {dstElemType = f16} : tensor<1x1x256x2048xf32> -> tensor<1x1x256x2048xf16>

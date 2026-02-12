@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,7 @@ namespace ov::test::subgraph {
 class InvalidFqCreatedByCompiler : public VpuOv2LayerTest {
 public:
     void SetUp() override {
-        configuration["NPU_COMPILER_TYPE"] = "MLIR";
+        configuration["NPU_COMPILER_TYPE"] = "PLUGIN";
 
         ov::Shape inputShape = {1, 3, 20, 20};
         init_input_shapes({ov::test::InputShape{{}, std::vector<ov::Shape>{inputShape}}});
@@ -79,8 +79,10 @@ TEST_F(InvalidFqCreatedByCompiler, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_F(InvalidFqCreatedByCompiler, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace ov::test::subgraph

@@ -76,9 +76,9 @@ func.func @PerTensorTwoConsecutiveConcats(%input: tensor<1x2x3x4x!qElemType>) ->
     %concat2 = IE.Concat(%concat1, %cst2) {per_axis = #IE.Concat<axis = 3>} : tensor<1x2x6x4xf16>, tensor<1x2x6x4xf16> -> tensor<1x2x6x8xf16>
     return %concat2 : tensor<1x2x6x8xf16>
 
-    //CHECK-DAG: [[CONST1:%.+]] = const.Declare tensor<1x2x3x4x!qElemType> = dense<0.000000e+00> : tensor<1x2x3x4xf16>, [#const.Quantize<!qElemType>, #const.CastElemType<!qElemType>]
-    //CHECK-DAG: [[CONST2:%.+]] = const.Declare tensor<1x2x6x4x!qElemType> = dense<1.000000e+00> : tensor<1x2x6x4xf16>, [#const.Quantize<!qElemType>, #const.CastElemType<!qElemType>]
+    //CHECK: [[CONST1:%.+]] = const.Declare tensor<1x2x3x4x!qElemType> = dense<0.000000e+00> : tensor<1x2x3x4xf16>, [#const.Quantize<!qElemType>, #const.CastElemType<!qElemType>]
     //CHECK: [[CONCAT1:%.+]] = IE.Concat([[INPUT]], [[CONST1]])
+    //CHECK: [[CONST2:%.+]] = const.Declare tensor<1x2x6x4x!qElemType> = dense<1.000000e+00> : tensor<1x2x6x4xf16>, [#const.Quantize<!qElemType>, #const.CastElemType<!qElemType>]
     //CHECK: [[CONCAT2:%.+]] = IE.Concat([[CONCAT1]], [[CONST2]])
     //CHECK: [[DEQUANTIZE:%.+]] = IE.Dequantize([[CONCAT2]])
     //CHECK: return [[DEQUANTIZE]]

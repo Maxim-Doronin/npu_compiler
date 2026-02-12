@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,7 +17,7 @@ include "vpux/compiler/dialect/VPU/ops_interfaces.td"
 include "vpux/compiler/dialect/VPUIP/types.td"
 include "vpux/compiler/dialect/VPUIP/attributes.td"
 include "vpux/compiler/dialect/const/attributes.td"
-include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.td"
+include "vpux/compiler/dialect/ELF/ops_interfaces.td"
 
 include "vpux/compiler/dialect/VPUMI40XX/attributes.td"
 
@@ -339,6 +339,39 @@ def VPUASM_MappedInferenceOp :
     }];
 }
 
+def VPUASM_StackFramesOp :
+        VPUASM_Instruction<"StackFrames",
+            [
+                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
+            ]
+        > {
+    let summary = "Shave stack frames addresses in CMX memory";
+    let description = [{
+        This is an array of shave stack frames addresses in the CMX memory. Pointer to this array is used to avoid the risk of losing
+        backwards compatibility, which would occur if the number of shaves per tile changed. In that case, when the array size is
+        fixed the size of the backend structures would need to be adjusted.
+    }];
+
+    let arguments = (ins
+        SymbolNameAttr:$sym_name,
+        IntArrayProp<IntProp<"uint32_t">>:$addresses
+    );
+
+    let skipDefaultBuilders = 1;
+    let builders = [
+        OpBuilder<(ins
+            "mlir::StringAttr":$sym_name,
+            "SmallVector<uint32_t>&&":$addresses
+        )>
+    ];
+
+    let assemblyFormat = [{
+        $sym_name `:` $addresses
+        attr-dict
+    }];
+}
+
 def VPUASM_NNrtConfigOp :
         VPUASM_Instruction<"nnrtConfig",
             [
@@ -348,15 +381,17 @@ def VPUASM_NNrtConfigOp :
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,
-        UnitAttr:$isActKernelInvocations,
+        UnitProp:$isActKernelInvocations,
         OptionalAttr<SymbolRefAttr>:$actShaveRt,
         OptionalAttr<SymbolRefArrayAttr>:$actShaveStacks,
+        OptionalAttr<SymbolRefAttr>:$stackFrames,
         OptionalAttr<SymbolRefAttr>:$dmaHwpBase,
         OptionalAttr<SymbolRefAttr>:$hwpWorkpointCfg
     );
 
     let assemblyFormat = [{
     attr-dict
+    prop-dict
         $sym_name `:`
         (`dmaHwpBase` `(` $dmaHwpBase^ `)`)?
         (`hwpWorkpointCfg` `(` $hwpWorkpointCfg^ `)`)?
@@ -390,7 +425,7 @@ def VPUASM_ManagedMappedInferenceOp :
         I64Attr:$barrierCount,
         IntAttr:$final_barrier_id,
         I64Attr:$bootstrapBarriersCount,
-        I64Attr:$bootsrapWorkItemsCount,
+        I64Attr:$bootstrapWorkItemsCount,
         I64Attr:$barrierConfigurationTasksCount,
         I64Attr:$barriersReprogrammingCount,
         I64Attr:$barrierConfigurationStride,
@@ -406,10 +441,10 @@ def VPUASM_ManagedMappedInferenceOp :
 
     let assemblyFormat = [{
         $sym_name `:`
-        `dmas`  $dmaTasks
-        `workItems` `(` $workItems `)`
-        `barrierTasks` `(` $barrierTasks `)`
-        (`bootstrapBarriers` `(` $bootstrapBarriers^ `)`)?
+        `dmas` `(` ($dmaTasks^)? `)`
+        `workItems` `(` ($workItems^)? `)`
+        `barrierTasks` `(` ($barrierTasks^)? `)`
+        `bootstrapBarriers` `(` ($bootstrapBarriers^)? `)`
         `nnrtConfig` `(` $nnrtConfig `)`
         `mappedInferenceVersion` `(` $mappedInferenceVersion `)`
         (`barrierConfigurationTasks` `(` $barrierConfigurationTasks^ `)`)?
@@ -582,12 +617,12 @@ def VPUASM_NNDMAOp :
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
         DefaultValuedAttr<VPUIP_DMAAccModeAttr, "VPUIP::DMAAccMode::DISABLE">:$acceleration_mode,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
-        UnitAttr:$enable_msc,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
+        UnitProp:$enable_msc,
         OptionalAttr<SymbolRefAttr>:$act_compression_size_entry,
         OptionalAttr<SymbolRefAttr>:$act_compression_sparsity_map,
-        OptionalAttr<VPUMI40XX_DMATransactionAttr>:$dma_transaction,
+        OptionalAttr<VPUMI40XX_DMATransactionAttrInterface>:$dma_transaction,
         // dma_descriptor is now optional to allow DMA refactoring to be completed on NPU4
         // Its functionality is now partially replaced by dma_transaction
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
@@ -596,12 +631,6 @@ def VPUASM_NNDMAOp :
         OptionalAttr<SymbolRefAttr>:$indices,
         OptionalAttr<VPUIP_GatherAddressingMode>:$addressing_mode
     );
-
-    let builders = [
-        OpBuilder<
-            (ins "mlir::Value":$src, "mlir::Value":$dst)
-        >
-    ];
 
     let extraClassDeclaration = [{
         static vpux::VPURegMapped::TaskType getTaskType() {
@@ -630,6 +659,7 @@ def VPUASM_NNDMAOp :
         (`tile_indexes` `(` $tile_indexes^ `)`)?
         (`indices` `(` $indices^ `)`)?
         attr-dict
+        prop-dict
     }];
 
     let hasVerifier = 1;
@@ -787,15 +817,15 @@ def VPUASM_KernelParamsOp :
         SymbolRefArrayAttr:$dynamicInputShapes,
         SymbolRefArrayAttr:$dynamicOutputShapes,
         StrAttr:$kernel_type,
-        SmallVectorU8Prop:$kernel_params,
+        IntArrayProp<IntProp<"uint8_t">>:$kernel_params,
 
-        SmallVectorU8Prop:$inputDimsBinaryVector,
-        SmallVectorU8Prop:$inputStridesBinaryVector,
-        SmallVectorU8Prop:$outputDimsBinaryVector,
-        SmallVectorU8Prop:$outputStridesBinaryVector,
+        IntArrayProp<IntProp<"uint8_t">>:$inputDimsBinaryVector,
+        IntArrayProp<IntProp<"uint8_t">>:$inputStridesBinaryVector,
+        IntArrayProp<IntProp<"uint8_t">>:$outputDimsBinaryVector,
+        IntArrayProp<IntProp<"uint8_t">>:$outputStridesBinaryVector,
 
-        UnitAttr:$is_output_broadcasted,
-        UnitAttr:$isJitCompiled
+        UnitProp:$is_output_broadcasted,
+        UnitProp:$isJitCompiled
     );
 
     let skipDefaultBuilders = 1;
@@ -814,8 +844,8 @@ def VPUASM_KernelParamsOp :
             "SmallVector<uint8_t>&&":$outputDimsBinaryVector,
             "SmallVector<uint8_t>&&":$outputStridesBinaryVector,
 
-            "mlir::UnitAttr":$is_output_broadcasted,
-            "mlir::UnitAttr":$isJitCompiled
+            "bool":$is_output_broadcasted,
+            "bool":$isJitCompiled
         )>
     ];
 
@@ -970,10 +1000,11 @@ def VPUASM_DPUVariantOp :
         OptionalAttr<IntAttr>:$cluster_id,
         OptionalAttr<DPUHaloRegionArrayAttr>: $haloRegions,
         OptionalAttr<IntAttr>:$workload_id,
-        UnitAttr:$spr_lut_read,
-        UnitAttr:$pallet_lut_read,
-        UnitAttr:$force_inv_read,
-        OptionalAttr<I64ArrayAttr>:$variant_primitive_id // IDs for variant primitives A and B
+        UnitProp:$spr_lut_read,
+        UnitProp:$pallet_lut_read,
+        UnitProp:$force_inv_read,
+        OptionalAttr<I64ArrayAttr>:$variant_primitive_id, // IDs for variant primitives A and B
+        OptionalAttr<IntAttr>:$weight_table_offset
     );
 
     let assemblyFormat = [{
@@ -991,6 +1022,7 @@ def VPUASM_DPUVariantOp :
         (`weight_table_bias` `(` $weight_table_bias^ `)`)?
         (`weight_zero_points` `(` $weight_zero_points^ `)`)?
         attr-dict
+        prop-dict
     }];
 }
 
@@ -1054,22 +1086,23 @@ def VPUASM_DPUInvariantOp :
         VPUIP_NCETaskTypeAttr:$nce_task_type,
         OptionalAttr<VPU_EltwiseTypeAttr>:$eltwise_type,
         VPU_MPEModeAttr:$mpe_frequent_mode,
-        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         OptionalAttr<I64ArrayAttr>:$kernel_size,
         OptionalAttr<I64ArrayAttr>:$kernel_strides,
         OptionalAttr<VPU_PaddingAttr>:$kernel_padding,
-        UnitAttr:$is_continued,
+        UnitProp:$is_continued,
         OptionalAttr<IntAttr>:$cm_sp_pattern,
-        UnitAttr:$input_channels_compression,
-        UnitAttr:$is_zero_offset_weights_table,
+        UnitProp:$input_channels_compression,
+        UnitProp:$is_zero_offset_weights_table,
         OptionalAttr<IntAttr>:$out_channel_offset,
-        UnitAttr:$is_superdense,
+        UnitProp:$is_superdense,
         OptionalAttr<BoolAttr>:$is_inplace,
         OptionalAttr<IntAttr>:$input_se_size,
         OptionalAttr<IntAttr>:$output_se_size,
-        UnitAttr:$is_permute_quantize,
-        UnitAttr:$is_small_kernel_optimized,
+        UnitProp:$is_permute_quantize,
+        UnitProp:$is_small_kernel_optimized,
+        OptionalAttr<VPUIP_SparsityConfigAttr>:$sparsity_config,
         OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
         OptionalAttr<VPUIP_LocalRegionAttr>:$local_region,
         OptionalAttr<VPUIP_S2DConfigAttr>:$s2d_config,
@@ -1118,6 +1151,7 @@ def VPUASM_DPUInvariantOp :
         `waits` `(` $waitBarriers `)`
         `updates` `(` $updateBarriers `)`
         attr-dict
+        prop-dict
         `PPE` `:` $ppe
     }];
 }
@@ -1207,11 +1241,11 @@ def VPUASM_DPUInvariantOp_37XX :
         OptionalAttr<I64ArrayAttr>:$kernel_size,
         OptionalAttr<I64ArrayAttr>:$kernel_strides,
         OptionalAttr<VPU_PaddingAttr>:$kernel_padding,
-        UnitAttr:$is_continued,
+        UnitProp:$is_continued,
         OptionalAttr<IntAttr>:$cm_sp_pattern,
-        UnitAttr:$input_channels_compression,
-        UnitAttr:$is_zero_offset_weights_table,
-        UnitAttr:$is_segmented,
+        UnitProp:$input_channels_compression,
+        UnitProp:$is_zero_offset_weights_table,
+        UnitProp:$is_segmented,
         OptionalAttr<IntAttr>:$out_channel_offset,
 
         UI64Attr:$start_after,
@@ -1249,6 +1283,7 @@ def VPUASM_DPUInvariantOp_37XX :
         `waits` `(` $waitBarriers `)`
         `updates` `(` $updateBarriers `)`
         attr-dict
+        prop-dict
         `PPE` `:` $ppe
     }];
 }
@@ -1412,7 +1447,7 @@ def CompilerHashOp :
                 Symbol
             ]
         > {
-    let summary = "Represents a versioning mechanism for the latest compiler hash value";
+    let summary = "Represents a versioning mechanism for the compiler";
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,

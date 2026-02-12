@@ -23,6 +23,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
@@ -155,6 +156,7 @@ void vpux::IE::IEDialect::initialize() {
     addInterfaces<IEAsmHooks>();
 
     registerAttributes();
+    addInterfaces<IE::StrategyFactoryCache>();
 }
 
 //

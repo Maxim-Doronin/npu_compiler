@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,47 +48,47 @@ func.func @ConvertGroupConvToMultiConvDueToNonConstWeights(%arg0: tensor<1x64x80
     return %result : tensor<1x64x80x80xf16>
 
     // CHECK-NOT:   IE.GroupConvolution
-    // CHECK-DAG:   [[BIAS:%.*]] = const.Declare tensor<1x64x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>
-    // CHECK:       [[INPUT0:%.*]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 16, 80, 80]
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x64x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>
+    // CHECK:       [[INPUT0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 16, 80, 80]
     // CHECK-SAME:      : tensor<1x64x80x80xf16> to tensor<1x16x80x80xf16>
-    // CHECK-DAG:   [[WEIGHTS0:%.*]] = IE.Slice %arg1 [0, 0, 0, 0] [16, 16, 3, 3]
+    // CHECK-DAG:   [[WEIGHTS0:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [16, 16, 3, 3]
     // CHECK-SAME:      : tensor<64x16x3x3xf16> to tensor<16x16x3x3xf16>
-    // CHECK-DAG:   [[BIAS0:%.*]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[BIAS0:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:      : tensor<1x64x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 16, 1, 1]>]
-    // CHECK:       [[CONV_0:%.*]] = IE.Convolution([[INPUT0]], [[WEIGHTS0]], [[BIAS0]])
+    // CHECK:       [[CONV_0:%.+]] = IE.Convolution([[INPUT0]], [[WEIGHTS0]], [[BIAS0]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x16x80x80xf16>, tensor<16x16x3x3xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x80x80xf16>
 
-    // CHECK-DAG:   [[INPUT1:%.*]] = IE.Slice %arg0 [0, 16, 0, 0] [1, 16, 80, 80]
+    // CHECK-DAG:   [[INPUT1:%.+]] = IE.Slice %arg0 [0, 16, 0, 0] [1, 16, 80, 80]
     // CHECK-SAME:      : tensor<1x64x80x80xf16> to tensor<1x16x80x80xf16>
-    // CHECK-DAG:   [[WEIGHTS1:%.*]] = IE.Slice %arg1 [16, 0, 0, 0] [16, 16, 3, 3]
+    // CHECK-DAG:   [[WEIGHTS1:%.+]] = IE.Slice %arg1 [16, 0, 0, 0] [16, 16, 3, 3]
     // CHECK-SAME:      : tensor<64x16x3x3xf16> to tensor<16x16x3x3xf16>
-    // CHECK-DAG:   [[BIAS1:%.*]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[BIAS1:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:      : tensor<1x64x1x1xf16>, [#const.SubView<[0, 16, 0, 0], [1, 16, 1, 1]>]
-    // CHECK:       [[CONV_1:%.*]] = IE.Convolution([[INPUT1]], [[WEIGHTS1]], [[BIAS1]])
+    // CHECK:       [[CONV_1:%.+]] = IE.Convolution([[INPUT1]], [[WEIGHTS1]], [[BIAS1]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x16x80x80xf16>, tensor<16x16x3x3xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x80x80xf16>
 
-    // CHECK-DAG:   [[INPUT2:%.*]] = IE.Slice %arg0 [0, 32, 0, 0] [1, 16, 80, 80]
+    // CHECK-DAG:   [[INPUT2:%.+]] = IE.Slice %arg0 [0, 32, 0, 0] [1, 16, 80, 80]
     // CHECK-SAME:      : tensor<1x64x80x80xf16> to tensor<1x16x80x80xf16>
-    // CHECK-DAG:   [[WEIGHTS2:%.*]] = IE.Slice %arg1 [32, 0, 0, 0] [16, 16, 3, 3]
+    // CHECK-DAG:   [[WEIGHTS2:%.+]] = IE.Slice %arg1 [32, 0, 0, 0] [16, 16, 3, 3]
     // CHECK-SAME:      : tensor<64x16x3x3xf16> to tensor<16x16x3x3xf16>
-    // CHECK-DAG:   [[BIAS2:%.*]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[BIAS2:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:      : tensor<1x64x1x1xf16>, [#const.SubView<[0, 32, 0, 0], [1, 16, 1, 1]>]
-    // CHECK:       [[CONV_2:%.*]] = IE.Convolution([[INPUT2]], [[WEIGHTS2]], [[BIAS2]])
+    // CHECK:       [[CONV_2:%.+]] = IE.Convolution([[INPUT2]], [[WEIGHTS2]], [[BIAS2]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x16x80x80xf16>, tensor<16x16x3x3xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x80x80xf16>
 
-    // CHECK-DAG:   [[INPUT3:%.*]] = IE.Slice %arg0 [0, 48, 0, 0] [1, 16, 80, 80]
+    // CHECK-DAG:   [[INPUT3:%.+]] = IE.Slice %arg0 [0, 48, 0, 0] [1, 16, 80, 80]
     // CHECK-SAME:      : tensor<1x64x80x80xf16> to tensor<1x16x80x80xf16>
-    // CHECK-DAG:   [[WEIGHTS3:%.*]] = IE.Slice %arg1 [48, 0, 0, 0] [16, 16, 3, 3]
+    // CHECK-DAG:   [[WEIGHTS3:%.+]] = IE.Slice %arg1 [48, 0, 0, 0] [16, 16, 3, 3]
     // CHECK-SAME:      : tensor<64x16x3x3xf16> to tensor<16x16x3x3xf16>
-    // CHECK-DAG:   [[BIAS3:%.*]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[BIAS3:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:      : tensor<1x64x1x1xf16>, [#const.SubView<[0, 48, 0, 0], [1, 16, 1, 1]>]
-    // CHECK:       [[CONV_3:%.*]] = IE.Convolution([[INPUT3]], [[WEIGHTS3]], [[BIAS3]])
+    // CHECK:       [[CONV_3:%.+]] = IE.Convolution([[INPUT3]], [[WEIGHTS3]], [[BIAS3]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x16x80x80xf16>, tensor<16x16x3x3xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x80x80xf16>
-    // CHECK:       [[RESULT:%.*]] = IE.Concat([[CONV_0]], [[CONV_1]], [[CONV_2]], [[CONV_3]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK:       [[RESULT:%.+]] = IE.Concat([[CONV_0]], [[CONV_1]], [[CONV_2]], [[CONV_3]]) {per_axis = #IE.Concat<axis = 1 : i64>}
     // CHECK-SAME:      : tensor<1x16x80x80xf16>, tensor<1x16x80x80xf16>, tensor<1x16x80x80xf16>, tensor<1x16x80x80xf16>
     // CHECK-SAME:      -> tensor<1x64x80x80xf16>
     // CHECK:       return [[RESULT]]
@@ -283,6 +283,53 @@ func.func @ConvertGroupConvToSingleConvOutChannelEqualGroup(%arg0: tensor<1x64x8
 
 // -----
 
+// CHECK-LABEL: @ConvertGroupConvToSingleConvOutChannelEqualGroupPerAxis
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x2x4x1xf16>
+func.func @ConvertGroupConvToSingleConvOutChannelEqualGroupPerAxis(%arg0: tensor<1x2x4x1xf16>) -> tensor<1x2x4x1xf16> {
+    %weights = const.Declare tensor<1x2x5x1xf16> = dense<1.0> : tensor<1x2x5x1xf16>
+    %weights_in_low = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02> : tensor<1x1x1x1xf16>
+    %weights_in_high = const.Declare tensor<1x1x1x1xf16> = dense<1.270000e+02> : tensor<1x1x1x1xf16>
+    %weights_out_low = const.Declare tensor<1x2x1x1xf16> = dense<[[[[-1.280000e+02]], [[-1.170000e+02]]]]> : tensor<1x2x1x1xf16>
+    %weights_out_high = const.Declare tensor<1x2x1x1xf16> = dense<[[[[1.270000e+02]], [[1.170000e+02]]]]> : tensor<1x2x1x1xf16>
+
+    %fq_weights = IE.FakeQuantize(%weights, %weights_in_low, %weights_in_high, %weights_out_low, %weights_out_high) {
+                    auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
+                    levels = 256 : i64
+                } : tensor<1x2x5x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16> -> tensor<1x2x5x1xf16>
+
+    %reshape_weights = IE.AffineReshape(%fq_weights) { dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [2, 1, 5, 1] } : tensor<1x2x5x1xf16> -> tensor<2x1x5x1xf16>
+    %result = IE.GroupConvolution(%arg0, %reshape_weights) {dilations = [1, 1], groups = 2 : i64, pads_begin = [4, 0], pads_end = [0, 0], strides = [1, 1]} :
+        tensor<1x2x4x1xf16>, tensor<2x1x5x1xf16> -> tensor<1x2x4x1xf16>
+
+    return %result : tensor<1x2x4x1xf16>
+
+    // CHECK-NOT:   IE.GroupConvolution
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<1x2x5x1xf16>
+    // CHECK-DAG:   [[IN_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK-DAG:   [[IN_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16>
+
+    // CHECK-DAG:   [[WEIGHTS_SLICE_0:%.+]] = const.Declare tensor<1x1x5x1xf16> = dense<1.000000e+00> : tensor<1x2x5x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 5, 1]>, #const.Reshape<[1, 1, 5, 1]>]
+    // CHECK-DAG:   [[WEIGHTS_SLICE_0_ZERO:%.+]] = const.Declare tensor<1x1x5x1xf16> = dense<0.000000e+00> : tensor<1x1x5x1xf16>
+    // CHECK:       [[WEIGHT_CONCAT_0:%.+]] = IE.Concat([[WEIGHTS_SLICE_0]], [[WEIGHTS_SLICE_0_ZERO]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x5x1xf16>, tensor<1x1x5x1xf16> -> tensor<1x2x5x1xf16>
+
+    // CHECK-DAG:   [[WEIGHTS_SLICE_1_ZERO:%.+]] = const.Declare tensor<1x1x5x1xf16> = dense<0.000000e+00> : tensor<1x1x5x1xf16>
+    // CHECK-DAG:   [[WEIGHTS_SLICE_1:%.+]] = const.Declare tensor<1x1x5x1xf16> = dense<1.000000e+00> : tensor<1x2x5x1xf16>, [#const.SubView<[0, 1, 0, 0], [1, 1, 5, 1]>, #const.Reshape<[1, 1, 5, 1]>]
+    // CHECK:       [[WEIGHT_CONCAT_1:%.+]] = IE.Concat([[WEIGHTS_SLICE_1_ZERO]], [[WEIGHTS_SLICE_1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x5x1xf16>, tensor<1x1x5x1xf16> -> tensor<1x2x5x1xf16>
+    // CHECK:       [[WEIGHTS_CONCAT:%.+]] = IE.Concat([[WEIGHT_CONCAT_0]], [[WEIGHT_CONCAT_1]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x2x5x1xf16>, tensor<1x2x5x1xf16> -> tensor<2x2x5x1xf16>
+
+    // CHECK:   [[OUT_LOW:%.+]] = const.Declare tensor<2x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:     dense<[[[[-1.280000e+02]], [[-1.170000e+02]]]]> : tensor<1x2x1x1xf16>, [#const.Reshape<[2, 1, 1, 1]>]
+    // CHECK:   [[OUT_HIGH:%.+]] = const.Declare tensor<2x1x1x1xf16>
+    // CHECK-SAME{LITERAL}:     dense<[[[[1.270000e+02]], [[1.170000e+02]]]]> : tensor<1x2x1x1xf16>, [#const.Reshape<[2, 1, 1, 1]>]
+
+    // CHECK:       [[WEIGHTS_FQ:%.+]] = IE.FakeQuantize([[WEIGHTS_CONCAT]], [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
+    // CHECK:               tensor<2x2x5x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<2x1x1x1xf16>, tensor<2x1x1x1xf16> -> tensor<2x2x5x1xf16>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS_FQ]]) {dilations = [1, 1], pads_begin = [4, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x2x4x1xf16>, tensor<2x2x5x1xf16> -> tensor<1x2x4x1xf16>
+    // CHECK:       return [[CONV]] : tensor<1x2x4x1xf16>
+}
+
+// -----
+
 // CHECK-LABEL: @ConvertGroupConvWithBigFilterToMultiConv
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2048x16x16xf16>
 func.func @ConvertGroupConvWithBigFilterToMultiConv(%arg0: tensor<1x2048x16x16xf16>) -> tensor<1x2048x16x16xf16> {
@@ -293,40 +340,40 @@ func.func @ConvertGroupConvWithBigFilterToMultiConv(%arg0: tensor<1x2048x16x16xf
     return %result : tensor<1x2048x16x16xf16>
 
     // CHECK-NOT:   IE.GroupConvolution
-    // CHECK-DAG:   [[WEIGHTS:%.*]] = const.Declare tensor<2048x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>
-    // CHECK-DAG:   [[BIAS:%.*]] = const.Declare tensor<1x2048x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>
-    // CHECK:       [[INPUT0:%.*]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 512, 16, 16]
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<2048x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x2048x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>
+    // CHECK:       [[INPUT0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 512, 16, 16]
     // CHECK-SAME:      : tensor<1x2048x16x16xf16> to tensor<1x512x16x16xf16>
-    // CHECK-DAG:   [[WEIGHTS0:%.*]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [512, 512, 3, 3]>]
-    // CHECK-DAG:   [[BIAS0:%.*]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 512, 1, 1]>]
-    // CHECK:       [[CONV_0:%.*]] = IE.Convolution([[INPUT0]], [[WEIGHTS0]], [[BIAS0]])
+    // CHECK-DAG:   [[WEIGHTS0:%.+]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [512, 512, 3, 3]>]
+    // CHECK-DAG:   [[BIAS0:%.+]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 512, 1, 1]>]
+    // CHECK:       [[CONV_0:%.+]] = IE.Convolution([[INPUT0]], [[WEIGHTS0]], [[BIAS0]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x512x16x16xf16>, tensor<512x512x3x3xf16>, tensor<1x512x1x1xf16> -> tensor<1x512x16x16xf16>
 
-    // CHECK-DAG:   [[INPUT1:%.*]] = IE.Slice [[INPUT]] [0, 512, 0, 0] [1, 512, 16, 16]
+    // CHECK-DAG:   [[INPUT1:%.+]] = IE.Slice [[INPUT]] [0, 512, 0, 0] [1, 512, 16, 16]
     // CHECK-SAME:      : tensor<1x2048x16x16xf16> to tensor<1x512x16x16xf16>
-    // CHECK-DAG:   [[WEIGHTS1:%.*]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[512, 0, 0, 0], [512, 512, 3, 3]>]
-    // CHECK-DAG:   [[BIAS1:%.*]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 512, 0, 0], [1, 512, 1, 1]>]
-    // CHECK:       [[CONV_1:%.*]] = IE.Convolution([[INPUT1]], [[WEIGHTS1]], [[BIAS1]])
+    // CHECK-DAG:   [[WEIGHTS1:%.+]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[512, 0, 0, 0], [512, 512, 3, 3]>]
+    // CHECK-DAG:   [[BIAS1:%.+]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 512, 0, 0], [1, 512, 1, 1]>]
+    // CHECK:       [[CONV_1:%.+]] = IE.Convolution([[INPUT1]], [[WEIGHTS1]], [[BIAS1]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x512x16x16xf16>, tensor<512x512x3x3xf16>, tensor<1x512x1x1xf16> -> tensor<1x512x16x16xf16>
 
-    // CHECK-DAG:   [[INPUT2:%.*]] = IE.Slice [[INPUT]] [0, 1024, 0, 0] [1, 512, 16, 16]
+    // CHECK-DAG:   [[INPUT2:%.+]] = IE.Slice [[INPUT]] [0, 1024, 0, 0] [1, 512, 16, 16]
     // CHECK-SAME:      : tensor<1x2048x16x16xf16> to tensor<1x512x16x16xf16>
-    // CHECK-DAG:   [[WEIGHTS2:%.*]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[1024, 0, 0, 0], [512, 512, 3, 3]>]
-    // CHECK-DAG:   [[BIAS2:%.*]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 1024, 0, 0], [1, 512, 1, 1]>]
-    // CHECK:       [[CONV_2:%.*]] = IE.Convolution([[INPUT2]], [[WEIGHTS2]], [[BIAS2]])
+    // CHECK-DAG:   [[WEIGHTS2:%.+]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[1024, 0, 0, 0], [512, 512, 3, 3]>]
+    // CHECK-DAG:   [[BIAS2:%.+]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 1024, 0, 0], [1, 512, 1, 1]>]
+    // CHECK:       [[CONV_2:%.+]] = IE.Convolution([[INPUT2]], [[WEIGHTS2]], [[BIAS2]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x512x16x16xf16>, tensor<512x512x3x3xf16>, tensor<1x512x1x1xf16> -> tensor<1x512x16x16xf16>
 
-    // CHECK-DAG:   [[INPUT3:%.*]] = IE.Slice [[INPUT]] [0, 1536, 0, 0] [1, 512, 16, 16]
+    // CHECK-DAG:   [[INPUT3:%.+]] = IE.Slice [[INPUT]] [0, 1536, 0, 0] [1, 512, 16, 16]
     // CHECK-SAME:      : tensor<1x2048x16x16xf16> to tensor<1x512x16x16xf16>
-    // CHECK-DAG:   [[WEIGHTS3:%.*]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[1536, 0, 0, 0], [512, 512, 3, 3]>]
-    // CHECK-DAG:   [[BIAS3:%.*]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 1536, 0, 0], [1, 512, 1, 1]>]
-    // CHECK:       [[CONV_3:%.*]] = IE.Convolution([[INPUT3]], [[WEIGHTS3]], [[BIAS3]])
+    // CHECK-DAG:   [[WEIGHTS3:%.+]] = const.Declare tensor<512x512x3x3xf16> = dense<1.000000e+00> : tensor<2048x512x3x3xf16>, [#const.SubView<[1536, 0, 0, 0], [512, 512, 3, 3]>]
+    // CHECK-DAG:   [[BIAS3:%.+]] = const.Declare tensor<1x512x1x1xf16> = dense<1.000000e+00> : tensor<1x2048x1x1xf16>, [#const.SubView<[0, 1536, 0, 0], [1, 512, 1, 1]>]
+    // CHECK:       [[CONV_3:%.+]] = IE.Convolution([[INPUT3]], [[WEIGHTS3]], [[BIAS3]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x512x16x16xf16>, tensor<512x512x3x3xf16>, tensor<1x512x1x1xf16> -> tensor<1x512x16x16xf16>
-    // CHECK:       [[RESULT:%.*]] = IE.Concat([[CONV_0]], [[CONV_1]], [[CONV_2]], [[CONV_3]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK:       [[RESULT:%.+]] = IE.Concat([[CONV_0]], [[CONV_1]], [[CONV_2]], [[CONV_3]]) {per_axis = #IE.Concat<axis = 1 : i64>}
     // CHECK-SAME:      : tensor<1x512x16x16xf16>, tensor<1x512x16x16xf16>, tensor<1x512x16x16xf16>, tensor<1x512x16x16xf16>
     // CHECK-SAME:      -> tensor<1x2048x16x16xf16>
     // CHECK:       return [[RESULT]]
@@ -355,44 +402,44 @@ func.func @ConvertPerChannelGroupConvToMultiConv(%arg0: tensor<1x2x16x16xf16>) -
     return %result : tensor<1x32x16x16xf16>
 
     // CHECK-NOT:   IE.GroupConvolution
-    // CHECK-DAG:   [[CST:%.*]] = const.Declare tensor<32x1x3x3xf16> = dense<1.000000e+00> : tensor<32x1x3x3xf16>
-    // CHECK-DAG:   [[CST_0:%.*]] = const.Declare tensor<32x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>
-    // CHECK-DAG:   [[CST_1:%.*]] = const.Declare tensor<32x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>
-    // CHECK:       [[FAKE_QUANTIZE_0:%.*]] = IE.FakeQuantize([[CST]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<32x1x3x3xf16>, tensor<32x1x1x1xf16>, tensor<32x1x1x1xf16>, tensor<32x1x1x1xf16>, tensor<32x1x1x1xf16> -> tensor<32x1x3x3xf16>
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<32x1x3x3xf16> = dense<1.000000e+00> : tensor<32x1x3x3xf16>
+    // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<32x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>
+    // CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<32x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>
+    // CHECK:       [[FAKE_QUANTIZE_0:%.+]] = IE.FakeQuantize([[CST]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<32x1x3x3xf16>, tensor<32x1x1x1xf16>, tensor<32x1x1x1xf16>, tensor<32x1x1x1xf16>, tensor<32x1x1x1xf16> -> tensor<32x1x3x3xf16>
 
-    // CHECK-DAG:   [[CST_2:%.*]] = const.Declare tensor<1x2x1x1xf16> = dense<
+    // CHECK-DAG:   [[CST_2:%.+]] = const.Declare tensor<1x2x1x1xf16> = dense<
     // CHECK-SAME{LITERAL}:    [[[[0.000000e+00, 9.997550e-02]]]]> : tensor<1x1x1x2xf16>, [#const.Reshape<[1, 2, 1, 1]>]
-    // CHECK-DAG:   [[CST_3:%.*]] = const.Declare tensor<1x2x1x1xf16> = dense<
+    // CHECK-DAG:   [[CST_3:%.+]] = const.Declare tensor<1x2x1x1xf16> = dense<
     // CHECK-SAME{LITERAL}:    [[[[1.000000e+00, 1.099610e+00]]]]> : tensor<1x1x1x2xf16>, [#const.Reshape<[1, 2, 1, 1]>]
-    // CHECK:       [[FAKE_QUANTIZE_1:%.*]] = IE.FakeQuantize([[INPUT]], [[CST_2]], [[CST_3]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<1x2x16x16xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16> -> tensor<1x2x16x16xf16>
+    // CHECK:       [[FAKE_QUANTIZE_1:%.+]] = IE.FakeQuantize([[INPUT]], [[CST_2]], [[CST_3]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<1x2x16x16xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16>, tensor<1x2x1x1xf16> -> tensor<1x2x16x16xf16>
 
-    // CHECK:       [[SLICE_0:%.*]] = IE.Slice [[FAKE_QUANTIZE_1]] [0, 0, 0, 0] [1, 1, 16, 16]
+    // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[FAKE_QUANTIZE_1]] [0, 0, 0, 0] [1, 1, 16, 16]
     // CHECK-SAME:      : tensor<1x2x16x16xf16> to tensor<1x1x16x16xf16>
-    // CHECK-DAG:   [[CST_4:%.*]] = const.Declare tensor<16x1x3x3xf16> = dense<1.000000e+00> : tensor<32x1x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 3, 3]>]
-    // CHECK-DAG:   [[CST_5:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
-    // CHECK-DAG:   [[CST_6:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
-    // CHECK-DAG:   [[CST_7:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
-    // CHECK-DAG:   [[CST_8:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_4:%.+]] = const.Declare tensor<16x1x3x3xf16> = dense<1.000000e+00> : tensor<32x1x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 3, 3]>]
+    // CHECK-DAG:   [[CST_5:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_6:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_7:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_8:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 1]>]
 
-    // CHECK:       [[FAKE_QUANTIZE_2:%.*]] = IE.FakeQuantize([[CST_4]], [[CST_5]], [[CST_7]], [[CST_6]], [[CST_8]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<16x1x3x3xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16> -> tensor<16x1x3x3xf16>
-    // CHECK:       [[CONV_0:%.*]] = IE.Convolution([[SLICE_0]],  [[FAKE_QUANTIZE_2]])
+    // CHECK:       [[FAKE_QUANTIZE_2:%.+]] = IE.FakeQuantize([[CST_4]], [[CST_5]], [[CST_7]], [[CST_6]], [[CST_8]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<16x1x3x3xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16> -> tensor<16x1x3x3xf16>
+    // CHECK:       [[CONV_0:%.+]] = IE.Convolution([[SLICE_0]],  [[FAKE_QUANTIZE_2]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x1x16x16xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x16x16xf16>
 
-    // CHECK:       [[SLICE_1:%.*]] = IE.Slice [[FAKE_QUANTIZE_1]] [0, 1, 0, 0] [1, 1, 16, 16]
+    // CHECK:       [[SLICE_1:%.+]] = IE.Slice [[FAKE_QUANTIZE_1]] [0, 1, 0, 0] [1, 1, 16, 16]
     // CHECK-SAME:      : tensor<1x2x16x16xf16> to tensor<1x1x16x16xf16>
-    // CHECK-DAG:   [[CST_9:%.*]] = const.Declare tensor<16x1x3x3xf16> = dense<1.000000e+00> : tensor<32x1x3x3xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 3, 3]>]
-    // CHECK-DAG:   [[CST_10:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
-    // CHECK-DAG:   [[CST_11:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
-    // CHECK-DAG:   [[CST_12:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
-    // CHECK-DAG:   [[CST_13:%.*]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_9:%.+]] = const.Declare tensor<16x1x3x3xf16> = dense<1.000000e+00> : tensor<32x1x3x3xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 3, 3]>]
+    // CHECK-DAG:   [[CST_10:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_11:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<0.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_12:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
+    // CHECK-DAG:   [[CST_13:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 1]>]
 
-    // CHECK:       [[FAKE_QUANTIZE_3:%.*]] = IE.FakeQuantize([[CST_9]], [[CST_10]], [[CST_12]], [[CST_11]], [[CST_13]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<16x1x3x3xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16> -> tensor<16x1x3x3xf16>
-    // CHECK:       [[CONV_1:%.*]] = IE.Convolution([[SLICE_1]],  [[FAKE_QUANTIZE_3]])
+    // CHECK:       [[FAKE_QUANTIZE_3:%.+]] = IE.FakeQuantize([[CST_9]], [[CST_10]], [[CST_12]], [[CST_11]], [[CST_13]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<16x1x3x3xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16>, tensor<16x1x1x1xf16> -> tensor<16x1x3x3xf16>
+    // CHECK:       [[CONV_1:%.+]] = IE.Convolution([[SLICE_1]],  [[FAKE_QUANTIZE_3]])
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:      : tensor<1x1x16x16xf16>, tensor<16x1x3x3xf16> -> tensor<1x16x16x16xf16>
 
-    // CHECK:       [[RESULT:%.*]] = IE.Concat([[CONV_0]], [[CONV_1]]) {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK:       [[RESULT:%.+]] = IE.Concat([[CONV_0]], [[CONV_1]]) {per_axis = #IE.Concat<axis = 1 : i64>}
     // CHECK-SAME:      : tensor<1x16x16x16xf16>, tensor<1x16x16x16xf16> -> tensor<1x32x16x16xf16>
     // CHECK:       return [[RESULT]]
 }

@@ -103,7 +103,7 @@ void ReduceNumTilesForSmallModelsPass::safeRunOnModule() {
         matMulRatio > EXPERIMENTAL_SMALL_MODEL_MATMUL_RATIO && softmaxRatio > EXPERIMENTAL_SMALL_MODEL_SOFTMAX_RATIO) {
         auto tileOp = config::getTileExecutor(moduleOp);
         tileOp.setCount(1);
-        auto numDMAPorts = config::getAvailableExecutor(moduleOp, VPU::ExecutorKind::DMA_NN);
+        auto numDMAPorts = config::getAvailableExecutor(moduleOp, config::ExecutorKind::DMA_NN);
         numDMAPorts.setCount(1);
     }
 }

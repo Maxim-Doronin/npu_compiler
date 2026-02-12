@@ -25,7 +25,7 @@ mlir::LogicalResult ManagedMappedInferenceRewriter::matchAndRewrite(VPUASM::Mana
     managedMappedInferenceDescriptor.write<Fields::taskReferenceCount_MMI_task_configs>(origOp.getBarrierCount());
     managedMappedInferenceDescriptor.write<Fields::taskReferenceCount_MMI_initial_barriers>(
             origOp.getBootstrapBarriersCount());
-    managedMappedInferenceDescriptor.write<Fields::MMI_bootstrap_workitems_count>(origOp.getBootsrapWorkItemsCount());
+    managedMappedInferenceDescriptor.write<Fields::MMI_bootstrap_workitems_count>(origOp.getBootstrapWorkItemsCount());
     managedMappedInferenceDescriptor.write<Fields::MMI_actshv_used>(origOp.getActshvUsed());
     managedMappedInferenceDescriptor.write<Fields::MMI_dpu_used>(origOp.getDpuUsed());
     managedMappedInferenceDescriptor.write<Fields::MMI_media_used>(origOp.getMediaUsed());

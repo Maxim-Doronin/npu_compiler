@@ -8,7 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/map_bilinear_interpolate_on_dpu_strategy_getter.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -44,7 +44,7 @@ mlir::Value alignInputChannels(mlir::PatternRewriter& rewriter, mlir::Location l
     auto padBegin = mlir::SmallVector<int64_t>(inputShape.size(), 0);
     auto padEnd = mlir::SmallVector<int64_t>(inputShape.size(), 0);
     padEnd[vpux::Dims4D::Act::C.ind()] = alignedInputC - inputShape[Dims4D::Act::C.ind()];
-    auto inputExpandOp = rewriter.create<IE::ExpandOp>(appendLoc(loc, "_expand"), input,
+    auto inputExpandOp = rewriter.create<IE::ExpandOp>(appendLoc(loc, "expand"), input,
                                                        getIntArrayAttr(rewriter, ArrayRef(padBegin)),
                                                        getIntArrayAttr(rewriter, ArrayRef(padEnd)));
     return inputExpandOp.getOutput();
@@ -201,7 +201,7 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
         mlir::SmallVector<int64_t> staticSizes = to_small_vector(scaleInputShape);
         staticSizes[axis.ind()] = 1;
         // Create Slice op with first line/column
-        auto newLoc = appendLoc(loc, llvm::formatv("_begin_{0}_{1}", staticOffsets, staticSizes));
+        auto newLoc = appendLoc(loc, "begin_{0}_{1}", staticOffsets, staticSizes);
         auto beginSliceOp =
                 rewriter.create<IE::SliceOp>(newLoc, input, getIntArrayAttr(rewriter, ArrayRef(staticOffsets)),
                                              getIntArrayAttr(rewriter, ArrayRef(staticSizes)));
@@ -209,9 +209,8 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
             // In order to benefit from some further optimizations it is needed that all the concat inputs to be NCE
             // operations. So some identity pooling operations are artificially inserted in order to make this
             // optimizations happen
-            auto identityOpResult =
-                    createIdentityPooling(rewriter, appendLoc(newLoc, llvm::formatv("_{0}", outputSliceIndex)),
-                                          beginSliceOp.getResult(), outType);
+            auto identityOpResult = createIdentityPooling(rewriter, appendLoc(newLoc, "{0}", outputSliceIndex),
+                                                          beginSliceOp.getResult(), outType);
             gatheredConcatInputs.push_back(identityOpResult);
             outputSliceIndex++;
         }
@@ -230,7 +229,7 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
         mlir::SmallVector<int64_t> staticSizes = to_small_vector(scaleInputShape);
         staticSizes[axis.ind()] = 2;
         // Create Slice op with two consecutive lines/columns
-        auto newLoc = appendLoc(loc, llvm::formatv("_middle_{0}_{1}", staticOffsets, staticSizes));
+        auto newLoc = appendLoc(loc, "middle_{0}_{1}", staticOffsets, staticSizes);
         auto middleSliceOp =
                 rewriter.create<IE::SliceOp>(newLoc, input, getIntArrayAttr(rewriter, ArrayRef(staticOffsets)),
                                              getIntArrayAttr(rewriter, ArrayRef(staticSizes)));
@@ -238,9 +237,9 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
         // Create all GroupConv that uses the uses the current slice
         while (outputSliceIndex < checked_cast<size_t>(outputSize) &&
                allInputSlicesOffsets[outputSliceIndex] == currentOffset) {
-            auto groupConvResult = createGenericGroupConv(
-                    rewriter, appendLoc(newLoc, llvm::formatv("_{0}", outputSliceIndex)), middleSliceOp.getResult(),
-                    outType, allFractionCoefficients, outputSliceIndex, groupConvWeightsShape, outputSize);
+            auto groupConvResult = createGenericGroupConv(rewriter, appendLoc(newLoc, "{0}", outputSliceIndex),
+                                                          middleSliceOp.getResult(), outType, allFractionCoefficients,
+                                                          outputSliceIndex, groupConvWeightsShape, outputSize);
             gatheredConcatInputs.push_back(groupConvResult);
             outputSliceIndex++;
         }
@@ -257,7 +256,7 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
         mlir::SmallVector<int64_t> staticSizes = to_small_vector(scaleInputShape);
         staticSizes[axis.ind()] = 1;
         // Create Slice op with last line/column
-        auto newLoc = appendLoc(loc, llvm::formatv("_end_{0}_{1}", staticOffsets, staticSizes));
+        auto newLoc = appendLoc(loc, "end_{0}_{1}", staticOffsets, staticSizes);
         auto endSliceOp =
                 rewriter.create<IE::SliceOp>(newLoc, input, getIntArrayAttr(rewriter, ArrayRef(staticOffsets)),
                                              getIntArrayAttr(rewriter, ArrayRef(staticSizes)));
@@ -265,9 +264,8 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
             // In order to benefit from some further optimizations implemented for Concat->Slice optimizations
             // it is needed that all the concat inputs to be NCE operations
             // So some identity pooling operations are artificially inserted in order to make this optimization happen
-            auto identityOpResult =
-                    createIdentityPooling(rewriter, appendLoc(newLoc, llvm::formatv("_{0}", outputSliceIndex)),
-                                          endSliceOp.getResult(), outType);
+            auto identityOpResult = createIdentityPooling(rewriter, appendLoc(newLoc, "{0}", outputSliceIndex),
+                                                          endSliceOp.getResult(), outType);
             gatheredConcatInputs.push_back(identityOpResult);
             outputSliceIndex++;
         }
@@ -276,7 +274,7 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
     //
     // Final Concat of all operations that do the scale
     //
-    auto outputConcatOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "_output_concat"), gatheredConcatInputs, axis);
+    auto outputConcatOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "output_concat"), gatheredConcatInputs, axis);
     return outputConcatOp.getOutput();
 }
 
@@ -315,7 +313,7 @@ mlir::LogicalResult IE::MapBilinearInterpolateOnDPUBaseRewriter::matchAndRewrite
     // Vertical scale
     //
     if (llvm::find(axesValue, Dims4D::Act::H.ind()) != axesValue.end() && inputH != outputH) {
-        scaleInput = scaleOnAxis(rewriter, takeOpLoc(origOp, "_scale_h"), scaleInput, inputType, inputH, outputH,
+        scaleInput = scaleOnAxis(rewriter, takeOpLoc(origOp, "scale_h"), scaleInput, inputType, inputH, outputH,
                                  vpux::Dims4D::Act::H, mapCoord);
         _log.nest().trace("The vertical scaling is done.");
     }
@@ -324,7 +322,7 @@ mlir::LogicalResult IE::MapBilinearInterpolateOnDPUBaseRewriter::matchAndRewrite
     // Horizontal scale
     //
     if (llvm::find(axesValue, Dims4D::Act::W.ind()) != axesValue.end() && inputW != outputW) {
-        scaleInput = scaleOnAxis(rewriter, takeOpLoc(origOp, "_scale_w"), scaleInput, outputType, inputW, outputW,
+        scaleInput = scaleOnAxis(rewriter, takeOpLoc(origOp, "scale_w"), scaleInput, outputType, inputW, outputW,
                                  vpux::Dims4D::Act::W, mapCoord);
         _log.nest().trace("The horizontal scaling is done.");
     }
@@ -371,7 +369,7 @@ bool vpux::IE::isLegalInterpolateOp(IE::InterpolateOp op, bool interpolateAsSEOp
     // Use ExecutorOpInterface to determine if SHAVE is preferred
     if (auto iface = mlir::dyn_cast<IE::ExecutorOpInterface>(op.getOperation())) {
         auto execs = iface.getPreferredExecutors();
-        if (!execs.empty() && execs[0] == VPU::ExecutorKind::SHAVE_ACT) {
+        if (!execs.empty() && execs[0] == config::ExecutorKind::SHAVE_ACT) {
             return true;
         }
     }
@@ -446,7 +444,8 @@ void MapBilinearInterpolateOnDPUPass::safeRunOnFunc() {
         _log.trace("{0}", msg.str());
     };
 
-    auto strategy = IE::createMapBilinearInterpolateOnDPUStrategy(func, _interpolateAsSEOp);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getMapBilinearInterpolateOnDPUStrategy(_interpolateAsSEOp);
 
     mlir::ConversionTarget target(ctx);
     target.addLegalOp<IE::ExpandOp>();

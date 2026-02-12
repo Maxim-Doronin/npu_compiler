@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,8 +13,8 @@ func.func @UseLeakyRelu(%arg0: tensor<1x16x300x300xf32>) -> tensor<1x16x300x300x
         tensor<1x16x300x300xf32>, tensor<1x16xf32> -> tensor<1x16x300x300xf32>
     return %1 : tensor<1x16x300x300xf32>
 
-    // CHECK:       %[[VAL0:.*]] = IE.LeakyRelu(%arg0)
+    // CHECK:       [[VAL0:%.+]] = IE.LeakyRelu(%arg0)
     // CHECK-SAME:      negative_slope = 1.000000e+00
     // CHECK-NOT:   IE.PRelu
-    // CHECK:       return %[[VAL0]]
+    // CHECK:       return [[VAL0]]
 }

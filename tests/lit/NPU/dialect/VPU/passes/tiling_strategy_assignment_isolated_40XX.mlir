@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,7 +24,7 @@ func.func @SplitDepthConvWithBigC(%arg0: tensor<1x5120x64x4xf16, {order = #NHWC}
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<5120x16x1x1xf16, {order = #NHWC}>
     // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<5120x1x1x4xsi32, {order = #NHWC}>
-    // CHECK: [[DWConv:%.*]] = VPU.NCE.DepthConvolution(%arg0, [[CST]], [[CST0]])
+    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[CST]], [[CST0]])
     // CHECK-SAME:              pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:               rawFilterShape = [5120, 1, 1, 1], strides = [1, 1],
     // CHECK-SAME:               tilingStrategy = [1, 4, 1, 1]} -> tensor<1x5120x64x4xf16, {order = #NHWC}>
@@ -53,7 +53,7 @@ func.func @NoSplitDepthConvOverCWithSOK(%arg0: tensor<1x160x3840x4xf16, {order =
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<160x16x1x1xf16, {order = #NHWC}>
     // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<160x1x1x4xsi32, {order = #NHWC}>
-    // CHECK: [[DWConv:%.*]] = VPU.NCE.DepthConvolution(%arg0, [[CST]], [[CST0]])
+    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[CST]], [[CST0]])
     // CHECK-SAME:              multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
     // CHECK-SAME:              pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:               rawFilterShape = [160, 1, 1, 1], strides = [1, 1],
@@ -126,7 +126,7 @@ func.func @SplitSparseDepthConvWithBigC(%arg0: tensor<1x4080x40x40xf16, {order =
     return %0 : !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
 
     // CHECK-DAG: [[INPUT:%.+]] = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
-    // CHECK-DAG: [[WT:%.*]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4080x1x1x4xsi32>, [#const.Reorder<#NHWC>]
+    // CHECK-DAG: [[WT:%.+]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4080x1x1x4xsi32>, [#const.Reorder<#NHWC>]
     // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[INPUT]], [[WT]]) {
     // CHECK:            tilingStrategy = [1, 19, 1, 1]
     // CHECK-SAME:     -> !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
@@ -181,7 +181,7 @@ func.func @SplitSparseDepthConvWithBigCWithSOK(%arg0: tensor<1x4080x40x40xf16, {
     return %0 : !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
 
     // CHECK-DAG: [[INPUT:%.+]] = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
-    // CHECK-DAG: [[WT:%.*]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4080x1x1x4xsi32>, [#const.Reorder<#NHWC>]
+    // CHECK-DAG: [[WT:%.+]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4080x1x1x4xsi32>, [#const.Reorder<#NHWC>]
     // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[INPUT]], [[WT]]) {
     // CHECK:            multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
     // CHECK:            tilingStrategy = [1, 11, 1, 1]
@@ -668,4 +668,21 @@ func.func @NCEMatMulSOGAndCTile(%arg0: tensor<16x1x128x1x4xf16, {order = #GNHWC}
 
     // CHECK:         VPU.NCE.MatMul
     // CHECK-SAME:    tilingStrategy = [1, 1, 3, 1, 1]
+}
+
+
+// -----
+
+!quantileType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+
+// CHECK-LABEL: @TileGatherDMAOnIndices
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<184320x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+// CHECK-SAME:      [[INDICES:%.+]]: tensor<23040x1xi64>
+
+func.func @TileGatherDMAOnIndices(%arg0: tensor<184320x2880x!quantileType>, %arg1: tensor<23040x1xi64>) -> tensor<23040x2880x!quantileType> {
+    %0 = VPU.GatherDMA(%arg0, %arg1) {axis_value = 0 : i64, batch_dims = 0 : i64} : tensor<184320x2880x!quantileType>, tensor<23040x1xi64> -> tensor<23040x2880x!quantileType>
+    return %0 : tensor<23040x2880x!quantileType>
+
+    // CHECK:       [[GATHERDMA:%.+]] = VPU.GatherDMA([[INPUT]], [[INDICES]]) {axis_value = 0 : i64, batch_dims = 0 : i64, tilingStrategy = [23, 1]}
+    // CHECK:       return  [[GATHERDMA]]
 }

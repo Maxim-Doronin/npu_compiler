@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
-#include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/utils.hpp"
 #include "vpux/compiler/core/profiling.hpp"
 
 #include <npu_40xx_nnrt.hpp>
@@ -113,7 +112,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg50XX::NNrtConfigOp::getRelocationIn
 }
 
 void vpux::NPUReg50XX::NNrtConfigOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr sym_name,
-                                           mlir::UnitAttr isActKernelInvocations, mlir::SymbolRefAttr actShaveRt,
+                                           bool isActKernelInvocations, mlir::SymbolRefAttr actShaveRt,
                                            mlir::ArrayAttr actShaveStacks, mlir::SymbolRefAttr dmaHwpBase,
                                            mlir::SymbolRefAttr hwpWorkpointCfg,
                                            vpux::NPUReg50XX::Descriptors::VpuNNRTConfig&& descriptor) {

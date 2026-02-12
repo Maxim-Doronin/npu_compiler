@@ -40,7 +40,8 @@ void vpux::VPU::arch40xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
     VPU::buildTilingPipeline(pm, VPU::TilingOptions(options), log);
 
     if (options.enableScfComputeOpsOutlining) {
-        VPU::buildScfComputeOpsOutliningPipeline(pm, options.loopUnrollFactor, log);
+        VPU::buildScfComputeOpsOutliningPipeline(pm, options.loopUnrollFactor, options.enableProfiling,
+                                                 options.enableCascadedUnrolling, log);
     }
 
     auto& nestedPm = options.enableScfComputeOpsOutlining ? pm.nest<mlir::ModuleOp>() : pm;
@@ -113,6 +114,7 @@ void vpux::VPU::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     pm.addPass(VPU::createFuseClampPass(log));
+    pm.addPass(VPU::createFuseConvertPass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(options.enableOutputEnsurance,
                                                            options.enableDequantWeightEnsuranceBeforeStrategy,

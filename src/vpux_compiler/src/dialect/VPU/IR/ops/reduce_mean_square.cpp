@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,7 +60,8 @@ bool vpux::VPU::ReduceMeanSquareOp::checkStrategyCompatibility(VPU::MultiCluster
 vpux::VPU::DistributionInfo vpux::VPU::ReduceMeanSquareOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -116,7 +117,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::ReduceMeanSquareOp::getTilingStrategy(T
 //
 
 void vpux::VPU::ReduceMeanSquareOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state,
-                                          ::mlir::Value input, ::mlir::ArrayAttr axes_value,
-                                          ::mlir::UnitAttr keep_dims) {
-    build(builder, state, input, axes_value, keep_dims, {});
+                                          ::mlir::Value input, ::mlir::ArrayAttr axes_value, ::mlir::UnitAttr keep_dims,
+                                          ::mlir::FloatAttr epsilon) {
+    build(builder, state, input, axes_value, keep_dims, epsilon, {});
 }

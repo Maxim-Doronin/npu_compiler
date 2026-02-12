@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,10 +17,7 @@ namespace arch40xx {
 // to avoid confusion when we have the same option for IE and the VPU dialect, but with a different value
 //
 
-struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, public vpux::BatchCompileOptionsAdapter {
-    DefaultHWOptionsDeviceBase(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
-    }
-
+struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
     BoolOption enableExperimentalSEPtrsOperations{*this, "enable-experimental-se-ptrs-operations",
                                                   llvm::cl::desc("Enable the experimental operation of SEP"),
                                                   llvm::cl::init(false)};
@@ -39,7 +36,7 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
 
     IntOption workloadManagementBarrierCountThreshold{*this, "workload-management-barrier-count-threshold",
                                                       llvm::cl::desc("Threshold for WLM optimization"),
-                                                      llvm::cl::init(VIRTUAL_BARRIER_THRESHOLD_WLM)};
+                                                      llvm::cl::init(std::numeric_limits<int>::max())};
 
     mlir::detail::PassOptions::Option<DMAFifoType> workloadManagementDmaFifoType{
             *this, "workload-management-dma-fifo-type",
@@ -51,7 +48,7 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
     BoolOption wlmRollback{
             *this, "wlm-rollback",
             llvm::cl::desc("When compilation with WLM fails, automatically switch to WLM-disabled pipeline"),
-            llvm::cl::init(true)};
+            llvm::cl::init(false)};
 
     BoolOption enableSwKernelFifoPerShaveEngine{*this, "enable-sw-kernel-fifo-per-shave-engine",
                                                 llvm::cl::desc("Enable dedicated FIFO for each ActShave engine"),
@@ -64,7 +61,7 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
     BoolOption enableReorderConcatBranches{
             *this, "enable-reorder-concat-branches",
             llvm::cl::desc("Reorder branches of concat to make sure it is executed branch by branch"),
-            llvm::cl::init(false)};
+            llvm::cl::init(true)};
 
     BoolOption enableSegmentedDmaFusion{*this, "enable-segmented-dma-fusion",
                                         llvm::cl::desc("Enable fusion of segmented DMAs"), llvm::cl::init(false)};
@@ -86,8 +83,10 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
                                        "INITIAL_BARRIER_DMAS_SCHEDULED",
                                        "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
-                                       "ALL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMAs to program all barriers"))};
+                                       "ALL_BARRIER_DMAS_SCHEDULED", "Compiler generates DMAs to program all barriers"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K,
+                                       "ALL_BARRIER_DMAS_SCHEDULED_4K",
+                                       "Compiler generates DMAs to program all barriers leveraging 4K barrier block"))};
 
     IntOption modelIdentifier{
             *this, "model-identifier",
@@ -95,6 +94,10 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
             llvm::cl::init(0)};
     BoolOption enableDpuFromShaveControl{*this, "enable-dpu-from-shave-control",
                                          llvm::cl::desc("Enable Dpu from shave control"), llvm::cl::init(false)};
+
+    BoolOption enableRunMVNNormalizeOnDPU{*this, "enable-run-mvn-normalize-on-dpu",
+                                          llvm::cl::desc("Enable RunMVNNormalizeOnDPU pass on DPU"),
+                                          llvm::cl::init(false)};
 };
 
 //

@@ -47,3 +47,7 @@ bool FuseConvertToDPUChecker::isFusionToParentDPUOpSupported(mlir::Operation* dp
 
     return true;
 }
+
+bool FuseConvertToDPUChecker::isConvertOnDPUBeneficial() const {
+    return false;
+}

@@ -41,7 +41,7 @@ func.func @UnrollDistributedOpsDMADistributedInputOutput() {
     %bar = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_cmx_buffer : !SubviewDistributedType) outputs(%output_cmx_buffer : !OutputDistributedType) -> !OutputDistributedType
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_cmx_buffer : !SubviewDistributedType) outputs(%output_cmx_buffer : !OutputDistributedType) -> !OutputDistributedType
     }
 
     return
@@ -54,15 +54,15 @@ func.func @UnrollDistributedOpsDMADistributedInputOutput() {
     // CHECK:    [[OUTPUT_BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <266848> -> memref<1x32x267x31x!qElemType, #NHWC, [@CMX_NN, 2]>
     // CHECK:    [[BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    // CHECK:      [[DMA0:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_BUF0]] : memref<1x32x268x31x!qElemType, {order = #NHWC, strides = [274432, 1, 1024, 32]}, [@CMX_NN, 0]>)
+    // CHECK:      [[DMA0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_BUF0]] : memref<1x32x268x31x!qElemType, {order = #NHWC, strides = [274432, 1, 1024, 32]}, [@CMX_NN, 0]>)
     // CHECK-SAME: outputs([[OUTPUT_BUF0]] : memref<1x32x268x31x!qElemType, #NHWC, [@CMX_NN, 0]>) -> memref<1x32x268x31x!qElemType, #NHWC, [@CMX_NN, 0]>
     // CHECK:    }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    // CHECK:      [[DMA1:%.+]] = VPUIP.NNDMA {port = 1 : i64} inputs([[INPUT_BUF1]] : memref<1x32x269x31x!qElemType, {order = #NHWC, strides = [275456, 1, 1024, 32]}, [@CMX_NN, 1]>)
+    // CHECK:      [[DMA1:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[INPUT_BUF1]] : memref<1x32x269x31x!qElemType, {order = #NHWC, strides = [275456, 1, 1024, 32]}, [@CMX_NN, 1]>)
     // CHECK-SAME: outputs([[OUTPUT_BUF1]] : memref<1x32x269x31x!qElemType, #NHWC, [@CMX_NN, 1]>) -> memref<1x32x269x31x!qElemType, #NHWC, [@CMX_NN, 1]>
     // CHECK:    }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    // CHECK:      [[DMA2:%.+]] = VPUIP.NNDMA {port = 0 : i64, split_candidate} inputs([[INPUT_BUF2]] : memref<1x32x267x31x!qElemType, {order = #NHWC, strides = [273408, 1, 1024, 32]}, [@CMX_NN, 2]>)
+    // CHECK:      [[DMA2:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs([[INPUT_BUF2]] : memref<1x32x267x31x!qElemType, {order = #NHWC, strides = [273408, 1, 1024, 32]}, [@CMX_NN, 2]>)
     // CHECK-SAME: outputs([[OUTPUT_BUF2]] : memref<1x32x267x31x!qElemType, #NHWC, [@CMX_NN, 2]>) -> memref<1x32x267x31x!qElemType, #NHWC, [@CMX_NN, 2]>
     // CHECK:    }
 }
@@ -104,7 +104,7 @@ func.func @UnrollDistributedOpsDMADistributedInputOutputWithDifferentMemoryView(
     %bar = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_cmx_buffer : !SubviewDistributedType) outputs(%output_cmx_buffer : !OutputDistributedType) -> !OutputDistributedType
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_cmx_buffer : !SubviewDistributedType) outputs(%output_cmx_buffer : !OutputDistributedType) -> !OutputDistributedType
     }
 
     return
@@ -117,15 +117,15 @@ func.func @UnrollDistributedOpsDMADistributedInputOutputWithDifferentMemoryView(
     // CHECK:    [[OUTPUT_BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <266848> -> memref<1x32x266x29x!qElemType, #NHWC, [@CMX_NN, 2]>
     // CHECK:    [[BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    // CHECK:      [[DMA0:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_BUF0]] : memref<1x32x267x29x!qElemType, {order = #NHWC, strides = [299040, 1, 1120, 32]}, [@CMX_NN, 0]>)
+    // CHECK:      [[DMA0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_BUF0]] : memref<1x32x267x29x!qElemType, {order = #NHWC, strides = [299040, 1, 1120, 32]}, [@CMX_NN, 0]>)
     // CHECK-SAME: outputs([[OUTPUT_BUF0]] : memref<1x32x267x29x!qElemType, #NHWC, [@CMX_NN, 0]>) -> memref<1x32x267x29x!qElemType, #NHWC, [@CMX_NN, 0]>
     // CHECK:    }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    // CHECK:      [[DMA1:%.+]] = VPUIP.NNDMA {port = 1 : i64} inputs([[INPUT_BUF1]] : memref<1x32x267x29x!qElemType, {order = #NHWC, strides = [299040, 1, 1120, 32]}, [@CMX_NN, 1]>)
+    // CHECK:      [[DMA1:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[INPUT_BUF1]] : memref<1x32x267x29x!qElemType, {order = #NHWC, strides = [299040, 1, 1120, 32]}, [@CMX_NN, 1]>)
     // CHECK-SAME: outputs([[OUTPUT_BUF1]] : memref<1x32x267x29x!qElemType, #NHWC, [@CMX_NN, 1]>) -> memref<1x32x267x29x!qElemType, #NHWC, [@CMX_NN, 1]>
     // CHECK:    }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    // CHECK:      [[DMA2:%.+]] = VPUIP.NNDMA {port = 0 : i64, split_candidate} inputs([[INPUT_BUF2]] : memref<1x32x266x29x!qElemType, {order = #NHWC, strides = [297920, 1, 1120, 32]}, [@CMX_NN, 2]>)
+    // CHECK:      [[DMA2:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs([[INPUT_BUF2]] : memref<1x32x266x29x!qElemType, {order = #NHWC, strides = [297920, 1, 1120, 32]}, [@CMX_NN, 2]>)
     // CHECK-SAME: outputs([[OUTPUT_BUF2]] : memref<1x32x266x29x!qElemType, #NHWC, [@CMX_NN, 2]>) -> memref<1x32x266x29x!qElemType, #NHWC, [@CMX_NN, 2]>
     // CHECK:    }
 }

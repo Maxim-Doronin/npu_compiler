@@ -18,7 +18,8 @@ enum class NCETaskType : uint64_t;
 
 namespace VPUNN {
 enum class Operation;
-}
+enum class VPUDevice;
+}  // namespace VPUNN
 
 namespace vpux {
 namespace VPUIP {
@@ -36,6 +37,7 @@ struct WorkloadCostParams {
     DimsOrder inOrder;
     DimsOrder outOrder;
     config::ArchKind arch;
+    VPUNN::VPUDevice vpuDevice;
     Shape fullInputShape;
     Shape inputShape;
     Shape outputShape;
@@ -54,6 +56,7 @@ struct WorkloadCostParams {
     VPU::PPEAttr ppeAttr = nullptr;
     bool isNcePermute = false;
     bool isNceCompressConv = false;
+    std::optional<VPU::MPEEngineAttr> mpeEngine = std::nullopt;
 };
 
 struct ShaveWorkloadCostParams {

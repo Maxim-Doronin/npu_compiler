@@ -156,7 +156,7 @@ void FuseRoPEPass::safeRunOnFunc() {
         auto cosShape = mlir::cast<mlir::RankedTensorType>(input_cos.getType()).getShape();
         auto sinShape = mlir::cast<mlir::RankedTensorType>(input_sin.getType()).getShape();
         if (cosShape != sinShape) {
-            input_cos = builder.create<IE::ReshapeOp>(appendLoc(addOp->getLoc(), "_cos_reshape"), input_cos, nullptr,
+            input_cos = builder.create<IE::ReshapeOp>(appendLoc(addOp->getLoc(), "cos_reshape"), input_cos, nullptr,
                                                       false, getIntArrayAttr(builder, sinShape));
             _log.trace("Reshaped input_cos to match input_sin shape");
         }

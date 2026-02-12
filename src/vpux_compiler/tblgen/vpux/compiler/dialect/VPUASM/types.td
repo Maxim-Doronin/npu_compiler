@@ -45,7 +45,7 @@ def VPUASM_MemLocationType : VPUASM_Type<"MemLocation"> {
 
     let parameters = (ins BufferSectionTypeParam:$section,
                             "uint64_t":$sectionIndex,
-                            "uint64_t":$byteOffset
+                            "int64_t":$byteOffset
     );
 
     // let assemblyFormat = "$section `[` $sectionIndex `]` ` ` `<` $byteOffset `>`";

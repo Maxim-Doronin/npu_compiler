@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --decompose-multi-zp-quantization-pattern %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="rewriter=decompose-multi-zp-quantization" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @DecomposeWACKVcachedPatternWithPostFP32MatMul

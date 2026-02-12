@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "utils/options.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -73,6 +73,7 @@ namespace ShaveCodeGen {
 void buildLowerSwLayers2LinalgPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createConvertEltwiseLayers2MathPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createDecomposeAggregateOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createExpandLayersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertAffine2LLVMPass(Logger log = Logger::global());
 }  // namespace ShaveCodeGen

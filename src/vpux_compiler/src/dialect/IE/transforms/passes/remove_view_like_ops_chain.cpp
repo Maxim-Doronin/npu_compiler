@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_REMOVEVIEWLIKEOPSCHAINPASS
@@ -70,42 +71,31 @@ mlir::LogicalResult ViewLikeOpsChainRewriter::matchAndRewrite(IE::ViewLikeOpInte
     }
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp->getOperand(0).getType());
-    vpux::NDTypeInterface outputType;
 
-    SmallVector<mlir::Operation*> viewLikeOps;
-    viewLikeOps.push_back(origOp);
-    auto potentialViewLikeOp = *origOp->getUsers().begin();
-    auto lastViewLikeOp = potentialViewLikeOp;
-    while (IE::isPureViewOp(potentialViewLikeOp)) {
-        viewLikeOps.push_back(potentialViewLikeOp);
-        lastViewLikeOp = potentialViewLikeOp;
-        if (!potentialViewLikeOp->hasOneUse()) {
-            return mlir::failure();
-        }
+    SmallVector<mlir::Operation*> viewLikeOps{origOp};
+    auto* currentOp = *origOp->getUsers().begin();
 
-        outputType = mlir::cast<vpux::NDTypeInterface>(potentialViewLikeOp->getResult(0).getType());
-        // Find the first ViewLikeOp in the traversing chain and break the current loop, remove the sub-chain and then
-        // traversing from next ViewLikeOp greedily in the next iteration.
+    // Traverse the chain of ViewLikeOps forward to find the longest sub-chain where the final
+    // output type matches the input type of the original op. When found, the entire sub-chain
+    // can be bypassed by replacing the last ViewLikeOp with the original input.
+    while (IE::isPureViewOp(currentOp) && currentOp->hasOneUse()) {
+        viewLikeOps.push_back(currentOp);
+
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(currentOp->getResult(0).getType());
         if (inputType == outputType) {
             break;
         }
 
-        potentialViewLikeOp = *potentialViewLikeOp->getUsers().begin();
-
-        if (!IE::isPureViewOp(potentialViewLikeOp)) {
-            break;
-        }
+        currentOp = *currentOp->getUsers().begin();
     }
+
+    auto* lastViewLikeOp = viewLikeOps.back();
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(lastViewLikeOp->getResult(0).getType());
 
     if (inputType != outputType) {
         return mlir::failure();
     }
-
-    lastViewLikeOp->getResult(0).replaceAllUsesWith(origOp->getOperand(0));
-    for (auto op : viewLikeOps) {
-        op->dropAllUses();
-        rewriter.eraseOp(op);
-    }
+    rewriter.replaceAllOpUsesWith(lastViewLikeOp, origOp->getOperand(0));
 
     return mlir::success();
 }
@@ -131,9 +121,7 @@ void RemoveViewLikeOpsChainPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ViewLikeOpsChainRewriter>(&ctx, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

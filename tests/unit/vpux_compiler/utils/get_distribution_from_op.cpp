@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/init.hpp"
 
 #include "common/utils.hpp"
@@ -59,6 +60,9 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentDuringTili
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
         module @test {
             config.Resources 3 of @NCE at 6.000000e+02 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
             func.func @main(%arg0: tensor<1x144x16x16xf16, {order = #NHWC}>) -> tensor<1x144x16x16xf16, {order = #NHWC}> {
                 %cst0 = const.Declare tensor<144x144x1x1xf16, {order = #NHWC}>
                    = dense<1.0> : tensor<144x144x1x1xf16, {order = #NHWC}>
@@ -103,14 +107,14 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentDuringTili
     const vpux::Shape size({1, 50, 16, 16});
 
     auto expectedAlignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
-    auto expectedDistribution =
-            VPU::DistributionInfoAttr::get(&ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED),
-                                           numTiles, nullptr, nullptr, nullptr, numClusters, expectedAlignment,
-                                           mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
-    auto expectedTiledDistribution =
-            VPU::DistributionInfoAttr::get(&ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED),
-                                           numTiles, nullptr, nullptr, nullptr, numClusters, /*alignment=*/nullptr,
-                                           mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+    auto expectedDistribution = VPU::DistributionInfoAttr::get(
+            &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr, nullptr,
+            nullptr, numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr,
+            nullptr, nullptr);
+    auto expectedTiledDistribution = VPU::DistributionInfoAttr::get(
+            &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr, nullptr,
+            nullptr, numClusters, /*alignment=*/nullptr, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr,
+            nullptr, nullptr);
 
     func.walk([&](VPU::SWOpInterface op) {
         auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(op.getOperation());
@@ -138,6 +142,9 @@ TEST_F(MLIR_GetDistributedTypeFromSOKConcatOpTest, SOKConcatOpSmallChannelNum) {
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
         module @test {
             config.Resources 4 of @NCE at 6.000000e+02 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
             func.func @main(%arg0: tensor<1x3x32x32xf16, {order = #NHWC}>,
                             %arg1: tensor<1x3x32x32xf16, {order = #NHWC}>)
                     -> tensor<1x3x64x32xf16, {order = #NHWC}> {
@@ -169,7 +176,7 @@ TEST_F(MLIR_GetDistributedTypeFromSOKConcatOpTest, SOKConcatOpSmallChannelNum) {
             auto expectedDistribution = VPU::DistributionInfoAttr::get(
                     &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr,
                     nullptr, nullptr, numClusters, nullptr, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr,
-                    nullptr, nullptr);
+                    nullptr, nullptr, nullptr);
 
             testDType(&ctx, clusteredOp, expectedDistribution, numClusters, true);   // test activation distributed type
             testDType(&ctx, clusteredOp, expectedDistribution, numClusters, false);  // test output distributed type
@@ -182,6 +189,9 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
         module @test {
             config.Resources 3 of @NCE at 6.000000e+02 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
             func.func @main(%arg0: tensor<1x128x16x16xf16, {order = #NHWC}>) -> tensor<1x64x16x16xf16, {order = #NHWC}> {
                 %cst0 = const.Declare tensor<128x128x1x1xf16, {order = #NHWC}>
                    = dense<1.0> : tensor<128x128x1x1xf16, {order = #NHWC}>
@@ -226,7 +236,7 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
             auto expectedDistribution = VPU::DistributionInfoAttr::get(
                     &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr,
                     nullptr, nullptr, numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr,
-                    nullptr, nullptr, nullptr);
+                    nullptr, nullptr, nullptr, nullptr);
 
             testDType(&ctx, clusteredOp, expectedDistribution, numClusters, true);   // test activation distributed type
             testDType(&ctx, clusteredOp, expectedDistribution, numClusters, false);  // test output distributed type
@@ -241,7 +251,7 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
             auto expectedDistribution = VPU::DistributionInfoAttr::get(
                     &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr,
                     nullptr, nullptr, numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr,
-                    nullptr, nullptr, nullptr);
+                    nullptr, nullptr, nullptr, nullptr);
 
             testDType(&ctx, clusteredOp, expectedDistribution, numClusters, false);  // test output distributed type
         }
@@ -253,6 +263,9 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
         module @test {
             config.Resources 3 of @NCE at 6.000000e+02 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
             func.func @main(%arg0: tensor<1x160x16x16xf16, {order = #NHWC}>) -> tensor<1x144x16x16xf16, {order = #NHWC}> {
                 %cst0 = const.Declare tensor<160x160x1x1xf16, {order = #NHWC}>
                    = dense<1.0> : tensor<160x160x1x1xf16, {order = #NHWC}>
@@ -290,10 +303,10 @@ TEST_F(MLIR_GetDistributedTypeFromOpSOKAlignmentTest, SWOpSOKAlignmentAfterSlice
     const auto numClusters = getIntAttr(&ctx, 3);
 
     auto expectedAlignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
-    auto expectedAlignedDistribution =
-            VPU::DistributionInfoAttr::get(&ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED),
-                                           numTiles, nullptr, nullptr, nullptr, numClusters, expectedAlignment,
-                                           mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+    auto expectedAlignedDistribution = VPU::DistributionInfoAttr::get(
+            &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr, nullptr,
+            nullptr, numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr,
+            nullptr, nullptr);
 
     for (auto& op : func.getOps()) {
         if (mlir::isa<VPU::MVNOp>(op)) {
@@ -360,11 +373,13 @@ TEST_P(GetDistributedTypeFromSOKOpTests, SplitOverChannelsDistribution) {
     auto expectedAlignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
     auto expectedAlignedDistribution = VPU::DistributionInfoAttr::get(
             &ctx, VPU::DistributionModeAttr::get(&ctx, expectedDistribution), numTiles, nullptr, nullptr, nullptr,
-            numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+            numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr,
+            nullptr);
 
     auto expectedUnalignedDistribution = VPU::DistributionInfoAttr::get(
             &ctx, VPU::DistributionModeAttr::get(&ctx, expectedDistribution), numTiles, nullptr, nullptr, nullptr,
-            numClusters, /*alignment*/ nullptr, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+            numClusters, /*alignment*/ nullptr, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr,
+            nullptr);
 
     auto expectedSwOpDistribution =
             isSwOpOutputDistributionAligned ? expectedAlignedDistribution : expectedUnalignedDistribution;
@@ -392,6 +407,9 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test {
         config.Resources 3 of @NCE at 6.000000e+02 MHz
+        config.PipelineOptions @Options {
+            config.Option @config.EnableODULocalRegion : true
+        }
         func.func @main(%arg0: tensor<1x144x16x16xf16, {order = #NHWC}>) -> tensor<1x144x16x16xf16, {order = #NHWC}>
         {
             %cst0 = const.Declare tensor<144x144x1x1xf16, {order = #NHWC}>
@@ -427,6 +445,9 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test {
         config.Resources 3 of @NCE at 6.000000e+02 MHz
+        config.PipelineOptions @Options {
+            config.Option @config.EnableODULocalRegion : true
+        }
         func.func @main(%arg0: tensor<1x144x16x16xf16, {order = #NHWC}>) -> tensor<1x144x16x16xf16, {order = #NHWC}>
         {
             %cst0 = const.Declare tensor<144x144x1x1xf16, {order = #NHWC}>
@@ -462,6 +483,9 @@ std::vector<DistributedTypeFromSOKOpParams> verticalFusionWrappingParams = {
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test {
         config.Resources 3 of @NCE at 6.000000e+02 MHz
+        config.PipelineOptions @Options {
+            config.Option @config.EnableODULocalRegion : true
+        }
         func.func @main(%arg0: tensor<1x2048x1x1xf16, {order = #NHWC}>)
             -> (tensor<1x12288x1x1xf16, {order = #NHWC}>, tensor<1x12288x1x1xf16, {order = #NHWC}>) {
             %cst = const.Declare tensor<12288x2048x1x1x!qElemType, {order = #NHWC}> = dense<1.000000e+00> :
@@ -497,6 +521,9 @@ std::vector<DistributedTypeFromSOKOpParams> segmentedAvgPoolParams = {
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test {
         config.Resources 3 of @NCE at 6.000000e+02 MHz
+        config.PipelineOptions @Options {
+            config.Option @config.EnableODULocalRegion : true
+        }
         func.func @main(%arg0: tensor<1x144x16x16xf16, {order = #NHWC}>) -> tensor<1x144x8x16xf16, {order = #NHWC}> {
             %0 = VPU.MVN(%arg0) {
                 across_channels = false, eps = 9.9999997473787516E-6 : f64,
@@ -521,6 +548,9 @@ std::vector<DistributedTypeFromSOKOpParams> segmentedAvgPoolParams = {
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
     module @test {
         config.Resources 3 of @NCE at 6.000000e+02 MHz
+        config.PipelineOptions @Options {
+            config.Option @config.EnableODULocalRegion : true
+        }
         func.func @main(%arg0: tensor<1x48x16x16xf16, {order = #NHWC}>)
             -> (tensor<1x96x8x16xf16, {order = #NHWC}>, tensor<1x96x8x16xf16, {order = #NHWC}>) {
             %0 = VPU.MVN(%arg0) {
@@ -611,9 +641,9 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedSingleInputSWOpDuringTilin
 
     const auto overlapDistributionMode = VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::OVERLAPPED);
     auto expectedDistribution = VPU::DistributionInfoAttr::get(
-            &ctx, overlapDistributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, /*alignment=*/nullptr,
-            mlir::UnitAttr::get(&ctx), expectedShapesAttr, expectedOffsetsAttr, expectedShapesAttr, expectedOffsetsAttr,
-            nullptr);
+            &ctx, overlapDistributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
+            /*alignment=*/nullptr, mlir::UnitAttr::get(&ctx), expectedShapesAttr, expectedOffsetsAttr,
+            expectedShapesAttr, expectedOffsetsAttr, nullptr, nullptr);
 
     const SmallVector<SmallVector<int64_t>> expectedTiledShapes = {{1, 21, 65, 513},
                                                                    {1, 21, 64, 513},
@@ -628,7 +658,7 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedSingleInputSWOpDuringTilin
     auto expectedTiledDistribution = VPU::DistributionInfoAttr::get(
             &ctx, overlapDistributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, /*alignment=*/nullptr,
             mlir::UnitAttr::get(&ctx), expectedTiledShapesAttr, expectedTiledOffsetsAttr, expectedTiledShapesAttr,
-            expectedTiledOffsetsAttr, nullptr);
+            expectedTiledOffsetsAttr, nullptr, nullptr);
 
     func.walk([&](VPU::SWOpInterface op) {
         auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(op.getOperation());
@@ -705,7 +735,7 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedMultiInputSWOpDuringTiling
     auto expectedDistribution = VPU::DistributionInfoAttr::get(
             &ctx, overlapDistributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, /*alignment=*/nullptr,
             mlir::UnitAttr::get(&ctx), expectedShapesAttr, expectedOffsetsAttr, expectedShapesAttr, expectedOffsetsAttr,
-            nullptr);
+            nullptr, nullptr);
 
     const SmallVector<SmallVector<int64_t>> expectedTiledShapes = {{1, 21, 10, 65},
                                                                    {1, 21, 10, 65},
@@ -720,7 +750,7 @@ TEST_F(MLIR_GetDistributedTypeFromSwOpTest, OverlappedMultiInputSWOpDuringTiling
     auto expectedTiledDistribution = VPU::DistributionInfoAttr::get(
             &ctx, overlapDistributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, /*alignment=*/nullptr,
             mlir::UnitAttr::get(&ctx), expectedTiledShapesAttr, expectedTiledOffsetsAttr, expectedTiledShapesAttr,
-            expectedTiledOffsetsAttr, nullptr);
+            expectedTiledOffsetsAttr, nullptr, nullptr);
 
     func.walk([&](VPU::SWOpInterface op) {
         auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(op.getOperation());
@@ -749,6 +779,9 @@ TEST_F(MLIR_GetDistributedTypeFromDepthwiseOpTest, MaxPoolOpWithODUPermuteToNCXX
         #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
         module @test {
             config.Resources 6 of @NCE at 1.700000e+03 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
             func.func @main(%arg0: tensor<1x3136x4x32xf16, {order = #NHWC}>) -> tensor<1x128x784x4xf16, {order = #NHWC}> {
                 %cst = const.Declare tensor<128x1x1x4xsi32> = dense<10> : tensor<128x1x1x4xsi32>
                 %cst_0 = const.Declare tensor<128x128x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<128x128x1x1xf16, {order = #NHWC}>
@@ -782,10 +815,10 @@ TEST_F(MLIR_GetDistributedTypeFromDepthwiseOpTest, MaxPoolOpWithODUPermuteToNCXX
     const auto numClusters = getIntAttr(&ctx, 6);
 
     auto expectedAlignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
-    auto expectedDistribution =
-            VPU::DistributionInfoAttr::get(&ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED),
-                                           numTiles, nullptr, nullptr, nullptr, numClusters, expectedAlignment,
-                                           mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+    auto expectedDistribution = VPU::DistributionInfoAttr::get(
+            &ctx, VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED), numTiles, nullptr, nullptr,
+            nullptr, numClusters, expectedAlignment, mlir::UnitAttr::get(&ctx), nullptr, nullptr, nullptr, nullptr,
+            nullptr, nullptr);
 
     func.walk([&](VPU::NCEMaxPoolOp op) {
         auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(op.getOperation());

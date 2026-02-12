@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
@@ -11,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/reorder_ir_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -142,65 +144,35 @@ void reorderConcatBranches(VPU::ConcatOp concatOp) {
         }
     }
 
+    auto totalAvailableCMXSize = getTotalCMXSize(concatOp).count();
     SmallVector<SmallVector<mlir::Operation*>> patternOps(parents.size());
     for (auto parentIt : parents | indexed) {
         auto index = parentIt.index();
         auto currentOp = parentIt.value();
-        while (mlir::isa<VPU::ViewLikeOpInterface>(currentOp)) {
+        while (mlir::isa_and_nonnull<VPU::ViewLikeOpInterface, VPU::SoftMaxOp, VPU::NCEOpInterface>(currentOp)) {
             if (!currentOp->hasOneUse()) {
-                return;
+                break;
             }
+
+            if (auto softMaxOp = mlir::dyn_cast<VPU::SoftMaxOp>(currentOp)) {
+                auto softMaxInType = mlir::cast<vpux::NDTypeInterface>(softMaxOp.getInput().getType());
+                auto softMaxOutType = mlir::cast<vpux::NDTypeInterface>(softMaxOp.getOutput().getType());
+                auto requiredCMXSize = VPU::getRequiredCMXSize(softMaxInType) + VPU::getRequiredCMXSize(softMaxOutType);
+                // It is not beneficial to reorder if CMX space is sufficient, because NCEOp(4) can be parallelized with
+                // SoftMax(2).
+                // requiredCMXSize * 1.5: The minimum CMX size required for SoftMax(2) and NCEOp(4).
+                if (requiredCMXSize.count() * 1.5 < totalAvailableCMXSize) {
+                    break;
+                }
+            }
+
             patternOps[index].push_back(currentOp);
             auto operand = currentOp->getOperand(0);
             if (mlir::isa<mlir::BlockArgument>(operand)) {
-                return;
+                break;
             }
 
             currentOp = operand.getDefiningOp();
-        }
-
-        if (mlir::isa<VPU::NCEOpInterface>(currentOp)) {
-            if (!currentOp->hasOneUse()) {
-                return;
-            }
-
-            patternOps[index].push_back(currentOp);
-
-            currentOp = currentOp->getOperand(0).getDefiningOp();
-            if (auto softMaxOp = mlir::dyn_cast_or_null<VPU::SoftMaxOp>(currentOp)) {
-                if (!softMaxOp.getOutput().hasOneUse()) {
-                    return;
-                }
-
-                patternOps[index].push_back(softMaxOp);
-
-                currentOp = softMaxOp.getInput().getDefiningOp();
-                if (mlir::isa_and_nonnull<VPU::NCEOpInterface>(currentOp)) {
-                    if (!currentOp->getResult(0).hasOneUse()) {
-                        return;
-                    }
-
-                    // Consider CMX consumption so as not to prevent task parallelism
-                    auto module = concatOp.getOperation()->getParentOfType<mlir::ModuleOp>();
-                    const auto numClusters = config::getTileExecutor(module).getCount();
-                    const auto availableCMXSizePerCluster = vpux::VPU::getTotalCMXSize(currentOp).count();
-                    const auto totalAvailableCMXSize = availableCMXSizePerCluster * numClusters;
-
-                    auto softMaxInType = mlir::cast<vpux::NDTypeInterface>(softMaxOp.getInput().getType());
-                    auto softMaxOutType = mlir::cast<vpux::NDTypeInterface>(softMaxOp.getOutput().getType());
-                    auto nceOpInType0 = mlir::cast<vpux::NDTypeInterface>(currentOp->getOperand(0).getType());
-                    auto nceOpInType1 = mlir::cast<vpux::NDTypeInterface>(currentOp->getOperand(1).getType());
-                    auto nceOpOutType = mlir::cast<vpux::NDTypeInterface>(currentOp->getResult(0).getType());
-                    auto requiredCMX = VPU::getRequiredCMXSize(softMaxInType) +
-                                       VPU::getRequiredCMXSize(softMaxOutType) + VPU::getRequiredCMXSize(nceOpInType0) +
-                                       VPU::getRequiredCMXSize(nceOpInType1) + VPU::getRequiredCMXSize(nceOpOutType);
-                    if (requiredCMX.count() < totalAvailableCMXSize) {
-                        return;
-                    }
-
-                    patternOps[index].push_back(currentOp);
-                }
-            }
         }
     }
 
@@ -227,6 +199,40 @@ void reorderConcatBranches(VPU::ConcatOp concatOp) {
     }();
 
     if (!isSymmetricConcat) {
+        return;
+    }
+
+    auto isBeneficialToReorder = [&patternOps] {
+        const auto& firstBranch = patternOps.front();
+
+        // If SoftMax exists, we can generally gain benefits by parallelizing it with DPU tasks.
+        auto hasSoftMaxOp = llvm::any_of(firstBranch, [&](auto op) {
+            return mlir::isa<VPU::SoftMaxOp>(op);
+        });
+        if (hasSoftMaxOp) {
+            return true;
+        }
+
+        // If SoftMax does not exist and the DPU Task has another branch, there may be risks.
+        auto hasDynamicWeightsFromOtherBranch = llvm::any_of(firstBranch, [&](auto op) {
+            if (auto nceOp = mlir::dyn_cast_or_null<VPU::NCEOpInterface>(op)) {
+                auto weights = nceOp.getWeightsOperand();
+                if (weights == nullptr || mlir::isa<mlir::BlockArgument>(weights)) {
+                    return false;
+                }
+
+                return !mlir::isa_and_nonnull<Const::DeclareOp>(weights.getDefiningOp());
+            }
+            return false;
+        });
+        if (hasDynamicWeightsFromOtherBranch) {
+            return false;
+        }
+
+        return true;
+    }();
+
+    if (!isBeneficialToReorder) {
         return;
     }
 

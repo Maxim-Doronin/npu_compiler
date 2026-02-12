@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,12 +14,12 @@ func.func @SwapTransposeWithPerTensorQuant(%arg0: tensor<1x64x128x8xf16>) -> ten
 
     return %1 : tensor<1x8x70x134xf16>
 
-    // CHECK:   %[[TRANSPOSE:.*]] = IE.Transpose(%arg0) {order_value = #NWCH}
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose(%arg0) {order_value = #NWCH}
     // CHECK-SAME:  : tensor<1x64x128x8xf16> -> tensor<1x8x64x128xf16>
 
-    // CHECK:   %[[PAD:.*]] = IE.Pad(%[[TRANSPOSE]])
+    // CHECK:   [[PAD:%.+]] = IE.Pad([[TRANSPOSE]])
     // CHECK-SAME:  : tensor<1x8x64x128xf16> -> tensor<1x8x70x134xf16>
 
-    // CHECK:   return %[[PAD]] : tensor<1x8x70x134xf16>
+    // CHECK:   return [[PAD]] : tensor<1x8x70x134xf16>
 
 }

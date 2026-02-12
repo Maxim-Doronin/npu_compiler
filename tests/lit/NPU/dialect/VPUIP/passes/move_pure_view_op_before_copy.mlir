@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -289,36 +289,6 @@ func.func @DoNotMoveSubviewToTheFrontOfTillingCopy(%arg0: memref<1x1x136x240xf16
     // CHECK-SAME:  outputs({{[^:]+}} : memref<1x1x136x240xf16, @DDR>) -> memref<1x1x136x240xf16, @DDR>
     // CHECK:       return [[COPY0]] : memref<1x1x136x240xf16, @DDR>
 
-}
-
-// -----
-
-#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-func.func @NoChangesForStridedCopy(
-        %arg0: memref<1x2x16x4xf16, @DDR>)
-        -> memref<16x4xf16, @DDR> {
-    %0 = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 16, 4] : memref<1x2x16x4xf16, @DDR> to memref<1x1x16x4xf16, {order = #NCHW, strides = [128, 64, 4, 1]}, @DDR>
-
-    %1 = memref.alloc() : memref<1x1x16x4xf16, @DDR>
-    %2 = VPUIP.Copy inputs(%0 : memref<1x1x16x4xf16, {order = #NCHW, strides = [128, 64, 4, 1]}, @DDR>)
-        outputs(%1 : memref<1x1x16x4xf16, @DDR>)
-        -> memref<1x1x16x4xf16, @DDR>
-
-    %3 = VPUIP.GenericReshape inputs(%2 : memref<1x1x16x4xf16, @DDR>) -> memref<16x4xf16, @DDR>
-
-    return %3 : memref<16x4xf16, @DDR>
-
-    // CHECK:       [[SUBVIEW:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 16, 4] : memref<1x2x16x4xf16, @DDR> to memref<1x1x16x4xf16, {order = #NCHW, strides = [128, 64, 4, 1]}, @DDR>
-
-    // CHECK:       [[BUFF_0:%.+]] = memref.alloc() : memref<1x1x16x4xf16, @DDR>
-    // CHECK:       [[COPY:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs([[SUBVIEW]] : memref<1x1x16x4xf16, {order = #NCHW, strides = [128, 64, 4, 1]}, @DDR>)
-    // CHECK-SAME:      outputs([[BUFF_0]] : memref<1x1x16x4xf16, @DDR>)
-    // CHECK:       [[RESHAPE:%.+]] = VPUIP.GenericReshape inputs([[COPY]] : memref<1x1x16x4xf16, @DDR>) -> memref<16x4xf16, @DDR>
-
-    // CHECK:       return [[RESHAPE]] : memref<16x4xf16, @DDR>
 }
 
 // -----
@@ -1005,7 +975,7 @@ func.func @MoveQuantizeCastBeforeTilingCopyMultipleConsumers(%in0: !InputDistrib
 
 !qElemType = !quant.uniform<u8<0:254>:f16:1, {1.0, 1.75, 1.5, 1.25, 1.0, 1.5, 1.75, 1.25}>
 !qElemType1 = !quant.uniform<u8<0:254>:f16:1, {1.0, 1.75, 1.5, 1.25, 1.0, 1.5}>
-// CHECK-DAG: [[QUANT_8_CHAN:.*]] = !quant.uniform<u8<0:254>:f16:1, {
+// CHECK-DAG: [[QUANT_8_CHAN:.+]] = !quant.uniform<u8<0:254>:f16:1, {
 // CHECK-DAG-SAME:	1.0
 // CHECK-DAG-SAME:	1.75
 // CHECK-DAG-SAME:	1.5
@@ -1016,7 +986,7 @@ func.func @MoveQuantizeCastBeforeTilingCopyMultipleConsumers(%in0: !InputDistrib
 // CHECK-DAG-SAME:	1.25
 // CHECK-DAG-SAME: }>
 
-// CHECK-DAG: [[QUANT_6_CHAN:.*]] = !quant.uniform<u8<0:254>:f16:1, {
+// CHECK-DAG: [[QUANT_6_CHAN:.+]] = !quant.uniform<u8<0:254>:f16:1, {
 // CHECK-DAG-SAME:	1.0
 // CHECK-DAG-SAME:	1.75
 // CHECK-DAG-SAME:	1.5
@@ -1700,4 +1670,47 @@ func.func @MoveGenericReshapeBeforeTilingCopyRankChangedAndSplitHigherDimExplici
     // CHECK-SAME:     outputs([[OUTBUFF]] : memref<2x2x64xf16, @DDR>)  ->  memref<2x2x64xf16, @DDR>
 
     //CHECK:        return [[COPY]] : memref<2x2x64xf16, @DDR>
+}
+
+// -----
+
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK-LABEL: @NoChangeForStridedCopy
+func.func @NoChangeForStridedCopy(
+        %arg0: memref<1x2048x8192xui8, {order = #CHW, strides = [33554432, 16384, 1]}, @DDR>) -> memref<1x1x4096x4096xui8, @DDR> {
+
+    %0 = memref.alloc() : memref<1x2048x8192xui8, @DDR>
+    %1 = VPUIP.Copy inputs(%arg0 : memref<1x2048x8192xui8, {order = #CHW, strides = [33554432, 16384, 1]}, @DDR>)
+        outputs(%0 : memref<1x2048x8192xui8, @DDR>)
+        -> memref<1x2048x8192xui8, @DDR>
+
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<1x2048x8192xui8, @DDR>) -> memref<1x1x4096x4096xui8, @DDR>
+
+    return %2 : memref<1x1x4096x4096xui8, @DDR>
+    // CHECK:   VPUIP.Copy
+    // CHECK:   VPUIP.GenericReshape
+}
+
+// -----
+
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK-LABEL: @ChangeForStridedCopy
+// CHECK-SAME: ([[INPUT:%.+]]: memref<1x256x32xui8, {order = #CHW, strides = [16384, 32, 1]}, @DDR>)
+func.func @ChangeForStridedCopy(
+        %arg0: memref<1x256x32xui8, {order = #CHW, strides = [16384, 32, 1]}, @DDR>) -> memref<256x32xui8, @DDR> {
+
+    %0 = memref.alloc() : memref<1x256x32xui8, @DDR>
+    %1 = VPUIP.Copy inputs(%arg0 : memref<1x256x32xui8, {order = #CHW, strides = [16384, 32, 1]}, @DDR>)
+        outputs(%0 : memref<1x256x32xui8, @DDR>)
+        -> memref<1x256x32xui8, @DDR>
+
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<1x256x32xui8, @DDR>) -> memref<256x32xui8, @DDR>
+
+    return %2 : memref<256x32xui8, @DDR>
+    // CHECK:   [[GENERICRESHAPE:%.+]] = VPUIP.GenericReshape inputs([[INPUT]] : memref<1x256x32xui8, {order = #CHW, strides = [16384, 32, 1]}, @DDR>) -> memref<256x32xui8, @DDR>
+    // CHECK:   [[ALLOC:%.+]] = memref.alloc() : memref<256x32xui8, @DDR>
+    // CHECK:   [[COPY:%.+]] = VPUIP.Copy inputs([[GENERICRESHAPE]] : memref<256x32xui8, @DDR>) outputs([[ALLOC]] : memref<256x32xui8, @DDR>) -> memref<256x32xui8, @DDR>
+    // CHECK:   return [[COPY]] : memref<256x32xui8, @DDR>
 }

@@ -33,6 +33,26 @@ def OutlineCodeGenCapsules : PassBase<"outline-codegen-capsules", "vpux::ModuleP
 }
 
 //
+// FoldUnitDimReshapes
+//
+
+def FoldUnitDimReshapes : PassBase<"fold-unit-dim-reshapes", "vpux::FunctionPass"> {
+    let summary = "Removes reshape/view chains that only affect unit dimensions";
+
+    let description = [{
+        Attempts to remove and simplify reshapes that only insert or remove unit dimensions.
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createFoldUnitDimReshapesPass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::linalg::LinalgDialect"
+    ];
+}
+
+//
 // LowerMathToShaveIntrinsics
 //
 
@@ -164,6 +184,23 @@ def EarlyCodeGenCapsuleFusion : PassBase<"early-codegen-capsule-fusion", "vpux::
     ];
 }
 
+def ShaveKernelSimplify : PassBase<"shave-kernel-simplify", "vpux::ModulePass"> {
+    let summary = "Applies peephole optimizations to the software module";
+
+    let description = [{
+        Applies peephole optimizations to the software module (a superset of
+        canonicalization).
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createShaveKernelSimplifyPass()";
+
+    let dependentDialects = [
+        "mlir::func::FuncDialect",
+        "mlir::linalg::LinalgDialect",
+        "mlir::tensor::TensorDialect"
+    ];
+}
+
 def FlattenEltwiseKernel : PassBase<"flatten-eltwise-kernel", "vpux::ModulePass"> {
     let summary = "Flatten element-wise kernels";
 
@@ -176,6 +213,38 @@ def FlattenEltwiseKernel : PassBase<"flatten-eltwise-kernel", "vpux::ModulePass"
     let dependentDialects = [
         "mlir::func::FuncDialect",
         "mlir::linalg::LinalgDialect"
+    ];
+}
+
+def MoveKernelResultsToArguments : PassBase<"move-kernel-results-to-arguments", "vpux::ModulePass"> {
+    let summary = "Moves kernel results to the arguments list for outlined ShaveCodeGen functions";
+
+    let description = [{
+        Enforce the calling convention for returned tensors in outlined software kernels.
+        The memory for the returned tensors is allocated by the caller, and the callee
+        receives memrefs as additional arguments (similar to a structure return).
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createMoveKernelResultsToArgumentsPass()";
+
+    let dependentDialects = [
+        "mlir::func::FuncDialect",
+        "mlir::bufferization::BufferizationDialect"
+    ];
+}
+
+def OneShotBufferizeSWKernels : PassBase<"one-shot-bufferize-sw-kernels", "vpux::ModulePass"> {
+    let summary = "Bufferize outlined software kernels";
+
+    let description = [{
+        Performs full one shot bufferization on outlined software kernels.
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createOneShotBufferizeSWKernelsPass()";
+
+    let dependentDialects = [
+        "mlir::func::FuncDialect",
+        "mlir::bufferization::BufferizationDialect",
     ];
 }
 

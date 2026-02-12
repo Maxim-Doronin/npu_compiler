@@ -266,7 +266,7 @@ ELFNPU37XX::CreateSectionOp ConvertVPUMI37XX2ELFPass::createSection<Const::Decla
     vpux::ELFNPU37XX::SymbolTypeEnumAttr typeSym;
     mlir::IntegerAttr sizeSym;
     mlir::IntegerAttr valueSym;
-    mlir::UnitAttr isBuiltin = nullptr;
+    auto isBuiltin = false;
 
     auto constSecValue = elfCreateSectionOp.getResult();
 
@@ -275,7 +275,7 @@ ELFNPU37XX::CreateSectionOp ConvertVPUMI37XX2ELFPass::createSection<Const::Decla
                     .create<ELFNPU37XX::SymbolOp>(builderFunc.getUnknownLoc(),
                                                   vpux::ELFNPU37XX::SymbolType::get(ctx),  // mlir::Type
                                                   constSecValue,                           // mlir::Value inputArg
-                                                  isBuiltin,                               // mlir::UnitAttr
+                                                  isBuiltin,                               // bool
                                                   mlir::StringAttr::get(ctx, "sym_constSection"),  // mlir::StringAttr
                                                   typeSym,  // vpux::ELFNPU37XX::SymbolTypeEnumAttr
                                                   sizeSym,  // size
@@ -308,13 +308,13 @@ mlir::Value ConvertVPUMI37XX2ELFPass::createBuffersSecAndSymtab(mlir::func::Func
     vpux::ELFNPU37XX::SymbolTypeEnumAttr typeSym;
     mlir::IntegerAttr sizeSym;
     mlir::IntegerAttr valueSym;
-    mlir::UnitAttr isBuiltin = nullptr;
+    auto isBuiltin = false;
 
     auto bufferSectionSym = builderFunc.create<ELFNPU37XX::SymbolOp>(
             mlir::UnknownLoc::get(ctx),
             vpux::ELFNPU37XX::SymbolType::get(ctx),           // mlir::Type
             scratchBufferSectionOp.getResult(),               // mlir::Value inputArg
-            isBuiltin,                                        // mlir::UnitAttr
+            isBuiltin,                                        // bool
             mlir::StringAttr::get(ctx, "sym_bufferSection"),  // mlir::StringAttr
             typeSym,                                          // vpux::ELFNPU37XX::SymbolTypeEnumAttr
             sizeSym,                                          // size
@@ -329,7 +329,7 @@ mlir::Value ConvertVPUMI37XX2ELFPass::createBuffersSecAndSymtab(mlir::func::Func
             mlir::StringAttr::get(ctx, ".symtab.buffers"),  // mlir::StringAttr secName,
             vpux::ELFNPU37XX::SectionFlagsAttrAttr::get(
                     ctx, vpux::ELFNPU37XX::SectionFlagsAttr::SHF_NONE),  // vpux::ELFNPU37XX::SectionFlagsAttr secFlags
-            isBuiltin                                                    // mlir::UnitAttr
+            isBuiltin                                                    // bool
     );
 
     mlir::Region& regBufferSymTabOp = ddrSymbolTable.getOperation()->getRegion(0);
@@ -357,7 +357,7 @@ mlir::Value ConvertVPUMI37XX2ELFPass::createCMXMappingSymtab(mlir::func::FuncOp 
     vpux::ELFNPU37XX::SymbolTypeEnumAttr typeSym;
     mlir::IntegerAttr sizeSym;
     mlir::IntegerAttr valueSym;
-    mlir::UnitAttr isBuiltin = mlir::UnitAttr::get(ctx);
+    auto isBuiltin = true;
 
     for (unsigned i = 0; i <= vpux::ELFNPU37XX::getMaxEnumValForCMXMappingSymbol(); ++i) {
         auto optionalCMXMappingSymValue = vpux::ELFNPU37XX::symbolizeCMXMappingSymbol(i);
@@ -371,30 +371,30 @@ mlir::Value ConvertVPUMI37XX2ELFPass::createCMXMappingSymtab(mlir::func::FuncOp 
         symVals.push_back(builderFunc.create<mlir::arith::ConstantIntOp>(mlir::UnknownLoc::get(ctx), i, 8));
         elfCMXMappingSyms.push_back(builderFunc.create<ELFNPU37XX::SymbolOp>(
                 mlir::UnknownLoc::get(ctx),
-                symbolType,                                                            // mlir::Type
-                symVals[i],                                                            // mlir::Value inputArg
-                isBuiltin, mlir::StringAttr::get(ctx, CMXMappingSymStringRef.data()),  // mlir::StringAttr
-                typeSym,  // vpux::ELFNPU37XX::SymbolTypeEnumAttr
-                sizeSym,  // size
-                valueSym  // value
+                symbolType,                                                 // mlir::Type
+                symVals[i],                                                 // mlir::Value inputArg
+                isBuiltin,                                                  // bool
+                mlir::StringAttr::get(ctx, CMXMappingSymStringRef.data()),  // mlir::StringAttr
+                typeSym,                                                    // vpux::ELFNPU37XX::SymbolTypeEnumAttr
+                sizeSym,                                                    // size
+                valueSym                                                    // value
                 ));
     }
 
     vpux::ELFNPU37XX::SectionType secType = vpux::ELFNPU37XX::SectionType::get(ctx);
 
-    ELFNPU37XX::CreateSymbolTableSectionOp createCMXMappingSymtabOp =
-            builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
-                    mlir::UnknownLoc::get(ctx),
-                    secType,                                      // mlir::Type
-                    mlir::StringAttr::get(ctx, "VPU_RT_SYMTAB"),  // mlir::StringAttr secName,
-                    vpux::ELFNPU37XX::SectionFlagsAttrAttr::get(
-                            ctx, vpux::ELFNPU37XX::SectionFlagsAttr::SHF_NONE),  // vpux::ELFNPU37XX::SectionFlagsAttr
-                                                                                 // secFlags,
-                    isBuiltin                                                    // mlir::UnitAttr
-            );
+    auto createCMXMappingSymtabOp = builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
+            mlir::UnknownLoc::get(ctx),
+            secType,                                      // mlir::Type
+            mlir::StringAttr::get(ctx, "VPU_RT_SYMTAB"),  // mlir::StringAttr secName,
+            vpux::ELFNPU37XX::SectionFlagsAttrAttr::get(
+                    ctx, vpux::ELFNPU37XX::SectionFlagsAttr::SHF_NONE),  // vpux::ELFNPU37XX::SectionFlagsAttr
+                                                                         // secFlags,
+            isBuiltin                                                    // bool
+    );
 
     mlir::Region& regCMXMappingSymtab = createCMXMappingSymtabOp.getOperation()->getRegion(0);
-    mlir::Block* blkCMXMappingSymtab = new mlir::Block();
+    auto blkCMXMappingSymtab = new mlir::Block();
 
     regCMXMappingSymtab.push_back(blkCMXMappingSymtab);
 
@@ -428,7 +428,7 @@ void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, ml
         vpux::ELFNPU37XX::SymbolType symbolType = vpux::ELFNPU37XX::SymbolType::get(ctx);
         vpux::ELFNPU37XX::SymbolTypeEnumAttr typeSym;
         mlir::IntegerAttr valueSym;
-        mlir::UnitAttr isBuiltin = nullptr;
+        auto isBuiltin = false;
 
         auto argNDType = mlir::cast<vpux::NDTypeInterface>(funcArg.getType());
         mlir::IntegerAttr sizeSym = mlir::IntegerAttr::get(uint64Type, argNDType.getTotalAllocSize().count());
@@ -452,7 +452,7 @@ void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, ml
         auto netIOSym = builderFunc.create<ELFNPU37XX::SymbolOp>(builderFunc.getUnknownLoc(),
                                                                  symbolType,  // mlir::Type
                                                                  funcArg,     // mlir::Value inputArg
-                                                                 isBuiltin,   // mlir::UnitAttr
+                                                                 isBuiltin,   // bool
                                                                  nameSym,     // mlir::StringAttr
                                                                  typeSym,     // vpux::ELFNPU37XX::SymbolTypeEnumAttr
                                                                  sizeSym,     // size
@@ -463,18 +463,17 @@ void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, ml
     }
 
     // Secondly we create the symbol table for the input symbols
-    ELFNPU37XX::CreateSymbolTableSectionOp createInputSymTableSectionOp =
-            builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
-                    mlir::UnknownLoc::get(ctx),
-                    vpux::ELFNPU37XX::SectionType::get(ctx),                // mlir::Type
-                    ".symtab.input",                                        // llvm::StringRef secName,
-                    vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_USERINPUT,  // vpux::ELFNPU37XX::SectionFlagsAttr
-                                                                            // secFlags,
-                    false                                                   // bool isBuiltin
-            );
+    auto createInputSymTableSectionOp = builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
+            mlir::UnknownLoc::get(ctx),
+            vpux::ELFNPU37XX::SectionType::get(ctx),                // mlir::Type
+            ".symtab.input",                                        // llvm::StringRef secName,
+            vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_USERINPUT,  // vpux::ELFNPU37XX::SectionFlagsAttr
+                                                                    // secFlags,
+            false                                                   // bool isBuiltin
+    );
     //
     mlir::Region& regInputSymTabSec = createInputSymTableSectionOp.getOperation()->getRegion(0);
-    mlir::Block* blkInputSymTabSec = new mlir::Block();
+    auto blkInputSymTabSec = new mlir::Block();
     //
     // This instruction has to be before defining builderSymTabSec to avoid SegFault
     regInputSymTabSec.push_back(blkInputSymTabSec);
@@ -483,18 +482,17 @@ void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, ml
     networkInputSymTabValue = createInputSymTableSectionOp.getResult();
 
     // Thirdly we create the symbol table for the output symbols
-    ELFNPU37XX::CreateSymbolTableSectionOp createOutputSymTableSectionOp =
-            builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
-                    mlir::UnknownLoc::get(ctx),
-                    vpux::ELFNPU37XX::SectionType::get(ctx),                 // mlir::Type
-                    ".symtab.output",                                        // llvm::StringRef secName,
-                    vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_USEROUTPUT,  // vpux::ELFNPU37XX::SectionFlagsAttr
-                                                                             // secFlags,
-                    false                                                    // bool isBuiltin
-            );
+    auto createOutputSymTableSectionOp = builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
+            mlir::UnknownLoc::get(ctx),
+            vpux::ELFNPU37XX::SectionType::get(ctx),                 // mlir::Type
+            ".symtab.output",                                        // llvm::StringRef secName,
+            vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_USEROUTPUT,  // vpux::ELFNPU37XX::SectionFlagsAttr
+                                                                     // secFlags,
+            false                                                    // bool isBuiltin
+    );
     //
     mlir::Region& regOutputSymTabSec = createOutputSymTableSectionOp.getOperation()->getRegion(0);
-    mlir::Block* blkOutputSymTabSec = new mlir::Block();
+    auto blkOutputSymTabSec = new mlir::Block();
     //
     // This instruction has to be before defining builderSymTabSec to avoid SegFault
     regOutputSymTabSec.push_back(blkOutputSymTabSec);
@@ -518,18 +516,17 @@ void ConvertVPUMI37XX2ELFPass::createNetworkIOSymtab(mlir::func::FuncOp func, ml
 
     // If profiling is enabled add also profiling output symbol table
     if (!dataInfoOpProfilingOutVec.empty()) {
-        ELFNPU37XX::CreateSymbolTableSectionOp createProfOutputSymTableSectionOp =
-                builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
-                        mlir::UnknownLoc::get(ctx),
-                        vpux::ELFNPU37XX::SectionType::get(ctx),                 // mlir::Type
-                        ".symtab.prof_output",                                   // llvm::StringRef secName,
-                        vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_PROFOUTPUT,  // vpux::ELFNPU37XX::SectionFlagsAttr
-                                                                                 // secFlags,
-                        false                                                    // bool isBuiltin
-                );
+        auto createProfOutputSymTableSectionOp = builderFunc.create<ELFNPU37XX::CreateSymbolTableSectionOp>(
+                mlir::UnknownLoc::get(ctx),
+                vpux::ELFNPU37XX::SectionType::get(ctx),                 // mlir::Type
+                ".symtab.prof_output",                                   // llvm::StringRef secName,
+                vpux::ELFNPU37XX::SectionFlagsAttr::VPU_SHF_PROFOUTPUT,  // vpux::ELFNPU37XX::SectionFlagsAttr
+                                                                         // secFlags,
+                false                                                    // bool isBuiltin
+        );
         //
         mlir::Region& regProfOutputSymTabSec = createProfOutputSymTableSectionOp.getOperation()->getRegion(0);
-        mlir::Block* blkProfOutputSymTabSec = new mlir::Block();
+        auto blkProfOutputSymTabSec = new mlir::Block();
         //
         // This instruction has to be before defining builderSymTabSec to avoid SegFault
         regProfOutputSymTabSec.push_back(blkProfOutputSymTabSec);
@@ -1004,7 +1001,7 @@ void ConvertVPUMI37XX2ELFPass::setupActKernelRtConfigs(mlir::func::FuncOp func, 
     vpux::ELFNPU37XX::SymbolTypeEnumAttr typeSym;
     mlir::IntegerAttr sizeSym;
     mlir::IntegerAttr valueSym;
-    mlir::UnitAttr isBuiltin = nullptr;
+    auto isBuiltin = false;
 
     if (runtimeKernelFunction) {
         const auto kernelElf =
@@ -1068,7 +1065,7 @@ void ConvertVPUMI37XX2ELFPass::setupActKernelRtConfigs(mlir::func::FuncOp func, 
             builderFunc.getUnknownLoc(),
             vpux::ELFNPU37XX::SymbolType::get(ctx),                   // mlir::Type
             actKRtConfigSecValue,                                     // mlir::Value inputArg
-            isBuiltin,                                                // mlir::UnitAttr
+            isBuiltin,                                                // bool
             mlir::StringAttr::get(ctx, "sym_actKernelRtConfigsSec"),  // mlir::StringAttr
             typeSym,                                                  // vpux::ELFNPU37XX::SymbolTypeEnumAttr
             sizeSym,                                                  // size
@@ -1082,7 +1079,7 @@ void ConvertVPUMI37XX2ELFPass::setupActKernelRtConfigs(mlir::func::FuncOp func, 
             mlir::StringAttr::get(ctx, ".symtab.actKernelRtConfig"),  // mlir::StringAttr secName,
             vpux::ELFNPU37XX::SectionFlagsAttrAttr::get(
                     ctx, vpux::ELFNPU37XX::SectionFlagsAttr::SHF_NONE),  // vpux::ELFNPU37XX::SectionFlagsAttr secFlags,
-            isBuiltin                                                    // mlir::UnitAttr
+            isBuiltin                                                    // bool
     );
 
     auto builderActKRtConfigSymTab = mlir::OpBuilder::atBlockEnd(actKRtConfigSymTab.getBlock());
@@ -2072,7 +2069,7 @@ void ConvertVPUMI37XX2ELFPass::safeRunOnModule() {
     vpux::ELFNPU37XX::SymbolTypeEnumAttr typeSym;
     mlir::IntegerAttr sizeSym;
     mlir::IntegerAttr valueSym;
-    mlir::UnitAttr isBuiltin = nullptr;
+    auto isBuiltin = false;
     mlir::SmallVector<vpux::ELFNPU37XX::SymbolOp> dmaSectionSyms;
 
     // dmaCount size is always > 0, even when having 0 DMA operations in the network,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,6 +39,21 @@ public:
 
     mlir::LogicalResult matchAndRewrite(OpTy op, mlir::PatternRewriter& rewriter) const override;
 };
+
+struct AsinPolynomialApproximation : public mlir::OpRewritePattern<mlir::math::AsinOp> {
+public:
+    using OpRewritePattern::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(mlir::math::AsinOp op, mlir::PatternRewriter& rewriter) const final;
+};
+
+struct AcosPolynomialApproximation : public mlir::OpRewritePattern<mlir::math::AcosOp> {
+public:
+    using OpRewritePattern::OpRewritePattern;
+
+    mlir::LogicalResult matchAndRewrite(mlir::math::AcosOp op, mlir::PatternRewriter& rewriter) const final;
+};
+
 }  // namespace vpux::ShaveCodeGen
 
 #endif  // SHAVECODEGEN_MATH_TRANSFORMS_APPROXIMATION_H

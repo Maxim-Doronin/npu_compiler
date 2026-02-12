@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,7 +38,9 @@ OverlapDistributionParams getOverlappedDistributionParameters(ArrayRef<VPU::Clus
 OverlapDistributionParams getOverlappedDistributionParameters(
         NDTypeInterface tensorType, ArrayRef<VPU::ClusteredOpInterface> consumerSubgraph, const int64_t numClusters,
         ArrayRef<int64_t> numTiles, bool uniformDistributedSegments,
-        const vpux::TileInfo& tileInfo = vpux::TileInfo(ShapeRef()));
+        const vpux::TileInfo& tileInfo = vpux::TileInfo(ShapeRef()),
+        const std::optional<ArrayRef<int64_t>> outputTensorMemoryNumTiles = std::nullopt,
+        const std::optional<ArrayRef<int64_t>> alignment = std::nullopt);
 
 // In case of input being presented with explicit overlap lines with DPU,
 // for VPUX4000 and beyond, we need to take into account all the siblings requirements
@@ -105,16 +107,18 @@ OverlapDistributionParams getOutputOverlappedParams(VPU::ClusteredOpInterface cl
 // of explicit per cluster memory shapes and offsets. The per cluster memory view will define the chunks
 // of tensor needed in each cluster to satisfy all the input requirements of the consumer ops.
 
-OverlapDistributionParams getOutputOverlappedParams(VPU::ClusteredOpInterface clusteredOp,
-                                                    ArrayRef<int64_t> outputTensorNumTiles,
-                                                    bool uniformDistributedSegments, vpux::NDTypeInterface outputType,
-                                                    const vpux::TileInfo& tileInfo = vpux::TileInfo(ShapeRef()));
+OverlapDistributionParams getOutputOverlappedParams(
+        VPU::ClusteredOpInterface clusteredOp, ArrayRef<int64_t> outputTensorNumTiles, bool uniformDistributedSegments,
+        vpux::NDTypeInterface outputType, const vpux::TileInfo& tileInfo = vpux::TileInfo(ShapeRef()),
+        const std::optional<ArrayRef<int64_t>> outputTensorMemoryNumTiles = std::nullopt,
+        const std::optional<ArrayRef<int64_t>> alignment = std::nullopt);
 
-OverlapDistributionParams getOutputOverlappedParams(VPU::ClusteredOpInterface clusteredOp,
-                                                    ArrayRef<int64_t> outputTensorNumTiles,
-                                                    const bool uniformDistributedSegments,
-                                                    vpux::NDTypeInterface outputType, const vpux::TileInfo& tileInfo,
-                                                    SiblingOpsAnalysis& siblingsAnalysis);
+OverlapDistributionParams getOutputOverlappedParams(
+        VPU::ClusteredOpInterface clusteredOp, ArrayRef<int64_t> outputTensorNumTiles,
+        const bool uniformDistributedSegments, vpux::NDTypeInterface outputType, const vpux::TileInfo& tileInfo,
+        SiblingOpsAnalysis& siblingsAnalysis,
+        const std::optional<ArrayRef<int64_t>> outputTensorMemoryNumTiles = std::nullopt,
+        const std::optional<ArrayRef<int64_t>> alignment = std::nullopt);
 
 OverlapDistributionParams getOutputOverlappedParamsNoHalo(VPU::ClusteredOpInterface clusteredOp,
                                                           ArrayRef<int64_t> outputTensorNumTiles);

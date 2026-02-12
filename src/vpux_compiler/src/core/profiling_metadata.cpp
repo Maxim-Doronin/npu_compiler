@@ -1,20 +1,26 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/profiling_metadata.hpp"
+#include "vpux/compiler/core/profiling_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/device.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/strings.hpp"
-
+#include "vpux/utils/core/error.hpp"
+#include "vpux/utils/core/range.hpp"
 #include "vpux/utils/profiling/common.hpp"
 #include "vpux/utils/profiling/metadata.hpp"
+#include "vpux/utils/profiling/taskinfo.hpp"
 
+#include <flatbuffers/flatbuffers.h>
 #include "schema/profiling_generated.h"
 
 #include <mlir/IR/Visitors.h>
@@ -54,68 +60,38 @@ std::string stringifyPrimaryLocationChecked(mlir::Location loc) {
     return str;
 }
 
-struct ProfilingConfiguration {
-    ProfilingConfiguration(net::NetworkInfoOp netInfo) {
-        using profiling::ExecutorType;
+net::DataInfoOp getProfilingOutputInfoOp(net::NetworkInfoOp netInfo) {
+    auto profilingOutputsInfo = netInfo.getProfilingOutputsInfo();
+    VPUX_THROW_WHEN(profilingOutputsInfo.size() != 1, "Unexpected number of profiling outputs");
+    return *profilingOutputsInfo.front().getOps<net::DataInfoOp>().begin();
+}
 
-        auto profilingOutputsInfo = netInfo.getProfilingOutputsInfo();
-        VPUX_THROW_WHEN(profilingOutputsInfo.size() != 1,
-                        "Unexpected number of profiling outputs (expected 1, got {0})", profilingOutputsInfo.size());
+size_t getProfilingOutputSize(net::DataInfoOp profilingOutputInfo) {
+    const auto profilingType = mlir::cast<NDTypeInterface>(profilingOutputInfo.getUserType());
+    const auto shape = profilingType.getShape();
+    VPUX_THROW_WHEN(shape.size() != 1, "Invalid profiling output shape");
+    VPUX_THROW_UNLESS(profilingType.getElementType().isInteger(CHAR_BIT * sizeof(uint32_t)),
+                      "Invalid profiling output type");
 
-        net::DataInfoOp profilingOutputInfo = *profilingOutputsInfo.front().getOps<net::DataInfoOp>().begin();
-        totalOutputSize = getProfilingOutputSize(profilingOutputInfo);
+    return shape[DimsOrder::C.dimAt(0)] * sizeof(uint32_t);
+}
 
-        const auto& sectionsRange =
-                profilingOutputInfo.getSections().front().front().getOps<VPUIP::ProfilingSectionOp>();
+SmallVector<VPUIP::ProfilingSectionOp> getProfilingSections(net::DataInfoOp profilingOutputInfo) {
+    SmallVector<VPUIP::ProfilingSectionOp> profilingSections;
+    const auto sectionsRange = profilingOutputInfo.getSections().front().front().getOps<VPUIP::ProfilingSectionOp>();
+    return SmallVector<VPUIP::ProfilingSectionOp>(sectionsRange.begin(), sectionsRange.end());
+}
 
-        sections = SmallVector<VPUIP::ProfilingSectionOp>(sectionsRange.begin(), sectionsRange.end());
-
-        isDmaProfEnabled = hasSectionOfType<ExecutorType::DMA_HW, ExecutorType::DMA_SW>();
-        isDpuProfEnabled = hasSectionOfType<ExecutorType::DPU>();
-        isSwProfEnabled = hasSectionOfType<ExecutorType::ACTSHAVE>();
-        isM2iProfEnabled = hasSectionOfType<ExecutorType::M2I>();
-    }
-
-    SmallVector<VPUIP::ProfilingSectionOp> sections;
-    size_t totalOutputSize;  // size of output in bytes
-
-    bool isDmaProfEnabled;
-    bool isDpuProfEnabled;
-    bool isSwProfEnabled;
-    bool isM2iProfEnabled;
-
-private:
-    template <profiling::ExecutorType... execTypes>
-    bool hasSectionOfType() {
-        return llvm::any_of(sections, [](VPUIP::ProfilingSectionOp section) {
-            VPUX_THROW_WHEN(section.getSize() == 0, "Section of type {0} is empty", section.getSectionType());
-
-            const auto sectionType = static_cast<profiling::ExecutorType>(section.getSectionType());
-            return ((sectionType == execTypes) || ...);
-        });
-    }
-
-    // returns total profiling output size in bytes
-    size_t getProfilingOutputSize(net::DataInfoOp profilingOutputInfo) {
-        const auto profilingType = mlir::cast<vpux::NDTypeInterface>(profilingOutputInfo.getUserType());
-        const auto shape = profilingType.getShape();
-
-        VPUX_THROW_WHEN(shape.size() != 1, "Invalid profiling output shape '{0}'. Must be 1D tensor");
-        VPUX_THROW_UNLESS(profilingType.getElementType().isInteger(CHAR_BIT * sizeof(uint32_t)),
-                          "Profiling tensor type must be ui32, but got '{0}'", profilingType.getElementType());
-
-        const size_t totalSize = shape[DimsOrder::C.dimAt(0)] * sizeof(uint32_t);
-        return totalSize;
-    }
-};
+profiling::ExecutorType getSectionType(VPUIP::ProfilingSectionOp sectionOp) {
+    return static_cast<profiling::ExecutorType>(sectionOp.getSectionType());
+}
 
 using BarrierMap = DenseMap<mlir::Value, uint32_t>;
 using TaskBarriers = std::pair<std::vector<uint32_t>, std::vector<uint32_t>>;
 
-template <class BarrierOp>
 BarrierMap getBarriers(mlir::func::FuncOp funcOp) {
     BarrierMap barriersIds;
-    for (BarrierOp barrierOp : funcOp.getOps<BarrierOp>()) {
+    for (auto barrierOp : funcOp.getOps<VPURT::ConfigureBarrierOp>()) {
         auto val = barrierOp.getBarrier();
         VPUX_THROW_UNLESS(barriersIds.count(val) == 0, "Value {0} was already serialized", val);
         barriersIds.insert({val, checked_cast<uint32_t>(barriersIds.size())});
@@ -123,12 +99,11 @@ BarrierMap getBarriers(mlir::func::FuncOp funcOp) {
     return barriersIds;
 }
 
-flatbuffers::Offset<ProfilingFB::DPUTask> createDPUTaskMeta(flatbuffers::FlatBufferBuilder& builder,
-                                                            VPUIP::DpuProfilingMetadataAttr metaAttr,
-                                                            const std::string& name,
-                                                            const std::vector<uint32_t>& waitBarriers,
-                                                            const std::vector<uint32_t>& updateBarriers,
-                                                            const std::vector<uint32_t>& workloadIds) {
+flatbuffers::Offset<ProfilingFB::DPUTask> createDPUTaskMeta(
+        flatbuffers::FlatBufferBuilder& builder, VPUIP::DpuProfilingMetadataAttr metaAttr, const std::string& name,
+        const std::vector<uint32_t>& waitBarriers, const std::vector<uint32_t>& updateBarriers,
+        const std::vector<uint32_t>& workloadIds, const profiling::TensorInfo& tensorInfo,
+        const VariantInfoArray& variantArray) {
     VPUX_THROW_WHEN(metaAttr.getNumVariants() == nullptr, "Missed numVariants information for DpuMetaSerialization");
     VPUX_THROW_WHEN(metaAttr.getClusterId() == nullptr, "Missed clusterId information for DpuMetaSerialization");
 
@@ -141,13 +116,13 @@ flatbuffers::Offset<ProfilingFB::DPUTask> createDPUTaskMeta(flatbuffers::FlatBuf
     VPUX_THROW_WHEN(workloadIds.size() != 0 && workloadIds.size() != static_cast<size_t>(numVariants),
                     "Expected {0} workloads, but got {1}", numVariants, workloadIds.size());
 
-    const auto nameOffset = builder.CreateString(name);
-    const auto waitBarriersOffset = builder.CreateVector(waitBarriers);
-    const auto updateBarriersOffset = builder.CreateVector(updateBarriers);
-    const auto workloadIdsOffset = builder.CreateVector(workloadIds);
-
-    return ProfilingFB::CreateDPUTask(builder, nameOffset, bufferId, clusterId, taskId, numVariants, maxVariants,
-                                      waitBarriersOffset, updateBarriersOffset, workloadIdsOffset);
+    auto fbTensorInfo = ProfilingFB::CreateTensorInfo(builder, &tensorInfo);
+    auto variants = to_std_vector(variantArray | transformed([&builder](const profiling::DPUVariantInfo& variant) {
+                                      return ProfilingFB::CreateDPUVariantInfo(builder, &variant);
+                                  }));
+    return ProfilingFB::CreateDPUTaskDirect(builder, name.c_str(), bufferId, clusterId, taskId, numVariants,
+                                            maxVariants, &waitBarriers, &updateBarriers, &workloadIds, fbTensorInfo,
+                                            &variants);
 }
 
 TaskBarriers getOpBarriersImpl(const BarrierMap& virtBarriers, const mlir::ValueRange waitBarriers,
@@ -169,67 +144,82 @@ TaskBarriers getOpBarriersImpl(const BarrierMap& virtBarriers, const mlir::Value
     return std::make_pair(waitIds, updateIds);
 }
 
-struct RtDialectProvider {
-    static inline bool IS_DMA_HWP_SUPPORTED = false;
+template <class TargetOp>
+auto extractOp(mlir::func::FuncOp funcOp) {
+    SmallVector<TargetOp> ops;
+    funcOp->walk([&](VPURT::TaskOp taskOp) {
+        if (auto innerOp = mlir::dyn_cast<TargetOp>(taskOp.getInnerTaskOp())) {
+            ops.push_back(innerOp);
+        }
+    });
+    return ops;
+}
 
-    template <class TargetOp>
-    static auto extractOp(mlir::func::FuncOp funcOp) {
-        SmallVector<TargetOp> ops;
-        funcOp->walk([&](VPURT::TaskOp taskOp) {
-            if (auto innerOp = mlir::dyn_cast<TargetOp>(taskOp.getInnerTaskOp())) {
+// Specialization to skip cache handling SW ops
+template <>
+auto extractOp<VPUIP::SwKernelOp>(mlir::func::FuncOp funcOp) {
+    SmallVector<VPUIP::SwKernelOp> ops;
+    funcOp->walk([&](VPURT::TaskOp taskOp) {
+        if (auto innerOp = mlir::dyn_cast<VPUIP::SwKernelOp>(taskOp.getInnerTaskOp())) {
+            if (!isCacheHandlingOp(taskOp.getInnerTaskOp())) {
                 ops.push_back(innerOp);
             }
-        });
-        return ops;
-    }
-
-    static TaskBarriers getOpBarriers(const BarrierMap& virtBarriers, mlir::Operation* op) {
-        auto parentOp = op->getParentOfType<VPURT::TaskOp>();
-        VPUX_THROW_WHEN(op == nullptr, "Parent must be VPURT::TaskOp");
-        return getOpBarriersImpl(virtBarriers, parentOp.getWaitBarriers(), parentOp.getUpdateBarriers());
-    }
-
-    template <class TargetOp>
-    static auto extractComputeSwOp(mlir::func::FuncOp funcOp) {
-        SmallVector<TargetOp> ops;
-        funcOp->walk([&](VPURT::TaskOp taskOp) {
-            if (auto innerOp = mlir::dyn_cast<TargetOp>(taskOp.getInnerTaskOp())) {
-                if (!isCacheHandlingOp(taskOp.getInnerTaskOp())) {
-                    ops.push_back(innerOp);
-                }
-            }
-        });
-        return ops;
-    }
-
-    template <class DPUInvariant, class DPUVariant>
-    static std::vector<uint32_t> getWorkloadIds(DPUInvariant dpuOp) {
-        std::set<uint32_t> workloadIdSet;
-        for (DPUVariant variant : dpuOp.getVariants().template getOps<DPUVariant>()) {
-            if (variant.getWorkloadId().has_value()) {
-                workloadIdSet.insert(variant.getWorkloadId().value());
-            }
         }
-        std::vector<uint32_t> workloadIds(workloadIdSet.begin(), workloadIdSet.end());
-        return workloadIds;
-    }
+    });
+    return ops;
+}
 
-    static unsigned short getDmaHwpId(VPUIP::DMATypeOpInterface dmaOp) {
-        if (auto hwpIdAttr = dmaOp.getDmaHwpIdAttr()) {
-            return static_cast<unsigned short>(hwpIdAttr.getSInt());
+TaskBarriers getOpBarriers(const BarrierMap& virtBarriers, mlir::Operation* op) {
+    auto parentOp = op->getParentOfType<VPURT::TaskOp>();
+    VPUX_THROW_WHEN(op == nullptr, "Parent must be VPURT::TaskOp");
+    return getOpBarriersImpl(virtBarriers, parentOp.getWaitBarriers(), parentOp.getUpdateBarriers());
+}
+
+std::vector<uint32_t> getWorkloadIds(VPUIP::NCEClusterTaskOp dpuOp) {
+    std::set<uint32_t> workloadIdSet;
+    for (auto variant : dpuOp.getVariants().getOps<VPUIP::DPUTaskOp>()) {
+        if (variant.getWorkloadId().has_value()) {
+            workloadIdSet.insert(variant.getWorkloadId().value());
         }
-        return 0;
     }
+    std::vector<uint32_t> workloadIds(workloadIdSet.begin(), workloadIdSet.end());
+    return workloadIds;
+}
 
-    static std::optional<VPUIP::SwProfilingMetadataAttr> getSwProfilingMetadata(VPUIP::SwKernelOp op) {
-        return op.getProfilingMetadata();
+unsigned short getDmaHwpId(VPUIP::DMATypeOpInterface dmaOp) {
+    if (auto hwpIdAttr = dmaOp.getDmaHwpIdAttr()) {
+        return static_cast<unsigned short>(hwpIdAttr.getSInt());
     }
-};
+    return 0;
+}
 
-using RtDialectProvider37XX = RtDialectProvider;
-struct RtDialectProvider40XX : public RtDialectProvider {
-    static inline bool IS_DMA_HWP_SUPPORTED = true;
-};
+std::optional<ProfilingFB::MemoryKind> getMemKind(mlir::Value value) {
+    auto memKind = mlir::cast<NDTypeInterface>(value.getType()).getMemoryKind();
+    switch (memKind) {
+    case VPU::MemoryKind::DDR:
+        return ProfilingFB::MemoryKind::DDR;
+    case VPU::MemoryKind::CMX_NN:
+        return ProfilingFB::MemoryKind::CMX;
+    default:
+        break;
+    }
+    return std::nullopt;
+}
+
+ProfilingFB::DMAChannelType getDmaChannelType(VPUIP::DMATypeOpInterface dmaOp) {
+    // \ref dmaOp.getChannelType
+    auto srcMemKind = mlir::cast<NDTypeInterface>(dmaOp->getOperand(0).getType()).getMemoryKind();
+
+    switch (srcMemKind) {
+    case VPU::MemoryKind::DDR:
+        return ProfilingFB::DMAChannelType::DDR;
+    case VPU::MemoryKind::CMX_NN:
+    case VPU::MemoryKind::Register:
+        return ProfilingFB::DMAChannelType::CMX;
+    default:
+        VPUX_THROW("Unknown DMA channel type");
+    }
+}
 
 template <typename TaskType>
 using FbVector = flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<TaskType>>>;
@@ -246,154 +236,134 @@ std::string cleanSwTaskType(const std::string& origType) {
                            });
 }
 
-template <class DialectProvider, class DmaType, class Iterable>
-FbVector<ProfilingFB::DMATask> getDmaTasksOffset(const ProfilingConfiguration& profilingCfg,
-                                                 flatbuffers::FlatBufferBuilder& builder, const Iterable& dmaTasks,
-                                                 const BarrierMap& barriers) {
-    if (!profilingCfg.isDmaProfEnabled) {
-        return {};
+mlir::Operation* getOriginalDmaOp(mlir::Operation* endTimestampDmaOp) {
+    if (auto parentTaskOp = endTimestampDmaOp->getParentOp()) {
+        if (auto origTaskOp = parentTaskOp->getPrevNode()) {
+            if (auto& region = origTaskOp->getRegion(0); !region.empty() && !region.front().empty()) {
+                return &region.front().front();
+            }
+        }
     }
-    std::vector<flatbuffers::Offset<ProfilingFB::DMATask>> dmaOffsets;
-    for (const auto& dmaTask : dmaTasks) {
-        // TableGen generate interface methods without const specifier, so can't be called from const DmaType&.
-        // In the same moment, coverity force to use const auto&
-        DmaType& mutDmaTask = const_cast<DmaType&>(dmaTask);
+    return nullptr;
+}
 
-        const auto maybeMetadata = mutDmaTask.getProfilingMetadata();
-        if (!maybeMetadata.has_value()) {
+FbVector<ProfilingFB::DMATask> getDmaTasksOffset(flatbuffers::FlatBufferBuilder& builder,
+                                                 const SmallVector<VPUIP::DMATypeOpInterface>& dmaTasks,
+                                                 const BarrierMap& barriers, config::ArchKind arch) {
+    std::vector<flatbuffers::Offset<ProfilingFB::DMATask>> dmaOffsets;
+
+    const bool isDmaHwpSupported = (arch == config::ArchKind::NPU37XX) ? false : true;
+
+    for (auto dmaTask : dmaTasks) {
+        const auto metadata = dmaTask.getProfilingMetadata().value_or(nullptr);
+        if (!metadata) {
             continue;
         }
+        VPUX_THROW_UNLESS(!!metadata.getDataIndex() ^ !!metadata.getProfBegin(), "Invalid DMA metadata '{0}'");
 
-        const auto metadata = maybeMetadata.value();
-        const auto numNullAttrs = static_cast<int>(metadata.getDataIndex() == nullptr) +
-                                  static_cast<int>(metadata.getProfBegin() == nullptr);
-        VPUX_THROW_UNLESS(numNullAttrs == 1, "Invalid DMA metadata '{0}'. Only one attribute must be set. {1}",
-                          metadata, numNullAttrs);
-
-        const unsigned short hwpId = DialectProvider::getDmaHwpId(dmaTask);
+        const unsigned short hwpId = getDmaHwpId(dmaTask);
         // Do not serialize task with hwpId = 0 when HWP enabled
-        if (DialectProvider::IS_DMA_HWP_SUPPORTED && hwpId == 0) {
+        if (isDmaHwpSupported && hwpId == 0) {
             continue;
         }
 
         const auto name = stringifyPrimaryLocationChecked(dmaTask->getLoc());
-        const bool isProfBegin = metadata.getProfBegin() != nullptr;
+        const bool isProfBeginDma = metadata.getProfBegin() != nullptr;
+        const bool isProfEndDma = !(isDmaHwpSupported || isProfBeginDma);
+        const unsigned dataIndex = isProfBeginDma ? 0 : metadata.getDataIndex().getInt();
+        const auto [waitBarriers, updateBarriers] = getOpBarriers(barriers, dmaTask);
+        auto origDmaTask =
+                isProfEndDma
+                        ? mlir::dyn_cast_or_null<VPUIP::DMATypeOpInterface>(getOriginalDmaOp(dmaTask.getOperation()))
+                        : dmaTask;
+        VPUX_THROW_WHEN(!origDmaTask, "Invalid DMA task {0}", dmaTask);
 
-        unsigned dataIndex = 0;
-        if (!isProfBegin) {
-            dataIndex = metadata.getDataIndex().getInt();
+        std::optional<uint16_t> portId = std::nullopt;
+        std::optional<ProfilingFB::DMAChannelType> channelType = std::nullopt;
+        std::optional<ProfilingFB::MemoryKind> sourceMemoryKind = std::nullopt;
+        std::optional<ProfilingFB::MemoryKind> destinationMemoryKind = std::nullopt;
+        if (!isProfBeginDma) {
+            portId = origDmaTask.getPortVal();
+            channelType = getDmaChannelType(origDmaTask);
+            sourceMemoryKind = getMemKind(origDmaTask.getInput());
+            destinationMemoryKind = getMemKind(origDmaTask.getOutput());
+        }
+        auto [tensorShapeInfo, tensorStrideInfo] = extractTensorInfoFromOp(dmaTask);
+        auto fbShapeTypeInfo = CreateTensorInfo(builder, &tensorShapeInfo);
+        auto fbStrideTypeInfo = CreateTensorInfo(builder, &tensorStrideInfo);
+        auto dynamicStridesInput = dmaTask->hasAttr(stridedInputAttrName);
+        auto dynamicStridesOutput = dmaTask->hasAttr(stridedOutputAttrName);
+
+        unsigned short gatherIndices = 0;
+        if (auto gatherDma = mlir::dyn_cast<VPUIP::GatherDMAOp>(dmaTask.getOperation())) {
+            gatherIndices = mlir::cast<NDTypeInterface>(gatherDma.getIndices().getType()).getShape().front();
         }
 
-        const auto opBarriers = DialectProvider::getOpBarriers(barriers, dmaTask);
-        const auto nameOffset = builder.CreateString(name);
-        const auto waitBarriersOffset = builder.CreateVector(opBarriers.first);
-        const auto updateBarriersOffset = builder.CreateVector(opBarriers.second);
-        const auto taskOffset = ProfilingFB::CreateDMATask(builder, nameOffset, waitBarriersOffset,
-                                                           updateBarriersOffset, hwpId, dataIndex, isProfBegin);
-        dmaOffsets.push_back(taskOffset);
+        dmaOffsets.push_back(ProfilingFB::CreateDMATaskDirect(
+                builder, name.c_str(), &waitBarriers, &updateBarriers, hwpId, dataIndex, isProfBeginDma, portId,
+                channelType, sourceMemoryKind, destinationMemoryKind, fbShapeTypeInfo, fbStrideTypeInfo, gatherIndices,
+                dynamicStridesInput, dynamicStridesOutput));
     }
     return builder.CreateVector(dmaOffsets);
 }
 
-template <class DialectProvider, class M2iType, class Iterable>
-FbVector<ProfilingFB::M2ITask> getM2iTasksOffset(const ProfilingConfiguration& profilingCfg,
-                                                 flatbuffers::FlatBufferBuilder& builder, const Iterable& m2iTasks,
+FbVector<ProfilingFB::M2ITask> getM2iTasksOffset(flatbuffers::FlatBufferBuilder& builder,
+                                                 const SmallVector<VPUIP::M2ITaskOp>& m2iTasks,
                                                  const BarrierMap& barriers) {
-    if (!profilingCfg.isM2iProfEnabled) {
-        return {};
-    }
     std::vector<flatbuffers::Offset<ProfilingFB::M2ITask>> m2iOffsets;
-    for (const auto& m2iTask : m2iTasks) {
+    for (auto m2iTask : m2iTasks) {
         const auto name = stringifyPrimaryLocationChecked(m2iTask->getLoc());
-        const auto opBarriers = DialectProvider::getOpBarriers(barriers, m2iTask);
-        const auto nameOffset = builder.CreateString(name);
-        const auto waitBarriersOffset = builder.CreateVector(opBarriers.first);
-        const auto updateBarriersOffset = builder.CreateVector(opBarriers.second);
+        const auto [waitBarriers, updateBarriers] = getOpBarriers(barriers, m2iTask);
 
-        auto profMeta = const_cast<M2iType&>(m2iTask).getProfilingMetadata();
+        auto profMeta = m2iTask.getProfilingMetadata();
         VPUX_THROW_UNLESS(profMeta.has_value(), "Empty profiling metadata at '{0}'", m2iTask);
 
-        const auto taskOffset =
-                ProfilingFB::CreateM2ITask(builder, nameOffset, waitBarriersOffset, updateBarriersOffset);
-        m2iOffsets.push_back(taskOffset);
+        m2iOffsets.push_back(ProfilingFB::CreateM2ITaskDirect(builder, name.c_str(), &waitBarriers, &updateBarriers));
     }
     return builder.CreateVector(m2iOffsets);
 }
 
-template <class DialectProvider, class DPUInvariantType, class DPUVariantType, class Iterable>
-FbVector<ProfilingFB::DPUTask> getDpuTasksOffset(const ProfilingConfiguration& profilingCfg,
-                                                 flatbuffers::FlatBufferBuilder& builder, const Iterable& dpuTasks,
+FbVector<ProfilingFB::DPUTask> getDpuTasksOffset(flatbuffers::FlatBufferBuilder& builder,
+                                                 const SmallVector<VPUIP::NCEClusterTaskOp>& dpuTasks,
                                                  const BarrierMap& barriers) {
-    if (!profilingCfg.isDpuProfEnabled) {
-        return {};
-    }
     std::vector<flatbuffers::Offset<ProfilingFB::DPUTask>> dpuOffsets;
-    for (const auto& dpuInvariant : dpuTasks) {
+    for (auto dpuInvariant : dpuTasks) {
         auto name = stringifyPrimaryLocationChecked(dpuInvariant->getLoc());
 
-        const auto opBarriers = DialectProvider::getOpBarriers(barriers, dpuInvariant);
-        std::vector<uint32_t> workloadIds =
-                DialectProvider::template getWorkloadIds<DPUInvariantType, DPUVariantType>(dpuInvariant);
+        const auto [waitBarriers, updateBarriers] = getOpBarriers(barriers, dpuInvariant);
+        std::vector<uint32_t> workloadIds = getWorkloadIds(dpuInvariant);
 
         // TableGen generate interface methods without const specifier, so can't be called from const DpuType&.
         // In the same moment, coverity force to use const auto&
-        auto profMeta = const_cast<DPUInvariantType&>(dpuInvariant).getProfilingMetadata();
+        auto profMeta = dpuInvariant.getProfilingMetadata();
         VPUX_THROW_UNLESS(profMeta.has_value(), "Empty profiling metadata at '{0}'", dpuInvariant);
 
-        const auto taskOffset =
-                createDPUTaskMeta(builder, profMeta.value(), name, opBarriers.first, opBarriers.second, workloadIds);
-        dpuOffsets.push_back(taskOffset);
+        auto tensorInfo = extractTensorInfoFromOp(dpuInvariant);
+        auto variantArray = extractVariantInfoFromOp(dpuInvariant);
+
+        dpuOffsets.push_back(createDPUTaskMeta(builder, profMeta.value(), name, waitBarriers, updateBarriers,
+                                               workloadIds, tensorInfo, variantArray));
     }
-    size_t dpuTaskCount = std::distance(dpuTasks.begin(), dpuTasks.end());
-    VPUX_THROW_WHEN(dpuOffsets.size() != dpuTaskCount,
-                    "Number of DPU tasks in profiling metadata ({0}) doesn't match the number of DPU invariants ({1})",
-                    dpuOffsets.size(), dpuTaskCount);
     return builder.CreateVector(dpuOffsets);
 }
 
-template <class SwType>
-bool isSkipProfiling(const SwType& swTask) {
-    if (mlir::isa<VPUIP::SwKernelOp>(swTask)) {
-        // For VPUIP::SwKernelOp, check if the skipProfiling attribute is set
-        // This UnitAttr is set only when it is a dummy SW kernel for shave instruction prefetch, and it cannot be
-        // profiled [E#169656]
-        return swTask->hasAttr("skipProfiling");
-    }
-    return false;
-}
-
-template <class DialectProvider, class SwType, class Iterable>
-FbVector<ProfilingFB::SWTask> getSwTasksOffset(const ProfilingConfiguration& profilingCfg,
-                                               flatbuffers::FlatBufferBuilder& builder, const Iterable& swTasks,
+FbVector<ProfilingFB::SWTask> getSwTasksOffset(flatbuffers::FlatBufferBuilder& builder,
+                                               const SmallVector<VPUIP::SwKernelOp>& swTasks,
                                                const BarrierMap& barriers) {
-    if (!profilingCfg.isSwProfEnabled) {
-        return {};
-    }
     std::vector<flatbuffers::Offset<ProfilingFB::SWTask>> swTaskOffsets;
-    size_t skipMetadataCount = 0;
-    for (const auto& swTask : swTasks) {
+    for (auto swTask : swTasks) {
+        auto maybeMetadata = swTask.getProfilingMetadata();
+        if (!maybeMetadata) {
+            continue;
+        }
         auto name = stringifyPrimaryLocationChecked(swTask->getLoc());
         std::string swTaskType;
         // ActShave store kernel as attribute, so for all task same operation used.
         const auto taskType = swTask->getName().getStringRef().str();
-        if (SwType::getOperationName().str() != taskType) {
+        if (VPUIP::SwKernelOp::getOperationName().str() != taskType) {
             swTaskType = cleanSwTaskType(taskType);
         }
-
-        const auto opBarriers = DialectProvider::getOpBarriers(barriers, swTask);
-
-        const auto nameOffset = builder.CreateString(name);
-        const auto typeOffset = builder.CreateString(swTaskType);
-        const auto waitBarriersOffset = builder.CreateVector(opBarriers.first);
-        const auto updateBarriersOffset = builder.CreateVector(opBarriers.second);
-
-        auto maybeMetadata = DialectProvider::getSwProfilingMetadata(swTask);
-        if (!maybeMetadata.has_value() && isSkipProfiling<SwType>(swTask)) {
-            skipMetadataCount++;
-            continue;
-        }
-        VPUX_THROW_UNLESS(maybeMetadata.has_value(), "Missed metadata for '{0}'", swTask->getLoc());
-
+        const auto [waitBarriers, updateBarriers] = getOpBarriers(barriers, swTask);
         const auto metadata = maybeMetadata.value();
         const auto bufferId = metadata.getBufferId().getInt();
         const auto bufferOffset = metadata.getBufferOffset().getInt();
@@ -401,39 +371,23 @@ FbVector<ProfilingFB::SWTask> getSwTasksOffset(const ProfilingConfiguration& pro
         const auto dataIndex = metadata.getDataIndex().getInt();
         const auto tileId = metadata.getTileId().getInt();
         const auto clusterId = metadata.getClusterId().getInt();
+        auto tensorInfo = extractTensorInfoFromOp(swTask);
+        auto fbTypeInfo = CreateTensorInfo(builder, &tensorInfo);
 
-        const auto taskOffset =
-                ProfilingFB::CreateSWTask(builder, nameOffset, waitBarriersOffset, updateBarriersOffset, typeOffset,
-                                          bufferId, bufferOffset, clusterSize, dataIndex, tileId, clusterId);
-
-        swTaskOffsets.push_back(taskOffset);
+        swTaskOffsets.push_back(ProfilingFB::CreateSWTaskDirect(builder, name.c_str(), &waitBarriers, &updateBarriers,
+                                                                swTaskType.c_str(), bufferId, bufferOffset, clusterSize,
+                                                                dataIndex, tileId, clusterId, fbTypeInfo));
     }
-    size_t swTaskCount = std::distance(swTasks.begin(), swTasks.end());
-    VPUX_THROW_WHEN(swTaskOffsets.size() != swTaskCount - skipMetadataCount,
-                    "Number of SW tasks in profiling metadata ({0}) doesn't match the number of SW tasks ({1})",
-                    swTaskOffsets.size(), swTaskCount);
-
     return builder.CreateVector(swTaskOffsets);
 }
 
-flatbuffers::Offset<ProfilingFB::ProfilingBuffer> createProfilingBufferOffset(ProfilingConfiguration& profilingCfg,
-                                                                              flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<ProfilingFB::ProfilingSection>> profilingSectionsOffsets;
-    for (auto& section : profilingCfg.sections) {
-        const auto secType = section.getSectionType();
-        const auto offset = section.getOffset();
-        const auto size = section.getSize();
-
-        const auto secTypeLabel =
-                builder.CreateString(profiling::convertExecTypeToName(static_cast<profiling::ExecutorType>(secType)));
-
-        const auto sectionOffset = ProfilingFB::CreateProfilingSection(builder, secType, offset, size, secTypeLabel);
-        profilingSectionsOffsets.push_back(sectionOffset);
-    }
-
-    const auto sectionsOffset = builder.CreateVector(profilingSectionsOffsets);
-    const auto sectionTotalSizeBytes = profilingCfg.totalOutputSize;
-    return ProfilingFB::CreateProfilingBuffer(builder, sectionsOffset, sectionTotalSizeBytes);
+flatbuffers::Offset<ProfilingFB::ProfilingSection> createProfilingSectionOffset(flatbuffers::FlatBufferBuilder& builder,
+                                                                                VPUIP::ProfilingSectionOp sectionOp) {
+    const auto secType = sectionOp.getSectionType();
+    const auto offset = sectionOp.getOffset();
+    const auto size = sectionOp.getSize();
+    const auto secTypeLabel = profiling::convertExecTypeToName(static_cast<profiling::ExecutorType>(secType));
+    return ProfilingFB::CreateProfilingSectionDirect(builder, secType, offset, size, secTypeLabel.c_str());
 }
 
 flatbuffers::Offset<ProfilingFB::Platform> createPlatformOffset(config::ArchKind arch,
@@ -442,60 +396,56 @@ flatbuffers::Offset<ProfilingFB::Platform> createPlatformOffset(config::ArchKind
     return ProfilingFB::CreatePlatform(builder, (int8_t)targetDevice);
 }
 
-template <typename DialectProvider, class BarrierOp, class DmaType, class DpuInvariantType, class DpuVariantType,
-          class SwType, class M2iType>
-flatbuffers::DetachedBuffer buildProfilingMetaGeneric(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp,
-                                                      Logger log) {
-    log.trace("building Profiling Metadata");
-
+flatbuffers::DetachedBuffer buildProfilingMeta(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp) {
     flatbuffers::FlatBufferBuilder builder;
 
-    const auto barriers = getBarriers<BarrierOp>(funcOp);
-    ProfilingConfiguration profilingCfg(netInfo);
     const auto arch = config::getArch(funcOp);
+    const auto barriers = getBarriers(funcOp);
+    auto profilingOutputInfoOp = getProfilingOutputInfoOp(netInfo);
 
-    auto dmaOffset = getDmaTasksOffset<DialectProvider, DmaType>(
-            profilingCfg, builder, DialectProvider::template extractOp<DmaType>(funcOp), barriers);
-    auto dpuOffset = getDpuTasksOffset<DialectProvider, DpuInvariantType, DpuVariantType>(
-            profilingCfg, builder, DialectProvider::template extractOp<DpuInvariantType>(funcOp), barriers);
-    auto swTaskOffset = getSwTasksOffset<DialectProvider, SwType>(
-            profilingCfg, builder, DialectProvider::template extractComputeSwOp<SwType>(funcOp), barriers);
-    auto m2iOffset = getM2iTasksOffset<DialectProvider, M2iType>(
-            profilingCfg, builder, DialectProvider::template extractOp<M2iType>(funcOp), barriers);
-    auto profilingBufferOffset = createProfilingBufferOffset(profilingCfg, builder);
-    auto platformOffset = createPlatformOffset(arch, builder);
+    std::vector<flatbuffers::Offset<ProfilingFB::ProfilingSection>> profilingSectionsOffsets;
+    FbVector<ProfilingFB::DMATask> dmaOffset;
+    FbVector<ProfilingFB::DPUTask> dpuOffset;
+    FbVector<ProfilingFB::SWTask> swTaskOffset;
+    FbVector<ProfilingFB::M2ITask> m2iOffset;
 
-    auto metadataOffset =
-            ProfilingFB::CreateProfilingMeta(builder, vpux::profiling::PROFILING_METADATA_VERSION_MAJOR,
-                                             vpux::profiling::PROFILING_METADATA_VERSION_MINOR, platformOffset,
-                                             profilingBufferOffset, dmaOffset, dpuOffset, swTaskOffset, m2iOffset);
-    builder.Finish(metadataOffset);
-
-    return builder.Release();
-}
-
-template <typename VPURTDialectProvider>
-flatbuffers::DetachedBuffer buildProfilingMetaVPURTGeneral(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp,
-                                                           Logger log) {
-    return buildProfilingMetaGeneric<VPURTDialectProvider, VPURT::ConfigureBarrierOp, VPUIP::DMATypeOpInterface,
-                                     VPUIP::NCEClusterTaskOp, VPUIP::DPUTaskOp, VPUIP::SwKernelOp, VPUIP::M2ITaskOp>(
-            netInfo, funcOp, log);
-}
-
-flatbuffers::DetachedBuffer buildProfilingMeta(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp, Logger log) {
-    const auto arch = config::getArch(funcOp);
-    switch (arch) {
-    case config::ArchKind::NPU37XX:
-        return ::buildProfilingMetaVPURTGeneral<RtDialectProvider37XX>(netInfo, funcOp, log);
-    default:
-        return ::buildProfilingMetaVPURTGeneral<RtDialectProvider40XX>(netInfo, funcOp, log);
+    for (auto sectionOp : getProfilingSections(profilingOutputInfoOp)) {
+        profilingSectionsOffsets.push_back(createProfilingSectionOffset(builder, sectionOp));
+        switch (getSectionType(sectionOp)) {
+        case profiling::ExecutorType::DMA_HW:
+        case profiling::ExecutorType::DMA_SW:
+            dmaOffset = getDmaTasksOffset(builder, extractOp<VPUIP::DMATypeOpInterface>(funcOp), barriers, arch);
+            break;
+        case profiling::ExecutorType::DPU:
+            dpuOffset = getDpuTasksOffset(builder, extractOp<VPUIP::NCEClusterTaskOp>(funcOp), barriers);
+            break;
+        case profiling::ExecutorType::ACTSHAVE:
+            swTaskOffset = getSwTasksOffset(builder, extractOp<VPUIP::SwKernelOp>(funcOp), barriers);
+            break;
+        case profiling::ExecutorType::M2I:
+            m2iOffset = getM2iTasksOffset(builder, extractOp<VPUIP::M2ITaskOp>(funcOp), barriers);
+            break;
+        case profiling::ExecutorType::WORKPOINT:
+            // no metadata
+            break;
+        }
     }
+    const auto platformOffset = createPlatformOffset(arch, builder);
+    const auto sectionTotalSizeBytes = getProfilingOutputSize(profilingOutputInfoOp);
+    const auto profilingBufferOffset =
+            ProfilingFB::CreateProfilingBufferDirect(builder, &profilingSectionsOffsets, sectionTotalSizeBytes);
+    const auto metadataOffset = ProfilingFB::CreateProfilingMeta(
+            builder, profiling::PROFILING_METADATA_VERSION_MAJOR, profiling::PROFILING_METADATA_VERSION_MINOR,
+            platformOffset, profilingBufferOffset, dmaOffset, dpuOffset, swTaskOffset, m2iOffset);
+    builder.Finish(metadataOffset);
+    return builder.Release();
 }
 
 };  // namespace
 
 std::vector<uint8_t> vpux::buildProfilingMetadataBuffer(net::NetworkInfoOp netInfo, mlir::func::FuncOp funcOp,
                                                         Logger log) {
-    flatbuffers::DetachedBuffer buffer = buildProfilingMeta(netInfo, funcOp, log);
-    return vpux::profiling::constructProfilingSectionWithHeader(std::move(buffer));
+    log.trace("Building profiling metadata");
+    flatbuffers::DetachedBuffer buffer = buildProfilingMeta(netInfo, funcOp);
+    return profiling::constructProfilingSectionWithHeader(std::move(buffer));
 }

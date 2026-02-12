@@ -20,16 +20,14 @@ using NCETaskSignature = TaskSignature<VPUIP::NCEClusterTaskOp>;
 // Algorithm is same for any amount of cluster, difference only in used types/ops
 // For numClusters != 1 will be used DistributedBufferType, for single cluster ops memref. See details in
 // SingleClusterScheduler
-class BaseClusterBufferScheduler {
+class ClusterBufferScheduler {
 private:
     mlir::Type getTimestampType(unsigned dpuTasksAmount);
 
 public:
-    BaseClusterBufferScheduler(unsigned clustersAmount, unsigned profilingWorkloadSize, mlir::OpBuilder& builder,
-                               mlir::MLIRContext* ctx, vpux::VPU::MemoryKind memKind, mlir::func::FuncOp netFunc,
-                               std::shared_ptr<NameUniqifier> uniqifier);
-
-    virtual ~BaseClusterBufferScheduler() = default;
+    ClusterBufferScheduler(unsigned clusterNum, unsigned profilingWorkloadSize, mlir::OpBuilder& builder,
+                           mlir::MLIRContext* ctx, vpux::IndexedSymbolAttr memKindAttr, mlir::func::FuncOp netFunc,
+                           std::shared_ptr<NameUniqifier> uniqifier);
 
     // Return needed for storing profiling results in DDR memory size in bytes
     unsigned getRequiredDdrMemory() const;
@@ -39,7 +37,7 @@ public:
 
     // Add needed for profiling buffers/views/copies
     void addProfilingOps(unsigned& currentDDROffset, SmallVector<mlir::Value>& clusterResults,
-                         mlir::BlockArgument& profilingResult);
+                         mlir::BlockArgument& profilingResult, unsigned& tasksCounter);
 
     static unsigned getNextBufferId();
 
@@ -50,17 +48,17 @@ public:
 protected:
     // Region of logic, which depends on amount of clusters. By default operates on distributed types
 
-    virtual NCETaskSignature getTaskSignature(VPUIP::NCEClusterTaskOp nceClusterTaskOp) = 0;
+    NCETaskSignature getTaskSignature(VPUIP::NCEClusterTaskOp nceClusterTaskOp);
 
-    virtual mlir::Operation* createAllocationOp(unsigned totalSizeCMXElements, const std::string& location) = 0;
+    mlir::Operation* createAllocationOp(unsigned totalSizeCMXElements, const std::string& location);
 
-    virtual mlir::Value getViewToBuffer(mlir::Operation* currentProfilingBuffer, unsigned, ArrayRef<int64_t>) = 0;
+    mlir::Value getViewToBuffer(mlir::Operation* currentProfilingBuffer, unsigned, ArrayRef<int64_t>);
 
-    virtual mlir::Value copyToDDR(mlir::BlockArgument& profilingResult, mlir::Operation*,
-                                  SmallVector<mlir::Value>& dpuProfilingOutputs, unsigned numElements, unsigned offset,
-                                  StringRef name) = 0;
+    mlir::Value copyToDDR(mlir::BlockArgument& profilingResult, mlir::Operation*,
+                          SmallVector<mlir::Value>& dpuProfilingOutputs, unsigned numElements, unsigned offset,
+                          StringRef name);
 
-protected:
+private:
     unsigned _clustersNum;
     unsigned _profilingWorkloadSize;
     unsigned _profilingElementSize;
@@ -71,50 +69,7 @@ protected:
     mlir::func::FuncOp _netFunc;
     vpux::IndexedSymbolAttr _memKindAttr;
     std::shared_ptr<NameUniqifier> _uniqifier;
-
-private:
     static inline unsigned uniqBufferId = 0;
-};
-
-class SingleClusterScheduler : public BaseClusterBufferScheduler {
-public:
-    SingleClusterScheduler(unsigned profilingWorkloadSize, mlir::OpBuilder& builder, mlir::MLIRContext* ctx,
-                           vpux::VPU::MemoryKind memKind, mlir::func::FuncOp netFunc,
-                           std::shared_ptr<NameUniqifier> uniqifier);
-
-protected:
-    NCETaskSignature getTaskSignature(VPUIP::NCEClusterTaskOp nceClusterTaskOp) override;
-
-    mlir::Operation* createAllocationOp(unsigned totalSizeCMXElements, const std::string& location) override;
-
-    mlir::Value copyToDDR(mlir::BlockArgument& profilingResult, mlir::Operation* cmxMemOp,
-                          SmallVector<mlir::Value>& dpuProfilingOutputs, unsigned numElements, unsigned offset,
-                          StringRef name) override;
-
-    mlir::Value getViewToBuffer(mlir::Operation* currentProfilingBuffer, unsigned profilingSamplesInCMX,
-                                ArrayRef<int64_t> sizes) override;
-};
-
-class MultiClusterScheduler : public BaseClusterBufferScheduler {
-private:
-    VPUIP::DistributedBufferType getDistributedBufferType(unsigned totalElements);
-
-    mlir::Type getDistributedTimestampType(unsigned dpuTasksAmount);
-
-public:
-    using BaseClusterBufferScheduler::BaseClusterBufferScheduler;
-
-protected:
-    NCETaskSignature getTaskSignature(VPUIP::NCEClusterTaskOp nceClusterTaskOp) override;
-
-    mlir::Operation* createAllocationOp(unsigned totalSizeCMXElements, const std::string& location) override;
-
-    mlir::Value copyToDDR(mlir::BlockArgument& profilingResult, mlir::Operation* cmxMemOp,
-                          SmallVector<mlir::Value>& dpuProfilingOutputs, unsigned numElements, unsigned offset,
-                          StringRef name) override;
-
-    mlir::Value getViewToBuffer(mlir::Operation* currentProfilingBuffer, unsigned profilingSamplesInCMX,
-                                ArrayRef<int64_t> sizes) override;
 };
 
 }  // namespace vpux

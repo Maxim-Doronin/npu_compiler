@@ -53,12 +53,12 @@ module @Graph {
     %9 = VPURT.DeclareBuffer <Register> <637702144> -> !frcRegType
     %10 = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> !frcCmxType
     VPURT.Task waits(%0 : !VPURT.Barrier) {
-      %19 = VPUIP.NNDMA {port = 1 : i64} inputs(%9 : !frcRegType) outputs(%10 : !frcCmxType) -> !frcCmxType
+      %19 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%9 : !frcRegType) outputs(%10 : !frcCmxType) -> !frcCmxType
     }
     %17 = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> memref<2xui64, [@CMX_NN, 0]>
     %18 = VPURT.DeclareBuffer <ProfilingOutput> [0] <16> -> memref<2xui64>
     VPURT.Task {
-      %19 = VPUIP.NNDMA {port = 1 : i64} inputs(%17 : memref<2xui64, [@CMX_NN, 0]>) outputs(%18 : memref<2xui64>) -> memref<2xui64>
+      %19 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%17 : memref<2xui64, [@CMX_NN, 0]>) outputs(%18 : memref<2xui64>) -> memref<2xui64>
     }
     return %arg1, %arg2 : !dataType, memref<2xui64>
   }

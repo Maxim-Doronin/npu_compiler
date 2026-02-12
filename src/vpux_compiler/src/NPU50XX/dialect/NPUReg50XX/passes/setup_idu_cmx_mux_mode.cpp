@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/attributes.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/dialect.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/passes.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/utils/logger/logger.hpp"

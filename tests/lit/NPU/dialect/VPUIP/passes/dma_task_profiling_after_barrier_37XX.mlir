@@ -36,11 +36,11 @@ module @DMAGraph {
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA {port = 1 : i64} inputs(%buf0 : !dataType) outputs(%buf1 : !dataType) -> !dataType
+      %dma0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0 : !dataType) outputs(%buf1 : !dataType) -> !dataType
     }
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA {port = 1 : i64} inputs(%buf1 : !dataType) outputs(%arg1 : !dataType) -> !dataType
+      %dma0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf1 : !dataType) outputs(%arg1 : !dataType) -> !dataType
     }
 
     return %arg1 : !dataType
@@ -62,14 +62,14 @@ module @DMAGraph {
 // CHECK:    [[REG_0:%.+]] = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>
 // CHECK:    [[PROF_BUF_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1xui64, [@CMX_NN, 0]>
 // CHECK:    VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {is_out_of_order
+// CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>
 // CHECK-SAME:        inputs([[REG_0]] :
 // CHECK-SAME:        outputs([[PROF_BUF_0]] :
 
 // Profiled DMA task
 // CHECK:  VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {is_out_of_order}
+// CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order}>
 // CHECK-SAME:        inputs(%arg0 :
 // CHECK-SAME:        outputs([[BUF_DATA_0]] :
 
@@ -94,14 +94,14 @@ module @DMAGraph {
 // CHECK:    [[REG_2:%.+]] = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>
 // CHECK:    [[PROF_BUF_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> memref<1xui64, [@CMX_NN, 0]>
 // CHECK:    VPURT.Task waits([[BAR0]]
-// CHECK-NEXT:    VPUIP.NNDMA {is_out_of_order, port = 1 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order, port = 1 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>
 // CHECK-SAME:        inputs([[REG_2]] :
 // CHECK-SAME:        outputs([[PROF_BUF_2]] :
 
 // Profiled DMA task
 // CHECK:  VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {is_out_of_order, port = 1 : i64}
+// CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}>
 // CHECK-SAME:        inputs([[BUF_DATA_0]] :
 // CHECK-SAME:        outputs([[BUF_DATA_1]] :
 
@@ -109,7 +109,7 @@ module @DMAGraph {
 // CHECK:    [[REG_3:%.+]] = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>
 // CHECK:    [[PROF_BUF_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <136> -> memref<1xui64, [@CMX_NN, 0]>
 // CHECK:    VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {port = 1 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{port = 1 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>
 // CHECK-SAME:        inputs([[REG_3]]
 // CHECK-SAME:        outputs([[PROF_BUF_3]]
@@ -118,14 +118,14 @@ module @DMAGraph {
 // CHECK:    [[REG_4:%.+]] = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>
 // CHECK:    [[PROF_BUF_4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <144> -> memref<1xui64, [@CMX_NN, 0]>
 // CHECK:    VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {is_out_of_order, port = 1 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order, port = 1 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>
 // CHECK-SAME:        inputs([[REG_4]] :
 // CHECK-SAME:        outputs([[PROF_BUF_4]] :
 
 // Profiled DMA task
 // CHECK:  VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {is_out_of_order, port = 1 : i64}
+// CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}>
 // CHECK-SAME:        inputs([[BUF_DATA_1]] :
 // CHECK-SAME:        outputs(%arg1 :
 
@@ -133,7 +133,7 @@ module @DMAGraph {
 // CHECK:    [[REG_5:%.+]] = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>
 // CHECK:    [[PROF_BUF_5:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <152> -> memref<1xui64, [@CMX_NN, 0]>
 // CHECK:    VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {port = 1 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{port = 1 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 2 : i64>
 // CHECK-SAME:        inputs([[REG_5]]
 // CHECK-SAME:        outputs([[PROF_BUF_5]]
@@ -142,6 +142,6 @@ module @DMAGraph {
 // CHECK:    [[PROF_BUF_CMX_PORT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> memref<4xui64, [@CMX_NN, 0]>
 // CHECK:    [[PROF_OUTPUT_1:%.+]] = VPURT.DeclareBuffer <ProfilingOutput> [0] <16> -> memref<4xui64>
 // CHECK:    VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {port = 1 : i64, profiling_buffer_mgmt}
+// CHECK-NEXT:    VPUIP.NNDMA <{port = 1 : i64, profiling_buffer_mgmt}>
 // CHECK-SAME:        inputs([[PROF_BUF_CMX_PORT1]]
 // CHECK-SAME:        outputs([[PROF_OUTPUT_1]]

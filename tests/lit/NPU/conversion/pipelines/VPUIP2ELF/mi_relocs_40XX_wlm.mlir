@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,21 +59,27 @@ func.func @main(%1: memref<1x1x1x32xf16>, %2: memref<1x1x1x32xf16>) -> memref<1x
     %in_tile0_cmx  = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x32xf16, [@CMX_NN, 0]>
     %out_tile0_cmx = VPURT.DeclareBuffer <CMX_NN> [0] <2000> -> memref<1x1x1x32xf16, [@CMX_NN, 0]>
 
-    %b0 = VPURT.ConfigureBarrier<2> -> !VPURT.Barrier
+    %dummy_buf = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+
+    %b0 = VPURT.ConfigureBarrier<2> <{isStartBarrier}> -> !VPURT.Barrier
     %b1 = VPURT.ConfigureBarrier<3> -> !VPURT.Barrier
     %b2 = VPURT.ConfigureBarrier<4> -> !VPURT.Barrier
     %b3 = VPURT.ConfigureBarrier<5> <{isFinalBarrier}> -> !VPURT.Barrier
 
+    VPURT.Task {
+        VPUIP.FetchDMA {is_out_of_order, port = 0 : i64} inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
+    }
+
     VPURT.Task updates(%b0 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%1 : memref<1x1x1x32xf16>) outputs(%in_tile0_cmx : memref<1x1x1x32xf16, [@CMX_NN, 0]>) -> memref<1x1x1x32xf16, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%1 : memref<1x1x1x32xf16>) outputs(%in_tile0_cmx : memref<1x1x1x32xf16, [@CMX_NN, 0]>) -> memref<1x1x1x32xf16, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%b0 : !VPURT.Barrier) updates(%b1 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%1 : memref<1x1x1x32xf16>) outputs(%in_tile0_cmx : memref<1x1x1x32xf16, [@CMX_NN, 0]>) -> memref<1x1x1x32xf16, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%1 : memref<1x1x1x32xf16>) outputs(%in_tile0_cmx : memref<1x1x1x32xf16, [@CMX_NN, 0]>) -> memref<1x1x1x32xf16, [@CMX_NN, 0]>
     }
 
     // Genetic Kernel information for the scheduler.
-    VPURT.Task waits(%b1  : !VPURT.Barrier) updates(%b2  : !VPURT.Barrier) {
+    VPURT.Task waits(%b1  : !VPURT.Barrier) updates(%b2  : !VPURT.Barrier) enqueueTarget(%b0 : !VPURT.Barrier) {
         VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
                     @VPU.SW::@builtin_hswish            // The reference to the Kernel function.
                     inputs(%in_tile0_cmx as %arg0: memref<1x1x1x32xf16, [@CMX_NN, 0]>)     // Inputs/outputs buffers for generic operation interface
@@ -90,12 +96,12 @@ func.func @main(%1: memref<1x1x1x32xf16>, %2: memref<1x1x1x32xf16>) -> memref<1x
     }
 
     VPURT.Task waits(%b2 : !VPURT.Barrier) updates(%b3 : !VPURT.Barrier) {
-        %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%out_tile0_cmx : memref<1x1x1x32xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x1x32xf16>) -> memref<1x1x1x32xf16>
+        %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%out_tile0_cmx : memref<1x1x1x32xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x1x32xf16>) -> memref<1x1x1x32xf16>
     }
     return %2: memref<1x1x1x32xf16>
 
 }
-  // CHECK:       ELF.CreateRelocationSection{{.*}}mapped_inference
+  // CHECK:       ELF.CreateRelocationSection{{.+}}mapped_inference
   // CHECK:       ELF.Reloc offset(88) sourceSym(@symtab::@elfsym.task.dma.0.0) relocType(<R_VPU_64>) addend(0)
   // CHECK:       ELF.Reloc offset(328) sourceSym(@symtab::@elfsym.task.dma.0.1) relocType(<R_VPU_64>) addend(0)
   // CHECK:       ELF.Reloc offset(1048) sourceSym(@symtab::@elfsym.task.shave.range.0.0) relocType(<R_VPU_64>) addend(0)

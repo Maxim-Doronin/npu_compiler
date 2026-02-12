@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,11 +32,11 @@
 // CHECK-SAME: [[SIN:%[^:]+]]: tensor<4096x48xf32>
 // CHECK-SAME: ) -> (tensor<1x12x3072xf32>, tensor<1x32x1024x96xf32>, tensor<1x32x1024x96xf32>)
 
-// CHECK: [[CST:%.*]] = const.Declare tensor<3xsi64> = dense<[0, 0, 12]> : tensor<3xsi64>
-// CHECK: [[CST0:%.*]] = const.Declare tensor<3xsi64> = dense<[0, 0, 1024]> : tensor<3xsi64>
-// CHECK: [[CST1:%.*]] = const.Declare tensor<3xsi64> = dense<1> : tensor<3xsi64>
-// CHECK: [[SLICE_V:%.*]] = IE.StridedSlice([[PV]], [[CST]], [[CST0]], [[CST1]])
-// CHECK: [[PRESENT_VALUE:%.*]] = IE.Concat([[SLICE_V]], [[VIN]])
+// CHECK: [[CST:%.+]] = const.Declare tensor<3xsi64> = dense<[0, 0, 12]> : tensor<3xsi64>
+// CHECK: [[CST0:%.+]] = const.Declare tensor<3xsi64> = dense<[0, 0, 1024]> : tensor<3xsi64>
+// CHECK: [[CST1:%.+]] = const.Declare tensor<3xsi64> = dense<1> : tensor<3xsi64>
+// CHECK: [[SLICE_V:%.+]] = IE.StridedSlice([[PV]], [[CST]], [[CST0]], [[CST1]])
+// CHECK: [[PRESENT_VALUE:%.+]] = IE.Concat([[SLICE_V]], [[VIN]])
 // CHECK: [[CST2:%.+]] = const.Declare tensor<3xsi64> = dense<[0, 0, 12]> : tensor<3xsi64>
 // CHECK: [[CST3:%.+]] = const.Declare tensor<3xsi64> = dense<[0, 0, 1024]> : tensor<3xsi64>
 // CHECK: [[CST4:%.+]] = const.Declare tensor<3xsi64> = dense<1> : tensor<3xsi64>

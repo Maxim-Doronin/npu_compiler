@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/fuse_quantized_ops_strategy_getter.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Dialect/Quant/IR/Quant.h>
 
@@ -64,12 +63,11 @@ void FuseQuantizedOpsPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
 
     // register platform specific rewriters using the platform specific strategy
-    auto strategy = vpux::IE::createFuseQuantizedOpsStrategy(func, _seOpsEnabled, _seExperimentalOpsEnabled);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getFuseQuantizedOpsStrategy(_seOpsEnabled, _seExperimentalOpsEnabled);
     strategy->addPatterns(patterns, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace vpux

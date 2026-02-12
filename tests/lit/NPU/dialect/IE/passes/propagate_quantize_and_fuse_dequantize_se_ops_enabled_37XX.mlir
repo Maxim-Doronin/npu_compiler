@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,9 +19,9 @@ func.func @PropagateDequantInterpolate(%arg0: tensor<1x16x48x80x!qElemType>) -> 
 
   return %3 : tensor<1x16x96x160xf16>
 
-  //CHECK: [[INTERPOLATE:%.*]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x96x160x!qElemType>
-  //CHECK: [[DEQUANTIZE:%.*]] = IE.Dequantize([[INTERPOLATE]]) {dstElemType = f16} : tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160xf16>
-  //CHECK: [[ADD:%.*]] = IE.Add([[DEQUANTIZE]], [[DEQUANTIZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160xf16>, tensor<1x16x96x160xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[DEQUANTIZE:%.+]] = IE.Dequantize([[INTERPOLATE]]) {dstElemType = f16} : tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160xf16>
+  //CHECK: [[ADD:%.+]] = IE.Add([[DEQUANTIZE]], [[DEQUANTIZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160xf16>, tensor<1x16x96x160xf16> -> tensor<1x16x96x160xf16>
   //CHECK: return [[ADD]] : tensor<1x16x96x160xf16>
  }
 
@@ -40,9 +40,9 @@ func.func @PropagateQuantInterpolate(%arg0: tensor<1x16x48x80xf16>) -> tensor<1x
 
   return %3 : tensor<1x16x96x160x!qElemType>
 
-  //CHECK: [[QUANTIZE:%.*]] = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x16x48x80xf16> -> tensor<1x16x48x80x!qElemType>
-  //CHECK: [[INTERPOLATE:%.*]] = IE.Interpolate([[QUANTIZE]]) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x96x160x!qElemType>
-  //CHECK: [[ADD:%.*]] = IE.Add([[INTERPOLATE]], [[INTERPOLATE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160x!qElemType>, tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[QUANTIZE:%.+]] = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x16x48x80xf16> -> tensor<1x16x48x80x!qElemType>
+  //CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate([[QUANTIZE]]) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[ADD:%.+]] = IE.Add([[INTERPOLATE]], [[INTERPOLATE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160x!qElemType>, tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160x!qElemType>
   //CHECK: return [[ADD]] : tensor<1x16x96x160x!qElemType>
  }
 
@@ -61,9 +61,9 @@ func.func @DoNotPropagateDequantInterpolateBilinear(%arg0: tensor<1x16x48x80x!qE
 
   return %3 : tensor<1x16x96x160xf16>
 
-  //CHECK: [[DEQUANTIZE:%.*]] = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x48x80xf16>
-  //CHECK: [[INTERPOLATE:%.*]] = IE.Interpolate([[DEQUANTIZE]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
-  //CHECK: [[ADD:%.*]] = IE.Add([[INTERPOLATE]], [[INTERPOLATE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160xf16>, tensor<1x16x96x160xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[DEQUANTIZE:%.+]] = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x48x80xf16>
+  //CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate([[DEQUANTIZE]]) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[ADD:%.+]] = IE.Add([[INTERPOLATE]], [[INTERPOLATE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160xf16>, tensor<1x16x96x160xf16> -> tensor<1x16x96x160xf16>
   //CHECK: return [[ADD]] : tensor<1x16x96x160xf16>
 }
 
@@ -82,9 +82,9 @@ func.func @DoNotPropagateQuantInterpolateBilinear(%arg0: tensor<1x16x48x80xf16>)
 
   return %3 : tensor<1x16x96x160x!qElemType>
 
-  //CHECK: [[INTERPOLATE:%.*]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
-  //CHECK: [[QUANTIZE:%.*]] = IE.Quantize([[INTERPOLATE]]) {dstElemType = !qElemType} : tensor<1x16x96x160xf16> -> tensor<1x16x96x160x!qElemType>
-  //CHECK: [[ADD:%.*]] = IE.Add([[QUANTIZE]], [[QUANTIZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160x!qElemType>, tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[QUANTIZE:%.+]] = IE.Quantize([[INTERPOLATE]]) {dstElemType = !qElemType} : tensor<1x16x96x160xf16> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[ADD:%.+]] = IE.Add([[QUANTIZE]], [[QUANTIZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160x!qElemType>, tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160x!qElemType>
   //CHECK: return [[ADD]] : tensor<1x16x96x160x!qElemType>
 }
 
@@ -103,9 +103,9 @@ func.func @DoNotPropagateDequantInterpolateBicubic(%arg0: tensor<1x16x48x80x!qEl
 
   return %3 : tensor<1x16x96x160xf16>
 
-  //CHECK: [[DEQUANTIZE:%.*]] = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x48x80xf16>
-  //CHECK: [[INTERPOLATE:%.*]] = IE.Interpolate([[DEQUANTIZE]]) {attr = #IE.Interpolate<mode = <CUBIC>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
-  //CHECK: [[ADD:%.*]] = IE.Add([[INTERPOLATE]], [[INTERPOLATE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160xf16>, tensor<1x16x96x160xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[DEQUANTIZE:%.+]] = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x16x48x80x!qElemType> -> tensor<1x16x48x80xf16>
+  //CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate([[DEQUANTIZE]]) {attr = #IE.Interpolate<mode = <CUBIC>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[ADD:%.+]] = IE.Add([[INTERPOLATE]], [[INTERPOLATE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160xf16>, tensor<1x16x96x160xf16> -> tensor<1x16x96x160xf16>
   //CHECK: return [[ADD]] : tensor<1x16x96x160xf16>
 }
 
@@ -124,8 +124,8 @@ func.func @DoNotPropagateQuantInterpolateBicubic(%arg0: tensor<1x16x48x80xf16>) 
 
   return %3 : tensor<1x16x96x160x!qElemType>
 
-  //CHECK: [[INTERPOLATE:%.*]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <CUBIC>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
-  //CHECK: [[QUANTIZE:%.*]] = IE.Quantize([[INTERPOLATE]]) {dstElemType = !qElemType} : tensor<1x16x96x160xf16> -> tensor<1x16x96x160x!qElemType>
-  //CHECK: [[ADD:%.*]] = IE.Add([[QUANTIZE]], [[QUANTIZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160x!qElemType>, tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <CUBIC>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [96, 160]} : tensor<1x16x48x80xf16> -> tensor<1x16x96x160xf16>
+  //CHECK: [[QUANTIZE:%.+]] = IE.Quantize([[INTERPOLATE]]) {dstElemType = !qElemType} : tensor<1x16x96x160xf16> -> tensor<1x16x96x160x!qElemType>
+  //CHECK: [[ADD:%.+]] = IE.Add([[QUANTIZE]], [[QUANTIZE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x96x160x!qElemType>, tensor<1x16x96x160x!qElemType> -> tensor<1x16x96x160x!qElemType>
   //CHECK: return [[ADD]] : tensor<1x16x96x160x!qElemType>
 }

@@ -28,7 +28,9 @@ module @Test {
                 VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
             }
             ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-                VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                VPUIPDPU.DPUInvariant @DPUInvariant_0 {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64} 
+                <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn,
+                output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                     DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -85,7 +87,7 @@ module @Test {
                     // CHECK:  UINT wt_swizzle_sel = 1
 
                     VPUIPDPU.BarrierCfg waits([1 : ui8, 2 : ui8]) updates([3 : ui8, 4 : ui8, 5 : ui8]) start_after(0) clean_after(0)
-                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) {isFirstVariant}
+                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) <{isFirstVariant}>
                     // CHECK:  cbarrier_lo = UINT 6
                     // CHECK:  UINT cbarrier_hi = 0
                     // CHECK:  pbarrier_lo = UINT 0
@@ -268,7 +270,7 @@ module @Test {
                     // CHECK:  UINT shave_l2_cache_en = 0
 
                     VPUIPDPU.BarrierCfg waits([1 : ui8, 2 : ui8]) updates([3 : ui8, 4 : ui8, 5 : ui8]) start_after(0) clean_after(0)
-                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) {isLastVariant}
+                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) <{isLastVariant}>
                     // CHECK:  cbarrier_lo = UINT 0
                     // CHECK:  UINT cbarrier_hi = 0
                     // CHECK:  pbarrier_lo = UINT 0x38
@@ -325,7 +327,9 @@ module @ProfilingTest {
                 VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
             }
             ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-                VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, profiling_data = @builtin.data.nncmx0::@DeclareBuffer_ProfilingData, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                VPUIPDPU.DPUInvariant @DPUInvariant_0 <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0,
+                input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, profiling_data = @builtin.data.nncmx0::@DeclareBuffer_ProfilingData,
+                nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                     DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,

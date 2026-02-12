@@ -40,6 +40,7 @@ function(add_tool_target)
     )
 
     set(multiValueArgs
+        INCLUDES
         LINK_LIBRARIES
         DEPENDENCIES
     )
@@ -79,6 +80,7 @@ function(add_tool_target)
                       TYPE EXECUTABLE
                       NAME ${ARG_NAME}
                       ROOT ${ARG_ROOT}
+                      INCLUDES ${ARG_INCLUDES}
                       DEPENDENCIES ${ARG_DEPENDENCIES}
                       LINK_LIBRARIES ${ARG_LINK_LIBRARIES}
                       ${ARG_UNPARSED_ARGUMENTS})
@@ -86,6 +88,7 @@ function(add_tool_target)
         ov_add_target(TYPE EXECUTABLE
                       NAME ${ARG_NAME}
                       ROOT ${ARG_ROOT}
+                      INCLUDES ${ARG_INCLUDES}
                       DEPENDENCIES ${ARG_DEPENDENCIES}
                       LINK_LIBRARIES ${ARG_LINK_LIBRARIES}
                       ${ARG_UNPARSED_ARGUMENTS})

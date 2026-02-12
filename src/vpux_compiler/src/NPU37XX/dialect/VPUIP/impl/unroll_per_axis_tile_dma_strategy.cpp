@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -93,7 +93,8 @@ mlir::LogicalResult SingleClusterPerAxisTileDMARewriter::unroll(VPUIP::PerAxisTi
             if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(distributionAttr)) {
                 distributionAttr = VPU::getNonOverlappedDistributedAttr(
                         subOutShape, distributionAttr.getMode(), nullptr, distributionAttr.getNumClusters(), nullptr,
-                        distributionAttr.getUniformDistributedSegments(), dstDeclBuff.getContext());
+                        distributionAttr.getUniformDistributedSegments(), dstType.getElementType(),
+                        dstDeclBuff.getContext());
             }
 
             const auto layout = mlir::AffineMapAttr::get(dimOrder.toAffineMap(ctx));
@@ -123,7 +124,7 @@ mlir::LogicalResult SingleClusterPerAxisTileDMARewriter::unroll(VPUIP::PerAxisTi
         VPURT::wrapIntoTaskOp<VPUIP::PerAxisTileDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), vpurtTask.getLoc(), newSrcBuff,
                 newDstBuff, vpux::getIntAttr(rewriter, port), nullptr, nullptr, dmaDescriptor,
-                perAxisTileDMAOp.getIsOutOfOrderAttr(), perAxisTileDMAOp.getIsCriticalAttr(),
+                perAxisTileDMAOp.getIsOutOfOrder(), perAxisTileDMAOp.getIsCritical(),
                 perAxisTileDMAOp.getDmaHwpIdAttr(), perAxisTileDMAOp.getProfilingMetadataAttr());
     };
 

@@ -36,7 +36,7 @@ OpType getCommonOp(SmallVector<VPURT::TaskOp> tasks, bool input) {
     OpType commonOp = nullptr;
     for (auto taskOp : tasks) {
         auto val = input ? VPUIP::getInput(taskOp) : VPUIP::getOutput(taskOp);
-        auto op = val.getDefiningOp<OpType>();
+        auto op = val.template getDefiningOp<OpType>();
         if (op == nullptr) {
             return nullptr;
         }
@@ -170,7 +170,7 @@ void vpux::VPUIP::handleDmaFusion(mlir::func::FuncOp funcOp, vpux::Logger log,
     std::vector<mlir::Operation*> toRemove;
 
     funcOp->walk([&](VPURT::TaskOp taskOp) {
-        if (taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
+        if (taskOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
             return;
         }
 
@@ -231,10 +231,10 @@ void vpux::VPUIP::handleDmaFusion(mlir::func::FuncOp funcOp, vpux::Logger log,
         mlir::OpBuilder builder(dmaOp);
         auto newDmaOp = builder.create<VPUIP::NNDMAOp>(
                 appendLoc(dmaOp->getLoc(), "fused_dma_{0}", dmaLocSuffix), newSrc, newDst,
-                getIntAttr(dmaOp->getContext(), newPort), dmaOp.getIsOutOfOrderAttr(), dmaOp.getIsCriticalAttr(),
-                dmaOp.getSpillIdAttr(), dmaOp.getCompressCandidateAttr(), /*dmaHwpId=*/nullptr,
-                /*profilingMetadata=*/nullptr, /*splitCandidate=*/nullptr,
-                /*profiling_buffer_mgmt=*/nullptr, /*fusionId=*/nullptr);
+                getIntAttr(dmaOp->getContext(), newPort), dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(),
+                dmaOp.getSpillIdAttr(), dmaOp.getCompressCandidate(), /*dmaHwpId=*/nullptr,
+                /*profilingMetadata=*/nullptr, /*splitCandidate=*/false,
+                /*profiling_buffer_mgmt=*/false, /*fusionId=*/nullptr);
         if (dmaOp.getProfilingBufferMgmt()) {
             newDmaOp.setProfilingBufferMgmt(true);
         }

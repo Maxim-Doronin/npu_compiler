@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -30,7 +31,12 @@ public:
 
         const auto cmxAvailableBytes = vpux::VPU::getTotalCMXSize(gatherOp).to<Byte>().count();
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getInput().getType());
-        const auto inputShape = inputType.getShape().raw();
+        auto inputShape = inputType.getShape().raw();
+
+        if (auto bounded = llvm::dyn_cast_or_null<Core::BoundedTensorType>(inputType)) {
+            inputShape = bounded.getBounds().raw();
+        }
+
         const auto inputByteSize = inputType.getElemTypeSize().to<Byte>().count();
         int64_t axisValue =
                 mlir::dyn_cast_or_null<mlir::IntegerAttr>(gatherOp.getAxisValueAttr()).getValue().getSExtValue();
@@ -53,8 +59,9 @@ public:
         if (!isStrideSrcData) {
             const auto outputType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getOutput().getType());
             const auto outputByteSize = outputType.getElemTypeSize().to<Byte>().count();
-            const auto isBeneficialScenario = (inputType.getShape().totalSize() * inputByteSize) > cmxAvailableBytes &&
-                                              (outputType.getShape().totalSize() * outputByteSize) < cmxAvailableBytes;
+            const auto isBeneficialScenario =
+                    (details::calcTotalShapeSize(inputShape) * inputByteSize) > cmxAvailableBytes &&
+                    (outputType.getShape().totalSize() * outputByteSize) < cmxAvailableBytes;
             if (isBeneficialScenario) {
                 log.nest(1).trace("Gather layer {0} has large input and output buffer in CMX, DDR Access is preferred "
                                   "for better performance.",
@@ -235,7 +242,18 @@ public:
 
         // Can't get feasible tiling strategy because axis dimension of TopKOp can't be tiled.
         if (axisDimSizeBytes > cmxAvailableBytes) {
-            log.nest(1).trace("Can't fit into CMX after tiling. The case should be solved with DDR solution.");
+            log.nest(1).trace("Input size {0} bytes exceeds CMX size {1} bytes. DDR solution needed.", axisDimSizeBytes,
+                              cmxAvailableBytes);
+            return true;
+        }
+
+        const auto lineBufferType = mlir::cast<vpux::NDTypeInterface>(topkOp.getLineBuffer().getType());
+        const auto lineBufferShape = lineBufferType.getShape().raw();
+        const auto lineBufferByteSize = lineBufferType.getElemTypeSize().to<Byte>().count();
+        const auto lineBufferAxisDimSizeBytes = lineBufferShape[axisValue] * lineBufferByteSize;
+        if (lineBufferAxisDimSizeBytes > cmxAvailableBytes) {
+            log.nest(1).trace("LineBuffer size {0} bytes exceeds CMX size {1} bytes. DDR solution needed.",
+                              lineBufferAxisDimSizeBytes, cmxAvailableBytes);
             return true;
         }
 

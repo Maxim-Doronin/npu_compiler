@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,13 +29,12 @@ module @SingleCosLayer {
   // CHECK: module @SingleCosLayer
   // CHECK: module @VPU.SW
   // CHECK: func.func @generated_0
-  // CHECK-SAME: [[VAR0:%.+]]: tensor<1x1x1x1000xf16>,
-  // CHECK-SAME: [[VAR1:%.+]]: tensor<1x1x1x1000xf16>
+  // CHECK-SAME: [[VAR0:%.+]]: tensor<1x1x1x1000xf16>
   // CHECK-SAME: -> tensor<1x1x1x1000xf16>
 
   // CHECK: [[COMPUTATION_RESULT:%.+]] = linalg.generic
   // CHECK-SAME: ins([[VAR0]]
-  // CHECK-SAME: outs([[VAR1]]
+  // CHECK-SAME: outs([[VAR0]]
   // CHECK: [[SCALAR_COS_RES:%.+]] = math.cos
   // CHECK: linalg.yield [[SCALAR_COS_RES]]
 
@@ -58,16 +57,14 @@ module @TestIsolateFromAbove {
   }
 
   func.func @main(%arg0: tensor<1x1x256x56xsi32>) -> tensor<1x1x256x56xsi32> {
-    %capsule = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x256x56xsi32>) {
+    %capsule = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x256x56xi32>) {
       %ct = arith.constant -1 : i32
-      %1 = tensor.bitcast %arg1 : tensor<1x1x256x56xsi32> to tensor<1x1x256x56xi32>
-      %2 = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%1 : tensor<1x1x256x56xi32>) outs(%1 : tensor<1x1x256x56xi32>) {
+      %2 = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg1 : tensor<1x1x256x56xi32>) outs(%arg1 : tensor<1x1x256x56xi32>) {
       ^bb0(%in: i32, %out: i32):
         %5 = arith.xori %in, %ct : i32
         linalg.yield %5 : i32
       } -> tensor<1x1x256x56xi32>
-      %3 = tensor.bitcast %2 : tensor<1x1x256x56xi32> to tensor<1x1x256x56xsi32>
-      IE.CGCYield %3 : tensor<1x1x256x56xsi32>
+      IE.CGCYield %2 : tensor<1x1x256x56xi32>
     } -> tensor<1x1x256x56xsi32>
     return %capsule : tensor<1x1x256x56xsi32>
   }
@@ -76,21 +73,18 @@ module @TestIsolateFromAbove {
   // CHECK: module @TestIsolateFromAbove
   // CHECK: module @VPU.SW
   // CHECK: func.func @generated_0
-  // CHECK-SAME: [[VAR0:%.+]]: tensor<1x1x256x56xi32>,
-  // CHECK-SAME: [[VAR1:%.+]]: tensor<1x1x256x56xi32>
+  // CHECK-SAME: [[VAR0:%.+]]: tensor<1x1x256x56xi32>
   // CHECK-SAME: -> tensor<1x1x256x56xi32>
   // CHECK: [[CONST:%.+]] = arith.constant -1 : i32
   // CHECK: [[COMPUTATION_RESULT:%.+]] = linalg.generic
   // CHECK-SAME: ins([[VAR0]]
-  // CHECK-SAME: outs([[VAR1]]
-  // CHECK: [[SCALAR_RES:%.+]] = arith.xori {{.*}}, [[CONST]] : i32
+  // CHECK-SAME: outs([[VAR0]]
+  // CHECK: [[SCALAR_RES:%.+]] = arith.xori {{.+}}, [[CONST]] : i32
   // CHECK: linalg.yield [[SCALAR_RES]]
 
   // CHECK: func.func @main
   // CHECK-NOT: arith.constant
-  // CHECK-NOT: tensor.bitcast
   // CHECK: [[GENERIC_SW_LAYER_RES:%.+]] = VPU.GenericSwLayer
   // CHECK-SAME: callee = @VPU.SW::@generated_0
   // CHECK-SAME: tensor<1x1x256x56xsi32> -> tensor<1x1x256x56xsi32>
-  // CHECK-NOT: tensor.bitcast
   // CHECK: return [[GENERIC_SW_LAYER_RES]] : tensor<1x1x256x56xsi32>

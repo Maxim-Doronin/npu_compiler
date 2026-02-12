@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,7 @@ func.func @FuseClamps1(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x30x30x30xf16> 
     %1 = IE.Clamp(%0) {max = 10.000000e+00 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     return %1 : tensor<1x30x30x30xf16>
 
-    // CHECK:        [[CLAMP:%.*]] = IE.Clamp(%arg0) {max = 1.000000e+01 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[CLAMP:%.+]] = IE.Clamp(%arg0) {max = 1.000000e+01 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     // CHECK-NEXT:       return [[CLAMP]]
 }
 
@@ -29,10 +29,10 @@ func.func @FuseClamps2(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x30x30x30xf16> 
     %4 = IE.Add(%2, %3) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x30x30x30xf16>, tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     return %4 : tensor<1x30x30x30xf16>
 
-    // CHECK:        [[CLAMP:%.*]] = IE.Clamp(%arg0) {max = 1.000000e+01 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
-    // CHECK-NEXT:       [[TRANSPOSE_1:%.*]] = IE.Transpose([[CLAMP]]) {order_value = #NHCW} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
-    // CHECK:        [[TRANSPOSE_2:%.*]] = IE.Transpose(%0) {order_value = #NHCW} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
-    // CHECK:        [[ADD:%.*]] = IE.Add([[TRANSPOSE_1]], [[TRANSPOSE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x30x30x30xf16>, tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[CLAMP:%.+]] = IE.Clamp(%arg0) {max = 1.000000e+01 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK-NEXT:       [[TRANSPOSE_1:%.+]] = IE.Transpose([[CLAMP]]) {order_value = #NHCW} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[TRANSPOSE_2:%.+]] = IE.Transpose(%0) {order_value = #NHCW} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[ADD:%.+]] = IE.Add([[TRANSPOSE_1]], [[TRANSPOSE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x30x30x30xf16>, tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     // CHECK:       return [[ADD]]
 }
 
@@ -48,10 +48,10 @@ func.func @ClampsNotFused(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x30x30x30xf1
     %3 = IE.Add(%1, %2) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x30x30x30xf16>, tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     return %3 : tensor<1x30x30x30xf16>
 
-    // CHECK:        [[CLAMP_1:%.*]] = IE.Clamp(%arg0) {max = 2.000000e+01 : f64, min = 1.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
-    // CHECK:        [[CLAMP_2:%.*]] = IE.Clamp([[CLAMP_1]]) {max = 1.000000e+01 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
-    // CHECK-NEXT:       [[TRANSPOSE:%.*]] = IE.Transpose([[CLAMP_1]]) {order_value = #NHCW} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
-    // CHECK:        [[ADD:%.*]] = IE.Add([[CLAMP_2]], [[TRANSPOSE]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x30x30x30xf16>, tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[CLAMP_1:%.+]] = IE.Clamp(%arg0) {max = 2.000000e+01 : f64, min = 1.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[CLAMP_2:%.+]] = IE.Clamp([[CLAMP_1]]) {max = 1.000000e+01 : f64, min = 5.000000e+00 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK-NEXT:       [[TRANSPOSE:%.+]] = IE.Transpose([[CLAMP_1]]) {order_value = #NHCW} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[ADD:%.+]] = IE.Add([[CLAMP_2]], [[TRANSPOSE]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x30x30x30xf16>, tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     // CHECK:       return [[ADD]]
 }
 
@@ -62,7 +62,7 @@ func.func @ConvertClampMaxAttrToFP16(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x
     %0 = IE.Clamp(%arg0) {max = 3.4028234663852886E+38 : f64, min = 9.9999997473787516E-6 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     return %0 : tensor<1x30x30x30xf16>
 
-    // CHECK:        [[CLAMP:%.*]] = IE.Clamp(%arg0) {max = 6.550400e+04 : f64, min = 9.9999997473787516E-6 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[CLAMP:%.+]] = IE.Clamp(%arg0) {max = 6.550400e+04 : f64, min = 9.9999997473787516E-6 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     // CHECK-NEXT:       return [[CLAMP]]
 }
 
@@ -73,7 +73,7 @@ func.func @ConvertClampMinAttrToFP16(%arg0: tensor<1x30x30x30xf16>) -> tensor<1x
     %0 = IE.Clamp(%arg0) {max = 9.9999997473787516E-6 : f64, min = -3.4028234663852886E+38 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     return %0 : tensor<1x30x30x30xf16>
 
-    // CHECK:        [[CLAMP:%.*]] = IE.Clamp(%arg0) {max = 9.9999997473787516E-6 : f64, min = -6.550400e+04 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
+    // CHECK:        [[CLAMP:%.+]] = IE.Clamp(%arg0) {max = 9.9999997473787516E-6 : f64, min = -6.550400e+04 : f64} : tensor<1x30x30x30xf16> -> tensor<1x30x30x30xf16>
     // CHECK-NEXT:       return [[CLAMP]]
 }
 

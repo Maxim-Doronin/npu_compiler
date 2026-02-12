@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,9 @@
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/async_dialect_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
@@ -31,13 +34,11 @@ using operationIdxType = FeasibleMemoryScheduler::operationIdxType;
 // 2. Un-scheduling operations: freeing CMX space and updating dependencies, creating new ready
 //      operations which will be allocated at the next available cycle.
 
-FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind,
-                                                 MemLiveRangeInfo& liveRangeInfo, AsyncDepsInfo& depsInfo, Logger log,
-                                                 LinearScan<mlir::Value, LinearScanHandler>& scan,
-                                                 config::ArchKind arch, std::shared_ptr<VPUNN::VPUCostModel> costModel,
-                                                 int64_t nceClusterCount, int64_t dmaCount,
-                                                 bool enableScheduleStatistics, bool optimizeFragmentation,
-                                                 bool activelySpillForPrefetching)
+FeasibleMemoryScheduler::FeasibleMemoryScheduler(
+        VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind, MemLiveRangeInfo& liveRangeInfo,
+        AsyncDepsInfo& depsInfo, Logger log, LinearScan<mlir::Value, LinearScanHandler>& scan, config::ArchKind arch,
+        VPUNN::VPUDevice vpuDevice, std::shared_ptr<VPUNN::VPUCostModel> costModel, int64_t nceClusterCount,
+        int64_t dmaCount, bool enableScheduleStatistics, bool optimizeFragmentation, bool activelySpillForPrefetching)
         : _log(log),
           _memKind(memKind),
           _secondLvlMemKind(secondLvlMemKind),
@@ -45,6 +46,7 @@ FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::M
           _depsInfo(depsInfo),
           _scan(scan),
           _archKind(arch),
+          _vpuDevice(vpuDevice),
           _costModel(std::move(costModel)),
           _nceClusterCount(nceClusterCount),
           _numDMAPorts(dmaCount),
@@ -56,7 +58,7 @@ FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::M
     auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(arch);
     for (auto dmaChannel : dmaChannels) {
         QueueType queueType;
-        queueType.execKind = VPU::ExecutorKind::DMA_NN;
+        queueType.execKind = config::ExecutorKind::DMA_NN;
         queueType.id = getDMAQueueIdEncoding(dmaChannel);
         _executorPipelines[queueType].assign(dmaCount, 1);
     }
@@ -212,13 +214,13 @@ void FeasibleMemoryScheduler::moveFromCycleBeginToCycleEndHeap() {
     _cycleBeginHeap.clear();
 }
 
-VPU::ExecutorKind FeasibleMemoryScheduler::getExecutorType(operationIdxType opIdx) {
+config::ExecutorKind FeasibleMemoryScheduler::getExecutorType(operationIdxType opIdx) {
     if (_spillBufferMap.find(opIdx) != _spillBufferMap.end()) {
         // spilled operation using DMAs for relocation
-        return VPU::ExecutorKind::DMA_NN;
+        return config::ExecutorKind::DMA_NN;
     }
     auto execOp = _depsInfo.getExecuteOpAtIndex(opIdx);
-    return vpux::getExecutorType(execOp);
+    return vpux::VPUIP::getExecutorType(execOp);
 }
 
 FeasibleMemoryScheduler::QueueType FeasibleMemoryScheduler::getQueueType(operationIdxType opIdx) {
@@ -230,13 +232,13 @@ FeasibleMemoryScheduler::QueueType FeasibleMemoryScheduler::getQueueType(operati
     if (execOp->hasAttr(VPUIP::VPUIPDialect::getExecutorAttrName())) {
         queueType.execKind = VPUIP::VPUIPDialect::getExecutorKind(execOp);
 
-        if (auto dmaTask = vpux::getDmaTypeOp(execOp)) {
+        if (auto dmaTask = VPUIP::getDmaTypeOp(execOp)) {
             queueType.id = getDMAQueueIdEncoding(dmaTask.getChannelType());
         }
         return queueType;
     }
     // for now treat all other executors as DPU - same as previous implementation
-    queueType.execKind = VPU::ExecutorKind::DPU;
+    queueType.execKind = config::ExecutorKind::DPU;
     return queueType;
 }
 
@@ -268,7 +270,7 @@ size_t FeasibleMemoryScheduler::getOpDemandForExecutorsInstances(operationIdxTyp
     // Check if operation works on DistributedBuffers with SEGMENTED mode. In such case
     // such DMA will be later split into per-cluster DMA tasks (unroll-distributed-ops pass).
     // Here assume that this operation will use all executors
-    if (queueType.execKind == VPU::ExecutorKind::DMA_NN) {
+    if (queueType.execKind == config::ExecutorKind::DMA_NN) {
         const auto usedBufs = _liveRangeInfo.getUsedBuffers(execOp);
         for (auto& buffer : usedBufs) {
             if (areMultipleDmaPortsNeeded(buffer)) {
@@ -290,7 +292,7 @@ size_t FeasibleMemoryScheduler::getBufferDemandForExecutorsInstances(mlir::Value
     // Check if operation works on DistributedBuffers with SEGMENTED mode. In such case
     // such DMA will be later split into per-cluster DMA tasks. Here assume that this operation
     // will use all executors
-    if (queueType.execKind == VPU::ExecutorKind::DMA_NN) {
+    if (queueType.execKind == config::ExecutorKind::DMA_NN) {
         if (areMultipleDmaPortsNeeded(buffer)) {
             return numOfExecutors;
         }
@@ -311,7 +313,7 @@ llvm::BitVector FeasibleMemoryScheduler::getExecutorInstanceMask(size_t numOfNee
 
     llvm::BitVector executorMask(checked_cast<uint32_t>(numOfAllInstances));
 
-    if (queueType.execKind == VPU::ExecutorKind::DMA_NN) {
+    if (queueType.execKind == config::ExecutorKind::DMA_NN) {
         if (numOfNeededInstances == 1) {
             // Find the executor with lowest cycle
             size_t indexMin = 0;
@@ -369,7 +371,7 @@ FeasibleMemoryScheduler::QueueAndCycleType FeasibleMemoryScheduler::getCurrentCy
 FeasibleMemoryScheduler::QueueAndCycleType FeasibleMemoryScheduler::getCurrentCycleAndExecutorInstanceMaskForSpill(
         mlir::Value buffer, EOpType spillType, size_t depEndCycle) {
     QueueType queueType;
-    queueType.execKind = VPU::ExecutorKind::DMA_NN;
+    queueType.execKind = config::ExecutorKind::DMA_NN;
     if (spillType == EOpType::IMPLICIT_SPILL_READ_OP) {
         queueType.id = getDMAQueueIdEncoding(_secondLvlMemKind, _archKind);
     } else {
@@ -403,8 +405,8 @@ void FeasibleMemoryScheduler::alignExecutors(size_t nextAvailableCycle) {
 
             std::string executorInstanceInfo = "";
 
-            if (pipeline.first.execKind == VPU::ExecutorKind::DMA_NN) {
-                auto channelTypeAsString = getDMAChannelTypeAsString(pipeline.first.id, _archKind);
+            if (pipeline.first.execKind == config::ExecutorKind::DMA_NN) {
+                auto channelTypeAsString = VPUIP::getDMAChannelTypeAsString(pipeline.first.id, _archKind);
                 if (channelTypeAsString.size() > 0) {
                     executorInstanceInfo += "_" + channelTypeAsString;
                 }
@@ -427,7 +429,7 @@ size_t FeasibleMemoryScheduler::spilledOperationCycleCost(mlir::Value spilledBuf
     }
     // get and store cost of buffer spill
     _spillBufferCycleCost[spilledBuffer] =
-            getDMACost(spilledBuffer, spilledBuffer, _archKind, _costModel, _numDMAPorts);
+            getDMACost(spilledBuffer, spilledBuffer, _archKind, _vpuDevice, _costModel, _numDMAPorts);
     return _spillBufferCycleCost[spilledBuffer];
 }
 
@@ -450,7 +452,7 @@ bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
     // in not being able to fit the compute operation. Data operations will only be
     // scheduled when needed by the compute operation so that the CMX space can be
     // freed as soon as possible.
-    if (getExecutorType(opIdx) != VPU::ExecutorKind::DMA_NN) {
+    if (getExecutorType(opIdx) != config::ExecutorKind::DMA_NN) {
         return false;
     }
 
@@ -465,7 +467,7 @@ bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
         }
     }
 
-    if (auto dmaTask = vpux::getDmaTypeOp(_depsInfo.getExecuteOpAtIndex(opIdx))) {
+    if (auto dmaTask = VPUIP::getDmaTypeOp(_depsInfo.getExecuteOpAtIndex(opIdx))) {
         // DMA from DDR to NN_CMX
         auto srcMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getInput().getType()).getMemoryKind();
         auto dstMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getOutput().getType()).getMemoryKind();
@@ -479,7 +481,7 @@ bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
 bool FeasibleMemoryScheduler::isNoInputDepComputeOp(operationIdxType opIdx) {
     // #E163065 - hang to be investigated. Limit to SW dequantize only.
     auto execOp = _depsInfo.getExecuteOpAtIndex(opIdx);
-    if (VPUIP::VPUIPDialect::getExecutorKind(execOp) != VPU::ExecutorKind::SHAVE_ACT) {
+    if (VPUIP::VPUIPDialect::getExecutorKind(execOp) != config::ExecutorKind::SHAVE_ACT) {
         return false;
     }
     auto isSWDequant = false;
@@ -528,7 +530,7 @@ bool FeasibleMemoryScheduler::freeMemoryResources(const HeapElement& hElement) {
     }
     if (freeMemoryResources) {
         _log.nest().trace("Free non alive buffers");
-        _scan.freeNonAlive();
+        _scan.freeDeadRanges();
     }
     return freeMemoryResources;
 }
@@ -871,7 +873,7 @@ void FeasibleMemoryScheduler::prefetchOps(ArrayRef<std::pair<operationIdxType, s
     size_t lastScheduledLevel = 0;
     for (auto& scheduledOp : scheduledOps) {
         const auto executorType = getExecutorType(scheduledOp.first);
-        if (executorType == VPU::ExecutorKind::DMA_NN) {
+        if (executorType == config::ExecutorKind::DMA_NN) {
             continue;
         }
         lastScheduledOp = std::max(lastScheduledOp, scheduledOp.first);
@@ -1327,7 +1329,7 @@ void FeasibleMemoryScheduler::evictActiveOp(EvictionCandidate evictionCandidate)
     _scan.handler().markAsDynamicSpill(evictionCandidate.buffer_);
 
     _log.nest().trace("Free non alive buffers");
-    _scan.freeNonAlive();
+    _scan.freeDeadRanges();
 }
 
 size_t FeasibleMemoryScheduler::evictionPriority(operationIdxType writerOpIdx, mlir::Value buffer) {
@@ -1441,7 +1443,7 @@ FeasibleMemoryScheduler::chooseCandidateForEvictionToSupportPrefetch(
         auto tempScan = scan;
         // Simulate the eviction by marking the buffer as dead in tempScan
         tempScan.handler().markAsDead(buffer);
-        tempScan.freeNonAlive();
+        tempScan.freeDeadRanges();
 
         // Create a temporary set of operation buffers including the current buffer
         auto tempOperationBuffers = _fragmentedBuffers;
@@ -1700,7 +1702,7 @@ void FeasibleMemoryScheduler::populateScheduledOps(const HeapElement& scheduledO
     scheduled.isDataOp_ = _isDataOp[scheduledOp.op_];
     scheduled.freeCmx_ = _scan.totalFreeSize();
     if (scheduledOp.isSpillOp()) {
-        scheduled.queueType.execKind = VPU::ExecutorKind::DMA_NN;
+        scheduled.queueType.execKind = config::ExecutorKind::DMA_NN;
         if (scheduledOp.isSpillWriteOp()) {
             scheduled.queueType.id = getDMAQueueIdEncoding(_memKind, _archKind);
         } else {
@@ -1709,7 +1711,7 @@ void FeasibleMemoryScheduler::populateScheduledOps(const HeapElement& scheduledO
     } else {
         scheduled.queueType = getQueueType(scheduledOp.op_);
     }
-    // scheduled.queueType = scheduledOp.isSpillOp() ? VPU::ExecutorKind::DMA_NN : getExecutorType(scheduledOp.op_);
+    // scheduled.queueType = scheduledOp.isSpillOp() ? config::ExecutorKind::DMA_NN : getExecutorType(scheduledOp.op_);
     scheduled.executorInstanceMask = scheduledOp.executorInstanceMask_;
     _scheduledOps.push_back(scheduled);
     insertInOpIdxCycleEndMap(scheduled.op_, scheduled.cycleEnd_);
@@ -1829,11 +1831,11 @@ void FeasibleMemoryScheduler::cleanUpAndLogSchedule(ScheduledOpInfoVec& schedule
         std::string inputResourceInfo = "<none>";
         std::string outputResourceInfo = "<none>";
         std::string executorInstanceInfo = "";
-        auto channelTypeAsString = op.queueType.execKind == VPU::ExecutorKind::DMA_NN
-                                           ? getDMAChannelTypeAsString(op.queueType.id, _archKind)
+        auto channelTypeAsString = op.queueType.execKind == config::ExecutorKind::DMA_NN
+                                           ? VPUIP::getDMAChannelTypeAsString(op.queueType.id, _archKind)
                                            : "";
 
-        if (op.queueType.execKind == VPU::ExecutorKind::DMA_NN && channelTypeAsString.size() > 0) {
+        if (op.queueType.execKind == config::ExecutorKind::DMA_NN && channelTypeAsString.size() > 0) {
             executorInstanceInfo += "_" + channelTypeAsString;
         }
 
@@ -1884,7 +1886,8 @@ void FeasibleMemoryScheduler::cleanUpAndLogSchedule(ScheduledOpInfoVec& schedule
                    op.op_, op.queueType.execKind, executorInstanceInfo, op.opTypeName(), cycleInfo, inputResourceInfo,
                    outputResourceInfo, op.freeCmx_, execOp.getLoc());
 
-        if (op.queueType.execKind == VPU::ExecutorKind::DMA_NN || op.queueType.execKind == VPU::ExecutorKind::DPU) {
+        if (op.queueType.execKind == config::ExecutorKind::DMA_NN ||
+            op.queueType.execKind == config::ExecutorKind::DPU) {
             if (dpuOrDmaQueuesCycles.find(op.queueType) == dpuOrDmaQueuesCycles.end()) {
                 dpuOrDmaQueuesCycles[op.queueType].assign(_executorPipelines[op.queueType].size(), 1);
             }
@@ -1895,7 +1898,7 @@ void FeasibleMemoryScheduler::cleanUpAndLogSchedule(ScheduledOpInfoVec& schedule
                 if (cycleDiff > 0) {
                     std::string execInstString = "";
 
-                    if (op.queueType.execKind == VPU::ExecutorKind::DMA_NN && channelTypeAsString.size() > 0) {
+                    if (op.queueType.execKind == config::ExecutorKind::DMA_NN && channelTypeAsString.size() > 0) {
                         execInstString += "_" + channelTypeAsString;
                     }
 

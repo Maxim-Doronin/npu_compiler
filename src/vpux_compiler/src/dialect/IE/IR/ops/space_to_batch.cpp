@@ -4,10 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -35,7 +35,7 @@ mlir::LogicalResult vpux::IE::SpaceToBatch::inferReturnTypeComponents(
     SmallVector<int64_t> padsEndVal = {0};
 
     if (spb.getBlockShape() != nullptr || spb.getBlockShapeValue().has_value()) {
-        auto blockShape = getConstOrArrAttrValue(spb.getBlockShape(), spb.getBlockShapeValueAttr());
+        auto blockShape = Const::getConstOrArrAttrValue(spb.getBlockShape(), spb.getBlockShapeValueAttr());
         if (mlir::failed(blockShape)) {
             return mlir::failure();
         }
@@ -43,7 +43,7 @@ mlir::LogicalResult vpux::IE::SpaceToBatch::inferReturnTypeComponents(
     }
 
     if (spb.getPadsBegin() != nullptr || spb.getPadsBeginValue().has_value()) {
-        auto padsBegin = getConstOrArrAttrValue(spb.getPadsBegin(), spb.getPadsBeginValueAttr());
+        auto padsBegin = Const::getConstOrArrAttrValue(spb.getPadsBegin(), spb.getPadsBeginValueAttr());
         if (mlir::failed(padsBegin)) {
             return mlir::failure();
         }
@@ -51,7 +51,7 @@ mlir::LogicalResult vpux::IE::SpaceToBatch::inferReturnTypeComponents(
     }
 
     if (spb.getPadsEnd() != nullptr || spb.getPadsEndValue().has_value()) {
-        auto padsEnd = getConstOrArrAttrValue(spb.getPadsEnd(), spb.getPadsEndValueAttr());
+        auto padsEnd = Const::getConstOrArrAttrValue(spb.getPadsEnd(), spb.getPadsEndValueAttr());
         if (mlir::failed(padsEnd)) {
             return mlir::failure();
         }
@@ -113,7 +113,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::SpaceToBatch spaceto
     SmallVector<int64_t> padsEndVal = {0};
 
     if (spacetobatch.getBlockShape() != nullptr) {
-        const auto blockShape = getConstArrValue(spacetobatch.getBlockShape());
+        const auto blockShape = Const::getConstArrValue(spacetobatch.getBlockShape());
         if (mlir::failed(blockShape)) {
             return mlir::failure();
         }
@@ -121,7 +121,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::SpaceToBatch spaceto
     }
 
     if (spacetobatch.getPadsBegin() != nullptr) {
-        const auto padsBegin = getConstArrValue(spacetobatch.getPadsBegin());
+        const auto padsBegin = Const::getConstArrValue(spacetobatch.getPadsBegin());
         if (mlir::failed(padsBegin)) {
             return mlir::failure();
         }
@@ -129,7 +129,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::SpaceToBatch spaceto
     }
 
     if (spacetobatch.getPadsEnd() != nullptr) {
-        const auto padsEnd = getConstArrValue(spacetobatch.getPadsEnd());
+        const auto padsEnd = Const::getConstArrValue(spacetobatch.getPadsEnd());
         if (mlir::failed(padsEnd)) {
             return mlir::failure();
         }

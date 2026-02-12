@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELF/utils/reloc_manager.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/attributes.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/ELF/IR/attributes.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/ELF/utils/relocation_functions.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops_interfaces.hpp"
@@ -34,17 +33,18 @@ const std::map<ELF::RelocationType, RelocFunc> relocationMap = {
         {ELF::RelocationType::R_VPU_HIGH_27_BIT_OR, VPU_HIGH_27_BIT_OR_Relocation},
         {ELF::RelocationType::R_VPU_32_BIT_OR_B21_B26_UNSET_LOW_16, VPU_32_BIT_OR_B21_B26_UNSET_LOW_16_Relocation},
         {ELF::RelocationType::R_VPU_32_BIT_OR_B21_B26_UNSET_HIGH_16, VPU_32_BIT_OR_B21_B26_UNSET_HIGH_16_Relocation},
-        {ELF::RelocationType::R_VPU_32_OR_LO_19_LSB_21_RSHIFT_2, VPU_32_OR_LO_19_LSB_21_RSHIFT_2_Relocation}};
+        {ELF::RelocationType::R_VPU_32_OR_LO_19_LSB_21_RSHIFT_2, VPU_32_OR_LO_19_LSB_21_RSHIFT_2_Relocation},
+        {ELF::RelocationType::R_VPU_16_LSB_21_RSHIFT_5_LSHIFT_16_SUM, VPU_16_LSB_21_RSHIFT_5_LSHIFT_16_SUM_Relocation},
+        {ELF::RelocationType::R_VPU_16_LSB_21_RSHIFT_5_SUM, VPU_16_LSB_21_RSHIFT_5_SUM_Relocation}};
 
-}  // namespace
-
-ELF::CreateRelocationSectionOp ELF::RelocManager::getRelocationSection(ELF::ElfSectionInterface targetSection,
-                                                                       ELF::CreateSymbolTableSectionOp symbolTable) {
+template <typename SymbolSectionT, typename RelocMapT>
+ELF::CreateRelocationSectionOp getRelocationSection(ELF::ElfSectionInterface targetSection, SymbolSectionT symbolTable,
+                                                    RelocMapT& relocMap, mlir::OpBuilder& builder) {
     auto key = std::make_pair(targetSection.getOperation(), symbolTable);
 
-    auto relocSectionIt = relocMap_.find(key);
+    auto relocSectionIt = relocMap.find(key);
 
-    if (relocSectionIt != relocMap_.end()) {
+    if (relocSectionIt != relocMap.end()) {
         return relocSectionIt->getSecond();
     }
 
@@ -52,8 +52,8 @@ ELF::CreateRelocationSectionOp ELF::RelocManager::getRelocationSection(ELF::ElfS
     auto symtabSymbolIface = mlir::cast<mlir::SymbolOpInterface>(symbolTable.getOperation());
 
     mlir::StringAttr nameAttr =
-            mlir::StringAttr::get(builder_.getContext(), llvm::Twine("rela.") + targetSectionSymbolIface.getName() +
-                                                                 "." + symtabSymbolIface.getName());
+            mlir::StringAttr::get(builder.getContext(), llvm::Twine("rela.") + targetSectionSymbolIface.getName() +
+                                                                "." + symtabSymbolIface.getName());
 
     auto targetSectionRef = mlir::FlatSymbolRefAttr::get(targetSectionSymbolIface.getNameAttr());
     auto symTabRef = mlir::FlatSymbolRefAttr::get(symtabSymbolIface.getNameAttr());
@@ -68,19 +68,33 @@ ELF::CreateRelocationSectionOp ELF::RelocManager::getRelocationSection(ELF::ElfS
     VPUX_THROW_WHEN(isJITRelaSection && !ELF::bitEnumContainsAll(relaSectionFlags, ELF::SectionFlagsAttr::VPU_SHF_JIT),
                     "Reloc Section for JIT symbols must have VPU_SHF_JIT Flag");
 
-    auto flags = ELF::SectionFlagsAttrAttr::get(builder_.getContext(), relaSectionFlags);
-    auto newRelocSection = builder_.create<ELF::CreateRelocationSectionOp>(symbolTable.getLoc(), nameAttr,
-                                                                           targetSectionRef, symTabRef, flags);
+    auto flags = ELF::SectionFlagsAttrAttr::get(builder.getContext(), relaSectionFlags);
+    auto newRelocSection = builder.create<ELF::CreateRelocationSectionOp>(symbolTable.getLoc(), nameAttr,
+                                                                          targetSectionRef, symTabRef, flags);
 
-    relocMap_[key] = newRelocSection;
+    relocMap[key] = newRelocSection;
 
     return newRelocSection;
 }
 
+void createRelocation(mlir::Operation* op, ELF::CreateRelocationSectionOp relocSection, size_t offset,
+                      bool isOffsetRelative, mlir::SymbolRefAttr symbol, vpux::ELF::RelocationType relocType,
+                      size_t addend, std::string_view description) {
+    auto relocBuilder = mlir::OpBuilder::atBlockEnd(relocSection.getBlock());
+    // here we set the actual offset from the beginning of the final ELF file
+    if (isOffsetRelative) {
+        auto baseBinarySizeOp = mlir::cast<ELF::BinarySizeOpInterface>(op);
+        offset += baseBinarySizeOp.getMemoryOffset();
+    }
+
+    relocBuilder.create<ELF::RelocOp>(relocSection.getLoc(), offset, symbol, relocType, addend, description);
+}
+
+}  // namespace
+
 ELF::SymbolOp ELF::RelocManager::getSymbolOfBinOpOrEncapsulatingSection(mlir::Operation* binOp) {
     auto sectionOp = mlir::isa<ELF::ElfSectionInterface>(binOp) ? mlir::cast<ELF::ElfSectionInterface>(binOp)
                                                                 : binOp->getParentOfType<ELF::ElfSectionInterface>();
-
     auto symbolMapIt = symbolMap_.find(sectionOp.getOperation());
 
     if (symbolMapIt != symbolMap_.end()) {
@@ -92,7 +106,7 @@ ELF::SymbolOp ELF::RelocManager::getSymbolOfBinOpOrEncapsulatingSection(mlir::Op
 
 void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::SymbolOp sourceSym,
                                           ELF::ElfSectionInterface targetSection, size_t offset, bool isOffsetRelative,
-                                          vpux::ELF::RelocationType relocType, size_t addend,
+                                          vpux::ELF::RelocationType relocType, int64_t addend,
                                           std::string_view description) {
     // we can only modify ops for which the binary format is known
     auto targetOp = mlir::dyn_cast<VPURegMapped::NPURegDescriptorOpInterface>(op);
@@ -127,22 +141,24 @@ void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::SymbolOp sou
         ELF::CreateSymbolTableSectionOp symTab =
                 mlir::dyn_cast<ELF::CreateSymbolTableSectionOp>(sourceSym->getParentOp());
         auto symForReloc = ELF::composeSectionObjectSymRef(symTab, sourceSym.getOperation());
-        ELF::CreateRelocationSectionOp relocSection = getRelocationSection(targetSection, symTab);
-        auto relocBuilder = mlir::OpBuilder::atBlockEnd(relocSection.getBlock());
-
-        // here we set the actual offset from the beginning of the final ELF file
-        if (isOffsetRelative) {
-            auto baseBinarySizeOp = mlir::cast<ELF::BinarySizeOpInterface>(op);
-            offset += baseBinarySizeOp.getMemoryOffset();
-        }
-
-        relocBuilder.create<ELF::RelocOp>(relocSection.getLoc(), offset, symForReloc, relocType, addend, description);
+        ELF::CreateRelocationSectionOp relocSection = getRelocationSection(targetSection, symTab, relocMap_, builder_);
+        createRelocation(op, relocSection, offset, isOffsetRelative, symForReloc, relocType, addend, description);
     }
+}
+
+void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::DmaSymbolOp sourceSym,
+                                          ELF::ElfSectionInterface targetSection, size_t offset, bool isOffsetRelative,
+                                          vpux::ELF::RelocationType relocType, size_t addend,
+                                          std::string_view description) {
+    auto symTab = mlir::dyn_cast<ELF::DmaSymbolSectionOp>(sourceSym->getParentOp());
+    auto opRef = mlir::FlatSymbolRefAttr::get(mlir::StringAttr::get(symTab.getContext(), sourceSym.getSymName()));
+    auto symForReloc = mlir::SymbolRefAttr::get(symTab.getContext(), symTab.getSymName(), {opRef});
+    auto relocSection = getRelocationSection(targetSection, symTab, dmaRelocMap_, builder_);
+    createRelocation(op, relocSection, offset, isOffsetRelative, symForReloc, relocType, addend, description);
 }
 
 void ELF::RelocManager::createRelocations(mlir::Operation* op, ELF::RelocationInfo& relocInfo) {
     auto sourceOp = symRefMap_.lookupSymbol(relocInfo.source);
-
     ELF::SymbolOp sourceSym = getSymbolOfBinOpOrEncapsulatingSection(sourceOp);
     createRelocations(op, sourceSym, relocInfo.targetSection, relocInfo.offset, relocInfo.isOffsetRelative,
                       relocInfo.relocType, relocInfo.addend, relocInfo.description);
@@ -157,6 +173,15 @@ void ELF::RelocManager::createRelocations(mlir::Operation* op, std::vector<ELF::
 void ELF::RelocManager::createRelocations(ELF::RelocatableOpInterface relocatableOp) {
     auto relocsInfo = relocatableOp.getRelocationInfo(symRefMap_);
     createRelocations(relocatableOp.getOperation(), relocsInfo);
+}
+
+void ELF::RelocManager::createDynamicStridesDMARelocations(mlir::Operation* op,
+                                                           std::vector<ELF::RelocationInfo>& relocsInfo) {
+    for (auto& relocInfo : relocsInfo) {
+        auto dmaSymbolOp = mlir::cast<ELF::DmaSymbolOp>(symRefMap_.lookupSymbol(relocInfo.source));
+        createRelocations(op, dmaSymbolOp, relocInfo.targetSection, relocInfo.offset, relocInfo.isOffsetRelative,
+                          relocInfo.relocType, relocInfo.addend, relocInfo.description);
+    }
 }
 
 void ELF::RelocManager::constructSymbolMap(ELF::MainOp elfMain) {

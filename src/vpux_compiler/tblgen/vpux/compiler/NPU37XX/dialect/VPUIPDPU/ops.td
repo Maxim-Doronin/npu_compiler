@@ -42,11 +42,12 @@ def VPUIPDPU_IDUInActivationsOp :
 
     let arguments =(ins
         AnyMemRef:$in_activations,
-        UnitAttr:$in_sparse
+        UnitProp:$in_sparse
         );
 
     let assemblyFormat = [{
         `in_activations`    `(` $in_activations `:` type($in_activations) `)`
+        prop-dict
         attr-dict
     }];
 }
@@ -77,12 +78,13 @@ Setting this value will trigger pool_wt_rd_dis and disable reading of weights fr
     let arguments =(ins
         TypeAttr:$wmode,
         OptionalAttr<IntAttr>:$pool_wt_data,
-        UnitAttr:$wt_sparse
+        UnitProp:$wt_sparse
         );
 
     let assemblyFormat = [{
         `wmode`         `(` $wmode `)`
         (`pool_wt_data` `(` $pool_wt_data^ `)`)?
+        prop-dict
         attr-dict
     }];
 }
@@ -105,11 +107,12 @@ def VPUIPDPU_IDUInputLayerCfgOp :
 
     let arguments =(ins
         IntAttr:$sparsity_pattern,
-        UnitAttr:$input_compressed
+        UnitProp:$input_compressed
         );
 
     let assemblyFormat = [{
         `sparsity_pattern`  `(` $sparsity_pattern `)`
+        prop-dict
         attr-dict
     }];
 }
@@ -265,7 +268,7 @@ def VPUIPDPU_IDUEltWiseCfgOp :
     let summary = "IDU eltwise configuration";
 
     let arguments =(ins
-        UnitAttr:$bf16_flow_on,
+        UnitProp:$bf16_flow_on,
         AnyAttrOf<[IntAttr, F32Attr]>:$elop_scale_a,
         AnyAttrOf<[IntAttr, F32Attr]>:$elop_scale_b
         );
@@ -275,6 +278,7 @@ def VPUIPDPU_IDUEltWiseCfgOp :
     let assemblyFormat = [{
         `elop_scale_a`  `(` $elop_scale_a `)`
         `elop_scale_b`  `(` $elop_scale_b `)`
+        prop-dict
         attr-dict
     }];
 }

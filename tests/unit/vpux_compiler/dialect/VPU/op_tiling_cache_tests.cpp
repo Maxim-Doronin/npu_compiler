@@ -11,7 +11,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
@@ -23,7 +23,7 @@
 
 using namespace vpux;
 
-using MLIR_OpTilingCacheTest = vpux::VPU::arch37xx::UnitTest;
+using MLIR_OpTilingCacheTest = vpux::VPU::arch40xx::UnitTest;
 
 llvm::StringLiteral inputIR = R"(
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -52,11 +52,6 @@ llvm::StringLiteral inputIR = R"(
 })";
 
 TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
-    auto registry = vpux::createDialectRegistry();
-    auto interfacesRegistry = vpux::createInterfacesRegistry(config::ArchKind::NPU40XX);
-    interfacesRegistry->registerInterfaces(registry);
-
-    mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
     module.get()->removeAttr("config.arch");
@@ -72,7 +67,7 @@ TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
     auto nceOps = to_small_vector(func.getOps<vpux::VPU::NCEAveragePoolOp>());
     ASSERT_TRUE(nceOps.size() == 2);
 
-    auto& cache = vpux::VPU::OpTilingCache::instance();
+    auto& cache = vpux::VPU::getGlobalOpTilingCache();
     cache.enableIfNecessary(true);
     cache.cleanUp();
 
@@ -90,13 +85,6 @@ TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
 }
 
 TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
-    auto registry = vpux::createDialectRegistry();
-    auto interfacesRegistry = vpux::createInterfacesRegistry(config::ArchKind::NPU40XX);
-    interfacesRegistry->registerInterfaces(registry);
-    // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
-
-    mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
     module.get()->removeAttr("config.arch");
@@ -111,7 +99,7 @@ TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
 
     auto tileOp = vpux::config::getTileExecutor(module.get());
     ASSERT_TRUE(tileOp != nullptr);
-    auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
+    auto dpuExec = tileOp.getSubExecutor(config::ExecutorKind::DPU);
     auto numTiles = tileOp.getCount();
     auto numDPUs = dpuExec.getCount();
 
@@ -124,7 +112,7 @@ TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
     TileInfo tileInfo(outShape, offsets, axis);
     OutputTiling outputTiling = OutputTiling{tileInfo};
 
-    auto& cache = vpux::VPU::OpTilingCache::instance();
+    auto& cache = vpux::VPU::getGlobalOpTilingCache();
     cache.enableIfNecessary(true);
     cache.cleanUp();
 
@@ -136,7 +124,7 @@ TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
     const auto vpunnStrategy =
             VPU::getVPULayerStrategy(strategy, numDPUs, numTiles, config::ArchKind::NPU40XX, 1, true);
 
-    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(config::ArchKind::NPU40XX);
+    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(&ctx);
 
     auto dpuCost1 = getDPUCostForNCEOp(nceOps[0], strategy, outputTiling, costParams, vpunnStrategy, layerCostModel,
                                        Logger::global());

@@ -297,7 +297,7 @@ void reduceParallelControlFlows(std::map<VPURT::TaskQueueType, VPURT::TaskConfig
     }
 
     for (auto& entry : taskQueueMap) {
-        if (entry.first.type != VPU::ExecutorKind::DMA_NN) {
+        if (entry.first.type != config::ExecutorKind::DMA_NN) {
             continue;
         }
 
@@ -337,9 +337,8 @@ void SimplifySchedulePass::safeRunOnFunc() {
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
 
     // If barrier order by producer, some task's wait barrier number is bigger than update barrier, but some functions
@@ -349,7 +348,7 @@ void SimplifySchedulePass::safeRunOnFunc() {
     VPURT::orderExecutionTasksAndBarriers(funcOp, barrierInfo, _log, true);
 
     // 1. avoid out of order dependencies
-    auto dmaTaskOpQueues = VPURT::getTaskOpQueues(funcOp, barrierInfo, VPU::ExecutorKind::DMA_NN);
+    auto dmaTaskOpQueues = VPURT::getTaskOpQueues(funcOp, barrierInfo, config::ExecutorKind::DMA_NN);
     // inject dependencies where needed
     resolveOutOfOrderDependencies(dmaTaskOpQueues, barrierInfo);
     // re-order execution

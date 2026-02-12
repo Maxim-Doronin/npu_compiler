@@ -128,7 +128,7 @@ def VPUIP_TaskOpInterface : OpInterface<"TaskOpInterface"> {
     let methods = [
         StaticInterfaceMethod<
             "Get the executor for the Operation",
-            "vpux::VPU::ExecutorKind", "getExecutorKind", (ins),
+            "vpux::config::ExecutorKind", "getExecutorKind", (ins),
             [{
                 return ConcreteOp::getExecutorKind();
             }]
@@ -203,7 +203,7 @@ def VPUIP_DMATypeOpInterface : OpInterface<"DMATypeOpInterface", [DeclareOpInter
             "void", "setOutOfOrder", (ins),
             [{}],
             [{
-                return $_op.setIsOutOfOrderAttr(mlir::UnitAttr::get($_op->getContext()));
+                return $_op.setIsOutOfOrder(true);
             }]
         >,
         InterfaceMethod<

@@ -18,6 +18,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <algorithm>
@@ -56,20 +57,6 @@ using namespace vpux;
 namespace {
 
 //
-// FuseColorConversionPass
-//
-
-class FuseColorConversionPass final : public IE::impl::FuseColorConversionBase<FuseColorConversionPass> {
-public:
-    explicit FuseColorConversionPass(Logger log) {
-        Base::initLogger(log, Base::getArgumentName());
-    }
-
-private:
-    void safeRunOnFunc() final;
-};
-
-//
 // Helper functions
 //
 
@@ -89,7 +76,7 @@ bool isValidClamp(IE::ClampOp clampOp) {
     auto minAttr = clampOp.getMinAttr();
     auto maxAttr = clampOp.getMaxAttr();
 
-    if (!minAttr || !maxAttr) {
+    if (minAttr == nullptr || maxAttr == nullptr) {
         return false;
     }
 
@@ -106,18 +93,14 @@ bool isValidFQ(IE::FakeQuantizeOp fqOp) {
         return false;
     }
 
-    auto lowContent = outputLowConst.getContent();
-    auto highContent = outputHighConst.getContent();
-    auto lowValues = to_small_vector(lowContent.getValues<float>());
-    auto highValues = to_small_vector(highContent.getValues<float>());
+    auto minVal = Const::getSplatValue<float>(outputLowConst);
+    auto maxVal = Const::getSplatValue<float>(outputHighConst);
 
-    if (lowValues.empty() || highValues.empty()) {
+    if (mlir::failed(minVal) || mlir::failed(maxVal)) {
         return false;
     }
 
-    float minVal = lowValues[0];
-    float maxVal = highValues[0];
-    return isValidColorOutputRange(minVal, maxVal);
+    return isValidColorOutputRange(minVal.value(), maxVal.value());
 }
 
 // Skip Convert operation if present
@@ -143,6 +126,38 @@ mlir::Operation* skipConvertAndFakeQuantizeIfPresent(mlir::Operation* op) {
     return op;
 }
 
+// Detect RGB or BGR format based on convolution weights
+std::optional<IE::ColorFmt> detectOutputColorFormat(mlir::Value convWeights) {
+    mlir::Value weightsValue = convWeights;
+    if (auto fqOp = convWeights.getDefiningOp<IE::FakeQuantizeOp>()) {
+        weightsValue = fqOp.getInput();
+    }
+
+    auto weightsConst = weightsValue.getDefiningOp<Const::DeclareOp>();
+    if (!weightsConst) {
+        return std::nullopt;
+    }
+
+    auto weightsContent = weightsConst.getContent();
+
+    // Weights are 9 values arranged as: [Ch0_Y, Ch0_U, Ch0_V, Ch1_Y, Ch1_U, Ch1_V, Ch2_Y, Ch2_U, Ch2_V]
+    // RGB has Red first (large V coef at index 2), BGR has Blue first (small V coef at index 2)
+    const auto colorFormat = weightsContent.read([](auto weightsValues) -> std::optional<IE::ColorFmt> {
+        if (weightsValues.size() != 9) {
+            return std::nullopt;
+        }
+
+        float firstChannelVComponent = checked_cast<float>(weightsValues[2]);
+        float thirdChannelVComponent = checked_cast<float>(weightsValues[8]);
+        if (std::abs(thirdChannelVComponent) > std::abs(firstChannelVComponent)) {
+            return IE::ColorFmt::BGR;
+        }
+        return IE::ColorFmt::RGB;
+    });
+
+    return colorFormat;
+}
+
 //
 // Pattern matching for color conversion
 //
@@ -150,7 +165,7 @@ mlir::Operation* skipConvertAndFakeQuantizeIfPresent(mlir::Operation* op) {
 bool matchYuvToRgbPattern(IE::AddOp addOp, mlir::Value& yInput, mlir::Value& uvInput, mlir::Value& convWeights,
                           mlir::Value& convBias) {
     auto convOp = addOp.getInput1().getDefiningOp<IE::ConvolutionOp>();
-    if (!convOp) {
+    if (convOp == nullptr) {
         return false;
     }
 
@@ -160,18 +175,18 @@ bool matchYuvToRgbPattern(IE::AddOp addOp, mlir::Value& yInput, mlir::Value& uvI
     auto convInput = skipFakeQuantizeIfPresent(convOp.getInput().getDefiningOp());
 
     auto concatOp = mlir::dyn_cast_or_null<IE::ConcatOp>(convInput);
-    if (!concatOp || concatOp.getInputs().size() != 2) {
+    if (concatOp == nullptr || concatOp.getInputs().size() != 2) {
         return false;
     }
 
     auto yPath = skipConvertAndFakeQuantizeIfPresent(concatOp.getInputs()[0].getDefiningOp());
     auto affineReshapeOp = mlir::dyn_cast_or_null<IE::AffineReshapeOp>(yPath);
-    if (!affineReshapeOp) {
+    if (affineReshapeOp == nullptr) {
         return false;
     }
 
     auto yConvertInput = skipConvertIfPresent(affineReshapeOp.getInput().getDefiningOp());
-    if (!yConvertInput) {
+    if (yConvertInput == nullptr) {
         yInput = affineReshapeOp.getInput();
     } else {
         yInput = yConvertInput->getOperand(0);
@@ -179,7 +194,7 @@ bool matchYuvToRgbPattern(IE::AddOp addOp, mlir::Value& yInput, mlir::Value& uvI
 
     auto uvPath = skipFakeQuantizeIfPresent(concatOp.getInputs()[1].getDefiningOp());
     auto interpolateOp = mlir::dyn_cast_or_null<IE::InterpolateOp>(uvPath);
-    if (!interpolateOp) {
+    if (interpolateOp == nullptr) {
         return false;
     }
 
@@ -196,12 +211,12 @@ bool matchYuvToRgbPattern(IE::AddOp addOp, mlir::Value& yInput, mlir::Value& uvI
     }
 
     auto transposeOp = interpolateOp.getInput().getDefiningOp<IE::TransposeOp>();
-    if (!transposeOp) {
+    if (transposeOp == nullptr) {
         return false;
     }
 
     auto uvConvertInput = skipConvertIfPresent(transposeOp.getInput().getDefiningOp());
-    if (!uvConvertInput) {
+    if (uvConvertInput == nullptr) {
         uvInput = transposeOp.getInput();
     } else {
         uvInput = uvConvertInput->getOperand(0);
@@ -209,149 +224,186 @@ bool matchYuvToRgbPattern(IE::AddOp addOp, mlir::Value& yInput, mlir::Value& uvI
     return true;
 }
 
+mlir::LogicalResult fuseColorConversionPattern(mlir::Operation* op, mlir::PatternRewriter& rewriter, Logger log) {
+    mlir::Value inputValue;
+
+    // Check range for Clamp or FakeQuantize operations
+    if (auto clampOp = mlir::dyn_cast<IE::ClampOp>(op)) {
+        if (!isValidClamp(clampOp)) {
+            return mlir::failure();
+        }
+        inputValue = clampOp.getInput();
+    } else if (auto fqOp = mlir::dyn_cast<IE::FakeQuantizeOp>(op)) {
+        if (!isValidFQ(fqOp)) {
+            return mlir::failure();
+        }
+        inputValue = fqOp.getInput();
+    } else {
+        return mlir::failure();
+    }
+
+    auto addOp = inputValue.getDefiningOp<IE::AddOp>();
+    if (addOp == nullptr) {
+        return mlir::failure();
+    }
+
+    mlir::Value yInput, uvInput, convWeights, convBias;
+
+    if (!matchYuvToRgbPattern(addOp, yInput, uvInput, convWeights, convBias)) {
+        return mlir::failure();
+    }
+
+    auto outputColorFmt = detectOutputColorFormat(convWeights);
+    if (!outputColorFmt.has_value()) {
+        return mlir::failure();
+    }
+
+    log.trace("Color conversion pattern matched for operation {0} at {1}", op->getName(), op->getLoc());
+    auto builder = mlir::OpBuilder(addOp);
+
+    // Create YuvToRgb operation with detected color format
+    auto yuvToRgbOp = builder.create<IE::YuvToRgbOp>(appendLoc(addOp->getLoc(), "nv12_to_rgb"), yInput, uvInput,
+                                                     nullptr,                // input3 (optional V channel)
+                                                     IE::ColorFmt::NV12,     // inFmt
+                                                     outputColorFmt.value()  // outFmt (RGB or BGR)
+    );
+
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(addOp.getType());
+    auto yuvOutputType = mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getType());
+
+    mlir::Value finalOutput = yuvToRgbOp.getOutput();
+
+    const auto outputShape = outputType.getShape();
+    const auto yuvOutputShape = yuvOutputType.getShape();
+
+    if (outputShape != yuvOutputShape) {
+        // Check if we need transpose from NHWC to NCHW
+        // YuvToRgb output: [N, H, W, C], Expected output: [N, C, H, W]
+        SmallVector<uint32_t> permuteOrder = {0, 3, 1, 2};
+
+        const auto orderAttr =
+                mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permuteOrder, builder.getContext()));
+
+        auto transposeOp = builder.create<IE::TransposeOp>(appendLoc(addOp->getLoc(), "transpose"), finalOutput,
+                                                           nullptr, orderAttr);
+
+        finalOutput = transposeOp.getOutput();
+    }
+
+    // Calculate scale factor from bias values
+    double scaleFactor = 1.0;  // Default value
+
+    if (auto biasConst = convBias.getDefiningOp<Const::DeclareOp>()) {
+        auto biasContent = biasConst.getContent();
+        auto biasValues = to_small_vector(biasContent.getValues<float>());
+
+        // Y range [16-235] and UV centered at 128
+        // R = 1.164(-16) + 1.596(-128) = -222.912
+        // G = 1.164(-16) - 0.391(-128) - 0.813(-128) = 135.488
+        // B = 1.164(-16) + 2.018(-128) = -276.928
+        std::vector<float> standardBiasValues;
+        if (outputColorFmt.value() == IE::ColorFmt::RGB) {
+            standardBiasValues = {-222.912f, 135.488f, -276.928f};
+        } else {
+            standardBiasValues = {-276.928f, 135.488f, -222.912f};
+        }
+
+        if (biasValues.size() == standardBiasValues.size()) {
+            double totalRatio = 0.0;
+            for (size_t i = 0; i < biasValues.size(); ++i) {
+                totalRatio += biasValues[i] / standardBiasValues[i];
+            }
+            scaleFactor = totalRatio / biasValues.size();
+        }
+    }
+
+    // Add Multiply operation with scaleFactor constant if scaleFactor != 1.0
+    if (!isDoubleEqual(scaleFactor, 1.0)) {
+        // Create constant for scaleFactor
+        const auto scaleFactorType = mlir::RankedTensorType::get({1}, builder.getF32Type());
+        const auto scaleFactorConst = Const::createFloatConst(builder, appendLoc(addOp->getLoc(), "scale_factor"),
+                                                              scaleFactorType, static_cast<float>(scaleFactor));
+
+        // Create Multiply operation
+        auto multiplyOp =
+                builder.create<IE::MultiplyOp>(appendLoc(addOp->getLoc(), "scale_multiply"), finalOutput.getType(),
+                                               finalOutput, scaleFactorConst, IE::AutoBroadcastType::NUMPY,
+                                               /*post_op=*/nullptr,
+                                               /*clamp=*/nullptr,
+                                               /*output_channels=*/nullptr,
+                                               /*input_channels=*/nullptr);
+        finalOutput = multiplyOp.getOutput();
+    }
+
+    rewriter.replaceOp(op, finalOutput);
+    return mlir::success();
+}
+
+//
+// FuseColorConversionClampPattern
+//
+
+class FuseColorConversionClampPattern final : public mlir::OpRewritePattern<IE::ClampOp> {
+public:
+    FuseColorConversionClampPattern(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ClampOp>(ctx), _log(log) {
+        setDebugName("FuseColorConversionClampPattern");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::ClampOp clampOp, mlir::PatternRewriter& rewriter) const final {
+        return fuseColorConversionPattern(clampOp.getOperation(), rewriter, _log);
+    }
+
+private:
+    Logger _log;
+};
+
+//
+// FuseColorConversionFakeQuantizePattern
+//
+
+class FuseColorConversionFakeQuantizePattern final : public mlir::OpRewritePattern<IE::FakeQuantizeOp> {
+public:
+    FuseColorConversionFakeQuantizePattern(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::FakeQuantizeOp>(ctx), _log(log) {
+        setDebugName("FuseColorConversionFakeQuantizePattern");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::FakeQuantizeOp fqOp, mlir::PatternRewriter& rewriter) const final {
+        return fuseColorConversionPattern(fqOp.getOperation(), rewriter, _log);
+    }
+
+private:
+    Logger _log;
+};
+
+//
+// FuseColorConversionPass
+//
+
+class FuseColorConversionPass final : public IE::impl::FuseColorConversionBase<FuseColorConversionPass> {
+public:
+    explicit FuseColorConversionPass(Logger log) {
+        Base::initLogger(log, Base::getArgumentName());
+    }
+
+private:
+    void safeRunOnFunc() final;
+};
+
 //
 // safeRunOnFunc
 //
 
 void FuseColorConversionPass::safeRunOnFunc() {
     auto func = getOperation();
+    auto& ctx = getContext();
 
-    auto processOperation = [&](mlir::Operation* op) {
-        mlir::Value inputValue;
+    mlir::RewritePatternSet patterns(&ctx);
+    patterns.add<FuseColorConversionClampPattern>(&ctx, _log);
+    patterns.add<FuseColorConversionFakeQuantizePattern>(&ctx, _log);
 
-        // Check range for Clamp or FakeQuantize operations
-        if (auto clampOp = mlir::dyn_cast<IE::ClampOp>(op)) {
-            if (!isValidClamp(clampOp)) {
-                return;
-            }
-            inputValue = clampOp.getInput();
-        } else if (auto fqOp = mlir::dyn_cast<IE::FakeQuantizeOp>(op)) {
-            if (!isValidFQ(fqOp)) {
-                return;
-            }
-            inputValue = fqOp.getInput();
-        } else {
-            return;
-        }
-
-        auto addOp = inputValue.getDefiningOp<IE::AddOp>();
-        if (!addOp) {
-            return;
-        }
-
-        mlir::Value yInput, uvInput, convWeights, convBias;
-
-        if (!matchYuvToRgbPattern(addOp, yInput, uvInput, convWeights, convBias)) {
-            return;
-        }
-
-        _log.trace("Color conversion pattern matched for operation {0} at {1}", op->getName(), op->getLoc());
-        auto builder = mlir::OpBuilder(addOp);
-
-        // Determine if output is RGB or BGR based on convolution weights
-        IE::ColorFmt outputColorFmt = IE::ColorFmt::RGB;  // Default to RGB
-
-        if (auto weightsConst = convWeights.getDefiningOp<Const::DeclareOp>()) {
-            auto weightsContent = weightsConst.getContent();
-            auto weightsValues = to_small_vector(weightsContent.getValues<float>());
-
-            if (weightsValues.size() >= 9) {  // At least 3x3 matrix
-
-                float firstChannelVComponent = weightsValues[2];
-                float thirdChannelVComponent = weightsValues[8];
-
-                if (std::abs(thirdChannelVComponent) > std::abs(firstChannelVComponent)) {
-                    outputColorFmt = IE::ColorFmt::BGR;
-                    _log.trace("Detected BGR output format based on convolution weights");
-                } else {
-                    _log.trace("Detected RGB output format based on convolution weights");
-                }
-            }
-        }
-
-        // Create YuvToRgb operation with detected color format
-        auto yuvToRgbOp = builder.create<IE::YuvToRgbOp>(appendLoc(addOp->getLoc(), "_nv12_to_rgb"), yInput, uvInput,
-                                                         nullptr,             // input3 (optional V channel)
-                                                         IE::ColorFmt::NV12,  // inFmt
-                                                         outputColorFmt       // outFmt (RGB or BGR)
-        );
-
-        auto outputType = mlir::cast<vpux::NDTypeInterface>(addOp.getType());
-        auto yuvOutputType = mlir::cast<vpux::NDTypeInterface>(yuvToRgbOp.getType());
-
-        mlir::Value finalOutput = yuvToRgbOp.getOutput();
-
-        const auto outputShape = outputType.getShape();
-        const auto yuvOutputShape = yuvOutputType.getShape();
-
-        if (outputShape != yuvOutputShape) {
-            // Check if we need transpose from NHWC to NCHW
-            // YuvToRgb output: [N, H, W, C], Expected output: [N, C, H, W]
-            SmallVector<uint32_t> permuteOrder = {0, 3, 1, 2};
-
-            const auto orderAttr =
-                    mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permuteOrder, builder.getContext()));
-
-            auto transposeOp = builder.create<IE::TransposeOp>(appendLoc(addOp->getLoc(), "_transpose"), finalOutput,
-                                                               nullptr, orderAttr);
-
-            finalOutput = transposeOp.getOutput();
-        }
-
-        // Calculate scale factor from bias values
-        double scaleFactor = 1.0;  // Default value
-
-        if (auto biasConst = convBias.getDefiningOp<Const::DeclareOp>()) {
-            auto biasContent = biasConst.getContent();
-            auto biasValues = to_small_vector(biasContent.getValues<float>());
-
-            // Y range [16-235] and UV centered at 128
-            // R = 1.164(-16) + 1.596(-128) = -222.912
-            // G = 1.164(-16) - 0.391(-128) - 0.813(-128) = 135.488
-            // B = 1.164(-16) + 2.018(-128) = -276.928
-            std::vector<float> standardBiasValues;
-            if (outputColorFmt == IE::ColorFmt::RGB) {
-                standardBiasValues = {-222.912f, 135.488f, -276.928f};
-            } else {
-                standardBiasValues = {-276.928f, 135.488f, -222.912f};
-            }
-
-            if (biasValues.size() == standardBiasValues.size()) {
-                double totalRatio = 0.0;
-                for (size_t i = 0; i < biasValues.size(); ++i) {
-                    totalRatio += biasValues[i] / standardBiasValues[i];
-                }
-                scaleFactor = totalRatio / biasValues.size();
-            }
-        }
-
-        // Add Multiply operation with scaleFactor constant if scaleFactor != 1.0
-        if (!isDoubleEqual(scaleFactor, 1.0)) {
-            // Create constant for scaleFactor
-            const auto scaleFactorType = mlir::RankedTensorType::get({1}, builder.getF32Type());
-            const auto scaleFactorConst = Const::createFloatConst(builder, appendLoc(addOp->getLoc(), "_scale_factor"),
-                                                                  scaleFactorType, static_cast<float>(scaleFactor));
-
-            // Create Multiply operation
-            auto multiplyOp =
-                    builder.create<IE::MultiplyOp>(appendLoc(addOp->getLoc(), "_scale_multiply"), finalOutput.getType(),
-                                                   finalOutput, scaleFactorConst, IE::AutoBroadcastType::NUMPY,
-                                                   /*post_op=*/nullptr,
-                                                   /*clamp=*/nullptr,
-                                                   /*output_channels=*/nullptr,
-                                                   /*input_channels=*/nullptr);
-            finalOutput = multiplyOp.getOutput();
-        }
-        op->replaceAllUsesWith(finalOutput.getDefiningOp());
-    };
-
-    func->walk([&](IE::ClampOp clampOp) {
-        processOperation(clampOp.getOperation());
-    });
-
-    func->walk([&](IE::FakeQuantizeOp fqOp) {
-        processOperation(fqOp.getOperation());
-    });
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,7 +45,7 @@ func.func @ConvertConstDivisor(%arg: tensor<1x12x512x512xf16>) -> tensor<1x12x51
         : tensor<1x12x512x512xf16>, tensor<1x1x1x1xf16> -> tensor<1x12x512x512xf16>
     return %0 : tensor<1x12x512x512xf16>
 
-    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x1x1x1xf16> {{.*}} [#const.ScalarMultInverse]
+    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x1x1x1xf16> {{.+}} [#const.ScalarMultInverse]
     // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[ARG]], [[CONST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK: return [[MULTIPLY]]
 }
@@ -60,7 +60,7 @@ func.func @ConvertConstDivisor_NonScalar(%arg: tensor<1x12x512x512xf16>) -> tens
         : tensor<1x12x512x512xf16>, tensor<1x12x512x512xf16> -> tensor<1x12x512x512xf16>
     return %0 : tensor<1x12x512x512xf16>
 
-    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x12x512x512xf16> {{.*}} [#const.ScalarMultInverse]
+    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x12x512x512xf16> {{.+}} [#const.ScalarMultInverse]
     // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[ARG]], [[CONST]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
     // CHECK: return [[MULTIPLY]]
 }
@@ -519,13 +519,13 @@ func.func @ConvertWhenDivisorNeedsBroadcast(%arg0: tensor<1x1x8192x2048xf16>, %a
 // -----
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
- 
+
 // CHECK-LABEL: @NotConvertDynamicDivideToMultiply
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, [[ARG1:%.+]]: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
 func.func @NotConvertDynamicDivideToMultiply(%arg0: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, %arg1: tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}> {
     %0 = IE.Divide(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
     return %0 : tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
- 
+
     // CHECK: [[DIVIDE:%.+]] = IE.Divide([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK: return [[DIVIDE]] : tensor<1x1x1x?xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
 }

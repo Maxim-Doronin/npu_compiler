@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
@@ -244,7 +246,7 @@ mlir::Value processNonPermuteBranch(mlir::PatternRewriter& rewriter, IE::MemPerm
     auto shapeCastOp = input.getDefiningOp<IE::ShapeCastOp>();
 
     auto memPermuteInput = (shapeCastOp == nullptr) ? input : shapeCastOp.getSource();
-    const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "_mem_permute_{0}", idx);
+    const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "mem_permute_{0}", idx);
     auto newMemPermuteOp = rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, memPermuteInput,
                                                              memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
     if (newAlignedShape.has_value()) {
@@ -255,10 +257,10 @@ mlir::Value processNonPermuteBranch(mlir::PatternRewriter& rewriter, IE::MemPerm
                 mlir::AffineMap::getMultiDimIdentityMap(dimOrder.numDims(), ctx));
         return permuteCastOp;
     }
-    const auto newLayoutCastLoc = appendLoc(memPermuteOp.getLoc(), "_in_layout_cast_{0}", idx);
+    const auto newLayoutCastLoc = appendLoc(memPermuteOp.getLoc(), "in_layout_cast_{0}", idx);
     auto newLayoutCastOp =
             rewriter.create<IE::LayoutCastOp>(newLayoutCastLoc, newMemPermuteOp.getOutput(), orderInAttr);
-    const auto newShapeCastLoc = appendLoc(memPermuteOp.getLoc(), "_in_shape_cast_{0}", idx);
+    const auto newShapeCastLoc = appendLoc(memPermuteOp.getLoc(), "in_shape_cast_{0}", idx);
     const auto addInShape = getShape(input).toValues();
     const auto addInShapeAttr = getIntArrayAttr(memPermuteOp.getContext(), addInShape.raw());
     auto newShapeCastOp =
@@ -339,7 +341,7 @@ mlir::LogicalResult OptimizeEltwise::matchAndRewrite(IE::MemPermuteOp memPermute
 
         const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
 
-        const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "_mem_permute_{0}", inputIdx);
+        const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "mem_permute_{0}", inputIdx);
         auto newMemPermuteOp = rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, inPermutationOp->getResult(0),
                                                                  memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
 
@@ -354,7 +356,7 @@ mlir::LogicalResult OptimizeEltwise::matchAndRewrite(IE::MemPermuteOp memPermute
 
         const auto addInOrder = DimsOrder::fromValue(branchInput);
         const auto orderInAttr = mlir::AffineMapAttr::get(addInOrder.toAffineMap(ctx));
-        const auto inLayoutCastLoc = appendLoc(memPermuteOp.getLoc(), "_in_layout_cast_{0}", inputIdx);
+        const auto inLayoutCastLoc = appendLoc(memPermuteOp.getLoc(), "in_layout_cast_{0}", inputIdx);
         auto inLayoutCastOp =
                 rewriter.create<IE::LayoutCastOp>(inLayoutCastLoc, newShapeCastOp.getResult(), orderInAttr);
 
@@ -364,11 +366,11 @@ mlir::LogicalResult OptimizeEltwise::matchAndRewrite(IE::MemPermuteOp memPermute
 
     const auto nceOutLayout = DimsOrder::fromValue(memPermuteOp.getOutput());
     const auto orderOutAttr = mlir::AffineMapAttr::get(nceOutLayout.toAffineMap(ctx));
-    const auto outLayoutCastLoc = appendLoc(memPermuteOp.getLoc(), "_out_layout_cast");
+    const auto outLayoutCastLoc = appendLoc(memPermuteOp.getLoc(), "out_layout_cast");
     auto outLayoutCastOp = rewriter.create<IE::LayoutCastOp>(outLayoutCastLoc, newEltwiseOp, orderOutAttr);
 
     const auto newOutShapeCastType = memPermuteOp.getOutput().getType();
-    const auto newOutShapeCastLoc = appendLoc(memPermuteOp.getLoc(), "_out_shape_cast");
+    const auto newOutShapeCastLoc = appendLoc(memPermuteOp.getLoc(), "out_shape_cast");
 
     const Shape targetShape = getShape(memPermuteOp.getOutput()).toValues();
     const auto targetShapeAttr = getIntArrayAttr(ctx, targetShape.raw());
@@ -474,18 +476,28 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
     SmallVector<Shape> newShapeCastShape = newAlignedShape;
     const auto& leftShape = newAlignedShape[0].raw();
     const auto& rightShape = newAlignedShape[1].raw();
-    if (leftShape[0] != 1 && rightShape[0] != 1) {
+    const auto leftShapeDimN = leftShape[0];
+    const auto rightShapeDimN = rightShape[0];
+    if (leftShapeDimN != 1 && rightShapeDimN != 1) {
         newShapeCastShape[0][Dims4D::Act::N] = 1;
         newShapeCastShape[1][Dims4D::Act::N] = 1;
-        bool isBroadcasted = false;
-        for (size_t i = 1; i < leftShape.size(); ++i) {
-            const auto leftMul = leftShape[i] * leftShape[0];
-            const auto rightMul = rightShape[i] * rightShape[0];
-            // If the left and right shapes are equal, we can merge them.
-            if (leftMul == rightMul && !isBroadcasted) {
-                newShapeCastShape[0][Dim(i)] = leftMul;
-                newShapeCastShape[1][Dim(i)] = rightMul;
-                isBroadcasted = true;
+        const auto dimOrder = DimsOrder::fromValue(eltwiseOp->getOperand(0));
+        const auto leftShapeSecondMemDim = newShapeCastShape[0][dimOrder.dimAt(1)];
+        const auto rightShapeSecondMemDim = newShapeCastShape[1][dimOrder.dimAt(1)];
+        if (leftShapeSecondMemDim == 1 && rightShapeSecondMemDim == 1) {
+            newShapeCastShape[0][dimOrder.dimAt(1)] = leftShapeDimN;
+            newShapeCastShape[1][dimOrder.dimAt(1)] = rightShapeDimN;
+        } else {
+            bool isBroadcasted = false;
+            for (size_t i = 1; i < leftShape.size(); ++i) {
+                const auto leftMul = leftShape[i] * leftShape[0];
+                const auto rightMul = rightShape[i] * rightShape[0];
+                // If the left and right shapes are equal, we can merge them.
+                if (leftMul == rightMul && !isBroadcasted) {
+                    newShapeCastShape[0][Dim(i)] = leftMul;
+                    newShapeCastShape[1][Dim(i)] = rightMul;
+                    isBroadcasted = true;
+                }
             }
         }
     }
@@ -501,7 +513,7 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
         } else {
             const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
 
-            const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "_mem_permute_{0}", inputIdx);
+            const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "mem_permute_{0}", inputIdx);
             auto newMemPermuteOp =
                     rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, inPermutationOp->getResult(0),
                                                       memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
@@ -778,13 +790,13 @@ mlir::LogicalResult OptimizeIdentityPool<ConcreteOp>::matchAndRewrite(ConcreteOp
     // IE.MemPermute/PermuteQuantize -> IE.MemPermute ->
     //               -> IE.ShapeCast -> IE.LayoutCast -> IE.AvgPool/IE.MaxPool -> IE.LayoutCast -> IE.ShapeCast
     auto newMemPermuteOp =
-            createMemPermuteOp(appendLoc(memPermuteOp.getLoc(), "_mem_permute"), inPermutationOp->getResult(0),
+            createMemPermuteOp(appendLoc(memPermuteOp.getLoc(), "mem_permute"), inPermutationOp->getResult(0),
                                memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
 
     auto inshapeCast =
-            createShapeCastOp(appendLoc(memPermuteOp.getLoc(), "_in_shape_cast"), newMemPermuteOp, outType.getShape());
+            createShapeCastOp(appendLoc(memPermuteOp.getLoc(), "in_shape_cast"), newMemPermuteOp, outType.getShape());
 
-    auto inLayoutCastOp = createLayoutCastOp(appendLoc(memPermuteOp.getLoc(), "_in_layout_cast"), inshapeCast,
+    auto inLayoutCastOp = createLayoutCastOp(appendLoc(memPermuteOp.getLoc(), "in_layout_cast"), inshapeCast,
                                              DimsOrder::fromValue(poolInput).toAffineMap(ctx));
 
     mlir::IRMapping mapper;
@@ -792,10 +804,10 @@ mlir::LogicalResult OptimizeIdentityPool<ConcreteOp>::matchAndRewrite(ConcreteOp
     auto* newPoolOp = rewriter.clone(*origOp, mapper);
 
     auto outLayoutCastOp =
-            createLayoutCastOp(appendLoc(memPermuteOp.getLoc(), "_out_layout_cast"), newPoolOp->getResult(0),
+            createLayoutCastOp(appendLoc(memPermuteOp.getLoc(), "out_layout_cast"), newPoolOp->getResult(0),
                                DimsOrder::fromValue(memPermuteOp.getOutput()).toAffineMap(ctx));
 
-    auto outshapeCast = createShapeCastOp(appendLoc(memPermuteOp.getLoc(), "_out_shape_cast"), outLayoutCastOp,
+    auto outshapeCast = createShapeCastOp(appendLoc(memPermuteOp.getLoc(), "out_shape_cast"), outLayoutCastOp,
                                           getShape(memPermuteOp.getResult()));
 
     rewriter.replaceOp(memPermuteOp, outshapeCast);

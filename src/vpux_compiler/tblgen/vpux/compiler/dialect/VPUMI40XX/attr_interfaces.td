@@ -24,7 +24,7 @@ def VPUMI40XX_DMATransactionAttrInterface : AttrInterface<"DMATransactionAttr"> 
             Returns the reduced DMA transaction dimensions.
             }],
             "vpux::DMATransaction", "getDMATransaction",
-            (ins)
+            (ins "bool":$stridedInput, "bool":$stridedOutput)
         >
     ];
 }

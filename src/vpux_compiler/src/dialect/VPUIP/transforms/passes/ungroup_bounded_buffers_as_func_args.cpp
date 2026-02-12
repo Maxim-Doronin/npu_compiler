@@ -50,7 +50,7 @@ void addDataInfo(mlir::func::FuncOp mainFuncOp, mlir::MemRefType boundedMemRef, 
 
     auto insertionPointAfter = std::next(infoBlock.begin(), static_cast<int64_t>(dataBufferCount));
     auto infoBuilder = mlir::OpBuilder(&infoBlock, insertionPointAfter);
-    infoBuilder.create<net::DataInfoOp>(takeOpLoc(mainFuncOp, StringLiteral("{0}"), mainFuncOp.getName()), name, type);
+    infoBuilder.create<net::DataInfoOp>(takeOpLoc(mainFuncOp, "{0}", mainFuncOp.getName()), name, type);
     log.trace("Added new DataInfo '{0}' with type {1}", name, type);
 }
 

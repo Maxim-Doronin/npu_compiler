@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,8 +7,11 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/compiler/core/aliases_info.hpp"
+#include "vpux/compiler/core/attributes/stride_reqs.hpp"
 
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
@@ -67,6 +70,14 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
         return;
     }
 
+    auto targetRoot = aliasesInfo.getRoots(copyOp.getOutputBuff()).front();
+    if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(targetRoot)) {
+        if (vpux::net::isArgStrided(copyOp->getParentOfType<mlir::ModuleOp>(), blockArg.getArgNumber())) {
+            nestedLogger.trace("Cannot match: output is strided network output");
+            return;
+        }
+    }
+
     auto allRootAliases = aliasesInfo.getAllAliases(sourceRoot);
     for (auto alias : allRootAliases) {
         for (auto userOp : alias.getUsers()) {
@@ -77,6 +88,15 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
                 }
             }
         }
+    }
+
+    auto copyOpInputType = mlir::cast<NDTypeInterface>(copyOp.getInput().getType());
+    auto copyOpOutputType = mlir::cast<NDTypeInterface>(copyOp.getOutput().getType());
+    const auto inReqs = StrideReqs::compact(copyOpInputType.getRank());
+    const auto outReqs = StrideReqs::compact(copyOpOutputType.getRank());
+    if (!inReqs.checkStrides(copyOpInputType) || !outReqs.checkStrides(copyOpOutputType)) {
+        nestedLogger.trace("Cannot fuse: Copy has input or output strides");
+        return;
     }
 
     VPUIP::ConcatViewOp concatViewOp;

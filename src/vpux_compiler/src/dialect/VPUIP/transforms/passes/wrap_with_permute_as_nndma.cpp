@@ -1,5 +1,5 @@
 
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,7 +41,8 @@ namespace vpux::VPUIP {
 
 using namespace vpux;
 namespace {
-bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin);
+bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin,
+                  mlir::DenseSet<mlir::Operation*>& visitedOps);
 
 template <typename T = mlir::Operation*>
 T getTheOnlyUser(mlir::Operation* op) {
@@ -102,9 +103,9 @@ VPUIP::DistributedBufferType createDMADistributedTensorType(mlir::MLIRContext* c
     const auto alignment =
             heightAlignment == 1 ? nullptr : getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1, heightAlignment, 1});
     const auto uniformDistributedSegmentsAttr = uniformDistributedSegments ? mlir::UnitAttr::get(ctx) : nullptr;
-    const auto distributionAttr =
-            VPU::DistributionInfoAttr::get(ctx, distMode, numTiles, nullptr, nullptr, nullptr, tileCount, alignment,
-                                           uniformDistributedSegmentsAttr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    const auto distributionAttr = VPU::DistributionInfoAttr::get(ctx, distMode, numTiles, nullptr, nullptr, nullptr,
+                                                                 tileCount, alignment, uniformDistributedSegmentsAttr,
+                                                                 nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto memSpace = vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN));
     const auto order = mlir::AffineMapAttr::get(operandType.getDimsOrder().toAffineMap(ctx));
@@ -217,7 +218,7 @@ bool checkPermuteWithCopyPattern(VPUIP::SwKernelOp swKernelOp, Logger log) {
         }
 
         auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
-        const auto dmaPortNum = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+        const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
         VPUX_THROW_WHEN(dmaPortNum <= 0, "Invalid number of DMA ports; should be > 0, but actual value is {0}",
                         dmaPortNum);
 
@@ -427,7 +428,8 @@ bool checkLastChild(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayA
 //   Dirty data impacts Convolution
 // Legal Pattern: "Expand -> NceExceptConv x N -> Subview"
 //   Multiple non-conv NCE operations between Expand and Subview are supported
-bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin) {
+bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAttr expandPadBegin,
+                  mlir::DenseSet<mlir::Operation*>& visitedOps) {
     const auto isCopyOp = [&](mlir::Operation* op) -> bool {
         return mlir::isa_and_nonnull<VPUIP::CopyOp>(op);
     };
@@ -448,12 +450,17 @@ bool checkPattern(mlir::Operation* op, ShapeRef expandInputShape, mlir::ArrayAtt
         return nceTask != nullptr && nceTask.getIsSuperdense();
     };
 
+    visitedOps.insert(op);
+
+    const bool isDenseNceOp = isNceOpWithSuperDense(op);
     auto returnFlag = true;
     for (auto& child : op->getUses()) {
         auto childOp = child.getOwner();
-        if (!isNceOpWithSuperDense(op) &&
-            (isCopyOp(childOp) || isNceButNotConvOp(childOp) || isPermuteCastOp(childOp))) {
-            returnFlag = returnFlag && checkPattern(childOp, expandInputShape, expandPadBegin);
+        if (visitedOps.count(childOp) > 0) {
+            continue;
+        }
+        if (!isDenseNceOp && (isCopyOp(childOp) || isNceButNotConvOp(childOp) || isPermuteCastOp(childOp))) {
+            returnFlag = returnFlag && checkPattern(childOp, expandInputShape, expandPadBegin, visitedOps);
         } else {
             returnFlag = returnFlag && checkLastChild(childOp, expandInputShape, expandPadBegin);
         }
@@ -471,7 +478,8 @@ bool checkExpandFP16Pattern(VPUIP::ExpandOp expandOp, Logger log) {
     auto shape = getShape(expandOp.getInput());
     const auto expandPadBegin = expandOp.getPadsBegin();
 
-    if (!checkPattern(expandOp, shape, expandPadBegin)) {
+    mlir::DenseSet<mlir::Operation*> visitedOps;
+    if (!checkPattern(expandOp, shape, expandPadBegin, visitedOps)) {
         return false;
     }
 
@@ -1023,8 +1031,8 @@ mlir::LogicalResult FuseExpandWithUpsampling::matchAndRewrite(VPUIP::ExpandOp or
 
     auto upsampleDMA = rewriter.replaceOpWithNewOp<VPUIP::UpsamplingDMAOp>(
             origOp, upsamplingOp.getInput(), copyZeroOp.getOutput(), upsampleFactorAttr, /*dma_descriptor,*/ nullptr,
-            padChannelAttr, getIntAttr(origOp->getContext(), 0), /*is_out_of_order*/ nullptr,
-            /*is_critical*/ nullptr, /*dmaHwpId=*/nullptr,
+            padChannelAttr, getIntAttr(origOp->getContext(), 0), /*is_out_of_order*/ false,
+            /*is_critical*/ false, /*dmaHwpId=*/nullptr,
             /*profilingMetadata=*/nullptr);
 
     rewriter.eraseOp(upsamplingOp);
@@ -1664,23 +1672,25 @@ public:
 
 private:
     VPU::DistributionInfoAttr getDuplicatedDistribution(ShapeRef shape, VPU::DistributionInfoAttr origDistribution,
-                                                        mlir::MLIRContext* ctx) const;
+                                                        mlir::MLIRContext* ctx, mlir::Type elementType) const;
 
 private:
     Logger _log;
 };
 
 VPU::DistributionInfoAttr FuseDistributedMemPermuteWithViewLikeOps::getDuplicatedDistribution(
-        ShapeRef shape, VPU::DistributionInfoAttr origDistribution, mlir::MLIRContext* ctx) const {
+        ShapeRef shape, VPU::DistributionInfoAttr origDistribution, mlir::MLIRContext* ctx,
+        mlir::Type elementType) const {
     const auto distrModeAttr = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::DUPLICATED);
     if (!isDistributedAttrWithExplicitShapesAndOffsets(origDistribution)) {
         return VPU::DistributionInfoAttr::get(
                 ctx, distrModeAttr, nullptr, nullptr, nullptr, nullptr, origDistribution.getNumClusters(), nullptr,
-                origDistribution.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr, nullptr);
+                origDistribution.getUniformDistributedSegments(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     }
 
     return VPU::getNonOverlappedDistributedAttr(shape, distrModeAttr, nullptr, origDistribution.getNumClusters(),
-                                                nullptr, origDistribution.getUniformDistributedSegments(), ctx);
+                                                nullptr, origDistribution.getUniformDistributedSegments(), elementType,
+                                                ctx);
 }
 
 mlir::LogicalResult FuseDistributedMemPermuteWithViewLikeOps::matchAndRewrite(VPUIP::PermuteDMAOp permuteOp,
@@ -1731,7 +1741,7 @@ mlir::LogicalResult FuseDistributedMemPermuteWithViewLikeOps::matchAndRewrite(VP
     const auto outShape = outType.getShape();
     const auto outElemType = outType.getElementType();
     const auto order = mlir::AffineMapAttr::get(outType.getDimsOrder().toAffineMap(ctx));
-    auto permuteDistribution = getDuplicatedDistribution(outShape, outDistribution, ctx);
+    auto permuteDistribution = getDuplicatedDistribution(outShape, outDistribution, ctx, outElemType);
     auto newPermuteDistributedOutType = VPUIP::DistributedBufferType::get(
             ctx, outShape.raw(), outElemType, order, distributedCopyOutType.getMemSpace(), permuteDistribution);
 
@@ -1753,7 +1763,7 @@ mlir::LogicalResult FuseDistributedMemPermuteWithViewLikeOps::matchAndRewrite(VP
         auto viewLikeOutShape = viewLikeOutType.getShape();
         auto viewLikeOutOrder = mlir::AffineMapAttr::get(viewLikeOutType.getDimsOrder().toAffineMap(ctx));
         auto viewLikeElemType = viewLikeOutType.getElementType();
-        auto viewLikeDistribution = getDuplicatedDistribution(viewLikeOutShape, outDistribution, ctx);
+        auto viewLikeDistribution = getDuplicatedDistribution(viewLikeOutShape, outDistribution, ctx, viewLikeElemType);
         auto newViewLikeOutType =
                 VPUIP::DistributedBufferType::get(ctx, viewLikeOutShape.raw(), viewLikeElemType, viewLikeOutOrder,
                                                   distributedCopyOutType.getMemSpace(), viewLikeDistribution);

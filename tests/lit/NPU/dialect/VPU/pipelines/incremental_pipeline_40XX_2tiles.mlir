@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -65,7 +65,7 @@ rawFilterShape = [96, 16, 7, 7],
 
     // CHECK:       [[DWCONV_0:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_0]], [[COPY_WEIGHTS_0]], [[COPY_WEIGHTS_TBL_0]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    // CHECK-SAME:           rawFilterShape = [16, 1, 1, 1], strides = [1, 1]}
+    // CHECK-SAME:           rawFilterShape = [16, 1, 1, 1], strides = [1, 1], tiling_loop_index = 0 : i64}
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x16x76x227xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 16, 38, 227], [1, 16, 38, 227]]
@@ -109,7 +109,7 @@ rawFilterShape = [96, 16, 7, 7],
     // CHECK:       [[DWCONV_1:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_1]], [[COPY_WEIGHTS_1]], [[COPY_WEIGHTS_TBL_1]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:           rawFilterShape = [16, 1, 1, 1],
-    // CHECK-SAME:          strides = [1, 1]}
+    // CHECK-SAME:          strides = [1, 1], tiling_loop_index = 0 : i64}
     // CHECK-SAME:          -> !VPU.DistributedTensor<1x16x76x227xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:              {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:      compute_shapes = [[1, 16, 38, 227], [1, 16, 38, 227]]
@@ -153,7 +153,7 @@ rawFilterShape = [96, 16, 7, 7],
     // CHECK:       [[DWCONV_2:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_2]], [[COPY_WEIGHTS_2]], [[COPY_WEIGHTS_TBL_2]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:           rawFilterShape = [16, 1, 1, 1],
-    // CHECK-SAME:          strides = [1, 1]
+    // CHECK-SAME:          strides = [1, 1], tiling_loop_index = 0 : i64
     // CHECK-SAME:          -> !VPU.DistributedTensor<1x16x75x227xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:              {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:      compute_shapes = [[1, 16, 38, 227], [1, 16, 37, 227]]
@@ -204,7 +204,7 @@ rawFilterShape = [96, 16, 7, 7],
 
     // CHECK:       [[CONV_0:%.+]] = VPU.NCE.Convolution([[COPY_CONV_INPUT_0]], [[COPY_CONV_WEIGHTS_0]], [[COPY_CONV_WEIGHTS_TBL_0]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    // CHECK-SAME:           rawFilterShape = [96, 16, 7, 7], strides = [2, 2]}
+    // CHECK-SAME:           rawFilterShape = [96, 16, 7, 7], strides = [2, 2], tiling_loop_index = 1 : i64}
     // CHECK-SAME:    -> !VPU.DistributedTensor<1x96x37x111xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 96, 19, 111], [1, 96, 18, 111]]
@@ -248,7 +248,7 @@ rawFilterShape = [96, 16, 7, 7],
 
     // CHECK:       [[CONV_1:%.+]] = VPU.NCE.Convolution([[COPY_CONV_INPUT_1]], [[COPY_CONV_WEIGHTS_1]], [[COPY_CONV_WEIGHTS_TBL_1]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    // CHECK-SAME:           rawFilterShape = [96, 16, 7, 7], strides = [2, 2]}
+    // CHECK-SAME:           rawFilterShape = [96, 16, 7, 7], strides = [2, 2], tiling_loop_index = 1 : i64}
     // CHECK-SAME:     -> !VPU.DistributedTensor<1x96x37x111xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 96, 19, 111], [1, 96, 18, 111]]
@@ -294,7 +294,7 @@ rawFilterShape = [96, 16, 7, 7],
     // CHECK:       [[CONV_2:%.+]] = VPU.NCE.Convolution([[COPY_CONV_INPUT_2]], [[COPY_CONV_WEIGHTS_2]], [[COPY_CONV_WEIGHTS_TBL_2]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
     // CHECK-SAME:          rawFilterShape = [96, 16, 7, 7]
-    // CHECK-SAME:          strides = [2, 2]
+    // CHECK-SAME:          strides = [2, 2], tiling_loop_index = 1 : i64
     // CHECK-SAME:     -> !VPU.DistributedTensor<1x96x37x111xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 96, 19, 111], [1, 96, 18, 111]]
@@ -374,7 +374,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK:       [[DW_CONV_0:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_0]], [[COPY_WEIGHTS_0]], [[COPY_WEIGHTS_TBL_0]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     //CHECK-SAME:            rawFilterShape = [32, 1, 1, 1],
-    //CHECK-SAME:            strides = [1, 1]}
+    //CHECK-SAME:            strides = [1, 1], tiling_loop_index = 0 : i64}
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x52x256x!qElemType, #NHWC, @CMX_NN,
     // CHECK-SAME:           {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 32, 26, 256], [1, 32, 26, 256]], compute_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]
@@ -408,7 +408,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK:       [[DW_CONV_1:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_1]], [[COPY_WEIGHTS_1]], [[COPY_WEIGHTS_TBL_1]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     //CHECK-SAME:           rawFilterShape = [32, 1, 1, 1],
-    //CHECK-SAME:           strides = [1, 1]
+    //CHECK-SAME:           strides = [1, 1], tiling_loop_index = 0 : i64
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x51x256x!qElemType, #NHWC, @CMX_NN,
     // CHECK-SAME:           {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], compute_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]
@@ -443,7 +443,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK:       [[DW_CONV_2:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_2]], [[COPY_WEIGHTS_2]], [[COPY_WEIGHTS_TBL_2]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:             rawFilterShape = [32, 1, 1, 1],
-    // CHECK-SAME:             strides = [1, 1]
+    // CHECK-SAME:             strides = [1, 1], tiling_loop_index = 0 : i64
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x51x256x!qElemType, #NHWC, @CMX_NN,
     // CHECK-SAME:           {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], compute_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]
@@ -478,7 +478,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK:       [[DW_CONV_3:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_3]], [[COPY_WEIGHTS_3]], [[COPY_WEIGHTS_TBL_3]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:              rawFilterShape = [32, 1, 1, 1],
-    // CHECK-SAME:              strides = [1, 1]}
+    // CHECK-SAME:              strides = [1, 1], tiling_loop_index = 0 : i64}
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x51x256x!qElemType, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], compute_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]
@@ -513,7 +513,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK:       [[DW_CONV_4:%.+]] = VPU.NCE.DepthConvolution([[COPY_INPUT_4]], [[COPY_WEIGHTS_4]], [[COPY_WEIGHTS_TBL_4]])
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:              rawFilterShape = [32, 1, 1, 1],
-    // CHECK-SAME:              strides = [1, 1]}
+    // CHECK-SAME:              strides = [1, 1], tiling_loop_index = 0 : i64}
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x51x256x!qElemType, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], compute_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]

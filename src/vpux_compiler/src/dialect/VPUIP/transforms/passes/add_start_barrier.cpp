@@ -54,7 +54,7 @@ std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarr
     // firstDMA (DMA P0 Channel DDR). It's needed for avoid race condition between service tasks from DMA P0 Channel DDR
     // and DMAs from other lists.
 
-    const VPURT::TaskQueueType dmaP0ChDddrQueueType = {VPU::ExecutorKind::DMA_NN,
+    const VPURT::TaskQueueType dmaP0ChDddrQueueType = {config::ExecutorKind::DMA_NN,
                                                        getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
 
     // 1. Find a first DMA on P0 CH:DDR which will be used
@@ -107,7 +107,7 @@ std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarr
                                 auto barrierConsumedByNonDmaTask = false;
                                 for (auto barrierConsumerIdx : barrierInfo.getBarrierConsumers(barrierIdx)) {
                                     auto barrierConsumerOp = barrierInfo.getTaskOpAtIndex(barrierConsumerIdx);
-                                    if (barrierConsumerOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
+                                    if (barrierConsumerOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
                                         barrierConsumedByNonDmaTask = true;
                                         break;
                                     }
@@ -131,7 +131,7 @@ std::pair<VPURT::TaskOp, VPURT::DeclareVirtualBarrierOp> getFirstDmaAndStartBarr
     // 3. Check if start barrier candidate does not depend in any way on
     // non DMA tasks (DPU/SHV). If such dependency exists then this is not a start barrier
     for (auto& [queueType, taskVec] : taskQueueTypeMap) {
-        if (queueType.type == VPU::ExecutorKind::DMA_NN || taskVec.empty()) {
+        if (queueType.type == config::ExecutorKind::DMA_NN || taskVec.empty()) {
             continue;
         }
 
@@ -233,7 +233,7 @@ void addExplicitDependencyBetweenDmaListsAndStartBarrier(mlir::func::FuncOp func
                                                          VPURT::TaskOpQueues& taskQueueTypeMap,
                                                          VPURT::DeclareVirtualBarrierOp startBarrierOp, Logger log) {
     const auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto dmaPortNum = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
     auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(config::getArch(module));
     for (auto dmaPortIdx : irange(dmaPortNum)) {
         for (auto dmaChannel : dmaChannels) {
@@ -242,7 +242,7 @@ void addExplicitDependencyBetweenDmaListsAndStartBarrier(mlir::func::FuncOp func
             if (dmaPortIdx == 0 && dmaChannel == VPUIP::DmaChannelType::DDR) {
                 continue;
             }
-            const VPURT::TaskQueueType dmaQueueType = {VPU::ExecutorKind::DMA_NN,
+            const VPURT::TaskQueueType dmaQueueType = {config::ExecutorKind::DMA_NN,
                                                        getDMAQueueIdEncoding(/*port*/ dmaPortIdx, dmaChannel)};
 
             auto firstDmaInSpecificQueue = std::begin(taskQueueTypeMap[dmaQueueType]);

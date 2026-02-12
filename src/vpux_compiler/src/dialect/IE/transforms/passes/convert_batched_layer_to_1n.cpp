@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -89,7 +90,7 @@ IE::TransposeOp createTransposeForLayerInput(mlir::PatternRewriter& rewriter, ml
 
     const auto orderAttr =
             mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(transPerm, rewriter.getContext()));
-    auto newLoc = appendLoc(loc, "_ConvertBatchedLayer_inTranspose");
+    auto newLoc = appendLoc(loc, "ConvertBatchedLayer_inTranspose");
     return rewriter.create<IE::TransposeOp>(newLoc, input, nullptr, orderAttr);
 }
 
@@ -136,7 +137,7 @@ mlir::LogicalResult BaseLayerConverter<ConcreteOp>::matchAndRewrite(ConcreteOp o
     _log.trace("Insert new layer without batch: {0}", output);
 
     auto outTranspose = rewriter.replaceOpWithNewOp<IE::TransposeOp>(origOp, output, nullptr, transPermAttr);
-    outTranspose->setLoc(appendLoc(origOp->getLoc(), "_transpose_output"));
+    outTranspose->setLoc(appendLoc(origOp->getLoc(), "transpose_output"));
     _log.trace("Insert transpose {0} for output", outTranspose);
 
     return mlir::success();
@@ -349,20 +350,14 @@ mlir::LogicalResult ConvLayerConverter::layerSpecificRewriter(IE::ConvolutionOp 
         auto inTranspose = createTransposeForLayerInput(rewriter, convOp.getInput(), dim, convOp->getLoc());
         auto transPermAttr = inTranspose.getOrderValueAttr();
         VPUX_THROW_WHEN(transPermAttr == nullptr, "Can not get order value from input transpose");
-        auto output = rewriter.create<IE::ConvolutionOp>(convOp->getLoc(), inTranspose.getOutput(), convOp.getFilter(),
-                                                         convOp.getBias(), convOp.getStridesAttr(),
-                                                         convOp.getPadsBeginAttr(), convOp.getPadsEndAttr(),
-                                                         convOp.getDilationsAttr(), convOp.getPostOpAttr(),
-                                                         convOp.getClampAttr(), convOp.getStaticScaleAttr(),
-                                                         convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr())
-                              .getOutput();
+        auto output = cloneConvolutionOp(rewriter, convOp, inTranspose.getOutput(), convOp.getFilter()).getOutput();
 
         auto parentOpOutputType = mlir::cast<NDTypeInterface>(output.getType());
         auto outElemType = mlir::cast<NDTypeInterface>(convOp.getOutput().getType()).getElementType();
         output.getDefiningOp()->getResult(0).setType(parentOpOutputType.changeElemType(outElemType));
         _log.trace("Insert new layer without batch: {0}", output);
         auto outTranspose = rewriter.replaceOpWithNewOp<IE::TransposeOp>(convOp, output, nullptr, transPermAttr);
-        outTranspose->setLoc(appendLoc(convOp->getLoc(), "_transpose_output"));
+        outTranspose->setLoc(appendLoc(convOp->getLoc(), "transpose_output"));
         _log.trace("Insert transpose {0} for output", outTranspose);
 
         return mlir::success();
@@ -453,7 +448,7 @@ mlir::LogicalResult GroupConvLayerConverter::layerSpecificRewriter(IE::GroupConv
 
     _log.trace("Insert new layer without batch: {0}", output);
     auto outTranspose = rewriter.replaceOpWithNewOp<IE::TransposeOp>(groupConvOp, output, nullptr, transPermAttr);
-    outTranspose->setLoc(appendLoc(groupConvOp->getLoc(), "_transpose_output"));
+    outTranspose->setLoc(appendLoc(groupConvOp->getLoc(), "transpose_output"));
     _log.trace("Insert transpose {0} for output", outTranspose);
 
     return mlir::success();

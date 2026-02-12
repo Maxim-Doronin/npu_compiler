@@ -22,9 +22,56 @@
 
 using namespace vpux;
 
-SmallVector<mlir::Type> getAuxiliaryBufferTypes(mlir::ModuleOp moduleOp, mlir::Value inputQ, mlir::Value inputV,
-                                                mlir::IntegerAttr padSizeAttr,
-                                                std::vector<int32_t>& resultDpuStorageData) {
+int64_t getAuxDataBufferLineWidthFromCSize(mlir::ModuleOp moduleOp, int64_t shapeC, int64_t dimS, int64_t dimEv,
+                                           /*optional*/ vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
+    bool noPingPongBuffer = (shapeC == 1);
+    if (multiClusterStrategy) {
+        vpux::VPU::MultiClusterStrategy msVal = multiClusterStrategy.getValue();
+        auto tileOp = config::getTileExecutor(moduleOp);
+        int64_t numClusters = tileOp.getCount();
+        if (msVal == VPU::MultiClusterStrategy::SplitOverKernel) {
+            if (numClusters >= shapeC) {
+                noPingPongBuffer = true;
+            }
+        }
+    }
+    int64_t noBuffersForSoftmax = 2;
+    if (noPingPongBuffer) {
+        noBuffersForSoftmax = 1;  // no ping-pong buffers needed for batch size 1
+    }
+    auto auxLineSize = dimS;
+    const bool useSmPostNorm = (dimEv + 256) < dimS;
+    if (useSmPostNorm) {
+        // extra space for softmax post normalization: targetSequenceL * sizeof(float).
+        // As targetSequenceL is tilled, I added for above buffer 32 bytes for every float entry on every line, to keep
+        // alignment requirements of DPU accesses buffers.
+        constexpr auto softmaxNormBuf = 32;
+        auxLineSize = auxLineSize + softmaxNormBuf;
+    }
+    auto auxBufDataSize = noBuffersForSoftmax * auxLineSize * static_cast<int64_t>(sizeof(uint16_t));
+    return auxBufDataSize;
+}
+
+int64_t getAuxDataBufferLineWidthFromInputs(mlir::ModuleOp moduleOp, mlir::Value inputQ, mlir::Value inputK,
+                                            mlir::Value inputV,
+                                            /*optional*/ vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
+    const auto inputQType = mlir::cast<vpux::NDTypeInterface>(inputQ.getType());
+    const auto inputKType = mlir::cast<vpux::NDTypeInterface>(inputK.getType());
+    const auto inputVType = mlir::cast<vpux::NDTypeInterface>(inputV.getType());
+    // extract possible broadcasted C size from inputs
+    auto maxC = std::max({inputQType.getShape()[Dims4D::Act::C], inputKType.getShape()[Dims4D::Act::C],
+                          inputVType.getShape()[Dims4D::Act::C]});
+
+    const auto dimS = inputVType.getShape()[Dims4D::Act::W];
+    const auto dimEv = inputVType.getShape()[Dims4D::Act::H];
+
+    return getAuxDataBufferLineWidthFromCSize(moduleOp, maxC, dimS, dimEv, multiClusterStrategy);
+}
+
+SmallVector<mlir::Type> getAuxiliaryBufferTypes(mlir::ModuleOp moduleOp, mlir::Value inputQ, mlir::Value inputK,
+                                                mlir::Value inputV, mlir::IntegerAttr padSizeAttr,
+                                                std::vector<int32_t>& resultDpuStorageData,
+                                                vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
     const auto inputVType = mlir::cast<vpux::NDTypeInterface>(inputV.getType());
     const auto inputVShape = inputVType.getShape();
     const auto inputQType = mlir::cast<vpux::NDTypeInterface>(inputQ.getType());
@@ -36,14 +83,14 @@ SmallVector<mlir::Type> getAuxiliaryBufferTypes(mlir::ModuleOp moduleOp, mlir::V
     const auto dimL = inputQShape[Dim(2)];
 
     const auto dataStorageType = [&]() -> mlir::Type {
-        static constexpr int64_t noBuffersForSoftmax = 2;
-        SmallVector<int64_t> bufferShape(
-                {1, 1, dimL, noBuffersForSoftmax * dimS * static_cast<int64_t>(sizeof(uint16_t))});
+        const auto lineWidth =
+                getAuxDataBufferLineWidthFromInputs(moduleOp, inputQ, inputK, inputV, multiClusterStrategy);
+        SmallVector<int64_t> bufferShape({1, 1, dimL, lineWidth});
         return mlir::RankedTensorType::get(bufferShape, getUInt8Type(inputQ.getContext()));
     }();
     const auto dpuStorageType = [&]() -> mlir::Type {
         auto tileOp = config::getTileExecutor(moduleOp);
-        const auto numShavesPerTile = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
+        const auto numShavesPerTile = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount();
 
         // dpu storage buffer
         int64_t size1DpuDescriptor = VPU::getDpuDebugDataSize(config::getArch(moduleOp)) +
@@ -72,6 +119,7 @@ SmallVector<mlir::Type> getAuxiliaryBufferTypes(mlir::ModuleOp moduleOp, mlir::V
         std::vector<int32_t> matMull1WtTblDataValuesVec = VPU::NCESparsity::getWeightsTable(
                 inputMM1, outputMM1, /*weightsPtrs*/ std::nullopt, static_cast<int32_t>(dimE * 2),
                 /*sparsityPtr*/ std::nullopt, static_cast<int32_t>(0), ppeConverter, biasConverter, dimSReal);
+        // Need padded outputs width values to use weight from input buffer. Will not be used.
         for (auto oc = dimSReal; oc < dimS; oc++) {
             matMull1WtTblDataValuesVec.push_back(matMull1WtTblDataValuesVec[0]);
             matMull1WtTblDataValuesVec.push_back(matMull1WtTblDataValuesVec[1]);
@@ -114,17 +162,19 @@ mlir::Value createDpuStorageConstant(mlir::OpBuilder& builder, mlir::Location lo
 
 void vpux::VPU::SDPAExtendedOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value inputQ,
                                       mlir::Value inputK, mlir::Value inputV, mlir::Value inputMask,
-                                      mlir::Value inputScale, mlir::IntegerAttr padSizeAttr) {
+                                      mlir::Value inputScale, ::mlir::Value inputBias, mlir::IntegerAttr padSizeAttr) {
     auto block = odsBuilder.getInsertionBlock();
     const auto moduleOp = getModuleOp(block->getParentOp());
 
     std::vector<int32_t> dpuStorageData;
-    auto auxBufferTypes = getAuxiliaryBufferTypes(moduleOp, inputQ, inputV, padSizeAttr, dpuStorageData);
+    auto auxBufferTypes =
+            getAuxiliaryBufferTypes(moduleOp, inputQ, inputK, inputV, padSizeAttr, dpuStorageData, nullptr);
     VPUX_THROW_WHEN(auxBufferTypes.size() != 2, "Expected 2 auxiliary buffer types, got {0}", auxBufferTypes.size());
-    auto dataStorage = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[0]);
+    auto dataStorage = VPU::createEmptyAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[0]);
     auto dpuStorage = createDpuStorageConstant(odsBuilder, odsState.location, auxBufferTypes[1], dpuStorageData);
 
-    build(odsBuilder, odsState, inputQ, inputK, inputV, inputMask, inputScale, dataStorage, dpuStorage, padSizeAttr,
+    build(odsBuilder, odsState, inputQ, inputK, inputV, inputMask, inputScale, inputBias, dataStorage, dpuStorage,
+          padSizeAttr,
           /*multiClusterStrategy=*/nullptr);
 }
 
@@ -162,16 +212,13 @@ mlir::LogicalResult vpux::VPU::SDPAExtendedOp::inferReturnTypes(
 llvm::LogicalResult VPU::SDPAExtendedOp::verify() {
     const auto moduleOp = getModuleOp(getOperation()->getParentOp());
     std::vector<int32_t> dpuStorageData;
-    auto expectedAuxBuffTypes =
-            getAuxiliaryBufferTypes(moduleOp, getInputQ(), getInputV(), getPadSizeSAttr(), dpuStorageData);
+    auto expectedAuxBuffTypes = getAuxiliaryBufferTypes(moduleOp, getInputQ(), getInputK(), getInputV(),
+                                                        getPadSizeSAttr(), dpuStorageData, MultiClusterStrategyAttr());
     if (expectedAuxBuffTypes.size() != 2) {
         return errorAt(getOperation(), "Expected two reference auxiliary buffer types, but got {0}",
                        expectedAuxBuffTypes.size());
     }
     auto loc = getOperation()->getLoc();
-    if (mlir::failed(VPU::compareTypes(loc, getDataStorage().getType(), expectedAuxBuffTypes[0]))) {
-        return errorAt(getOperation(), "Invalid data storage auxiliary buffer");
-    }
     if (mlir::failed(VPU::compareTypes(loc, getDpuStorage().getType(), expectedAuxBuffTypes[1]))) {
         return errorAt(getOperation(), "Invalid DPU storage auxiliary buffer");
     }
@@ -188,9 +235,18 @@ bool vpux::VPU::SDPAExtendedOp::checkStrategyCompatibility(VPU::MultiClusterStra
     if (strategy == VPU::MultiClusterStrategy::Clustering) {
         return true;
     }
+    if (strategy == VPU::MultiClusterStrategy::SplitOverBatch) {
+        return outputShape[Dims4D::Act::N] >= checked_cast<int64_t>(numTiles);
+    }
 
     if (strategy == VPU::MultiClusterStrategy::SplitOverKernel) {
-        return outputShape[Dims4D::Act::C] >= checked_cast<int64_t>(numTiles);
+        if (outputShape[Dims4D::Act::C] % numTiles == 0) {
+            return true;
+        }
+        if ((outputShape[Dims4D::Act::H] < outputShape[Dims4D::Act::C]) && (outputShape[Dims4D::Act::C] > 1)) {
+            return true;
+        }
+        return false;
     }
 
     if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
@@ -203,7 +259,8 @@ bool vpux::VPU::SDPAExtendedOp::checkStrategyCompatibility(VPU::MultiClusterStra
 vpux::VPU::DistributionInfo vpux::VPU::SDPAExtendedOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -241,7 +298,20 @@ bool vpux::VPU::SDPAExtendedOp::supportCycleCostCalculation() {
 // TilingBuilderOpInterface
 //
 
-InputTiling vpux::VPU::SDPAExtendedOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger /*log*/) {
+void transferTilingInfoBroadcastAware(vpux::TileInfo& dst, const vpux::TileInfo& src) {
+    if (dst.shape[Dims4D::Act::H] != 1) {
+        transferTilingInfo(dst, src, {Dim(Dims4D::Act::H)});
+    }
+    if (dst.shape[Dims4D::Act::C] != 1) {
+        transferTilingInfo(dst, src, {Dim(Dims4D::Act::C)});
+    }
+    if (dst.shape[Dims4D::Act::N] != 1) {
+        transferTilingInfo(dst, src, {Dim(Dims4D::Act::N)});
+    }
+}
+
+InputTiling vpux::VPU::SDPAExtendedOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger log) {
+    log.trace("SDPAExtendedOp - backInferTileInfo outputTile: {}", outputTile);
     TileInfo inQTile(getShape(getInputQ()));
     TileInfo inKTile(getShape(getInputK()));
     TileInfo inVTile(getShape(getInputV()));
@@ -251,35 +321,35 @@ InputTiling vpux::VPU::SDPAExtendedOp::backInferTileInfo(const vpux::TileInfo& o
     transferTilingInfo(inVTile, outputTile, {Dim(Dims4D::Act::C), Dim(Dims4D::Act::N)});
     transferTilingInfo(inKTile, outputTile, {Dim(Dims4D::Act::C), Dim(Dims4D::Act::N)});
     transferTilingInfo(dataStorageTile, outputTile, {Dim(Dims4D::Act::H)});
+    // if output tile head become 1, ping-pong buffers are not needed anymore
+    dataStorageTile.shape[Dims4D::Act::W] = getAuxDataBufferLineWidthFromCSize(
+            getOperation()->getParentOfType<mlir::ModuleOp>(), outputTile.shape[Dims4D::Act::C],
+            inVTile.shape[Dims4D::Act::W], outputTile.shape[Dims4D::Act::W], getMultiClusterStrategyAttr());
 
     // InputQ, inputK and InputV are mandatory
     InputTiling inTiles = TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile)}};
 
-    // Mask is optional, but if it is present, it should be tiled if possible
+    // Mask, Scale and Bias are optional, but if they are present, they should be tiled if possible
     if (getInputMask() != nullptr) {
         TileInfo inMaskTile(getShape(getInputMask()));
-        if (inMaskTile.shape[Dims4D::Act::H] != 1) {
-            transferTilingInfo(inMaskTile, outputTile, {Dim(Dims4D::Act::H)});
-        }
-        if (inMaskTile.shape[Dims4D::Act::C] != 1) {
-            transferTilingInfo(inMaskTile, outputTile, {Dim(Dims4D::Act::C)});
-        }
+        transferTilingInfoBroadcastAware(inMaskTile, outputTile);
         inTiles.tiles.push_back(inMaskTile);
     }
-
-    // ScaleTensor is optional and can't be tiled
     if (getInputScale() != nullptr) {
         TileInfo inScaleTile(getShape(getInputScale()));
+        transferTilingInfoBroadcastAware(inScaleTile, outputTile);
         inTiles.tiles.push_back(inScaleTile);
+    }
+    if (getInputBias() != nullptr) {
+        TileInfo inBiasTile(getShape(getInputBias()));
+        transferTilingInfoBroadcastAware(inBiasTile, outputTile);
+        inTiles.tiles.push_back(inBiasTile);
     }
 
     inTiles.tiles.push_back(std::move(dataStorageTile));
 
-    // dpuStorageTensor is optional and can't be tiled
-    if (getDpuStorage() != nullptr) {
-        TileInfo dpuStorageTile(getShape(getDpuStorage()));
-        inTiles.tiles.push_back(dpuStorageTile);
-    }
+    TileInfo dpuStorageTile(getShape(getDpuStorage()));
+    inTiles.tiles.push_back(dpuStorageTile);
 
     return inTiles;
 }
@@ -292,6 +362,6 @@ mlir::FailureOr<OutputTiling> vpux::VPU::SDPAExtendedOp::getTilingStrategy(Tilin
     return vpux::getSWLayerTilingStrategy(this->getOperation(), tilingMode, log);
 }
 
-SmallVector<mlir::Value> VPU::SDPAExtendedOp::getAuxiliaryBuffers() {
-    return {getDataStorage(), getDpuStorage()};
+SmallVector<mlir::OpOperand*> VPU::SDPAExtendedOp::getAuxiliaryBuffers() {
+    return {&getDataStorageMutable(), &getDpuStorageMutable()};
 }

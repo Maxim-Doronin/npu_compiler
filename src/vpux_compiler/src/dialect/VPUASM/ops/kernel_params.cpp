@@ -257,13 +257,15 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
     return relocs;
 }
 
-void vpux::VPUASM::KernelParamsOp::build(
-        mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName, mlir::ArrayAttr inputs,
-        mlir::ArrayAttr outputs, mlir::ArrayAttr dynamicInputShapes, mlir::ArrayAttr dynamicOutputShapes,
-        mlir::StringAttr kernelType, SmallVector<uint8_t>&& kernelParams, SmallVector<uint8_t>&& inputDimsBinaryVector,
-        SmallVector<uint8_t>&& inputStridesBinaryVector, SmallVector<uint8_t>&& outputDimsBinaryVector,
-        SmallVector<uint8_t>&& outputStridesBinaryVector, mlir::UnitAttr isOutputBroadcasted = nullptr,
-        mlir::UnitAttr isJitCompiled = nullptr) {
+void vpux::VPUASM::KernelParamsOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
+                                         mlir::ArrayAttr inputs, mlir::ArrayAttr outputs,
+                                         mlir::ArrayAttr dynamicInputShapes, mlir::ArrayAttr dynamicOutputShapes,
+                                         mlir::StringAttr kernelType, SmallVector<uint8_t>&& kernelParams,
+                                         SmallVector<uint8_t>&& inputDimsBinaryVector,
+                                         SmallVector<uint8_t>&& inputStridesBinaryVector,
+                                         SmallVector<uint8_t>&& outputDimsBinaryVector,
+                                         SmallVector<uint8_t>&& outputStridesBinaryVector,
+                                         bool isOutputBroadcasted = false, bool isJitCompiled = false) {
     auto& props = state.getOrAddProperties<Properties>();
     props.sym_name = symName;
     props.kernel_params = std::move(kernelParams);

@@ -27,7 +27,9 @@ module @Test {
                 VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
             }
             ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-                VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                VPUIPDPU.DPUInvariant @DPUInvariant_0 {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64} <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0,
+                input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut,
+                nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                     DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %act_out: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>,
@@ -170,7 +172,7 @@ module @Test {
                     // CHECK-DAG:  UINT te_end_y = 0x3F
                     // CHECK-DAG:  UINT te_end_z = 0xF
                     // CHECK-DAG:  UINT te_end_x = 0x3F
-                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) {isFirstVariant}
+                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) <{isFirstVariant}>
                     // CHECK-DAG:  UINT invar_lptr_force = 1
                     // CHECK-DAG:  UINT workload_odu_auto_upd = 0
                     // CHECK-DAG:  invariant_index_ = UINT 0
@@ -278,7 +280,7 @@ module @Test {
                     // CHECK-DAG:  UINT te_end_y = 0x3F
                     // CHECK-DAG:  UINT te_end_z = 0xF
                     // CHECK-DAG:  UINT te_end_x = 0x3F
-                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) {isLastVariant}
+                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(4) <{isLastVariant}>
                     // CHECK-DAG:  UINT invar_lptr_force = 0
                     // CHECK-DAG:  UINT workload_odu_auto_upd = 1
                     // CHECK-DAG:  invariant_index_ = UINT 0
@@ -324,7 +326,8 @@ module @ProfilingTest {
                 VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
             }
             ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-                VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn, output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, profiling_data = @builtin.data.nncmx0::@DeclareBuffer_ProfilingData, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                VPUIPDPU.DPUInvariant @DPUInvariant_0 {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64} <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @builtin.tasks.DPUInvariant0::@DeclareTaskBuffer_DPUInvariant_0, input = @builtin.data.nncmx0::@DeclareBuffer_ActIn,
+                output = @builtin.data.nncmx0::@DeclareBuffer_ActOut, profiling_data = @builtin.data.nncmx0::@DeclareBuffer_ProfilingData, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                     DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -367,7 +370,7 @@ module @ProfilingTest {
                     }
                     VPUIPDPU.ODUOutSubtensor begin_coord_x(1) begin_coord_y(32) begin_coord_z(64) end_coord_x(63) end_coord_y(63) end_coord_z(15)
 
-                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(1) {isFirstVariant}
+                    VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(1) <{isFirstVariant}>
                     // CHECK-DAG:  UINT invar_lptr_force = 1
                     // CHECK-DAG:  UINT workload_odu_auto_upd = 0
                     // CHECK-DAG:  invariant_index_ = UINT 0

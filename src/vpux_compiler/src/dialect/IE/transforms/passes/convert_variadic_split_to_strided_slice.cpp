@@ -68,7 +68,7 @@ mlir::LogicalResult VariadicSplitRewriter::matchAndRewrite(IE::VariadicSplitOp o
         rewriter.setInsertionPoint(insertionPoint);
 
         sliceOpValues[index] = rewriter.create<IE::StridedSliceOp>(
-                appendLoc(origOp->getLoc(), "_slice_{0}", index), origOp.getInput(),
+                appendLoc(origOp->getLoc(), "slice_{0}", index), origOp.getInput(),
                 /*begins=*/nullptr, /*ends=*/nullptr, /*strides=*/nullptr,
                 /*begins_attr=*/beginsAttr, /*ends_attr=*/endsAttr, /*strides_attr=*/stridesAttr,
                 /*begin_mask=*/beginMaskAttr, /*end_mask=*/endMaskAttr, /*new_axis_mask=*/emptyArrayAttr,

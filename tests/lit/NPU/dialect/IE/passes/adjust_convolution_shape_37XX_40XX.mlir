@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-convolution-shape %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-mem-permute-processing-rewriters="rewriter=adjust-convolution-shape-set" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -247,8 +248,8 @@ func.func @NotAdjustConvWithMixedPrecisionFloatOutputQuantInput(%arg0: tensor<1x
 
   return %result : tensor<1x32x160x160xf16, {order = #NHWC}>
 
-  //CHECK:       [[VAL0:%.*]] = const.Declare tensor<32x3x3x3x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
-  //CHECK:       [[VAL1:%.*]] = IE.Convolution([[INPUT_DATA]], [[VAL0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]} : tensor<1x3x320x320x!qElemType, {order = #NHWC}>, tensor<32x3x3x3x!qElemType, {order = #NHWC}> -> tensor<1x32x160x160xf16, {order = #NHWC}>
+  //CHECK:       [[VAL0:%.+]] = const.Declare tensor<32x3x3x3x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+  //CHECK:       [[VAL1:%.+]] = IE.Convolution([[INPUT_DATA]], [[VAL0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]} : tensor<1x3x320x320x!qElemType, {order = #NHWC}>, tensor<32x3x3x3x!qElemType, {order = #NHWC}> -> tensor<1x32x160x160xf16, {order = #NHWC}>
   //CHECK:       return [[VAL1]]
 }
 
@@ -267,8 +268,8 @@ func.func @NotAdjustConvWithMixedPrecisionFloatInputQuantWeights(%arg0: tensor<1
 
   return %result : tensor<1x32x160x160xf16, {order = #NHWC}>
 
-  //CHECK:       [[VAL0:%.*]] = const.Declare tensor<32x3x3x3x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
-  //CHECK:       [[VAL1:%.*]] = IE.Convolution([[INPUT_DATA]], [[VAL0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]} : tensor<1x3x320x320xf16, {order = #NHWC}>, tensor<32x3x3x3x!qElemType, {order = #NHWC}> -> tensor<1x32x160x160xf16, {order = #NHWC}>
+  //CHECK:       [[VAL0:%.+]] = const.Declare tensor<32x3x3x3x!qElemType, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+  //CHECK:       [[VAL1:%.+]] = IE.Convolution([[INPUT_DATA]], [[VAL0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]} : tensor<1x3x320x320xf16, {order = #NHWC}>, tensor<32x3x3x3x!qElemType, {order = #NHWC}> -> tensor<1x32x160x160xf16, {order = #NHWC}>
   //CHECK:       return [[VAL1]]
 }
 
@@ -287,8 +288,8 @@ func.func @NotAdjustConvWithMixedPrecisionFloatInputQuantOutput(%arg0: tensor<1x
 
   return %result : tensor<1x32x160x160x!qElemType, {order = #NHWC}>
 
-  //CHECK-DAG:   [[VAL0:%.*]] = const.Declare tensor<32x3x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.Reorder<#NHWC>]
-  //CHECK:       [[VAL1:%.*]] = IE.Convolution([[INPUT_DATA]], [[VAL0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]} : tensor<1x3x320x320xf16, {order = #NHWC}>, tensor<32x3x3x3xf16, {order = #NHWC}> -> tensor<1x32x160x160x!qElemType, {order = #NHWC}>
+  //CHECK-DAG:   [[VAL0:%.+]] = const.Declare tensor<32x3x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.Reorder<#NHWC>]
+  //CHECK:       [[VAL1:%.+]] = IE.Convolution([[INPUT_DATA]], [[VAL0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [2, 2]} : tensor<1x3x320x320xf16, {order = #NHWC}>, tensor<32x3x3x3xf16, {order = #NHWC}> -> tensor<1x32x160x160x!qElemType, {order = #NHWC}>
   //CHECK:       return [[VAL1]]
 }
 

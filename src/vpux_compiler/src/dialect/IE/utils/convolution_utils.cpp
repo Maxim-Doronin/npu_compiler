@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -52,13 +53,65 @@ mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, 
     const auto group = groupconv.getGroups().value();
     const auto filterShape = getShape(groupconv.getFilter());
     const auto inputShape = getShape(groupconv.getInput());
-    // If DWConv cannot be converted to NCEDepthConvolution, convert it to Convolution. Here is not need to check layout
-    // due to this pass is ahead of adjust layout and channel alignment pipeline.
-    if (filterShape[Dims4D::Filter::OC] == group && inputShape[Dims4D::Act::C] == group &&
-        (VPU::NCEDepthConvolutionOp::isSupported(groupconv, logCb, /*checkLayout=*/false,
-                                                 /*checkChannelAlignment=*/false))) {
-        logCb(formatv("Conversion is not needed for dw conv"));
-        return mlir::failure();
+
+    // Check if this is a depthwise convolution (each input channel is convolved separately)
+    const auto isDepthwise = filterShape[Dims4D::Filter::OC] == group && inputShape[Dims4D::Act::C] == group;
+
+    if (isDepthwise) {
+        // If DWConv can be directly converted to NCEDepthConvolution, skip conversion to regular Conv.
+        // No need to check layout since this pass runs before adjust layout and channel alignment pipeline.
+        if (VPU::NCEDepthConvolutionOp::isSupported(groupconv, logCb, /*checkLayout=*/false,
+                                                    /*checkChannelAlignment=*/false)) {
+            logCb(formatv("Conversion is not needed for dw conv"));
+            return mlir::failure();
+        }
+
+        // NCEDepthConvolution is not directly supported. Check if it could become supported after
+        // HandleLargePadsPass reduces the padding. If so, preserve the GroupConv for later optimization.
+        const auto KY = filterShape[Dims4D::Filter::KY];
+        const auto KX = filterShape[Dims4D::Filter::KX];
+        const auto pads = PadInfo(groupconv.getPadsBegin(), groupconv.getPadsEnd());
+
+        // Check if padding exceeds the NCE limit (padding <= kernel/2)
+        const bool hasLargePadding =
+                pads.top > KY / 2 || pads.bottom > KY / 2 || pads.left > KX / 2 || pads.right > KX / 2;
+
+        // Skip optimization for single-pixel input (1x1 spatial) which should be handled by
+        // DepthwiseConvSinglePixelInputToMultiplyConverter instead
+        const auto inputH = inputShape[Dims4D::Act::H];
+        const auto inputW = inputShape[Dims4D::Act::W];
+        const bool isSinglePixelInput = (inputH == 1 && inputW == 1);
+
+        if (hasLargePadding && !isSinglePixelInput) {
+            // Simulate reduced padding (clamped to kernel/2) as HandleLargePadsPass would do
+            const auto reducedPadTop = std::min(static_cast<int64_t>(pads.top), KY / 2);
+            const auto reducedPadBottom = std::min(static_cast<int64_t>(pads.bottom), KY / 2);
+            const auto reducedPadLeft = std::min(static_cast<int64_t>(pads.left), KX / 2);
+            const auto reducedPadRight = std::min(static_cast<int64_t>(pads.right), KX / 2);
+
+            const auto kernelStrides = parseIntArrayAttr<int64_t>(groupconv.getStrides());
+            const auto kernelStridesShape = Shape(kernelStrides);
+            const auto SY = kernelStridesShape[Dims4D::Strides::Y];
+            const auto SX = kernelStridesShape[Dims4D::Strides::X];
+
+            // Check kernel, stride, and reduced padding constraints
+            if (VPU::NCEInvariant::isAttrsSupported(groupconv, KY, KX, SY, SX, reducedPadTop, reducedPadBottom,
+                                                    reducedPadLeft, reducedPadRight, logCb)) {
+                // Kernel/stride/padding constraints are satisfied with reduced padding
+                // Now check channel alignment using VPU::NCEInvariant::getAlignment directly
+                // (AlignedChannelsOpInterface returns 1 when NCE is not supported due to large padding)
+                const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getInput().getType());
+                const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getOutput().getType());
+                const auto inputAlignment = VPU::NCEInvariant::getAlignment(inputType.getElementType());
+                const auto outputAlignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
+
+                if (VPU::NCEInvariant::isInputActTypeSupported(inputType, inputAlignment, false) &&
+                    VPU::NCEInvariant::isOutputActTypeSupported(outputType, outputAlignment)) {
+                    logCb(formatv("Depthwise GroupConv with large padding will be handled by HandleLargePadsPass"));
+                    return mlir::failure();
+                }
+            }
+        }
     }
 
     // Channel alignment is not checked here because experiments show that NCE is still able to provide better
@@ -234,34 +287,39 @@ mlir::LogicalResult FuseConvAndBias::matchAndRewrite(IE::ScaleShiftOp biasOp, ml
         return matchFailed(rewriter, biasOp, "ScaleShift 'shift' operand shape doesn't match bias restrictions");
     }
 
-    if (mlir::isa<IE::ConvolutionOp, IE::GroupConvolutionOp>(op)) {
+    // HW applied bias before scale, so need to do following transformation to get correct result
+    //   conv * scale + bias ==> (conv + bias/scale) * scale
+    auto biasConst = [&]() -> mlir::Value {
+        auto convolutionOp = mlir::dyn_cast<IE::ConvolutionOp>(op);
+        if (convolutionOp == nullptr || convolutionOp.getStaticScaleAttr() == nullptr) {
+            return biasOp.getBiases();
+        }
+
+        auto staticScale = convolutionOp.getStaticScaleAttr().getValueAsDouble();
+        if (isDoubleEqual(staticScale, 1)) {
+            return biasOp.getBiases();
+        }
+
+        auto biasConst = IE::getConstParentOp(biasOp.getBiases()).value();
+        auto contentAttr = biasConst.transformContentAttr().rescale(1 / staticScale).get();
+        return rewriter.create<Const::DeclareOp>(takeOpLoc(biasConst, "rescaled"), biasConst.getType(), contentAttr)
+                .getOutput();
+    }();
+
+    if (mlir::isa<IE::GroupConvolutionOp>(op)) {
         if (op->getNumOperands() != 2) {
             return matchFailed(rewriter, biasOp, "ScaleShift producer already has fused biases");
         }
 
         auto* newConv = rewriter.clone(*op);
-
-        // HW applied bias before scale, so need to do following transformation to get correct result
-        //   conv * scale + bias ==> (conv + bias/scale) * scale
-        auto biasConst = [&]() -> mlir::Value {
-            auto convolutionOp = mlir::dyn_cast<IE::ConvolutionOp>(op);
-            if (convolutionOp == nullptr || convolutionOp.getStaticScaleAttr() == nullptr) {
-                return biasOp.getBiases();
-            }
-
-            auto staticScale = convolutionOp.getStaticScaleAttr().getValueAsDouble();
-            if (isDoubleEqual(staticScale, 1)) {
-                return biasOp.getBiases();
-            }
-
-            auto biasConst = IE::getConstParentOp(biasOp.getBiases()).value();
-            auto contentAttr = biasConst.transformContentAttr().rescale(1 / staticScale).get();
-            return rewriter.create<Const::DeclareOp>(takeOpLoc(biasConst, "rescaled"), biasConst.getType(), contentAttr)
-                    .getOutput();
-        }();
-
         newConv->insertOperands(newConv->getNumOperands(), biasConst);
-
+        rewriter.replaceOp(biasOp, newConv->getOpResults());
+    } else if (auto convOp = mlir::dyn_cast<IE::ConvolutionOp>(op)) {
+        if (convOp.getBias() != nullptr) {
+            return matchFailed(rewriter, biasOp, "ScaleShift producer already has fused biases");
+        }
+        auto newConv = cloneConvolutionOp(rewriter, convOp, convOp.getInput(), convOp.getFilter(), biasConst,
+                                          convOp.getScale());
         rewriter.replaceOp(biasOp, newConv->getOpResults());
     } else if (auto transposedConv = mlir::dyn_cast<IE::TransposedConvolutionOp>(op)) {
         if (transposedConv.getBias() != nullptr) {

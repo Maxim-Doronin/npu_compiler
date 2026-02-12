@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -75,7 +75,7 @@ TEST_P(MaxMinLayerTestCommon, NPU4000_SW) {
 
 TEST_P(ShaveCodeGenMaxMinLayerTestCommon, NPU4000) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -96,9 +96,10 @@ TEST_P(MaxMinLayerTestDynamic, NPU5010_SW) {
 
 TEST_P(ShaveCodeGenMaxMinLayerTestCommon, NPU5010) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

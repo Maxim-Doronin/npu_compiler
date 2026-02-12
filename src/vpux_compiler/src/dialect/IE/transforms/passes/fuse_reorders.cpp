@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,9 +9,11 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/act_shave_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_FUSEREORDERSPASS
@@ -82,7 +84,7 @@ mlir::LogicalResult ReorderRewriter::matchAndRewrite(IE::ReorderOp origOp, mlir:
         return matchFailed(_log.nest(), rewriter, origOp, "ODU permutation applies only to the last reorder");
     }
 
-    if (isTrivialReorder(origOp)) {
+    if (IE::isTrivialReorder(origOp)) {
         return matchFailed(_log.nest(), rewriter, origOp, "ReorderOp is actually a permute cast");
     }
 
@@ -146,9 +148,7 @@ void FuseReordersPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ReorderRewriter>(&ctx, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

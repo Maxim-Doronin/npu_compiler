@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -66,7 +66,7 @@ module @TwoInputs {
     // CHECK: func.func @init([[BLOB:%.+]]: tensor<4320xi8>)
     // CHECK-SAME:  -> (tensor<2x2x5x3xf16>, tensor<42x100x1x1xsi8, {order = #NHWC}>)
     // CHECK:   [[SLICE_OV1:%.+]] = IE.Slice [[BLOB]] [0] [120]
-    // CHECK:   [[RESTORED_OV1:%.+]] = Core.ReinterpretCast([[SLICE_OV1]]) {{.*}} -> tensor<2x2x5x3xf16>
+    // CHECK:   [[RESTORED_OV1:%.+]] = Core.ReinterpretCast([[SLICE_OV1]]) {{.+}} -> tensor<2x2x5x3xf16>
     // CHECK:   [[SLICE_OV2:%.+]] = IE.Slice [[BLOB]] [120] [4200]
     // CHECK:   [[RESTORED_OV2:%.+]] = Core.ReinterpretCast([[SLICE_OV2]])
     // CHECK-SAME:  -> tensor<42x100x1x1xui8, {order = #NHWC}>

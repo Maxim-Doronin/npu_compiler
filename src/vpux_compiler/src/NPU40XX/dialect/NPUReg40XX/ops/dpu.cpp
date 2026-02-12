@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -118,7 +118,7 @@ std::vector<ELF::RelocationInfo> DPUInvariantOp::getRelocationInfo(ELF::SymbolRe
         auto newInput = getInput();
         auto weights = getWeights().value_or(nullptr);
 
-        if (weights && (getIsZeroOffsetWeightsTableAttr() != nullptr)) {
+        if (weights && getIsZeroOffsetWeightsTable()) {
             newInput = weights;
             addend = ELF::getOffsetOfSymRef(symRefMap, weights);
         }
@@ -284,8 +284,8 @@ void vpux::NPUReg40XX::DPUInvariantOp::build(
         mlir::SymbolRefAttr input, mlir::SymbolRefAttr inputSparsityMap, mlir::SymbolRefAttr inputStorageElementTable,
         mlir::SymbolRefAttr weights, mlir::SymbolRefAttr weightsSparsityMap, mlir::SymbolRefAttr weightTable,
         mlir::SymbolRefAttr sprLookupTable, mlir::SymbolRefAttr output, mlir::SymbolRefAttr outputSparsityMap,
-        mlir::SymbolRefAttr profilingData, mlir::UnitAttr isZeroOffsetWeightsTable, VPUIP::NCETaskTypeAttr nceTaskType,
-        mlir::UnitAttr isContinued) {
+        mlir::SymbolRefAttr profilingData, bool isZeroOffsetWeightsTable, VPUIP::NCETaskTypeAttr nceTaskType,
+        bool isContinued) {
     auto& props = state.getOrAddProperties<Properties>();
 
     props.sym_name = symName;

@@ -201,11 +201,11 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
         SmallVector<int64_t> sliceOffsets(inputShape.size(), 0);
 
         const mlir::Value sliceForward =
-                rewriter.create<VPU::SliceOp>(appendLoc(loc, "_sliceForward_{0}", splitIdx), input,
+                rewriter.create<VPU::SliceOp>(appendLoc(loc, "sliceForward_{0}", splitIdx), input,
                                               getIntArrayAttr(ctx, sliceOffsets), sliceSizesArrayAttr);
         sliceOffsets[dim] = 1;
         const mlir::Value sliceReverse =
-                rewriter.create<VPU::SliceOp>(appendLoc(loc, "_sliceReverse_{0}", splitIdx), input,
+                rewriter.create<VPU::SliceOp>(appendLoc(loc, "sliceReverse_{0}", splitIdx), input,
                                               getIntArrayAttr(ctx, sliceOffsets), sliceSizesArrayAttr);
         splitIdx++;
         return {sliceForward, sliceReverse};
@@ -241,18 +241,18 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
         sliceOffsetsReverse[2] = seqLenght - seqLenghtOffset - newSeqLenght;
 
         const mlir::Value sliceForward = rewriter.create<VPU::SliceOp>(
-                appendLoc(loc, "_sliceForward_{0}", i), inputDataForward, getIntArrayAttr(ctx, sliceOffsetsForward),
+                appendLoc(loc, "sliceForward_{0}", i), inputDataForward, getIntArrayAttr(ctx, sliceOffsetsForward),
                 getIntArrayAttr(ctx, sliceSizes));
         const mlir::Value sliceReverse = rewriter.create<VPU::SliceOp>(
-                appendLoc(loc, "_sliceReverse_{0}", i), inputDataReverse, getIntArrayAttr(ctx, sliceOffsetsReverse),
+                appendLoc(loc, "sliceReverse_{0}", i), inputDataReverse, getIntArrayAttr(ctx, sliceOffsetsReverse),
                 getIntArrayAttr(ctx, sliceSizes));
         const SmallVector<mlir::Value> sliceOps{sliceForward, sliceReverse};
 
         const mlir::Value newLstmSequenceInput =
-                rewriter.create<VPU::ConcatOp>(appendLoc(loc, "_concat_{0}", i), sliceOps, 1);
+                rewriter.create<VPU::ConcatOp>(appendLoc(loc, "concat_{0}", i), sliceOps, 1);
 
         auto newLSTMSequenceOp = rewriter.create<VPU::LSTMSequenceOp>(
-                appendLoc(loc, "_tile_{0}", 1), newLstmSequenceInput, hiddenState, cellState, op.getReccurenceWeights(),
+                appendLoc(loc, "tile_{0}", 1), newLstmSequenceInput, hiddenState, cellState, op.getReccurenceWeights(),
                 op.getBiases(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(), op.getUseDpuAttr(),
                 op.getMultiClusterStrategyAttr());
 
@@ -270,13 +270,13 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
     std::reverse(outputHiddenValuesVecReverse.begin(), outputHiddenValuesVecReverse.end());
 
     const mlir::Value outputHiddenValuesForward =
-            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "_concatForward"), outputHiddenValuesVecForward, 2);
+            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "concatForward"), outputHiddenValuesVecForward, 2);
     const mlir::Value outputHiddenValuesReverse =
-            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "_concatReverse"), outputHiddenValuesVecReverse, 2);
+            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "concatReverse"), outputHiddenValuesVecReverse, 2);
 
     const SmallVector<mlir::Value> outputHiddenValuesVec{outputHiddenValuesForward, outputHiddenValuesReverse};
     const mlir::Value newOutputHiddenValues =
-            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "_concat"), outputHiddenValuesVec, 1);
+            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "concat"), outputHiddenValuesVec, 1);
 
     const SmallVector<mlir::Value> newResults{newOutputHiddenValues, hiddenState, cellState};
     rewriter.replaceOp(op, newResults);
@@ -316,11 +316,11 @@ void TileLSTMSequence::tileForwardOrReverseLSTMSequence(VPU::LSTMSequenceOp op, 
                                                : seqLenght - seqLenghtOffset - newSeqLenght;
 
         const mlir::Value newLstmSequenceInput =
-                rewriter.create<VPU::SliceOp>(appendLoc(loc, "_slice_{0}", i), inputData,
+                rewriter.create<VPU::SliceOp>(appendLoc(loc, "slice_{0}", i), inputData,
                                               getIntArrayAttr(ctx, sliceOffsets), getIntArrayAttr(ctx, sliceSizes));
 
         auto newLSTMSequenceOp = rewriter.create<VPU::LSTMSequenceOp>(
-                appendLoc(loc, "_tile_{0}", 1), newLstmSequenceInput, newHiddenState, newCellState,
+                appendLoc(loc, "tile_{0}", 1), newLstmSequenceInput, newHiddenState, newCellState,
                 op.getReccurenceWeights(), op.getBiases(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(),
                 op.getUseDpuAttr(), op.getMultiClusterStrategyAttr());
 
@@ -336,7 +336,7 @@ void TileLSTMSequence::tileForwardOrReverseLSTMSequence(VPU::LSTMSequenceOp op, 
     }
 
     const mlir::Value newOutputHiddenValues =
-            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "_concat"), outputHiddenValuesVec, 2);
+            rewriter.create<VPU::ConcatOp>(appendLoc(loc, "concat"), outputHiddenValuesVec, 2);
 
     const SmallVector<mlir::Value> newResults{newOutputHiddenValues, newHiddenState, newCellState};
     rewriter.replaceOp(op, newResults);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,7 +21,7 @@ module @perAxisTileDMA {
     %1 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x122x240xf16, #NHWC, [@CMX_NN, 0]>
 
     VPURT.Task {
-      %2 = VPUIP.PerAxisTileDMA {axis = 3 : i64, port = 0 : i64, tiles = 2 : i64} inputs(%0 : memref<1x4x122x120xf16, #NHWC, @DDR>) outputs(%1 : memref<1x4x122x240xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x4x122x240xf16, #NHWC, [@CMX_NN, 0]>
+      %2 = VPUIP.PerAxisTileDMA <{axis = 3 : i64, port = 0 : i64, tiles = 2 : i64}> inputs(%0 : memref<1x4x122x120xf16, #NHWC, @DDR>) outputs(%1 : memref<1x4x122x240xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x4x122x240xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     return %arg1 : memref<1xf16, @DDR>

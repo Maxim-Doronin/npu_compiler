@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,10 @@
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPURT/utils/wlm_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/options.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux::VPURT {
 #define GEN_PASS_DECL_REDUCEEXCEEDINGACTIVECOUNTBARRIERS
@@ -27,12 +27,9 @@ namespace {
 class ReduceExceedingActiveCountBarriersPass final :
         public VPURT::impl::ReduceExceedingActiveCountBarriersBase<ReduceExceedingActiveCountBarriersPass> {
 public:
-    explicit ReduceExceedingActiveCountBarriersPass(std::optional<int> virtualBarrierThresholdForWlm,
-                                                    std::optional<WorkloadManagementMode> workloadManagementMode,
+    explicit ReduceExceedingActiveCountBarriersPass(std::optional<WorkloadManagementMode> workloadManagementMode,
                                                     const bool unevenVariantSplit, Logger log)
-            : _virtualBarrierThresholdForWlm(virtualBarrierThresholdForWlm),
-              _workloadManagementMode(workloadManagementMode),
-              _unevenVariantSplitFlag(unevenVariantSplit) {
+            : _workloadManagementMode(workloadManagementMode), _unevenVariantSplitFlag(unevenVariantSplit) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -54,7 +51,6 @@ private:
     bool _considerTaskExecutorType = false;
     bool _shareWaitAndUpdateBarriers = false;
 
-    std::optional<int> _virtualBarrierThresholdForWlm = std::nullopt;
     std::optional<WorkloadManagementMode> _workloadManagementMode = std::nullopt;
     bool _unevenVariantSplitFlag = false;
     SmallVector<llvm::BitVector> _taskControlMap;
@@ -317,17 +313,6 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
         barrierInfo.enableUnevenVariantSplit();
     }
 
-    if (wlmFlag && _virtualBarrierThresholdForWlm.has_value() &&
-        barrierInfo.getNumOfBarrierOps() > static_cast<size_t>(_virtualBarrierThresholdForWlm.value())) {
-        _log.trace("WLM flag turned off because number of barrier is above threshold {0} > {1}",
-                   barrierInfo.getNumOfBarrierOps(), _virtualBarrierThresholdForWlm.value());
-        wlmFlag = false;
-        config::setWorkloadManagementStatus(module, WorkloadManagementStatus::FAILED);
-        // If WLM cannot be enabled due to high number of barriers, legalize for non-WLM.
-        // This scenario can occur when earlier barrier legalization passes generate large number of new barriers.
-        legalizeScheduleForNonWlm(func, barrierInfo, _log);
-    }
-
     if (wlmFlag) {
         // In case of WLM all tasks need to be driven by single barrier as this is one of the constraints
         // to make each schedule feasible for WLM enabling
@@ -354,11 +339,10 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
         _log.trace("Barrier simulation passed with '{0}' barriers, no issues with exceeding barriers count",
                    numBarriersToUse);
 
-        VPUX_THROW_UNLESS(verifyBarriersForTaskDescriptorFetch(barrierInfo, func, wlmFlag, _workloadManagementMode),
-                          "Encountered execution group without required barrier for task descriptor fetch.");
-
-        barrierInfo.clearAttributes();
-        return;
+        if (VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, func, wlmFlag, _workloadManagementMode)) {
+            barrierInfo.clearAttributes();
+            return;
+        }
     }
 
     SmallVector<mlir::DenseSet<VPURT::DeclareVirtualBarrierOp>> barrierBatchesToLegalize;
@@ -382,20 +366,21 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
         }
 
         // merge parallel wait barriers respecting limits of slot count per barrier
-        if (barrierInfo.ensureTasksDrivenBySingleBarrier(_availableSlots, _mergeWaitBarriersIteratively,
-                                                         _considerTaskExecutorType)) {
-            // IR was modified
-            VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
+        if (wlmFlag) {
+            if (barrierInfo.ensureTasksDrivenBySingleBarrier(_availableSlots, _mergeWaitBarriersIteratively,
+                                                             _considerTaskExecutorType)) {
+                // IR was modified
+                VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
+            }
         }
-
-        // remove unused barriers before simulation of assigning physical barriers in order to avoid creating batches
-        // that cannot be linearized (eg. containing only final barrier)
-        removeUnusedBarriers(func, barrierInfo);
         if (wlmFlag == false) {
             // Legalize schedule for non-WLM in case some of the required legalization barriers were optimized out as
             // they were seen as redundant to optimization logic
-            legalizeScheduleForNonWlm(func, barrierInfo, _log);
+            VPURT::legalizeScheduleForNonWlm(func, barrierInfo, _log);
         }
+        // remove unused barriers before simulation of assigning physical barriers in order to avoid creating batches
+        // that cannot be linearized (eg. containing only final barrier)
+        removeUnusedBarriers(func, barrierInfo);
         // verify that unique final barrier exists and is in the right place in the IR
         verifyFinalBarrier(func, barrierInfo);
         barrierSim = VPURT::BarrierSimulator{func, wlmFlag, barrierInfo};
@@ -458,7 +443,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     }
 
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
-    VPUX_THROW_UNLESS(verifyBarriersForTaskDescriptorFetch(barrierInfo, func, wlmFlag, _workloadManagementMode),
+    VPUX_THROW_UNLESS(VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, func, wlmFlag, _workloadManagementMode),
                       "Encountered execution group without required barrier for task descriptor fetch.");
 
     // remove attributes before removing barriers
@@ -467,9 +452,11 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     VPURT::postProcessBarrierOps(func);
 
     VPUX_THROW_UNLESS(VPURT::verifyBarrierSlots(func, _log), "Barrier slot count check failed");
-    auto hasOneWaitBarrierPerTask = VPURT::verifyOneWaitBarrierPerTask(func, _log);
-    if (_mergeWaitBarriersIteratively) {
-        VPUX_THROW_UNLESS(hasOneWaitBarrierPerTask, "Encountered task with more than one wait barrier");
+    if (wlmFlag) {
+        auto hasOneWaitBarrierPerTask = VPURT::verifyOneWaitBarrierPerTask(func, _log);
+        if (_mergeWaitBarriersIteratively) {
+            VPUX_THROW_UNLESS(hasOneWaitBarrierPerTask, "Encountered task with more than one wait barrier");
+        }
     }
 }
 
@@ -480,8 +467,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPURT::createReduceExceedingActiveCountBarriersPass(
-        std::optional<int> virtualBarrierThresholdForWlm, std::optional<WorkloadManagementMode> workloadManagementMode,
-        const bool unevenVariantSplitFlag, Logger log) {
-    return std::make_unique<ReduceExceedingActiveCountBarriersPass>(
-            virtualBarrierThresholdForWlm, workloadManagementMode, unevenVariantSplitFlag, log);
+        std::optional<WorkloadManagementMode> workloadManagementMode, const bool unevenVariantSplitFlag, Logger log) {
+    return std::make_unique<ReduceExceedingActiveCountBarriersPass>(workloadManagementMode, unevenVariantSplitFlag,
+                                                                    log);
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -342,20 +342,20 @@ func.func @InterpolateWithAxesNotProvidedFromNgraph(%arg0: tensor<1x256x7x7xf16>
     return %0 : tensor<1x256x14x14xf16>
 
 
-    // CHECK: [[VAL0:%.*]] = IE.Slice {{[^:]+}} [0, 0, 0, 6] [1, 256, 7, 1] : tensor<1x256x7x7xf16> to tensor<1x256x7x1xf16>
-    // CHECK: [[VAL1:%.*]] = IE.Concat({{[^:]+}}, [[VAL0]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 7]]} : tensor<1x256x7x7xf16>, tensor<1x256x7x1xf16> -> tensor<1x256x7x8xf16>
-    // CHECK: [[VAL2:%.*]] = IE.Slice [[VAL1]] [0, 0, 6, 0] [1, 256, 1, 8] : tensor<1x256x7x8xf16> to tensor<1x256x1x8xf16>
-    // CHECK: [[VAL3:%.*]] = IE.Concat([[VAL1]], [[VAL2]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 7, 0]]} : tensor<1x256x7x8xf16>, tensor<1x256x1x8xf16> -> tensor<1x256x8x8xf16>
-    // CHECK: [[VAL4:%.*]] = IE.Slice [[VAL3]] [0, 0, 0, 0] [1, 256, 8, 7] : tensor<1x256x8x8xf16> to tensor<1x256x8x7xf16>
-    // CHECK: [[VAL5:%.*]] = IE.GroupConvolution({{[^:]+}}, {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x7xf16>, tensor<256x1x1x1xf16> -> tensor<1x256x7x7xf16>
-    // CHECK: [[VAL6:%.*]] = IE.GroupConvolution([[VAL1]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x8xf16>, tensor<256x1x1x2xf16> -> tensor<1x256x7x7xf16>
-    // CHECK: [[VAL7:%.*]] = IE.GroupConvolution([[VAL4]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x8x7xf16>, tensor<256x1x2x1xf16> -> tensor<1x256x7x7xf16>
-    // CHECK: [[VAL8:%.*]] = IE.GroupConvolution([[VAL3]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x8x8xf16>, tensor<256x1x2x2xf16> -> tensor<1x256x7x7xf16>
-    // CHECK: [[VAL9:%.*]] = IE.Concat([[VAL5]], [[VAL6]]) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x256x7x7xf16>, tensor<1x256x7x7xf16> -> tensor<1x256x7x14xf16>
-    // CHECK: [[VAL10:%.*]] = IE.Concat([[VAL7]], [[VAL8]]) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x256x7x7xf16>, tensor<1x256x7x7xf16> -> tensor<1x256x7x14xf16>
-    // CHECK: [[VAL11:%.*]] = IE.GroupConvolution([[VAL9]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x14xf16>, tensor<256x1x1x1xf16> -> tensor<1x256x7x14xf16>
-    // CHECK: [[VAL12:%.*]] = IE.GroupConvolution([[VAL10]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x14xf16>, tensor<256x1x1x1xf16> -> tensor<1x256x7x14xf16>
-    // CHECK: [[VAL13:%.*]] = IE.Concat([[VAL11]], [[VAL12]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x256x7x14xf16>, tensor<1x256x7x14xf16> -> tensor<1x256x14x14xf16>
+    // CHECK: [[VAL0:%.+]] = IE.Slice {{[^:]+}} [0, 0, 0, 6] [1, 256, 7, 1] : tensor<1x256x7x7xf16> to tensor<1x256x7x1xf16>
+    // CHECK: [[VAL1:%.+]] = IE.Concat({{[^:]+}}, [[VAL0]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 7]]} : tensor<1x256x7x7xf16>, tensor<1x256x7x1xf16> -> tensor<1x256x7x8xf16>
+    // CHECK: [[VAL2:%.+]] = IE.Slice [[VAL1]] [0, 0, 6, 0] [1, 256, 1, 8] : tensor<1x256x7x8xf16> to tensor<1x256x1x8xf16>
+    // CHECK: [[VAL3:%.+]] = IE.Concat([[VAL1]], [[VAL2]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 7, 0]]} : tensor<1x256x7x8xf16>, tensor<1x256x1x8xf16> -> tensor<1x256x8x8xf16>
+    // CHECK: [[VAL4:%.+]] = IE.Slice [[VAL3]] [0, 0, 0, 0] [1, 256, 8, 7] : tensor<1x256x8x8xf16> to tensor<1x256x8x7xf16>
+    // CHECK: [[VAL5:%.+]] = IE.GroupConvolution({{[^:]+}}, {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x7xf16>, tensor<256x1x1x1xf16> -> tensor<1x256x7x7xf16>
+    // CHECK: [[VAL6:%.+]] = IE.GroupConvolution([[VAL1]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x8xf16>, tensor<256x1x1x2xf16> -> tensor<1x256x7x7xf16>
+    // CHECK: [[VAL7:%.+]] = IE.GroupConvolution([[VAL4]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x8x7xf16>, tensor<256x1x2x1xf16> -> tensor<1x256x7x7xf16>
+    // CHECK: [[VAL8:%.+]] = IE.GroupConvolution([[VAL3]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x8x8xf16>, tensor<256x1x2x2xf16> -> tensor<1x256x7x7xf16>
+    // CHECK: [[VAL9:%.+]] = IE.Concat([[VAL5]], [[VAL6]]) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x256x7x7xf16>, tensor<1x256x7x7xf16> -> tensor<1x256x7x14xf16>
+    // CHECK: [[VAL10:%.+]] = IE.Concat([[VAL7]], [[VAL8]]) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x256x7x7xf16>, tensor<1x256x7x7xf16> -> tensor<1x256x7x14xf16>
+    // CHECK: [[VAL11:%.+]] = IE.GroupConvolution([[VAL9]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x14xf16>, tensor<256x1x1x1xf16> -> tensor<1x256x7x14xf16>
+    // CHECK: [[VAL12:%.+]] = IE.GroupConvolution([[VAL10]], {{[^:]+}}) {dilations = [1, 1], groups = 256 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x7x14xf16>, tensor<256x1x1x1xf16> -> tensor<1x256x7x14xf16>
+    // CHECK: [[VAL13:%.+]] = IE.Concat([[VAL11]], [[VAL12]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x256x7x14xf16>, tensor<1x256x7x14xf16> -> tensor<1x256x14x14xf16>
     // CHECK: return [[VAL13]] : tensor<1x256x14x14xf16>
 }
 
@@ -371,10 +371,10 @@ func.func @ConvertBilinearAlignCornersToStridedConcatAndConv_V1(%arg0: tensor<1x
     return %0 : tensor<1x32x7x7xf16>
 
     // CHECK-NOT: IE.Interpolate
-    // CHECK-DAG: [[CST:%.*]] = const.Declare tensor<32x1x3x3xf16> = dense<1.110840e-01> : tensor<32x1x3x3xf16>
-    // CHECK: [[VAL0:%.*]] = IE.Concat(%arg0, %arg0, %arg0) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16> -> tensor<1x32x3x9xf16>
-    // CHECK: [[VAL1:%.*]] = IE.Concat([[VAL0]], [[VAL0]], [[VAL0]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x9xf16>, tensor<1x32x3x9xf16>, tensor<1x32x3x9xf16> -> tensor<1x32x9x9xf16>
-    // CHECK: [[VAL2:%.*]] = IE.GroupConvolution([[VAL1]], [[CST]]) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x9x9xf16>, tensor<32x1x3x3xf16> -> tensor<1x32x7x7xf16>
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<32x1x3x3xf16> = dense<1.110840e-01> : tensor<32x1x3x3xf16>
+    // CHECK: [[VAL0:%.+]] = IE.Concat(%arg0, %arg0, %arg0) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16> -> tensor<1x32x3x9xf16>
+    // CHECK: [[VAL1:%.+]] = IE.Concat([[VAL0]], [[VAL0]], [[VAL0]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x9xf16>, tensor<1x32x3x9xf16>, tensor<1x32x3x9xf16> -> tensor<1x32x9x9xf16>
+    // CHECK: [[VAL2:%.+]] = IE.GroupConvolution([[VAL1]], [[CST]]) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x9x9xf16>, tensor<32x1x3x3xf16> -> tensor<1x32x7x7xf16>
     // CHECK: return [[VAL2]] : tensor<1x32x7x7xf16>
 }
 

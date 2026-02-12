@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,8 +21,13 @@ mlir::LogicalResult vpux::VPU::SoftMaxOp::inferReturnTypes(mlir::MLIRContext* ct
         return mlir::failure();
     }
 
-    const auto inType = softMax.getInput().getType();
-    inferredReturnTypes.push_back(inType);
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(softMax.getInput().getType());
+    const auto dstElemType = softMax.getDstElemType();
+
+    auto elemType = dstElemType.value_or(inType.getElementType());
+
+    const auto outType = inType.changeElemType(elemType);
+    inferredReturnTypes.push_back(outType);
 
     return mlir::success();
 }
@@ -83,15 +88,17 @@ bool vpux::VPU::SoftMaxOp::checkStrategyCompatibility(VPU::MultiClusterStrategy 
 vpux::VPU::DistributionInfo vpux::VPU::SoftMaxOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
 }
 
 void vpux::VPU::SoftMaxOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState, ::mlir::Value input,
-                                 ::mlir::IntegerAttr axisInd, ::mlir::IntegerAttr padSize) {
-    build(odsBuilder, odsState, input.getType(), input, axisInd, padSize, {});
+                                 ::mlir::IntegerAttr axisInd, ::mlir::IntegerAttr padSize,
+                                 ::mlir::TypeAttr dstElemType) {
+    build(odsBuilder, odsState, input, axisInd, padSize, dstElemType, {});
 }
 
 bool vpux::VPU::SoftMaxOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem) {

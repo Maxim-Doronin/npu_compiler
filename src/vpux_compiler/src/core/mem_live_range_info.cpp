@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -168,7 +168,7 @@ ValueOrderedSet vpux::MemLiveRangeInfo::getUsedBuffers(mlir::Operation* op) cons
     return {};
 }
 
-ValueOrderedSet vpux::MemLiveRangeInfo::getInputBuffers(mlir::Operation* op) {
+ValueOrderedSet vpux::MemLiveRangeInfo::getInputBuffers(mlir::Operation* op) const {
     const auto it = _opInputBuffersMap.find(op);
     if (it != _opInputBuffersMap.end()) {
         return it->second;
@@ -177,13 +177,21 @@ ValueOrderedSet vpux::MemLiveRangeInfo::getInputBuffers(mlir::Operation* op) {
     return {};
 }
 
-ValueOrderedSet vpux::MemLiveRangeInfo::getOutputBuffers(mlir::Operation* op) {
+ValueOrderedSet vpux::MemLiveRangeInfo::getOutputBuffers(mlir::Operation* op) const {
     const auto it = _opOutputBuffersMap.find(op);
     if (it != _opOutputBuffersMap.end()) {
         return it->second;
     }
 
     return {};
+}
+
+ValueOrderedSet vpux::MemLiveRangeInfo::getAllBuffers() const {
+    ValueOrderedSet allBuffers;
+    for (const auto& [_, values] : _opBuffersMap) {
+        allBuffers.insert(values.begin(), values.end());
+    }
+    return allBuffers;
 }
 
 bool vpux::MemLiveRangeInfo::isBufferUsedByOp(mlir::Value val, mlir::Operation* op) const {

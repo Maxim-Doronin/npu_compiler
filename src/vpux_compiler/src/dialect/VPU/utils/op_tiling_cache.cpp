@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/hash_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
@@ -67,30 +68,31 @@ std::optional<OutputTilingCacheItem> OpTilingCache::getOutputTiling(llvm::hash_c
         return std::nullopt;
     }
     _tilingAccessCount.fetch_add(1, std::memory_order_relaxed);
+
     std::optional<NTilesOnDim> nTilesOnDim = std::nullopt;
     std::optional<llvm::hash_code> inputOutputModeHash = std::nullopt;
     {
-        std::lock_guard<std::mutex> lock(_tilingMutex);
-        auto it = _tilingCache.find(opHash);
-        if (it == _tilingCache.end()) {
+        auto cachedTiles = _tilingCache.find(opHash);
+        if (!cachedTiles.has_value()) {
             return std::nullopt;
         }
+        nTilesOnDim = cachedTiles.value();
 
         auto cachedInputOutputModeHash = _opHashToInputOutputModeHash.find(opHash);
-        if (cachedInputOutputModeHash == _opHashToInputOutputModeHash.end()) {
+        if (!cachedInputOutputModeHash.has_value()) {
             return std::nullopt;
         }
-        inputOutputModeHash = cachedInputOutputModeHash->second;
-        nTilesOnDim = it->second;
+        inputOutputModeHash = cachedInputOutputModeHash.value();
     }
 
     OutputTilingCacheItem tilingStrategy = mlir::failure();
     if (nTilesOnDim.has_value()) {
         tilingStrategy = fillDividedTiles(op, nTilesOnDim.value(), outputShape);
     }
+
     auto modeHash = calculateInputOutputModeHash(op, tilingStrategy);
     if (modeHash != inputOutputModeHash) {
-        // Disitrubted output mode is changed, cache is invalid
+        // Distributed output mode is changed, cache is invalid
         return std::nullopt;
     }
 
@@ -103,13 +105,14 @@ std::optional<SmallVector<uint32_t>> OpTilingCache::getOpDpuCost(llvm::hash_code
         return std::nullopt;
     }
     _dpuCostAccessCount.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(_dpuMutex);
-    auto it = _opDpuCostCache.find(opHash);
-    if (it == _opDpuCostCache.end()) {
-        return std::nullopt;
+
+    auto result = _opDpuCostCache.find(opHash);
+
+    if (result.has_value()) {
+        _dpuCostHitCount.fetch_add(1, std::memory_order_relaxed);
     }
-    _dpuCostHitCount.fetch_add(1, std::memory_order_relaxed);
-    return it->second;
+
+    return result;
 }
 
 std::optional<PerClusterShapeCacheItem> OpTilingCache::getPerClusterMemoryShapes(llvm::hash_code shapeHash) {
@@ -117,13 +120,14 @@ std::optional<PerClusterShapeCacheItem> OpTilingCache::getPerClusterMemoryShapes
         return std::nullopt;
     }
     _perClusterShapeAccessCount.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(_perClusterShapeMutex);
-    auto it = _perClusterShapeCache.find(shapeHash);
-    if (it == _perClusterShapeCache.end()) {
-        return std::nullopt;
+
+    auto result = _perClusterShapeCache.find(shapeHash);
+
+    if (result.has_value()) {
+        _perClusterShapeHitCount.fetch_add(1, std::memory_order_relaxed);
     }
-    _perClusterShapeHitCount.fetch_add(1, std::memory_order_relaxed);
-    return it->second;
+
+    return result;
 }
 
 std::optional<uint32_t> OpTilingCache::getVPUNNLayerCost(llvm::hash_code layerHash) {
@@ -131,13 +135,14 @@ std::optional<uint32_t> OpTilingCache::getVPUNNLayerCost(llvm::hash_code layerHa
         return std::nullopt;
     }
     _vpunnLayerCostAccessCount.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(_vpunnLayerMutex);
-    auto it = _vpunnLayerCostCache.find(layerHash);
-    if (it == _vpunnLayerCostCache.end()) {
-        return std::nullopt;
+
+    auto result = _vpunnLayerCostCache.find(layerHash);
+
+    if (result.has_value()) {
+        _vpunnLayerCostHitCount.fetch_add(1, std::memory_order_relaxed);
     }
-    _vpunnLayerCostHitCount.fetch_add(1, std::memory_order_relaxed);
-    return it->second;
+
+    return result;
 }
 
 std::optional<SmallVector<DimArr>> OpTilingCache::getValidPermutations(llvm::hash_code opHash) {
@@ -145,13 +150,14 @@ std::optional<SmallVector<DimArr>> OpTilingCache::getValidPermutations(llvm::has
         return std::nullopt;
     }
     _validPermutationsAccessCount.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(_validPermutationsMutex);
-    auto it = _validPermutationsCache.find(opHash);
-    if (it == _validPermutationsCache.end()) {
-        return std::nullopt;
+
+    auto result = _validPermutationsCache.find(opHash);
+
+    if (result.has_value()) {
+        _validPermutationsHitCount.fetch_add(1, std::memory_order_relaxed);
     }
-    _validPermutationsHitCount.fetch_add(1, std::memory_order_relaxed);
-    return it->second;
+
+    return result;
 }
 
 std::optional<DimArr> OpTilingCache::getDimOrder(llvm::hash_code opHash) {
@@ -159,13 +165,14 @@ std::optional<DimArr> OpTilingCache::getDimOrder(llvm::hash_code opHash) {
         return std::nullopt;
     }
     _dimOrderAccessCount.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(_dimOrderMutex);
-    auto it = _dimOrderCache.find(opHash);
-    if (it == _dimOrderCache.end()) {
-        return std::nullopt;
+
+    auto result = _dimOrderCache.find(opHash);
+
+    if (result.has_value()) {
+        _dimOrderHitCount.fetch_add(1, std::memory_order_relaxed);
     }
-    _dimOrderHitCount.fetch_add(1, std::memory_order_relaxed);
-    return it->second;
+
+    return result;
 }
 
 void OpTilingCache::printStats(Logger& logger) const {
@@ -209,56 +216,61 @@ void OpTilingCache::printStats(Logger& logger) const {
 
 void OpTilingCache::updateOutputTiling(const llvm::hash_code opHash, mlir::Operation* op,
                                        const OutputTilingCacheItem& outputTiling) {
+    if (!_enableCache) {
+        return;
+    }
+
     auto outputModeHash = calculateInputOutputModeHash(op, outputTiling);
-    std::lock_guard<std::mutex> lock(_tilingMutex);
+
+    // Store tiling data and mode hash atomically
     if (mlir::failed(outputTiling)) {
-        _tilingCache.insert({opHash, std::nullopt});
+        _tilingCache.insert(opHash, std::nullopt);
     } else {
         const auto& outputTilingResult = outputTiling.value();
         VPUX_THROW_WHEN(outputTilingResult.empty(), "Output tiling is empty for op {0}", op->getLoc());
-        _tilingCache.insert({opHash, outputTilingResult.front().axis});
+        _tilingCache.insert(opHash, outputTilingResult.front().axis);
     }
-    _opHashToInputOutputModeHash.insert({opHash, outputModeHash});
+    _opHashToInputOutputModeHash.insert(opHash, outputModeHash);
 }
 
 void OpTilingCache::updateOpDPUCost(llvm::hash_code opHash, ArrayRef<uint32_t> dpuCosts) {
     if (!_enableCache) {
         return;
     }
-    std::lock_guard<std::mutex> lock(_dpuMutex);
-    _opDpuCostCache[opHash] = SmallVector<uint32_t>{dpuCosts.begin(), dpuCosts.end()};
+
+    _opDpuCostCache.insert(opHash, SmallVector<uint32_t>{dpuCosts.begin(), dpuCosts.end()});
 }
 
 void OpTilingCache::updateVPUNNLayerCost(llvm::hash_code layerHash, uint32_t cost) {
     if (!_enableCache) {
         return;
     }
-    std::lock_guard<std::mutex> lock(_vpunnLayerMutex);
-    _vpunnLayerCostCache[layerHash] = cost;
+
+    _vpunnLayerCostCache.insert(layerHash, cost);
 }
 
 void OpTilingCache::updatePerClusterShape(llvm::hash_code shapeHash, const PerClusterShapeCacheItem& perClusterShape) {
     if (!_enableCache) {
         return;
     }
-    std::lock_guard<std::mutex> lock(_perClusterShapeMutex);
-    _perClusterShapeCache[shapeHash] = perClusterShape;
+
+    _perClusterShapeCache.insert(shapeHash, perClusterShape);
 }
 
 void OpTilingCache::updateValidPermutations(llvm::hash_code opHash, const SmallVector<DimArr>& validPermutations) {
     if (!_enableCache) {
         return;
     }
-    std::lock_guard<std::mutex> lock(_validPermutationsMutex);
-    _validPermutationsCache[opHash] = validPermutations;
+
+    _validPermutationsCache.insert(opHash, validPermutations);
 }
 
 void OpTilingCache::updateDimOrder(llvm::hash_code opHash, const DimArr& dimOrder) {
     if (!_enableCache) {
         return;
     }
-    std::lock_guard<std::mutex> lock(_dimOrderMutex);
-    _dimOrderCache[opHash] = dimOrder;
+
+    _dimOrderCache.insert(opHash, dimOrder);
 }
 
 void OpTilingCache::cleanUp() {
@@ -268,30 +280,19 @@ void OpTilingCache::cleanUp() {
     _dpuCostHitCount = 0;
     _vpunnLayerCostAccessCount = 0;
     _vpunnLayerCostHitCount = 0;
+    _validPermutationsHitCount = 0;
+    _validPermutationsAccessCount = 0;
+    _perClusterShapeHitCount = 0;
+    _perClusterShapeAccessCount = 0;
     _dimOrderHitCount = 0;
     _dimOrderAccessCount = 0;
 
-    {
-        std::lock_guard<std::mutex> lock(_tilingMutex);
-        _tilingCache.clear();
-        _opHashToInputOutputModeHash.clear();
-    }
-    {
-        std::lock_guard<std::mutex> lock(_dpuMutex);
-        _opDpuCostCache.clear();
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(_vpunnLayerMutex);
-        _vpunnLayerCostCache.clear();
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(_dimOrderMutex);
-        _dimOrderCache.clear();
-    }
-
-    std::lock_guard<std::mutex> lock(_perClusterShapeMutex);
+    _tilingCache.clear();
+    _opHashToInputOutputModeHash.clear();
+    _opDpuCostCache.clear();
+    _vpunnLayerCostCache.clear();
+    _validPermutationsCache.clear();
+    _dimOrderCache.clear();
     _perClusterShapeCache.clear();
 }
 
@@ -300,12 +301,19 @@ bool OpTilingCache::isCacheSupported() {
 }
 
 llvm::hash_code OpTilingCache::calculateOpHash(mlir::Operation* op, const std::optional<DimArrRef>& dimOrder,
-                                               const std::optional<OutputTiling>& outputTiling) {
+                                               const std::optional<OutputTiling>& outputTiling,
+                                               const std::optional<mlir::Attribute> multiClusterStrategyAttr) {
     // The hash result is composed of the hash of the op, the dim order, the output tiling and the tiling mode.
     // For the op's hash, it will be calculated based on the op's type, input/output type and its attributes.
     // If the tiling mode is PREFETCHING, the hash will also include the hash of the parent compute op since the parent
     // op will affect the decision of the tiling result.
-    auto opHash = vpux::hashOperationForTiling(op);
+    if (multiClusterStrategyAttr.has_value()) {
+        auto opHash = VPU::hashOperationWithCustomAttr(op, VPU::multiClusterStrategy, multiClusterStrategyAttr.value());
+        hashOptionalContents(opHash, dimOrder, outputTiling);
+        return opHash;
+    }
+
+    auto opHash = VPU::hashOperationForTiling(op);
     hashOptionalContents(opHash, dimOrder, outputTiling);
     return opHash;
 }
@@ -413,3 +421,14 @@ std::optional<llvm::hash_code> OpTilingCache::calculateInputOutputModeHash(mlir:
     }
     return llvm::hash_combine_range(inputOutputMode.begin(), inputOutputMode.end());
 }
+
+namespace vpux {
+namespace VPU {
+
+OpTilingCache& getGlobalOpTilingCache() {
+    static OpTilingCache globalCache;
+    return globalCache;
+}
+
+}  // namespace VPU
+}  // namespace vpux

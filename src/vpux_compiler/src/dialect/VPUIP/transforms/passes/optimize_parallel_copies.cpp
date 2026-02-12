@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -48,12 +50,14 @@ constexpr int32_t TWO_AXIS_DISTANCE_COST = 2;
 
 class ParallelCopiesRewriter final : public mlir::OpRewritePattern<VPUIP::CopyOp> {
 public:
-    ParallelCopiesRewriter(mlir::MLIRContext* ctx, Logger log, const bool enableOptimizeConstCopy,
-                           const DenseMap<mlir::Operation*, uint32_t> computeOpPosition)
+    ParallelCopiesRewriter(mlir::MLIRContext* ctx, const Logger& log, const bool enableOptimizeConstCopy,
+                           const DenseMap<mlir::Operation*, uint32_t>& computeOpPosition,
+                           const DenseMap<uint32_t, std::optional<uint32_t>>& tiledOpNearestDistances)
             : mlir::OpRewritePattern<VPUIP::CopyOp>(ctx),
               _log(log),
               _enableOptimizeConstCopy(enableOptimizeConstCopy),
-              _computeOpPosition(computeOpPosition) {
+              _computeOpPosition(computeOpPosition),
+              _tiledOpNearestDistances(tiledOpNearestDistances) {
         setDebugName("ParallelCopiesRewriter");
     }
 
@@ -65,12 +69,14 @@ private:
                                                  NDTypeInterface outputType, VPU::NCEInterpolateModeAttr modeAttr,
                                                  IE::InterpolateCoordModeAttr coordModeAttr) const;
     std::optional<uint32_t> getComputeOpPosition(mlir::Operation* op) const;
+
     bool isCopyFusable(VPUIP::CopyOp copyOp, Logger& log) const;
     void insertUserPosition(VPUIP::NCEClusterTaskOp nceConvUserOp, std::set<uint32_t>& positions) const;
 
     Logger _log;
     bool _enableOptimizeConstCopy;
     DenseMap<mlir::Operation*, uint32_t> _computeOpPosition;
+    DenseMap<uint32_t, std::optional<uint32_t>> _tiledOpNearestDistances;
     mutable mlir::DenseSet<VPUIP::CopyOp> _twoAxisTilingCache;
 };
 
@@ -139,8 +145,8 @@ bool hasSiblingCopyFusable(VPUIP::SubViewOp subViewOp, VPUIP::CopyOp copyOp, mli
             }
             for (const auto grandChildOfSiblingOp : childOfSiblingOp->getResult(0).getUsers()) {
                 auto concatOp = mlir::dyn_cast<VPUIP::ConcatViewOp>(grandChildOfSiblingOp);
-                // If the ChildOfSiblingOp is a multi-shaveOp there will be a ConcatViewOp after ChildOfSiblingOp, skip
-                // this ConcatViewOp and continue the optimization.
+                // If the ChildOfSiblingOp is a multi-shaveOp there will be a ConcatViewOp after ChildOfSiblingOp,
+                // skip this ConcatViewOp and continue the optimization.
                 auto childCopyOfSiblingOp =
                         (concatOp != nullptr) ? mlir::dyn_cast<VPUIP::CopyOp>(*(concatOp.getOutput().user_begin()))
                                               : mlir::dyn_cast<VPUIP::CopyOp>(grandChildOfSiblingOp);
@@ -192,9 +198,9 @@ bool ParallelCopiesRewriter::isCopyFusable(VPUIP::CopyOp copyOp, Logger& log) co
         }
     }
 
-    // Optimize copies for weights. If serveral convolutions share same weights, the weight copies can be optimized with
-    // single copy e.g. cases when the NCEOps that shares the same weights
-    // Note that weight table and compressed convolution cannot apply this optimization. This is because
+    // Optimize copies for weights. If several convolutions share same weights, the weight copies can be optimized
+    // with single copy e.g. cases when the NCEOps that share the same weights Note that weight table and
+    // compressed convolution cannot apply this optimization. This is because
     // 1. for weight table, contents of weigthTable need to be adjusted with proper pointer value
     // 2. for compressed convolution, const data like weight also will be adjusted in ConvWeightsCompression pass,
     // will prevent the copy optimization.
@@ -385,12 +391,16 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
             return false;
         }
 
+        auto nearestTiledOpDistance = _tiledOpNearestDistances.at(*positions.begin()).value_or(0);
+        // multi dim tiling VF need at least 4 tiled ops to be considered for consecutive check
+        auto isCandidateForVF = positions.size() >= 4;
         size_t countConsecutive = 0;
         auto it = positions.begin();
         auto prev = *it;
 
         for (++it; it != positions.end(); ++it) {
-            if (*it == prev + 1) {
+            auto distance = *it - prev;
+            if (*it <= prev + 1 || (isCandidateForVF && distance == nearestTiledOpDistance)) {
                 ++countConsecutive;
             }
             prev = *it;
@@ -521,7 +531,8 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
     // To confirm there is NCE::ELTWISE in target pattern
     auto hasEltwiseUser = getSiblingEltwise(originCopyOp);
 
-    const auto isWithinCostDistance = [&](mlir::Operation* op, bool isTilingOnTwoAxis) {
+    const auto isWithinCostDistance = [&](mlir::Operation* op, bool isTilingOnTwoAxis,
+                                          std::optional<uint32_t>& nearestDistanceForTilingOnTwoAxis) -> bool {
         // Cost-based optimize copy strategy: Check if the user of the CopyOp is a computeOp,
         // currently only supporting NCE::ELTWISE & NCE::CONV. If it is a computeOp, examine the distance
         // between adjacent computeOps. If the distance is less than or equal to 3, the CopyOp
@@ -552,10 +563,20 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
         if (isTilingOnTwoAxis) {
             auto currComputePosition = getComputeOpPosition(op);
             if (currComputePosition.has_value()) {
+                uint32_t distanceCost = 0;
+                if (nearestDistanceForTilingOnTwoAxis.has_value()) {
+                    if (nearestDistanceForTilingOnTwoAxis.value() == 1) {
+                        // Two axis tiling only without VF
+                        distanceCost = TWO_AXIS_DISTANCE_COST;
+                    } else {
+                        // Two axis tiling with VF, make the threshold a bit larger
+                        distanceCost = COMPUTE_OP_DISTANCE_COST + nearestDistanceForTilingOnTwoAxis.value();
+                    }
+                }
                 bool closeToPrev =
                         prevComputePostion4TwoAxis != invalidPostion &&
                         std::abs(static_cast<int>(currComputePosition.value() - prevComputePostion4TwoAxis)) <
-                                TWO_AXIS_DISTANCE_COST;
+                                static_cast<int>(distanceCost);
                 if (prevComputePostion4TwoAxis == invalidPostion) {
                     prevComputePostion4TwoAxis = currComputePosition.value();
                 }
@@ -592,10 +613,12 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
     auto sharedBuffer = newRootCopyOp.getInput();
     bool hasReplaceParallelCopies = false;
     bool isRootCopyTilingOnTwoAxis = isTilingOnTwoAxis(newRootCopyOp);
+    std::optional<uint32_t> nearestDistanceForTilingOnTwoAxis = std::nullopt;
     if (isRootCopyTilingOnTwoAxis) {
         auto originCopyOpComputePosition = getComputeOpPosition(originCopyOp.getOperation());
         if (originCopyOpComputePosition.has_value()) {
             prevComputePostion4TwoAxis = originCopyOpComputePosition.value();
+            nearestDistanceForTilingOnTwoAxis = _tiledOpNearestDistances.at(originCopyOpComputePosition.value());
         }
     }
     // Optimize pattern: SharedBuffer -> ParentOp(SubView) -> CopyOp
@@ -609,7 +632,7 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
 
             auto siblingCopyOp = *siblingSubViewOp.getResult().getUsers().begin();
             if (!isCopySameFunc(newRootCopyOp, siblingCopyOp) ||
-                !isWithinCostDistance(siblingCopyOp, isRootCopyTilingOnTwoAxis) ||
+                !isWithinCostDistance(siblingCopyOp, isRootCopyTilingOnTwoAxis, nearestDistanceForTilingOnTwoAxis) ||
                 isSameCopyFunc(newRootCopyOp, siblingCopyOp)) {
                 continue;
             }
@@ -653,7 +676,8 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
         }
     }
     for (auto* siblingOp : llvm::make_early_inc_range(parentOpUsers | reversed)) {
-        if (!isCopySameFunc(newRootCopyOp, siblingOp) || !isWithinCostDistance(siblingOp, isRootCopyTilingOnTwoAxis) ||
+        if (!isCopySameFunc(newRootCopyOp, siblingOp) ||
+            !isWithinCostDistance(siblingOp, isRootCopyTilingOnTwoAxis, nearestDistanceForTilingOnTwoAxis) ||
             isSameCopyFunc(newRootCopyOp, siblingOp)) {
             continue;
         }
@@ -702,11 +726,15 @@ public:
 private:
     bool _enableOptimizeConstCopy;
 
-    auto getDistanceMap();
+    DenseMap<mlir::Operation*, uint32_t> getDistanceMap();
+    std::set<uint32_t> getTiledSiblingOps(mlir::Operation* op,
+                                          const DenseMap<mlir::Operation*, uint32_t>& computeOpPosition);
+    DenseMap<uint32_t, std::optional<uint32_t>> getNearestDistanceForTiledOps(
+            const DenseMap<mlir::Operation*, uint32_t>& computeOpPosition);
     void safeRunOnFunc() final;
 };
 
-auto OptimizeParallelCopiesPass::getDistanceMap() {
+DenseMap<mlir::Operation*, uint32_t> OptimizeParallelCopiesPass::getDistanceMap() {
     // E131418: Current solution scans computeOp following IR order, which is temporary solution
     // In real case, the operation is a tree structure which may contain multiple opreations
     // in same level, for example
@@ -729,8 +757,141 @@ auto OptimizeParallelCopiesPass::getDistanceMap() {
             computeOpPosition.insert({op, pos++});
         };
     });
-
     return computeOpPosition;
+}
+
+// For compute op, if it comes from tiling of one op, return all the tiled sibling ops
+std::set<uint32_t> OptimizeParallelCopiesPass::getTiledSiblingOps(
+        mlir::Operation* op, const DenseMap<mlir::Operation*, uint32_t>& computeOpPosition) {
+    VPUX_THROW_UNLESS(computeOpPosition.find(op) != computeOpPosition.end(),
+                      "Operation not found in computeOpPosition map");
+
+    auto isSameTaskType = [](mlir::Operation* op1, mlir::Operation* op2) -> bool {
+        auto nceOp1 = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op1);
+        auto nceOp2 = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op2);
+        if (nceOp1 != nullptr && nceOp2 != nullptr) {
+            return nceOp1.getTaskType() == nceOp2.getTaskType();
+        }
+
+        auto swOp1 = mlir::dyn_cast<VPUIP::SwKernelOp>(op1);
+        auto swOp2 = mlir::dyn_cast<VPUIP::SwKernelOp>(op2);
+        if (swOp1 != nullptr && swOp2 != nullptr) {
+            return getSwKernelEntryName(swOp1) == getSwKernelEntryName(swOp2);
+        }
+        return false;
+    };
+
+    std::set<uint32_t> siblingComputeOpSet;
+    siblingComputeOpSet.insert(computeOpPosition.at(op));
+    for (auto& arg : op->getOpOperands()) {
+        auto operand = arg.get();
+        auto operandIdx = arg.getOperandNumber();
+
+        auto copyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(operand.getDefiningOp());
+        if (copyOp == nullptr) {
+            continue;
+        }
+
+        auto input = copyOp.getInput();
+        if (auto subViewOp = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(input.getDefiningOp())) {
+            /* check tiled op from pattern:
+                                   Source
+                              /               \
+                          Subview           SubView
+                             |                 |
+                            Copy              Copy
+                             |                 |
+                            Op              SiblingOp
+            */
+            auto siblingOps = subViewOp.getSource().getUsers();
+            for (auto* siblingOp : siblingOps) {
+                if (siblingOp == subViewOp || !mlir::isa<VPUIP::SubViewOp>(siblingOp) || siblingOp->use_empty() ||
+                    VPU::hasMultiBranches(siblingOp)) {
+                    continue;
+                }
+                auto siblingCopy = mlir::dyn_cast_or_null<VPUIP::CopyOp>(*(siblingOp->user_begin()));
+                if (siblingCopy == nullptr || siblingCopy->use_empty() || VPU::hasMultiBranches(siblingCopy)) {
+                    continue;
+                }
+                auto use = siblingCopy->use_begin();
+                auto siblingComputeOp = use->getOwner();
+                if (use->getOperandNumber() != operandIdx || !isSameTaskType(siblingComputeOp, op)) {
+                    continue;
+                }
+                auto isExpectedComputeOp = computeOpPosition.find(siblingComputeOp) != computeOpPosition.end();
+                if (isExpectedComputeOp) {
+                    siblingComputeOpSet.insert(computeOpPosition.at(siblingComputeOp));
+                }
+            }
+        } else {
+            /* check tiled op from pattern:
+                                     Source
+                                /               \
+                              Copy              Copy
+                               |                 |
+                              Op              SiblingOp
+            */
+
+            auto parentOpusers = input.getUsers();
+            for (auto* siblingOp : parentOpusers) {
+                if (siblingOp == copyOp || !mlir::isa<VPUIP::CopyOp>(siblingOp) || siblingOp->use_empty() ||
+                    VPU::hasMultiBranches(siblingOp)) {
+                    continue;
+                }
+                auto use = siblingOp->use_begin();
+                auto siblingComputeOp = use->getOwner();
+                if (use->getOperandNumber() != operandIdx || siblingComputeOp->getName() != op->getName()) {
+                    continue;
+                }
+                auto isExpectedComputeOp = computeOpPosition.find(siblingComputeOp) != computeOpPosition.end();
+                if (isExpectedComputeOp) {
+                    siblingComputeOpSet.insert(computeOpPosition.at(siblingComputeOp));
+                }
+            }
+        }
+    }
+    return siblingComputeOpSet;
+}
+
+DenseMap<uint32_t, std::optional<uint32_t>> OptimizeParallelCopiesPass::getNearestDistanceForTiledOps(
+        const DenseMap<mlir::Operation*, uint32_t>& computeOpPosition) {
+    DenseMap<uint32_t, std::optional<uint32_t>> nearestDistanceForTiledOp;
+    nearestDistanceForTiledOp.reserve(computeOpPosition.size());
+
+    auto findNearestDistance = [](const std::set<uint32_t>& siblingOpSet) -> std::optional<uint32_t> {
+        if (siblingOpSet.size() <= 1) {
+            return std::nullopt;
+        }
+        uint32_t nearestDistance = std::numeric_limits<uint32_t>::max();
+        auto posList = to_small_vector(siblingOpSet);
+        for (size_t i : irange(posList.size() - 1)) {
+            auto dist = posList[i + 1] > posList[i] ? posList[i + 1] - posList[i] : posList[i] - posList[i + 1];
+            if (dist < nearestDistance) {
+                nearestDistance = dist;
+            }
+        }
+        return nearestDistance;
+    };
+
+    llvm::DenseSet<uint32_t> processedOps;
+    for (auto& item : computeOpPosition) {
+        auto& op = item.first;
+        auto& pos = item.second;
+        if (processedOps.contains(pos)) {
+            continue;
+        }
+        auto siblingOpSet = getTiledSiblingOps(op, computeOpPosition);
+        auto nearestDistance = findNearestDistance(siblingOpSet);
+        for (auto& siblingOp : siblingOpSet) {
+            nearestDistanceForTiledOp[siblingOp] = nearestDistance;
+            processedOps.insert(siblingOp);
+        }
+    }
+    VPUX_THROW_UNLESS(
+            nearestDistanceForTiledOp.size() == computeOpPosition.size(),
+            "Missing some compute ops in nearestDistanceForTiledOp map: actual op size {0}, expected op size {1}",
+            nearestDistanceForTiledOp.size(), computeOpPosition.size());
+    return nearestDistanceForTiledOp;
 }
 
 void OptimizeParallelCopiesPass::safeRunOnFunc() {
@@ -738,9 +899,11 @@ void OptimizeParallelCopiesPass::safeRunOnFunc() {
     auto func = getOperation();
 
     auto computeOpPosition = getDistanceMap();
+    auto tiledOpNearestDistances = getNearestDistanceForTiledOps(computeOpPosition);
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<ParallelCopiesRewriter>(&ctx, _log, _enableOptimizeConstCopy, computeOpPosition);
+    patterns.add<ParallelCopiesRewriter>(&ctx, _log, _enableOptimizeConstCopy, computeOpPosition,
+                                         tiledOpNearestDistances);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

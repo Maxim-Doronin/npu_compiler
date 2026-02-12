@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,7 +46,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto distributedAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterComputeShapesAttr, perClusterComputeOffsetsAttr,
-                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr);
+                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     // Activation Sparsity, no Storage Element Table
     auto dataExplicitDistributedAttr = VPU::getExplicitDistrAttrForSparseData(distributedAttr, shape, nullptr, &ctx);
@@ -80,7 +80,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto distributedAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterComputeShapesAttr, perClusterComputeOffsetsAttr,
-                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr);
+                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     // Activation Sparsity + SETable - Interp NEAREST
     const SmallVector<float> scale({1, 1, 3, 3});
@@ -118,7 +118,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
             expectedPerClusterComputeShapesAttr, expectedPerClusterComputeOffsetsAttr,
-            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr);
+            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     EXPECT_EQ(expectedDistributedAttr, dataExplicitDistributedAttr);
 }
@@ -150,7 +150,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto distributedAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterComputeShapesAttr, perClusterComputeOffsetsAttr,
-                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr);
+                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     // Activation Sparsity + SETable - Interp BILINEAR
     const SmallVector<float> scale({1, 1, 2, 2});
@@ -188,7 +188,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
             expectedPerClusterComputeShapesAttr, expectedPerClusterComputeOffsetsAttr,
-            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr);
+            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     EXPECT_EQ(expectedDistributedAttr, dataExplicitDistributedAttr);
 }
@@ -220,7 +220,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto distributedAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterComputeShapesAttr, perClusterComputeOffsetsAttr,
-                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr);
+                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     auto sparsityMapExplicitDistributedAttr =
             VPU::getExplicitDistrAttrForSparsityMap(distributedAttr, shape, nullptr, &ctx);
@@ -246,7 +246,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     auto sparsityMapExplicitDistributedAttr =
             VPU::getExplicitDistrAttrForSparsityMap(distributedAttr, sparsityMapShape, isWeights, &ctx);
@@ -259,7 +259,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
             expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-            expectedPerClusterOffsetsAttr, nullptr);
+            expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
     EXPECT_EQ(expectedDistributedAttr, sparsityMapExplicitDistributedAttr);
 }
@@ -285,7 +285,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     auto sparsityMapExplicitDistributedAttr =
             VPU::getExplicitDistrAttrForSparsityMap(distributedAttr, sparsityMapShape, isWeights, &ctx);
@@ -300,7 +300,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSpar
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
             expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-            expectedPerClusterOffsetsAttr, nullptr);
+            expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
     EXPECT_EQ(expectedDistributedAttr, sparsityMapExplicitDistributedAttr);
 }
@@ -325,7 +325,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETa
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto seSize = shape[Dims4D::Act::C] / seTableShape[Dims4D::Act::C];
     auto seTableExplicitDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, seSize, &ctx);
@@ -340,7 +340,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETa
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
             expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-            expectedPerClusterOffsetsAttr, nullptr);
+            expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
     EXPECT_EQ(expectedDistributedAttr, seTableExplicitDistributedAttr);
 }
@@ -365,7 +365,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETa
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto seSize = shape[Dims4D::Act::C] / seTableShape[Dims4D::Act::C];
     auto seTableExplicitDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, seSize, &ctx);
@@ -380,7 +380,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETa
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
             expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-            expectedPerClusterOffsetsAttr, nullptr);
+            expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
     EXPECT_EQ(expectedDistributedAttr, seTableExplicitDistributedAttr);
 }
@@ -413,7 +413,7 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETa
     const auto distributedAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterComputeShapesAttr, perClusterComputeOffsetsAttr,
-                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr);
+                                           perClusterMemoryShapesAttr, perClusterMemoryOffsetsAttr, nullptr, nullptr);
 
     const auto seSize = shape[Dims4D::Act::C] / seTableShape[Dims4D::Act::C];
     auto seTableExplicitDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, seSize, &ctx);
@@ -435,7 +435,64 @@ TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETa
     const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
             expectedPerClusterComputeShapesAttr, expectedPerClusterComputeOffsetsAttr,
-            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr);
+            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr, nullptr);
+
+    EXPECT_EQ(expectedDistributedAttr, seTableExplicitDistributedAttr);
+}
+
+TEST_F(MLIR_ExplicitDistributionAndSparseTypesUtils, getExplicitDistrAttrForSETable_SegmentedOverlappedSeTable) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPU::VPUDialect>();
+
+    const auto shape = Shape({1, 64, 18, 18});
+    const auto seTableShape = Shape({1, 2, 18, 18});
+
+    const auto distributionMode =
+            VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED);
+    const auto numTiles = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 2, 1, 1}));
+    const auto memNumTiles = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 2, 1}));
+    const auto numClusters = getIntAttr(&ctx, 2);
+
+    const PerClusterShapesOffsetsVec perClusterMemoryShapes(
+            {SmallVector<int64_t>{1, 64, 9, 18}, SmallVector<int64_t>{1, 64, 9, 18}});
+    const PerClusterShapesOffsetsVec perClusterMemoryOffsets(
+            {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 0, 9, 0}});
+    const auto perClusterMemoryShapesAttr = getIntArrayOfArray(&ctx, perClusterMemoryShapes);
+    const auto perClusterMemoryOffsetsAttr = getIntArrayOfArray(&ctx, perClusterMemoryOffsets);
+
+    const PerClusterShapesOffsetsVec perClusterComputeShapes(
+            {SmallVector<int64_t>{1, 32, 18, 18}, SmallVector<int64_t>{1, 32, 18, 18}});
+    const PerClusterShapesOffsetsVec perClusterComputeOffsets(
+            {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 32, 0, 0}});
+    const auto perClusterComputeShapesAttr = getIntArrayOfArray(&ctx, perClusterComputeShapes);
+    const auto perClusterComputeOffsetsAttr = getIntArrayOfArray(&ctx, perClusterComputeOffsets);
+
+    const auto distributedAttr = VPU::DistributionInfoAttr::get(
+            &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
+            perClusterComputeShapesAttr, perClusterComputeOffsetsAttr, perClusterMemoryShapesAttr,
+            perClusterMemoryOffsetsAttr, nullptr, memNumTiles);
+
+    const auto seSize = shape[Dims4D::Act::C] / seTableShape[Dims4D::Act::C];
+    auto seTableExplicitDistributedAttr = VPU::getExplicitDistrAttrForSETable(distributedAttr, seSize, &ctx);
+
+    const PerClusterShapesOffsetsVec expectedPerClusterMemoryShapes(
+            {SmallVector<int64_t>{1, 2, 9, 18}, SmallVector<int64_t>{1, 2, 9, 18}});
+    const PerClusterShapesOffsetsVec expectedPerClusterMemoryOffsets(
+            {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 0, 9, 0}});
+    const auto expectedPerClusterMemoryShapesAttr = getIntArrayOfArray(&ctx, expectedPerClusterMemoryShapes);
+    const auto expectedPerClusterMemoryOffsetsAttr = getIntArrayOfArray(&ctx, expectedPerClusterMemoryOffsets);
+
+    const PerClusterShapesOffsetsVec expectedPerClusterComputeShapes(
+            {SmallVector<int64_t>{1, 1, 18, 18}, SmallVector<int64_t>{1, 1, 18, 18}});
+    const PerClusterShapesOffsetsVec expectedPerClusterComputeOffsets(
+            {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 1, 0, 0}});
+    const auto expectedPerClusterComputeShapesAttr = getIntArrayOfArray(&ctx, expectedPerClusterComputeShapes);
+    const auto expectedPerClusterComputeOffsetsAttr = getIntArrayOfArray(&ctx, expectedPerClusterComputeOffsets);
+
+    const auto expectedDistributedAttr = VPU::DistributionInfoAttr::get(
+            &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
+            expectedPerClusterComputeShapesAttr, expectedPerClusterComputeOffsetsAttr,
+            expectedPerClusterMemoryShapesAttr, expectedPerClusterMemoryOffsetsAttr, nullptr, memNumTiles);
 
     EXPECT_EQ(expectedDistributedAttr, seTableExplicitDistributedAttr);
 }

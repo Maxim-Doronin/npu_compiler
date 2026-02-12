@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2018-2025 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,21 +11,23 @@ using namespace ov::test::utils;
 namespace ov {
 namespace test {
 
-class OneHotLayerTestCommon : public OneHot1LayerTest, virtual public VpuOv2LayerTest {};
+class OneHot16LayerTestCommon : public OneHot16LayerTest, virtual public VpuOv2LayerTest {};
 
-TEST_P(OneHotLayerTestCommon, NPU3720_HW) {
+TEST_P(OneHot16LayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(OneHotLayerTestCommon, NPU4000_HW) {
+TEST_P(OneHot16LayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
-TEST_P(OneHotLayerTestCommon, NPU5010_HW) {
+
+TEST_P(OneHot16LayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 
@@ -42,27 +44,30 @@ const std::vector<std::vector<ov::Shape>> inputShape = {
         std::vector<ov::Shape>{{2, 3}},
 };
 
+const std::vector<ov::op::v16::OneHot::NegativeIndicesMode> neg_ind_mode = {
+        ov::op::v16::OneHot::NegativeIndicesMode::IGNORE_NEGATIVE, ov::op::v16::OneHot::NegativeIndicesMode::NORMALIZE};
+
 auto oneHotparams = [](auto onOffType) {
     return ::testing::Combine(::testing::Values(ov::element::i64), ::testing::ValuesIn(depthVal),
                               ::testing::Values(onOffType), ::testing::ValuesIn(onVal), ::testing::ValuesIn(offVal),
                               ::testing::ValuesIn(axis), ::testing::Values(ov::element::i32),
                               ::testing::ValuesIn(static_shapes_to_test_representation(inputShape)),
-                              ::testing::Values(test_utils::TARGET_DEVICE));
+                              ::testing::ValuesIn(neg_ind_mode), ::testing::Values(test_utils::TARGET_DEVICE));
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_precommit_OneHot_FP16, OneHotLayerTestCommon, oneHotparams(ov::element::f16),
-                         OneHot1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_OneHot_FP16, OneHot16LayerTestCommon, oneHotparams(ov::element::f16),
+                         OneHot16LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_OneHot_FP32, OneHotLayerTestCommon, oneHotparams(ov::element::f32),
-                         OneHot1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_OneHot_FP32, OneHot16LayerTestCommon, oneHotparams(ov::element::f32),
+                         OneHot16LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_OneHot_I32, OneHotLayerTestCommon, oneHotparams(ov::element::i32),
-                         OneHot1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_OneHot_I32, OneHot16LayerTestCommon, oneHotparams(ov::element::i32),
+                         OneHot16LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_OneHot_I8, OneHotLayerTestCommon, oneHotparams(ov::element::i8),
-                         OneHot1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_OneHot_I8, OneHot16LayerTestCommon, oneHotparams(ov::element::i8),
+                         OneHot16LayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_OneHot_U8, OneHotLayerTestCommon, oneHotparams(ov::element::u8),
-                         OneHot1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_OneHot_U8, OneHot16LayerTestCommon, oneHotparams(ov::element::u8),
+                         OneHot16LayerTest::getTestCaseName);
 
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -125,17 +125,15 @@ protected:
         return PostOpAttrT::get(&_ctx, getFPAttr(&_ctx, std::forward<Args>(args))...);
     }
 
-    Const::DeclareOp createBias(ArrayRef<type::float16> bias) {
-        mlir::OpBuilder builder(&_ctx);
+    Const::DeclareOp createBias(mlir::OpBuilder builder, ArrayRef<type::float16> bias) {
         const auto shape = mlir::RankedTensorType::get({1, static_cast<int64_t>(bias.size()), 1, 1}, getF16Type());
         auto content = Const::ContentAttr::get(Const::createConstContent(shape, bias));
 
         return builder.create<Const::DeclareOp>(mlir::UnknownLoc::get(&_ctx), content.getType(), std::move(content));
     }
 
-    IE::AddOp createAdd(mlir::Type in1ElemType, mlir::Type in2ElemType, mlir::Type outElemType,
+    IE::AddOp createAdd(mlir::OpBuilder builder, mlir::Type in1ElemType, mlir::Type in2ElemType, mlir::Type outElemType,
                         IE::PostOpAttr postOpAttr) {
-        mlir::OpBuilder builder(&_ctx);
         auto input1 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in1ElemType);
         auto input2 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
@@ -150,9 +148,8 @@ protected:
                                          /*inputPadding=*/nullptr);
     }
 
-    IE::SubtractOp createSubtract(mlir::Type in1ElemType, mlir::Type in2ElemType, mlir::Type outElemType,
-                                  IE::PostOpAttr postOpAttr) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::SubtractOp createSubtract(mlir::OpBuilder builder, mlir::Type in1ElemType, mlir::Type in2ElemType,
+                                  mlir::Type outElemType, IE::PostOpAttr postOpAttr) {
         auto input1 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in1ElemType);
         auto input2 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
@@ -167,9 +164,8 @@ protected:
                                               /*inputPadding=*/nullptr);
     }
 
-    IE::MultiplyOp createMultiply(mlir::Type in1ElemType, mlir::Type in2ElemType, mlir::Type outElemType,
-                                  IE::PostOpAttr postOpAttr) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::MultiplyOp createMultiply(mlir::OpBuilder builder, mlir::Type in1ElemType, mlir::Type in2ElemType,
+                                  mlir::Type outElemType, IE::PostOpAttr postOpAttr) {
         auto input1 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in1ElemType);
         auto input2 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
@@ -184,9 +180,9 @@ protected:
                                               /*inputPadding=*/nullptr);
     }
 
-    IE::ConvolutionOp createConvolution(mlir::Type inElemType, mlir::Type weightsElemType, mlir::Type outElemType,
-                                        double scale, IE::PostOpAttr postOpAttr, Const::DeclareOp bias) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::ConvolutionOp createConvolution(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type weightsElemType,
+                                        mlir::Type outElemType, double scale, IE::PostOpAttr postOpAttr,
+                                        Const::DeclareOp bias) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -199,15 +195,14 @@ protected:
         const auto dilations = getIntArrayAttr(&_ctx, SmallVector<int64_t>{1, 1});
         const auto staticScale = getFPAttr(&_ctx, scale);
 
-        return builder.create<IE::ConvolutionOp>(_loc, outType, input.getResult(), weights.getResult(),
-                                                 bias != nullptr ? bias.getResult() : nullptr, strides, padsBegin,
-                                                 padsEnd, dilations, postOpAttr, /*clamp=*/nullptr, staticScale,
-                                                 /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
+        return builder.create<IE::ConvolutionOp>(
+                _loc, outType, input.getResult(), weights.getResult(), bias != nullptr ? bias.getResult() : nullptr,
+                /*scale*/ nullptr, strides, padsBegin, padsEnd, dilations, postOpAttr, /*clamp=*/nullptr, staticScale,
+                /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     }
 
-    IE::AvgPoolOp createAvgPool(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int64_t> kernelShape,
-                                double scale, IE::PostOpAttr postOpAttr) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::AvgPoolOp createAvgPool(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type outElemType,
+                                ArrayRef<int64_t> kernelShape, double scale, IE::PostOpAttr postOpAttr) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -224,8 +219,8 @@ protected:
                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     }
 
-    IE::MaxPoolOp createMaxPool(mlir::Type inElemType, mlir::Type outElemType, IE::PostOpAttr postOpAttr) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::MaxPoolOp createMaxPool(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type outElemType,
+                                IE::PostOpAttr postOpAttr) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -242,21 +237,19 @@ protected:
                                              /*inputPadding=*/nullptr);
     }
 
-    IE::MatMulOp createMatMul(mlir::Type in1ElemType, mlir::Type in2ElemType, mlir::Type outElemType) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::MatMulOp createMatMul(mlir::OpBuilder builder, mlir::Type in1ElemType, mlir::Type in2ElemType,
+                              mlir::Type outElemType) {
         auto input1 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in1ElemType);
         auto input2 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in2ElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
 
-        return builder.create<IE::MatMulOp>(_loc, outType, input1.getResult(), input2.getResult(), nullptr, nullptr,
-                                            nullptr);
+        return builder.create<IE::MatMulOp>(_loc, outType, input1.getResult(), input2.getResult(), false, false);
     }
 
-    IE::ReduceMeanOp createReduceMean(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int64_t> axes,
-                                      ArrayRef<int64_t> inputPadding) {
-        mlir::OpBuilder builder(&_ctx);
+    IE::ReduceMeanOp createReduceMean(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type outElemType,
+                                      ArrayRef<int64_t> axes, ArrayRef<int64_t> inputPadding) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -267,9 +260,9 @@ protected:
                                                 /*keep_dims=*/nullptr, /*output_padding=*/nullptr, inputPaddingAttr);
     }
 
-    VPU::NCEReduceOp createNCEReduce(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int64_t> axes,
-                                     VPU::ReduceType reduceType, ArrayRef<int64_t> inputPadding) {
-        mlir::OpBuilder builder(&_ctx);
+    VPU::NCEReduceOp createNCEReduce(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type outElemType,
+                                     ArrayRef<int64_t> axes, VPU::ReduceType reduceType,
+                                     ArrayRef<int64_t> inputPadding) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -281,9 +274,9 @@ protected:
                                                 inputPaddingAttr);
     }
 
-    VPU::NCEInterpolateOp createNCEInterpolate(mlir::Type inElemType, mlir::Type weightsElemType,
-                                               mlir::Type outElemType, VPU::PPEAttr oldPpeAttr) {
-        mlir::OpBuilder builder(&_ctx);
+    VPU::NCEInterpolateOp createNCEInterpolate(mlir::OpBuilder builder, mlir::Type inElemType,
+                                               mlir::Type weightsElemType, mlir::Type outElemType,
+                                               VPU::PPEAttr oldPpeAttr) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         auto weights = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
@@ -295,14 +288,15 @@ protected:
         const auto strides = getIntArrayAttr(&_ctx, SmallVector<int64_t>{1, 1});
         const auto rawFilterShape = getIntArrayAttr(&_ctx, mlir::cast<NDTypeInterface>(weights.getType()).getShape());
 
-        return builder.create<VPU::NCEInterpolateOp>(_loc, outType, input, weights, weightsTable, strides, oldPpeAttr,
-                                                     rawFilterShape, /*multiClusterStrategy=*/nullptr,
+        return builder.create<VPU::NCEInterpolateOp>(_loc, outType, input, weights, weightsTable, nullptr, nullptr,
+                                                     nullptr, nullptr, nullptr, strides, oldPpeAttr, rawFilterShape,
+                                                     /*multiClusterStrategy=*/nullptr,
                                                      /*mode=*/nullptr);
     }
 
-    VPU::NCEDepthConvolutionOp createNCEDWConv(mlir::Type inElemType, mlir::Type weightsElemType,
-                                               mlir::Type outElemType, VPU::PPEAttr oldPpeAttr) {
-        mlir::OpBuilder builder(&_ctx);
+    VPU::NCEDepthConvolutionOp createNCEDWConv(mlir::OpBuilder builder, mlir::Type inElemType,
+                                               mlir::Type weightsElemType, mlir::Type outElemType,
+                                               VPU::PPEAttr oldPpeAttr) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         auto weights = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),

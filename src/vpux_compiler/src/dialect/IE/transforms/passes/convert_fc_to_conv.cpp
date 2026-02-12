@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -87,8 +87,7 @@ mlir::LogicalResult ConvertFCToConvPass::FullyConnectedOpConverter::matchAndRewr
     auto newPadsEnd = getIntArrayAttr(getContext(), ov::CoordinateDiff{0, 0});
     auto newDilations = getIntArrayAttr(getContext(), ov::Strides{1, 1});
     auto convOp = rewriter.create<IE::ConvolutionOp>(takeOpLoc(origOp, "as_convolution"), newInput, newFilter, newBias,
-                                                     newStrides, newPadsBegin, newPadsEnd, newDilations, nullptr,
-                                                     nullptr, nullptr, nullptr, nullptr);
+                                                     nullptr, newStrides, newPadsBegin, newPadsEnd, newDilations);
 
     const auto convShape = mlir::cast<vpux::NDTypeInterface>(convOp.getOutput().getType()).getShape().raw();
     const std::array<int64_t, 2> outputShape = {convShape[0], convShape[1]};

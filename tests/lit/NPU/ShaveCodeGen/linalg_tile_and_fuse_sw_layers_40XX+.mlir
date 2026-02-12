@@ -36,13 +36,12 @@ module @Reduce {
 // CHECK-NEXT:     [[C1:%.+]] = arith.constant 1 : index
 // CHECK-NEXT:     [[C0:%.+]] = arith.constant 0 : index
 // CHECK-NEXT:     [[CST:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1xf32>
+// CHECK-NEXT:     [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<1x1xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:     [[RET:%.+]] = scf.for [[ARG2:%.+]] = [[C0]] to [[C128]] step [[C1]] iter_args([[ARG3:%.+]] = [[ARG1]]) -> (tensor<1x128x1x1xf16>) {
-// CHECK-NEXT:       [[EXT_SLICE:%.+]] = tensor.extract_slice [[ARG0]][0, [[ARG2]], 0, 0] [1, 1, 64, 64] [1, 1, 1, 1] : tensor<1x128x64x64xf16> to tensor<1x1x64x64xf16>
-// CHECK-NEXT:       [[EMPTY:%.+]] = tensor.empty() : tensor<1x1xf32>
-// CHECK-NEXT:       [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<1x1xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:       [[REDUCE_OUTER:%.+]] = scf.for [[ARG4:%.+]] = [[C0]] to [[C64]] step [[C1]] iter_args([[ARG5:%.+]] = [[FILL]]) -> (tensor<1x1xf32>) {
 // CHECK-NEXT:         [[REDUCE_INNER:%.+]] = scf.for [[ARG6:%.+]] = [[C0]] to [[C64]] step [[C1]] iter_args([[ARG7:%.+]] = [[ARG5]]) -> (tensor<1x1xf32>) {
-// CHECK-NEXT:           [[EXT_SLICE_REDUCE:%.+]] = tensor.extract_slice [[EXT_SLICE]][0, 0, [[ARG4]], [[ARG6]]] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x64x64xf16> to tensor<1x1x1x1xf16>
+// CHECK-NEXT:           [[EXT_SLICE_REDUCE:%.+]] = tensor.extract_slice [[ARG0]][0, [[ARG2]], [[ARG4]], [[ARG6]]] [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x128x64x64xf16> to tensor<1x1x1x1xf16>
 // CHECK-NEXT:           [[REDUCE_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "reduction"]} ins([[EXT_SLICE_REDUCE]] : tensor<1x1x1x1xf16>) outs([[ARG7]] : tensor<1x1xf32>) {
 // CHECK-NEXT:           ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f32):
 // CHECK-NEXT:             [[IN_EXT:%.+]] = arith.extf [[IN]] : f16 to f32

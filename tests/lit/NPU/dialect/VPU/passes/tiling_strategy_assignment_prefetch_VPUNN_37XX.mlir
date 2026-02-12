@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -123,7 +123,7 @@ func.func @PermuteTiling(%arg0: tensor<1x512x64x640xf16>) -> tensor<1x512x64x640
                                 ppe = #VPU.PPEStub<>} -> tensor<1x512x64x640xf16, {order = #NHWC}>
     return %0 : tensor<1x512x64x640xf16, {order = #NHWC}>
 
-    // CHECK:       [[RET:%.*]] = VPU.NCE.Permute([[INPUT]]) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 512 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
+    // CHECK:       [[RET:%.+]] = VPU.NCE.Permute([[INPUT]]) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 512 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
     // CHECK-SAME:       tilingStrategy = [1, 22, 1, 1]} -> tensor<1x512x64x640xf16, {order = #NHWC}>
     // CHECK:        return [[RET]] : tensor<1x512x64x640xf16, {order = #NHWC}>
 }

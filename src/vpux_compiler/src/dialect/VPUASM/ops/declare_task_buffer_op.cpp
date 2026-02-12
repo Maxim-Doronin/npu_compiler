@@ -50,7 +50,7 @@ void VPUASM::DeclareTaskBufferOp::setMemoryOffset(mlir::IntegerAttr offset) {
     setOffsetAttr(offset);
 }
 
-uint64_t VPUASM::DeclareTaskBufferOp::getMemoryOffset() {
+int64_t VPUASM::DeclareTaskBufferOp::getMemoryOffset() {
     return getOffset().value_or(0);
 }
 

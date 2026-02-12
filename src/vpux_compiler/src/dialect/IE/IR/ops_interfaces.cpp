@@ -19,6 +19,33 @@
 
 using namespace vpux;
 
+namespace {
+mlir::DictionaryAttr mergeClampAttrs(mlir::DictionaryAttr currentClampAttr, IE::ClampOp clampOp) {
+    auto maxAttrName = clampOp.getMaxAttrName();
+    auto minAttrName = clampOp.getMinAttrName();
+
+    assert(currentClampAttr.contains(maxAttrName) && currentClampAttr.contains(minAttrName) &&
+           "The current clamp attribute is expected contain min and max values.");
+
+    auto currentClampMin = mlir::cast<mlir::FloatAttr>(currentClampAttr.get(minAttrName)).getValueAsDouble();
+    auto currentClampMax = mlir::cast<mlir::FloatAttr>(currentClampAttr.get(maxAttrName)).getValueAsDouble();
+
+    const auto minClampOp = clampOp.getMinAttr().getValueAsDouble();
+    const auto maxClampOp = clampOp.getMaxAttr().getValueAsDouble();
+
+    const auto newMin = std::max(currentClampMin, minClampOp);
+    const auto newMax = std::min(currentClampMax, maxClampOp);
+    const auto newMinAttr = getFPAttr(clampOp.getContext(), newMin);
+    const auto newMaxAttr = getFPAttr(clampOp.getContext(), newMax);
+
+    SmallVector<mlir::NamedAttribute> newClampAttr;
+    newClampAttr.emplace_back(maxAttrName, newMaxAttr);
+    newClampAttr.emplace_back(minAttrName, newMinAttr);
+
+    return mlir::DictionaryAttr::get(clampOp.getContext(), newClampAttr);
+}
+}  // namespace
+
 //
 // LayerOpInterface
 //
@@ -87,6 +114,7 @@ IE::PostOpAttr vpux::IE::attributizePostOp(mlir::Operation* postOp) {
             .Case<IE::ReLUOp>([](auto reluOp) {
                 return IE::ReluAttr::get(reluOp.getContext());
             })
+            // TODO: remove option after E#-83187
             .Case<IE::ClampOp>([](auto clampOp) {
                 return IE::ClampAttr::get(clampOp.getContext(), clampOp.getMinAttr(), clampOp.getMaxAttr());
             })
@@ -131,6 +159,20 @@ IE::PostOpAttr vpux::IE::attributizePostOp(mlir::Operation* postOp) {
                 VPUX_THROW("Failed to attributize operation: {0}", unknownOp->getName());
                 return nullptr;
             });
+}
+
+void vpux::IE::setClampOp(mlir::Operation* mainOp, mlir::Operation* maybeClampOp) {
+    auto clampOp = mlir::dyn_cast<IE::ClampOp>(maybeClampOp);
+    VPUX_THROW_WHEN(clampOp == nullptr, "Not ClampOp provided at {0}", maybeClampOp->getLoc());
+
+    mlir::DictionaryAttr clampOpInfo;
+    if (auto mainClampAttr =
+                mlir::dyn_cast_or_null<mlir::DictionaryAttr>(mainOp->getAttr(vpux::OperationAttrName::CLAMP))) {
+        clampOpInfo = mergeClampAttrs(mainClampAttr, clampOp);
+    } else {
+        clampOpInfo = clampOp->getAttrDictionary();
+    }
+    mainOp->setAttr(vpux::OperationAttrName::CLAMP, clampOpInfo);
 }
 
 //

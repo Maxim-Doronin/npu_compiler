@@ -23,7 +23,7 @@ using namespace vpux;
 void vpux::VPUMI37XX::DeclareKernelTextOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const auto elfBlob = kernelInfo.getElf(kernel);
 
     auto secDataSizePair = vpux::ELFNPU37XX::getDataAndSizeOfElfSection(elfBlob, {".text"});
@@ -34,7 +34,7 @@ void vpux::VPUMI37XX::DeclareKernelTextOp::serialize(elf::writer::BinaryDataSect
 size_t vpux::VPUMI37XX::DeclareKernelTextOp::getBinarySize() {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const auto elfBlob = kernelInfo.getElf(kernel);
 
     auto secDataSizePair = vpux::ELFNPU37XX::getDataAndSizeOfElfSection(elfBlob, {".text"});

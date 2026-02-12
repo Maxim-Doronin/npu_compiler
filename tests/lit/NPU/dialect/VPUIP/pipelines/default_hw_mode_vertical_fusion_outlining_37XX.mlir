@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -61,13 +61,13 @@ module @VerticalFusionOutlining {
     // CHECK-NEXT: [[CMX4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <[[ADDR0:[0-9]+]]> -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
     // CHECK-NEXT: [[CMX5:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <[[ADDR0:[0-9]+]]> -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
 
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[NET_IN]] {{.*}} outputs([[DDR0]]
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[DDR1]] {{.*}} outputs([[CMX0]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[NET_IN]] {{.+}} outputs([[DDR0]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[DDR1]] {{.+}} outputs([[CMX0]]
 
     // CHECK: VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[CMX2]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) outputs([[CMX3]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
     // CHECK: VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[CMX4]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) outputs([[CMX5]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
 
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[CMX1]] {{.*}} outputs([[NET_OUT]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[CMX1]] {{.+}} outputs([[NET_OUT]]
 
     // CHECK: return [[OUT]]
 }

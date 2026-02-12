@@ -17,10 +17,9 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/factors.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
-#include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/DialectConversion.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Support/LLVM.h"
 
@@ -152,17 +151,18 @@ mlir::LogicalResult HandleEltwiseWithSmallHeight::matchAndRewrite(IE::AddOp addO
     auto newOutputType = outputType.changeShape(newInputShape);
 
     // Create a new AddOp with the reshaped inputs
-    auto newAddOp = rewriter.create<IE::AddOp>(
+    auto newAddOpResult = rewriter.createOrFold<IE::AddOp>(
             addOp->getLoc(), newOutputType, input1ShapeCastOp, input2ShapeCastOp, addOp.getAutoBroadcastAttr(),
             addOp.getPostOpAttr(), addOp.getClampAttr(), addOp.getOutputPaddingAttr(), addOp.getInputPaddingAttr());
+    auto newAddOpResultLoc = newAddOpResult.getLoc();
 
-    _log.trace("Found AddOp with small H dim: Reshaped to new shape at location '{0}'", newAddOp->getLoc());
+    _log.trace("Found AddOp with small H dim: Reshaped to new shape at location '{0}'", newAddOpResultLoc);
     _log.nest().trace("Original Input shape: {0}", input1Shape);
     _log.nest().trace("New Input shape: {0}", newInputShape);
 
-    auto restoreShapeOp =
-            rewriter.create<IE::ShapeCastOp>(newAddOp.getLoc(), newAddOp, getIntArrayAttr(getContext(), input1Shape));
-    rewriter.replaceOp(addOp, restoreShapeOp.getResult());
+    auto restoreShapeOpResult = rewriter.createOrFold<IE::ShapeCastOp>(newAddOpResultLoc, newAddOpResult,
+                                                                       getIntArrayAttr(getContext(), input1Shape));
+    rewriter.replaceOp(addOp, restoreShapeOpResult);
 
     return mlir::success();
 }
@@ -183,9 +183,8 @@ void HandleEltwiseWithSmallHeightPass::safeRunOnFunc() {
     auto numClusters = config::getTileExecutor(func).getCount();
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<HandleEltwiseWithSmallHeight>(&ctx, numClusters, _log);
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 }  // namespace
 

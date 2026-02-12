@@ -1,19 +1,19 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/profiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/profiling_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/profiling_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
-#include "vpux/compiler/utils/dma.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
 namespace vpux::VPUIP {
@@ -70,7 +70,7 @@ uint32_t DMATaskProfilingAfterBarrierSchedPass::getHwProfAddress(config::ArchKin
 int64_t DMATaskProfilingAfterBarrierSchedPass::getDMAPortValue(VPURT::TaskOp taskOp) {
     auto* wrappedTaskOp = taskOp.getInnerTaskOp();
 
-    return vpux::getDMAPortValue(wrappedTaskOp);
+    return VPUIP::getDMAPortValue(wrappedTaskOp);
 }
 
 VPURT::TaskOp DMATaskProfilingAfterBarrierSchedPass::createProfTask(
@@ -141,7 +141,7 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     net::NetworkInfoOp::getFromModule(module, netInfo, func);
     mlir::OpBuilder builder(&func.getBody().front().front());
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
     VPUX_THROW_UNLESS(dmaPortCount > 0, "DMA port count should be > 0; it is: {0}", dmaPortCount);
 
@@ -196,8 +196,9 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     }
 
     // Initialize some common variables which are used when inserting profiling DMAs
-    auto timeStampCb = VPUIP::getTimestampTypeCb(arch);
-    _timerType = timeStampCb(ctx);
+    VPUX_THROW_UNLESS(arch == config::ArchKind::NPU37XX,
+                      "Get time stamp type is not implemented for architecture '{0}'", arch);
+    _timerType = VPUIP::getTimestampType(ctx);
     _timestampSize = _timerType.getIntOrFloatBitWidth() / 8;
     _hwAddr = getHwProfAddress(arch);
     _profOutputId = static_cast<int64_t>(netInfo.getProfilingOutputsCount());

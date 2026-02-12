@@ -10,6 +10,8 @@
 
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Linalg/IR/Linalg.h>
+#include <mlir/Dialect/Quant/IR/Quant.h>
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 
 using namespace vpux;
@@ -21,36 +23,30 @@ mlir::Type getLinalgElementType(mlir::Type ty, mlir::MLIRContext* ctx) {
     assert(mlir::isa<mlir::RankedTensorType>(ty) && "Ranked tensor type required for getLinalgElementType");
     // Get the math/arith compatible element type for the ty tensor type.
     // math/arith dialects don't accept non-signless integers.
-    auto elTy = mlir::cast<NDTypeInterface>(ty).getElementType();
-    auto signlessElTy = mlir::isa<mlir::IntegerType>(elTy) && !elTy.isSignlessInteger()
-                                ? mlir::IntegerType::get(ctx, getElemTypeSize(elTy).count())
-                                : elTy;
-    return signlessElTy;
-}
+    auto elTy = mlir::cast<mlir::RankedTensorType>(ty).getElementType();
 
-mlir::Value convertFromLinalgValue(mlir::Value op, mlir::Type outputTy, mlir::PatternRewriter& rewriter) {
-    mlir::Value ret = op;
-    auto resultElTy = mlir::cast<NDTypeInterface>(outputTy).getElementType();
-    auto elTy = mlir::cast<NDTypeInterface>(op.getType()).getElementType();
-    const auto outTy = mlir::cast<vpux::NDTypeInterface>(outputTy);
-    bool needsPermute = !outTy.getDimsOrder().isIdentity();
-    auto rank = outTy.getRank();
-
-    if (elTy != resultElTy) {
-        // Do a tensor.bitcast in order to change the element type.
-        auto bcTy = mlir::cast<NDTypeInterface>(ret.getType()).changeElemType(resultElTy);
-        ret = rewriter.create<mlir::tensor::BitcastOp>(op.getLoc(), bcTy, ret).getResult();
+    if (auto intTy = mlir::dyn_cast<mlir::IntegerType>(elTy)) {
+        if (!intTy.isSignless()) {
+            return mlir::IntegerType::get(ctx, intTy.getWidth());
+        }
+        return elTy;
     }
 
-    if (needsPermute) {
-        // Perform a permute cast to get the desired type. This should be a no-op after buffers are allocated.
-        ret = rewriter.create<IE::PermuteCastOp>(op.getLoc(), outputTy, ret,
-                                                 outTy.getDimsOrder().toAffineMap(rewriter.getContext()),
-                                                 rewriter.getMultiDimIdentityMap(rank))
-                      ->getResult(0);
+    // We need to convert the quantized type to its storage type because quant types
+    // are not part of the math or arith dialects in MLIR.
+    if (auto quantTy = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elTy)) {
+        auto storageType = quantTy.getStorageType();
+        if (auto storageIntTy = mlir::dyn_cast<mlir::IntegerType>(storageType)) {
+            // If the storage type is signless, return as it is, otherwise convert to signless
+            return storageIntTy.isSignlessInteger() ? storageIntTy
+                                                    : mlir::IntegerType::get(ctx, storageIntTy.getWidth());
+        } else {
+            // Non-integer storage types are not supported
+            VPUX_THROW("Non int storage types not supported");
+        }
     }
 
-    return ret;
+    return elTy;
 }
 
 mlir::RankedTensorType getUnpaddedTensorType(mlir::RankedTensorType type, mlir::Location loc,
@@ -78,33 +74,14 @@ mlir::RankedTensorType normalizeType(mlir::RankedTensorType type) {
     return mlir::cast<mlir::RankedTensorType>(retTy);
 }
 
-mlir::Value convertToLinalgValue(mlir::Value operand, mlir::PatternRewriter& rewriter,
-                                 std::optional<mlir::ArrayAttr> padding) {
+mlir::Value removePadding(mlir::Value operand, mlir::Value typeConvertedOperand, mlir::PatternRewriter& rewriter,
+                          std::optional<mlir::ArrayAttr> padding) {
     auto loc = operand.getLoc();
-    mlir::Value retVal = operand;
     const auto opTy = mlir::cast<vpux::NDTypeInterface>(operand.getType());
     auto rank = opTy.getRank();
-    bool needsPermute = !opTy.getDimsOrder().isIdentity();
-    if (needsPermute) {
-        // Do a IE.PermuteCast to remove the order.
-        auto identMap = rewriter.getMultiDimIdentityMap(rank);
-        auto dstShape = Shape(DimsOrder::fromValue(retVal).toMemoryOrder(getShape(retVal)).raw());
-        auto retTy = opTy.changeDimsOrder(DimsOrder::fromNumDims(rank)).changeShape(dstShape);
-        retVal = rewriter.create<IE::PermuteCastOp>(loc, retTy, retVal, identMap, identMap);
-    }
-
-    auto elTy = mlir::cast<NDTypeInterface>(operand.getType()).getElementType();
-    auto signlessElTy = getLinalgElementType(operand.getType(), rewriter.getContext());
-    if (elTy != signlessElTy) {
-        // The input type is a signed/unsigned integer so not compatible
-        // with the dialects we need for lowering (math, arith, etc). We need to bitcast this
-        // to a signless integer type.
-        auto outputTy = mlir::cast<NDTypeInterface>(retVal.getType()).changeElemType(signlessElTy);
-        retVal = rewriter.create<mlir::tensor::BitcastOp>(loc, outputTy, retVal)->getResult(0);
-    }
 
     if (!padding) {
-        return retVal;
+        return typeConvertedOperand;
     }
 
     auto shapedTy = mlir::cast<mlir::ShapedType>(operand.getType());
@@ -121,7 +98,7 @@ mlir::Value convertToLinalgValue(mlir::Value operand, mlir::PatternRewriter& rew
         sizes[i] = rewriter.getIndexAttr(memUnpaddedShape.raw()[i]);
     }
 
-    return rewriter.create<mlir::tensor::ExtractSliceOp>(loc, retVal, offsets, sizes, strides);
+    return rewriter.create<mlir::tensor::ExtractSliceOp>(loc, typeConvertedOperand, offsets, sizes, strides);
 }
 
 std::tuple<mlir::Value, mlir::Value> emitTensorSlice(mlir::Location loc, SmallVectorImpl<int64_t>& sliceShape,

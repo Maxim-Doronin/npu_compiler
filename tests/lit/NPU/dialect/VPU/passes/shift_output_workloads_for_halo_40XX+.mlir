@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --shift-dpu-workloads-start %s | FileCheck %s
@@ -77,7 +77,7 @@ func.func @ConvSOHOverlapped(%arg0: !Input_DDR) -> !Output_DDR {
 
     return %output: !Output_DDR
 
-    // CHECK:       [[RES4:%.*]] = VPU.NCE.Convolution
+    // CHECK:       [[RES4:%.+]] = VPU.NCE.Convolution
     // CHECK-SAME:                   pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                   strides = [1, 1]
     // CHECK-SAME:    }
@@ -202,7 +202,7 @@ func.func @SparseConvSOHOverlapped(%arg0: !InputDataDistributed, %arg1: !InputSM
 
     return %output_cmx: !Output_CMX
 
-    // CHECK:       [[RES4:%.*]] = VPU.NCE.Convolution
+    // CHECK:       [[RES4:%.+]] = VPU.NCE.Convolution
     // CHECK-SAME:                   pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                   strides = [1, 1]
     // CHECK-SAME:         -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x16x30x33xf16, #NHWC, @CMX_NN,
@@ -295,7 +295,7 @@ func.func @ConvSOHOverlappedMultipleWorkloads(%arg0: !Input_DDR) -> !Output_DDR 
 
     return %output: !Output_DDR
 
-    // CHECK:      [[RES4:%.*]] = VPU.NCE.Convolution
+    // CHECK:      [[RES4:%.+]] = VPU.NCE.Convolution
     // CHECK-SAME:                  pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                  strides = [1, 1]
     // CHECK-SAME:   }
@@ -387,7 +387,7 @@ func.func @ConvSOHOverlappedNoOverlapAtStart(%arg0: !Input_DDR) -> !Output_DDR {
 
     return %output: !Output_DDR
 
-    // CHECK:      [[RES4:%.*]] = VPU.NCE.Convolution
+    // CHECK:      [[RES4:%.+]] = VPU.NCE.Convolution
     // CHECK-SAME:                  pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     // CHECK-SAME:                  strides = [1, 1]
     // CHECK-SAME:   }
@@ -471,7 +471,7 @@ func.func @ConvSOKNoChange(%arg0: !Input_DDR) -> !Output_DDR {
 
     return %output: !Output_DDR
 
-    // CHECK:      [[RES4:%.*]] = VPU.NCE.Convolution
+    // CHECK:      [[RES4:%.+]] = VPU.NCE.Convolution
     // CHECK-SAME:                  pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:                  strides = [1, 1]
     // CHECK-SAME:   }
@@ -544,7 +544,7 @@ func.func @NCEPermuteSOK(%arg0: !Input_DDR) -> !Output_DDR {
 
     return %output: !Output_DDR
 
-    // CHECK:      [[RES4:%.*]] = VPU.NCE.Permute
+    // CHECK:      [[RES4:%.+]] = VPU.NCE.Permute
     // CHECK-SAME:   } ->   !VPU.DistributedTensor<
     // CHECK-SAME:          1x128x32x64xf16, #NHWC, @CMX_NN, {
     // CHECK-SAME:          mode = "SEGMENTED",

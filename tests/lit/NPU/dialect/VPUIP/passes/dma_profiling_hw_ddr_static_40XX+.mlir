@@ -59,21 +59,21 @@ module @DMAGraph {
 
 // Profiled DMA task 1
 // CHECK:  VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 1 : si32,
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 1 : si32,
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>}
 // CHECK-SAME:        inputs(%arg0 :
 // CHECK-SAME:        outputs([[BUF_DATA_0]] :
 
 // Profiled DMA task 2
 // CHECK:  VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 2 : si32
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 2 : si32
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 2 : i64>}
 // CHECK-SAME:        inputs([[BUF_DATA_0]] :
 // CHECK-SAME:        outputs([[BUF_DATA_1]] :
 
 // Profiled DMA task 3
 // CHECK:  VPURT.Task
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 3 : si32
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 3 : si32
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 3 : i64>}
 // CHECK-SAME:        inputs([[BUF_DATA_1]] :
 // CHECK-SAME:        outputs(%arg1 :

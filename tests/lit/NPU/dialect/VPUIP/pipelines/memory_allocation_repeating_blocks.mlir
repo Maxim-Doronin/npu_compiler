@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -97,7 +97,7 @@ module @SingleRepeat {
         }
         // CHECK-NEXT: }
 
-        // CHECK-NEXT: [[TOKEN1:%.+]], [[RES1:%.+]] = async.execute [{{.*}}[[TOKEN0]]{{.*}}] ([[RES0]] as [[INNER0:%.+]]: !async.value
+        // CHECK-NEXT: [[TOKEN1:%.+]], [[RES1:%.+]] = async.execute [[[TOKEN0]]] ([[RES0]] as [[INNER0:%.+]]: !async.value
         %token_1, %fooCall0 = async.execute [%token]
             (%fooCopy0 as %arg2: !async.value<memref<1x4x60x60xf16, @DDR>>)
             -> !async.value<memref<1x4x60x60xf16, @DDR>>
@@ -111,7 +111,7 @@ module @SingleRepeat {
         }
         // CHECK-NEXT: }
 
-        // CHECK-NEXT: [[TOKEN_BAR:%.+]], [[RES_BAR:%.+]] = async.execute [{{.*}}[[TOKEN1]]{{.*}}] -> !async.value<memref<1x4x120x60xf16, @DDR>>
+        // CHECK-NEXT: [[TOKEN_BAR:%.+]], [[RES_BAR:%.+]] = async.execute [[[TOKEN1]]] -> !async.value<memref<1x4x120x60xf16, @DDR>>
         %token_bar, %barCall = async.execute [%token_1] -> !async.value<memref<1x4x120x60xf16, @DDR>>
             attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 2 : i64, cycleCost = 1 : i64}
         {
@@ -123,7 +123,7 @@ module @SingleRepeat {
         }
         // CHECK-NEXT: }
 
-        // CHECK-NEXT: [[TOKEN2:%.+]], [[RES2:%.+]] = async.execute [{{.*}}[[TOKEN1]]{{.*}}[[TOKEN_BAR]]{{.*}}] ([[RES1]] as [[INNER1:%.+]]: !async.value
+        // CHECK-NEXT: [[TOKEN2:%.+]], [[RES2:%.+]] = async.execute [[[TOKEN1]]{{.+}}[[TOKEN_BAR]]] ([[RES1]] as [[INNER1:%.+]]: !async.value
         %token_2, %fooCopy1 = async.execute [%token_bar, %token_1]
             (%fooCall0 as %arg2: !async.value<memref<1x4x60x60xf16, @DDR>>)
             -> !async.value<memref<1x4x60x60xf16, @DDR>>
@@ -140,7 +140,7 @@ module @SingleRepeat {
         }
         // CHECK-NEXT: }
 
-        // CHECK-NEXT: [[TOKEN3:%.+]], [[RES3:%.+]] = async.execute [{{.*}}[[TOKEN2]]{{.*}}] ([[RES2]] as [[INNER2:%.+]]: !async.value
+        // CHECK-NEXT: [[TOKEN3:%.+]], [[RES3:%.+]] = async.execute [{{.*}}[[TOKEN2]]] ([[RES2]] as [[INNER2:%.+]]: !async.value
         %token_3, %fooCall1 = async.execute [%token_2]
             (%fooCopy1 as %arg2: !async.value<memref<1x4x60x60xf16, @DDR>>)
             -> !async.value<memref<1x4x60x60xf16, @DDR>>
@@ -154,7 +154,7 @@ module @SingleRepeat {
         }
         // CHECK-NEXT: }
 
-        // CHECK-NEXT: [[TOKEN4:%.+]], [[RES4:%.+]] = async.execute [{{.*}}[[TOKEN3]]{{.*}}] ([[RES3]] as [[INNER3:%.+]]: !async.value
+        // CHECK-NEXT: [[TOKEN4:%.+]], [[RES4:%.+]] = async.execute [[[TOKEN3]]] ([[RES3]] as [[INNER3:%.+]]: !async.value
         %token_4, %fooCopyRes = async.execute [%token_3]
             (%fooCall1 as %arg2: !async.value<memref<1x4x60x60xf16, @DDR>>)
             -> !async.value<memref<1x4x60x60xf16, @DDR>>
@@ -170,7 +170,7 @@ module @SingleRepeat {
         }
         // CHECK-NEXT: }
 
-        // CHECK-NEXT: [[TOKEN_BAR_COPY:%.+]], [[RES_BAR_COPY:%.+]] = async.execute [{{.*}}[[TOKEN_BAR]]{{.*}}[[TOKEN4]]{{.*}}] ([[RES_BAR]] as [[INNER_BAR:%.+]]: !async.value
+        // CHECK-NEXT: [[TOKEN_BAR_COPY:%.+]], [[RES_BAR_COPY:%.+]] = async.execute [[[TOKEN_BAR]]{{.+}}[[TOKEN4]]] ([[RES_BAR]] as [[INNER_BAR:%.+]]: !async.value
         %token_5, %barCopyRes = async.execute [%token_4, %token_bar]
             (%barCall as %arg2: !async.value<memref<1x4x120x60xf16, @DDR>>)
             -> !async.value<memref<1x4x120x60xf16, @DDR>>

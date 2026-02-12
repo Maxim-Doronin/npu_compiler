@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -113,9 +113,9 @@ func.func @NotFuseCMXCopyToTheFrontOfTillingCopyDueToCMXSizeLimitation() -> !Inp
 
   return %4 : !InputStub_CMX
 
-  // CHECK:   [[BUF_0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x30x120x120xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
-  // CHECK:   [[BUF_1:%.*]] = memref.alloc() : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
-  // CHECK:   [[COPY_0:%.*]] = VPUIP.Copy
+  // CHECK:   [[BUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x30x120x120xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:   [[BUF_1:%.+]] = memref.alloc() : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
+  // CHECK:   [[COPY_0:%.+]] = VPUIP.Copy
   // CHECK-SAME:  inputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x30x120x120xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)
   // CHECK-SAME:  outputs([[BUF_1]] : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
   // CHECK:   return [[COPY_0]] : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
@@ -138,14 +138,14 @@ func.func @NotEraseCMX2CMXCopyAfterSubviewDueToCMXSizeLimitation(%data : memref<
   %subview_indices_in = VPUIP.Copy inputs(%subview_indices : memref<8000x1xi64, [@CMX_NN, 0]>)
   outputs(%alloc_subview_indices : memref<8000x1xi64, [@CMX_NN, 0]>) -> memref<8000x1xi64, [@CMX_NN, 0]>
   %alloc_gather = memref.alloc() : memref<8000x32xf16, [@CMX_NN, 0]>
-  %gather_out = VPUIP.GatherDMA {channelType = 0 : i64, elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64} inputs(%data : memref<4000x32xf16>) indices(%subview_indices_in : memref<8000x1xi64, [@CMX_NN, 0]>) outputs(%alloc_gather : memref<8000x32xf16, [@CMX_NN, 0]>) -> memref<8000x32xf16, [@CMX_NN, 0]>
+  %gather_out = VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64}> inputs(%data : memref<4000x32xf16>) indices(%subview_indices_in : memref<8000x1xi64, [@CMX_NN, 0]>) outputs(%alloc_gather : memref<8000x32xf16, [@CMX_NN, 0]>) -> memref<8000x32xf16, [@CMX_NN, 0]>
   return %gather_out : memref<8000x32xf16, [@CMX_NN, 0]>
 
   // CHECK:   [[SUBVIEW:%.+]] = VPUIP.SubView [[INDICES]] [0, 0] [8000, 1]
   // CHECK-NOT:   memref.alloc()
   // CHECK-NOT:   VPUIP.Copy
   // CHECK:   [[ALLOC_GATHER:%.+]] = memref.alloc() : memref<8000x32xf16, [@CMX_NN, 0]>
-  // CHECK:   [[GATHER_OUT:%.+]] = VPUIP.GatherDMA {channelType = 0 : i64, elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64} inputs([[DATA]] : memref<4000x32xf16>) indices([[SUBVIEW]] : memref<8000x1xi64, [@CMX_NN, 0]>) outputs([[ALLOC_GATHER]] : memref<8000x32xf16, [@CMX_NN, 0]>) -> memref<8000x32xf16, [@CMX_NN, 0]>
+  // CHECK:   [[GATHER_OUT:%.+]] = VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64}> inputs([[DATA]] : memref<4000x32xf16>) indices([[SUBVIEW]] : memref<8000x1xi64, [@CMX_NN, 0]>) outputs([[ALLOC_GATHER]] : memref<8000x32xf16, [@CMX_NN, 0]>) -> memref<8000x32xf16, [@CMX_NN, 0]>
   // CHECK:   return [[GATHER_OUT]] : memref<8000x32xf16, [@CMX_NN, 0]>
 }
 

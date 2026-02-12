@@ -115,12 +115,3 @@ Const::Content vpux::Const::ReverseAttr::transform(vpux::Const::Content& input) 
         return reverseImpl<decltype(dummy)>(inputValues, inputType, axis, isOutputSplat);
     });
 }
-
-//
-// ReverseAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::ReverseAttr::getStableHashValue() const {
-    const auto axis = getAxis().getValue();
-    return llvm::hash_combine(getMnemonic(), axis);
-}

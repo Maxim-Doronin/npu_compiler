@@ -28,7 +28,7 @@ module @NestedFunction {
 
   //CHECK-LABEL: func.func @main
   //CHECK-SAME: ([[MAIN_ARG0:%.+]]: memref<1x89x1000x16xf16>) {
-  func.func @main(%arg0 : memref<1x89x1000x16xf16>) {    
+  func.func @main(%arg0 : memref<1x89x1000x16xf16>) {
     %0 = Core.NestedCall @Module0::@main_func0(%arg0) : (memref<1x89x1000x16xf16>) -> memref<1x89x1000x16xf16>
     //CHECK: Core.NestedCall @Module0::@main_func0([[MAIN_ARG0]]) : (memref<1x89x1000x16xf16>) -> memref<1x89x1000x16xf16>
     return

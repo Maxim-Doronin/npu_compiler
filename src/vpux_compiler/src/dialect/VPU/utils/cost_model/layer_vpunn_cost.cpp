@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,9 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
@@ -29,7 +32,52 @@ bool isTiledOnLowestDim(ShapeRef tileAxis, DimsOrder dimOrder) {
     const auto axis = tileAxis[lowestDim];
     return axis > 1;
 }
+
 }  // namespace
+
+//
+// CostModelConfig
+//
+
+std::shared_ptr<VPUNN::VPULayerCostModel> CostModelConfig::createLayerCostModel(mlir::MLIRContext* context) {
+    const auto& costModelFactory = getCostModelFactory(context);
+    return costModelFactory.createLayerCostModel();
+}
+
+std::shared_ptr<VPUNN::VPULayerCostModel> CostModelConfig::createLayerCostModel(mlir::Operation* op) {
+    return createLayerCostModel(op->getContext());
+}
+
+//
+// LayerCostModelAnalysis
+//
+
+vpux::VPU::LayerCostModelAnalysis::LayerCostModelAnalysis(mlir::ModuleOp module) {
+    _layerCostModel = VPU::CostModelConfig::createLayerCostModel(module);
+}
+
+std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getVPUNNLayerCostModel() {
+    return _layerCostModel;
+}
+
+bool vpux::VPU::LayerCostModelAnalysis::isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&) {
+    return !_preserved;
+}
+
+void vpux::VPU::LayerCostModelAnalysis::invalidate() {
+    _preserved = false;
+}
+
+std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(
+        std::optional<std::reference_wrapper<vpux::VPU::LayerCostModelAnalysis>> analysis, mlir::MLIRContext* context,
+        Logger log) {
+    if (analysis.has_value()) {
+        log.trace("Load preserved layer cost model");
+        return analysis.value().get().getVPUNNLayerCostModel();
+    }
+    log.warning("Create new layer cost model instance");
+    return VPU::CostModelConfig::createLayerCostModel(context);
+}
 
 // For SW ops like VPU.MemPermuteOp, there are usually multiple possible implementations - optimized and non-optimized
 // versions. The cost for the non-optimized version usually is much larger than the other version, and in these cases
@@ -43,6 +91,7 @@ bool isTiledOnLowestDim(ShapeRef tileAxis, DimsOrder dimOrder) {
 // implementation should be refactored after cost model refactoring is done [E#166371].
 
 constexpr int64_t SW_COST_CORRECTION_FACTOR_FOR_MEM_PERMUTE = 10;
+constexpr int64_t DEPTH_TO_SPACE_MIN_OPTIMIZED_WIDTH = 128;
 
 // E#154343: Inaccurate VPUNN cost. For some small SW ops, the cost model usually underestimates the actual cost. This
 // experimental value is set as the minimum cost for those ops
@@ -66,6 +115,15 @@ StrategyCost vpux::VPU::correctSwOpCost(VPU::SWOpInterface swOp, ArrayRef<vpux::
     } else if (mlir::isa<VPU::MultiplyOp, VPU::SoftMaxOp, VPU::ConvertOp>(swOp.getOperation())) {
         // E#154343: Inaccurate VPUNN cost for those ops when the size is small. So we set a minimum cost for them.
         cost = std::max(SMALL_SW_COST_THRESHOLD, cost);
+    } else if (auto d2s = mlir::dyn_cast<VPU::DepthToSpaceOp>(swOp.getOperation())) {
+        if (VPU::satisfiesOptimizedDepthToSpace(d2s, config::getArch(swOp.getOperation()))) {
+            auto inShape = tiledInputTypes.front().getShape();
+            auto origInShape = getShape(d2s.getInput());
+            if (origInShape[Dims4D::Act::W] > DEPTH_TO_SPACE_MIN_OPTIMIZED_WIDTH &&
+                inShape[Dims4D::Act::W] < DEPTH_TO_SPACE_MIN_OPTIMIZED_WIDTH) {
+                cost *= origInShape[Dims4D::Act::W] / DEPTH_TO_SPACE_MIN_OPTIMIZED_WIDTH;
+            }
+        }
     }
     return cost;
 }
@@ -80,6 +138,9 @@ MultiClusterStrategySetter::~MultiClusterStrategySetter() {
 }
 
 void MultiClusterStrategySetter::removeTemporaryStrategy() {
+    if (!_isStrategyChanged) {
+        return;
+    }
     if (auto childClusterOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(_operation)) {
         if (_origStrategy.has_value()) {
             childClusterOp.setMultiClusterStrategy(_origStrategy.value());
@@ -92,7 +153,10 @@ void MultiClusterStrategySetter::removeTemporaryStrategy() {
 void MultiClusterStrategySetter::setTemporaryStrategy(VPU::MultiClusterStrategy tempStrategy) {
     if (auto clusterOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(_operation)) {
         _origStrategy = clusterOp.getMultiClusterStrategy();
-        clusterOp.setMultiClusterStrategy(tempStrategy);
+        _isStrategyChanged = !_origStrategy.has_value() || _origStrategy.value() != tempStrategy;
+        if (_isStrategyChanged) {
+            clusterOp.setMultiClusterStrategy(tempStrategy);
+        }
     }
 }
 
@@ -101,21 +165,21 @@ LayerVPUNNCost::LayerVPUNNCost(mlir::func::FuncOp func, std::shared_ptr<VPUNN::V
         : _vpunnCostModel(std::move(layerCostModel)), _log(log) {
     auto module = func->getParentOfType<mlir::ModuleOp>();
     _arch = config::getArch(module);
-
+    auto vpuDev = getVPUDeviceType(module);
     auto tileOp = config::getTileExecutor(module);
-    auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
+    auto dpuExec = tileOp.getSubExecutor(config::ExecutorKind::DPU);
     _numTiles = tileOp.getCount();
     _numDPUs = dpuExec.getCount();
-    _vpuDevice = getVPUDeviceType(_arch);
+    _vpuDevice = vpuDev;
     _numShaveActs = 0;
-    _numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-    if (auto shaveActExec = tileOp.getSubExecutor(ExecutorKind::SHAVE_ACT)) {
+    _numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
+    if (auto shaveActExec = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT)) {
         _numShaveActs = shaveActExec.getCount();
     }
 };
 
 LayerVPUNNCost::LayerVPUNNCost(mlir::func::FuncOp func, Logger log)
-        : LayerVPUNNCost(func, VPU::CostModelConfig::createLayerCostModel(config::getArch(func)), log) {};
+        : LayerVPUNNCost(func, VPU::CostModelConfig::createLayerCostModel(func), log) {};
 
 void LayerVPUNNCost::resetNNCacheCounter() {
     _vpunnCostModel->getDPUPreloadedCacheCounter().reset();
@@ -279,11 +343,9 @@ SmallVector<StrategyCost> LayerVPUNNCost::getSpillingReadCostsForAllTiles(
     const auto childTiling = parameters._tiling.empty() ? OutputTiling({TileInfo(getShape(operation->getResult(0)))})
                                                         : parameters._tiling;
 
-    MultiClusterStrategySetter mcSetter(operation, parameters._strategy);
-
     if (getOperandType == nullptr) {
         getOperandType = [&](const auto& tileInfo) {
-            auto tiling = getTileTypes(operation, tileInfo);
+            auto tiling = getTileTypes(operation, tileInfo, parameters._strategy);
             return tiling[operandInd];
         };
     }
@@ -346,8 +408,7 @@ StrategyCost LayerVPUNNCost::getNCELayerCost(VPU::NCEOpInterface nceOp, const VP
 
     _log.trace("Start calculating vpunn cost for Op {0} with strategy {1}", nceOp.getLoc(), parameters._strategy);
 
-    const auto costParams = VPU::getWorkloadCostParam(nceOp, _arch, _numDPUs, _numTiles);
-    MultiClusterStrategySetter mcSetter(nceOp, parameters._strategy);
+    const auto costParams = VPU::getWorkloadCostParam(nceOp, _arch, _numDPUs, _numTiles, parameters._strategy);
     // Set prefetching to be true to ignore the DMA cost and only get the execution DPU cost
     // According to the VPUNN API definition,
     //      when prefetching is false, the returned cost is the sum of DPU + weights DMA
@@ -388,7 +449,8 @@ StrategyCost LayerVPUNNCost::getNCELayerCost(VPU::NCEOpInterface nceOp, const VP
     auto siblingsAnalysis = SiblingOpsAnalysis(nceOp.getOperation());
     for (auto& outTile : parameters._tiling) {
         auto inTiles = tilingBuilderOp.backInferTileInfo(outTile, _log);
-        tilesTypes.push_back(getTileDistributions(nceOp.getOperation(), siblingsAnalysis, outTile, inTiles));
+        tilesTypes.push_back(
+                getTileDistributions(nceOp.getOperation(), siblingsAnalysis, outTile, parameters._strategy, inTiles));
     }
 
     // Add extra weights DMA costs
@@ -398,7 +460,8 @@ StrategyCost LayerVPUNNCost::getNCELayerCost(VPU::NCEOpInterface nceOp, const VP
         return checked_cast<uint32_t>(getDMACost(
                 distributedType, _vpuDevice, _vpunnCostModel->get_TheoreticalDMA_cost_model_shared(), _numDMAPorts));
     };
-    auto vpunnLayerWeightsCosts = getPerTileWeightsDMACosts(nceOp, siblingsAnalysis, tilesTypes, getSpillingReadCost);
+    auto vpunnLayerWeightsCosts =
+            getPerTileWeightsDMACosts(nceOp, parameters._strategy, siblingsAnalysis, tilesTypes, getSpillingReadCost);
     _log.trace("VPUNN weights DMA costs {0}", vpunnLayerWeightsCosts);
     auto [cost, costWithPrefetching] = getWeightsDMACostForNCEOp(nceOp, parameters._tiling, vpunnLayerDPUCosts,
                                                                  vpunnLayerWeightsCosts, isPrefetchTilingEnabled, _log);
@@ -421,7 +484,7 @@ StrategyCost LayerVPUNNCost::getSWLayerCost(VPU::SWOpInterface swOp, const VPUNN
     auto outputType = mlir::cast<vpux::NDTypeInterface>(swOp->getResult(0).getType());
     auto outputTiling = parameters._tiling;
     auto isShave2APIUsed = _vpunnCostModel->get_cost_model_shared()->isShave2ApiUsed();
-    const auto& shaveUtilInterface = VPU::CostModelConfig::getShaveCostModelUtilsInterface(_arch);
+    const auto& shaveUtilInterface = VPU::getShaveCostModelUtils(swOp->getContext());
 
     if (outputTiling.empty()) {
         outputTiling.push_back(TileInfo(outputType.getShape()));
@@ -465,6 +528,7 @@ StrategyCost LayerVPUNNCost::getSWLayerCost(VPU::SWOpInterface swOp, const VPUNN
             StrategyCost currentCost = 0;
             if (!vpunnLayer) {
                 currentCost = getSimpleLayerCost(outputTiledType, parameters);
+
             } else {
                 auto distributionMode = DistributionMode::NONE;
                 auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(swOp.getOperation());

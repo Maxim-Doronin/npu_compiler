@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -61,6 +62,27 @@ mlir::func::FuncOp findEntryPointFunc(mlir::Operation* op, Logger& log) {
     }
 
     return netFunc;
+}
+
+bool isArgStrided(mlir::ModuleOp module, size_t argIndex) {
+    auto netInfos = module.getOps<net::NetworkInfoOp>();
+    if (netInfos.empty()) {
+        return false;
+    }
+
+    auto netInfo = *(netInfos.begin());
+    auto inputs = to_small_vector(netInfo.getInputsInfo().getOps<net::DataInfoOp>());
+    if (argIndex < inputs.size()) {
+        return inputs[argIndex]->getAttr(vpux::dynamicStridesAttrName) != nullptr;
+    } else {
+        auto outputs = to_small_vector(netInfo.getOutputsInfo().getOps<net::DataInfoOp>());
+        auto outIdx = argIndex - inputs.size();
+        if (outIdx < outputs.size()) {
+            return outputs[outIdx]->getAttr(vpux::dynamicStridesAttrName) != nullptr;
+        }
+    }
+
+    return false;
 }
 
 }  // namespace vpux::net

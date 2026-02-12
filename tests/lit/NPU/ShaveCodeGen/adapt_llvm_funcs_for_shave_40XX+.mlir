@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -109,16 +109,16 @@ module @SingleCosLayer {
 // CHECK: [[OUTPUT_PTR:%.+]] = llvm.getelementptr [[ARG0]][48] : (!llvm.ptr) -> !llvm.ptr, i8
 // CHECK: [[OUTPUT_ADDR:%.+]] = llvm.load [[OUTPUT_PTR]] : !llvm.ptr -> !llvm.ptr
 
-// CHECK: llvm.call @__impl_generated_0({{.*}}, [[INPUT_ADDR]], {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, [[OUTPUT_ADDR]], {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}, {{.*}}) : (!llvm.ptr, !llvm.ptr, i32, i32, i32, i32, i32, i32, i32, i32, i32, !llvm.ptr, !llvm.ptr, i32, i32, i32, i32, i32, i32, i32, i32, i32) -> !llvm.struct<(ptr, ptr, i32, array<4 x i32>, array<4 x i32>)>
+// CHECK: llvm.call @__impl_generated_0({{.+}}, [[INPUT_ADDR]], {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, [[OUTPUT_ADDR]], {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}, {{.+}}) : (!llvm.ptr, !llvm.ptr, i32, i32, i32, i32, i32, i32, i32, i32, i32, !llvm.ptr, !llvm.ptr, i32, i32, i32, i32, i32, i32, i32, i32, i32) -> !llvm.struct<(ptr, ptr, i32, array<4 x i32>, array<4 x i32>)>
 
 // CHECK: llvm.return
 
 
-// CHECK: llvm.func internal @__impl_generated_0({{.*}}: !llvm.ptr, [[ARG1:%.*]]: !llvm.ptr, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: !llvm.ptr, [[ARG12:%.*]]: !llvm.ptr, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32) -> !llvm.struct<(ptr, ptr, i32, array<4 x i32>, array<4 x i32>)> {
+// CHECK: llvm.func internal @__impl_generated_0({{.+}}: !llvm.ptr, [[ARG1:%.+]]: !llvm.ptr, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: !llvm.ptr, [[ARG12:%.+]]: !llvm.ptr, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32) -> !llvm.struct<(ptr, ptr, i32, array<4 x i32>, array<4 x i32>)> {
 
-// CHECK: [[INPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[ARG1]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+// CHECK: [[INPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[ARG1]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
 // CHECK: [[INPUT_VALUE:%.+]] = llvm.load [[INPUT_VALUE_PTR]] : !llvm.ptr -> f16
 // CHECK: [[COMPUTATION_RES:%.+]] = llvm.intr.cos([[INPUT_VALUE]])  : (f16) -> f16
 
-// CHECK: [[OUTPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[ARG12]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+// CHECK: [[OUTPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[ARG12]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
 // CHECK: llvm.store [[COMPUTATION_RES]], [[OUTPUT_VALUE_PTR]] : f16, !llvm.ptr

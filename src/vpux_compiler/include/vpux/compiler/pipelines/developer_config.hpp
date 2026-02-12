@@ -51,8 +51,10 @@ private:
     bool _localReproducer = true;
 
     std::string _irPrintingFilter;
-    std::string _irPrintingFile;
+    std::string _irPrintingLocation;
+    std::string _irPrintingFile;  // deprecated #E194687
     std::string _irPrintingOrderStr;
+    bool _printToFileTree = false;
     bool _printFullIR = false;
     bool _printFullConstant = false;
     bool _useSharedConstants = true;

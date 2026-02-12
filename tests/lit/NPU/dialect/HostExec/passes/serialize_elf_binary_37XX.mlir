@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -42,7 +42,7 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
       %0 = VPUMI37XX.ConfigureBarrier {consumer_count = 0 : ui8, producer_count = 1 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
       %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x3x60x60xf16, @DDR>
       %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x3x60x60xf16, @DDR>
-      %3 = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%1 : memref<1x3x60x60xf16, @DDR>) outputs(%2 : memref<1x3x60x60xf16, @DDR>) updates(%0 : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+      %3 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%1 : memref<1x3x60x60xf16, @DDR>) outputs(%2 : memref<1x3x60x60xf16, @DDR>) updates(%0 : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
       %4 = VPUMI37XX.MappedInference dmas(%3 : !VPURegMapped.Index<0:0:0>) barriers(%0 : !VPURegMapped.Index<0:0:0>) dmaCount([1, 0]) invariantCount(0) variantCount(0) actKernelRangesCount(0) actKernelInvocationsCount(0) barrierCount(1) -> !VPURegMapped.Index<0:0:0>
       %5 = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.dmaTasks0"} -> !ELFNPU37XX.Section {
         ELFNPU37XX.PutOpInSection %3 : !VPURegMapped.Index<0:0:0>
@@ -79,22 +79,22 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
         ELFNPU37XX.PutOpInSection %16 : !ELFNPU37XX.Symbol
       }
       %c0_i8 = arith.constant 0 : i8
-      %19 = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") {isBuiltin} : i8
+      %19 = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") <{isBuiltin}> : i8
       %c1_i8 = arith.constant 1 : i8
-      %20 = ELFNPU37XX.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR") {isBuiltin} : i8
+      %20 = ELFNPU37XX.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR") <{isBuiltin}> : i8
       %c2_i8 = arith.constant 2 : i8
-      %21 = ELFNPU37XX.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") {isBuiltin} : i8
+      %21 = ELFNPU37XX.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") <{isBuiltin}> : i8
       %c3_i8 = arith.constant 3 : i8
-      %22 = ELFNPU37XX.Symbol %c3_i8 name("VPU_NNRD_SYM_RTM_DMA0") {isBuiltin} : i8
+      %22 = ELFNPU37XX.Symbol %c3_i8 name("VPU_NNRD_SYM_RTM_DMA0") <{isBuiltin}> : i8
       %c4_i8 = arith.constant 4 : i8
-      %23 = ELFNPU37XX.Symbol %c4_i8 name("VPU_NNRD_SYM_RTM_DMA1") {isBuiltin} : i8
+      %23 = ELFNPU37XX.Symbol %c4_i8 name("VPU_NNRD_SYM_RTM_DMA1") <{isBuiltin}> : i8
       %c5_i8 = arith.constant 5 : i8
-      %24 = ELFNPU37XX.Symbol %c5_i8 name("VPU_NNRD_SYM_FIFO_BASE") {isBuiltin} : i8
+      %24 = ELFNPU37XX.Symbol %c5_i8 name("VPU_NNRD_SYM_FIFO_BASE") <{isBuiltin}> : i8
       %c6_i8 = arith.constant 6 : i8
-      %25 = ELFNPU37XX.Symbol %c6_i8 name("VPU_NNRD_SYM_BARRIERS_START") {isBuiltin} : i8
+      %25 = ELFNPU37XX.Symbol %c6_i8 name("VPU_NNRD_SYM_BARRIERS_START") <{isBuiltin}> : i8
       %c7_i8 = arith.constant 7 : i8
-      %26 = ELFNPU37XX.Symbol %c7_i8 name("VPU_NNRD_SYM_HW_REGISTER") {isBuiltin} : i8
-      %27 = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") {isBuiltin} -> !ELFNPU37XX.Section {
+      %26 = ELFNPU37XX.Symbol %c7_i8 name("VPU_NNRD_SYM_HW_REGISTER") <{isBuiltin}> : i8
+      %27 = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") <{isBuiltin}> -> !ELFNPU37XX.Section {
         ELFNPU37XX.PutOpInSection %19 : !ELFNPU37XX.Symbol
         ELFNPU37XX.PutOpInSection %20 : !ELFNPU37XX.Symbol
         ELFNPU37XX.PutOpInSection %21 : !ELFNPU37XX.Symbol
@@ -164,7 +164,7 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
 
   // CHECK:   HostExec.Binary @module0 {
   // CHECK:   HostExec.BinaryData @serialized_dma_copy
-  // CHECK-SAME:   <object = "\7FELF\02\01\00\00\00\{{.*}}">
+  // CHECK-SAME:   <object = "\7FELF\02\01\00\00\00\{{.+}}">
   // CHECK:   func.func private @dma_copy(memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
   // CHECK:   }
   // CHECK:   func.func @main(%arg0: memref<1x3x60x60xf16, @DDR>, %arg1: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {

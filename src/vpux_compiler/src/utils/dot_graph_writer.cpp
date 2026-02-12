@@ -1,27 +1,22 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/dot_graph_writer.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
-#include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
+#include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 
-#include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
-
 #ifdef _MSC_VER
 #pragma warning(push)
-#ifndef COMPILER_FOR_DRIVER_ENABLED
-#pragma warning(disable : 4267)  // size_t to integer conversion
-#endif
 #endif
 
 #include <llvm/ADT/DenseSet.h>

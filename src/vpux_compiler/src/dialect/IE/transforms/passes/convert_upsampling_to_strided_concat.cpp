@@ -38,8 +38,8 @@ auto getConcatResult(mlir::PatternRewriter& rewriter, vpux::Dim axis, int64_t fa
     }
 
     return rewriter
-            .create<IE::ConcatOp>(takeOpLoc(origOp, StringLiteral("concat_cst_d{0}"), axis.ind()),
-                                  mlir::ValueRange(concatInputs), axis, 1, factor)
+            .create<IE::ConcatOp>(takeOpLoc(origOp, "concat_cst_d{0}", axis.ind()), mlir::ValueRange(concatInputs),
+                                  axis, 1, factor)
             .getOutput();
 }
 
@@ -155,7 +155,8 @@ mlir::LogicalResult ConvertUpsamplingToStridedConcatPass::UpsamplingOpConverter:
         auto zeroFpAttr = getFPAttr(rewriter, 0.0f);
         auto padingOp = rewriter.create<IE::PadOp>(takeOpLoc(origOp, "pad_out"), upsamplingResult, nullptr, nullptr,
                                                    nullptr, padBeginAttr, padEndAttr, zeroFpAttr, IE::PadMode::CONSTANT,
-                                                   origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+                                                   origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr(), nullptr,
+                                                   nullptr);
         upsamplingResult = padingOp.getOutput();
     }
 

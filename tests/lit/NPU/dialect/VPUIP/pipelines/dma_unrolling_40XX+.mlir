@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,7 +30,7 @@ func.func @UnrollS2DepthAndUpsamplingDMA() -> !OutputDistributed {
     %outputOfS2D = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}
+        VPUIP.SpaceToDepthDMA <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
               inputs(%inputToS2D : memref<1x4x48x48x!qElemType, #NHWC, [@CMX_NN, 0]>)
               outputs(%outputOfS2D : !OutputDistributed) -> !OutputDistributed
     }
@@ -38,7 +38,7 @@ func.func @UnrollS2DepthAndUpsamplingDMA() -> !OutputDistributed {
     %inputOfUpsDMA = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x3x30x1xf16, @DDR>
     %outputOfUpsDMA = VPURT.DeclareBuffer <DDR> <0> -> memref<1x16x60x1xf16, @DDR>
     VPURT.Task waits(%bar2 : !VPURT.Barrier) updates(%bar3 : !VPURT.Barrier) {
-        %upsDMA = VPUIP.UpsamplingDMAOp {expand = [0, 13, 0, 0], port = 1 : i64, upsampling_factor = [1, 1, 2, 1]}
+        %upsDMA = VPUIP.UpsamplingDMAOp <{expand = [0, 13, 0, 0], port = 1 : i64, upsampling_factor = [1, 1, 2, 1]}>
           inputs(%inputOfUpsDMA : memref<1x3x30x1xf16, @DDR>)
           outputs(%outputOfUpsDMA : memref<1x16x60x1xf16, @DDR>) -> memref<1x16x60x1xf16, @DDR>
     }
@@ -209,7 +209,7 @@ func.func @UnrollS2DepthAndUpsamplingDMA() -> !OutputDistributed {
     //CHECK:    [[INPUT_BUFFER:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x90x1xf16, [@DDR, 0]>
     //CHECK:    [[OUTPUT_BUFFER:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x16x60x1xf16, @DDR>
     //CHECK:    VPURT.Task waits([[BARRIER_2]] : !VPURT.Barrier) updates([[BARRIER_3]] : !VPURT.Barrier)
-    //CHECK:        VPUIP.UpsamplingDMAOp {
+    //CHECK:        VPUIP.UpsamplingDMAOp <{
     //CHECK-SAME:       dma_descriptor = #VPUIP.DMADescriptorAttr<
     //CHECK-SAME:       numPlanes = 90 : i64,
     //CHECK-SAME:       len = 2 : i64,

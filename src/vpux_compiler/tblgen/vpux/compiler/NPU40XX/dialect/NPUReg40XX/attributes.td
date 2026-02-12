@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -78,7 +78,7 @@ def ManagedMappedInferenceDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect
 def MMIDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuManagedMappedInference", "VpuManagedMappedInferenceAttr", "NPUReg40XX"> {}
 
 def WorkItemDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::WorkItem", "WorkItem"> {}
-def WorkItenDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::WorkItem", "WorkItemAttr", "NPUReg40XX"> {}
+def WorkItemDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::WorkItem", "WorkItemAttr", "NPUReg40XX"> {}
 
 def MappedInferenceDescriptorAttr : DescriptorAttrBase<NPUReg40XX_Dialect, "vpux::NPUReg40XX::Descriptors::VpuMappedInference", "VpuMappedInference"> {}
 def MIDescriptorProp : PropertyBase<"vpux::NPUReg40XX::Descriptors::VpuMappedInference", "VpuMappedInferenceAttr", "NPUReg40XX"> {}

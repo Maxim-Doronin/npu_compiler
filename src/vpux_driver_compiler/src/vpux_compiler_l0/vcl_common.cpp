@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -399,8 +399,8 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     }
 
-    /// Force to use MLIR compiler.
-    config[ov::intel_npu::compiler_type.name()] = "MLIR";
+    /// Force to use PLUGIN compiler.
+    config[ov::intel_npu::compiler_type.name()] = "PLUGIN";
 
     // If platform exists, check if it has a valid value
     if (config.find(ov::intel_npu::platform.name()) != config.end()) {
@@ -599,12 +599,39 @@ vcl_result_t BuildInfo::prepareModel(const uint8_t* modelIR, uint64_t modelIRSiz
                 std::make_shared<ov::OpExtension<ov::op::internal::RMS>>(),
                 std::make_shared<ov::OpExtension<ov::op::internal::RoPE>>(),
                 std::make_shared<ov::OpExtension<ov::op::internal::GroupQueryAttention>>()};
+        std::ostringstream error_message;
 
-        if (!parsedConfig.get<intel_npu::USE_BASE_MODEL_SERIALIZER>()) {
-            model = deserialize_ir_model_optimized(const_cast<uint8_t*>(modelIR), currentAPIVersion, extensionsVector);
-        } else {
+        if (!parsedConfig.has<intel_npu::MODEL_SERIALIZER_VERSION>()) {
+            // Plugin versions older than the "model_serializer_version" config option won't specify a serialization
+            // algorithm. The default is "AUTO" which results in an error in the code below. In this case, the older
+            // deserializer ("all weights copy") should be used.
+            parsedConfig.update({{ov::intel_npu::model_serializer_version.name(), "ALL_WEIGHTS_COPY"}});
+        }
+
+        switch (parsedConfig.get<intel_npu::MODEL_SERIALIZER_VERSION>()) {
+        case ov::intel_npu::ModelSerializerVersion::ALL_WEIGHTS_COPY:
             model = deserialize_ir_model_base(const_cast<uint8_t*>(modelIR), modelIRSize, currentAPIVersion,
                                               extensionsVector);
+            break;
+        case ov::intel_npu::ModelSerializerVersion::NO_WEIGHTS_COPY:
+            model = deserialize_ir_model_optimized(const_cast<uint8_t*>(modelIR), currentAPIVersion, extensionsVector);
+            break;
+        case ov::intel_npu::ModelSerializerVersion::AUTO:
+            error_message << "The driver-compiler adapter received an unsupported value for the "
+                             "\"ov::intel_npu::model_serializer_version\" config option. Received: AUTO. AUTO can only "
+                             "be used by the NPU plugin to allow it to choose a fitting version of the model "
+                             "marhsalling algorithm. This adapter requires the version to be specified explicitly. "
+                             "Supported values: "
+                          << ov::intel_npu::ModelSerializerVersion::ALL_WEIGHTS_COPY << ", "
+                          << ov::intel_npu::ModelSerializerVersion::NO_WEIGHTS_COPY << ".";
+            throw std::invalid_argument(error_message.str());
+        default:
+            error_message << "The driver-compiler adapter received an unsupported value for the "
+                             "\"ov::intel_npu::model_serializer_version\" config option. Received: "
+                          << parsedConfig.get<intel_npu::MODEL_SERIALIZER_VERSION>()
+                          << ". Supported: " << ov::intel_npu::ModelSerializerVersion::ALL_WEIGHTS_COPY << ", "
+                          << ov::intel_npu::ModelSerializerVersion::NO_WEIGHTS_COPY << ".";
+            throw std::invalid_argument(error_message.str());
         }
 
 #ifdef VPUX_DEVELOPER_BUILD

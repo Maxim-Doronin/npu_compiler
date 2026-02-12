@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2025 Intel Corporation
+// Copyright (C) 2019-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,6 +38,7 @@ TEST_P(InterpolateLayerTest_NPU4000, HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(InterpolateLayerTest_NPU5010, HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
@@ -47,6 +48,7 @@ TEST_P(InterpolateLayerTest_NPU5010_Asymmetric, HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 
@@ -1530,6 +1532,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NCHW_Downscale_axes12_tileH, I
                          interpolateLinearNCHWDownscaleAxes12TileH, InterpolateLayerTest_NPU4000::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_Tiling_NHWC_Downscale_axes12_tileW, InterpolateLayerTest_NPU4000,
                          interpolateLinearNHWCDownscaleAxes12TileW, InterpolateLayerTest_NPU4000::getTestCaseName);
+
 // --------------------------------------------------
 // ------ NPU5010 NoTiling Interpolate Testing ------
 // --------------------------------------------------

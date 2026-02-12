@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,11 +7,14 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/strides_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/compiler/utils/reshape_utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -95,6 +98,7 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
     const auto outputShape = viewOpOutputType.getShape();
     const auto isRankChangedByViewOp = inputShape.size() != outputShape.size();
     auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(copyOpInput.getType());
+    const auto arch = config::getArch(origOp.getOperation());
     mlir::FailureOr<std::pair<int64_t, int64_t>> getDistributedAxesMapping = mlir::failure();
     if (distributedType != nullptr && mlir::isa<VPUIP::ShapeCastOp, VPUIP::GenericReshapeOp>(origOp)) {
         getDistributedAxesMapping = VPUIP::getDistributedAxesMappingAfterShapeChanged(
@@ -155,7 +159,6 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
             }
 
             if (mlir::isa<VPUIP::ShapeCastOp, VPUIP::GenericReshapeOp>(origOp)) {
-                const auto arch = config::getArch(origOp.getOperation());
                 return VPUIP::isDistributedCompatibleAfterShapeChangeForViewOps<VPUIP::DistributedBufferType>(
                         distributedType, viewOpOutputShape, viewOpOutputType.getDimsOrder(), arch);
             }
@@ -228,18 +231,25 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
         }
     }
 
-    // TODO: #62719
     const auto inReqs = StrideReqs::compact(copyOpInputType.getRank());
-    if (!inReqs.checkStrides(copyOpInputType)) {
-        _log.trace("Skip complex case: input is strided");
-        return mlir::failure();
+    const auto isInStridedCopy = !inReqs.checkStrides(copyOpInputType);
+    const auto isOutStridedCopy = !inReqs.checkStrides(copyOpOutputType);
+    if (isInStridedCopy) {
+        if (distributedType || isOutStridedCopy) {
+            _log.trace("Skip complex case: input is strided CMX or both input and output are strided");
+            return mlir::failure();
+        }
+        auto copyIsEfficient = vpux::VPUIP::isDDRCopyEfficient(copyOpInputType, arch);
+        if (!copyIsEfficient) {
+            _log.trace("Skip complex case: input DDR Copy is not efficient as contiguous one");
+            return mlir::failure();
+        }
     }
 
     vpux::NDTypeInterface newViewOpOutputType;
 
     auto getDistributionForViewOpOutput = [&]() -> VPU::DistributionInfoAttr {
         auto ctx = origOp->getContext();
-        const auto arch = config::getArch(origOp.getOperation());
         const auto mode = distributedType.getDistribution().getMode().getValue();
         const auto origDistribution = distributedType.getDistribution();
 
@@ -247,9 +257,9 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
             auto inPermuteType = mlir::cast<vpux::NDTypeInterface>(permuteCast->getOperand(0).getType());
             auto outPermuteType = mlir::cast<vpux::NDTypeInterface>(permuteCast->getResult(0).getType());
 
-            return applyPermutationOnDistributionInfoAttr(distributedType, permuteCast.getMemPerm(),
-                                                          inPermuteType.getDimsOrder(), outPermuteType.getDimsOrder(),
-                                                          inPermuteType.getShape(), outPermuteType.getShape())
+            return VPU::applyPermutationOnDistributionInfoAttr(
+                           distributedType, permuteCast.getMemPerm(), inPermuteType.getDimsOrder(),
+                           outPermuteType.getDimsOrder(), inPermuteType.getShape(), outPermuteType.getShape())
                     .value_or(nullptr);
         }
 
@@ -281,7 +291,7 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
             return VPU::DistributionInfoAttr::get(ctx, duplicatedOutputMode, nullptr, nullptr, nullptr, nullptr,
                                                   origDistribution.getNumClusters(), nullptr,
                                                   origDistribution.getUniformDistributedSegments(), nullptr, nullptr,
-                                                  nullptr, nullptr, nullptr);
+                                                  nullptr, nullptr, nullptr, nullptr);
         }
 
         // GenericReshape and ShapeCast can change the output shape without needing to follow any rule.
@@ -291,9 +301,9 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
         // However, GenericReshape & ShapeCast are ops that work on the memory view and do not need compute view
         // at all, so to ensure we do not end up with an output with a clustering dim that cannot be tiled, we're
         // setting distribution as DUPLICATED for output.
-        return VPU::getNonOverlappedDistributedAttr(viewOpOutputShape, duplicatedOutputMode, nullptr,
-                                                    origDistribution.getNumClusters(), nullptr,
-                                                    origDistribution.getUniformDistributedSegments(), ctx);
+        return VPU::getNonOverlappedDistributedAttr(
+                viewOpOutputShape, duplicatedOutputMode, nullptr, origDistribution.getNumClusters(), nullptr,
+                origDistribution.getUniformDistributedSegments(), distributedType.getElementType(), ctx);
     };
 
     if (distributedType != nullptr) {
@@ -312,6 +322,39 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
         newViewOpOutputType = viewOpOutputType.changeMemSpace(copyOpInputType.getMemSpace());
     }
 
+    // Update strides when input strided DDR and output contiguous or input contiguous and output strided
+    if (isInStridedCopy) {
+        std::optional<vpux::NDTypeInterface> strideUpdatedOutType;
+        if (mlir::isa<VPUIP::GenericReshapeOp, VPUIP::PermuteCastOp>(origOp)) {
+            strideUpdatedOutType = updateStridesForReshape(copyOpInputType, newViewOpOutputType);
+        } else if (mlir::isa<VPUIP::ShapeCastOp>(origOp)) {
+            auto iface = mlir::dyn_cast<mlir::InferTypeOpInterface>(*origOp);
+            VPUX_THROW_WHEN(iface == nullptr, "ShapeCastOp does not inherit InferTypeOpInterface");
+            SmallVector<mlir::Type> newTypes;
+            const auto isLegal = iface.inferReturnTypes(origOp->getContext(), origOp->getLoc(),
+                                                        mlir::ValueRange{copyOpInput}, origOp->getAttrDictionary(),
+                                                        origOp->getPropertiesStorage(), origOp->getRegions(), newTypes)
+                                         .succeeded();
+            if (isLegal) {
+                strideUpdatedOutType = mlir::cast<vpux::NDTypeInterface>(newTypes[0]);
+            }
+        } else if (mlir::isa<VPUIP::QuantizeCastOp>(origOp)) {
+            const auto inputStrides = copyOpInputType.getStrides();
+            strideUpdatedOutType = newViewOpOutputType.changeStrides(inputStrides);
+        }
+        if (strideUpdatedOutType.has_value()) {
+            newViewOpOutputType = strideUpdatedOutType.value();
+            _log.trace("Updated type strides {0} for reshape op {1}", newViewOpOutputType, origOp->getLoc());
+        } else {
+            _log.trace("Failed to update strides for reshape op {0}", origOp->getLoc());
+            return mlir::failure();
+        }
+    } else if (isOutStridedCopy) {
+        // !isInStridedCopy && isOutStridedCopy
+        const auto& inputStrides = copyOpInputType.getStrides();
+        newViewOpOutputType = newViewOpOutputType.changeStrides(inputStrides);
+    }
+
     _log.trace("Set new input for '{0}': '{1}'", origOp->getName(), copyOpInput);
     origOp->setOperand(0, copyOpInput);
 
@@ -321,7 +364,7 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
     rewriter.setInsertionPointAfter(origOp);
 
     auto newAllocType = viewOpOutputType.changeMemSpace(copyOpOutputType.getMemSpace());
-    auto allocOp = allocateBuffersOfType(_log, maybeCopy->getLoc(), rewriter, newAllocType).front();
+    auto allocOp = VPUIP::allocateBuffersOfType(_log, maybeCopy->getLoc(), rewriter, newAllocType).front();
     auto newCopyOp = rewriter.create<VPUIP::CopyOp>(maybeCopy->getLoc(), origOp->getResult(0), allocOp);
 
     _log.trace("Replace all uses of pure view-like op with new Copy op: '{0}'", newCopyOp);
@@ -415,6 +458,8 @@ mlir::LogicalResult MoveSubviewToTheFrontOfCopy::matchAndRewrite(VPUIP::CopyOp c
     const auto targetElemType = mlir::cast<vpux::NDTypeInterface>(newSubViewOp.getResult().getType()).getElementType();
     allocOp->getResult(0).setType(allocOpDtype.changeShapeElemType(subViewOpShape, targetElemType));
 
+    // Set insertion point after the newly created SubView to ensure proper parent-child relationship
+    rewriter.setInsertionPointAfter(newSubViewOp);
     auto newParentOp =
             rewriter.create<VPUIP::CopyOp>(newSubViewOp->getLoc(), newSubViewOp->getResult(0), allocOp->getResult(0));
     if (newParentOp->isBeforeInBlock(allocOp)) {

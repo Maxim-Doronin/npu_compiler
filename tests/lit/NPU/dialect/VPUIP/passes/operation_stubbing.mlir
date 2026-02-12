@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,9 +19,9 @@ func.func @StubIEMemPermute(%arg0: tensor<1x16x2x3xf32>) -> tensor<1x3x16x2xf32>
     return %0 : tensor<1x3x16x2xf32>
 
     // CHECK-NOT:   IE.MemPermute
-    // CHECK:       %[[STUB:.*]] = IE.Stub
+    // CHECK:       [[STUB:%.+]] = IE.Stub
     // CHECK-SAME:      tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
-    // CHECK:       return %[[STUB]]
+    // CHECK:       return [[STUB]]
     // CHECK-SAME:      tensor<1x3x16x2xf32>
 }
 
@@ -34,8 +34,8 @@ func.func @StubVPUMemPermute(%arg0: tensor<1x16x2x3xf32>) -> tensor<1x3x16x2xf32
     return %0 : tensor<1x3x16x2xf32>
 
     // CHECK-NOT:   VPU.MemPermute
-    // CHECK:       %[[MemPermute:.*]] = VPU.MemPermute
+    // CHECK:       [[MemPermute:%.+]] = VPU.MemPermute
     // CHECK-SAME:      tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
-    // CHECK:       return %[[MemPermute]]
+    // CHECK:       return [[MemPermute]]
     // CHECK-SAME:      tensor<1x3x16x2xf32>
 }

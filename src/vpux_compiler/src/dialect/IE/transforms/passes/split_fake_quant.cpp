@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/mpe_engine_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -140,11 +141,9 @@ mlir::LogicalResult UseQuantDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
     const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
 
     auto lowFpType = origOp.getLowFpType();
-    VPUX_THROW_WHEN(
-            (lowFpType.has_value() && !mlir::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>(lowFpType.value())),
-            "[{0}] Unsupported low precision type"),
+    VPUX_THROW_WHEN((lowFpType.has_value() && !isLowFpType(lowFpType.value())), "[{0}] Unsupported low precision type"),
             getDebugName();
-    auto isSigned = lowFpType.has_value() && mlir::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>(lowFpType.value());
+    auto isSigned = lowFpType.has_value() && isLowFpType(lowFpType.value());
 
     if (!lowFpType.has_value()) {
         mlir::Value value = origOp.getInput();
@@ -333,35 +332,10 @@ mlir::LogicalResult UseConstDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
             const auto isSigned = Const::hasNegativeValues(inLowContent);
             if (!isLowPrecisionTypeRange(getContext(), ArrayRef(inLowContent.getSplatValue<float>()),
                                          ArrayRef(inHighContent.getSplatValue<float>()), *levels, isSigned)) {
-                // #E128147: add subbyte type support
-                if (levels > 16) {
-                    const auto quantizedElemType =
-                            getQuantizedType(inLowConst.getContentAttr(), inHighConst.getContentAttr(), levels,
-                                             origOp.getLowFpType(), realElemType, isSigned, origOp.getLoc(),
-                                             origOp.getAutoBroadcast(), multiZeroPoint, innerLog);
-                    inConstAttr = inConst.transformContentAttr().quantize(quantizedElemType).get();
-                } else {
-                    double intQLow = 0.;
-                    double intQHigh = 0.;
-                    std::tie(intQLow, intQHigh, std::ignore) = getStorageParams(getContext(), levels.value(), isSigned);
-                    auto qLow = checked_cast<float>(intQLow);
-                    auto qHigh = checked_cast<float>(intQHigh);
-
-                    auto inLow = inLowContent.getSplatValue<float>();
-                    auto inHigh = inHighContent.getSplatValue<float>();
-                    const auto inConstContent = inConst.getContent();
-                    const auto inVals = inConstContent.getValues<float>();
-                    SmallVector<float> quantizedVals(inVals.size());
-                    for (size_t i = 0; i < inVals.size(); ++i) {
-                        quantizedVals[i] = fakeQuantize(inVals[i], inLow, inHigh, qLow, qHigh, levels.value());
-                    }
-
-                    // Generate the Const::ContentAttr with the adjusted constant content
-                    const auto inConstStorageType = mlir::dyn_cast<mlir::RankedTensorType>(inConstContent.getType());
-                    const auto quantizedConstElementVal =
-                            Const::createConstContent(inConstStorageType, ArrayRef(quantizedVals));
-                    inConstAttr = Const::ContentAttr::get(quantizedConstElementVal);
-                }
+                const auto quantizedElemType = getQuantizedType(
+                        inLowConst.getContentAttr(), inHighConst.getContentAttr(), levels, origOp.getLowFpType(),
+                        realElemType, isSigned, origOp.getLoc(), origOp.getAutoBroadcast(), multiZeroPoint, innerLog);
+                inConstAttr = inConst.transformContentAttr().quantize(quantizedElemType).get();
             }
         }
     }
@@ -382,8 +356,15 @@ mlir::LogicalResult UseConstDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
     newInConstAttrSetup = newInConstAttrSetup.castElemType(qElemType);
     const auto moduleOp = getModuleOp(origOp.getOperation());
     const auto isAsymmetricPerChannelZeroPointSupported = config::asymmetricPerChannelZeroPointSupported(moduleOp);
-    // Fuse dequantize to const directly since it could not convert to HW for multi Zero Point case
+
+    // Check if this FQ is feeding a specific operation type that needs special handling
+    bool shouldDequantize = false;
     if (!isAsymmetricPerChannelZeroPointSupported && multiZeroPoint) {
+        shouldDequantize = true;
+    }
+
+    // Fuse dequantize to const directly since it could not convert to HW for multi zero point case
+    if (shouldDequantize) {
         newInConstAttrSetup = newInConstAttrSetup.dequantize();
         rewriter.replaceOpWithNewOp<Const::DeclareOp>(origOp, origOp.getType(), newInConstAttrSetup.get())
                 ->setLoc(inConst->getLoc());

@@ -29,20 +29,12 @@ VpuTestEnvConfig::VpuTestEnvConfig() {
         IE_NPU_TESTS_DUMP_PATH = var;
     }
 
-    if (auto var = std::getenv("IE_KMB_TESTS_LOG_LEVEL")) {
-        IE_NPU_TESTS_LOG_LEVEL = var;
-    }
-
     if (auto var = std::getenv("IE_KMB_TESTS_RUN_COMPILER")) {
         IE_NPU_TESTS_RUN_COMPILER = envVarStrToBool("IE_KMB_TESTS_RUN_COMPILER", var);
     }
 
     if (auto var = std::getenv("IE_KMB_TESTS_RUN_EXPORT")) {
         IE_NPU_TESTS_RUN_EXPORT = envVarStrToBool("IE_KMB_TESTS_RUN_EXPORT", var);
-    }
-
-    if (auto var = std::getenv("IE_KMB_TESTS_RUN_IMPORT")) {
-        IE_NPU_TESTS_RUN_IMPORT = envVarStrToBool("IE_KMB_TESTS_RUN_IMPORT", var);
     }
 
     if (auto var = std::getenv("IE_KMB_TESTS_RUN_INFER")) {
@@ -69,10 +61,6 @@ VpuTestEnvConfig::VpuTestEnvConfig() {
         IE_NPU_TESTS_IMPORT_REF = envVarStrToBool("IE_KMB_TESTS_IMPORT_REF", var);
     }
 
-    if (auto var = std::getenv("IE_KMB_TESTS_RAW_EXPORT")) {
-        IE_NPU_TESTS_RAW_EXPORT = envVarStrToBool("IE_KMB_TESTS_RAW_EXPORT", var);
-    }
-
     if (auto var = std::getenv("IE_KMB_TESTS_LONG_FILE_NAME")) {
         IE_NPU_TESTS_LONG_FILE_NAME = envVarStrToBool("IE_KMB_TESTS_LONG_FILE_NAME", var);
     }
@@ -90,20 +78,12 @@ VpuTestEnvConfig::VpuTestEnvConfig() {
         IE_NPU_TESTS_DUMP_PATH = var;
     }
 
-    if (auto var = std::getenv("IE_NPU_TESTS_LOG_LEVEL")) {
-        IE_NPU_TESTS_LOG_LEVEL = var;
-    }
-
     if (auto var = std::getenv("IE_NPU_TESTS_RUN_COMPILER")) {
         IE_NPU_TESTS_RUN_COMPILER = envVarStrToBool("IE_NPU_TESTS_RUN_COMPILER", var);
     }
 
     if (auto var = std::getenv("IE_NPU_TESTS_RUN_EXPORT")) {
         IE_NPU_TESTS_RUN_EXPORT = envVarStrToBool("IE_NPU_TESTS_RUN_EXPORT", var);
-    }
-
-    if (auto var = std::getenv("IE_NPU_TESTS_RUN_IMPORT")) {
-        IE_NPU_TESTS_RUN_IMPORT = envVarStrToBool("IE_NPU_TESTS_RUN_IMPORT", var);
     }
 
     if (auto var = std::getenv("IE_NPU_TESTS_RUN_INFER")) {
@@ -128,10 +108,6 @@ VpuTestEnvConfig::VpuTestEnvConfig() {
 
     if (auto var = std::getenv("IE_NPU_TESTS_IMPORT_REF")) {
         IE_NPU_TESTS_IMPORT_REF = envVarStrToBool("IE_NPU_TESTS_IMPORT_REF", var);
-    }
-
-    if (auto var = std::getenv("IE_NPU_TESTS_RAW_EXPORT")) {
-        IE_NPU_TESTS_RAW_EXPORT = envVarStrToBool("IE_NPU_TESTS_RAW_EXPORT", var);
     }
 
     if (auto var = std::getenv("IE_NPU_TESTS_LONG_FILE_NAME")) {
@@ -185,6 +161,10 @@ std::string getDeviceName() {
 std::string getDeviceNameID(const std::string& str) {
     ov::DeviceIDParser parser = ov::DeviceIDParser(str);
     return parser.get_device_id();
+}
+
+std::string getTestDeviceId() {
+    return ov::intel_npu::Platform::standardize(VpuTestEnvConfig::getInstance().IE_NPU_TESTS_PLATFORM);
 }
 
 }  // namespace ov::test::utils

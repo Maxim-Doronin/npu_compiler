@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,10 +20,10 @@ module @NoBitcastUI {
   }
 
 // CHECK: module @NoBitcastUI
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x1xi32>, {{.*}}: tensor<1x1x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xi32>, {{.+}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xi32>, {{.+}}: tensor<1x1x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xi32>, {{.+}}: tensor<1x1x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x1xi32>, {{.+}}: tensor<1x1x16xi32>) -> tensor<1x1x16x16xi32>
 
   func.func @main(%arg0: tensor<1x1x16x1xui32>, %arg1: tensor<1x1x16xui32>) -> tensor<1x1x16x16xui32> {
     %r = IE.Maximum(%arg0, %arg1)  { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : tensor<1x1x16x1xui32>, tensor<1x1x16xui32> -> tensor<1x1x16x16xui32>
@@ -54,10 +54,10 @@ module @NoBitcastSI {
   }
 
 // CHECK: module @NoBitcastSI
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xi32>, {{.*}}: tensor<1x1x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x1xi32>, {{.*}}: tensor<1x1x16xi32>, {{.*}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xi32>, {{.+}}: tensor<1x1x16x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xi32>, {{.+}}: tensor<1x1x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xi32>, {{.+}}: tensor<1x1x16xi32>) -> tensor<1x1x16x16xi32>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x1xi32>, {{.+}}: tensor<1x1x16xi32>) -> tensor<1x1x16x16xi32>
 
   func.func @main(%arg0: tensor<1x1x16x1xsi32>, %arg1: tensor<1x1x16xsi32>) -> tensor<1x1x16x16xsi32> {
     %r = IE.Maximum(%arg0, %arg1)  { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : tensor<1x1x16x1xsi32>, tensor<1x1x16xsi32> -> tensor<1x1x16x16xsi32>
@@ -88,10 +88,10 @@ module @NoBitcastF {
   }
 
 // CHECK: module @NoBitcastF
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xf16>, {{.*}}: tensor<1x1x16x16xf16>, {{.*}}: tensor<1x1x16x16xf16>) -> tensor<1x1x16x16xf16>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xf16>, {{.*}}: tensor<1x1x16xf16>, {{.*}}: tensor<1x1x16x16xf16>) -> tensor<1x1x16x16xf16>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x16xf16>, {{.*}}: tensor<1x1x16xf16>, {{.*}}: tensor<1x1x16x16xf16>) -> tensor<1x1x16x16xf16>
-// CHECK-DAG: func.func @generated_{{.*}}({{.*}}: tensor<1x1x16x1xf16>, {{.*}}: tensor<1x1x16xf16>, {{.*}}: tensor<1x1x16x16xf16>) -> tensor<1x1x16x16xf16>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xf16>, {{.+}}: tensor<1x1x16x16xf16>) -> tensor<1x1x16x16xf16>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xf16>, {{.+}}: tensor<1x1x16xf16>) -> tensor<1x1x16x16xf16>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x16xf16>, {{.+}}: tensor<1x1x16xf16>) -> tensor<1x1x16x16xf16>
+// CHECK-DAG: func.func @generated_{{.+}}({{.+}}: tensor<1x1x16x1xf16>, {{.+}}: tensor<1x1x16xf16>) -> tensor<1x1x16x16xf16>
 
   func.func @main(%arg0: tensor<1x1x16x1xf16>, %arg1: tensor<1x1x16xf16>) -> tensor<1x1x16x16xf16> {
     %r = IE.Maximum(%arg0, %arg1)  { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : tensor<1x1x16x1xf16>, tensor<1x1x16xf16> -> tensor<1x1x16x16xf16>

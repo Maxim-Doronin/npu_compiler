@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,6 +37,7 @@ def IE_AcosOp :
         IE_LayerOp<
             "Acos",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -55,6 +56,7 @@ def IE_AcoshOp :
         IE_LayerOp<
             "Acosh",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -73,6 +75,7 @@ def IE_AsinOp :
         IE_LayerOp<
             "Asin",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -91,6 +94,7 @@ def IE_AsinhOp :
         IE_LayerOp<
             "Asinh",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -147,6 +151,7 @@ def IE_CeilingOp :
         IE_LayerOp<
             "Ceiling",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -289,18 +294,21 @@ def IE_FloorOp :
         IE_LayerOp<
             "Floor",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
     let summary = "InferenceEngine Floor layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, F64]>:$input
+        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input
     );
 
     let results = (outs
-        RankedTensorOf<[F16, F32, F64]>:$output
+        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$output
     );
+
+    let hasFolder = 1;
 }
 
 def IE_InverseOp :

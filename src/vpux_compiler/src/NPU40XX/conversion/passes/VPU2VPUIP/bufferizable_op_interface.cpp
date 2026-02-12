@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
+#include <mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h>
 #include <mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h>
 #include <mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h>
 #include <mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h>
@@ -22,11 +23,13 @@ class GatherDMAOpBufferizeModel :
 public:
     mlir::LogicalResult bufferizeImpl(VPU::GatherDMAOp origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      const mlir::bufferization::BufferizationState& state,
                                       VPU::GatherDMAOp::Adaptor& adaptor) const;
 };
 
 mlir::LogicalResult GatherDMAOpBufferizeModel::bufferizeImpl(VPU::GatherDMAOp origOp, mlir::RewriterBase& rewriter,
                                                              const mlir::bufferization::BufferizationOptions&,
+                                                             const mlir::bufferization::BufferizationState&,
                                                              VPU::GatherDMAOp::Adaptor& adaptor) const {
     return vpux::bufferizeOp(origOp->getContext(), origOp, adaptor, rewriter);
 }
@@ -46,12 +49,12 @@ void registerGatherDMAOpBufferizableOpInterfaces(mlir::DialectRegistry& registry
 void vpux::arch40xx::registerBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
     vpux::registerConstDeclareBufferizableOpInterfaces(registry);
     vpux::registerCoreBufferizableOpInterfaces(registry);
-    vpux::registerFuncAndReturnBufferizableOpInterfaces(registry);
     vpux::registerSoftwareLayerBufferizableOpInterfaces(registry);
     vpux::registerVpuNceBufferizableOpInterfaces(registry);
     vpux::registerVPUBufferizableOpInterfaces(registry);
     registerGatherDMAOpBufferizableOpInterfaces(registry);
 
+    mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
     mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);

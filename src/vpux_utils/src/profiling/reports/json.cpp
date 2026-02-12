@@ -18,6 +18,7 @@
 #include <exception>
 #include <iomanip>
 #include <ostream>
+#include <sstream>
 #include <vector>
 
 namespace vpux::profiling {
@@ -85,12 +86,19 @@ private:
      * @brief helper function to ease exporting profiled tasks to JSON format
      *
      * @param tasks list of tasks to be exported
-     * @param threadName trace event thread name
+     * @param taskFilter filter which selects which tasks to consider during processing
      *
      * The function schedules tasks for output to out stream and generates meta type header trace events.
      * It internally manages trace events' thread IDs
      */
-    void processTraceEvents(const TaskList& tasks, const std::string& threadName);
+    template <typename FilterFunction>
+    void processTraceEvents(const TaskList& tasks, FilterFunction&& taskFilter);
+
+    void processTraceEvents(const TaskList& tasks);
+
+    void processDMATraceEvents(const TaskList& tasks);
+
+    std::string getThreadLabel(const TaskInfo& taskInfo);
 
     void createProcess(const std::string& processName);
 
@@ -169,13 +177,13 @@ TraceEventDesc makeLayerTraceEvent(const LayerInfo& layer, int pid, int tid) {
     ted.customArgs.push_back({"Layer type", layer.layer_type});
 
     if (layer.dpu_ns != 0) {
-        ted.customArgs.push_back({"DPU time:", formatDuration(layer.dpu_ns)});
+        ted.customArgs.push_back({"DPU time", formatDuration(layer.dpu_ns)});
     }
     if (layer.sw_ns != 0) {
-        ted.customArgs.push_back({"Shave time:", formatDuration(layer.sw_ns)});
+        ted.customArgs.push_back({"Shave time", formatDuration(layer.sw_ns)});
     }
     if (layer.dma_ns != 0) {
-        ted.customArgs.push_back({"DMA time:", formatDuration(layer.dma_ns)});
+        ted.customArgs.push_back({"DMA time", formatDuration(layer.dma_ns)});
     }
     return ted;
 }
@@ -191,7 +199,7 @@ void TraceEventExporter::processTasks(const std::vector<TaskInfo>& tasks) {
     auto dmaTasks = TaskList(tasks).selectDMAtasks();
     if (!dmaTasks.empty()) {
         createProcess("DMA");
-        processTraceEvents(dmaTasks, "DMA");
+        processDMATraceEvents(dmaTasks);
     }
 
     //
@@ -207,16 +215,16 @@ void TraceEventExporter::processTasks(const std::vector<TaskInfo>& tasks) {
         auto clusterDpuTasks = dpuTasks.selectTasksFromCluster(clusterId);
         auto dpuInvariants = clusterDpuTasks.selectClusterLevelTasks();
         auto dpuVariants = clusterDpuTasks.selectSubtasks();
-        processTraceEvents(dpuInvariants, "DPU");
-        processTraceEvents(dpuVariants, "DPU Variants");
+        processTraceEvents(dpuInvariants);
+        processTraceEvents(dpuVariants);
         auto clusterSwTasks = swTasks.selectTasksFromCluster(clusterId);
-        processTraceEvents(clusterSwTasks, "Shave");
+        processTraceEvents(clusterSwTasks);
     }
 
     TaskList m2iTasks = TaskList(tasks).selectM2Itasks();
     if (!m2iTasks.empty()) {
         createProcess("M2I");
-        processTraceEvents(m2iTasks, "M2I");
+        processTraceEvents(m2iTasks);
     }
 }
 
@@ -246,27 +254,96 @@ void TraceEventExporter::validateTask(const TaskInfo& task) const {
     }
 }
 
-void TraceEventExporter::processTraceEvents(const TaskList& tasks, const std::string& threadName) {
+std::string TraceEventExporter::getThreadLabel(const TaskInfo& taskInfo) {
+    std::stringstream label;
+    switch (taskInfo.exec_type) {
+    case TaskInfo::ExecType::DMA:
+        label << "DMA";
+        // DMA channel type and port ID were added together starting
+        // from profiling schema v2.1. For previous versions channel is
+        // set as unknown and in such case don't print port number or channel type.
+        if (taskInfo.channel_type) {
+            if (taskInfo.port_id) {
+                label << ' ' << static_cast<int>(taskInfo.port_id.value());
+            }
+            switch (*taskInfo.channel_type) {
+            case DMAChannelType::DDR:
+                label << " DDR";
+                break;
+            case DMAChannelType::CMX:
+                label << " CMX";
+                break;
+            default:
+                _log.warning("Unknown channel type");
+            }
+        }
+        break;
+    case TaskInfo::ExecType::DPU:
+        label << "DPU";
+        if (taskInfo.isSubtask) {
+            label << " Variants";
+        }
+        break;
+    case TaskInfo::ExecType::M2I:
+        label << "M2I";
+        break;
+    case TaskInfo::ExecType::SW:
+        label << "Shave";
+        break;
+    case TaskInfo::ExecType::NONE:
+    default:
+        VPUX_THROW("Unexpected exec type");
+        break;
+    }
+
+    return label.str();
+}
+
+template <typename FilterFunction>
+void TraceEventExporter::processTraceEvents(const TaskList& tasks, FilterFunction&& taskFilter) {
     if (tasks.empty()) {
         return;
     }
 
-    int lastThreadId = _threadId++;
-
     auto sortedTasks = tasks.getSortedByStartTime();
+    int lastThreadId = _threadId++;
     TraceEventTimeOrderedDistribution threadDistr;
-
-    for (const auto& task : sortedTasks) {
+    for (const auto& task : llvm::make_filter_range(tasks, taskFilter)) {
+        // Note that Perfetto requires that tasks within single track(thread) are not overlapping.
+        // Since our HW supports pipelining some of the tasks on the same engine will overlap.
+        // Below logic is responsible for splitting single engine track into several tracks where tasks
+        // won't overlap. Failure to do so will result in incorrect track display.
         auto tid = _threadId + threadDistr.getThreadId(task.start_time_ns, task.duration_ns);
         if (tid > lastThreadId) {
-            setTraceEventThreadName(threadName, tid, _processId);
+            auto threadLabel = getThreadLabel(task);
+            setTraceEventThreadName(threadLabel, tid, _processId);
             lastThreadId = tid;
         }
-
         _events.push_back(makeTaskTraceEvent(task, _processId, tid));
     }
 
     _threadId = lastThreadId;
+}
+
+void TraceEventExporter::processTraceEvents(const TaskList& tasks) {
+    auto acceptAllTasks = [](const TaskInfo&) {
+        return true;
+    };
+    return processTraceEvents(tasks, std::move(acceptAllTasks));
+}
+
+void TraceEventExporter::processDMATraceEvents(const TaskList& tasks) {
+    // Group by channel then port
+    std::set<std::pair<std::optional<DMAChannelType>, std::optional<unsigned short>>> uniqueChannels;
+    for (const auto& task : tasks) {
+        uniqueChannels.insert(std::make_pair(task.channel_type, task.port_id));
+    }
+
+    for (auto dmaChannel : uniqueChannels) {
+        processTraceEvents(tasks, [&](const TaskInfo& task) {
+            return task.port_id == dmaChannel.second && task.channel_type == dmaChannel.first;
+        });
+    }
 }
 
 void TraceEventExporter::createProcess(const std::string& name) {

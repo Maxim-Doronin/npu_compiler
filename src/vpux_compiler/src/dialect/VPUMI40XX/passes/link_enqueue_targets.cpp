@@ -51,7 +51,8 @@ void LinkEnqueueTargetsPass::processEnqueueDmaOps(mlir::func::FuncOp netFunc) {
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = config::getTileExecutor(parentModule).getCount();
-    const auto shavesCountPerTile = config::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+    const auto shavesCountPerTile =
+            config::getAvailableExecutor(parentModule, config::ExecutorKind::SHAVE_ACT).getCount();
 
     auto firstDmaTile0List0Op = dmaTile0List0Head.getDefiningOp<VPUMI40XX::NNDMAOp>();
     auto enqueueDmasPerHwQueue = VPUMI40XX::getEnqueueDmaData(firstDmaTile0List0Op, _log);

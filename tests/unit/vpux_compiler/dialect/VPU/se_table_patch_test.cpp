@@ -20,9 +20,11 @@
 #include "vpux/utils/core/scope_exit.hpp"
 
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/MLIRContext.h>
 
 #include <gtest/gtest.h>
+#include <mlir/IR/OwningOpRef.h>
 
 using namespace vpux;
 
@@ -55,13 +57,13 @@ TEST_P(SETablePatchTests, patchSETableValue) {
 
     const auto params = GetParam();
 
-    mlir::OpBuilder builder(&ctx);
     auto loc = mlir::UnknownLoc::get(&ctx);
 
     // Create proper MLIR module structure
-    auto moduleOp = mlir::ModuleOp::create(loc);
-    auto funcOp = mlir::func::FuncOp::create(loc, "SETablePatchTestFunc", builder.getFunctionType({}, {}));
-    moduleOp.push_back(funcOp);
+    mlir::OwningOpRef<mlir::ModuleOp> moduleOp = mlir::ModuleOp::create(loc);
+
+    mlir::OpBuilder builder = mlir::OpBuilder::atBlockBegin(moduleOp->getBody());
+    auto funcOp = builder.create<mlir::func::FuncOp>(loc, "SETablePatchTestFunc", builder.getFunctionType({}, {}));
 
     auto entryBlock = funcOp.addEntryBlock();
     builder.setInsertionPointToStart(entryBlock);
@@ -79,9 +81,6 @@ TEST_P(SETablePatchTests, patchSETableValue) {
 
     // Create a constant operation
     auto constOp = builder.create<Const::DeclareOp>(loc, seTableType, seTableConstant);
-    VPUX_SCOPE_EXIT {
-        constOp->erase();
-    };
 
     // Create NCE Input distribution attribute
     auto distributionModeAttr = VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::OVERLAPPED);
@@ -98,7 +97,7 @@ TEST_P(SETablePatchTests, patchSETableValue) {
             /*alignment=*/nullptr,
             /*uniformDistributedSegments=*/nullptr, nceInputComputeShapesAttr, nceInputComputeOffsetsAttr,
             nceInputMemoryShapesAttr, nceInputMemoryOffsetsAttr,
-            /*equalMemoryAndComputeView=*/nullptr);
+            /*equalMemoryAndComputeView=*/nullptr, nullptr);
 
     // Create distributed buffer type for NCE Input
     auto memSpaceAttr = vpux::IndexedSymbolAttr::get(&ctx, stringifyEnum(VPU::MemoryKind::CMX_NN), 0);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -101,6 +101,7 @@ def OptimizeCopies : PassBase<"optimize-copies", "vpux::FunctionPass"> {
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
             )}]
@@ -123,21 +124,6 @@ def UniquifyWeightsTableCopies : PassBase<"uniquify-weights-table-copies", "vpux
     }];
 
     let constructor = "vpux::VPUIP::createUniquifyWeightsTableCopiesPass()";
-}
-
-//
-// MoveSubViewBeforeSparseBuffer
-//
-
-def MoveSubViewBeforeSparseBuffer : PassBase<"move-subview-before-sparse-buffer", "vpux::FunctionPass"> {
-    let summary = "Moves child SubViewOp up through GroupSparseBufferOp";
-
-    let description = [{
-        Moves child SubViewOp up through GroupSparseBufferOp and fuses it with constants if possible.
-        Reinfer output types of child operations since output type may change.
-    }];
-
-    let constructor = "vpux::VPUIP::createMoveSubViewBeforeSparseBufferPass()";
 }
 
 //
@@ -500,17 +486,11 @@ def DPUProfiling : PassBase<"dpu-profiling", "vpux::ModulePass"> {
         This pass allocate required memory for DPU profiling and perform buffer spilling
     }];
 
-    let constructor = [{
-        vpux::VPUIP::createDPUProfilingPass([](vpux::StringRef memSpaceName) {
-            if (memSpaceName.empty()) {
-                return std::optional<vpux::VPU::MemoryKind>{VPU::MemoryKind::CMX_NN};
-            }
-
-            return vpux::VPU::symbolizeEnum<VPU::MemoryKind>(memSpaceName);
-        })
-    }];
+    let constructor = "vpux::VPUIP::createDPUProfilingPass()";
 
 }
+
+//
 // M2IProfiling
 //
 
@@ -523,6 +503,7 @@ def M2IProfiling : PassBase<"m2i-profiling", "vpux::ModulePass"> {
 
     let constructor = "vpux::VPUIP::createM2IProfilingPass()";
 }
+
 def LegalizeRepeatingFuncCalls : PassBase<"legalize-repeating-func-calls", "vpux::FunctionPass"> {
     let summary = "Ensure repeating func calls adhere to VPUIP constaints";
 
@@ -792,21 +773,6 @@ def OptimizeAsyncDeps : PassBase<"optimize-async-deps", "vpux::FunctionPass"> {
 }
 
 //
-// GroupAsyncExecuteOps
-//
-
-def GroupAsyncExecuteOps : PassBase<"group-async-execute-ops", "vpux::FunctionPass"> {
-    let summary = "Reduces number of async.execute operations";
-
-    let description = [{
-        Groups consecutive operations which utilizes the same executor and max resources into same async.execute region
-    }];
-
-    let constructor = "vpux::VPUIP::createGroupAsyncExecuteOpsPass()";
-
-}
-
-//
 // FeasibleAllocation
 //
 
@@ -841,6 +807,11 @@ def FeasibleAllocation : PassBase<"feasible-allocation", "vpux::FunctionPass"> {
             "linearizeSchedule", "linearize-schedule",
             "bool", "false",
             "Linearize all tasks on all engines"
+        >,
+        Option<
+            "enableLoopAllocation", "enable-loop-allocation",
+            "bool", "false",
+            "Enables loop allocation for tiling and vertical fusion regions"
         >,
         Option<
             "enablePipelining", "pipelining",
@@ -996,15 +967,7 @@ def ActShaveProfiling : PassBase<"act-shave-profiling", "vpux::ModulePass"> {
         This pass allocate required memory for ActShaveProfiling profiling and perform buffer spilling
     }];
 
-    let constructor = [{
-        vpux::VPUIP::createActShaveProfilingPass([](vpux::StringRef memSpaceName) {
-            if (memSpaceName.empty()) {
-                return std::optional<vpux::VPU::MemoryKind>{VPU::MemoryKind::CMX_NN};
-            }
-
-            return vpux::VPU::symbolizeEnum<VPU::MemoryKind>(memSpaceName);
-        })
-    }];
+    let constructor = "vpux::VPUIP::createActShaveProfilingPass()";
 
     let dependentDialects = [
         "vpux::VPURT::VPURTDialect"
@@ -1341,9 +1304,9 @@ def Swizzling : PassBase<"swizzling", "vpux::FunctionPass"> {
 // DMA Barrier Optimization
 //
 
-def DMABarrierOptimization : PassBase<"dma-barrier-optimization", "vpux::FunctionPass"> {
-    let summary = "Optimize DMA related barriers after dma port has been assigned for VPUX37XX";
-    let constructor = "vpux::VPUIP::createDMABarrierOptimizationPass()";
+def BarrierOptimization : PassBase<"barrier-optimization", "vpux::FunctionPass"> {
+    let summary = "Optimize barrier dependencies between tasks on all queues";
+    let constructor = "vpux::VPUIP::createBarrierOptimizationPass()";
     let options = [
         Option<
             "workloadManagementModeOpt", "workload-management-mode",
@@ -1351,9 +1314,10 @@ def DMABarrierOptimization : PassBase<"dma-barrier-optimization", "vpux::Functio
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
-                , clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
@@ -1428,27 +1392,6 @@ def PropagateSparsityCompression : PassBase<"propagate-compression-scheme", "vpu
     ];
 }
 
-//
-// UngroupSparseBuffers
-//
-
-def UngroupSparseBuffers : PassBase<"ungroup-sparse-buffers", "vpux::FunctionPass"> {
-    let summary = "Ungroups sparse buffers into individual buffers";
-
-    let description = [{
-        Splits operations that work with sparse buffers into multiple operations,
-        each working with an individual buffer.
-
-        These separate operations are then surrounded by UngroupSparseBuffer
-        and / or GroupSparseBuffer operations, which are then optimized-out.
-    }];
-
-    let constructor = "vpux::VPUIP::createUngroupSparseBuffersPass()";
-
-    let dependentDialects = [
-        "vpux::VPUIP::VPUIPDialect"
-    ];
-}
 
 //
 // FlattenSparseWeightsTypes
@@ -2273,6 +2216,129 @@ def AddPlaceholderFetchDMAs : PassBase<"add-placeholder-fetch-dmas", "vpux::Func
     }];
 
     let constructor = "vpux::VPUIP::createAddPlaceholderFetchDMAsPass()";
+}
+
+
+def LegalizeStridedDmas : PassBase<"legalize-strided-dmas", "vpux::ModulePass"> {
+    let summary = "Legalizes the network so that it correctly supports strided IO";
+
+    let description = [{
+        Checks whether the DMAs reading from or writing to network I/Os are compatible with dynamic strides,
+        and legalizes the network if they are not. A DMA is considered compatible with dynamic strides if the strides
+        of its inputs and outputs match the strides of the network’s main function arguments.
+
+        If a DMA is compatible, it is marked as having dynamicInput and/or dynamicOutput.
+        If a DMA is not compatible with dynamic strides, a new DDR buffer is allocated to hold compact data,
+        and a new DDR→DDR DMA is added to copy data from the strided argument to the new compact buffer.
+        For example, the following incompatible DMA, which reads from a network input:
+
+        VPUIP.NNDMA inputs(%incompatible_view_into_arg0) outputs(%cmx_buffer)
+
+        Is transformed into:
+
+        %compact_ddr_buffer = memref.alloc()
+        VPUIP.NNDMA {stridedInput} inputs(%arg0) outputs(%compact_ddr_buffer)
+        %incompatible_reshape = GenericReshape(%compact_ddr_buffer)
+        VPUIP.NNDMA inputs(%compact_ddr_buffer) outputs(%cmx_buffer)
+    }];
+
+    let constructor = "vpux::VPUIP::createLegalizeStridedDMAsPass()";
+}
+
+//
+// AddPlaceholderFetchDMAsPWLM
+//
+
+def AddPlaceholderFetchDMAsPWLM : PassBase<"add-placeholder-fetch-dmas-pwlm", "vpux::FunctionPass"> {
+    let summary = "Insert placeholder fetch DMAs for PWLM";
+
+    let description = [{
+        This pass inserts placeholder Fetch DMA operations for PWLM scheduling.
+
+        For execution groups:
+        [Group N-2] .. [Group N-1] .. [Group N]
+
+        For the first two available execution groups, Fetch DMAs are inserted at the
+        beginning of the DMA list on port 0, channel DDR.
+
+        For all subsequent execution groups, Fetch DMAs are inserted with explicit
+        barrier dependencies to guarantee safe execution.
+
+        Barrier semantics:
+
+        SHV task lists:
+        - The last two tasks of Group N-1 must directly or indirectly wait on barriers produced by the
+            Fetch DMA.
+        - The last two tasks of Group N-2 must update the barrier consumed by the
+            Fetch DMA.
+        - These dependencies guarantee correctness when SHV lists are shared
+            across execution groups.
+
+        DPU tasks:
+        - The last task of Group N-2 updates a barrier consumed by the Fetch DMA.
+        - The last task of Group N-1 directly/indirectly waits on a barrier produced by the Fetch DMA.
+
+        An example of indirect dependency is below
+        `SomeDMA->B1->DPU1->DPU2`
+        In above case we don't explicitly need DPU2 to wait on B1 because by FIFO order we can guarantee that someDMA will
+        finish before DPU2 will start execution
+
+        The placeholder Fetch DMAs inserted by this pass are later replaced with concrete NNDMA DMA operations
+
+        To enable deterministic replacement, each placeholder Fetch DMA is annotated
+        with a FetchDMAAttr containing:
+        - executorKind
+        - tileIdx
+        - listIdx
+        - executionGroupIdx
+
+        The combination of these fields uniquely identifies a Fetch DMA and allows it to be reliably matched and replaced in later passes.
+    }];
+
+    let constructor = "vpux::VPUIP::createAddPlaceholderFetchDMAsPWLMPass()";
+}
+
+//
+// UngroupBufferSection
+//
+
+def UngroupBufferSectionRewriterExecutor : PassBase<"run-ungroup-buffer-section-rewriters", "vpux::FunctionPass"> {
+    let summary = "Build ungroup sparse and bounded buffer rewriter collection";
+
+    let description = [{
+        This pass hoists SubViewOp through GroupSparseBufferOp with constant fusion and decomposes sparse-buffer operations into per-buffer operations,
+        inserting temporary group/ungroup ops that are later optimized away.
+    }];
+
+    let options = [
+        Option<
+            "rewriterName", "rewriter",
+            "std::string", "",
+            "Name of the rewriter to run"
+        >,
+        Option<
+            "enableReorderSubViewOp", "enable-reorder-sub-view-op",
+            "bool", "false",
+            "Flag to enable or disable reordering of the sub ops"
+        >
+    ];
+
+    let constructor = "vpux::VPUIP::createUngroupBufferSectionRewriterExecutorPass()";
+}
+
+//
+// UnrollShaveCacheOps
+//
+
+def UnrollShaveCacheOps : PassBase<"unroll-shave-cache-ops", "vpux::FunctionPass"> {
+    let summary = "Replace once ShaveCacheOps with multiple ones according to number of SHAVEs";
+
+    let description = [{
+        We need to have dedicated ShaveCacheOp per each SHAVE in order to properly generate the cache handling code during codegen.
+        This pass replaces single ShaveCacheOp with multiple ones according to number of SHAVEs which require cache handling.
+    }];
+
+    let constructor = "vpux::VPUIP::createUnrollShaveCacheOpsPass()";
 }
 
 #endif

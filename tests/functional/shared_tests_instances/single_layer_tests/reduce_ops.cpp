@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -109,11 +109,13 @@ class ReduceLayerTest_ChannelAxis_HW_FP16 : public ReduceLayerTestCommon {
                 "enable-is-reduce-supported=false enable-auto-padding-odu=false";
     }
 };
+
 // ChannelAxis Reduce test for DPU support
 TEST_P(ReduceLayerTest_ChannelAxis_HW_FP16, NPU5010) {
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
+
 /// FP16 SW/HW
 TEST_P(ReduceLayerTest_HW_FP16, NPU3720) {
     VpuOv2LayerTest::setDefaultHardwareMode();
@@ -131,7 +133,7 @@ TEST_P(ReduceLayerTest_SW_FP16, NPU4000) {
 }
 
 TEST_P(ShaveCodeGenReduceLayerTest_FP16, NPU4000) {
-    VpuOv2LayerTest::setMLIRCompilerType();
+    VpuOv2LayerTest::setPluginCompilerType();
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
@@ -142,10 +144,11 @@ TEST_P(ReduceLayerTest_SW_FP16, NPU5010) {
 }
 
 TEST_P(ShaveCodeGenReduceLayerTest_FP16, NPU5010) {
-    VpuOv2LayerTest::setMLIRCompilerType();
+    VpuOv2LayerTest::setPluginCompilerType();
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
+
 /// FP32 HW
 TEST_P(ReduceLayerTest_FP32, NPU3720_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
@@ -158,20 +161,22 @@ TEST_P(ReduceLayerTest_FP32, NPU4000_HW) {
 }
 
 TEST_P(ShaveCodeGenReduceLayerTest_FP32, NPU4000) {
-    VpuOv2LayerTest::setMLIRCompilerType();
+    VpuOv2LayerTest::setPluginCompilerType();
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
+
 TEST_P(ReduceLayerTest_FP32, NPU5010_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
 
 TEST_P(ShaveCodeGenReduceLayerTest_FP32, NPU5010) {
-    VpuOv2LayerTest::setMLIRCompilerType();
+    VpuOv2LayerTest::setPluginCompilerType();
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
+
 /// FP32 SW
 TEST_P(ReduceLayerTest_FP32, NPU3720_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
@@ -182,10 +187,12 @@ TEST_P(ReduceLayerTest_FP32, NPU4000_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
+
 TEST_P(ReduceLayerTest_FP32, NPU5010_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 
@@ -260,6 +267,13 @@ const auto channelAxisHWFP16 = testing::Combine(
         testing::Values(test_utils::TARGET_DEVICE));
 
 //
+// FP16 HW
+const auto batchAxisHWFP16 = testing::Combine(
+        testing::ValuesIn(decltype(axes){{0}}), testing::Values(OpType::VECTOR), testing::ValuesIn(keepDims),
+        testing::Values(ReductionType::Sum), testing::ValuesIn(modelTypes),
+        testing::Values(std::vector<size_t>{8, 1, 4, 256}), testing::Values(test_utils::TARGET_DEVICE));
+
+//
 // FP32
 const auto paramsFP32 = testing::Combine(
         testing::ValuesIn(decltype(axes){{2, 3}}), testing::Values(OpType::VECTOR), testing::ValuesIn(keepDims),
@@ -274,6 +288,11 @@ const auto scgParamsFP32 = testing::Combine(
 //
 // FP16 HW
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Reduce, ReduceLayerTest_HW_FP16, paramsHWFP16,
+                         ReduceLayerTest_HW_FP16::getTestCaseName);
+
+//
+// FP16 HW
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Reduce_batch, ReduceLayerTest_HW_FP16, batchAxisHWFP16,
                          ReduceLayerTest_HW_FP16::getTestCaseName);
 
 //

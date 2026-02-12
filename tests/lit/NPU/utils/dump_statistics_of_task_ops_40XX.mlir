@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -92,8 +92,8 @@ module @DumpOpsStatisticsTestTwoM2ITasks {
     %alloc_0 = memref.alloc() : memref<1x768x512x1xui8>
     %1 = VPUIP.Copy inputs(%alloc_0 : memref<1x768x512x1xui8>) outputs(%alloc : memref<1x768x512x1xui8, [@CMX_NN, 0]>) -> memref<1x768x512x1xui8, [@CMX_NN, 0]>
     %alloc_1 = memref.alloc() : memref<1x512x512x3xui8, [@CMX_NN, 0]>
-    %2 = VPUIP.M2ITask {chroma_out_reverse_channels, do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<IL_RGB888>, scale_factor_x = 131072 : ui32, scale_factor_y = 131072 : ui32} inputs(%1 : memref<1x768x512x1xui8, [@CMX_NN, 0]>) outputs(%alloc_1 : memref<1x512x512x3xui8, [@CMX_NN, 0]>) -> memref<1x512x512x3xui8, [@CMX_NN, 0]>
-    %3 = VPUIP.M2ITask {chroma_out_reverse_channels, do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<IL_RGB888>, scale_factor_x = 131072 : ui32, scale_factor_y = 131072 : ui32} inputs(%1 : memref<1x768x512x1xui8, [@CMX_NN, 0]>) outputs(%alloc_1 : memref<1x512x512x3xui8, [@CMX_NN, 0]>) -> memref<1x512x512x3xui8, [@CMX_NN, 0]>
+    %2 = VPUIP.M2ITask <{chroma_out_reverse_channels, do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<IL_RGB888>, scale_factor_x = 131072 : ui32, scale_factor_y = 131072 : ui32}> inputs(%1 : memref<1x768x512x1xui8, [@CMX_NN, 0]>) outputs(%alloc_1 : memref<1x512x512x3xui8, [@CMX_NN, 0]>) -> memref<1x512x512x3xui8, [@CMX_NN, 0]>
+    %3 = VPUIP.M2ITask <{chroma_out_reverse_channels, do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<IL_RGB888>, scale_factor_x = 131072 : ui32, scale_factor_y = 131072 : ui32}> inputs(%1 : memref<1x768x512x1xui8, [@CMX_NN, 0]>) outputs(%alloc_1 : memref<1x512x512x3xui8, [@CMX_NN, 0]>) -> memref<1x512x512x3xui8, [@CMX_NN, 0]>
 
     return %0 : memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
   } // func

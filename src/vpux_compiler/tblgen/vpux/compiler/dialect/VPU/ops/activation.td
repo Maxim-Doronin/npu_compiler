@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -190,6 +190,7 @@ def VPU_LogSoftmaxOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,
 
         IntAttr:$axisInd,
+        OptionalAttr<IntAttr>:$padSize,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -206,7 +207,8 @@ def VPU_LogSoftmaxOp :
     let builders = [
         OpBuilder<(ins
             "::mlir::Value":$input,
-            "::mlir::IntegerAttr":$axisInd
+            "::mlir::IntegerAttr":$axisInd,
+            "::mlir::IntegerAttr":$padSize
         )>
     ];
 }
@@ -400,6 +402,7 @@ def VPU_SoftMaxOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,
         IntAttr:$axisInd,
         OptionalAttr<IntAttr>:$padSize,
+        OptionalAttr<TypeAttr>:$dstElemType,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -421,7 +424,8 @@ def VPU_SoftMaxOp :
         OpBuilder<(ins
             "::mlir::Value":$input,
             "::mlir::IntegerAttr":$axisInd,
-            "::mlir::IntegerAttr":$padSize
+            "::mlir::IntegerAttr":$padSize,
+            "::mlir::TypeAttr":$dstElemType
         )>
     ];
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,14 +16,6 @@ enum TargetDevice {
     TargetDevice_VPUX40XX = 4,
     TargetDevice_VPUX50XX = 5,
     TargetDevice_MAX
-};
-
-enum TargetDeviceRevision {
-    TargetDeviceRevision_NONE = 0,
-    TargetDeviceRevision_A0 = 1,
-    TargetDeviceRevision_B0 = 2,
-    TargetDeviceRevision_MIN = TargetDeviceRevision_NONE,
-    TargetDeviceRevision_MAX = TargetDeviceRevision_B0
 };
 
 template <typename T>
@@ -43,30 +35,5 @@ inline const char* EnumNameTargetDevice(TargetDevice e) {
     const size_t index = static_cast<size_t>(e);
     return EnumNamesTargetDevice()[index];
 }
-
-inline const char* const* EnumNamesTargetDeviceRevision() {
-    static const char* const names[4] = {"NONE", "A0", "B0", nullptr};
-    return names;
-}
-
-inline const char* EnumNameTargetDeviceRevision(TargetDeviceRevision e) {
-    if (IsOutRange(e, TargetDeviceRevision_NONE, TargetDeviceRevision_B0)) {
-        return "";
-    }
-    const size_t index = static_cast<size_t>(e);
-    return EnumNamesTargetDeviceRevision()[index];
-}
-
-enum PhysicalProcessor {
-    PhysicalProcessor_NULL = 0,
-    PhysicalProcessor_LEON_RT = 1,
-    PhysicalProcessor_LEON_NN = 2,
-    PhysicalProcessor_NN_SHV = 3,
-    PhysicalProcessor_ARM = 4,
-    PhysicalProcessor_NCE_Cluster = 5,
-    PhysicalProcessor_NCE_PerClusterDPU = 6,
-    PhysicalProcessor_MIN = PhysicalProcessor_NULL,
-    PhysicalProcessor_MAX = PhysicalProcessor_NCE_PerClusterDPU
-};
 
 }  // namespace vpux::profiling

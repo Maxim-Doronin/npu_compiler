@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -102,9 +102,9 @@ func.func @MixedPrecisionFp16InputBf8WeightsQuantileConv(%arg0: tensor<1x16x16x1
 
   return %result : tensor<1x16x16x16xf16>
 
-  //CHECK: [[CST:%.*]] = const.Declare tensor<16x16x1x1x!qElemType>
+  //CHECK: [[CST:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
 
-  //CHECK: [[CONV:%.*]] = IE.Convolution([[ARG0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  //CHECK: [[CONV:%.+]] = IE.Convolution([[ARG0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
   //CHECK: return [[CONV]]
 }
 
@@ -125,9 +125,9 @@ func.func @MixedPrecisionHf8InputQuantBf8WeightsConv(%arg0: tensor<1x16x16x16x!q
 
   return %result : tensor<1x16x16x16x!qElemType>
 
-  //CHECK: [[CST:%.*]] = const.Declare tensor<16x16x1x1x!qElemType1>
+  //CHECK: [[CST:%.+]] = const.Declare tensor<16x16x1x1x!qElemType1>
 
-  //CHECK: [[CONV:%.*]] = IE.Convolution([[ARG0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16x!qElemType>, tensor<16x16x1x1x!qElemType1> -> tensor<1x16x16x16x!qElemType>
+  //CHECK: [[CONV:%.+]] = IE.Convolution([[ARG0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16x!qElemType>, tensor<16x16x1x1x!qElemType1> -> tensor<1x16x16x16x!qElemType>
   //CHECK: return [[CONV]]
 }
 

@@ -124,7 +124,7 @@ mlir::LogicalResult FuseClampRewriter::matchAndRewrite(IE::ClampOp clampOp, mlir
                            "ClampOp producer does not support post-processing for current case");
     }
 
-    producerOp.setLayerClampOp(clampOp);
+    producerOp.setClampOp(clampOp);
     rewriter.replaceOp(clampOp, producerOp->getResult(0));
 
     return mlir::success();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,8 +39,8 @@ func.func private @main() {
   // CHECK-DAG: #VPURegMapped.task_type<DPUInvariant>
   // CHECK-DAG: #VPURegMapped.task_type<DPUVariant>
   // CHECK-SAME: ])
-  // CHECK-SAME: begins(%[[VAL0:[0-9]+]], %[[VAL1:[0-9]+]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
-  // CHECK-SAME: ends(%[[VAL0]], %[[VAL1]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
+  // CHECK-SAME: begins([[VAL0:%[0-9]+]], [[VAL1:%[0-9]+]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
+  // CHECK-SAME: ends([[VAL0]], [[VAL1]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
 }
 }
 
@@ -91,8 +91,8 @@ func.func private @main() {
   // CHECK-DAG: #VPURegMapped.task_type<DPUInvariant>
   // CHECK-DAG: #VPURegMapped.task_type<DPUVariant>
   // CHECK-SAME: ])
-  // CHECK-SAME: begins(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
-  // CHECK-SAME: ends(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<0:0:2>, !VPURegMapped.Index<0:0:2>)
+  // CHECK-SAME: begins({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
+  // CHECK-SAME: ends({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<0:0:2>, !VPURegMapped.Index<0:0:2>)
 }
 }
 
@@ -131,8 +131,8 @@ func.func private @main() {
   // CHECK-DAG: #VPURegMapped.task_type<DPUInvariant>
   // CHECK-DAG: #VPURegMapped.task_type<DPUVariant>
   // CHECK-SAME: ])
-  // CHECK-SAME: begins(%[[VAL0:[0-9]+]], %[[VAL1:[0-9]+]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
-  // CHECK-SAME: ends(%[[VAL0]], %[[VAL1]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
+  // CHECK-SAME: begins([[VAL0:%[0-9]+]], [[VAL1:%[0-9]+]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
+  // CHECK-SAME: ends([[VAL0]], [[VAL1]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
 }
 }
 
@@ -183,7 +183,7 @@ func.func private @main() {
   // CHECK-DAG: #VPURegMapped.task_type<DPUInvariant>
   // CHECK-DAG: #VPURegMapped.task_type<DPUVariant>
   // CHECK-SAME: ])
-  // CHECK-SAME: begins(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
-  // CHECK-SAME: ends(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<2:0:2>, !VPURegMapped.Index<2:0:2>)
+  // CHECK-SAME: begins({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
+  // CHECK-SAME: ends({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<2:0:2>, !VPURegMapped.Index<2:0:2>)
 }
 }

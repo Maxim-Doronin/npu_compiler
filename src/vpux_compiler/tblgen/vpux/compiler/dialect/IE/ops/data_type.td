@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,6 +22,7 @@ def IE_ConvertOp :
             [
                 DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface, ["shouldJITCompile"]>,
                 DeclareOpInterfaceMethods<CastOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -70,6 +71,7 @@ def IE_ConvertLikeOp :
 def IE_DequantizeOp :
         IE_LayerOp<"Dequantize",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {
@@ -127,7 +129,7 @@ def IE_DynamicFakeQuantizeOp :
     let description = [{
         The operation works in two modes:
         * integral quantization: specified by the 'levels' attribute
-        * floating-point quantization: specified by the 'low_fp_type' attribute, [f8E4M3FN | f8E5M2]
+        * floating-point quantization: specified by the 'low_fp_type' attribute, [f8E4M3FN | f8E5M2 | f4E2M1FN]
 
         Only one of these attributes should be provided.
 
@@ -216,7 +218,7 @@ def IE_FakeQuantizeOp :
     let description = [{
         The operation works in two modes:
          * integral quantization: specified by the 'levels' attribute
-         * floating-point quantization: specified by the 'low_fp_type' attribute, [f8E4M3FN | f8E5M2]
+         * floating-point quantization: specified by the 'low_fp_type' attribute, [f8E4M3FN | f8E5M2 | f4E2M1FN]
 
         Only one of these attributes should be provided.
     }];
@@ -245,6 +247,7 @@ def IE_FakeQuantizeOp :
 def IE_QuantizeOp :
         IE_LayerOp<"Quantize",
             [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 IE_EltwiseOp
             ]
         > {

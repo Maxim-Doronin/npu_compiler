@@ -189,7 +189,9 @@ bool MoveConvertAfterGather::isBeneficialToConvert(IE::ConvertOp convertOp, IE::
 
 mlir::LogicalResult MoveConvertAfterGather::matchAndRewrite(IE::GatherOp gatherOp,
                                                             mlir::PatternRewriter& rewriter) const {
-    _log.trace("Got '{0}' at '{1}'", gatherOp->getName(), gatherOp->getLoc());
+    const auto gatherOpName = gatherOp->getName();
+    const auto gatherOpLoc = gatherOp->getLoc();
+    _log.trace("Got '{0}' at '{1}'", gatherOpName, gatherOpLoc);
 
     auto convertOp = gatherOp.getInput().getDefiningOp<IE::ConvertOp>();
     if (convertOp == nullptr || !convertOp->hasOneUse()) {
@@ -200,7 +202,7 @@ mlir::LogicalResult MoveConvertAfterGather::matchAndRewrite(IE::GatherOp gatherO
         return matchFailed(_log.nest(), rewriter, gatherOp, "Not beneficial to move operation after GatherOp");
     }
 
-    auto newGather = rewriter.create<IE::GatherOp>(gatherOp->getLoc(), convertOp.getInput(), gatherOp.getIndices(),
+    auto newGather = rewriter.create<IE::GatherOp>(gatherOpLoc, convertOp.getInput(), gatherOp.getIndices(),
                                                    gatherOp.getAxis(), gatherOp.getAxisValueAttr(),
                                                    gatherOp.getBatchDims(), gatherOp.getIndicesRankAttr());
     auto newConvert =
@@ -208,7 +210,7 @@ mlir::LogicalResult MoveConvertAfterGather::matchAndRewrite(IE::GatherOp gatherO
 
     rewriter.replaceOp(gatherOp, newConvert.getOutput());
 
-    _log.trace("Successfully replaced '{0}' at '{1}'", gatherOp->getName(), gatherOp->getLoc());
+    _log.trace("Successfully replaced '{0}' at '{1}'", gatherOpName, gatherOpLoc);
 
     return mlir::success();
 }

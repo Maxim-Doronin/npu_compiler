@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,9 @@
 
 module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
   config.ExecutorResource 1 of @DMA_NN
-  config.Resources 1 of @NCE at 6.000000e+02 MHz
+  config.Resources 1 of @NCE at 6.000000e+02 MHz {
+    config.ExecutorResource 2 of @SHAVE_ACT
+  }
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "input" : tensor<1x1000xf16>
   } outputsInfo : {
@@ -36,18 +38,18 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
     %5 = VPUMI40XX.DeclareKernelText kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
     %6 = VPUMI40XX.DeclareKernelEntry kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
     %7 = VPUMI40XX.DeclareKernelArgs kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
-    %8 = VPUMI40XX.KernelParams inputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%4 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("softmax") kernel_params([0, 0, 32, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
-    %9 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
-    %10 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, -1> -> !VPURegMapped.Index<0:0:1>
-    %11 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%tb_dma_00 : !VPURegMapped.Index<0:0:0>) inputs(%0 : memref<1x1x1x1000xf16, @DDR>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
-    %12 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%tb_dma_10 : !VPURegMapped.Index<0:1:0>) inputs(%4 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x1x1x1000xf16, @DDR>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
+    %8 = VPUMI40XX.KernelParams <{dynamicInputShapesSize = array<i32>, dynamicOutputShapesSize = array<i32>}> inputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%4 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("softmax") kernel_params([0, 0, 32, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
+    %9 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}><0, -1> -> !VPURegMapped.Index<0:0:0>
+    %10 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}><1, -1> -> !VPURegMapped.Index<0:0:1>
+    %11 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%tb_dma_00 : !VPURegMapped.Index<0:0:0>) inputs(%0 : memref<1x1x1x1000xf16, @DDR>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %12 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%tb_dma_10 : !VPURegMapped.Index<0:1:0>) inputs(%4 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x1x1x1000xf16, @DDR>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
     %13 = VPUMI40XX.ActKernelRange taskLocation(%tb_actkerrange_0 : !VPURegMapped.Index<0:0:0>) kernel_text_index(%5 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%7 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%6 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
     %14 = VPUMI40XX.ActKernelInvocation taskLocation(%tb_actkerinv_0 : !VPURegMapped.Index<0:0:0>) range_index(%13 : <0:0:0>) kernel_params(%8 : <0:0:0>) waits(%9 : !VPURegMapped.Index<0:0:0>) updates(%10 : !VPURegMapped.Index<0:0:1>) tile(0) start_after(2) clean_after(1) -> !VPURegMapped.Index<0:0:0>
 
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
     VPUMI40XX.MappedInference dmas((%11, %12) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) actKernelRanges((%13): (!VPURegMapped.Index<0:0:0>)) actKernelInvocations((%14): (!VPURegMapped.Index<0:0:0>)) barriers(%9: !VPURegMapped.Index<0:0:0>) dmaCount([[1, 1]]) invariantCount([0]) variantCount([0]) actKernelRangesCount([[1, 0]]) actKernelInvocationsCount([[1, 0]]) mediaCount(0) barrierCount(2) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }

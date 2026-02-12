@@ -73,7 +73,7 @@ A simple test will be useful to have for debugging. Run it to see the build/comp
 Make sure to derive `LayerTest` from `VpuOv2LayerTest`.
 
 Useful links:
-[How to run tests](../../../guides/how-to-test.md)
+[How to run tests](../../../guides/how_to_test.md)
 
 ## Create a new file with a test
 [tests/functional/shared_tests_instances/single_layer_tests/activation.cpp](../../../tests/functional/shared_tests_instances/single_layer_tests/activation.cpp)
@@ -858,8 +858,8 @@ def VPUIP_SwKernelOp :
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::SHAVE_ACT;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::SHAVE_ACT;
         }
 
         static mlir::LogicalResult inferReturnTypes(mlir::MLIRContext* ctx, std::optional<mlir::Location> loc,

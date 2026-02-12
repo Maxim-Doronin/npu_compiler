@@ -41,7 +41,7 @@ void ResolveWLMTaskLocationPass::safeRunOnFunc() {
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = config::getTileExecutor(parentModule).getCount();
     const auto availableShaveEnginesPerTile =
-            config::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+            config::getAvailableExecutor(parentModule, config::ExecutorKind::SHAVE_ACT).getCount();
 
     auto archKind = config::getArch(netFunc);
     const llvm::DenseMap<VPURegMapped::TaskType, size_t> sizes = {

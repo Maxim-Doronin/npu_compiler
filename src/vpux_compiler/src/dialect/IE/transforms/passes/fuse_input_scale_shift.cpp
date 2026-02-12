@@ -341,7 +341,7 @@ void rewritePattern(const InputScaleShiftPattern& pattern) {
                                           /*inHigh=*/ArrayRef(checked_cast<float>(inputFQLevels - 1)),
                                           /*outLow=*/ArrayRef(static_cast<float>(inputMin)),
                                           /*outHigh=*/ArrayRef(static_cast<float>(inputMax)));
-        auto newInputFqLoc = takeOpLoc(inputFqOp, llvm::formatv("new_input_fq_{0}", idx).str());
+        auto newInputFqLoc = takeOpLoc(inputFqOp, "new_input_fq_{0}", idx);
         newInputFqOp->setLoc(newInputFqLoc);
         convOp->getOpOperand(0).set(newInputFqOp->getResult(0));
 
@@ -446,7 +446,7 @@ void rewritePattern(const InputScaleShiftPattern& pattern) {
                               /*inHigh=*/ArrayRef(newWeightsFqInHigh), /*outLow=*/ArrayRef(newWeightsFqOutLow),
                               /*outHigh=*/ArrayRef(newWeightsFqOutHigh));
 
-        auto newWeightsFqLoc = takeOpLoc(inputFqOp, llvm::formatv("new_weights_fq_{0}", idx).str());
+        auto newWeightsFqLoc = takeOpLoc(inputFqOp, "new_weights_fq_{0}", idx);
         newWeightsFqOp->setLoc(newWeightsFqLoc);
         convOp->getOpOperand(1).set(newWeightsFqOp.getOutput());
     }

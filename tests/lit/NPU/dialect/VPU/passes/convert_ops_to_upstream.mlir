@@ -13,8 +13,8 @@
 func.func @ConvertSliceToExtractSlice(%arg0: tensor<1x16x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>)
     -> tensor<1x12x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 800, 1280]> : tensor<4xsi64>, order = #NCHW}> {
 
-    %0 = VPU.Slice %arg0 [0, 0, 0, 0] [1, 12, -9223372036854775808, -9223372036854775808] 
-        : tensor<1x16x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}> 
+    %0 = VPU.Slice %arg0 [0, 0, 0, 0] [1, 12, -9223372036854775808, -9223372036854775808]
+        : tensor<1x16x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
         to tensor<1x12x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
 
     return %0 : tensor<1x12x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>

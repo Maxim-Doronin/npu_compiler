@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,11 +8,12 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/constant_fusion.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/constant_fusion.hpp"
 
 #include "vpux/compiler/utils/hw_settings.hpp"
 #include "vpux/compiler/utils/logging.hpp"
@@ -71,7 +72,7 @@ private:
 
     struct OpsInfo {
         SmallVector<mlir::Operation*> opsToRemove;
-        DenseMap<VPUIP::NCEClusterTaskOp, OpSwizzlingFlags> opsSwizzlingFlagsMap;
+        std::map<VPUIP::NCEClusterTaskOp, OpSwizzlingFlags> opsSwizzlingFlagsMap;
     };
 
     // Store information about NCEClusterTask operands which got swizzled
@@ -96,7 +97,7 @@ private:
 
 void adjustReturnTypesForInputChain(mlir::Value value, int64_t swizzlingKey, config::ArchKind archKind) {
     auto adjustReturnType = [&](mlir::Value value) {
-        auto adjustedType = setSwizzlingKey(value.getType(), swizzlingKey, archKind);
+        auto adjustedType = VPUIP::setSwizzlingKey(value.getType(), swizzlingKey, archKind);
         value.setType(adjustedType);
     };
 
@@ -414,14 +415,14 @@ bool Swizzling::canSwizzleWeights(VPUIP::NCEClusterTaskOp nceOp, DeviceInfo& dev
 template <typename InAllocOp, typename OutAllocOp>
 void Swizzling::addSwizzlingAttributesToBuffer(mlir::OpBuilder& builder, InAllocOp inAllocOp, mlir::Type newType,
                                                config::ArchKind archKind) {
-    auto swizzlingSchemeAttr = getSwizzlingSchemeAttr(newType);
+    auto swizzlingSchemeAttr = VPUIP::getSwizzlingSchemeAttr(newType);
     auto addressAlignment = vpux::getAddressAlignmentForSwizzling(swizzlingSchemeAttr.getKey().getInt(), archKind);
     auto addressAlignmentAttr = getIntAttr(&getContext(), addressAlignment);
 
     builder.setInsertionPoint(inAllocOp);
 
     auto origLoc = inAllocOp->getLoc();
-    auto newLoc = appendLoc(origLoc, "_alloc_swizzling");
+    auto newLoc = appendLoc(origLoc, "alloc_swizzling");
 
     auto outAllocOp = builder.create<OutAllocOp>(newLoc, newType, addressAlignmentAttr, swizzlingSchemeAttr.getKey());
 
@@ -453,13 +454,13 @@ void Swizzling::updateConstantTypeForSwizzling(Const::DeclareOp cstOp, mlir::Ope
     _log.nest().trace("Constant for swizzling transformation'{0}'", cstOp->getLoc());
 
     auto cstType = mlir::cast<vpux::NDTypeInterface>(cstOp.getOutput().getType());
-    if (auto swizzlingSchemeAttr = vpux::getSwizzlingSchemeAttr(cstType)) {
+    if (auto swizzlingSchemeAttr = VPUIP::getSwizzlingSchemeAttr(cstType)) {
         // Check if swizzling transformation is already attached, this can happen when constant is shared
         // between 2 or more NCEOps or when constants are fused
         return;
     }
 
-    auto newCstType = vpux::setSwizzlingKey(cstType, swizzlingKey, deviceInfo.archKind);
+    auto newCstType = VPUIP::setSwizzlingKey(cstType, swizzlingKey, deviceInfo.archKind);
     mlir::OpBuilder builder(cstOp);
     auto newCstOp = builder.create<Const::DeclareOp>(cstOp.getLoc(), newCstType, cstOp.getContentAttr());
     cstLoadOp->setOperand(0, newCstOp.getOutput());
@@ -476,7 +477,7 @@ void Swizzling::constantBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCEClus
 
     auto isTiled = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(nceOp->getResult(0).getType()) != nullptr;
     auto isFused = nceOp->hasAttr(vpux::ConstantFusing::constantsFused);
-    auto swizzlingSchemeAttr = createSwizzlingSchemeAttr(&getContext(), deviceInfo.archKind, SWIZZLING_KEY_5);
+    auto swizzlingSchemeAttr = VPUIP::createSwizzlingSchemeAttr(&getContext(), deviceInfo.archKind, SWIZZLING_KEY_5);
 
     auto shapeCastOp = cst.getDefiningOp<VPUIP::ShapeCastOp>();
     if (isFused || shapeCastOp) {
@@ -690,7 +691,8 @@ void Swizzling::activationBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCECl
             return;
         }
 
-        auto swizzlingSchemeAttr = createSwizzlingSchemeAttr(&getContext(), deviceInfo.archKind, SWIZZLING_KEY_5);
+        auto swizzlingSchemeAttr =
+                VPUIP::createSwizzlingSchemeAttr(&getContext(), deviceInfo.archKind, SWIZZLING_KEY_5);
         auto addressAlignment =
                 vpux::getAddressAlignmentForSwizzling(swizzlingSchemeAttr.getKey().getInt(), deviceInfo.archKind);
         auto addressAlignmentAttr = getIntAttr(&getContext(), addressAlignment);
@@ -702,7 +704,7 @@ void Swizzling::activationBufferSwizzling(mlir::OpBuilder& builder, VPUIP::NCECl
         _log.trace("Enable swizzling for {0}th output buffer of NCE task - '{1}'", outputIndex, nceOp->getLoc());
 
         builder.setInsertionPoint(sourceAllocOp);
-        auto newLoc = appendLoc(sourceAllocOp->getLoc(), "_alloc_swizzling");
+        auto newLoc = appendLoc(sourceAllocOp->getLoc(), "alloc_swizzling");
 
         if (auto allocOp = mlir::dyn_cast<mlir::memref::AllocOp>(sourceAllocOp)) {
             // Create new MemRefType which as part of layout will have swizzling set

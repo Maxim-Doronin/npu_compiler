@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,8 @@ using RelocFunc = std::function<void(void*, uint64_t, uint64_t)>;
 const uint32_t B21_B26_MASK = 0x07E0'0000;
 const uint32_t LO_21_BIT_MASK = 0x001F'FFFF;
 const uint32_t ADDRESS_MASK = ~0x00C0'0000u;
+const uint32_t LSB_16_MASK = 0x0000FFFF;
+const uint32_t MSB_16_MASK = 0xFFFF0000;
 
 uint32_t to_dpu_multicast(uint32_t addr, unsigned int& offset1, unsigned int& offset2, unsigned int& offset3) {
     const uint32_t bare_ptr = addr & ADDRESS_MASK;
@@ -218,5 +220,30 @@ const auto VPU_32_OR_LO_19_LSB_21_RSHIFT_2_Relocation = [](void* targetAddr, uin
     *addr &= ~(LO_21_BIT_MASK >> 2);
     *addr |= patchAddr;
 };
+
+const auto VPU_16_LSB_21_RSHIFT_5_LSHIFT_16_SUM_Relocation = [](void* targetAddr, uint32_t stValue,
+                                                                const elf::Elf_Sxword addend) -> void {
+    auto addr = reinterpret_cast<uint32_t*>(targetAddr);
+    auto symVal = stValue;
+
+    auto offset = ((*addr & MSB_16_MASK) >> 16) << 5;
+    auto patchedAddr = (static_cast<uint32_t>(symVal + addend + offset) & LO_21_BIT_MASK) >> 5;
+
+    *addr &= ~MSB_16_MASK;
+    *addr |= patchedAddr << 16;
+};
+
+const auto VPU_16_LSB_21_RSHIFT_5_SUM_Relocation = [](void* targetAddr, uint32_t stValue,
+                                                      const elf::Elf_Sxword addend) -> void {
+    auto addr = reinterpret_cast<uint32_t*>(targetAddr);
+    auto symVal = stValue;
+
+    auto offset = (*addr & LSB_16_MASK) << 5;
+    auto patchedAddr = (static_cast<uint32_t>(symVal + addend + offset) & LO_21_BIT_MASK) >> 5;
+
+    *addr &= ~LSB_16_MASK;
+    *addr |= patchedAddr;
+};
+
 }  // namespace ELF
 }  // namespace vpux

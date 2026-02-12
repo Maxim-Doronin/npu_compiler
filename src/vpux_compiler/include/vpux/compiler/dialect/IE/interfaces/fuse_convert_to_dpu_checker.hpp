@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/Operation.h>
@@ -29,12 +28,10 @@ public:
     virtual bool isFusionToParentDPUOpSupported(mlir::Operation* /*dpuOp*/, Logger /*log*/) const {
         return true;
     };
+    virtual bool isConvertOnDPUBeneficial() const {
+        return true;
+    };
 };
-
-/*
-   Find right class to verify whether fusion of Convert F16 -> F32 to parent DPU is feasible
-*/
-std::unique_ptr<FuseConvertToDPUCheckerBase> createFuseConvertToDPUChecker(vpux::config::ArchKind arch);
 
 }  // namespace IE
 }  // namespace vpux

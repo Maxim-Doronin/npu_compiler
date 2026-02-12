@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -178,6 +178,7 @@ TEST_P(FuseRoPETestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(FuseRoPETestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);

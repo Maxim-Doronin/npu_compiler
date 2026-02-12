@@ -203,13 +203,13 @@ mlir::Operation* OptimizeSubviewCopiesPass::createNewCopyOp(mlir::OpBuilder& bui
                                                             mlir::Type newOutputType, mlir::Location copyLoc) {
     auto distributedCopy = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(newOutputType);
     if (distributedCopy == nullptr || !distributedCopy.containsDistributedTypes()) {
-        auto newCMXBuff = builder.create<mlir::memref::AllocOp>(appendLoc(copyLoc, "_top_buf"),
+        auto newCMXBuff = builder.create<mlir::memref::AllocOp>(appendLoc(copyLoc, "top_buf"),
                                                                 mlir::cast<mlir::MemRefType>(newOutputType));
         return builder.create<VPUIP::CopyOp>(copyLoc, newOutputType, input, newCMXBuff);
     }
 
     auto newCMXBuff =
-            builder.create<VPURT::AllocDistributed>(appendLoc(copyLoc, "_top_buf"), newOutputType, nullptr, nullptr);
+            builder.create<VPURT::AllocDistributed>(appendLoc(copyLoc, "top_buf"), newOutputType, nullptr, nullptr);
 
     return builder.create<VPUIP::CopyOp>(copyLoc, newOutputType, input, newCMXBuff);
 }
@@ -232,7 +232,7 @@ NDTypeInterface OptimizeSubviewCopiesPass::getNewCMXType(mlir::Value input, mlir
     const auto newDistribution = VPU::getNonOverlappedDistributedAttr(
             inputShape, oldDistribution.getMode(), oldDistribution.getNumTiles(), oldDistribution.getNumClusters(),
             oldDistribution.getAlignment(), oldDistribution.getUniformDistributedSegments(),
-            prevCopyOutType.getContext());
+            outputType.getElementType(), prevCopyOutType.getContext());
     return outputType.changeShapeForExplicitDistribution(inputShape, newDistribution);
 }
 
@@ -265,7 +265,7 @@ void OptimizeSubviewCopiesPass::moveSubviewsAfterCopy(mlir::Value input, SmallVe
     for (auto& subview : subviews) {
         nestLog.trace("Replace Copy outputs with Subview output {0}", subview->getLoc());
 
-        auto cmxSubview = builder.create<VPUIP::SubViewOp>(appendLoc(subview->getLoc(), "_cmxsubview"), subviewInput,
+        auto cmxSubview = builder.create<VPUIP::SubViewOp>(appendLoc(subview->getLoc(), "cmxsubview"), subviewInput,
                                                            subview.getStaticOffsetsAttr(), subview.getStaticSizesAttr(),
                                                            subview.getStaticStridesAttr());
 

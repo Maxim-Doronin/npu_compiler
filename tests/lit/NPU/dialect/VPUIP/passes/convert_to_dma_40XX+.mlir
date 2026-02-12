@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,7 +43,7 @@ func.func @ConvertMemPermuteNCHWToNHCW(%arg0: memref<6x4x8x512xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<6x8x4x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #NHCW}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<6x8x4x512xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -92,7 +92,7 @@ func.func @ConvertMemPermuteNCHWToNHCWWithDifferentDimsOrder(%arg0: memref<6x4x8
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<6x512x8x4xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #NHCW} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #NHCW}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<6x512x8x4xf16, #NHWC, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -141,7 +141,7 @@ func.func @ConvertMemPermuteNCHWToHCNW(%arg0: memref<6x4x8x512xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<8x4x6x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #map} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<8x4x6x512xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -190,7 +190,7 @@ func.func @ConvertMemPermuteNCHWToNWHC(%arg0: memref<6x4x8x512xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<6x512x8x4xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #NWHC} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #NWHC}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<6x512x8x4xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -237,7 +237,7 @@ func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<4x4x86x256xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #map} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<4x4x86x256xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -284,7 +284,7 @@ func.func @ConvertMemPermuteNCHWToHNWC(%arg0: memref<4x4x86x256xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<86x4x256x4xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #map} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<86x4x256x4xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -370,7 +370,7 @@ func.func @ConvertMemPermuteNCHWToWCHN(%arg0: memref<4x2x121x3xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<3x2x121x4xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #map} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<3x2x121x4xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -419,7 +419,7 @@ func.func @ConvertMemPermuteNCHWToWCHNWithDifferentDimsOrder(%arg0: memref<4x3x2
     // CHECK-SAME:     inputs([[INPUT]]
     // CHECK-SAME:     outputs([[COPY_BUFF_0]]
     // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<3x2x121x4xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA {mem_perm = #map} inputs([[COPY_0]]{{.*}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.*}})
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
     // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<3x2x121x4xf16, @DDR>
     // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
@@ -441,7 +441,7 @@ func.func @ConvertExpandWithBlockArgumentAsOutput(%arg0: memref<1x3x24x24x!qElem
 
    return %0 : memref<1x16x24x24x!qElemType>
 
-   //CHECK:   [[VAR0:%.*]] = VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} inputs([[INPUT]] : memref<1x3x24x24x!qElemType>) outputs([[OUTPUT]] : memref<1x16x24x24x!qElemType>) -> memref<1x16x24x24x!qElemType>
+   //CHECK:   [[VAR0:%.+]] = VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}> inputs([[INPUT]] : memref<1x3x24x24x!qElemType>) outputs([[OUTPUT]] : memref<1x16x24x24x!qElemType>) -> memref<1x16x24x24x!qElemType>
    //CHECK:   return [[VAR0]] : memref<1x16x24x24x!qElemType>
 }
 
@@ -460,16 +460,16 @@ func.func @convertUpsamplingWithBlockArgumentAsOutput(%arg0: memref<1x256x16x32x
             outputs(%arg1 : memref<1x256x32x64xf16>) -> memref<1x256x32x64xf16>
     return %0 : memref<1x256x32x64xf16>
 
-    // CHECK:       [[CST:%.*]] = const.Declare memref<1x256x32x64xf16> = dense<0.000000e+00> : tensor<1x256x32x64xf16>
-    // CHECK:       [[CMX_BUFF:%.*]] = memref.alloc() : memref<1x256x32x64xf16, [@CMX_NN, 0]>
+    // CHECK:       [[CST:%.+]] = const.Declare memref<1x256x32x64xf16> = dense<0.000000e+00> : tensor<1x256x32x64xf16>
+    // CHECK:       [[CMX_BUFF:%.+]] = memref.alloc() : memref<1x256x32x64xf16, [@CMX_NN, 0]>
 
-    // CHECK:       [[COPYZERO:%.*]] = VPUIP.Copy
+    // CHECK:       [[COPYZERO:%.+]] = VPUIP.Copy
     // CHECK:              inputs([[CST]] : memref<1x256x32x64xf16>)
     // CHECK:              outputs([[CMX_BUFF]] : memref<1x256x32x64xf16, [@CMX_NN, 0]>)
-    // CHECK:       [[DMA:%.*]] = VPUIP.UpsamplingDMAOp {port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}
+    // CHECK:       [[DMA:%.+]] = VPUIP.UpsamplingDMAOp <{port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}>
     // CHECK:              inputs([[INPUT]] : memref<1x256x16x32xf16>)
     // CHECK:              outputs([[COPYZERO]] : memref<1x256x32x64xf16, [@CMX_NN, 0]>)
-    // CHECK:       [[COPYOUT:%.*]] = VPUIP.Copy
+    // CHECK:       [[COPYOUT:%.+]] = VPUIP.Copy
     // CHECK:              inputs([[DMA]] : memref<1x256x32x64xf16, [@CMX_NN, 0]>)
     // CHECK:              outputs([[OUTPUT]] : memref<1x256x32x64xf16>)
 
@@ -491,12 +491,12 @@ func.func @NotMoveUpsamplingDMAInCMXWithLargeSize(%arg0: memref<1x64x128x128xf16
             outputs(%arg1 : memref<1x64x256x256xf16>) -> memref<1x64x256x256xf16>
     return %0 : memref<1x64x256x256xf16>
 
-    // CHECK:       [[CST:%.*]] = const.Declare memref<1x64x256x256xf16> = dense<0.000000e+00> : tensor<1x64x256x256xf16>
+    // CHECK:       [[CST:%.+]] = const.Declare memref<1x64x256x256xf16> = dense<0.000000e+00> : tensor<1x64x256x256xf16>
 
-    // CHECK:       [[COPYZERO:%.*]] = VPUIP.Copy
+    // CHECK:       [[COPYZERO:%.+]] = VPUIP.Copy
     // CHECK:              inputs([[CST]] : memref<1x64x256x256xf16>)
     // CHECK:              outputs([[OUTPUT]] : memref<1x64x256x256xf16>)
-    // CHECK:       [[DMA:%.*]] = VPUIP.UpsamplingDMAOp {port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}
+    // CHECK:       [[DMA:%.+]] = VPUIP.UpsamplingDMAOp <{port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}>
     // CHECK:              inputs([[INPUT]] : memref<1x64x128x128xf16>)
     // CHECK:              outputs([[COPYZERO]] : memref<1x64x256x256xf16>)
 
@@ -536,12 +536,12 @@ func.func @ConvertPerAxisTileToDMAOutputDDR(%arg0: memref<1x1x1x1000xf16, @DDR>,
     // CHECK:   [[COPY_IN:%.+]] = VPUIP.Copy inputs([[INPUT_0]] : memref<1x1x1x1000xf16, @DDR>) outputs([[CMX_BUF_0]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
     // CHECK:   [[CMX_BUF_1:%.+]] = memref.alloc() : memref<1x1x16x1000xf16, [@CMX_NN, 0]>
 
-    // CHECK:   [[PER_AXIS_TILE_DMA_0:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 16 : i64}
+    // CHECK:   [[PER_AXIS_TILE_DMA_0:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 16 : i64}>
     // CHECK-SAME:    inputs([[COPY_IN]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>)
     // CHECK-SAME:    outputs([[CMX_BUF_1]] : memref<1x1x16x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x16x1000xf16, [@CMX_NN, 0]>
     // CHECK:   [[CMX_BUF_2:%.+]] = memref.alloc() : memref<1x22x16x1000xf16, [@CMX_NN, 0]>
 
-    // CHECK:   [[PER_AXIS_TILE_DMA_1:%.+]] = VPUIP.PerAxisTileDMA {axis = 1 : i64, tiles = 22 : i64}
+    // CHECK:   [[PER_AXIS_TILE_DMA_1:%.+]] = VPUIP.PerAxisTileDMA <{axis = 1 : i64, tiles = 22 : i64}>
     // CHECK-SAME:    inputs([[PER_AXIS_TILE_DMA_0]] : memref<1x1x16x1000xf16, [@CMX_NN, 0]>)
     // CHECK-SAME:    outputs([[CMX_BUF_2]] : memref<1x22x16x1000xf16, [@CMX_NN, 0]>) -> memref<1x22x16x1000xf16, [@CMX_NN, 0]>
     // CHECK:   [[COPY_OUT:%.+]] = VPUIP.Copy inputs([[PER_AXIS_TILE_DMA_1]] : memref<1x22x16x1000xf16, [@CMX_NN, 0]>) outputs([[INPUT_1]] : memref<1x22x16x1000xf16, @DDR>) -> memref<1x22x16x1000xf16, @DDR>
@@ -579,12 +579,12 @@ func.func @ConvertPerAxisTileToDMAWith2Axis(%arg0: memref<1x1x1x1xf16, @DDR>, %a
     // CHECK:   [[COPY_IN:%.+]] = VPUIP.Copy inputs([[INPUT_0]] : memref<1x1x1x1xf16, @DDR>)
     // CHECK:                     outputs([[CMX_BUF_0]] : memref<1x1x1x1xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1xf16, [@CMX_NN, 0]>
     // CHECK:   [[DMA1_OUTBUFF:%.+]] = memref.alloc() : memref<1x1x1x3840xf16, [@CMX_NN, 0]>
-    // CHECK:   [[DMA1:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 3840 : i64}
+    // CHECK:   [[DMA1:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 3840 : i64}>
     // CHECK-SAME:    inputs([[COPY_IN]] : memref<1x1x1x1xf16, [@CMX_NN, 0]>)
     // CHECK-SAME:    outputs([[DMA1_OUTBUFF]] : memref<1x1x1x3840xf16, [@CMX_NN, 0]>) -> memref<1x1x1x3840xf16, [@CMX_NN, 0]>
 
     // CHECK:   [[DMA2_OUTBUFF:%.+]] = memref.alloc() : memref<1x1x182x3840xf16, [@CMX_NN, 0]>
-    // CHECK:   [[DMA2:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 182 : i64}
+    // CHECK:   [[DMA2:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 182 : i64}>
     // CHECK-SAME:    inputs([[DMA1]] : memref<1x1x1x3840xf16, [@CMX_NN, 0]>)
     // CHECK-SAME:    outputs([[DMA2_OUTBUFF]] : memref<1x1x182x3840xf16, [@CMX_NN, 0]>) -> memref<1x1x182x3840xf16, [@CMX_NN, 0]>
 
@@ -626,12 +626,12 @@ func.func @ConvertPerAxisTileToDMAInLogicOrder(%arg0: memref<1x1x1x512xf16, @DDR
     // CHECK:   [[COPY_IN:%.+]] = VPUIP.Copy inputs([[INPUT_0]] : memref<1x1x1x512xf16, @DDR>)
     // CHECK:                     outputs([[CMX_BUF_0]] : memref<1x1x1x512xf16, [@CMX_NN, 0]>) -> memref<1x1x1x512xf16, [@CMX_NN, 0]>
     // CHECK:   [[DMA1_OUTBUFF:%.+]] = memref.alloc() : memref<1x2x1x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[DMA1:%.+]] = VPUIP.PerAxisTileDMA {axis = 1 : i64, tiles = 2 : i64}
+    // CHECK:   [[DMA1:%.+]] = VPUIP.PerAxisTileDMA <{axis = 1 : i64, tiles = 2 : i64}>
     // CHECK-SAME:    inputs([[COPY_IN]] : memref<1x1x1x512xf16, [@CMX_NN, 0]>)
     // CHECK-SAME:    outputs([[DMA1_OUTBUFF]] : memref<1x2x1x512xf16, [@CMX_NN, 0]>) -> memref<1x2x1x512xf16, [@CMX_NN, 0]>
 
     // CHECK:   [[DMA2_OUTBUFF:%.+]] = memref.alloc() : memref<1x2x512x512xf16, [@CMX_NN, 0]>
-    // CHECK:   [[DMA2:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 512 : i64}
+    // CHECK:   [[DMA2:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 512 : i64}>
     // CHECK-SAME:    inputs([[DMA1]] : memref<1x2x1x512xf16, [@CMX_NN, 0]>)
     // CHECK-SAME:    outputs([[DMA2_OUTBUFF]] : memref<1x2x512x512xf16, [@CMX_NN, 0]>) -> memref<1x2x512x512xf16, [@CMX_NN, 0]>
 
@@ -679,7 +679,7 @@ func.func @ConvertMemPermuteNCHWToHCWN(%arg0: memref<64x1x18x34xf16, @DDR>)
     // CHECK-SAME:     inputs([[INPUT]] : memref<64x1x18x34xf16, @DDR>)
     // CHECK-SAME:     outputs([[ALLOC]] : memref<64x1x18x34xf16, [@CMX_NN, 0]>)
     // CHECK:   [[ALLOC_0:%.+]] = memref.alloc() : memref<18x1x34x64xf16, [@CMX_NN, 0]>
-    // CHECK:   [[PERMUTEDMA0:%.+]] = VPUIP.PermuteDMA {mem_perm = #map} inputs([[COPY0]] : memref<64x1x18x34xf16, [@CMX_NN, 0]>) outputs([[ALLOC_0]] : memref<18x1x34x64xf16, [@CMX_NN, 0]>) -> memref<18x1x34x64xf16, [@CMX_NN, 0]>
+    // CHECK:   [[PERMUTEDMA0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY0]] : memref<64x1x18x34xf16, [@CMX_NN, 0]>) outputs([[ALLOC_0]] : memref<18x1x34x64xf16, [@CMX_NN, 0]>) -> memref<18x1x34x64xf16, [@CMX_NN, 0]>
     // CHECK:   [[ALLOC_1:%.+]] = memref.alloc() : memref<18x1x34x64xf16, @DDR>
     // CHECK:   [[COPY2:%.+]] = VPUIP.Copy inputs([[PERMUTEDMA0]] : memref<18x1x34x64xf16, [@CMX_NN, 0]>) outputs([[ALLOC_1]] : memref<18x1x34x64xf16, @DDR>) -> memref<18x1x34x64xf16, @DDR>
 

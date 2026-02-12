@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,7 @@ func.func @ExpandToSubviewWithoutTail(%input: tensor<1x4x4x4xf16>) -> tensor<1x8
     return %0 : tensor<1x8x4x4xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x8x4x4xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 4, 0, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 4, 0, 0]}
     // CHECK-SAME:      inputs([[ARG]] : memref<1x4x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x8x4x4xf16>) -> memref<1x8x4x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x8x4x4xf16>
 }
@@ -53,7 +53,7 @@ func.func @ExpandToSubviewOnlyWithTail(%input: tensor<1x5x4x4xf16>) -> tensor<1x
     return %0 : tensor<1x8x4x4xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x8x4x4xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 3, 0, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 3, 0, 0]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x5x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x8x4x4xf16>) -> memref<1x8x4x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x8x4x4xf16>
 }
@@ -66,7 +66,7 @@ func.func @ExpandOverWidth(%input: tensor<1x3x4x4xf16>) -> tensor<1x3x4x9xf16> {
     return %0 : tensor<1x3x4x9xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x3x4x9xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 5]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 5]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x3x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x3x4x9xf16>) -> memref<1x3x4x9xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x3x4x9xf16>
 }
@@ -79,7 +79,7 @@ func.func @ExpandOverHeight(%input: tensor<1x3x4x4xf16>) -> tensor<1x3x9x4xf16> 
     return %0 : tensor<1x3x9x4xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x3x9x4xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 5, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 5, 0]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x3x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x3x9x4xf16>) -> memref<1x3x9x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x3x9x4xf16>
 }
@@ -96,7 +96,7 @@ func.func @ExpandPadsBeginFullCopy(%input: tensor<1x3x4x4xf16>) -> tensor<1x6x4x
     return %0 : tensor<1x6x4x4xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x6x4x4xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 0, 0, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 0, 0, 0]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x3x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x6x4x4xf16>) -> memref<1x6x4x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x6x4x4xf16>
 }
@@ -114,7 +114,7 @@ func.func @ExpandPadsBeginSliceCopy(%input: tensor<1x3x4x4xf16>) -> tensor<1x5x4
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x5x4x4xf16>
 
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 2, 0, 0], pads_end = [0, 0, 0, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 2, 0, 0], pads_end = [0, 0, 0, 0]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x3x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x5x4x4xf16>) -> memref<1x5x4x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x5x4x4xf16>
 }
@@ -131,7 +131,7 @@ func.func @ExpandPadsBeginCopiesWithTail(%input: tensor<1x3x4x4xf16>) -> tensor<
     return %0 : tensor<1x11x4x4xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x11x4x4xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 8, 0, 0], pads_end = [0, 0, 0, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 8, 0, 0], pads_end = [0, 0, 0, 0]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x3x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x11x4x4xf16>) -> memref<1x11x4x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x11x4x4xf16>
 }
@@ -148,7 +148,7 @@ func.func @ExpandBeginPadsWithEndPads(%input: tensor<1x3x4x4xf16>) -> tensor<1x9
     return %0 : tensor<1x9x4x4xf16>
 
     // CHECK:       [[BUFFER_DDR:%.+]] = memref.alloc() : memref<1x9x4x4xf16>
-    // CHECK:       [[OUTPUT:%.*]] = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 3, 0, 0]}
+    // CHECK:       [[OUTPUT:%.+]] = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 3, 0, 0]}
     // CHECK-SAME:     inputs([[ARG]] : memref<1x3x4x4xf16>) outputs([[BUFFER_DDR]] : memref<1x9x4x4xf16>) -> memref<1x9x4x4xf16>
     // CHECK:       return [[OUTPUT]] : memref<1x9x4x4xf16>
 }
@@ -365,7 +365,7 @@ func.func @SliceSparseTensor(%arg0: tensor<1x32x16x16xf16, {order = #NHWC, mem_s
 
     // CHECK: [[ALLOC_DATA_BUF:%.+]] = memref.alloc() : memref<1x4x8x16xf16, #NHWC, @CMX_NN>
     // CHECK: [[ALLOC_SM_BUF:%.+]] = memref.alloc() : memref<1x1x1x512xi1, #NHWC, @CMX_NN>
-    // CHECK: [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) {is_weights} -> !VPUIP.SparseBuffer<data=memref<1x4x8x16xf16, #NHWC, @CMX_NN>, sparsity_map=memref<1x1x1x512xi1, #NHWC, @CMX_NN>, is_weights>
+    // CHECK: [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) <{is_weights}> -> !VPUIP.SparseBuffer<data=memref<1x4x8x16xf16, #NHWC, @CMX_NN>, sparsity_map=memref<1x1x1x512xi1, #NHWC, @CMX_NN>, is_weights>
 
     // CHECK: {{%.+}} = VPUIP.Copy inputs([[SUBVIEW_RES]] : !VPUIP.SparseBuffer<data=memref<1x4x8x16xf16, {order = #NHWC, strides = [8192, 1, 512, 32]}, @CMX_NN>,
     // CHECK-SAME:                                                              sparsity_map=memref<1x1x1x512xi1, #NHWC, @CMX_NN>, is_weights>)
@@ -422,7 +422,7 @@ func.func @SliceSparseDistributedTensor(%arg0: !InputTensorDistributed, %arg1: !
 
     // CHECK:       [[ALLOC_DATA_BUF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x4x8x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK:       [[ALLOC_SM_BUF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x1x512xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) {is_weights} -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<1x4x8x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
+    // CHECK:       [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) <{is_weights}> -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<1x4x8x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
     // CHECK-SAME:                                                                                                                               sparsity_map=!VPUIP.DistributedBuffer<1x1x1x512xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
     // CHECK-SAME:                                                                                                                               is_weights>
 
@@ -632,7 +632,7 @@ func.func @ConcatSparseTensor(%arg0: tensor<1x32x16x16xf16, {order = #NHWC, mem_
 
     // CHECK:       [[ALLOC_DATA_BUF:%.+]] = memref.alloc() : memref<1x32x24x16xf16, #NHWC, @CMX_NN>
     // CHECK:       [[ALLOC_SM_BUF:%.+]] = memref.alloc() : memref<1x32x24x16xi1, #NHWC, @CMX_NN>
-    // CHECK:       [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) {is_weights} ->
+    // CHECK:       [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) <{is_weights}> ->
     // CHECK-SAME:                             !VPUIP.SparseBuffer<data=memref<1x32x24x16xf16, #NHWC, @CMX_NN>, sparsity_map=memref<1x32x24x16xi1, #NHWC, @CMX_NN>, is_weights>
 
     // CHECK:       [[SUBVIEW_1_RES:%.+]] = VPUIP.SubView [[ALLOC_SPARSE_BUF]] [0, 0, 0, 0] [1, 32, 16, 16] :
@@ -711,13 +711,13 @@ func.func @ConcatSparseDistributedTensor(%arg0: !InputTensorDistributed, %arg1: 
     %res = VPU.Concat(%st1, %st2) {static_offsets = [[0, 0, 0, 0], [0, 0, 16, 0]]}: !InputSparseTensorDistributed, !InputSparseTensorDistributed -> !OutputSparseTensorDistributed
     return %res : !OutputSparseTensorDistributed
 
-    // CHECK:       [[ALLOC_IN0_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer(%arg0, %arg1) {is_weights}
+    // CHECK:       [[ALLOC_IN0_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer(%arg0, %arg1) <{is_weights}>
     // CHECK-SAME:         -> !VPUIP.SparseBuffer<
     // CHECK-SAME:              data=!VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
     // CHECK-SAME:              sparsity_map=!VPUIP.DistributedBuffer<1x32x16x16xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
     // CHECK-SAME:              is_weights>
 
-    // CHECK:       [[ALLOC_IN1_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer(%arg2, %arg3) {is_weights}
+    // CHECK:       [[ALLOC_IN1_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer(%arg2, %arg3) <{is_weights}>
     // CHECK-SAME:         -> !VPUIP.SparseBuffer<
     // CHECK-SAME:              data=!VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
     // CHECK-SAME:              sparsity_map=!VPUIP.DistributedBuffer<1x32x16x16xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
@@ -731,7 +731,7 @@ func.func @ConcatSparseDistributedTensor(%arg0: !InputTensorDistributed, %arg1: 
     // CHECK-SAME:         -> !VPUIP.DistributedBuffer<1x32x32x16xi1, #NHWC, @CMX_NN
     // CHECK-SAME:              {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}
 
-    // CHECK:       [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) {is_weights}
+    // CHECK:       [[ALLOC_SPARSE_BUF:%.+]] = VPUIP.GroupSparseBuffer([[ALLOC_DATA_BUF]], [[ALLOC_SM_BUF]]) <{is_weights}>
     // CHECK-SAME:         -> !VPUIP.SparseBuffer<
     // CHECK-SAME:              data=!VPUIP.DistributedBuffer<1x32x32x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
     // CHECK-SAME:              sparsity_map=!VPUIP.DistributedBuffer<1x32x32x16xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
@@ -1503,13 +1503,13 @@ func.func @SparseDistributedCopyCMXToDDR(%arg0: !Tensor_DDR, %arg1: !SMTensor_DD
             -> !VPU.SparseTensor<data=!TensorDistributed, sparsity_map=!SMTensorDistributed, is_weights>
     return %tensor_distributed_cmx : !VPU.SparseTensor<data=!TensorDistributed, sparsity_map=!SMTensorDistributed, is_weights>
 
-    // CHECK:       [[INPUT_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[ARG0]], [[ARG1]]) {is_weights}
+    // CHECK:       [[INPUT_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[ARG0]], [[ARG1]]) <{is_weights}>
     // CHECK-SAME:          -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC, @DDR>, sparsity_map=memref<32x1x1x256xi1, @DDR>, is_weights>
 
     // CHECK:       [[DATA_DIST_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK:       [[SM_DIST_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<32x1x1x256xi1, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    // CHECK:       [[OUTPUT_SPARSE_CMX:%.+]] = VPUIP.GroupSparseBuffer([[DATA_DIST_CMX]], [[SM_DIST_CMX]]) {is_weights}
+    // CHECK:       [[OUTPUT_SPARSE_CMX:%.+]] = VPUIP.GroupSparseBuffer([[DATA_DIST_CMX]], [[SM_DIST_CMX]]) <{is_weights}>
     // CHECK-SAME:          -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
     // CHECK-SAME:                                 sparsity_map=!VPUIP.DistributedBuffer<32x1x1x256xi1, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
     // CHECK-SAME:                                 is_weights>

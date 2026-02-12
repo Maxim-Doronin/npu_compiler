@@ -14,12 +14,12 @@
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustSingleFakeQuantizeOp(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %1 = IE.FakeQuantize(%arg0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     return %1 : tensor<1x128x32x64xf32>
 
@@ -45,12 +45,12 @@ func.func @AdjustSingleFakeQuantizeOp(%arg0 : tensor<1x128x32x64xf32>) -> tensor
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFQBetweenSubAndAdd(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Add(%1, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -78,12 +78,12 @@ func.func @AdjustFQBetweenSubAndAdd(%arg0 : tensor<1x128x32x64xf32>, %arg1 : ten
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFQMul(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -108,12 +108,12 @@ func.func @AdjustFQMul(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1
 // CHECK-LABEL: @AdjustFQMulSquareUp
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulSquareUp(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -137,13 +137,13 @@ func.func @AdjustFQMulSquareUp(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x
 // CHECK-LABEL: @AdjustFQMulSquareDown
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulSquareDown(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %mul_in) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -167,13 +167,13 @@ func.func @AdjustFQMulSquareDown(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x12
 // CHECK-LABEL: @AdjustFQMulUpFuseConst
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulUpFuseConst(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Subtract(%arg0, %mul_in) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.Multiply(%0, %mul_in) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.FakeQuantize(%1, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -202,12 +202,12 @@ func.func @AdjustFQMulUpFuseConst(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x1
 // CHECK-LABEL: @AdjustFQMulSquareUpDown
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulSquareUpDown(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -232,12 +232,12 @@ func.func @AdjustFQMulSquareUpDown(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x
 // CHECK-LABEL: @AdjustFQMulDownAdd
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulDownAdd(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -270,12 +270,12 @@ func.func @AdjustFQMulDownAdd(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x3
 // CHECK-LABEL: @AdjustFQMulUpAddDownSq
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulUpAddDownSq(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Add(%1, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -300,18 +300,18 @@ func.func @AdjustFQMulUpAddDownSq(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x1
 // CHECK-LABEL: @AdjustFQMulDownAddSq
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulDownAddSq(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %3 = IE.Add(%2, %2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     return %3 : tensor<1x128x32x64xf32>
-    
+
     // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1xf32> = dense<4.89203119> : tensor<1xf32>
     // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<3.276800e+04> : tensor<1x1x1x1xf32>
     // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1x1xf32>
@@ -335,12 +335,12 @@ func.func @AdjustFQMulDownAddSq(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128
 // CHECK-LABEL: @AdjustFQMulSquareUpDownAdd
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulSquareUpDownAdd(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Multiply(%1, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -367,19 +367,19 @@ func.func @AdjustFQMulSquareUpDownAdd(%arg0 : tensor<1x128x32x64xf32>) -> tensor
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQuantizeWithFQ(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x1x1xf32> {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq1_in_low, %fq1_in_hi, %fq1_out_low, %fq1_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -420,19 +420,19 @@ func.func @AdjustFakeQuantizeWithFQ(%arg0 : tensor<1x128x32x64xf32>, %arg1 : ten
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQuantizeWithFQ2(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq1_in_low, %fq1_in_hi, %fq1_out_low, %fq1_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -473,14 +473,14 @@ func.func @AdjustFakeQuantizeWithFQ2(%arg0 : tensor<1x128x32x64xf32>, %arg1 : te
 // CHECK-LABEL: @AdjustFQMulUpFuseConstWithBias
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @AdjustFQMulUpFuseConstWithBias(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x1x32x64xf32> {
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %mul_in = const.Declare tensor<1x128x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x128x1x1xf32> isSplat
-    %bias_in = const.Declare tensor<1x128x1x1xf32> = dense <9.537536814401392e-06> : tensor<1x128x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %mul_in = const.Declare tensor<1x128x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x128x1x1xf32>
+    %bias_in = const.Declare tensor<1x128x1x1xf32> = dense <9.537536814401392e-06> : tensor<1x128x1x1xf32>
 
-   
+
     %0 = IE.Subtract(%arg0, %mul_in) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.Convolution(%0, %mul_in, %bias_in) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1], auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32>, tensor<1x128x1x1xf32> -> tensor<1x1x32x64xf32>
     %2 = IE.FakeQuantize(%1, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x1x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x32x64xf32>
@@ -512,16 +512,16 @@ func.func @AdjustFQMulUpFuseConstWithBias(%arg0 : tensor<1x128x32x64xf32>) -> te
 func.func @AFQDQConvQuantizedWts(%arg0 : tensor<1x256x256x256xf32>) -> tensor<1x256x256x256xf32> {
     %cst_1340 = const.Declare tensor<256x256x3x3xf32> = dense<100> : tensor<256x256x3x3xui8>, [#const.CastElemType<f32>]
     %cst_1341 = const.Declare tensor<1x1x1x1xf32> = dense<4.163311> : tensor<1x1x1x1xf32>
-    %cst_1342 = const.Declare tensor<1x1x1x1xf32> = dense<-3.87944865> : tensor<1x1x1x1xf32> 
+    %cst_1342 = const.Declare tensor<1x1x1x1xf32> = dense<-3.87944865> : tensor<1x1x1x1xf32>
     %cst_1383 = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1x1xf32>
     %cst_1384 = const.Declare tensor<1x1x1x1xf32> = dense<2.550000e+02> : tensor<1x1x1x1xf32>
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
     // %16 and %564 are from before AFQDQ pass in psd7.
-    %16 = IE.FakeQuantize(%cst_1340, %cst_1383, %cst_1384, %cst_1342, %cst_1341) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<256x256x3x3xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<256x256x3x3xf32> 
+    %16 = IE.FakeQuantize(%cst_1340, %cst_1383, %cst_1384, %cst_1342, %cst_1341) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<256x256x3x3xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<256x256x3x3xf32>
     %564 = IE.Convolution(%arg0, %16) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x256x256x256xf32>, tensor<256x256x3x3xf32> -> tensor<1x256x256x256xf32>
     %2000 = IE.FakeQuantize(%564, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x256x256x256xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x256x256x256xf32>
     return %2000 : tensor<1x256x256x256xf32>
@@ -547,19 +547,19 @@ func.func @AFQDQConvQuantizedWts(%arg0 : tensor<1x256x256x256xf32>) -> tensor<1x
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQuantizeWithMultipleUsers(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> (tensor<1x128x1x1xf32>, tensor<1x128x32x64xf32>) {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq1_in_low, %fq1_in_hi, %fq1_out_low, %fq1_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -596,25 +596,25 @@ func.func @AdjustFakeQuantizeWithMultipleUsers(%arg0 : tensor<1x128x32x64xf32>, 
 
 // -----
 
-// Tests FQ prop to multiple users. 
+// Tests FQ prop to multiple users.
 // Further tests down prop from an FQ and fusion with mul_in in the down direction.
 // CHECK-LABEL: @AdjustFakeQuantizeWithMultipleUsers2
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQuantizeWithMultipleUsers2(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> (tensor<1x128x1x1xf32>, tensor<1x128x32x64xf32>) {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq1_in_low, %fq1_in_hi, %fq1_out_low, %fq1_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -651,25 +651,25 @@ func.func @AdjustFakeQuantizeWithMultipleUsers2(%arg0 : tensor<1x128x32x64xf32>,
 
 // -----
 
-// Tests FQ prop to multiple users. 
+// Tests FQ prop to multiple users.
 // Further tests down prop from an FQ and  update of another FQ in the down direction.
 // CHECK-LABEL: @AdjustFakeQuantizeWithMultipleUsers3
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQuantizeWithMultipleUsers3(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> (tensor<1x128x1x1xf32>, tensor<1x128x32x64xf32>) {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %mul_in = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.FakeQuantize(%0, %fq1_in_low, %fq1_in_hi, %fq1_out_low, %fq1_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -712,12 +712,12 @@ func.func @AdjustFakeQuantizeWithMultipleUsers3(%arg0 : tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQDQComplexAdd(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.And(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.And(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -748,12 +748,12 @@ func.func @AdjustFakeQDQComplexAdd(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tens
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQDQComplexSub(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.And(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.And(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Subtract(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -785,12 +785,12 @@ func.func @AdjustFakeQDQComplexSub(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tens
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFakeQDQComplexSub2(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
 
-   
+
     %0 = IE.And(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.And(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %2 = IE.Subtract(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -824,19 +824,19 @@ func.func @AdjustFakeQDQComplexSub2(%arg0 : tensor<1x128x32x64xf32>, %arg1 : ten
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFQSandwichNF_OF_NF(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.And(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -868,19 +868,19 @@ func.func @AdjustFQSandwichNF_OF_NF(%arg0 : tensor<1x128x32x64xf32>, %arg1 : ten
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>,
 // CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x128x1x1xf32>
 func.func @AdjustFQSandwichNF_OF_NF_Reshape(%arg0 : tensor<1x128x32x64xf32>, %arg1 : tensor<1x128x1x1xf32>) -> tensor<1x128x32x64xf32> {
-    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32> isSplat
-    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32> isSplat
-    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32> isSplat
+    %fq1_in_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq1_out_low = const.Declare tensor<1x1x1x1xf32> = dense <-182.1645050048828> : tensor<1x1x1x1xf32>
+    %fq1_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <392.4757080078125> : tensor<1x1x1x1xf32>
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <160302.078125> : tensor<1x1x1x1xf32>
+    %fq3_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %fq3_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq3_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <504.5491638183594> : tensor<1x1x1x1xf32>
+    %add_cst = const.Declare tensor<1x1x1x1xf32> = dense <8.537536814401392e-06> : tensor<1x1x1x1xf32>
 
     %0 = IE.Subtract(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
     %1 = IE.And(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x1x1xf32> -> tensor<1x128x32x64xf32>
@@ -918,10 +918,10 @@ func.func @AdjustFQSandwichNF_OF_NF_Reshape(%arg0 : tensor<1x128x32x64xf32>, %ar
 // CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x128x32x64xf32>
 func.func @SkipAsymmetricFakeQuantizeOp(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x32x64xf32> {
 
-    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <1.0> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32> isSplat
-    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <6.5535e+04> : tensor<1x1x1x1xf32> isSplat
+    %fq2_in_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_in_hi = const.Declare tensor<1x1x1x1xf32> = dense <1.0> : tensor<1x1x1x1xf32>
+    %fq2_out_low = const.Declare tensor<1x1x1x1xf32> = dense <0.000000e+00> : tensor<1x1x1x1xf32>
+    %fq2_out_hi = const.Declare tensor<1x1x1x1xf32> = dense <6.5535e+04> : tensor<1x1x1x1xf32>
 
     %1 = IE.FakeQuantize(%arg0, %fq2_in_low, %fq2_in_hi, %fq2_out_low, %fq2_out_hi) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     return %1 : tensor<1x128x32x64xf32>
@@ -938,10 +938,10 @@ func.func @SkipAsymmetricFakeQuantizeOp(%arg0 : tensor<1x128x32x64xf32>) -> tens
 // Test to check that FakeQuantize with NaN parameters is handled gracefully
 // CHECK-LABEL: @AdjustFakeQuantizeWithNaNParams
 func.func @AdjustFakeQuantizeWithNaNParams() -> tensor<1xf32> {
-    %cst_1 = const.Declare tensor<1xf32> = dense<1.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %cst_1 = const.Declare tensor<1xf32> = dense<1.0> : tensor<f32>, [#const.Reshape<[1]>]
     %cst_2 = const.Declare tensor<1xf32> = dense<2.0> : tensor<1xf32>
     %cst_nan = const.Declare tensor<1xf32> = dense<2.0> : tensor<1xf32>, [#const.Rescale<0x7FF8000000000000 : f64>]
-    
+
     %1 = IE.FakeQuantize(%cst_1, %cst_nan, %cst_nan, %cst_nan, %cst_nan) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1xf32>
     %2 = IE.Multiply(%1, %cst_2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<1xf32> -> tensor<1xf32>
 

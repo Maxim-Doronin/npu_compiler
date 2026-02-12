@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -108,7 +108,7 @@ mlir::LogicalResult SingleClusterDepthToSpaceDMARewriter::unroll(VPUIP::DepthToS
         VPURT::wrapIntoTaskOp<VPUIP::DepthToSpaceDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), vpurtTask.getLoc(), inputBuffer,
                 outputBuffer, vpux::getIntAttr(rewriter, dmaPort), origOp.getBlockSizeAttr(), origOp.getModeAttr(),
-                nullptr, nullptr, origOp.getIsOutOfOrderAttr(), origOp.getIsCriticalAttr(), origOp.getDmaHwpIdAttr(),
+                nullptr, nullptr, origOp.getIsOutOfOrder(), origOp.getIsCritical(), origOp.getDmaHwpIdAttr(),
                 origOp.getProfilingMetadataAttr(), internalDataFlowAttr);
     };
 
@@ -260,12 +260,12 @@ mlir::LogicalResult MultiClusterDepthToSpaceDMARewriter::unroll(VPUIP::DepthToSp
 
     int64_t dmaPort = 0;
     for (size_t clusterId = 0; clusterId < numClusters; ++clusterId) {
-        const auto newLoc = appendLoc(depthToSpaceDMAOp->getLoc(), "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(depthToSpaceDMAOp->getLoc(), "cluster_{0}", clusterId);
         auto newDepthToSpaceDMAOp = VPURT::wrapIntoTaskOp<VPUIP::DepthToSpaceDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffers[clusterId],
                 outputBuffers[clusterId], vpux::getIntAttr(rewriter, dmaPort), depthToSpaceDMAOp.getBlockSizeAttr(),
                 depthToSpaceDMAOp.getModeAttr(), nullptr, depthToSpaceDMAOp.getPaddedChannelsAttr(),
-                depthToSpaceDMAOp.getIsOutOfOrderAttr(), depthToSpaceDMAOp.getIsCriticalAttr(),
+                depthToSpaceDMAOp.getIsOutOfOrder(), depthToSpaceDMAOp.getIsCritical(),
                 depthToSpaceDMAOp.getDmaHwpIdAttr(), depthToSpaceDMAOp.getProfilingMetadataAttr(),
                 /*internalDataFlow= */ nullptr);
 

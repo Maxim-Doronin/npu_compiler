@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ func.func @manyActShaveTasksNoLists() {
   %4 = VPUMI40XX.DeclareKernelText kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %5 = VPUMI40XX.DeclareKernelEntry kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %6 = VPUMI40XX.DeclareKernelArgs kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
-  %7 = VPUMI40XX.KernelParams inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
+  %7 = VPUMI40XX.KernelParams <{dynamicInputShapesSize = array<i32>, dynamicOutputShapesSize = array<i32>}> inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
 
   %r0 = VPUMI40XX.ActKernelRange kernel_text_index(%4 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%6 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%5 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
 
@@ -30,7 +30,7 @@ func.func @manyActShaveTasksNoLists() {
   %i10 = VPUMI40XX.ActKernelInvocation range_index(%r0 : <0:0:0>) kernel_params(%7 : <0:0:0>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<1:0:0>
   %i11 = VPUMI40XX.ActKernelInvocation previousTask(%i10 : !VPURegMapped.Index<1:0:0>) range_index(%r0 : <0:0:0>) kernel_params(%7 : <0:0:0>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<1:0:1>
 
-  %b = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <4, -1> -> !VPURegMapped.Index<0:0:0>
+  %b = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <4, -1> -> !VPURegMapped.Index<0:0:0>
 
   %e0 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%i0 -> %i1: <0:0:0> -> <0:0:1>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<ActKernelInvocation>}
   %e1 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%i10 -> %i11 : <1:0:0> -> <1:0:1>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<ActKernelInvocation>}
@@ -42,27 +42,27 @@ func.func @manyActShaveTasksNoLists() {
 //CHECK: VPUMI40XX.ActKernelRange
 //CHECK-NOT: taskLinkAttrName
 
-//CHECK: %[[INVO0:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO0:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO0_IDX:.+]]
 
-//CHECK: %[[INVO1:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO1:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO1_IDX:.+]]
 
-//CHECK: %[[INVO2:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO2:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO2_IDX:.+]]
 
-//CHECK: %[[INVO3:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO3:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO3_IDX:.+]]
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO0]] -> %[[INVO1]] : [[INVO0_IDX]] -> [[INVO1_IDX]])
+//CHECK-SAME: ([[INVO0]] -> [[INVO1]] : [[INVO0_IDX]] -> [[INVO1_IDX]])
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO2]] -> %[[INVO3]] : [[INVO2_IDX]] -> [[INVO3_IDX]])
+//CHECK-SAME: ([[INVO2]] -> [[INVO3]] : [[INVO2_IDX]] -> [[INVO3_IDX]])
 
 //CHECK-NOT: VPURegMapped.Enqueue
 
@@ -82,7 +82,7 @@ func.func @manyActShaveTasks1List() {
   %4 = VPUMI40XX.DeclareKernelText kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %5 = VPUMI40XX.DeclareKernelEntry kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %6 = VPUMI40XX.DeclareKernelArgs kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
-  %7 = VPUMI40XX.KernelParams inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
+  %7 = VPUMI40XX.KernelParams <{dynamicInputShapesSize = array<i32>, dynamicOutputShapesSize = array<i32>}> inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
 
   %r0 = VPUMI40XX.ActKernelRange kernel_text_index(%4 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%6 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%5 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
 
@@ -93,7 +93,7 @@ func.func @manyActShaveTasks1List() {
   %i10 = VPUMI40XX.ActKernelInvocation range_index(%r0 : <0:0:0>) kernel_params(%7 : <0:0:0>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<1:0:0>
   %i11 = VPUMI40XX.ActKernelInvocation previousTask(%i10 : !VPURegMapped.Index<1:0:0>) range_index(%r0 : <0:0:0>) kernel_params(%7 : <0:0:0>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<1:0:1>
 
-  %b = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <4, -1> -> !VPURegMapped.Index<0:0:0>
+  %b = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <4, -1> -> !VPURegMapped.Index<0:0:0>
 
   %e0 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%i0 -> %i2: <0:0:0> -> <0:0:2>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<ActKernelInvocation>}
   %e1 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%i10 -> %i11 : <1:0:0> -> <1:0:1>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<ActKernelInvocation>}
@@ -105,31 +105,31 @@ func.func @manyActShaveTasks1List() {
 //CHECK: VPUMI40XX.ActKernelRange
 //CHECK-NOT: taskLinkAttrName
 
-//CHECK: %[[INVO0:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO0:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO0_IDX:.+]]
 
-//CHECK: %[[INVO1:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO1:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO1_IDX:.+]]
 
-//CHECK: %[[INVO2:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO2:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO0_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO2_IDX:.+]]
 
-//CHECK: %[[INVO3:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO3:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO3_IDX:.+]]
 
-//CHECK: %[[INVO4:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO4:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO4_IDX:.+]]
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO0]] -> %[[INVO1]] : [[INVO0_IDX]] -> [[INVO1_IDX]])
+//CHECK-SAME: ([[INVO0]] -> [[INVO1]] : [[INVO0_IDX]] -> [[INVO1_IDX]])
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO3]] -> %[[INVO4]] : [[INVO3_IDX]] -> [[INVO4_IDX]])
+//CHECK-SAME: ([[INVO3]] -> [[INVO4]] : [[INVO3_IDX]] -> [[INVO4_IDX]])
 
 //CHECK-NOT: VPURegMapped.Enqueue
 
@@ -149,7 +149,7 @@ func.func @manyActShaveTasks1List() {
   %4 = VPUMI40XX.DeclareKernelText kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %5 = VPUMI40XX.DeclareKernelEntry kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %6 = VPUMI40XX.DeclareKernelArgs kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
-  %7 = VPUMI40XX.KernelParams inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
+  %7 = VPUMI40XX.KernelParams <{dynamicInputShapesSize = array<i32>, dynamicOutputShapesSize = array<i32>}> inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
 
   %r0 = VPUMI40XX.ActKernelRange kernel_text_index(%4 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%6 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%5 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
 
@@ -169,7 +169,7 @@ func.func @manyActShaveTasks1List() {
   %i12 = VPUMI40XX.ActKernelInvocation previousTask(%i11 : !VPURegMapped.Index<1:0:1>) range_index(%r0 : <0:0:0>) kernel_params(%7 : <0:0:0>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<1:0:2>
   %i13 = VPUMI40XX.ActKernelInvocation previousTask(%i12 : !VPURegMapped.Index<1:0:2>) range_index(%r0 : <0:0:0>) kernel_params(%7 : <0:0:0>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<1:0:3>
 
-  %b = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <4, -1> -> !VPURegMapped.Index<0:0:0>
+  %b = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <4, -1> -> !VPURegMapped.Index<0:0:0>
 
   %e0 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%i0 -> %i5: <0:0:0> -> <0:0:5>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<ActKernelInvocation>}
   %e1 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%i6 -> %i8: <0:0:6> -> <0:0:8>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<ActKernelInvocation>}
@@ -182,65 +182,65 @@ func.func @manyActShaveTasks1List() {
 //CHECK: VPUMI40XX.ActKernelRange
 //CHECK-NOT: taskLinkAttrName
 
-//CHECK: %[[INVO0:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO0:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO0_IDX:.+]]
 
-//CHECK: %[[INVO1:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO1:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO1_IDX:.+]]
 
-//CHECK: %[[INVO2:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO2:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO0_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO2_IDX:.+]]
 
-//CHECK: %[[INVO3:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO3:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO1_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO3_IDX:.+]]
 
-//CHECK: %[[INVO4:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO4:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO2_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO4_IDX:.+]]
 
-//CHECK: %[[INVO5:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO5:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO3_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO5_IDX:.+]]
 
-//CHECK: %[[INVO6:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO6:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO6_IDX:.+]]
 
-//CHECK: %[[INVO7:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO7:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO7_IDX:.+]]
 
-//CHECK: %[[INVO8:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO8:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO6_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO8_IDX:.+]]
 
-//CHECK: %[[INVO9:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO9:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO9_IDX:.+]]
 
-//CHECK: %[[INVO10:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO10:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO10_IDX:.+]]
 
-//CHECK: %[[INVO11:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO11:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO9_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO11_IDX:.+]]
 
-//CHECK: %[[INVO12:.+]] = VPUMI40XX.ActKernelInvocation
+//CHECK: [[INVO12:%.+]] = VPUMI40XX.ActKernelInvocation
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[INVO10_IDX]]>
 //CHECK-SAME: -> !VPURegMapped.Index[[INVO12_IDX:.+]]
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO0]] -> %[[INVO1]] : [[INVO0_IDX]] -> [[INVO1_IDX]])
+//CHECK-SAME: ([[INVO0]] -> [[INVO1]] : [[INVO0_IDX]] -> [[INVO1_IDX]])
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO6]] -> %[[INVO7]] : [[INVO6_IDX]] -> [[INVO7_IDX]])
+//CHECK-SAME: ([[INVO6]] -> [[INVO7]] : [[INVO6_IDX]] -> [[INVO7_IDX]])
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[INVO9]] -> %[[INVO10]] : [[INVO9_IDX]] -> [[INVO10_IDX]])
+//CHECK-SAME: ([[INVO9]] -> [[INVO10]] : [[INVO9_IDX]] -> [[INVO10_IDX]])
 
 //CHECK-NOT: VPURegMapped.Enqueue

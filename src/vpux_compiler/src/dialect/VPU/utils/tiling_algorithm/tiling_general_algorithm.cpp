@@ -32,9 +32,8 @@ mlir::LogicalResult TilingGeneralAlgorithm::applyTiling(mlir::Operation* operati
     return VPU::applyTileStrategy(tilingBuilder, tiles.value(), builder, log);
 }
 
-mlir::FailureOr<SmallVector<mlir::Operation*>> TilingGeneralAlgorithm::applyVerticalFusion(mlir::Operation*,
-                                                                                           mlir::RewriterBase&,
-                                                                                           Logger) {
+SmallVector<mlir::Operation*> TilingGeneralAlgorithm::applySCFTilingAndFusion(mlir::Operation*, mlir::RewriterBase&,
+                                                                              Logger) {
     // TODO E-172818 move VF general algorithm here
-    return mlir::failure();
+    return {};
 }

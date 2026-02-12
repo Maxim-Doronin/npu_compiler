@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -165,6 +165,25 @@ def ConvertEltwiseLayers2Math : PassBase<"convert-eltwise-layers-to-math", "vpux
         "mlir::linalg::LinalgDialect",
         "mlir::tensor::TensorDialect",
         "mlir::math::MathDialect"
+    ];
+}
+
+def DecomposeAggregateOps : PassBase<"decompose-aggregate-ops", "vpux::ModulePass"> {
+    let summary = "Decomposes aggregate ops (mainly softmax)";
+
+    let description = [{
+        Decomposes aggregate ops in the SW module. The purpose is to lower
+        linalg.softmax (and any other aggregate ops).
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createDecomposeAggregateOpsPass()";
+
+    let dependentDialects = [
+        "mlir::func::FuncDialect",
+        "mlir::arith::ArithDialect",
+        "mlir::math::MathDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::linalg::LinalgDialect"
     ];
 }
 
@@ -355,6 +374,8 @@ def ConvertVPUASM2NPUReg40XX : PassBase<"convert-VPUASM-to-NPUReg40XX", "vpux::M
         "vpux::ELF::ELFDialect"
     ];
 }
+
+//
 // ConvertVPUASM2NPUReg50XX
 //
 
@@ -404,6 +425,8 @@ def ConvertVPUIPDPU2NPUReg40XX : PassBase<"convert-VPUIPDPU-to-NPUReg40XX", "vpu
     ];
 
 }
+
+//
 // ConvertVPUASM2NPUReg50XX
 //
 

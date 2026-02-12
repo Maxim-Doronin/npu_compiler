@@ -42,9 +42,20 @@ OpTy createOp(mlir::OpBuilder& builder, mlir::Operation* insertionPoint, Args&&.
     return builder.create<OpTy>(std::forward<Args>(args)...);
 }
 
+/// The hardware has different executors that can run in parallel. In the abstract compute model that we use for
+/// scheduling and memory allocation we assume that there is only a single executor of each type. The only
+/// exception to that rule is DMA_NN for now. We assume a DMA_NN has multiple channels. To differentiate between the
+/// different DMA_NN channels we use the id field in addition to the executor kind. id is unused for all other executor
+/// kinds.
+/// We use the queue/FIFO terminology here because these executors are controlled via FIFOs in the hardware.
 struct TaskQueueType {
-    VPU::ExecutorKind type;
+    config::ExecutorKind type;
+    // Unused for all executor kinds except for DMA_NN.
     int64_t id;
+
+    TaskQueueType() = default;
+    TaskQueueType(config::ExecutorKind type, int64_t id = 0): type(type), id(id) {
+    }
     bool operator<(const TaskQueueType& other) const {
         if (type == other.type) {
             return id < other.id;
@@ -57,6 +68,8 @@ struct TaskQueueType {
     bool operator!=(const TaskQueueType& other) const {
         return !(*this == other);
     }
+
+    // Objects of this type are hashable for std::hash-utilizing containers.
 };
 
 TaskQueueType getTaskQueueType(TaskOp task, bool ignoreIndexForNce = true);
@@ -66,8 +79,14 @@ std::map<TaskQueueType, std::pair<TaskOp, TaskOp>> getTaskQueuesFirstAndLastOp(m
 // Get tile and list index for given queue type as expected by backend representation
 std::pair<size_t, size_t> getTileAndListIndex(VPURT::TaskQueueType queueType, int64_t numTiles, config::ArchKind arch);
 
+TaskQueueType getQueueTypeFromTileAndListIndex(config::ExecutorKind executorKind, size_t tileIndex, size_t listIndex,
+                                               int64_t numTiles);
+
 size_t getTileIndexForDpuOrShv(VPURT::TaskOp taskOp, VPURT::TaskQueueType queueType);
 size_t getListIndexForDpuOrShv(VPURT::TaskOp taskOp);
+
+// Get number of workloads under single processed task
+size_t getNumberOfWorkloads(TaskOp taskOp);
 
 }  // namespace VPURT
 
@@ -84,11 +103,11 @@ namespace llvm {
 template <>
 struct DenseMapInfo<VPURT::TaskQueueType> {
     static VPURT::TaskQueueType getEmptyKey() {
-        return VPURT::TaskQueueType{DenseMapInfo<VPU::ExecutorKind>::getEmptyKey(), 0};
+        return VPURT::TaskQueueType{DenseMapInfo<config::ExecutorKind>::getEmptyKey(), 0};
     }
 
     static VPURT::TaskQueueType getTombstoneKey() {
-        return VPURT::TaskQueueType{DenseMapInfo<VPU::ExecutorKind>::getTombstoneKey(), -1};
+        return VPURT::TaskQueueType{DenseMapInfo<config::ExecutorKind>::getTombstoneKey(), -1};
     }
 
     static unsigned getHashValue(VPURT::TaskQueueType val) {
@@ -99,7 +118,25 @@ struct DenseMapInfo<VPURT::TaskQueueType> {
     }
 
     static bool isEqual(VPURT::TaskQueueType lhs, VPURT::TaskQueueType rhs) {
-        return (lhs.type == rhs.type) && (lhs.id == rhs.id);
+        return lhs == rhs;
     }
 };
+
+template <>
+struct format_provider<VPURT::TaskQueueType> final {
+    static void format(const VPURT::TaskQueueType& taskQueueType, raw_ostream& os, StringRef) {
+        os << formatv("{0}.{1}", config::stringifyExecutorKind(taskQueueType.type),
+                      static_cast<uint32_t>(taskQueueType.id));
+    }
+};
+
 }  // namespace llvm
+
+namespace std {
+template <>
+struct hash<VPURT::TaskQueueType> final {
+    std::size_t operator()(const VPURT::TaskQueueType& qt) const noexcept {
+        return llvm::DenseMapInfo<VPURT::TaskQueueType>::getHashValue(qt);
+    }
+};
+}  // namespace std

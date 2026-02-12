@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,11 +11,13 @@
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
+#include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/platform_resources.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/numeric.hpp"
+#include "vpux/utils/core/range.hpp"
 
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -310,9 +312,13 @@ mlir::LogicalResult vpux::VPU::verify(FuncRef<mlir::InFlightDiagnostic()> emitEr
     const auto tilingScheme = distributedAttr.getNumTiles() == nullptr
                                       ? std::move(neutralTilingScheme)
                                       : vpux::parseIntArrayAttr<int64_t>(distributedAttr.getNumTiles());
+    const auto memoryTilingScheme = distributedAttr.getMemoryNumTiles()
+                                            ? vpux::parseIntArrayAttr<int64_t>(distributedAttr.getMemoryNumTiles())
+                                            : tilingScheme;
 
     auto areShapesOffsetsValidForShape = [&](mlir::ArrayAttr perClusterShapesAttr,
-                                             mlir::ArrayAttr perClusterOffsetsAttr) -> bool {
+                                             mlir::ArrayAttr perClusterOffsetsAttr,
+                                             SmallVector<int64_t> numTiles) -> bool {
         if (perClusterShapesAttr.size() != perClusterOffsetsAttr.size() ||
             perClusterShapesAttr.size() != static_cast<size_t>(numClusters)) {
             return false;
@@ -326,7 +332,7 @@ mlir::LogicalResult vpux::VPU::verify(FuncRef<mlir::InFlightDiagnostic()> emitEr
             }
 
             for (size_t dim = 0; dim < shape.size(); dim++) {
-                if (tilingScheme[dim] != 1) {
+                if (numTiles[dim] != 1) {
                     // If dim is split (SEG/OVERLAPPED) over clusters,
                     // ensure the start and end offsets are in range 0 -> dim_size - 1
                     if (perClusterOffsets[cluster][dim] < 0 ||
@@ -354,14 +360,15 @@ mlir::LogicalResult vpux::VPU::verify(FuncRef<mlir::InFlightDiagnostic()> emitEr
         return true;
     };
 
-    if (hasComputeShapesOffsets &&
-        !areShapesOffsetsValidForShape(distributedAttr.getComputeShapes(), distributedAttr.getComputeOffsets())) {
+    if (hasComputeShapesOffsets && !areShapesOffsetsValidForShape(distributedAttr.getComputeShapes(),
+                                                                  distributedAttr.getComputeOffsets(), tilingScheme)) {
         return printTo(emitError(), "Invalid compute shapes/offsets for tensor shape = {0}. Distribution = {1}", shape,
                        distributedAttr);
     }
 
     if (hasMemoryShapesOffsets &&
-        !areShapesOffsetsValidForShape(distributedAttr.getMemoryShapes(), distributedAttr.getMemoryOffsets())) {
+        !areShapesOffsetsValidForShape(distributedAttr.getMemoryShapes(), distributedAttr.getMemoryOffsets(),
+                                       memoryTilingScheme)) {
         return printTo(emitError(), "Invalid memory shapes/offsets for tensor shape = {0}. Distribution = {1}", shape,
                        distributedAttr);
     }
@@ -395,7 +402,7 @@ mlir::LogicalResult vpux::VPU::verify(FuncRef<mlir::InFlightDiagnostic()> emitEr
     }
 
     // Limitations on tiling axes
-    if (VPU::bitEnumContainsAny(distributionMode, VPU::DistributionMode::OVERLAPPED)) {
+    if (distributionMode == VPU::DistributionMode::OVERLAPPED) {
         if (axis != Dims4D::Act::H.ind() && axis != Dims4D::Act::W.ind() && axis != Dims4D::Act::N.ind()) {
             return printTo(emitError(), "Overlapped cluster tiling is only supported for dimensions N, H and W");
         }
@@ -425,6 +432,26 @@ mlir::LogicalResult vpux::VPU::verify(FuncRef<mlir::InFlightDiagnostic()> emitEr
 
         if (overlappedWithKernelStridesPads && axis == Dims4D::Act::N.ind()) {
             return printTo(emitError(), "Cannot have OVERLAPPED on dim N with kernel, pads, strides configuration ");
+        }
+    }
+
+    // New check for SEGMENTED|OVERLAPPED mode (KHSwitch):
+    if (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+        // Require all compute/memory shapes/offsets memoryNumTiles to be non-null
+        if (distributedAttr.getMemoryNumTiles() == nullptr) {
+            return printTo(emitError(), "SEGMENTED|OVERLAPPED mode requires memory_num_tiles to be set");
+        }
+        if (!isDistributedAttrWithExplicitShapesAndOffsets(distributedAttr)) {
+            return printTo(emitError(), "SEGMENTED|OVERLAPPED mode requires compute_shapes, compute_offsets, "
+                                        "memory_shapes, memory_offsets to be set");
+        }
+        // Compute axis is C, memory axis is H or W
+        const auto memAxis = std::distance(memoryTilingScheme.begin(), llvm::find_if(memoryTilingScheme, isValidTile));
+        if (axis != Dims4D::Act::C.ind()) {
+            return printTo(emitError(), "SEGMENTED|OVERLAPPED mode requires compute axis to be C");
+        }
+        if (!(memAxis == Dims4D::Act::H.ind() || memAxis == Dims4D::Act::W.ind())) {
+            return printTo(emitError(), "SEGMENTED|OVERLAPPED mode requires memory axis to be H or W");
         }
     }
 
@@ -505,6 +532,12 @@ mlir::LogicalResult vpux::VPU::canTheDistributionModesBeCompatible(DistributionM
         return mlir::success();
     }
 
+    // SEGMENTED | OVERLAPPED -> OVERLAPPED can be compatible
+    if ((sourceMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) &&
+        (targetMode == DistributionMode::OVERLAPPED || targetMode == DistributionMode::SEGMENTED)) {
+        return mlir::success();
+    }
+
     return mlir::failure();
 }
 
@@ -566,18 +599,47 @@ bool vpux::VPU::isUniformDistributedSegmentsSupported(mlir::Operation* op) {
 // Tiling utils
 //
 
+namespace {
+// Helper function to compute alignment requirement for sub-byte types.
+// For types like ui4, ui2, ui1, we need to ensure that the total bits
+// can be evenly divided by CHAR_BIT (8) to convert to bytes.
+// Returns alignment factor: ui4->2, ui2->4, ui1->8, others->1
+int64_t getSubByteAlignment(mlir::Type elementType) {
+    if (elementType == nullptr || !elementType.isIntOrFloat()) {
+        return 1;
+    }
+
+    const auto bitWidth = elementType.getIntOrFloatBitWidth();
+    if (elementType.isSignedInteger(4)) {
+        return 1;
+    }
+
+    return vpux::Const::isSubByte(bitWidth) ? (CHAR_BIT / bitWidth) : 1;
+}
+
+int64_t alignToSubByte(int64_t subByteAlignment, int64_t existingAlignment) {
+    if (existingAlignment % subByteAlignment != 0) {
+        existingAlignment = std::max(existingAlignment, subByteAlignment);
+        existingAlignment = alignValUp(existingAlignment, subByteAlignment);
+    }
+    return existingAlignment;
+}
+}  // namespace
+
 // Segmentation logic operates on schema and runtime assumption that a segmented tensor should be split equally
 // across the axis, with the remainder cluster possibly having a smaller tile.
 std::optional<SmallVector<Shape>> VPU::splitSegmentedShape(ArrayRef<int64_t> shape, ArrayRef<int64_t> tilingScheme,
                                                            const int64_t numClusters, const int64_t axis,
                                                            std::optional<ArrayRef<int64_t>> alignment,
-                                                           bool uniformDistributedSegments) {
+                                                           bool uniformDistributedSegments, mlir::Type elementType) {
     VPUX_THROW_UNLESS(axis < int64_t(shape.size()),
                       "An invalid split axis {0} specified, the shape tensor is {1} dimensional", axis, shape.size());
     VPUX_THROW_UNLESS(tilingScheme[axis] == numClusters,
                       "The number of tiles on axis {0} must be equal to the number of clusters specified for "
                       "compilation {1} but got {2}",
                       axis, tilingScheme[axis], numClusters);
+
+    const int64_t subByteAlignment = getSubByteAlignment(elementType);
 
     SmallVector<Shape> segmentedTiles;
     auto tiledShape = to_small_vector(shape);
@@ -600,27 +662,53 @@ std::optional<SmallVector<Shape>> VPU::splitSegmentedShape(ArrayRef<int64_t> sha
         // a minimum different between the segments sizes.
         // For example a height of 6 is split across 4 tile as [2, 2, 1, 1].
 
-        // Compute baseline tile, specifically also align it
+        // Compute baseline tile, specifically also align it down to sub-byte alignment
         tiledShape[axis] = tiledShape[axis] / tilingScheme[axis];
+        tiledShape[axis] = alignValDown(tiledShape[axis], subByteAlignment);
+
         tiledShape = alignShape(tiledShape, alignment, alignValDown<int64_t>);
         if (tiledShape[axis] <= 0) {
             return std::nullopt;
         }
-        // Remainder of data is distributed across first few tiles
-        remainderTileShape = tiledShape;
-        auto remainderCount = shape[axis] - tiledShape[axis] * tilingScheme[axis];
-        auto axisAlignment = 1;
-        if (alignment.has_value()) {
-            axisAlignment = alignment.value()[axis];
-        }
-        if (remainderCount % axisAlignment) {
-            return std::nullopt;
-        }
-        auto remainderElements = remainderCount / axisAlignment;
-        remainderTileShape[axis] = tiledShape[axis] + axisAlignment;
 
-        segmentedTiles.insert(segmentedTiles.end(), remainderElements, Shape(remainderTileShape));
-        segmentedTiles.insert(segmentedTiles.end(), numClusters - remainderElements, Shape(tiledShape));
+        auto remainderCount = shape[axis] - tiledShape[axis] * tilingScheme[axis];
+
+        if (remainderCount == 0) {
+            // No remainder, all tiles are equal
+            segmentedTiles.insert(segmentedTiles.end(), numClusters, Shape(tiledShape));
+        } else {
+            // Remainder of data is distributed across first few tiles
+            remainderTileShape = tiledShape;
+
+            // Get axis alignment and ensure it meets sub-byte requirement
+            int64_t axisAlignment = alignment.has_value() ? alignment.value()[axis] : 1;
+
+            if (subByteAlignment > 1) {
+                axisAlignment = alignToSubByte(subByteAlignment, axisAlignment);
+                if (remainderCount % axisAlignment) {
+                    return std::nullopt;
+                }
+            }
+
+            auto remainderElements = remainderCount / axisAlignment;
+            remainderTileShape[axis] = tiledShape[axis] + axisAlignment;
+
+            // Last tile will have the remainder and it doesn't have to be aligned
+            auto lastTileShape = tiledShape;
+            remainderCount = remainderCount - remainderElements * axisAlignment;
+            if (remainderCount > 0) {
+                lastTileShape[axis] = tiledShape[axis] + remainderCount;
+                // Make sure that the last tile is the smallest among all
+                if (numClusters - remainderElements > 1) {
+                    remainderElements += 1;
+                    lastTileShape[axis] -= axisAlignment;
+                }
+            }
+
+            segmentedTiles.insert(segmentedTiles.end(), remainderElements, Shape(remainderTileShape));
+            segmentedTiles.insert(segmentedTiles.end(), numClusters - remainderElements - 1, Shape(tiledShape));
+            segmentedTiles.insert(segmentedTiles.end(), 1, Shape(lastTileShape));
+        }
     }
     return segmentedTiles;
 }
@@ -654,7 +742,7 @@ std::optional<SmallVector<DimRange>> getOverlappedInputTileDimRanges(
     // not the intermediary output shape
 
     const auto segmentedShape = VPU::splitSegmentedShape(outputShape, tilingScheme, numClusters, axis, std::nullopt,
-                                                         uniformDistributedSegments);
+                                                         uniformDistributedSegments, nullptr);
 
     if (!segmentedShape.has_value()) {
         return std::nullopt;
@@ -696,11 +784,13 @@ std::optional<SmallVector<DimRange>> getOverlappedInputTileDimRanges(
     return inputTileDimRanges;
 }
 
-SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, DistributionInfoAttr distributionAttr) {
-    return getPerClusterComputeShapes(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr));
+SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, DistributionInfoAttr distributionAttr,
+                                                         mlir::Type elementType) {
+    return getPerClusterComputeShapes(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr), elementType);
 }
 
-SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, const VPU::DistributionInfo& distribution) {
+SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, const VPU::DistributionInfo& distribution,
+                                                         mlir::Type elementType) {
     auto shape = to_small_vector(shapeRef.raw());
     const auto distributionMode = distribution.getDistributionMode();
 
@@ -719,7 +809,7 @@ SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, cons
         VPUX_THROW_UNLESS(axis < int64_t(tilingScheme.size()), "Segmented tiling scheme requires at least 1 dimension "
                                                                "to be segmented but the tiling schema is [1, 1, 1, 1]");
         const auto segmentedShape = VPU::splitSegmentedShape(shape, tilingScheme, numClusters, axis, optionalAlignment,
-                                                             distribution.hasUniformDistributedSegments());
+                                                             distribution.hasUniformDistributedSegments(), elementType);
         VPUX_THROW_UNLESS(segmentedShape.has_value(), "Improper split, '{0}' over '{1}' tiles", shape[axis],
                           tilingScheme[axis]);
         return segmentedShape.value();
@@ -731,7 +821,7 @@ SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, cons
 
     if (VPU::bitEnumContainsAny(distributionMode, VPU::DistributionMode::OVERLAPPED)) {
         if (distribution.hasEqualMemoryAndComputeView()) {
-            const auto optionalPerClusterMemoryShapes = getPerClusterMemoryShapes(shapeRef, distribution);
+            const auto optionalPerClusterMemoryShapes = getPerClusterMemoryShapes(shapeRef, distribution, elementType);
 
             VPUX_THROW_UNLESS(optionalPerClusterMemoryShapes.has_value(),
                               "Cannot get per cluster memory shapes. Unsupported distribution: {0}", distribution);
@@ -751,13 +841,15 @@ SmallVector<Shape> vpux::VPU::getPerClusterComputeShapes(ShapeRef shapeRef, cons
     VPUX_THROW("Cannot get per cluster memory shapes. Unsupported distribution: {0}", distribution);
 }
 
-SmallVector<Shape> vpux::VPU::getPerClusterComputeShapeOffsets(ShapeRef shapeRef,
-                                                               DistributionInfoAttr distributionAttr) {
-    return getPerClusterComputeShapeOffsets(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr));
+SmallVector<Shape> vpux::VPU::getPerClusterComputeShapeOffsets(ShapeRef shapeRef, DistributionInfoAttr distributionAttr,
+                                                               mlir::Type elementType) {
+    return getPerClusterComputeShapeOffsets(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr),
+                                            elementType);
 }
 
 SmallVector<Shape> vpux::VPU::getPerClusterComputeShapeOffsets(ShapeRef shapeRef,
-                                                               const VPU::DistributionInfo& distribution) {
+                                                               const VPU::DistributionInfo& distribution,
+                                                               mlir::Type elementType) {
     const auto shape = to_small_vector(shapeRef.raw());
     const auto distributionMode = distribution.getDistributionMode();
 
@@ -765,7 +857,7 @@ SmallVector<Shape> vpux::VPU::getPerClusterComputeShapeOffsets(ShapeRef shapeRef
     auto tiledComputeShapeOffsets = SmallVector<Shape>(numClusters, Shape(shapeRef.size(), 0));
 
     auto getOffsetsForSegments = [&](SmallVector<Shape>& perClusterOffsets) -> SmallVector<Shape> {
-        const auto tiledComputeShapes = getPerClusterComputeShapes(shapeRef, distribution);
+        const auto tiledComputeShapes = getPerClusterComputeShapes(shapeRef, distribution, elementType);
         const auto tilingScheme = distribution.getNumTiles();
         const auto axis = vpux::VPU::getDistributedTilingAxis(tilingScheme);
 
@@ -784,7 +876,7 @@ SmallVector<Shape> vpux::VPU::getPerClusterComputeShapeOffsets(ShapeRef shapeRef
 
     if (VPU::bitEnumContainsAny(distributionMode, VPU::DistributionMode::OVERLAPPED)) {
         if (distribution.hasEqualMemoryAndComputeView()) {
-            return getPerClusterMemoryShapeOffsets(shapeRef, distribution);
+            return getPerClusterMemoryShapeOffsets(shapeRef, distribution, elementType);
         }
 
         return getOffsetsForSegments(tiledComputeShapeOffsets);
@@ -799,15 +891,15 @@ SmallVector<Shape> vpux::VPU::getPerClusterComputeShapeOffsets(ShapeRef shapeRef
 }
 
 std::optional<SmallVector<Shape>> vpux::VPU::getPerClusterMemoryShapes(ShapeRef shapeRef,
-                                                                       DistributionInfoAttr distributionAttr)
-
-{
-    return getPerClusterMemoryShapes(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr));
+                                                                       DistributionInfoAttr distributionAttr,
+                                                                       mlir::Type elementType) {
+    return getPerClusterMemoryShapes(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr), elementType);
 }
 
 std::optional<SmallVector<Shape>> vpux::VPU::getPerClusterMemoryShapes(ShapeRef shapeRef,
-                                                                       const VPU::DistributionInfo& distribution) {
-    auto& cache = VPU::OpTilingCache::instance();
+                                                                       const VPU::DistributionInfo& distribution,
+                                                                       mlir::Type elementType) {
+    auto& cache = VPU::getGlobalOpTilingCache();
     auto hash = cache.calculateShapeAndDistributionHash(shapeRef, distribution);
     auto cacheResult = cache.getPerClusterMemoryShapes(hash);
     if (cacheResult.has_value()) {
@@ -839,14 +931,20 @@ std::optional<SmallVector<Shape>> vpux::VPU::getPerClusterMemoryShapes(ShapeRef 
         VPUX_THROW_UNLESS(axis < int64_t(tilingScheme.size()), "Segmented tiling scheme requires at least 1 dimension "
                                                                "to be segmented but the tiling schema is [1, 1, 1, 1]");
         auto tiledShapes = vpux::VPU::splitSegmentedShape(shape, tilingScheme, numClusters, axis, optionalAlignment,
-                                                          distribution.hasUniformDistributedSegments());
+                                                          distribution.hasUniformDistributedSegments(), elementType);
 
         cache.updatePerClusterShape(hash, tiledShapes);
         return tiledShapes;
     }
 
-    if (distributionMode == VPU::DistributionMode::OVERLAPPED) {
-        const auto tilingScheme = distribution.getNumTiles();
+    if (VPU::bitEnumContainsAny(distributionMode, VPU::DistributionMode::OVERLAPPED)) {
+        auto tilingScheme = distribution.getNumTiles();
+
+        if (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+            VPUX_THROW_UNLESS(distribution.getMemoryNumTiles().has_value(),
+                              "Memory num tiles is required for overlapped | segmented distribution");
+            tilingScheme = distribution.getMemoryNumTiles().value();
+        }
         const auto axis = vpux::VPU::getDistributedTilingAxis(tilingScheme);
 
         const auto optionalInputTileDimRanges = getOverlappedInputTileDimRanges(
@@ -874,13 +972,15 @@ std::optional<SmallVector<Shape>> vpux::VPU::getPerClusterMemoryShapes(ShapeRef 
     VPUX_THROW("Cannot get per cluster memory shapes. Unsupported distribution: {0}", distribution);
 }
 
-SmallVector<Shape> vpux::VPU::getPerClusterMemoryShapeOffsets(ShapeRef shapeRef,
-                                                              DistributionInfoAttr distributionAttr) {
-    return getPerClusterMemoryShapeOffsets(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr));
+SmallVector<Shape> vpux::VPU::getPerClusterMemoryShapeOffsets(ShapeRef shapeRef, DistributionInfoAttr distributionAttr,
+                                                              mlir::Type elementType) {
+    return getPerClusterMemoryShapeOffsets(shapeRef, VPU::DistributionInfo::getClassFromAttr(distributionAttr),
+                                           elementType);
 }
 
 SmallVector<Shape> vpux::VPU::getPerClusterMemoryShapeOffsets(ShapeRef shapeRef,
-                                                              const VPU::DistributionInfo& distribution) {
+                                                              const VPU::DistributionInfo& distribution,
+                                                              mlir::Type elementType) {
     const auto shape = to_small_vector(shapeRef.raw());
     const auto distributionMode = distribution.getDistributionMode();
 
@@ -896,7 +996,7 @@ SmallVector<Shape> vpux::VPU::getPerClusterMemoryShapeOffsets(ShapeRef shapeRef,
     }
 
     if (distributionMode == VPU::DistributionMode::SEGMENTED) {
-        const auto optionalPerClusterMemoryShapes = getPerClusterMemoryShapes(shapeRef, distribution);
+        const auto optionalPerClusterMemoryShapes = getPerClusterMemoryShapes(shapeRef, distribution, elementType);
 
         VPUX_THROW_UNLESS(optionalPerClusterMemoryShapes.has_value(),
                           "Cannot get per cluster memory shape offsets. Unsupported distribution: {0}", distribution);
@@ -914,8 +1014,14 @@ SmallVector<Shape> vpux::VPU::getPerClusterMemoryShapeOffsets(ShapeRef shapeRef,
         return tiledMemoryOffsets;
     }
 
-    if (distributionMode == VPU::DistributionMode::OVERLAPPED) {
-        const auto tilingScheme = distribution.getNumTiles();
+    if (VPU::bitEnumContainsAny(distributionMode, VPU::DistributionMode::OVERLAPPED)) {
+        auto tilingScheme = distribution.getNumTiles();
+
+        if (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+            VPUX_THROW_UNLESS(distribution.getMemoryNumTiles().has_value(),
+                              "Memory num tiles is required for overlapped | segmented distribution");
+            tilingScheme = distribution.getMemoryNumTiles().value();
+        }
         const auto axis = vpux::VPU::getDistributedTilingAxis(tilingScheme);
 
         const auto optionalInputTileDimRanges = getOverlappedInputTileDimRanges(
@@ -1111,10 +1217,13 @@ bool vpux::VPU::isSegmentedOverN(VPU::DistributionInfoAttr distAttr) {
 }
 
 bool vpux::VPU::isOverlappedOverH(VPU::DistributionInfoAttr distAttr) {
-    if (distAttr.getMode().getValue() != VPU::DistributionMode::OVERLAPPED) {
+    const auto mode = distAttr.getMode().getValue();
+    if (!(VPU::bitEnumContainsAny(mode, VPU::DistributionMode::OVERLAPPED))) {
         return false;
     }
-    const auto numTiles = parseIntArrayAttr<int64_t>(distAttr.getNumTiles());
+    const auto numTiles = (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED))
+                                  ? parseIntArrayAttr<int64_t>(distAttr.getMemoryNumTiles())
+                                  : parseIntArrayAttr<int64_t>(distAttr.getNumTiles());
     if (numTiles.size() != 4 || numTiles[Dims4D::Act::N.ind()] > 1 || numTiles[Dims4D::Act::C.ind()] > 1 ||
         numTiles[Dims4D::Act::W.ind()] > 1) {
         return false;
@@ -1123,10 +1232,20 @@ bool vpux::VPU::isOverlappedOverH(VPU::DistributionInfoAttr distAttr) {
 }
 
 bool vpux::VPU::isOverlappedOverH(VPU::DistributionInfo& distribution) {
-    if (distribution.getDistributionMode() != VPU::DistributionMode::OVERLAPPED) {
+    const auto mode = distribution.getDistributionMode();
+    if (!(VPU::bitEnumContainsAny(mode, VPU::DistributionMode::OVERLAPPED))) {
         return false;
     }
-    const auto numTiles = distribution.getNumTiles();
+
+    if (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+        VPUX_THROW_UNLESS(distribution.getMemoryNumTiles().has_value(),
+                          "Memory num tiles is required for overlapped | segmented distribution");
+    }
+
+    const auto numTiles = (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED))
+                                  ? distribution.getMemoryNumTiles().value()
+                                  : distribution.getNumTiles();
+
     if (numTiles.size() != 4 || numTiles[Dims4D::Act::N.ind()] > 1 || numTiles[Dims4D::Act::C.ind()] > 1 ||
         numTiles[Dims4D::Act::W.ind()] > 1) {
         return false;
@@ -1135,10 +1254,13 @@ bool vpux::VPU::isOverlappedOverH(VPU::DistributionInfo& distribution) {
 }
 
 bool vpux::VPU::isOverlappedOverW(VPU::DistributionInfoAttr distAttr) {
-    if (distAttr.getMode().getValue() != VPU::DistributionMode::OVERLAPPED) {
+    const auto mode = distAttr.getMode().getValue();
+    if (!(VPU::bitEnumContainsAny(mode, VPU::DistributionMode::OVERLAPPED))) {
         return false;
     }
-    const auto numTiles = parseIntArrayAttr<int64_t>(distAttr.getNumTiles());
+    const auto numTiles = (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED))
+                                  ? parseIntArrayAttr<int64_t>(distAttr.getMemoryNumTiles())
+                                  : parseIntArrayAttr<int64_t>(distAttr.getNumTiles());
     if (numTiles.size() != 4 || numTiles[Dims4D::Act::N.ind()] > 1 || numTiles[Dims4D::Act::C.ind()] > 1 ||
         numTiles[Dims4D::Act::H.ind()] > 1) {
         return false;
@@ -1147,10 +1269,20 @@ bool vpux::VPU::isOverlappedOverW(VPU::DistributionInfoAttr distAttr) {
 }
 
 bool vpux::VPU::isOverlappedOverW(VPU::DistributionInfo& distribution) {
-    if (distribution.getDistributionMode() != VPU::DistributionMode::OVERLAPPED) {
+    const auto mode = distribution.getDistributionMode();
+    if (!(VPU::bitEnumContainsAny(mode, VPU::DistributionMode::OVERLAPPED))) {
         return false;
     }
-    const auto numTiles = distribution.getNumTiles();
+
+    if (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+        VPUX_THROW_UNLESS(distribution.getMemoryNumTiles().has_value(),
+                          "Memory num tiles is required for overlapped | segmented distribution");
+    }
+
+    const auto numTiles = (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED))
+                                  ? distribution.getMemoryNumTiles().value()
+                                  : distribution.getNumTiles();
+
     if (numTiles.size() != 4 || numTiles[Dims4D::Act::N.ind()] > 1 || numTiles[Dims4D::Act::C.ind()] > 1 ||
         numTiles[Dims4D::Act::H.ind()] > 1) {
         return false;

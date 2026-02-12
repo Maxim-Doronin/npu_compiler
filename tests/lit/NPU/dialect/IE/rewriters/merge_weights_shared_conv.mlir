@@ -134,3 +134,33 @@ func.func @MergeWeightsSharedBeforeAffineReshapeNewCase(%arg0: tensor<1x128x1x1x
     // CHECK:       [[OUT_CONCAT:%.+]] = IE.Concat([[SLICE_1]], [[SLICE_0]]) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x16x1x1xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x2x1xf16>
     // CHECK:       return  [[RELU]], [[OUT_CONCAT]]
 }
+
+// -----
+
+// CHECK-LABEL: @MergeWeightsSharedWithInputNotAdjacentAndAffineReshapeAfterConv
+// CHECK-SAME:      [[INPUT0:%.+]]: tensor<1x8320x1x1xf16>, [[INPUT1:%.+]]: tensor<1x8320x1x1xf16>
+func.func @MergeWeightsSharedWithInputNotAdjacentAndAffineReshapeAfterConv(%arg0: tensor<1x8320x1x1xf16>, %arg1: tensor<1x8320x1x1xf16>) -> tensor<1x2x1x128xf16> {
+  %filter = const.Declare tensor<128x8320x1x1xf16> = dense<0.000000e+00> : tensor<128x8320x1x1xf16>
+  %0 = IE.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x8320x1x1xf16> -> tensor<1x8320x1x1xf16>
+  %1 = IE.Convolution(%0, %filter) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x8320x1x1xf16>, tensor<128x8320x1x1xf16> -> tensor<1x128x1x1xf16>
+  %2 = IE.AffineReshape(%1) {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1, 128]} : tensor<1x128x1x1xf16> -> tensor<1x1x1x128xf16>
+  %3 = IE.SoftMax(%arg1) {axisInd = 1 : i64} : tensor<1x8320x1x1xf16> -> tensor<1x8320x1x1xf16>
+  %4 = IE.Convolution(%3, %filter) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x8320x1x1xf16>, tensor<128x8320x1x1xf16> -> tensor<1x128x1x1xf16>
+  %5 = IE.AffineReshape(%4) {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1, 128]} : tensor<1x128x1x1xf16> -> tensor<1x1x1x128xf16>
+  %6 = IE.Concat(%2, %5) {per_axis = #IE.Concat<axis = 1>} : tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>-> tensor<1x2x1x128xf16>
+  return %6 : tensor<1x2x1x128xf16>
+
+  // CHECK-DAG:   [[FILTER:%.+]]  = const.Declare tensor<128x8320x1x1xf16> = dense<0.000000e+00> : tensor<128x8320x1x1xf16>
+  // CHECK:       [[SOFTMAX_0:%.+]]  = IE.SoftMax([[INPUT0]]) {axisInd = 1 : i64} : tensor<1x8320x1x1xf16> -> tensor<1x8320x1x1xf16>
+  // CHECK:       [[SOFTMAX_1:%.+]]  = IE.SoftMax([[INPUT1]]) {axisInd = 1 : i64} : tensor<1x8320x1x1xf16> -> tensor<1x8320x1x1xf16>
+  // CHECK:       [[IN_CONCAT:%.+]]  = IE.Concat([[SOFTMAX_1]], [[SOFTMAX_0]]) {per_axis = #IE.Concat<axis = 2 : i64>} : tensor<1x8320x1x1xf16>, tensor<1x8320x1x1xf16> -> tensor<1x8320x2x1xf16>
+  // CHECK:       [[CONV:%.+]]  = IE.Convolution([[IN_CONCAT]], [[FILTER]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x8320x2x1xf16>, tensor<128x8320x1x1xf16> -> tensor<1x128x2x1xf16>
+  // CHECK:       [[SLICE_1:%.+]] = IE.Slice [[CONV]]  [0, 0, 1, 0] [1, 128, 1, 1] : tensor<1x128x2x1xf16> to tensor<1x128x1x1xf16>
+  // CHECK:       [[RESHAPE_1:%.+]] = IE.AffineReshape([[SLICE_1]])
+  // CHECK-SAME{LITERAL}:   {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1, 128]} : tensor<1x128x1x1xf16> -> tensor<1x1x1x128xf16>
+  // CHECK:       [[SLICE_0:%.+]] = IE.Slice [[CONV]]  [0, 0, 0, 0] [1, 128, 1, 1] : tensor<1x128x2x1xf16> to tensor<1x128x1x1xf16>
+  // CHECK:       [[RESHAPE_0:%.+]] = IE.AffineReshape([[SLICE_0]])
+  // CHECK-SAME{LITERAL}:   {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1, 128]} : tensor<1x128x1x1xf16> -> tensor<1x1x1x128xf16>
+  // CHECK:       [[OUT_CONCAT:%.+]] = IE.Concat([[RESHAPE_1]], [[RESHAPE_0]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16> -> tensor<1x2x1x128xf16>
+  // CHECK:       return  [[OUT_CONCAT]]
+}

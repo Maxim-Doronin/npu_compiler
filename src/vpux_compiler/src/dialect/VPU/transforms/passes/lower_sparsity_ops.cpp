@@ -22,7 +22,7 @@
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
 #include "vpux/compiler/utils/types.hpp"

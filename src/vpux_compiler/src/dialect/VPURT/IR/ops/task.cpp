@@ -13,6 +13,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/shave.hpp"
@@ -39,7 +40,7 @@ void vpux::VPURT::TaskOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Operation
           /*taskIndex*/ std::nullopt, /*start_after*/ nullptr, /*clean_after*/ nullptr);
 }
 
-VPU::ExecutorKind vpux::VPURT::TaskOp::getExecutorKind() {
+config::ExecutorKind vpux::VPURT::TaskOp::getExecutorKind() {
     auto innerTaskOp = getInnerTaskOp();
     auto task = mlir::dyn_cast<VPUIP::TaskOpInterface>(innerTaskOp);
     VPUX_THROW_UNLESS(task != nullptr, "Inner task at {0} does not implement TaskOpInterface", innerTaskOp->getLoc());
@@ -79,85 +80,17 @@ void vpux::VPURT::TaskOp::getEffects(SmallVectorImpl<MemoryEffect>& effects) {
     bodyEffects.getEffects(effects);
 }
 
-void VPURT::TaskOp::printProperties(mlir::MLIRContext* /*ctx*/, mlir::OpAsmPrinter& printer,
-                                    const Properties& properties, mlir::ArrayRef<llvm::StringRef> /*elidedProps*/) {
-    // Property is default-valued, so skip printing it if its value is the default one
-    const auto hasIsTrailingSWLayer =
-            properties.isTrailingSWLayer != nullptr && properties.isTrailingSWLayer.getValue();
-    const auto hasTaskIndex = properties.taskIndex.has_value();
-    if (!hasIsTrailingSWLayer && !hasTaskIndex) {
-        return;
-    }
-    bool shouldPrintComma = false;
-    printer << "<{";
-    if (hasIsTrailingSWLayer) {
-        printer << "isTrailingSWLayer = " << properties.isTrailingSWLayer.getValue();
-        shouldPrintComma = true;
-    }
-    if (hasTaskIndex) {
-        if (shouldPrintComma) {
-            printer << ", ";
-        }
-        printer << "taskIndex = " << properties.taskIndex;
-    }
-    printer << "}>";
-}
-
-mlir::ParseResult VPURT::TaskOp::parseProperties(mlir::OpAsmParser& parser, mlir::OperationState& result) {
-    const auto parseEnd = [&]() {
-        if (mlir::failed(parser.parseRBrace())) {
-            return mlir::failure();
-        }
-        if (mlir::failed(parser.parseGreater())) {
-            return mlir::failure();
-        }
-        return mlir::success();
-    };
-
-    auto& prop = result.getOrAddProperties<Properties>();
-    if (mlir::failed(parser.parseOptionalLess())) {
-        return mlir::success();
-    }
-    if (mlir::failed(parser.parseLBrace())) {
-        return mlir::failure();
-    }
-    if (mlir::succeeded(parser.parseOptionalKeyword("isTrailingSWLayer"))) {
-        if (mlir::failed(parser.parseEqual())) {
-            return mlir::failure();
-        }
-        mlir::BoolAttr boolAttr;
-        if (mlir::failed(parser.parseAttribute(boolAttr))) {
-            return mlir::failure();
-        }
-        prop.setIsTrailingSWLayer(boolAttr);
-        if (mlir::failed(parser.parseOptionalComma())) {
-            return parseEnd();
-        }
-    }
-    if (mlir::succeeded(parser.parseOptionalKeyword("taskIndex"))) {
-        if (mlir::failed(parser.parseEqual())) {
-            return mlir::failure();
-        }
-        int64_t value = 0;
-        if (mlir::failed(parser.parseInteger(value))) {
-            return mlir::failure();
-        }
-        prop.setTaskIndex(value);
-    }
-    return parseEnd();
-}
-
 VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreIndexForNce) {
     TaskQueueType queueType;
     queueType.type = taskOp.getExecutorKind();
-    if (queueType.type == VPU::ExecutorKind::DPU && !ignoreIndexForNce) {
+    if (queueType.type == config::ExecutorKind::DPU && !ignoreIndexForNce) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
         auto nceTask = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(wrappedTaskOp);
         VPUX_THROW_WHEN(nceTask == nullptr || nceTask.getVariants().getOps<VPUIP::DPUTaskOp>().empty(),
                         "Could not get DPU task");
         auto dpuTask = *(nceTask.getVariants().getOps<VPUIP::DPUTaskOp>().begin());
         queueType.id = dpuTask.getClusterId().value_or(0);
-    } else if (queueType.type == VPU::ExecutorKind::SHAVE_ACT && !ignoreIndexForNce) {
+    } else if (queueType.type == config::ExecutorKind::SHAVE_ACT && !ignoreIndexForNce) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
         auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(wrappedTaskOp);
         VPUX_THROW_WHEN(swKernelOp == nullptr, "Could not get SW kernel task");
@@ -165,12 +98,12 @@ VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreInd
         auto tileIndex = swKernelOp.getTileIndex().value_or(0);
         auto listIndex = swKernelOp.getListIndex().value_or(0);
         queueType.id = getShaveQueueIdEncoding(numTiles, tileIndex, listIndex);
-    } else if (queueType.type == VPU::ExecutorKind::DMA_NN) {
+    } else if (queueType.type == config::ExecutorKind::DMA_NN) {
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
 
         auto dmaTask = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(wrappedTaskOp);
         VPUX_THROW_WHEN(dmaTask == nullptr, "Not a DMA task");
-        queueType.id = getDMAQueueIdEncoding(vpux::getDMAPortValue(wrappedTaskOp), dmaTask.getChannelType());
+        queueType.id = getDMAQueueIdEncoding(VPUIP::getDMAPortValue(wrappedTaskOp), dmaTask.getChannelType());
     } else {
         queueType.id = 0;
     }
@@ -197,13 +130,13 @@ std::map<VPURT::TaskQueueType, std::pair<VPURT::TaskOp, VPURT::TaskOp>> vpux::VP
 
 std::pair<size_t, size_t> vpux::VPURT::getTileAndListIndex(VPURT::TaskQueueType queueType, int64_t numTiles,
                                                            config::ArchKind arch) {
-    if (queueType.type == VPU::ExecutorKind::SHAVE_ACT) {
+    if (queueType.type == config::ExecutorKind::SHAVE_ACT) {
         auto tileIndex = getShaveTileIndexFromEncodedId(queueType.id, numTiles);
         auto listIndex = getShaveListIndexFromEncodedId(queueType.id, numTiles);
         return std::make_pair(tileIndex, listIndex);
-    } else if (queueType.type == VPU::ExecutorKind::DPU) {
+    } else if (queueType.type == config::ExecutorKind::DPU) {
         return std::make_pair(queueType.id, 0);
-    } else if (queueType.type == VPU::ExecutorKind::DMA_NN) {
+    } else if (queueType.type == config::ExecutorKind::DMA_NN) {
         auto tileIndex = getDMAPortFromEncodedId(queueType.id);
         auto channelType = getDMAChannelTypeFromEncodedId(queueType.id, arch);
         int64_t listIndex = (channelType == VPUIP::DmaChannelType::CMX) ? 1 : 0;
@@ -211,6 +144,22 @@ std::pair<size_t, size_t> vpux::VPURT::getTileAndListIndex(VPURT::TaskQueueType 
     }
 
     VPUX_THROW("Unsupported queue type {0} for getting tile and list index", stringifyEnum(queueType.type));
+}
+
+VPURT::TaskQueueType vpux::VPURT::getQueueTypeFromTileAndListIndex(config::ExecutorKind executorKind, size_t tileIndex,
+                                                                   size_t listIndex, int64_t numTiles) {
+    if (executorKind == config::ExecutorKind::SHAVE_ACT) {
+        return {executorKind, getShaveQueueIdEncoding(numTiles, tileIndex, listIndex)};
+    } else if (executorKind == config::ExecutorKind::DPU) {
+        VPUX_THROW_WHEN(listIndex != 0, "DPU queue does not support list index different than 0, got {0}", listIndex);
+        return {executorKind, static_cast<int64_t>(tileIndex)};
+    } else if (executorKind == config::ExecutorKind::DMA_NN) {
+        VPUX_THROW_WHEN(listIndex > 1, "DMA queue supports only list index 0 and 1, got {0}", listIndex);
+        auto channelType = (listIndex == 1) ? VPUIP::DmaChannelType::CMX : VPUIP::DmaChannelType::DDR;
+        return {executorKind, getDMAQueueIdEncoding(tileIndex, channelType)};
+    }
+
+    VPUX_THROW("Unsupported executor kind {0}", stringifyEnum(executorKind));
 }
 
 size_t vpux::VPURT::TaskOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
@@ -249,4 +198,31 @@ size_t vpux::VPURT::getListIndexForDpuOrShv(VPURT::TaskOp taskOp) {
 
     // All DPU tasks are expected to be on list 0
     return 0;
+}
+
+// Get number of workloads under single processed task
+// In case of DPU it is number of DPU variants
+// In case of SHV it is number of SHV kernel run ops
+// For other return 1
+size_t vpux::VPURT::getNumberOfWorkloads(VPURT::TaskOp taskOp) {
+    const auto executorKind = taskOp.getExecutorKind();
+
+    switch (executorKind) {
+    case config::ExecutorKind::DPU: {
+        auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(taskOp.getInnerTaskOp());
+        VPUX_THROW_UNLESS(nceOp != nullptr, "Could not cast to NCE task for DPU executor");
+        return nceOp.getNumVariants();
+    }
+    case config::ExecutorKind::SHAVE_ACT: {
+        auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(taskOp.getInnerTaskOp());
+        VPUX_THROW_UNLESS(swKernelOp != nullptr, "Could not cast to SW kernel task for SHAVE_ACT executor");
+        auto swKernelRun = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+        return std::distance(swKernelRun.begin(), swKernelRun.end());
+    }
+    case config::ExecutorKind::DMA_NN:
+        return 1;
+
+    default:
+        VPUX_THROW("Unsupported executor: {0}", executorKind);
+    }
 }

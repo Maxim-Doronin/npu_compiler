@@ -7,14 +7,14 @@
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Value.h>
 
 namespace vpux {
-
-int64_t getDMAPortValue(mlir::Operation* wrappedTaskOp);
+// TODO: E#194197 Move these utility functions to VPUIP utils
 
 SmallVector<VPUIP::DmaChannelType> getDMAChannelsWithIndependentLinkAgents(config::ArchKind arch);
 
@@ -27,7 +27,5 @@ int64_t getDMAQueueIdEncoding(VPU::MemoryKind srcMemKind, config::ArchKind arch)
 int64_t getDMAPortFromEncodedId(int64_t dmaQueueIdEncoding);
 
 VPUIP::DmaChannelType getDMAChannelTypeFromEncodedId(int64_t dmaQueueIdEncoding, config::ArchKind arch);
-std::string getDMAChannelTypeAsString(VPUIP::DmaChannelType channelType, config::ArchKind arch);
-std::string getDMAChannelTypeAsString(int64_t dmaQueueIdEncoding, config::ArchKind arch);
 
 }  // namespace vpux

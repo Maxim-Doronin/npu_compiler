@@ -26,10 +26,8 @@ module @AndILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.And
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -39,8 +37,7 @@ module @AndILayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.extui [[RES_B]] : i1 to i32
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -100,10 +97,8 @@ module @LogicalXorILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.LogicalXor
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
 // CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -113,8 +108,7 @@ module @LogicalXorILayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.extui [[RES_B]] : i1 to i32
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -174,10 +168,8 @@ module @LogicalOrILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.LogicalOr
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -187,8 +179,7 @@ module @LogicalOrILayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.extui [[RES_B]] : i1 to i32
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -247,9 +238,8 @@ module @LogicalNotILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.LogicalNot
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
 // CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZLHS:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BLHS:%.+]] = arith.cmpi ne, [[LHS]], [[ZLHS]] : i32
@@ -258,8 +248,7 @@ module @LogicalNotILayer {
 // CHECK-NEXT:      [[RES:%.+]] = arith.extui [[RES_B]] : i1 to i32
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -318,19 +307,15 @@ module @SelectILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.Select
-// CHECK-DAG:     [[COND_BC:%.+]] = tensor.bitcast [[COND:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND_BC]], [[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[COND:%.+]]: i32, [[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[ZCOND:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BCOND:%.+]] = arith.cmpi ne, [[COND]], [[ZCOND]] : i32
 // CHECK-NEXT:      [[RES:%.+]] = arith.select [[BCOND]], [[LHS]], [[RHS]] : i32
 // CHECK-NEXT:      linalg.yield [[RES]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -388,9 +373,8 @@ module @MixedSelectLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT:     IE.Select
-// CHECK:         [[COND_BC:%.+]] = tensor.bitcast [[COND:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[COND_BC]], [[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, [[LHS:%.+]], [[RHS:%.+]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[COND:%.+]]: i32, [[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ZCOND:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[BCOND:%.+]] = arith.cmpi ne, [[COND]], [[ZCOND]] : i32

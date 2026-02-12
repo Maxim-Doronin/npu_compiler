@@ -8,8 +8,8 @@
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
-// CHECK-LABEL: @ConvertSameStrategyStaticAndDynamic
-func.func @ConvertSameStrategyStaticAndDynamic(%arg0: tensor<1x3x1600x2560xf32>, %arg1: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>)
+// CHECK-LABEL: @ConvertStrategyStaticAndDynamic
+func.func @ConvertStrategyStaticAndDynamic(%arg0: tensor<1x3x1600x2560xf32>, %arg1: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>)
     -> (tensor<1x3x1600x2560xf16>, tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x3x1600x2560xf32>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>
@@ -18,10 +18,10 @@ func.func @ConvertSameStrategyStaticAndDynamic(%arg0: tensor<1x3x1600x2560xf32>,
     return %0, %1 : tensor<1x3x1600x2560xf16>, tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:       [[CONVERT0:%.+]] = VPU.Convert([[ARG0]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[CONVERT1:%.+]] = VPU.Convert([[ARG1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
     // CHECK:       return [[CONVERT0]], [[CONVERT1]] : tensor<1x3x1600x2560xf16>, tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>
 }
 
@@ -30,8 +30,8 @@ func.func @ConvertSameStrategyStaticAndDynamic(%arg0: tensor<1x3x1600x2560xf32>,
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @PermuteSameStrategyStaticAndDynamic
-func.func @PermuteSameStrategyStaticAndDynamic(%arg0: tensor<1x16x1600x2560xf16>, %arg1: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>)
+// CHECK-LABEL: @PermuteStrategyStaticAndDynamic
+func.func @PermuteStrategyStaticAndDynamic(%arg0: tensor<1x16x1600x2560xf16>, %arg1: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>)
     -> (tensor<1x16x1600x2560xf16, {order = #NHWC}>, tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1600, 2560]> : tensor<4xsi64>, order = #NHWC}>) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x16x1600x2560xf16>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1600, 2560]> : tensor<4xsi64>, order = #NCHW}>
@@ -40,10 +40,10 @@ func.func @PermuteSameStrategyStaticAndDynamic(%arg0: tensor<1x16x1600x2560xf16>
     return %0, %1 : tensor<1x16x1600x2560xf16, {order = #NHWC}>, tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1600, 2560]> : tensor<4xsi64>, order = #NHWC}>
     // CHECK:       [[PERMUTE0:%.+]] = VPU.NCE.Permute([[ARG0]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[PERMUTE1:%.+]] = VPU.NCE.Permute([[ARG1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
     // CHECK:       return [[PERMUTE0]], [[PERMUTE1]] : tensor<1x16x1600x2560xf16, {order = #NHWC}>, tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1600, 2560]> : tensor<4xsi64>, order = #NHWC}>
 }
 
@@ -51,8 +51,8 @@ func.func @PermuteSameStrategyStaticAndDynamic(%arg0: tensor<1x16x1600x2560xf16>
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @ConvolutionSameStrategyStaticAndDynamic
-func.func @ConvolutionSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, {order = #NHWC}>, %arg1: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>)
+// CHECK-LABEL: @ConvolutionStrategyStaticAndDynamic
+func.func @ConvolutionStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, {order = #NHWC}>, %arg1: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>)
     -> (tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x32x800x1280xf16, {order = #NHWC}>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
@@ -65,10 +65,10 @@ func.func @ConvolutionSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf
     return %0, %1 : tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
     // CHECK:       [[CONV0:%.+]] = VPU.NCE.Convolution([[ARG0]], [[CST_0]], [[CST_1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[CONV1:%.+]] = VPU.NCE.Convolution([[ARG1]], [[CST_0]], [[CST_1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_Dyn_D1:[0-9]+]], [[TS_Dyn_D2:[0-9]+]], [[TS_D3_OPT:[0-9]+]]]
     // CHECK:       return [[CONV0]], [[CONV1]] : tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
 }
 
@@ -76,8 +76,8 @@ func.func @ConvolutionSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @DepthConvolutionSameStrategyStaticAndDynamic
-func.func @DepthConvolutionSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, {order = #NHWC}>, %arg1: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>)
+// CHECK-LABEL: @DepthConvolutionStrategyStaticAndDynamic
+func.func @DepthConvolutionStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, {order = #NHWC}>, %arg1: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>)
     -> (tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x32x800x1280xf16, {order = #NHWC}>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
@@ -91,10 +91,10 @@ func.func @DepthConvolutionSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1
     return %0, %1 : tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
     // CHECK:       [[DEPTH_CONV0:%.+]] = VPU.NCE.DepthConvolution([[ARG0]], [[CST_0]], [[CST_1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[DEPTH_CONV1:%.+]] = VPU.NCE.DepthConvolution([[ARG1]], [[CST_0]], [[CST_1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_Dyn_D1:[0-9]+]], [[TS_Dyn_D2:[0-9]+]], [[TS_D3_OPT:[0-9]+]]]
     // CHECK:       return [[DEPTH_CONV0]], [[DEPTH_CONV1]] : tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
 }
 
@@ -102,8 +102,8 @@ func.func @DepthConvolutionSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @EltwiseSameStrategyStaticAndDynamic
-func.func @EltwiseSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, {order = #NHWC}>, %arg1: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>)
+// CHECK-LABEL: @EltwiseStrategyStaticAndDynamic
+func.func @EltwiseStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, {order = #NHWC}>, %arg1: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>)
     -> (tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>) {
     // CHECK-SAME: [[ARG0:%.+]]: tensor<1x32x800x1280xf16, {order = #NHWC}>
     // CHECK-SAME: [[ARG1:%.+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
@@ -113,10 +113,10 @@ func.func @EltwiseSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, 
     return %0, %1 : tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
     // CHECK:       [[ELTWISE0:%.+]] = VPU.NCE.Eltwise([[ARG0]], [[ARG0]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[ELTWISE1:%.+]] = VPU.NCE.Eltwise([[ARG1]], [[ARG1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_Dyn_D1:[0-9]+]], [[TS_Dyn_D2:[0-9]+]], [[TS_D3_OPT:[0-9]+]]]
     // CHECK:       return [[ELTWISE0]], [[ELTWISE1]] : tensor<1x32x800x1280xf16, {order = #NHWC}>, tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 800, 1280]> : tensor<4xsi64>, order = #NHWC}>
 }
 
@@ -124,8 +124,8 @@ func.func @EltwiseSameStrategyStaticAndDynamic(%arg0: tensor<1x32x800x1280xf16, 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @MaxPoolSameStrategyStaticAndDynamic
-func.func @MaxPoolSameStrategyStaticAndDynamic(%arg0: tensor<1x16x720x1280xf16, {order = #NHWC}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>)
+// CHECK-LABEL: @MaxPoolStrategyStaticAndDynamic
+func.func @MaxPoolStrategyStaticAndDynamic(%arg0: tensor<1x16x720x1280xf16, {order = #NHWC}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>)
     -> (tensor<1x16x720x1280xf16, {order = #NHWC}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x16x720x1280xf16, {order = #NHWC}>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>
@@ -134,10 +134,10 @@ func.func @MaxPoolSameStrategyStaticAndDynamic(%arg0: tensor<1x16x720x1280xf16, 
     return %0, %1 : tensor<1x16x720x1280xf16, {order = #NHWC}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>
     // CHECK:       [[MAX_POOL0:%.+]] = VPU.NCE.MaxPool([[ARG0]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[MAX_POOL1:%.+]] = VPU.NCE.MaxPool([[ARG1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
     // CHECK:       return [[MAX_POOL0]], [[MAX_POOL1]] : tensor<1x16x720x1280xf16, {order = #NHWC}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>
 }
 
@@ -145,27 +145,27 @@ func.func @MaxPoolSameStrategyStaticAndDynamic(%arg0: tensor<1x16x720x1280xf16, 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @PermuteMaxPoolSameStrategy
-func.func @PermuteMaxPoolSameStrategy(%arg0: tensor<1x16x720x1280xf16, {order = #NCHW}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>) -> (tensor<1x16x720x1280xf16, {order = #NCHW}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>) {
+// CHECK-LABEL: @PermuteMaxPoolStrategy
+func.func @PermuteMaxPoolStrategy(%arg0: tensor<1x16x720x1280xf16, {order = #NCHW}>, %arg1: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>) -> (tensor<1x16x720x1280xf16, {order = #NCHW}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x16x720x1280xf16, {order = #NCHW}>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>
     %0 = VPU.NCE.Permute(%arg0) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 16 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x720x1280xf16, {order = #NHWC}>
     %1 = VPU.NCE.MaxPool(%0) {kernel_size = [1, 1], multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, strides = [1, 1]} -> tensor<1x16x720x1280xf16, {order = #NCHW}>
     // CHECK:       [[PERMUTE0:%.+]] = VPU.NCE.Permute([[ARG0]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY_PERMUTE:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY_PERMUTE:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:       [[MAX_POOL0:%.+]] = VPU.NCE.MaxPool([[PERMUTE0]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY_MAX_POOL:[^>]+]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY_MAX_POOL:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
 
     %2 = VPU.NCE.Permute(%arg1) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 16 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NHWC}>
     %3 = VPU.NCE.MaxPool(%2) {kernel_size = [1, 1], multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, strides = [1, 1]} -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:      [[PERMUTE1:%.+]] = VPU.NCE.Permute([[ARG1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY_PERMUTE]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY_PERMUTE]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
     // CHECK:      [[MAX_POOL1:%.+]] = VPU.NCE.MaxPool([[PERMUTE1]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<[[CLUSTER_STRATEGY_MAX_POOL]]>
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY_MAX_POOL]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
 
     return %1, %3 : tensor<1x16x720x1280xf16, {order = #NCHW}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:       return [[MAX_POOL0]], [[MAX_POOL1]] : tensor<1x16x720x1280xf16, {order = #NCHW}>, tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>
@@ -191,7 +191,7 @@ func.func @PermuteMaxPoolSameStrategy(%arg0: tensor<1x16x720x1280xf16, {order = 
                                        storage_element_table=tensor<1x1x3201x5121xi32, {order = #NHWC}>,
                                        #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>>
 
-func.func @SEPConvSameStrategy(%arg0: !inputBoundedType, %arg1: !inputStaticType)
+func.func @SEPConvStrategy(%arg0: !inputBoundedType, %arg1: !inputStaticType)
     -> (!outputBoundedType, !outputStaticType) {
 
   %wtable = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
@@ -216,7 +216,7 @@ func.func @SEPConvSameStrategy(%arg0: !inputBoundedType, %arg1: !inputStaticType
     : !dynamicSparseType, tensor<16x16x2x2xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !outputBoundedType
 
   // CHECK:       [[CONV0:%.+]] = VPU.NCE.Convolution
-  // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+  // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
 
   %3 = VPU.GroupSparseTensor(%arg1, %sparsity_map, %0) {
     seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>} -> !staticSparseType
@@ -231,7 +231,7 @@ func.func @SEPConvSameStrategy(%arg0: !inputBoundedType, %arg1: !inputStaticType
     : !staticSparseType, tensor<16x16x2x2xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> !outputStaticType
 
   // CHECK:       [[CONV1:%.+]] = VPU.NCE.Convolution
-  // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY]]
+  // CHECK-SAME:  tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
 
   return %2, %4 : !outputBoundedType, !outputStaticType
 }
@@ -245,8 +245,8 @@ func.func @SEPConvSameStrategy(%arg0: !inputBoundedType, %arg1: !inputStaticType
 !outputDynamicType = tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 3200, 5120]> : tensor<4xsi64>, order = #NHWC}>
 !outputStaticType = tensor<1x3x3200x5120xf16, {order = #NHWC}>
 
-// CHECK-LABEL: @D2SOpSameStrategy
-func.func @D2SOpSameStrategy(%arg0: !inputStaticType, %arg1: !inputDynamicType) -> (!outputStaticType, !outputDynamicType) {
+// CHECK-LABEL: @D2SOpStrategy
+func.func @D2SOpStrategy(%arg0: !inputStaticType, %arg1: !inputDynamicType) -> (!outputStaticType, !outputDynamicType) {
     // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x12x1600x2560xf16, {order = #NHWC}>
     // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 1600, 2560]> : tensor<4xsi64>, order = #NHWC}>
 
@@ -255,14 +255,14 @@ func.func @D2SOpSameStrategy(%arg0: !inputStaticType, %arg1: !inputDynamicType) 
         : !inputStaticType -> !outputStaticType
 
     // CHECK:       [[D2S_STATIC:%.+]] = VPU.DepthToSpace([[ARG0]])
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY_D2S:\[[0-9]+, [0-9]+, [0-9]+, [0-9]+\]]]
+    // CHECK-SAME:  tilingStrategy = [[[TS_D0:[0-9]+]], [[TS_D1:[0-9]+]], [[TS_D2:[0-9]+]], [[TS_D3:[0-9]+]]]
 
     %1 = VPU.DepthToSpace(%arg1)
       {block_size = 2 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>}
         : !inputDynamicType -> !outputDynamicType
 
     // CHECK:      [[D2S_DYN:%.+]] = VPU.DepthToSpace([[ARG1]])
-    // CHECK-SAME:  tilingStrategy = [[TILING_STRATEGY_D2S]]
+    // CHECK-SAME: tilingStrategy = [[[TS_D0]], [[TS_D1]], [[TS_Dyn_D2:[0-9]+]], [[TS_Dyn_D3:[0-9]+]]]
 
     return %0, %1 : !outputStaticType, !outputDynamicType
     // CHECK:       return [[D2S_STATIC]], [[D2S_DYN]]

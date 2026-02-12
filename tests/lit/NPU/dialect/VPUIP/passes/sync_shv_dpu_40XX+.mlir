@@ -82,13 +82,13 @@ func.func @AddSyncTaskAfterShaveKernelWithDpu(%arg3: memref<1x1x2x64xf16, @DDR>,
       }
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-    %35 = VPUIP.NNDMA {port = 0 : i64} inputs(%33 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
+    %35 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%33 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-    %35 = VPUIP.NNDMA {port = 1 : i64} inputs(%14 : memref<1x1x2x64xf16, [@CMX_NN, 0]>) outputs(%0 : memref<1x1x2x64xf16, @DDR>) -> memref<1x1x2x64xf16, @DDR>
+    %35 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%14 : memref<1x1x2x64xf16, [@CMX_NN, 0]>) outputs(%0 : memref<1x1x2x64xf16, @DDR>) -> memref<1x1x2x64xf16, @DDR>
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-    %35 = VPUIP.NNDMA {port = 0 : i64} inputs(%34 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
+    %35 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%34 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
   }
   return %arg3, %arg4, %arg5 : memref<1x1x2x64xf16, @DDR>, memref<1x1x64xf16, @DDR>, memref<1x1x64xf16, @DDR>
   // CHECK:      VPUIP.SyncDMA
@@ -169,13 +169,13 @@ func.func @NotAddSyncTaskAfterShaveKernelBecauseNotInList(%arg3: memref<1x1x2x64
       }
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-    %35 = VPUIP.NNDMA {port = 0 : i64} inputs(%33 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
+    %35 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%33 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-    %35 = VPUIP.NNDMA {port = 1 : i64} inputs(%14 : memref<1x1x2x64xf16, [@CMX_NN, 0]>) outputs(%0 : memref<1x1x2x64xf16, @DDR>) -> memref<1x1x2x64xf16, @DDR>
+    %35 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%14 : memref<1x1x2x64xf16, [@CMX_NN, 0]>) outputs(%0 : memref<1x1x2x64xf16, @DDR>) -> memref<1x1x2x64xf16, @DDR>
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-    %35 = VPUIP.NNDMA {port = 0 : i64} inputs(%34 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
+    %35 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%34 : memref<1x1x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x64xf16, @DDR>) -> memref<1x1x64xf16, @DDR>
   }
   return %arg3, %arg4, %arg5 : memref<1x1x2x64xf16, @DDR>, memref<1x1x64xf16, @DDR>, memref<1x1x64xf16, @DDR>
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -83,17 +83,17 @@ SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module) {
     return ret;
 }
 
-double getActivityFactor(VPU::ExecutorKind execKind, mlir::ModuleOp module, config::ComputeResourceOpInterface res) {
+double getActivityFactor(config::ExecutorKind execKind, mlir::ModuleOp module, config::ComputeResourceOpInterface res) {
     // 0.5 is a recommanded default value for AF by VPUNN team
     double activityFactor = 0.5;
     const auto arch = config::getArch(module);
-    if (execKind == VPU::ExecutorKind::NCE || execKind == VPU::ExecutorKind::SHAVE_NN) {
+    if (execKind == config::ExecutorKind::NCE || execKind == config::ExecutorKind::SHAVE_NN) {
         switch (arch) {
         case config::ArchKind::NPU37XX:
         case config::ArchKind::NPU40XX:
         case config::ArchKind::NPU50XX:
             // Here we must get AF from NCE res (a ResourcesOp) as the AF attribute is attached to tile op
-            if (execKind == VPU::ExecutorKind::NCE) {
+            if (execKind == config::ExecutorKind::NCE) {
                 auto NCERes = mlir::cast<config::ResourcesOp>(res.getOperation());
                 if (auto factorAttr = NCERes.getActivityFactorAttr()) {
                     activityFactor = factorAttr.getValue().convertToDouble();

@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -90,6 +91,8 @@ VPU::EltwiseType VPU::decodeNceEltwiseType(mlir::Operation* operation) {
     } else if (mlir::isa<VPU::DesparsifyOp>(operation)) {
         return VPU::EltwiseType::ADD;
     } else if (mlir::isa<IE::AddOp>(operation)) {
+        return VPU::EltwiseType::ADD;
+    } else if (mlir::isa<IE::PermuteQuantizeOp>(operation)) {
         return VPU::EltwiseType::ADD;
     } else if (mlir::isa<IE::SubtractOp>(operation)) {
         return VPU::EltwiseType::SUBTRACT;

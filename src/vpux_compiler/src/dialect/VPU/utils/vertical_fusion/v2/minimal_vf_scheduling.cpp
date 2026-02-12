@@ -25,15 +25,18 @@ bool MinimalRequirementsVFScheduling::isSharedWeightsSupported(VFConfig&) const 
 
 void MinimalRequirementsVFScheduling::correctInputPrefetchingCost(
         StrategyCost& prefetchCost, mlir::Operation* operation, VFConfig& config,
-        const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, const size_t index) const {
+        const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, SmallVector<StrategyCost>& prefetchCostList,
+        const size_t index) const {
     const auto isInput = llvm::find(config.getInputs(), operation) != config.getInputs().end();
 
     if (isInput) {
         return;
     }
 
+    VPUX_THROW_WHEN(index >= prefetchCostList.size(), "Index {0} out of range for prefetchCostList of size {1}", index,
+                    prefetchCostList.size());
     StrategyCost parentCost = getParentCost(operation, isolatedOperCost);
-    reduceCostWithPrefetchedDMA(parentCost, prefetchCost, index);
+    reduceCostWithPrefetchedDMA(parentCost, prefetchCost, prefetchCostList[index]);
 
     prefetchCost = parentCost <= prefetchCost ? prefetchCost - parentCost : 0;
 }

@@ -36,7 +36,7 @@ SmallVector<mlir::Type> getAuxiliaryBufferTypes(mlir::ModuleOp moduleOp, mlir::V
     // Four buffers of 256 elements are required for counting sort
     // tensor has SEGMENTED distribution mode
     // multiply the buffer numShaves times to provide unique buffer for each shave
-    auto numShaves = config::getTotalNumOfEngines(moduleOp, VPU::ExecutorKind::SHAVE_ACT);
+    auto numShaves = config::getTotalNumOfEngines(moduleOp, config::ExecutorKind::SHAVE_ACT);
     Shape sortingBufferShape{1, 1, 4 * numShaves, 256};
     const auto sortingBufferType =
             mlir::RankedTensorType::get(sortingBufferShape.raw(), getSInt32Type(confidence.getContext()));
@@ -61,7 +61,7 @@ void vpux::VPU::DetectionOutputSortOp::build(mlir::OpBuilder& odsBuilder, mlir::
     VPUX_THROW_WHEN(auxBufferTypes.size() != 2, "Expected 2 auxiliary buffer types, got {0}", auxBufferTypes.size());
     auto indicesBuffer =
             createIndicesBufferConstant(odsBuilder, odsState.location, auxBufferTypes[0], indicesBufferData);
-    auto sortingBuffer = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[1]);
+    auto sortingBuffer = VPU::createConstantAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[1]);
 
     build(odsBuilder, odsState, confidence, indicesBuffer, sortingBuffer, confidenceThreshold, topK, nullptr);
 }
@@ -110,7 +110,7 @@ mlir::LogicalResult VPU::DetectionOutputSortOp::inferReturnTypes(
 
 InputTiling vpux::VPU::DetectionOutputSortOp::backInferTileInfo(const vpux::TileInfo& firstOutputTile,
                                                                 vpux::Logger /*log*/) {
-    auto numShaves = config::getTotalNumOfEngines(getOperation(), VPU::ExecutorKind::SHAVE_ACT);
+    auto numShaves = config::getTotalNumOfEngines(getOperation(), config::ExecutorKind::SHAVE_ACT);
     return DetectionOutputSortOpInputTiling(firstOutputTile, numShaves);
 }
 
@@ -138,7 +138,8 @@ bool vpux::VPU::DetectionOutputSortOp::checkStrategyCompatibility(VPU::MultiClus
 vpux::VPU::DistributionInfo vpux::VPU::DetectionOutputSortOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -189,33 +190,4 @@ bool vpux::VPU::DetectionOutputSortOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInt
 
 bool vpux::VPU::DetectionOutputSortOp::supportCycleCostCalculation() {
     return false;
-}
-
-llvm::LogicalResult VPU::DetectionOutputSortOp::verify() {
-    const auto moduleOp = getModuleOp(getOperation()->getParentOp());
-    // The size of the auxiliary buffers depend on the number of available SHAVE executors
-    // In case the IR is not populated with this information, skip the verification of the buffer sizes
-    auto tileOp = config::getTileExecutor(moduleOp);
-    if (tileOp == nullptr) {
-        return mlir::success();
-    }
-
-    std::vector<int32_t> indicesBufferData;
-    auto expectedAuxBuffTypes = getAuxiliaryBufferTypes(moduleOp, getConfidence(), indicesBufferData);
-    if (expectedAuxBuffTypes.size() != 2) {
-        return errorAt(getOperation(), "Expected two reference auxiliary buffer types, but got {0}",
-                       expectedAuxBuffTypes.size());
-    }
-    auto loc = getOperation()->getLoc();
-    if (mlir::failed(VPU::compareTypes(loc, getIndicesBuffer().getType(), expectedAuxBuffTypes[0]))) {
-        return errorAt(getOperation(), "Invalid indices auxiliary buffer");
-    }
-    if (mlir::failed(VPU::compareTypes(loc, getSortingBuffer().getType(), expectedAuxBuffTypes[1]))) {
-        return errorAt(getOperation(), "Invalid sorting auxiliary buffer");
-    }
-    return mlir::success();
-}
-
-SmallVector<mlir::Value> VPU::DetectionOutputSortOp::getAuxiliaryBuffers() {
-    return {getIndicesBuffer(), getSortingBuffer()};
 }

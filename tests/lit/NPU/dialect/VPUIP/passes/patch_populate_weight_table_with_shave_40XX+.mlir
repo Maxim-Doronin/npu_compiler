@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -130,7 +130,7 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
                                 attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 1 : i64,
                                 cycleBegin = 0 : i64, cycleCost = 2072 : i64, cycleEnd = 2072 : i64} {
       %18 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x4096xf32, @DDR>) -> memref<1x1x1x4096xf32, @DDR>
-      %19 = VPUIP.NNDMA {port = 0 : i64} inputs(%18 : memref<1x1x1x4096xf32, @DDR>)
+      %19 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%18 : memref<1x1x1x4096xf32, @DDR>)
             outputs(%0 : !InputDistributed)
             -> !InputDistributed
       async.yield %19 : !InputDistributed
@@ -140,7 +140,7 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
             -> !async.value<!InputDistributedFloat16>
                 attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64,
                 cycleBegin = 2072 : i64, cycleCost = 474 : i64, cycleEnd = 2546 : i64} {
-      %18 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%arg2 : !InputDistributed)
+      %18 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%arg2 : !InputDistributed)
             outputs(%1 : !InputDistributedFloat16)
             -> !InputDistributedFloat16
       async.yield %18 : !InputDistributedFloat16
@@ -148,7 +148,7 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
     %token_9, %bodyResults_10 = async.execute -> !async.value<!WeightsDistributed>
                   attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0, 1], "async-deps-index" = 4 : i64,
                   cycleBegin = 2072 : i64, cycleCost = 458697 : i64, cycleEnd = 460769 : i64} {
-      %18 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_2 : memref<1024x4096x1x1x!qElemType, #NHWC>) outputs(%2 : !WeightsDistributed)
+      %18 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_2 : memref<1024x4096x1x1x!qElemType, #NHWC>) outputs(%2 : !WeightsDistributed)
             -> !WeightsDistributed
       async.yield %18 : !WeightsDistributed
     }
@@ -365,7 +365,7 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
 
     %token_13, %bodyResults_14 = async.execute -> !async.value<!BiasDistributed>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64, cycleBegin = 1637 : i64, cycleCost = 329408 : i64, cycleEnd = 331045 : i64} {
-      %21 = VPUIP.NNDMA {port = 0 : i64} inputs(%bias : memref<512x1x1x4xi4>) outputs(%5 : !BiasDistributed)
+      %21 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%bias : memref<512x1x1x4xi4>) outputs(%5 : !BiasDistributed)
         -> !BiasDistributed
       async.yield %21 : !BiasDistributed
     }
@@ -399,9 +399,9 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
         -> (!async.value<!PopulateWeightTableDistributedDDR>, !async.value<!PopulateWeightTableDistributedDDR>)
         attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64,
           cycleBegin = 1935 : i64, cycleCost = 115893 : i64, cycleEnd = 117828 : i64} {
-      %18 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg2 : !PopulateWeightTableDistributed) outputs(%6 : !PopulateWeightTableDistributedDDR)
+      %18 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg2 : !PopulateWeightTableDistributed) outputs(%6 : !PopulateWeightTableDistributedDDR)
       -> !PopulateWeightTableDistributedDDR
-      %19 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg3 : !PopulateWeightTableDistributed) outputs(%7 : !PopulateWeightTableDistributedDDR)
+      %19 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg3 : !PopulateWeightTableDistributed) outputs(%7 : !PopulateWeightTableDistributedDDR)
       -> !PopulateWeightTableDistributedDDR
       async.yield %18, %19 : !PopulateWeightTableDistributedDDR, !PopulateWeightTableDistributedDDR
     }
@@ -411,9 +411,9 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
         -> (!async.value<!PopulateWeightTableDistributed>, !async.value<!PopulateWeightTableDistributed>)
         attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64,
           cycleBegin = 1935 : i64, cycleCost = 115893 : i64, cycleEnd = 117828 : i64} {
-      %18 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg2 : !PopulateWeightTableDistributedDDR) outputs(%8 : !PopulateWeightTableDistributed)
+      %18 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg2 : !PopulateWeightTableDistributedDDR) outputs(%8 : !PopulateWeightTableDistributed)
       -> !PopulateWeightTableDistributed
-      %19 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg3 : !PopulateWeightTableDistributedDDR) outputs(%9 : !PopulateWeightTableDistributed)
+      %19 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg3 : !PopulateWeightTableDistributedDDR) outputs(%9 : !PopulateWeightTableDistributed)
       -> !PopulateWeightTableDistributed
       async.yield %18, %19 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed
     }
@@ -423,7 +423,7 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
                                 attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 1 : i64,
                                 cycleBegin = 0 : i64, cycleCost = 2072 : i64, cycleEnd = 2072 : i64} {
       %18 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x4096xf32, @DDR>) -> memref<1x1x1x4096xf32, @DDR>
-      %19 = VPUIP.NNDMA {port = 0 : i64} inputs(%18 : memref<1x1x1x4096xf32, @DDR>)
+      %19 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%18 : memref<1x1x1x4096xf32, @DDR>)
             outputs(%0 : !InputDistributed)
             -> !InputDistributed
       async.yield %19 : !InputDistributed
@@ -433,7 +433,7 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
             -> !async.value<!InputDistributedFloat16>
                 attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64,
                 cycleBegin = 2072 : i64, cycleCost = 474 : i64, cycleEnd = 2546 : i64} {
-      %18 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%arg2 : !InputDistributed)
+      %18 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%arg2 : !InputDistributed)
             outputs(%1 : !InputDistributedFloat16)
             -> !InputDistributedFloat16
       async.yield %18 : !InputDistributedFloat16
@@ -441,7 +441,7 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
     %token_9, %bodyResults_10 = async.execute -> !async.value<!WeightsDistributed>
                   attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0, 1], "async-deps-index" = 4 : i64,
                   cycleBegin = 2072 : i64, cycleCost = 458697 : i64, cycleEnd = 460769 : i64} {
-      %18 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_2 : memref<1024x4096x1x1x!qElemType, #NHWC>) outputs(%2 : !WeightsDistributed)
+      %18 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_2 : memref<1024x4096x1x1x!qElemType, #NHWC>) outputs(%2 : !WeightsDistributed)
             -> !WeightsDistributed
       async.yield %18 : !WeightsDistributed
     }

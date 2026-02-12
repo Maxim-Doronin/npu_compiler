@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -363,22 +363,15 @@ mlir::FailureOr<SmallVector<ResultType>> vpux::VPU::backInferVFTiling(
 }
 
 template <typename VFConfigType>
-mlir::FailureOr<SmallVector<SmallVector<int64_t>>> vpux::VPU::backInferVFTilingStrategy(
-        VFConfigType& config, ArrayRef<int64_t> tilingStrategy,
-        std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap) {
-    return backInferVFTiling<mlir::ArrayRef<int64_t>, mlir::SmallVector<int64_t>, VFConfigType>(
-            config, tilingStrategy, BackInferStrategy::TILING_STRATEGY, opStrategyMap);
-}
-
-template <typename VFConfigType>
 mlir::FailureOr<SmallVector<vpux::Dim>> vpux::VPU::backInferVFTilingDim(
         VFConfigType& config, vpux::Dim outputDim, std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap) {
     return backInferVFTiling<vpux::Dim, vpux::Dim, VFConfigType>(config, outputDim, BackInferStrategy::TILING_DIM,
                                                                  opDimMap);
 }
 
-VPU::VerticalFusionOp vpux::VPU::fuseOpsInBlock(mlir::PatternRewriter& rewriter, VPU::VerticalFusionOp vfOp,
-                                                mlir::Operation* prevOp, mlir::ArrayAttr tilingInfo /*nullptr*/) {
+VPU::VerticalFusionOp vpux::VPU::fuseOpsInBlock(mlir::OpBuilder& rewriter, VPU::VerticalFusionOp vfOp,
+                                                mlir::Operation* prevOp, mlir::ArrayAttr tilingInfo /*nullptr*/,
+                                                bool isManuallConfigured /*false*/) {
     SmallVector<mlir::Operation*> prevOperations;
     auto prevOperands = prevOp->getOperands();
     SmallVector<mlir::Value> prevBlockArgs = prevOp->getOperands();
@@ -483,9 +476,9 @@ VPU::VerticalFusionOp vpux::VPU::fuseOpsInBlock(mlir::PatternRewriter& rewriter,
     if (tilingInfo == nullptr) {
         tilingInfo = vfOp.getTilingStrategy();
     }
-
+    mlir::UnitAttr isManualConfiguredAttr = isManuallConfigured ? mlir::UnitAttr::get(vfOp.getContext()) : nullptr;
     return rewriter.create<VPU::VerticalFusionOp>(vfOp.getLoc(), vfOp->getResultTypes(), newOperands, bodyBuilder,
-                                                  tilingInfo);
+                                                  tilingInfo, isManualConfiguredAttr);
 }
 
 bool vpux::VPU::isSpatialTiling(ArrayRef<int64_t> strategy) {
@@ -614,14 +607,6 @@ SmallVector<mlir::Operation*> vpux::VPU::getParentViewLikeOpsInVF(mlir::Operatio
 }
 
 // Explicit instantiation of the template function for V1/V2 VFConfig
-template mlir::FailureOr<SmallVector<SmallVector<int64_t>>> vpux::VPU::backInferVFTilingStrategy<
-        vpux::VPU::VF::v1::VFConfig>(vpux::VPU::VF::v1::VFConfig& config, ArrayRef<int64_t> tilingStrategy,
-                                     std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap);
-
-template mlir::FailureOr<SmallVector<SmallVector<int64_t>>> vpux::VPU::backInferVFTilingStrategy<
-        vpux::VPU::VF::v2::VFConfig>(vpux::VPU::VF::v2::VFConfig& config, ArrayRef<int64_t> tilingStrategy,
-                                     std::unordered_map<mlir::Operation*, SmallVector<int64_t>>& opStrategyMap);
-
 template mlir::FailureOr<SmallVector<vpux::Dim>> vpux::VPU::backInferVFTilingDim<vpux::VPU::VF::v1::VFConfig>(
         vpux::VPU::VF::v1::VFConfig& config, vpux::Dim outputDim,
         std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap);

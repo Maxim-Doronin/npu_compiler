@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,11 +25,11 @@ func.func @DoNotSplitNNDMA(%input: !Input_DDR, %output: !Output_CMX) -> !Output_
 
     return %1: !Output_CMX
 
-    // CHECK:    [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK:    [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:    [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:    [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
-    // CHECK:    [[INPUT_DDR_BUF0:%.*]] = VPURT.DeclareBuffer <DDR> <18662408> -> memref<1x4x360x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>
-    // CHECK:    [[OUTPUT_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <622080> -> memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:    [[INPUT_DDR_BUF0:%.+]] = VPURT.DeclareBuffer <DDR> <18662408> -> memref<1x4x360x216xf16, {order = #NHWC, strides = [6220800, 1, 8640, 8]}, @DDR>
+    // CHECK:    [[OUTPUT_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <622080> -> memref<1x4x360x216xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA
@@ -60,11 +60,11 @@ func.func @DoNotSplit5DNNDMAWithLevel3Striding(%input: !Input_DDR, %output: !Out
 
     return %1: !Output_CMX
 
-    // CHECK:    [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK:    [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:    [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:    [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
-    // CHECK:    [[INPUT_DDR_BUF0:%.*]] = VPURT.DeclareBuffer <DDR> <18662408> -> memref<1x32x64x64x1xf16, {order = #NCDHW, strides = [2097152, 65536, 512, 2, 1]}, @DDR>
-    // CHECK:    [[OUTPUT_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <622080> -> memref<1x32x64x64x1xf16, [@CMX_NN, 0]>
+    // CHECK:    [[INPUT_DDR_BUF0:%.+]] = VPURT.DeclareBuffer <DDR> <18662408> -> memref<1x32x64x64x1xf16, {order = #NCDHW, strides = [2097152, 65536, 512, 2, 1]}, @DDR>
+    // CHECK:    [[OUTPUT_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <622080> -> memref<1x32x64x64x1xf16, [@CMX_NN, 0]>
 
     // CHECK:      VPURT.Task
     // CHECK:      VPUIP.NNDMA

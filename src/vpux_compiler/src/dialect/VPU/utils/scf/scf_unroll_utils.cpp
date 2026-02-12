@@ -15,6 +15,8 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
 
+#include "vpux/compiler/dialect/HostExec/params.hpp"
+
 namespace vpux::VPU {
 
 std::string parseCaseNumber(const std::string& functionName) {
@@ -484,17 +486,22 @@ mlir::Value encodeBlockPositionId(mlir::OpBuilder& builder, SmallVector<mlir::Va
     SmallVector<int64_t> shiftBitsForBlockStart = {12, 8, 4, 0};  // N, C, H, W
     SmallVector<int64_t> shiftBitsForBlockEnd = {14, 10, 6, 2};   // N, C, H, W
 
-    mlir::Value returnVal;
-    /*auto mask2Bits = builder.create<mlir::arith::ConstantIndexOp>(
-        builder.getUnknownLoc(), builder.getIndexType(), builder.getI64IntegerAttr(0x3));*/
+    // Initialize return value to 0
+    mlir::Value returnVal = builder.create<mlir::arith::ConstantIndexOp>(builder.getUnknownLoc(), 0);
+
+    bool hasOneDynDim = accessPattern.size() == 1;
     auto mask2Bits = builder.create<mlir::arith::ConstantIndexOp>(builder.getUnknownLoc(), 3);
     for (auto [idx, dim] : llvm::enumerate(accessPattern)) {
-        auto cstStart = builder.create<mlir::arith::ConstantIndexOp>(builder.getUnknownLoc(), shiftBits[dim]);
-        auto dimVal = builder.create<mlir::arith::ShRUIOp>(builder.getUnknownLoc(), inputBlockIdVals[0], cstStart);
-        auto dimStart = builder.create<mlir::arith::AndIOp>(builder.getUnknownLoc(), dimVal, mask2Bits);
+        auto dimStart = inputBlockIdVals[0];
+        auto dimEnd = inputBlockIdVals[1];
+        if (!hasOneDynDim) {
+            auto cstStart = builder.create<mlir::arith::ConstantIndexOp>(builder.getUnknownLoc(), shiftBits[dim]);
+            auto dimVal = builder.create<mlir::arith::ShRUIOp>(builder.getUnknownLoc(), inputBlockIdVals[0], cstStart);
+            dimStart = builder.create<mlir::arith::AndIOp>(builder.getUnknownLoc(), dimVal, mask2Bits);
 
-        auto dimVal2 = builder.create<mlir::arith::ShRUIOp>(builder.getUnknownLoc(), inputBlockIdVals[1], cstStart);
-        auto dimEnd = builder.create<mlir::arith::AndIOp>(builder.getUnknownLoc(), dimVal2, mask2Bits);
+            auto dimVal2 = builder.create<mlir::arith::ShRUIOp>(builder.getUnknownLoc(), inputBlockIdVals[1], cstStart);
+            dimEnd = builder.create<mlir::arith::AndIOp>(builder.getUnknownLoc(), dimVal2, mask2Bits);
+        }
 
         auto cstBlkStart =
                 builder.create<mlir::arith::ConstantIndexOp>(builder.getUnknownLoc(), shiftBitsForBlockStart[dim]);
@@ -505,7 +512,9 @@ mlir::Value encodeBlockPositionId(mlir::OpBuilder& builder, SmallVector<mlir::Va
         auto shiftedEnd = builder.create<mlir::arith::ShLIOp>(builder.getUnknownLoc(), dimEnd, cstBlkEnd);
 
         auto combined = builder.create<mlir::arith::OrIOp>(builder.getUnknownLoc(), shiftedStart, shiftedEnd);
-        returnVal = combined->getResult(0);
+
+        // Accumulate all dimensions into the final encoded value
+        returnVal = builder.create<mlir::arith::OrIOp>(builder.getUnknownLoc(), returnVal, combined);
     }
     return returnVal;
 }
@@ -889,7 +898,7 @@ mlir::tensor::ExtractSliceOp createNewExtractSliceOp(mlir::OpBuilder& builder,
             mlir::RankedTensorType::get(mergedSliceOpShape, firstExtractSliceOp.getType().getElementType(),
                                         firstExtractSliceOp.getType().getEncoding());
     return builder.create<mlir::tensor::ExtractSliceOp>(
-            vpux::takeOpLoc(firstExtractSliceOp, "_new_block_shape"), newOutputRetType, firstExtractSliceOp.getSource(),
+            vpux::takeOpLoc(firstExtractSliceOp, "new_block_shape"), newOutputRetType, firstExtractSliceOp.getSource(),
             firstExtractSliceOp.getMixedOffsets(), mergedSliceOpSize, firstExtractSliceOp.getMixedStrides());
 }
 
@@ -1038,7 +1047,6 @@ void handleOpResults(mlir::OpBuilder& builder, mlir::IRMapping& valueMapper, Arr
         }
 
         if (hasNonTerminalOpAsUser) {
-            llvm::outs() << "hasNonTerminalOpAsUser true for resultIdx: " << resultIdx << "\n";
             for (auto [callOpIdx, currentCallOp] : llvm::enumerate(opsOfType)) {
                 auto vpuSliceOffset =
                         calculateVPUSliceOffset<mlir::func::CallOp>(callOpIdx, opsOfType, resultIdx, config);
@@ -1048,7 +1056,7 @@ void handleOpResults(mlir::OpBuilder& builder, mlir::IRMapping& valueMapper, Arr
 
                 builder.setInsertionPoint(firstNonTerminalOp);
                 auto newSliceOp = builder.create<vpux::VPU::SliceOp>(
-                        takeOpLoc(firstOp, "_from_merged"), inputOp->getResult(resultIdx),
+                        takeOpLoc(firstOp, "from_merged"), inputOp->getResult(resultIdx),
                         builder.getI64ArrayAttr(vpuSliceOffset), builder.getI64ArrayAttr(vpuSliceSize));
 
                 currentCallOp->getResult(resultIdx).replaceAllUsesWith(newSliceOp.getResult());
@@ -1101,11 +1109,17 @@ mlir::LogicalResult handleCallOps(mlir::OpBuilder& builder, mlir::IRMapping& val
     mlir::OpBuilder::InsertionGuard guard(builder);
     mlir::IRMapping mapper;
 
+    if (callOps.empty()) {
+        return mlir::failure();
+    }
+
     // Collect VPU and function dialect operations to merge
     llvm::SetVector<mlir::Operation*> opsToMerge;
     auto module = callOps.front()->getParentOfType<mlir::ModuleOp>();
 
     std::string suffix = "";
+    auto firstCallOp = callOps.front();
+    mlir::func::FuncOp firstFuncOp = module.lookupSymbol<mlir::func::FuncOp>(firstCallOp.getCallee());
     for (auto callOp : callOps) {
         for (auto operand : callOp.getOperands()) {
             if (mlir::isa<VPU::SliceOp>(operand.getDefiningOp())) {
@@ -1121,12 +1135,11 @@ mlir::LogicalResult handleCallOps(mlir::OpBuilder& builder, mlir::IRMapping& val
         }
     }
 
-    auto block = callOps.front()->getBlock();
+    auto block = firstCallOp->getBlock();
     mlir::Location insertionLoc = builder.getUnknownLoc();
     setBuilderPositionToEndOfBlock(builder, block, insertionLoc);
 
     // insert concat ops for the soon to be merged callOps
-    auto firstCallOp = callOps.front();
     SmallVector<mlir::Value> newReturnValues;
     for (auto [idx, resultType] : llvm::enumerate(firstCallOp.getResultTypes())) {
         if (mlir::isa<mlir::RankedTensorType>(resultType)) {
@@ -1191,6 +1204,29 @@ mlir::LogicalResult handleCallOps(mlir::OpBuilder& builder, mlir::IRMapping& val
             builder.create<mlir::func::CallOp>(module.getLoc(), newFuncOp.getName(), resultTypes, inputValues);
 
     handleOpResults(builder, valueMapper, callOps, callOpToMergedFunc.getOperation(), config);
+
+    // set dynamic tensor attribute for arguments and results
+    // This attributes are used in AddNetInfoToModule pass
+
+    // This will be replaced with core dialect definition when dynamic strides
+    llvm::StringRef funcArgDynmicStridesAttrName = HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
+
+    for (auto [idx, argType] : llvm::enumerate(newFuncOp.getArgumentTypes())) {
+        auto dynamicTensorAttr =
+                mlir::dyn_cast_or_null<mlir::BoolAttr>(firstFuncOp.getArgAttr(idx, funcArgDynmicStridesAttrName));
+        if (dynamicTensorAttr && dynamicTensorAttr.getValue()) {
+            newFuncOp.setArgAttr(idx, funcArgDynmicStridesAttrName, builder.getBoolAttr(true));
+        }
+    }
+
+    for (auto [idx, resultType] : llvm::enumerate(newFuncOp.getResultTypes())) {
+        auto dynamicTensorAttr =
+                mlir::dyn_cast_or_null<mlir::BoolAttr>(firstFuncOp.getResultAttr(idx, funcArgDynmicStridesAttrName));
+        if (dynamicTensorAttr && dynamicTensorAttr.getValue()) {
+            newFuncOp.setResultAttr(idx, funcArgDynmicStridesAttrName, builder.getBoolAttr(true));
+        }
+    }
+
     return mlir::success();
 }
 
@@ -1240,7 +1276,7 @@ mlir::LogicalResult handleExtractSliceOps(mlir::OpBuilder& builder, mlir::IRMapp
         }
 
         auto newSliceOp = builder.create<vpux::VPU::SliceOp>(
-                takeOpLoc(extractOp, "_from_merged"), mergedExtractSliceOp.getResult(),
+                takeOpLoc(extractOp, "from_merged"), mergedExtractSliceOp.getResult(),
                 builder.getI64ArrayAttr(vpuSliceOffset), builder.getI64ArrayAttr(vpuSliceSize));
         builder.setInsertionPointAfter(newSliceOp);
         extractOp.replaceAllUsesWith(newSliceOp.getResult());
@@ -1302,6 +1338,7 @@ mlir::LogicalResult handleInsertSliceOps(mlir::OpBuilder& builder, mlir::Block* 
     auto srcOperand = valueMapper.lookup(firstInsertSliceOp.getSource());
     auto srcOperation = srcOperand.getDefiningOp();
     SmallVector<mlir::OpFoldResult> mergedSize;
+    SmallVector<int64_t> mergedStaticSize;
 
     // If the source operand is a cast op, we need to get the shape from its input
     // with the dynamic dimensions resolved to mlir::ShapedType::kDynamic to avoid compilation issues
@@ -1310,24 +1347,27 @@ mlir::LogicalResult handleInsertSliceOps(mlir::OpBuilder& builder, mlir::Block* 
         auto castOpOutShape = mlir::cast<mlir::RankedTensorType>(srcOperation->getResult(0).getType()).getShape();
         for (auto [idx, shape] : llvm::enumerate(castOpOutShape)) {
             if (shape == mlir::ShapedType::kDynamic) {
-                auto cstVal = builder.create<mlir::arith::ConstantIndexOp>(takeOpLoc(srcOperation, "_dynamic_dim_size"),
+                auto cstVal = builder.create<mlir::arith::ConstantIndexOp>(takeOpLoc(srcOperation, "dynamic_dim_size"),
                                                                            castOpInputShape[idx]);
                 mergedSize.push_back(cstVal.getResult());
+                mergedStaticSize.push_back(castOpInputShape[idx]);
             } else {
                 mergedSize.push_back(builder.getI64IntegerAttr(shape));
+                mergedStaticSize.push_back(shape);
             }
         }
     } else {
         auto inputShape = mlir::cast<mlir::RankedTensorType>(srcOperand.getType()).getShape();
         for (int64_t size : inputShape) {
             mergedSize.push_back(builder.getI64IntegerAttr(size));
+            mergedStaticSize.push_back(size);
         }
     }
 
     mlir::Location insertionLoc = builder.getUnknownLoc();
     setBuilderPositionToEndOfBlock(builder, block, insertionLoc);
     auto newInsertSliceOp = builder.create<mlir::tensor::InsertSliceOp>(
-            appendLoc(insertionLoc, "_merged_insert_op"), srcOperand, dstOperand, origOffsets, mergedSize, origStrides);
+            appendLoc(insertionLoc, "merged_insert_op"), srcOperand, dstOperand, origOffsets, mergedSize, origStrides);
 
     // InsertSliceOps are used by terminator ops. Need to find the insertSliceOp used by the terminator
     // and replace its uses with the newInsertSliceOp result.
@@ -1348,6 +1388,8 @@ mlir::LogicalResult handleInsertSliceOps(mlir::OpBuilder& builder, mlir::Block* 
     if (sliceOpsUsedByTerminator.front() != firstInsertSliceOp) {
         valueMapper.map(firstInsertSliceOp.getResult(), newInsertSliceOp.getResult());
     }
+
+    applyIndexBacktracking(newInsertSliceOp, {});
 
     valueMapper.map(sliceOpsUsedByTerminator.front(), newInsertSliceOp.getResult());
     return mlir::success();
@@ -1371,7 +1413,7 @@ mlir::LogicalResult handleTensorCastOps(mlir::OpBuilder& builder, mlir::Block* b
     mlir::Location insertionLoc = builder.getUnknownLoc();
     setBuilderPositionToEndOfBlock(builder, block, insertionLoc);
 
-    auto updatedCastOp = builder.create<mlir::tensor::CastOp>(appendLoc(insertionLoc, "_updated_cast_op"),
+    auto updatedCastOp = builder.create<mlir::tensor::CastOp>(appendLoc(insertionLoc, "updated_cast_op"),
                                                               updatedDynamicInputType, srcOperand);
     valueMapper.map(firstCastOp.getResult(), updatedCastOp.getResult());
     return mlir::success();
@@ -1462,9 +1504,9 @@ mlir::LogicalResult handleIndexSwitchOps(mlir::OpBuilder& builder, mlir::IRMappi
         auto& defRegion = switchOp.getDefaultRegion();
         auto& defaultBlock = defRegion.empty() ? defRegion.emplaceBlock() : defRegion.front();
         mlir::OpBuilder defBuilder = mlir::OpBuilder::atBlockBegin(&defaultBlock);
-        auto falseAttr = defBuilder.create<mlir::arith::ConstantOp>(vpux::takeOpLoc(switchOp, "_assert_false_"),
+        auto falseAttr = defBuilder.create<mlir::arith::ConstantOp>(vpux::takeOpLoc(switchOp, "assert_false_"),
                                                                     builder.getBoolAttr(false));
-        defBuilder.create<mlir::cf::AssertOp>(vpux::takeOpLoc(switchOp, "_default"), falseAttr,
+        defBuilder.create<mlir::cf::AssertOp>(vpux::takeOpLoc(switchOp, "default"), falseAttr,
                                               "Invalid block position");
 
         auto blockPosCombinationIter = llvm::find(blockPosCombinations, switchOp.getCases().front());
@@ -1671,14 +1713,45 @@ mlir::scf::ForOp fuseSiblingForLoops(mlir::scf::ForOp target, mlir::scf::ForOp s
 
     // Replace old loops by substituting their uses by results of the fused loop.
     rewriter.replaceOp(target, fusedLoop.getResults());
-    rewriter.replaceOp(source, fusedLoop.getResults());
-
-    // copy all attributes of source op into new op
+    // copy all attributes of source op into new op (has to be done *before*
+    // source is replaced as it can be deleted)
     for (auto attr : source->getAttrs()) {
         fusedLoop->setAttr(attr.getName(), attr.getValue());
     }
+    rewriter.replaceOp(source, fusedLoop.getResults());
 
     return fusedLoop;
+}
+
+unsigned getNestingDepth(mlir::Operation* op) {
+    mlir::Operation* currOp = op;
+    unsigned depth = 0;
+    while ((currOp = currOp->getParentOp())) {
+        if (mlir::isa<mlir::scf::ForOp>(currOp)) {
+            depth++;
+        }
+    }
+    return depth;
+}
+
+void collectLoops(mlir::Operation* rootOp, SmallVector<mlir::scf::ForOp>& loops) {
+    // Map to store loops by their nesting depth
+    std::map<unsigned, SmallVector<mlir::scf::ForOp>> depthMap;
+
+    // Collect all ForOps and group by depth
+    unsigned loopCounter = 0;
+    rootOp->walk([&](mlir::scf::ForOp forOp) {
+        unsigned depth = getNestingDepth(forOp.getOperation());
+        depthMap[depth].push_back(forOp);
+        ++loopCounter;
+    });
+
+    loops.reserve(loopCounter);
+
+    // Add loops from innermost (highest depth) to outermost (lowest depth)
+    for (auto& pair : depthMap | reversed) {
+        llvm::copy(pair.second, std::back_inserter(loops));
+    }
 }
 
 }  // namespace vpux::VPU

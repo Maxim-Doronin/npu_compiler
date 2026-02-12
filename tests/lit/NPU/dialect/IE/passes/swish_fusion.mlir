@@ -20,7 +20,7 @@ func.func @SwishFusion(%arg0: tensor<1x24x640x640xf16>) -> tensor<1x24x640x640xf
   %1 = IE.Sigmoid(%0) : tensor<1x24x640x640xf16> -> tensor<1x24x640x640xf16>
   %2 = IE.FakeQuantize(%1, %cst_6, %cst_3, %cst_6, %cst_3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x24x640x640xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x24x640x640xf16>
   %3 = IE.Multiply(%0, %2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x24x640x640xf16>, tensor<1x24x640x640xf16> -> tensor<1x24x640x640xf16>
-  
+
   return %3 : tensor<1x24x640x640xf16>
 
   // CHECK:  [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-10.0031395> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
@@ -38,7 +38,7 @@ func.func @SwishFusion(%arg0: tensor<1x24x640x640xf16>) -> tensor<1x24x640x640xf
 func.func @DequantizedSwishFusion(%arg0: tensor<1x128x512x512xf16>) -> tensor<1x128x512x512xf16> {
   %1 = IE.Sigmoid(%arg0) : tensor<1x128x512x512xf16> -> tensor<1x128x512x512xf16>
   %2 = IE.Multiply(%arg0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x512x512xf16>, tensor<1x128x512x512xf16> -> tensor<1x128x512x512xf16>
-  
+
   return %2 : tensor<1x128x512x512xf16>
 
   // CHECK-NOT:   IE.Sigmoid
@@ -60,11 +60,11 @@ func.func @NoSwishFusion(%arg0: tensor<2x1x2x3x2x121xf16>, %arg1: tensor<2x2x2x3
 
   return %5 : tensor<1x2x12x121xf16>
 
-  // CHECK:   [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT0]]) 
+  // CHECK:   [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT0]])
   //CHECK-SAME{LITERAL}:   {dim_mapping = [[0, 1], [2], [2], [2], [2], [3]], shape_value = [1, 2, 12, 121]} :
 
   // CHECK:   [[SLICE:%.+]] = IE.Slice [[INPUT1]] [0, 1, 0, 0, 0, 0] [2, 1, 2, 3, 2, 121] : tensor<2x2x2x3x2x121xf16> to tensor<2x1x2x3x2x121xf16>
-  // CHECK:   [[RESHAPE1:%.+]] = IE.AffineReshape([[SLICE]]) 
+  // CHECK:   [[RESHAPE1:%.+]] = IE.AffineReshape([[SLICE]])
   //CHECK-SAME{LITERAL}:   {dim_mapping = [[0, 1], [2], [2], [2], [2], [3]], shape_value = [1, 2, 12, 121]} :
 
   // CHECK:   [[SIGMOID:%.+]] = IE.Sigmoid([[RESHAPE1]]) : tensor<1x2x12x121xf16> -> tensor<1x2x12x121xf16>

@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
@@ -52,7 +52,7 @@ size_t vpux::ELF::math::lcm(size_t a, size_t b) {
     return (a / vpux::ELF::math::gcd(a, b)) * b;
 }
 
-size_t vpux::ELF::getOffsetOfSymRef(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef) {
+int64_t vpux::ELF::getOffsetOfSymRef(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef) {
     auto referencedOp = symRefMap.lookupSymbol(symRef);
     auto binarySizeOp = mlir::dyn_cast<ELF::BinarySizeOpInterface>(referencedOp);
 
@@ -76,7 +76,7 @@ vpux::ELF::MainOp vpux::ELF::getElfMainOp(mlir::func::FuncOp funcOp) {
 
 ArrayRef<uint8_t> vpux::ELF::getKernelELF(mlir::Operation* operation, StringRef kernelPath,
                                           ArrayRef<StringRef> sectionNames) {
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(operation->getContext());
+    const auto& kernelInfo = getShaveBinaryResources(operation->getContext());
     const auto archKind = config::getArch(operation);
     const auto arch = ShaveBinaryResources::getSwKernelArchString(archKind);
     llvm::ArrayRef<uint8_t> elfBlob = kernelInfo.getElf(kernelPath, arch);
@@ -119,6 +119,10 @@ mlir::Operation* ELF::SymbolReferenceMap::lookupSymbol(mlir::SymbolRefAttr symRe
     }
 
     auto symbolOp = sectionSymbolContainerIt->second.lookup(symbolLeaf);
+    if (!symbolOp) {
+        auto symbolRootOp = mlir::SymbolTable::lookupNearestSymbolFrom(_elfMain, symbolRoot);
+        symbolOp = mlir::SymbolTable(symbolRootOp).lookup(symbolLeaf);
+    }
     VPUX_THROW_UNLESS(symbolOp, "No op found for symbol {0}::{1}", symbolRoot, symbolLeaf);
 
     return symbolOp;
@@ -312,89 +316,90 @@ size_t vpux::ELF::getOpBinarySize(vpux::NDTypeInterface type) {
         TENSOR_4D_INDEX_COUNT,
     };
 
-    // auto contentType = content.getType();
-    auto memoryKind = type.getMemoryKind();
-    auto memShape = to_small_vector(type.getShape());
-    auto memStrides = to_small_vector(type.getStrides());
-    auto dimsOrder = type.getDimsOrder();
-    auto elementTypeSize = type.getElemTypeSize().count();
-    auto elementTypeSizeInByte = (elementTypeSize >= CHAR_BIT) ? (elementTypeSize / CHAR_BIT) : (elementTypeSize);
-    bool isNonZero4DTensor = false;
+    if (type.getMemoryKind() == vpux::VPU::MemoryKind::DDR) {
+        auto memShape = to_small_vector(type.getShape());
+        auto memStrides = to_small_vector(type.getStrides());
+        auto dimsOrder = type.getDimsOrder();
+        auto elementTypeSize = type.getElemTypeSize().count();
+        auto elementTypeSizeInByte = (elementTypeSize >= CHAR_BIT) ? (elementTypeSize / CHAR_BIT) : (elementTypeSize);
+        bool isNonZero4DTensor = false;
 
-    if (memShape.size() == 4) {
-        if (memShape[TENSOR_4D_INDEX_N] != 0 && memShape[TENSOR_4D_INDEX_C] != 0 && memShape[TENSOR_4D_INDEX_H] != 0 &&
-            memShape[TENSOR_4D_INDEX_W] != 0) {
-            isNonZero4DTensor = true;
+        if (memShape.size() == 4) {
+            if (memShape[TENSOR_4D_INDEX_N] != 0 && memShape[TENSOR_4D_INDEX_C] != 0 &&
+                memShape[TENSOR_4D_INDEX_H] != 0 && memShape[TENSOR_4D_INDEX_W] != 0) {
+                isNonZero4DTensor = true;
+            }
         }
-    }
 
-    // When the highest non-unitary dim is padded, the dma using that declare buffer won't actually write data to the
-    // padded region, so the strict span of the declare buffer (where data is actually being written) needs to use the
-    // unstrided size in the highest non-unitary dimension.
-    if (memoryKind == vpux::VPU::MemoryKind::DDR && isNonZero4DTensor && memShape.size() == memStrides.size() &&
-        elementTypeSize >= CHAR_BIT) {
-        if (dimsOrder == DimsOrder::NHWC) {
-            if (memShape[TENSOR_4D_INDEX_N] > 1) {
-                auto totalSize = memShape[TENSOR_4D_INDEX_N] *
-                                 ((memStrides[TENSOR_4D_INDEX_N].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
-                                 ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
-                                 ((memStrides[TENSOR_4D_INDEX_W].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
-                                 elementTypeSizeInByte;
-                return totalSize;
-            } else {
-                if (memShape[TENSOR_4D_INDEX_H] > 1) {
+        // When the highest non-unitary dim is padded, the dma using that declare buffer won't actually write data to
+        // the padded region, so the strict span of the declare buffer (where data is actually being written) needs to
+        // use the unstrided size in the highest non-unitary dimension.
+        if (isNonZero4DTensor && memShape.size() == memStrides.size() && elementTypeSize >= CHAR_BIT) {
+            if (dimsOrder == DimsOrder::NHWC) {
+                if (memShape[TENSOR_4D_INDEX_N] > 1) {
                     auto totalSize =
-                            memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
+                            memShape[TENSOR_4D_INDEX_N] *
+                            ((memStrides[TENSOR_4D_INDEX_N].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
                             ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
                             ((memStrides[TENSOR_4D_INDEX_W].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
                             elementTypeSizeInByte;
                     return totalSize;
                 } else {
-                    if (memShape[TENSOR_4D_INDEX_W] > 1) {
+                    if (memShape[TENSOR_4D_INDEX_H] > 1) {
                         auto totalSize =
                                 memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
-                                memShape[TENSOR_4D_INDEX_W] *
+                                ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
                                 ((memStrides[TENSOR_4D_INDEX_W].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
                                 elementTypeSizeInByte;
                         return totalSize;
                     } else {
-                        auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
-                                         memShape[TENSOR_4D_INDEX_W] * memShape[TENSOR_4D_INDEX_C] *
-                                         elementTypeSizeInByte;
-                        return totalSize;
+                        if (memShape[TENSOR_4D_INDEX_W] > 1) {
+                            auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
+                                             memShape[TENSOR_4D_INDEX_W] *
+                                             ((memStrides[TENSOR_4D_INDEX_W].count()) /
+                                              (memStrides[TENSOR_4D_INDEX_C].count())) *
+                                             elementTypeSizeInByte;
+                            return totalSize;
+                        } else {
+                            auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_H] *
+                                             memShape[TENSOR_4D_INDEX_W] * memShape[TENSOR_4D_INDEX_C] *
+                                             elementTypeSizeInByte;
+                            return totalSize;
+                        }
                     }
                 }
             }
-        }
-        if (dimsOrder == DimsOrder::NCHW) {
-            if (memShape[TENSOR_4D_INDEX_N] > 1) {
-                auto totalSize = memShape[TENSOR_4D_INDEX_N] *
-                                 ((memStrides[TENSOR_4D_INDEX_N].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
-                                 ((memStrides[TENSOR_4D_INDEX_C].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
-                                 ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
-                                 elementTypeSizeInByte;
-                return totalSize;
-            } else {
-                if (memShape[TENSOR_4D_INDEX_C] > 1) {
+            if (dimsOrder == DimsOrder::NCHW) {
+                if (memShape[TENSOR_4D_INDEX_N] > 1) {
                     auto totalSize =
-                            memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
+                            memShape[TENSOR_4D_INDEX_N] *
+                            ((memStrides[TENSOR_4D_INDEX_N].count()) / (memStrides[TENSOR_4D_INDEX_C].count())) *
                             ((memStrides[TENSOR_4D_INDEX_C].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
                             ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
                             elementTypeSizeInByte;
                     return totalSize;
                 } else {
-                    if (memShape[TENSOR_4D_INDEX_H] > 1) {
+                    if (memShape[TENSOR_4D_INDEX_C] > 1) {
                         auto totalSize =
                                 memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
-                                memShape[TENSOR_4D_INDEX_H] *
+                                ((memStrides[TENSOR_4D_INDEX_C].count()) / (memStrides[TENSOR_4D_INDEX_H].count())) *
                                 ((memStrides[TENSOR_4D_INDEX_H].count()) / (memStrides[TENSOR_4D_INDEX_W].count())) *
                                 elementTypeSizeInByte;
                         return totalSize;
                     } else {
-                        auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
-                                         memShape[TENSOR_4D_INDEX_H] * memShape[TENSOR_4D_INDEX_W] *
-                                         elementTypeSizeInByte;
-                        return totalSize;
+                        if (memShape[TENSOR_4D_INDEX_H] > 1) {
+                            auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
+                                             memShape[TENSOR_4D_INDEX_H] *
+                                             ((memStrides[TENSOR_4D_INDEX_H].count()) /
+                                              (memStrides[TENSOR_4D_INDEX_W].count())) *
+                                             elementTypeSizeInByte;
+                            return totalSize;
+                        } else {
+                            auto totalSize = memShape[TENSOR_4D_INDEX_N] * memShape[TENSOR_4D_INDEX_C] *
+                                             memShape[TENSOR_4D_INDEX_H] * memShape[TENSOR_4D_INDEX_W] *
+                                             elementTypeSizeInByte;
+                            return totalSize;
+                        }
                     }
                 }
             }

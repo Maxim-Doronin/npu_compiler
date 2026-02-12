@@ -9,7 +9,7 @@
 // CHECK-LABEL: @FuseRoPE
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x32x1024x128xf32>, [[ARG1:%.+]]: tensor<1x1x1024x128xf32>, [[ARG2:%.+]]: tensor<1x1x1024x128xf32>)
 func.func @FuseRoPE(%arg0: tensor<1x32x1024x128xf32>, %arg1: tensor<1x1x1024x128xf32>, %arg2: tensor<1x1x1024x128xf32>) -> tensor<1x32x1024x128xf32> {
-    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32> isSplat
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>
     %0 = IE.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x1024x128xf32>, tensor<1x1x1024x128xf32> -> tensor<1x32x1024x128xf32>
     %1 = IE.StridedSlice(%arg0) {begin_mask = [1, 1, 1, 0], begins_attr = [0, 0, 0, 64], ellipsis_mask = [], end_mask = [1, 1, 1, 0], ends_attr = [1, 32, 1024, 128], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [], strides_attr = [1, 1, 1, 1]} : tensor<1x32x1024x128xf32> -> tensor<1x32x1024x64xf32>
     %2 = IE.Multiply(%1, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x1024x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x32x1024x64xf32>
@@ -29,7 +29,7 @@ func.func @FuseRoPE(%arg0: tensor<1x32x1024x128xf32>, %arg1: tensor<1x1x1024x128
 // CHECK-LABEL: @FuseRoPEWithDifferentChannel
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x64x1x64xf32>, [[ARG1:%.+]]: tensor<1x64x1x64xf32>, [[ARG2:%.+]]: tensor<1x64x1x64xf32>)
 func.func @FuseRoPEWithDifferentChannel(%arg0: tensor<1x64x1x64xf32>, %arg1: tensor<1x64x1x64xf32>, %arg2: tensor<1x64x1x64xf32>) -> tensor<1x64x1x64xf32> {
-    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32> isSplat
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>
     %0 = IE.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32> -> tensor<1x64x1x64xf32>
     %1 = IE.Slice %arg0 [0, 0, 0, 32] [1, 64, 1, 32] : tensor<1x64x1x64xf32> to tensor<1x64x1x32xf32>
     %2 = IE.Multiply(%1, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x1x32xf32>, tensor<1x1x1x1xf32> -> tensor<1x64x1x32xf32>
@@ -48,7 +48,7 @@ func.func @FuseRoPEWithDifferentChannel(%arg0: tensor<1x64x1x64xf32>, %arg1: ten
 // CHECK-LABEL: @FuseRoPEWithReshape
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x64x1x64xf32>, [[ARG1:%.+]]: tensor<1x64x1x64xf32>, [[ARG2:%.+]]: tensor<1x1x64x64xf32>)
 func.func @FuseRoPEWithReshape(%arg0: tensor<1x64x1x64xf32>, %arg1: tensor<1x64x1x64xf32>, %arg2: tensor<1x1x64x64xf32>) -> tensor<1x1x64x64xf32> {
-    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32> isSplat
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>
     %0 = IE.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32> -> tensor<1x64x1x64xf32>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 64, 64]} : tensor<1x64x1x64xf32> -> tensor<1x1x64x64xf32>
     %2 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 64, 64]} : tensor<1x64x1x64xf32> -> tensor<1x1x64x64xf32>
@@ -73,7 +73,7 @@ func.func @FuseRoPEWithReshape(%arg0: tensor<1x64x1x64xf32>, %arg1: tensor<1x64x
 // CHECK-LABEL: @FuseRoPEWithHeightOne
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1x2048xf32>, [[ARG1:%.+]]: tensor<1x1x1x128xf32>, [[ARG2:%.+]]: tensor<1x1x1x128xf32>)
 func.func @FuseRoPEWithHeightOne(%arg0: tensor<1x1x2048xf32>, %arg1: tensor<1x1x1x128xf32>, %arg2: tensor<1x1x1x128xf32>) -> tensor<1x16x1x128xf32> {
-    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32> isSplat
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0], [1, 2, 3]], shape_value = [1, 16, 1, 128]} : tensor<1x1x2048xf32> -> tensor<1x16x1x128xf32>
     %1 = IE.Multiply(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x1x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x16x1x128xf32>
     %2 = IE.StridedSlice(%0) {begin_mask = [1, 1, 1, 0], begins_attr = [0, 0, 0, 64], ellipsis_mask = [], end_mask = [1, 1, 1, 0], ends_attr = [1, 16, 1, 128], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [], strides_attr = [1, 1, 1, 1]} : tensor<1x16x1x128xf32> -> tensor<1x16x1x64xf32>
@@ -95,7 +95,7 @@ func.func @FuseRoPEWithHeightOne(%arg0: tensor<1x1x2048xf32>, %arg1: tensor<1x1x
 // CHECK-LABEL: @FuseRoPEInterleaved
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1x256x64xf32>, [[ARG1:%.+]]: tensor<1x1x256x64xf32>, [[ARG2:%.+]]: tensor<1x1x256x64xf32>)
 func.func @FuseRoPEInterleaved(%arg0: tensor<1x1x256x64xf32>, %arg1: tensor<1x1x256x64xf32>, %arg2: tensor<1x1x256x64xf32>) ->tensor<1x1x256x64xf32> {
-  %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32> isSplat
+  %cst = const.Declare tensor<1x1x1x1xf32> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>
   %0 = IE.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256x64xf32>, tensor<1x1x256x64xf32> -> tensor<1x1x256x64xf32>
   %1 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [3, 4]], shape_value = [1, 1, 256, 32, 2]} : tensor<1x1x256x64xf32> -> tensor<1x1x256x32x2xf32>
   %2:2 = IE.Split(%1) {axis_value = 4 : i64, num_splits = 2 : i64} : tensor<1x1x256x32x2xf32> -> tensor<1x1x256x32x1xf32>, tensor<1x1x256x32x1xf32>

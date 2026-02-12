@@ -1,13 +1,14 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 #include <llvm/ADT/StringExtras.h>
@@ -94,7 +95,7 @@ mlir::Type VPUIP::setSparsityCompressionAttr(mlir::Type type, VPUIP::SparsityCom
         auto ndType = mlir::cast<vpux::NDTypeInterface>(type);
         const auto strides = ndType.getStrides();
         return getMemRefType(ndType.getShape(), ndType.getElementType(), ndType.getDimsOrder(), ndType.getMemSpace(),
-                             strides, getSwizzlingSchemeAttr(type), sparsityCompressionAttr);
+                             strides, VPUIP::getSwizzlingSchemeAttr(type), sparsityCompressionAttr);
     } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
         return VPUIP::DistributedBufferType::get(type.getContext(), distributedBuffer.getShape().raw(),
                                                  distributedBuffer.getElementType(), distributedBuffer.getLayout(),

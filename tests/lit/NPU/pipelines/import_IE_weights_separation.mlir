@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@
 
 
 // WS enabled:
-//CHECK-ENABLED:     [[WEIGHTS:%.+]] = const.Declare tensor<8x3x2x4xf16> = dense<{{.*}}> : tensor<8x3x2x4xf16>
+//CHECK-ENABLED:     [[WEIGHTS:%.+]] = const.Declare tensor<8x3x2x4xf16> = dense{{.+}} : tensor<8x3x2x4xf16>
 
 // This Convert operation was preserved by "weights-separation-path" option
 //CHECK-ENABLED:     [[CONVERT:%.+]] = IE.Convert([[WEIGHTS]]) {dstElemType = f32} : tensor<8x3x2x4xf16> -> tensor<8x3x2x4xf32>
@@ -29,7 +29,7 @@
 
 
 // WS disabled:
-//CHECK-DISABLED:     [[WEIGHTS:%.+]] = const.Declare tensor<8x3x2x4xf32> = dense<{{.*}}> : tensor<8x3x2x4xf32>
+//CHECK-DISABLED:     [[WEIGHTS:%.+]] = const.Declare tensor<8x3x2x4xf32> = dense{{.+}} : tensor<8x3x2x4xf32>
 
 // f16->f32 conversion was folded by nGraph passes
 //CHECK-DISABLED-NOT: IE.Convert

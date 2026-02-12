@@ -1,17 +1,15 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 
 #include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
-
+#include "vpux/compiler/dialect/core/utils/declaration_utils.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
-
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
 namespace vpux::Core {
 #define GEN_PASS_DECL_MOVEDECLARATIONSTOTOP
@@ -39,7 +37,7 @@ private:
 
 void MoveDeclarationsToTopPass::safeRunOnFunc() {
     auto func = getOperation();
-    VPUIP::moveDeclarationsToTop(func);
+    vpux::moveDeclarationsToTop(func);
 }
 
 }  // namespace

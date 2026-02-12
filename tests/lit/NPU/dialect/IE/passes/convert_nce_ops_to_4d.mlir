@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,14 +12,14 @@ func.func @ConvertNceOpsTo4DConvolution(%arg0: tensor<1x16x64xf16>) -> tensor<1x
     %RESULT = IE.Convolution(%arg0, %FILTERS) {dilations = [2], pads_begin = [3], pads_end = [2], strides = [1]} : tensor<1x16x64xf16>, tensor<1x16x5xf16> -> tensor<1x1x61xf16>
     return %RESULT : tensor<1x1x61xf16>
 
-    // CHECK:       %[[VAL0:.*]] = IE.Convolution
+    // CHECK:       [[VAL0:%.+]] = IE.Convolution
     // CHECK-SAME:      dilations = [2, 1]
     // CHECK-SAME:      pads_begin = [3, 0]
     // CHECK-SAME:      pads_end = [2, 0]
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:      tensor<1x16x64x1xf16>, tensor<1x16x5x1xf16> -> tensor<1x1x61x1xf16>
-    // CHECK:       %[[RESULT:.*]] = IE.Reshape(%[[VAL0]]) {shape_value = [1, 1, 61]} : tensor<1x1x61x1xf16> -> tensor<1x1x61xf16>
-    // CHECK:       return %[[RESULT]]
+    // CHECK:       [[RESULT:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 1, 61]} : tensor<1x1x61x1xf16> -> tensor<1x1x61xf16>
+    // CHECK:       return [[RESULT]]
 }
 
 // -----
@@ -28,7 +28,7 @@ func.func @ConvertNceOpsTo4DConvolution(%arg0: tensor<1x16x64xf16>) -> tensor<1x
 // CHECK: [[QTYPE:!.+]] = !quant.uniform<u8:f16, 1.1534313725490195:128>
 
 // CHECK: func.func @ConvertNceOpsTo4DConvolution_MixedPrecision
-// CHECK-SAME: (%[[ARG0:.+]]: tensor<1x16x64x[[QTYPE]]>) -> tensor<1x1x61xf16>
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<1x16x64x[[QTYPE]]>) -> tensor<1x1x61xf16>
 func.func @ConvertNceOpsTo4DConvolution_MixedPrecision(%arg0: tensor<1x16x64x!qElemType>) -> tensor<1x1x61xf16> {
     %FILTERS = const.Declare tensor<1x16x5x!qElemType> = dense<1.000000e+00> : tensor<1x16x5xf16>,
         [#const.CastElemType<!qElemType>]
@@ -37,17 +37,17 @@ func.func @ConvertNceOpsTo4DConvolution_MixedPrecision(%arg0: tensor<1x16x64x!qE
         : tensor<1x16x64x!qElemType>, tensor<1x16x5x!qElemType> -> tensor<1x1x61xf16>
     return %RESULT : tensor<1x1x61xf16>
 
-    // CHECK: %[[RESHAPE:.+]] = IE.Reshape(%[[ARG0]]) {shape_value = [1, 16, 64, 1]}
-    // CHECK: %[[FILTERS:.+]] = const.Declare tensor<1x16x5x1x[[QTYPE]]>
+    // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG0]]) {shape_value = [1, 16, 64, 1]}
+    // CHECK: [[FILTERS:%.+]] = const.Declare tensor<1x16x5x1x[[QTYPE]]>
 
-    // CHECK:       %[[VAL0:.*]] = IE.Convolution(%[[RESHAPE]], %[[FILTERS]])
+    // CHECK:       [[VAL0:%.+]] = IE.Convolution([[RESHAPE]], [[FILTERS]])
     // CHECK-SAME:      dilations = [2, 1]
     // CHECK-SAME:      pads_begin = [3, 0]
     // CHECK-SAME:      pads_end = [2, 0]
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:      tensor<1x16x64x1x[[QTYPE]]>, tensor<1x16x5x1x[[QTYPE]]> -> tensor<1x1x61x1xf16>
-    // CHECK:       %[[RESULT:.*]] = IE.Reshape(%[[VAL0]]) {shape_value = [1, 1, 61]} : tensor<1x1x61x1xf16> -> tensor<1x1x61xf16>
-    // CHECK:       return %[[RESULT]]
+    // CHECK:       [[RESULT:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 1, 61]} : tensor<1x1x61x1xf16> -> tensor<1x1x61xf16>
+    // CHECK:       return [[RESULT]]
 }
 
 // -----
@@ -62,14 +62,14 @@ func.func @ConvertNceOpsTo4DConvolutionWithPostOp(%arg0: tensor<1x16x64xf16>) ->
 
     return %1 : tensor<1x1x64xf16>
 
-    // CHECK:       [[VAL0:%.*]] = IE.Convolution
+    // CHECK:       [[VAL0:%.+]] = IE.Convolution
     // CHECK-SAME:       {dilations = [1, 1], pads_begin = [2, 0], pads_end = [2, 0],
     // CHECK-SAME:       strides = [1, 1]}
     // CHECK-SAME:       tensor<1x16x64x1xf16>, tensor<1x16x5x1xf16> -> tensor<1x1x64x1xf16>
 
-    // CHECK:       [[VAL1:%.*]] = IE.Reshape([[VAL0]]) {shape_value = [1, 1, 64]} : tensor<1x1x64x1xf16> -> tensor<1x1x64xf16>
+    // CHECK:       [[VAL1:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 1, 64]} : tensor<1x1x64x1xf16> -> tensor<1x1x64xf16>
 
-    // CHECK:       [[VAL2:%.*]] = IE.ReLU([[VAL1]]) : tensor<1x1x64xf16> -> tensor<1x1x64xf16>
+    // CHECK:       [[VAL2:%.+]] = IE.ReLU([[VAL1]]) : tensor<1x1x64xf16> -> tensor<1x1x64xf16>
     // CHECK:       return [[VAL2]] : tensor<1x1x64xf16>
 }
 
@@ -81,15 +81,15 @@ func.func @ConvertNceOpsTo4DGroupConvolution(%arg0: tensor<1x16x30xf16>) -> tens
     %RESULT = IE.GroupConvolution(%arg0, %FILTERS) {dilations = [1], groups = 2, pads_begin = [0], pads_end = [0], strides = [1]} : tensor<1x16x30xf16>, tensor<8x8x3xf16> -> tensor<1x8x28xf16>
     return %RESULT : tensor<1x8x28xf16>
 
-    // CHECK:       %[[VAL0:.*]] = IE.GroupConvolution
+    // CHECK:       [[VAL0:%.+]] = IE.GroupConvolution
     // CHECK-SAME:      dilations = [1, 1]
     // CHECK-SAME:      groups = 2
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:      tensor<1x16x30x1xf16>, tensor<8x8x3x1xf16> -> tensor<1x8x28x1xf16>
-    // CHECK:       %[[RESULT:.*]] = IE.Reshape(%[[VAL0]]) {shape_value = [1, 8, 28]} : tensor<1x8x28x1xf16> -> tensor<1x8x28xf16>
-    // CHECK:       return %[[RESULT]]
+    // CHECK:       [[RESULT:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 8, 28]} : tensor<1x8x28x1xf16> -> tensor<1x8x28xf16>
+    // CHECK:       return [[RESULT]]
 }
 
 // -----
@@ -102,10 +102,10 @@ func.func @ConvertNceOpsTo4DTransposedConvolution(%arg0: tensor<1x384x1344xf16>)
 
     return %RESULT : tensor<1x192x5380xf16>
 
-    // CHECK: [[RESHAPE_INPUT:%.*]] = IE.Reshape(%arg0) {shape_value = [1, 384, 1344, 1]} : tensor<1x384x1344xf16> -> tensor<1x384x1344x1xf16>
+    // CHECK: [[RESHAPE_INPUT:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 384, 1344, 1]} : tensor<1x384x1344xf16> -> tensor<1x384x1344x1xf16>
     // CHECK: [[CST_0:%.+]] = const.Declare tensor<192x384x8x1xf16> = dense<1.000000e+00> : tensor<192x384x8xf16>, [#const.Reshape<[192, 384, 8, 1]>]
 
-    // CHECK:       [[TRANSPOSED_CONV:%.*]] = IE.TransposedConvolution([[RESHAPE_INPUT]], [[CST_0]])
+    // CHECK:       [[TRANSPOSED_CONV:%.+]] = IE.TransposedConvolution([[RESHAPE_INPUT]], [[CST_0]])
     // CHECK-SAME:      dilations = [1, 1]
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>
     // CHECK-SAME:      pads_begin = [0, 0]
@@ -114,7 +114,7 @@ func.func @ConvertNceOpsTo4DTransposedConvolution(%arg0: tensor<1x384x1344xf16>)
     // CHECK-SAME:      strides = [4, 1]
     // CHECK-SAME:      tensor<1x384x1344x1xf16>, tensor<192x384x8x1xf16> -> tensor<1x192x5380x1xf16>
 
-    // CHECK: [[RESHAPE_OUTPUT:%.*]] = IE.Reshape([[TRANSPOSED_CONV]]) {shape_value = [1, 192, 5380]} : tensor<1x192x5380x1xf16> -> tensor<1x192x5380xf16>
+    // CHECK: [[RESHAPE_OUTPUT:%.+]] = IE.Reshape([[TRANSPOSED_CONV]]) {shape_value = [1, 192, 5380]} : tensor<1x192x5380x1xf16> -> tensor<1x192x5380xf16>
     // CHECK: return [[RESHAPE_OUTPUT]] : tensor<1x192x5380xf16>
 }
 
@@ -126,9 +126,9 @@ func.func @ConvertNceOpsTo4DMaxpool(%arg0: tensor<1x512x16xf16>) -> tensor<1x512
         kernel_size = [16], pads_begin = [0], pads_end = [0], rounding_type = #IE.rounding_type<FLOOR>, strides = [16]} : tensor<1x512x16xf16> -> tensor<1x512x1xf16>
     return %RESULT : tensor<1x512x1xf16>
 
-    // CHECK: [[RESHAPE_INPUT:%.*]] = IE.Reshape(%arg0) {shape_value = [1, 512, 16, 1]} : tensor<1x512x16xf16> -> tensor<1x512x16x1xf16>
+    // CHECK: [[RESHAPE_INPUT:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 512, 16, 1]} : tensor<1x512x16xf16> -> tensor<1x512x16x1xf16>
 
-    // CHECK:       [[MAXPOOL:%.*]] = IE.MaxPool([[RESHAPE_INPUT]])
+    // CHECK:       [[MAXPOOL:%.+]] = IE.MaxPool([[RESHAPE_INPUT]])
     // CHECK-SAME:      kernel_size = [16, 1]
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]
@@ -136,7 +136,7 @@ func.func @ConvertNceOpsTo4DMaxpool(%arg0: tensor<1x512x16xf16>) -> tensor<1x512
     // CHECK-SAME:      strides = [16, 1]
     // CHECK-SAME:      tensor<1x512x16x1xf16> -> tensor<1x512x1x1xf16>
 
-    // CHECK: [[RESHAPE_OUTPUT:%.*]] = IE.Reshape([[MAXPOOL]]) {shape_value = [1, 512, 1]} : tensor<1x512x1x1xf16> -> tensor<1x512x1xf16>
+    // CHECK: [[RESHAPE_OUTPUT:%.+]] = IE.Reshape([[MAXPOOL]]) {shape_value = [1, 512, 1]} : tensor<1x512x1x1xf16> -> tensor<1x512x1xf16>
     // CHECK: return [[RESHAPE_OUTPUT]] : tensor<1x512x1xf16>
 }
 
@@ -148,9 +148,9 @@ func.func @ConvertNceOpsTo4DAvgpool(%arg0: tensor<1x512x16xf16>) -> tensor<1x512
         kernel_size = [16], pads_begin = [0], pads_end = [0], rounding_type = #IE.rounding_type<FLOOR>, strides = [16]} : tensor<1x512x16xf16> -> tensor<1x512x1xf16>
     return %RESULT : tensor<1x512x1xf16>
 
-    // CHECK: [[RESHAPE_INPUT:%.*]] = IE.Reshape(%arg0) {shape_value = [1, 512, 16, 1]} : tensor<1x512x16xf16> -> tensor<1x512x16x1xf16>
+    // CHECK: [[RESHAPE_INPUT:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 512, 16, 1]} : tensor<1x512x16xf16> -> tensor<1x512x16x1xf16>
 
-    // CHECK:       [[AVGPOOL:%.*]] = IE.AvgPool([[RESHAPE_INPUT]])
+    // CHECK:       [[AVGPOOL:%.+]] = IE.AvgPool([[RESHAPE_INPUT]])
     // CHECK-SAME:      kernel_size = [16, 1]
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]
@@ -158,7 +158,7 @@ func.func @ConvertNceOpsTo4DAvgpool(%arg0: tensor<1x512x16xf16>) -> tensor<1x512
     // CHECK-SAME:      strides = [16, 1]
     // CHECK-SAME:      tensor<1x512x16x1xf16> -> tensor<1x512x1x1xf16>
 
-    // CHECK: [[RESHAPE_OUTPUT:%.*]] = IE.Reshape([[AVGPOOL]]) {shape_value = [1, 512, 1]} : tensor<1x512x1x1xf16> -> tensor<1x512x1xf16>
+    // CHECK: [[RESHAPE_OUTPUT:%.+]] = IE.Reshape([[AVGPOOL]]) {shape_value = [1, 512, 1]} : tensor<1x512x1x1xf16> -> tensor<1x512x1xf16>
     // CHECK: return [[RESHAPE_OUTPUT]] : tensor<1x512x1xf16>
 }
 
@@ -201,9 +201,9 @@ func.func @ConvertNceOpsTo4D3DMaxpoolwithDepthOne(%arg0: tensor<1x32x25x28x28xf1
         kernel_size = [1, 3, 3], pads_begin = [0, 1, 1], pads_end = [0, 1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2, 2]} : tensor<1x32x25x28x28xf16> -> tensor<1x32x25x14x14xf16>
     return %RESULT : tensor<1x32x25x14x14xf16>
 
-    // CHECK: [[RESHAPE_INPUT:%.*]] = IE.Reshape(%arg0) {shape_value = [1, 800, 28, 28]} : tensor<1x32x25x28x28xf16> -> tensor<1x800x28x28xf16>
+    // CHECK: [[RESHAPE_INPUT:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 800, 28, 28]} : tensor<1x32x25x28x28xf16> -> tensor<1x800x28x28xf16>
 
-    // CHECK:       [[MAXPOOL:%.*]] = IE.MaxPool([[RESHAPE_INPUT]])
+    // CHECK:       [[MAXPOOL:%.+]] = IE.MaxPool([[RESHAPE_INPUT]])
     // CHECK-SAME:      kernel_size = [3, 3]
     // CHECK-SAME:      pads_begin = [1, 1]
     // CHECK-SAME:      pads_end = [1, 1]
@@ -211,7 +211,7 @@ func.func @ConvertNceOpsTo4D3DMaxpoolwithDepthOne(%arg0: tensor<1x32x25x28x28xf1
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:      tensor<1x800x28x28xf16> -> tensor<1x800x14x14xf16>
 
-    // CHECK: [[RESHAPE_OUTPUT:%.*]] = IE.Reshape([[MAXPOOL]]) {shape_value = [1, 32, 25, 14, 14]} : tensor<1x800x14x14xf16> -> tensor<1x32x25x14x14xf16>
+    // CHECK: [[RESHAPE_OUTPUT:%.+]] = IE.Reshape([[MAXPOOL]]) {shape_value = [1, 32, 25, 14, 14]} : tensor<1x800x14x14xf16> -> tensor<1x32x25x14x14xf16>
     // CHECK: return [[RESHAPE_OUTPUT]] : tensor<1x32x25x14x14xf16>
 }
 
@@ -223,7 +223,7 @@ func.func @ConvertNceOpsTo4D3DMaxpoolwithDepthNotOne(%arg0: tensor<1x32x25x28x28
         kernel_size = [3, 3, 3], pads_begin = [0, 1, 1], pads_end = [0, 1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2, 2]} : tensor<1x32x25x28x28xf16> -> tensor<1x32x23x14x14xf16>
     return %RESULT : tensor<1x32x23x14x14xf16>
 
-    // CHECK:       [[MAXPOOL:%.*]] = IE.MaxPool(%arg0)
+    // CHECK:       [[MAXPOOL:%.+]] = IE.MaxPool(%arg0)
     // CHECK-SAME:      kernel_size = [3, 3, 3]
     // CHECK-SAME:      pads_begin = [0, 1, 1]
     // CHECK-SAME:      pads_end = [0, 1, 1]
@@ -242,9 +242,9 @@ func.func @ConvertNceOpsTo4D3DAvgpoolwithDepthOne(%arg0: tensor<1x32x25x28x28xf1
         kernel_size = [1, 3, 3], pads_begin = [0, 1, 1], pads_end = [0, 1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2, 2]} : tensor<1x32x25x28x28xf16> -> tensor<1x32x25x14x14xf16>
     return %RESULT : tensor<1x32x25x14x14xf16>
 
-    // CHECK: [[RESHAPE_INPUT:%.*]] = IE.Reshape(%arg0) {shape_value = [1, 800, 28, 28]} : tensor<1x32x25x28x28xf16> -> tensor<1x800x28x28xf16>
+    // CHECK: [[RESHAPE_INPUT:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 800, 28, 28]} : tensor<1x32x25x28x28xf16> -> tensor<1x800x28x28xf16>
 
-    // CHECK:       [[AVGPOOL:%.*]] = IE.AvgPool([[RESHAPE_INPUT]])
+    // CHECK:       [[AVGPOOL:%.+]] = IE.AvgPool([[RESHAPE_INPUT]])
     // CHECK-SAME:      kernel_size = [3, 3]
     // CHECK-SAME:      pads_begin = [1, 1]
     // CHECK-SAME:      pads_end = [1, 1]
@@ -252,7 +252,7 @@ func.func @ConvertNceOpsTo4D3DAvgpoolwithDepthOne(%arg0: tensor<1x32x25x28x28xf1
     // CHECK-SAME:      strides = [2, 2]
     // CHECK-SAME:      tensor<1x800x28x28xf16> -> tensor<1x800x14x14xf16>
 
-    // CHECK: [[RESHAPE_OUTPUT:%.*]] = IE.Reshape([[AVGPOOL]]) {shape_value = [1, 32, 25, 14, 14]} : tensor<1x800x14x14xf16> -> tensor<1x32x25x14x14xf16>
+    // CHECK: [[RESHAPE_OUTPUT:%.+]] = IE.Reshape([[AVGPOOL]]) {shape_value = [1, 32, 25, 14, 14]} : tensor<1x800x14x14xf16> -> tensor<1x32x25x14x14xf16>
     // CHECK: return [[RESHAPE_OUTPUT]] : tensor<1x32x25x14x14xf16>
 }
 
@@ -264,7 +264,7 @@ func.func @ConvertNceOpsTo4D3DAvgpoolwithDepthNotOne(%arg0: tensor<1x32x25x28x28
         kernel_size = [3, 3, 3], pads_begin = [0, 1, 1], pads_end = [0, 1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2, 2]} : tensor<1x32x25x28x28xf16> -> tensor<1x32x23x14x14xf16>
     return %RESULT : tensor<1x32x23x14x14xf16>
 
-    // CHECK:       [[AVGPOOL:%.*]] = IE.AvgPool(%arg0)
+    // CHECK:       [[AVGPOOL:%.+]] = IE.AvgPool(%arg0)
     // CHECK-SAME:      kernel_size = [3, 3, 3]
     // CHECK-SAME:      pads_begin = [0, 1, 1]
     // CHECK-SAME:      pads_end = [0, 1, 1]

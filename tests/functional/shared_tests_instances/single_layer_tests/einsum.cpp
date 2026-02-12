@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,10 +21,12 @@ TEST_P(EinsumLayerTestCommon, NPU4000) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(EinsumLayerTestCommon, NPU5010) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

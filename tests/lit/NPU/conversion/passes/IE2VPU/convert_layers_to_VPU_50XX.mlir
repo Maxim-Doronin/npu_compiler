@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,20 +24,32 @@ func.func @dynamicLSTMSequence(%arg0: tensor<1x1x?x512xf16, {bounds = #const.Opa
 
 // -----
 
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
 // CHECK-LABEL: @FlashSDPA
 // CHECK-SAME: [[QUERY:%[^, ]+]]: tensor<1x8x64x64xf16>,
 // CHECK-SAME: [[KEY:%[^, ]+]]: tensor<1x8x32x64xf16>,
-// CHECK-SAME: [[VALUE:%[^, ]+]]: tensor<1x8x128x32xf16>
-func.func @FlashSDPA(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf16>, %arg2: tensor<1x8x128x32xf16>) -> tensor<1x8x64x128xf16> {
-    %0 = IE.FlashSDPA(%arg0, %arg1, %arg2) {operandSegmentSizes = array<i32: 1, 1, 1, 0, 0>, source_seq_len_pad_size = 0 : i64}
-            : tensor<1x8x64x64xf16>, tensor<1x8x32x64xf16>, tensor<1x8x128x32xf16> -> tensor<1x8x64x128xf16>
+// CHECK-SAME: [[VALUE:%[^, ]+]]: tensor<1x8x32x128xf16, {order = #NCWH}>
+func.func @FlashSDPA(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf16>, %arg2: tensor<1x8x32x128xf16, {order = #NCWH}>) -> tensor<1x8x64x128xf16> {
+    %cst_1 = const.Declare tensor<1x8x64x128xf16> = dense<0.000000e+00> : tensor<1x8x64x128xf16>
+    %cst_2 = const.Declare tensor<1x1x8x64xf16> = dense<0xFC00> : tensor<1x1x8x64xf16>
+    %cst_3 = const.Declare tensor<1x1x8x64xf32> = dense<0.000000e+00> : tensor<1x1x8x64xf32>
 
-    return %0 : tensor<1x8x64x128xf16>
+    %result_running_output, %result_running_max, %result_running_sum =
+        IE.FlashSDPA(%arg0, %arg1, %arg2, %cst_1, %cst_2, %cst_3) {is_head = true, is_tail = true, source_seq_len_pad_size = 0 : i64}
+            : tensor<1x8x64x64xf16>, tensor<1x8x32x64xf16>, tensor<1x8x32x128xf16, {order = #NCWH}>, tensor<1x8x64x128xf16>, tensor<1x1x8x64xf16>, tensor<1x1x8x64xf32>
+            -> tensor<1x8x64x128xf16>, tensor<1x1x8x64xf16>, tensor<1x1x8x64xf32>
+
+    return %result_running_output : tensor<1x8x64x128xf16>
 
     // CHECK-DAG:   [[IN_OUT:%.+]] = const.Declare tensor<1x8x64x128xf16> = dense<0.000000e+00> : tensor<1x8x64x128xf16>
-    // CHECK-DAG:   [[IN_MAX:%.+]] = const.Declare tensor<1x8x64x1xf16> = dense<0xFC00> : tensor<1x8x64x1xf16>
-    // CHECK-DAG:   [[IN_SUM:%.+]] = const.Declare tensor<1x8x64x1xf16> = dense<0.000000e+00> : tensor<1x8x64x1xf16>
-    // CHECK-DAG:   [[AUX_BUF:%.+]] = const.Declare tensor<1x8x64x32xf16> = dense<0.000000e+00> : tensor<1x8x64x32xf16>
+    // CHECK-DAG:   [[IN_MAX:%.+]] = const.Declare tensor<1x1x8x64xf16> = dense<0xFC00> : tensor<1x1x8x64xf16>
+    // CHECK-DAG:   [[IN_SUM:%.+]] = const.Declare tensor<1x1x8x64xf32> = dense<0.000000e+00> : tensor<1x1x8x64xf32>
+
+    // CHECK-DAG:   [[IN_MAX_RESHAPED:%.+]] = VPU.AffineReshape([[IN_MAX]]) {dim_mapping = {{\[\[}}0], [0], [1], [2, 3]], shape_value = [1, 8, 64, 1]} : tensor<1x1x8x64xf16> -> tensor<1x8x64x1xf16>
+    // CHECK-DAG:   [[IN_SUM_RESHAPED:%.+]] = VPU.AffineReshape([[IN_SUM]]) {dim_mapping = {{\[\[}}0], [0], [1], [2, 3]], shape_value = [1, 8, 64, 1]} : tensor<1x1x8x64xf32> -> tensor<1x8x64x1xf32>
+
+    // CHECK-DAG:   [[AUX_BUF:%.+]] = VPU.Empty : tensor<1x4x64x32xf16>
     // CHECK-DAG:   [[DPU_DESCRIPTORS_BUF:%.+]] = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
     // CHECK-DAG:   [[WEIGHTS_TABLE_0:%.+]] = const.Declare tensor<1x1x32x4xsi32> = dense
     // CHECK-DAG:   [[WEIGHTS_TABLE_1:%.+]] = const.Declare tensor<1x1x128x4xsi32> = dense
@@ -45,11 +57,26 @@ func.func @FlashSDPA(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf16>,
     // CHECK:           [[RES_OUT:%[^, ]+]], [[RES_MAX:%[^, ]+]], [[RES_SUM:%[^, ]+]], [[RES_QUERY:%[^, ]+]] =
     // CHECK-SAME:              VPU.FlashSDPA([[QUERY]], [[KEY]], [[VALUE]], [[AUX_BUF]],
     // CHECK-SAME:                            [[DPU_DESCRIPTORS_BUF]], [[WEIGHTS_TABLE_0]], [[WEIGHTS_TABLE_1]],
-    // CHECK-SAME:                            [[IN_OUT]], [[IN_MAX]], [[IN_SUM]]) {
+    // CHECK-SAME:                            [[IN_OUT]], [[IN_MAX_RESHAPED]], [[IN_SUM_RESHAPED]]) {
     // CHECK-SAME:                      is_head = true,
     // CHECK-SAME:                      is_tail = true,
     // CHECK-SAME:                      source_seq_len_pad_size = 0 : i64
-    // CHECK-SAME:                  -> tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x64xf16>
+    // CHECK-SAME:                  -> tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x1xf32>, tensor<1x8x64x64xf16>
+
+    // CHECK-DAG:   [[RESHAPED_RES_MAX:%.+]] = VPU.AffineReshape([[RES_MAX]]) {dim_mapping = {{\[\[}}0, 1], [2], [3], [3]], shape_value = [1, 1, 8, 64]} : tensor<1x8x64x1xf16> -> tensor<1x1x8x64xf16>
+    // CHECK-DAG:   [[RESHAPED_RES_SUM:%.+]] = VPU.AffineReshape([[RES_SUM]]) {dim_mapping = {{\[\[}}0, 1], [2], [3], [3]], shape_value = [1, 1, 8, 64]} : tensor<1x8x64x1xf32> -> tensor<1x1x8x64xf32>
 
     // CHECK:   return [[RES_OUT]]
+}
+
+// -----
+
+// CHECK-LABEL: @LogSoftmaxPeak
+// CHECK-SAME: [[INPUT:%[^:]+]]: tensor<1x1x151x7056xf16>
+func.func @LogSoftmaxPeak(%arg0: tensor<1x1x151x7056xf16>) -> (tensor<1x1x151x1xf32>, tensor<1x1x151x1xsi64>) {
+    %output, %topKOutput = IE.LogSoftmaxPeak(%arg0) {axisInd = 3 : i64, dstElemType = f32, padSize = 7 : i64} : tensor<1x1x151x7056xf16> -> tensor<1x1x151x1xf32>, tensor<1x1x151x1xsi64>
+    return %output, %topKOutput : tensor<1x1x151x1xf32>, tensor<1x1x151x1xsi64>
+
+    // CHECK: [[OUTPUT:%.+]], [[TOPK_OUTPUT:%.+]] = VPU.LogSoftmaxPeak([[INPUT]]) {axisInd = 3 : i64, dstElemType = f32, padSize = 7 : i64} : tensor<1x1x151x7056xf16> -> tensor<1x1x151x1xf32>, tensor<1x1x151x1xsi64>
+    // CHECK: return [[OUTPUT]], [[TOPK_OUTPUT]] : tensor<1x1x151x1xf32>, tensor<1x1x151x1xsi64>
 }

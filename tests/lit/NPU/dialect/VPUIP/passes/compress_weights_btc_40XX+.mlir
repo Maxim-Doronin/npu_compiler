@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,16 +24,16 @@ func.func @CompressWeightsDuplicated() -> !VPUIP.DistributedBuffer<64x16x7x7x!qE
   return %0 : !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
   // CHECK-NOT:   VPUIP.NNDMA
-  // CHECK-DAG:       %[[COMPRESSED_CST:.*]] = const.Declare memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<
+  // CHECK-DAG:       [[COMPRESSED_CST:%.+]] = const.Declare memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<
   // CHECK-SAME:    : tensor<20416x1x1x1xui8>
-  // CHECK:       %[[ORIG_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> <1605632> -> !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-  // CHECK:       %[[FLAT_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> <1605632> -> !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+  // CHECK:       [[ORIG_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> <1605632> -> !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+  // CHECK:       [[FLAT_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> <1605632> -> !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
   // CHECK:       VPURT.Task
-  // CHECK:       %[[DECOMPRESSED_DMA:.*]] = VPUIP.DecompressDMAOp
-  // CHECK-SAME:    inputs(%[[COMPRESSED_CST]] : memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>)
-  // CHECK-SAME:    outputs(%[[FLAT_TENSOR]] : !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+  // CHECK:       [[DECOMPRESSED_DMA:%.+]] = VPUIP.DecompressDMAOp
+  // CHECK-SAME:    inputs([[COMPRESSED_CST]] : memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>)
+  // CHECK-SAME:    outputs([[FLAT_TENSOR]] : !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
   // CHECK-SAME:    -> !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-  // CHECK:       return %[[ORIG_TENSOR]] : !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+  // CHECK:       return [[ORIG_TENSOR]] : !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 }
 
 // -----
@@ -65,24 +65,24 @@ func.func @CompressWeightsDuplicatedWithExplicitDistribution() -> !DistributedBu
   return %0 : !DistributedBuffer
 
   // CHECK-NOT:   VPUIP.NNDMA
-  // CHECK-DAG:       %[[COMPRESSED_CST:.*]] = const.Declare memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<
+  // CHECK-DAG:       [[COMPRESSED_CST:%.+]] = const.Declare memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<
   // CHECK-SAME:    : tensor<20416x1x1x1xui8>
-  // CHECK:       %[[ORIG_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> <1605632>
+  // CHECK:       [[ORIG_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> <1605632>
   // CHECK-SAME:      -> !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN,
   // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64,
   // CHECK-SAME{LITERAL}:  compute_shapes = [[64, 16, 7, 7], [64, 16, 7, 7]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
   // CHECK-SAME{LITERAL}:  memory_shapes = [[64, 16, 7, 7], [64, 16, 7, 7]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-  // CHECK:       %[[FLAT_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> <1605632>
+  // CHECK:       [[FLAT_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> <1605632>
   // CHECK-SAME:     ->  !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN,
   // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64
   // CHECK-SAME{LITERAL}:  compute_shapes = [[50176, 1, 1, 1], [50176, 1, 1, 1]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
   // CHECK-SAME{LITERAL}:  memory_shapes = [[50176, 1, 1, 1], [50176, 1, 1, 1]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
   // CHECK:       VPURT.Task
-  // CHECK:       %[[DECOMPRESSED_DMA:.*]] = VPUIP.DecompressDMAOp
-  // CHECK-SAME:    inputs(%[[COMPRESSED_CST]] : memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>)
-  // CHECK-SAME:    outputs(%[[FLAT_TENSOR]] :
+  // CHECK:       [[DECOMPRESSED_DMA:%.+]] = VPUIP.DecompressDMAOp
+  // CHECK-SAME:    inputs([[COMPRESSED_CST]] : memref<20416x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>)
+  // CHECK-SAME:    outputs([[FLAT_TENSOR]] :
   // CHECK-SAME:        !VPUIP.DistributedBuffer<50176x1x1x1xui8, #NCHW, @CMX_NN,
   // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64
   // CHECK-SAME{LITERAL}:  compute_shapes = [[50176, 1, 1, 1], [50176, 1, 1, 1]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
@@ -91,7 +91,7 @@ func.func @CompressWeightsDuplicatedWithExplicitDistribution() -> !DistributedBu
   // CHECK-SAME:          {mode = "DUPLICATED", num_clusters = 2 : i64
   // CHECK-SAME{LITERAL}:  compute_shapes = [[50176, 1, 1, 1], [50176, 1, 1, 1]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
   // CHECK-SAME{LITERAL}:  memory_shapes = [[50176, 1, 1, 1], [50176, 1, 1, 1]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
-  // CHECK:       return %[[ORIG_TENSOR]] :
+  // CHECK:       return [[ORIG_TENSOR]] :
   // CHECK-SAME:         !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, @CMX_NN,
   // CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 2 : i64,
   // CHECK-SAME{LITERAL}:   compute_shapes = [[64, 16, 7, 7], [64, 16, 7, 7]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
@@ -114,15 +114,15 @@ func.func @CompressQuantConstant() -> memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
   return %1 : memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
 
   // CHECK-NOT:   VPUIP.NNDMA
-  // CHECK-DAG:       %[[COMPRESSED_CST:.*]] = const.Declare memref<1888x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<
+  // CHECK-DAG:       [[COMPRESSED_CST:%.+]] = const.Declare memref<1888x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<
   // CHECK-SAME:    : tensor<1888x1x1x1xui8>
-  // CHECK:       %[[ORIG_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
-  // CHECK:       %[[FLAT_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<4608x1x1x1xui8, [@CMX_NN, 0]>
-  // CHECK:       %[[DECOMPRESSED_WEIGHTS:.*]] = VPUIP.DecompressDMAOp
-  // CHECK-SAME:    inputs(%[[COMPRESSED_CST]] : memref<1888x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>)
-  // CHECK-SAME:    outputs(%[[FLAT_TENSOR]] : memref<4608x1x1x1xui8, [@CMX_NN, 0]>)
+  // CHECK:       [[ORIG_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
+  // CHECK:       [[FLAT_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<4608x1x1x1xui8, [@CMX_NN, 0]>
+  // CHECK:       [[DECOMPRESSED_WEIGHTS:%.+]] = VPUIP.DecompressDMAOp
+  // CHECK-SAME:    inputs([[COMPRESSED_CST]] : memref<1888x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>)
+  // CHECK-SAME:    outputs([[FLAT_TENSOR]] : memref<4608x1x1x1xui8, [@CMX_NN, 0]>)
   // CHECK-SAME:    -> memref<4608x1x1x1xui8, [@CMX_NN, 0]>
-  // CHECK:       return %[[ORIG_TENSOR]] : memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
+  // CHECK:       return [[ORIG_TENSOR]] : memref<1x512x3x3x!qElemType, [@CMX_NN, 0]>
 }
 
 // -----
@@ -143,15 +143,15 @@ func.func @CompressSwizzledConstant(%arg0: !BufferDdr, %arg1: !BufferCmx) -> !Bu
   return %1 : !BufferCmx
 
   // CHECK-NOT:   VPUIP.NNDMA
-  // CHECK-DAG:       %[[COMPRESSED_CST:.*]] = const.Declare memref<2112x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR> = dense<"
+  // CHECK-DAG:       [[COMPRESSED_CST:%.+]] = const.Declare memref<2112x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR> = dense<"
   // CHECK-SAME:    : tensor<2112x1x1x1xui8>
-  // CHECK:       %[[ORIG_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<40960x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
-  // CHECK:       %[[FLAT_TENSOR:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<5120x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
-  // CHECK:       %[[DECOMPRESSED_DMA:.*]] = VPUIP.DecompressDMAOp
-  // CHECK-SAME:    inputs(%[[COMPRESSED_CST]] : memref<2112x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
-  // CHECK-SAME:    outputs(%[[FLAT_TENSOR]] : memref<5120x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+  // CHECK:       [[ORIG_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<40960x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
+  // CHECK:       [[FLAT_TENSOR:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> {swizzlingKey = 5 : i64} -> memref<5120x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
+  // CHECK:       [[DECOMPRESSED_DMA:%.+]] = VPUIP.DecompressDMAOp
+  // CHECK-SAME:    inputs([[COMPRESSED_CST]] : memref<2112x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>)
+  // CHECK-SAME:    outputs([[FLAT_TENSOR]] : memref<5120x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
   // CHECK-SAME:    -> memref<5120x1x1x1xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
-  // CHECK:       return %[[ORIG_TENSOR]] : memref<40960x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
+  // CHECK:       return [[ORIG_TENSOR]] : memref<40960x1x1x1xi1, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
 }
 
 // -----
@@ -168,10 +168,10 @@ func.func @NotConvert2CompressDMA() -> memref<1x512x3x3x!qElemType, @DDR> {
     -> memref<1x512x3x3x!qElemType, @DDR>
   return %1 : memref<1x512x3x3x!qElemType, @DDR>
 
-  // CHECK-DAG:       [[COMPRESSED_CST:%.*]] = const.Declare  memref<1x512x3x3x!qElemType> = dense<
+  // CHECK-DAG:       [[COMPRESSED_CST:%.+]] = const.Declare  memref<1x512x3x3x!qElemType> = dense<
   // CHECK-SAME:    : tensor<1x512x3x3xui8>
-  // CHECK:       [[ORIG_TENSOR:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x512x3x3x!qElemType, @DDR>
-  // CHECK:       [[DMA_RET:%.*]] = VPUIP.NNDMA
+  // CHECK:       [[ORIG_TENSOR:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x512x3x3x!qElemType, @DDR>
+  // CHECK:       [[DMA_RET:%.+]] = VPUIP.NNDMA
   // CHECK-SAME:    inputs([[COMPRESSED_CST]] : memref<1x512x3x3x!qElemType>)
   // CHECK-SAME:    outputs([[ORIG_TENSOR]] : memref<1x512x3x3x!qElemType, @DDR>)
   // CHECK-SAME:    -> memref<1x512x3x3x!qElemType, @DDR>

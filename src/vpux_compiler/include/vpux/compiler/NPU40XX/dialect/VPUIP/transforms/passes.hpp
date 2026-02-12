@@ -67,6 +67,8 @@ struct DefaultHWOptions :
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 void buildReferenceSWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
+void buildVPUIPFinalizePipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options,
+                                Logger log = Logger::global());
 
 //
 // Registration

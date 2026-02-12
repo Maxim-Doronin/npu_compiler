@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -344,9 +345,6 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::SDPAExtendedOp
     auto inputShapeV = inputTypeV.getShape().toValues();
 
     const auto dimE = inputShapeQ[Dim(inputTypeQ.getRank() - 1)];
-    // auto channelsInfo = mlir::cast<IE::AlignedChannelsOpInterface>(origOp.getOperation());
-    // auto inputChannelAlignment = channelsInfo.getInputChannelAlignment()
-
     auto inputChannelAlignment = ALIGNMENT_REQUIREMENT_IN_ELEMENTS;
 
     if (dimE % inputChannelAlignment != 0) {
@@ -356,6 +354,12 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::SDPAExtendedOp
     const auto dimS = inputShapeV[Dim(inputTypeV.getRank() - 1)];
     if (dimS % inputChannelAlignment != 0) {
         log.trace("[{0}] SDPAExtended input channels '{1}' are not aligned", loc, dimS);
+        return mlir::failure();
+    }
+
+    const auto dimEv = inputShapeV[Dim(inputTypeV.getRank() - 2)];
+    if (dimEv % inputChannelAlignment != 0) {
+        log.trace("[{0}] SDPAExtended input channels '{1}' are not aligned", loc, dimEv);
         return mlir::failure();
     }
 
@@ -530,8 +534,8 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto nextTile = tiling[1];
     bool isWeightPrefetch = curTile.axis[Dims4D::Act::C] > 1;
 
-    const auto& curTileTypes = getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = getTileDistributions(origOp, nextTile);
+    const auto& curTileTypes = getTileDistributions(origOp, curTile, std::nullopt);
+    const auto& nextTileTypes = getTileDistributions(origOp, nextTile, std::nullopt);
 
     SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> requiredOperands{
             curTileTypes[0], getAlignedFilterType(curTileTypes), curTileTypes[2]};
@@ -580,8 +584,9 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto curTile = tiling[0];
     auto nextTile = tiling[1];
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    auto strategy = VPU::getMultiClusterStrategyFromOp(origOp.getOperation());
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, strategy);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, strategy);
     auto isWeightPrefetch = curTile.axis[Dims4D::Act::C] > 1;
 
     if (isOutputPipeliningEnabled(origOp)) {
@@ -633,15 +638,17 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto curTile = tiling[0];
     auto nextTile = tiling[1];
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    auto strategy = origOp.getMultiClusterStrategy();
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, strategy);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, strategy);
     return {curTileTypes[0], nextTileTypes[0]};
 }
 
 template <class ConcreteOp>
 int64_t getRequiredChannelSizeForPipeliningConvBased(ConcreteOp origOp, const OutputTiling& tiling) {
-    auto curFilterShape = getTileDistributions(origOp, tiling[0])[1].first.getShape();
-    auto nextFilterShape = getTileDistributions(origOp, tiling[1])[1].first.getShape();
+    auto strategy = VPU::getMultiClusterStrategyFromOp(origOp.getOperation());
+    auto curFilterShape = getTileDistributions(origOp, tiling[0], strategy)[1].first.getShape();
+    auto nextFilterShape = getTileDistributions(origOp, tiling[1], strategy)[1].first.getShape();
     return curFilterShape[Dims4D::Filter::OC] + nextFilterShape[Dims4D::Filter::OC];
 }
 
@@ -666,8 +673,9 @@ int64_t getRequiredChannelSizeForPipelining(VPU::NCEMatMulOp origOp, const Outpu
 }
 
 int64_t getRequiredChannelSizeForPipelining(VPU::NCEReduceOp origOp, const OutputTiling& tiling) {
-    auto curInputShape = getTileDistributions(origOp, tiling[0])[0].first.getShape();
-    auto nextInputShape = getTileDistributions(origOp, tiling[1])[0].first.getShape();
+    auto strategy = origOp.getMultiClusterStrategy();
+    auto curInputShape = getTileDistributions(origOp, tiling[0], strategy)[0].first.getShape();
+    auto nextInputShape = getTileDistributions(origOp, tiling[1], strategy)[0].first.getShape();
     return curInputShape[Dims4D::Act::C] + nextInputShape[Dims4D::Act::C];
 }
 
@@ -752,8 +760,8 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto curTile = tiling[0];
     auto nextTile = tiling[1];
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, std::nullopt);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, std::nullopt);
     SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> requiredOperands{
             curTileTypes[0], curTileTypes[1], nextTileTypes[0]};
     return requiredOperands;
@@ -766,8 +774,9 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto curTile = tiling[0];
     auto nextTile = tiling[1];
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    auto strategy = origOp.getMultiClusterStrategy();
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, strategy);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, strategy);
     return {curTileTypes[0], curTileTypes[1], nextTileTypes[0]};
 }
 
@@ -778,26 +787,29 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto curTile = tiling[0];
     auto nextTile = tiling[1];
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    auto strategy = origOp.getMultiClusterStrategy();
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, strategy);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, strategy);
     return {curTileTypes[0], curTileTypes[1], nextTileTypes[0]};
 }
 
 int64_t getRequiredChannelSizeForPipelining(VPU::MaxPoolOp origOp, const OutputTiling& tiling) {
-    auto curInputShape = getTileDistributions(origOp, tiling[0])[0].first.getShape();
-    auto nextInputShape = getTileDistributions(origOp, tiling[1])[0].first.getShape();
+    auto curInputShape = getTileDistributions(origOp, tiling[0], std::nullopt)[0].first.getShape();
+    auto nextInputShape = getTileDistributions(origOp, tiling[1], std::nullopt)[0].first.getShape();
     return curInputShape[Dims4D::Act::C] + nextInputShape[Dims4D::Act::C];
 }
 
 int64_t getRequiredChannelSizeForPipelining(VPU::NCEMaxPoolOp origOp, const OutputTiling& tiling) {
-    auto curInputShape = getTileDistributions(origOp, tiling[0])[0].first.getShape();
-    auto nextInputShape = getTileDistributions(origOp, tiling[1])[0].first.getShape();
+    auto strategy = origOp.getMultiClusterStrategy();
+    auto curInputShape = getTileDistributions(origOp, tiling[0], strategy)[0].first.getShape();
+    auto nextInputShape = getTileDistributions(origOp, tiling[1], strategy)[0].first.getShape();
     return curInputShape[Dims4D::Act::C] + nextInputShape[Dims4D::Act::C];
 }
 
 int64_t getRequiredChannelSizeForPipelining(VPU::NCEAveragePoolOp origOp, const OutputTiling& tiling) {
-    auto curInputShape = getTileDistributions(origOp, tiling[0])[0].first.getShape();
-    auto nextInputShape = getTileDistributions(origOp, tiling[1])[0].first.getShape();
+    auto strategy = origOp.getMultiClusterStrategy();
+    auto curInputShape = getTileDistributions(origOp, tiling[0], strategy)[0].first.getShape();
+    auto nextInputShape = getTileDistributions(origOp, tiling[1], strategy)[0].first.getShape();
     return curInputShape[Dims4D::Act::C] + nextInputShape[Dims4D::Act::C];
 }
 
@@ -980,8 +992,8 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto nextTile = tiling[1];
     bool isWeightPrefetch = curTile.axis[Dims4D::Act::C] > 1;
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, std::nullopt);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, std::nullopt);
     SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> requiredOperands{
             curTileTypes[0], getAlignedFilterType(curTileTypes), curTileTypes[2]};
     if (isWeightPrefetch) {
@@ -1000,21 +1012,23 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto nextTile = tiling[1];
     bool isWeightPrefetch = curTile.axis[Dims4D::Act::C] > 1;
 
-    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile);
+    auto strategy = origOp.getMultiClusterStrategy();
+    const auto& curTileTypes = VPU::getTileDistributions(origOp, curTile, strategy);
+    const auto& nextTileTypes = VPU::getTileDistributions(origOp, nextTile, strategy);
 
     return {curTileTypes[0], curTileTypes[1], curTileTypes[2], isWeightPrefetch ? nextTileTypes[1] : nextTileTypes[0]};
 }
 
 int64_t getRequiredChannelSizeForPipelining(VPU::GroupConvolutionOp origOp, const OutputTiling& tiling) {
-    auto curFilterShape = getTileDistributions(origOp, tiling[0])[1].first.getShape();
-    auto nextFilterShape = getTileDistributions(origOp, tiling[1])[1].first.getShape();
+    auto curFilterShape = getTileDistributions(origOp, tiling[0], std::nullopt)[1].first.getShape();
+    auto nextFilterShape = getTileDistributions(origOp, tiling[1], std::nullopt)[1].first.getShape();
     return curFilterShape[Dims4D::Filter::OC] + nextFilterShape[Dims4D::Filter::OC];
 }
 
 int64_t getRequiredChannelSizeForPipelining(VPU::NCEDepthConvolutionOp origOp, const OutputTiling& tiling) {
-    auto curFilterShape = getTileDistributions(origOp, tiling[0])[1].first.getShape();
-    auto nextFilterShape = getTileDistributions(origOp, tiling[1])[1].first.getShape();
+    auto strategy = origOp.getMultiClusterStrategy();
+    auto curFilterShape = getTileDistributions(origOp, tiling[0], strategy)[1].first.getShape();
+    auto nextFilterShape = getTileDistributions(origOp, tiling[1], strategy)[1].first.getShape();
     return curFilterShape[Dims4D::Filter::OC] + nextFilterShape[Dims4D::Filter::OC];
 }
 
@@ -1087,8 +1101,9 @@ SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>> getRequiredO
     auto curTile = tiling[0];
     auto nextTile = tiling[1];
 
-    const auto& curTileTypes = VPU::getTileDistributions(op, curTile);
-    const auto& nextTileTypes = VPU::getTileDistributions(op, nextTile);
+    auto strategy = VPU::getMultiClusterStrategyFromOp(op);
+    const auto& curTileTypes = VPU::getTileDistributions(op, curTile, strategy);
+    const auto& nextTileTypes = VPU::getTileDistributions(op, nextTile, strategy);
 
     return SmallVector<std::pair<NDTypeInterface, VPU::TensorDistributionMap>>{
             curTileTypes[0], curTileTypes[1], curTileTypes[2], nextTileTypes[0], nextTileTypes[1]};

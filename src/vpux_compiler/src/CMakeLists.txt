@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -38,7 +38,6 @@ add_subdirectory(dialect/VPURT)
 add_subdirectory(dialect/ELF)
 add_subdirectory(NPU37XX/dialect/NPUReg37XX)
 add_subdirectory(NPU37XX/dialect/VPUIPDPU)
-add_subdirectory(NPU40XX/dialect/ELF)
 add_subdirectory(NPU40XX/dialect/NPUReg40XX)
 add_subdirectory(NPU40XX/dialect/VPUIPDPU)
 add_subdirectory(NPU50XX/dialect/NPUReg50XX)
@@ -46,6 +45,7 @@ add_subdirectory(NPU50XX/dialect/VPUIPDPU)
 add_subdirectory(act-kernels)
 add_subdirectory(frontend)
 add_subdirectory(core)
+add_subdirectory(locverif)
 add_subdirectory(tools)
 add_subdirectory(utils)
 add_subdirectory(bitc)

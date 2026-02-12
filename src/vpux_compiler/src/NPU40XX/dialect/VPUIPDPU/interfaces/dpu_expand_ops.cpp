@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,6 +59,7 @@ public:
     mlir::LogicalResult expandGeneralConfig(mlir::Operation* dpuVariantOp, mlir::OpBuilder& builder, Logger log) const {
         return arch40xx::buildDPUVariantGeneral(mlir::cast<VPUASM::DPUVariantOp>(dpuVariantOp), builder, log);
     }
+
     mlir::LogicalResult expandIDUConfig(
             mlir::Operation* dpuVariantOp, mlir::OpBuilder& builder, const Logger& log,
             ELF::SymbolReferenceMap& symRefMap,
@@ -71,6 +72,7 @@ public:
             vpux::VPURegMapped::NPU5PPEBackwardsCompatibilityMode /*npu55PPEBackwardsCompatibilityMode*/) const {
         return mlir::success();
     }
+
     mlir::LogicalResult expandODUConfig(mlir::Operation* dpuVariantOp, mlir::OpBuilder& builder, const Logger& log,
                                         mlir::Block* varBlock, ELF::SymbolReferenceMap& symRefMap) const {
         return arch40xx::buildDPUVariantODU(mlir::cast<VPUASM::DPUVariantOp>(dpuVariantOp), builder, log, varBlock,

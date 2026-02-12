@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -451,7 +451,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForS
 
                 %t4, %r4 = async.execute [%t2, %t3] (%r2 as %arg2: !async.value<!Type_CMX>)
                         -> !async.value<!Type_CMX_upsampled> attributes {VPUIP.executor = @DMA_NN} {
-                        %270 = VPUIP.UpsamplingDMAOp {port = 0 : i64, upsampling_factor = [1, 1, 2, 2]} inputs(%arg2 : !Type_CMX) outputs(%buf_cmx_4 : !Type_CMX_upsampled) -> !Type_CMX_upsampled
+                        %270 = VPUIP.UpsamplingDMAOp <{port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}> inputs(%arg2 : !Type_CMX) outputs(%buf_cmx_4 : !Type_CMX_upsampled) -> !Type_CMX_upsampled
                         async.yield %270 : !Type_CMX_upsampled
                 }
 

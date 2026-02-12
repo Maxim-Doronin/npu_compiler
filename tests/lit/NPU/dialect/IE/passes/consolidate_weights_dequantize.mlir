@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-weights-dynamic-dequantization=true" --consolidate-weights-dequantize --mlir-print-elementsattrs-with-hex-if-larger -1 %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-weights-dynamic-dequantization=true" --run-initial-low-precision-transformations-rewriters="rewriter=consolidate-weights-dequantization" --mlir-print-elementsattrs-with-hex-if-larger -1 %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK: !qElemType = !quant.uniform<u8:f32, 5.000000e-01>
@@ -1389,4 +1389,47 @@ func.func @DynamicScaleDequantizationWithTranspose(%input: tensor<16384x2048xsi4
   // CHECK: [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[STRIDED_SLICE_INPUT]]) {dstElemType = !qElemType} : tensor<8192x2048xsi4> -> tensor<8192x2048x!qElemType>
   // CHECK: [[DYN_DEQUANT:%.+]] = IE.DynamicDequantize([[QUANTIZE_CAST]], [[STRIDED_SLICE_SCALE]]) {dstElemType = f32} : tensor<8192x2048x!qElemType>, tensor<8192x1xf32> -> tensor<8192x2048xf32>
   // CHECK: return [[DYN_DEQUANT]] : tensor<8192x2048xf32>
+}
+
+// -----
+
+!qElemType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+
+// CHECK: !qElemType = !quant.quantile<u4:f16:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}:1.000000e+00>
+
+// CHECK-LABEL: @DynamicDequantantizeWithGather
+// CHECK-SAME:     [[INPUT:%.+]]: tensor<184320x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>>
+// CHECK-SAME:     [[SCALE:%.+]]: tensor<32x5760x1xf16>
+func.func @DynamicDequantantizeWithGather(%input: tensor<184320x2880x!qElemType>, %scale: tensor<32x5760x1xf16>) -> tensor<4x5760x2880xf16> {
+  %indices = const.Declare tensor<23040xsi64> = dense<1> : tensor<23040xsi64>
+
+  %gather = IE.Gather(%input, %indices) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<184320x2880x!qElemType>, tensor<23040xsi64> -> tensor<23040x2880x!qElemType>
+  %reshape = IE.AffineReshape(%gather) {dim_mapping = [[0, 1], [2]], shape_value = [4, 5760, 2880]} : tensor<23040x2880x!qElemType> -> tensor<4x5760x2880x!qElemType>
+  %convert = IE.Convert(%reshape) {dstElemType = f16} : tensor<4x5760x2880x!qElemType> -> tensor<4x5760x2880xf16>
+
+  %indices_scale = const.Declare tensor<4xsi64> = dense<1> : tensor<4xsi64>
+  %gather_scale = IE.Gather(%scale, %indices_scale) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<32x5760x1xf16>, tensor<4xsi64> -> tensor<4x5760x1xf16>
+
+  %multiply = IE.Multiply(%convert, %gather_scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<4x5760x2880xf16>, tensor<4x5760x1xf16> -> tensor<4x5760x2880xf16>
+
+  return %multiply : tensor<4x5760x2880xf16>
+
+  // CHECK-DAG: [[INDICES:%.+]] = const.Declare tensor<23040xsi64> = dense<1> : tensor<23040xsi64>
+  // CHECK-DAG: [[INDICES_SCALE:%.+]] = const.Declare tensor<4xsi64> = dense<1> : tensor<4xsi64>
+
+  // CHECK: [[GATHER:%.+]] = IE.Gather([[INPUT]], [[INDICES]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64}
+  // CHECK-SAME:        : tensor<184320x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>>, tensor<23040xsi64> -> tensor<23040x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>>
+
+  // CHECK: [[RESHAPE:%.+]] = IE.AffineReshape([[GATHER]])
+  // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2]], shape_value = [4, 5760, 2880]}
+  // CHECK-SAME:        : tensor<23040x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>> -> tensor<4x5760x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>>
+
+  // CHECK: [[GATHER_SCALE:%.+]] = IE.Gather([[SCALE]], [[INDICES_SCALE]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<32x5760x1xf16>, tensor<4xsi64> -> tensor<4x5760x1xf16>
+
+  // CHECK: [[QUANT_CAST:%.+]] = IE.QuantizeCast([[RESHAPE]]) {dstElemType = !qElemType}
+  // CHECK-SAME:     : tensor<4x5760x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>> -> tensor<4x5760x2880x!qElemType>
+
+  // CHECK: [[DYN_DEQUANT:%.+]] = IE.DynamicDequantize([[QUANT_CAST]], [[GATHER_SCALE]]) {dstElemType = f16} : tensor<4x5760x2880x!qElemType>, tensor<4x5760x1xf16> -> tensor<4x5760x2880xf16>
+
+  // CHECK: return [[DYN_DEQUANT]] : tensor<4x5760x2880xf16>
 }

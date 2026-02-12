@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -623,3 +623,110 @@ std::vector<OverlappedDistributionTestParams> incompatibleConsumerParams  = {
 
 INSTANTIATE_TEST_SUITE_P(IncompatibleConsumers, GetOverlapDistributionParamsTests,
                          testing::ValuesIn(incompatibleConsumerParams));
+
+// =====================================================
+// Tests for SEGMENTED | OVERLAPPED distribution mode
+// =====================================================
+
+struct SegmentedOverlappedDistributionTestParams {
+    llvm::StringLiteral inputIR;
+    SmallVector<int64_t> numTiles;        // SOK tiling on C dimension
+    SmallVector<int64_t> memoryNumTiles;  // SOH tiling on H dimension
+    SmallVector<int64_t> alignment;       // Alignment requirement for the distribution
+    SmallVector<SmallVector<int64_t>> expectedMemoryShapes;
+    SmallVector<SmallVector<int64_t>> expectedMemoryOffsets;
+    SmallVector<SmallVector<int64_t>> expectedComputeShapes;
+    SmallVector<SmallVector<int64_t>> expectedComputeOffsets;
+};
+
+class GetSegmentedOverlappedDistributionParamsTests :
+        public testing::TestWithParam<SegmentedOverlappedDistributionTestParams> {};
+
+TEST_P(GetSegmentedOverlappedDistributionParamsTests, GetMemoryViewForSegmentedOverlappedMode) {
+    const auto params = GetParam();
+    const llvm::StringLiteral inputIR = params.inputIR;
+    const auto numTiles = params.numTiles;
+    const auto memoryNumTiles = params.memoryNumTiles;
+    const auto alignment = params.alignment;
+    const auto expectedMemoryShapes = params.expectedMemoryShapes;
+    const auto expectedMemoryOffsets = params.expectedMemoryOffsets;
+    const auto expectedComputeShapes = params.expectedComputeShapes;
+    const auto expectedComputeOffsets = params.expectedComputeOffsets;
+
+    auto registry = vpux::createDialectRegistry();
+    auto interfacesRegistry = vpux::createInterfacesRegistry(vpux::config::ArchKind::NPU37XX);
+    interfacesRegistry->registerInterfaces(registry);
+
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPU::VPUDialect>();
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    const auto numClusters = memoryNumTiles[VPU::getDistributedTilingAxis(memoryNumTiles)];
+
+    VPU::ClusteredOpInterface producer = nullptr;
+    SmallVector<VPU::ClusteredOpInterface> consumers = {};
+
+    func.walk([&](VPU::ClusteredOpInterface op) {
+        // producer
+        if (mlir::isa<VPU::NCEAveragePoolOp>(op)) {
+            producer = op;
+            return;
+        }
+
+        consumers.push_back(op);
+    });
+
+    // Call getOverlappedDistributionParameters with outputTensorMemoryNumTiles for SEGMENTED|OVERLAPPED mode
+    const auto resOverlapParams = VPU::getOverlappedDistributionParameters(
+            mlir::cast<vpux::NDTypeInterface>(producer->getResult(0).getType()), consumers, numClusters, numTiles, true,
+            vpux::TileInfo(ShapeRef()), ArrayRef<int64_t>(memoryNumTiles), ArrayRef<int64_t>(alignment));
+
+    EXPECT_EQ(SmallVector<SmallVector<int64_t>>(resOverlapParams.getMemoryShapes()), expectedMemoryShapes);
+    EXPECT_EQ(SmallVector<SmallVector<int64_t>>(resOverlapParams.getMemoryOffsets()), expectedMemoryOffsets);
+    EXPECT_EQ(SmallVector<SmallVector<int64_t>>(resOverlapParams.getComputeShapes()), expectedComputeShapes);
+    EXPECT_EQ(SmallVector<SmallVector<int64_t>>(resOverlapParams.getComputeOffsets()), expectedComputeOffsets);
+}
+
+// clang-format off
+
+// SOK (Split Over Kernel/Channel) with SOH (Split Over Height) overlap
+// Input: 1x96x16x16, no consumers (producer only case)
+llvm::StringLiteral sokWithSohOverlapped = R"(
+    #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+    module @test {
+        config.Resources 4 of @NCE at 6.000000e+02 MHz
+        func.func @main(%arg0: tensor<1x96x16x16xf16, {order = #NHWC}>)
+          -> tensor<1x96x16x16xf16, {order = #NHWC}> {
+
+            %0 = VPU.NCE.AveragePool(%arg0) {
+                kernel_size = [1, 1],
+                ppe = #VPU.PPEStub<>,
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                strides = [1, 1]}
+                    -> tensor<1x96x16x16xf16, {order = #NHWC}>
+
+            return %0 : tensor<1x96x16x16xf16, {order = #NHWC}>
+        }
+})";
+
+std::vector<SegmentedOverlappedDistributionTestParams> segmentedOverlappedParams = {
+    {
+        sokWithSohOverlapped,
+        /*numTiles=*/{1, 4, 1, 1},
+        /*memoryNumTiles=*/{1, 1, 4, 1},
+        /*alignment=*/{1, 16, 1, 1},         // Alignment requirement
+        /*expectedMemoryShapes=*/{{1, 96, 4, 16}, {1, 96, 4, 16}, {1, 96, 4, 16}, {1, 96, 4, 16}},
+        /*expectedMemoryOffsets=*/{{0, 0, 0, 0}, {0, 0, 4, 0}, {0, 0, 8, 0}, {0, 0, 12, 0}},
+        /*expectedComputeShapes=*/{{1, 32, 16, 16}, {1, 32, 16, 16}, {1, 16, 16, 16}, {1, 16, 16, 16}},
+        /*expectedComputeOffsets=*/{{0, 0, 0, 0}, {0, 32, 0, 0}, {0, 64, 0, 0}, {0, 80, 0, 0}}
+    }
+};
+
+// clang-format on
+
+INSTANTIATE_TEST_SUITE_P(SegmentedOverlappedDistribution, GetSegmentedOverlappedDistributionParamsTests,
+                         testing::ValuesIn(segmentedOverlappedParams));

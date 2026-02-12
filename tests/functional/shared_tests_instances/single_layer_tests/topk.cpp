@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,21 +15,30 @@ class TopKLayerTestCommon : virtual public TopKLayerTest, virtual public VpuOv2L
     }
 };
 class TopK11LayerTestCommon : public TopK11LayerTest, virtual public VpuOv2LayerTest {};
-class TopKDDRLayerTestCommon : public TopK11LayerTest, virtual public VpuOv2LayerTest {};
+class TopKDDRLayerTestCommon : public TopK11LayerTest, virtual public VpuOv2LayerTest {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+    }
+};
 
 TEST_P(TopKLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(TopKLayerTestCommon, NPU4000_SW) {
-    setReferenceSoftwareMode();
+TEST_P(TopKLayerTestCommon, NPU4000_HW) {
+    setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 
-TEST_P(TopKDDRLayerTestCommon, NPU4000_SW) {
+TEST_P(TopKDDRLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
+}
+
+TEST_P(TopKDDRLayerTestCommon, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 TEST_P(TopK11LayerTestCommon, NPU3720_HW) {
@@ -37,19 +46,21 @@ TEST_P(TopK11LayerTestCommon, NPU3720_HW) {
     run(Platform::NPU3720);
 }
 
-TEST_P(TopK11LayerTestCommon, NPU4000_SW) {
-    setReferenceSoftwareMode();
+TEST_P(TopK11LayerTestCommon, NPU4000_HW) {
+    setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
-TEST_P(TopKLayerTestCommon, NPU5010_SW) {
-    setReferenceSoftwareMode();
+
+TEST_P(TopKLayerTestCommon, NPU5010_HW) {
+    setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
 
-TEST_P(TopK11LayerTestCommon, NPU5010_SW) {
-    setReferenceSoftwareMode();
+TEST_P(TopK11LayerTestCommon, NPU5010_HW) {
+    setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 class TopK1LayerTest : public TopKLayerTest, virtual public VpuOv2LayerTest {
     void SetUp() override {
         std::vector<InputShape> inputShape;
@@ -135,6 +146,8 @@ const std::vector<ov::op::v3::TopK::SortType> sortTypes_Tilling = {
         ov::op::v3::TopK::SortType::SORT_INDICES,
 };
 const std::vector<ov::element::Type> modelTypes_Tilling = {ov::element::f16};
+const std::vector<std::vector<ov::Shape>> inShapes = {{{1, 8, 16, 21}}, {{1, 8, 16, 32}}};
+const std::vector<std::vector<ov::Shape>> inShapes_opset11 = {{{1, 300, 8}}, {{1, 151, 7049}}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_TopK_Tilling, TopKLayerTestCommon,
                          ::testing::Combine(::testing::ValuesIn(k_Tilling), ::testing::ValuesIn(axes_Tilling),
@@ -158,29 +171,16 @@ INSTANTIATE_TEST_SUITE_P(smoke_TopK_K1, TopKLayerTestCommon,
                                             ::testing::Values(test_utils::TARGET_DEVICE)),
                          TopKLayerTestCommon::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_TopK_K300, TopKLayerTestCommon,
-                         ::testing::Combine(::testing::ValuesIn(std::vector<int64_t>{300}),
-                                            ::testing::ValuesIn(std::vector<int64_t>{1}),
-                                            ::testing::ValuesIn(modes_Tilling),
-                                            ::testing::ValuesIn(std::vector<ov::op::v3::TopK::SortType>{
-                                                    ov::op::v3::TopK::SortType::SORT_VALUES}),
-                                            ::testing::ValuesIn(modelTypes_Tilling),
-                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
-                                                    std::vector<std::vector<ov::Shape>>{{{1, 3600}}})),
-                                            ::testing::Values(test_utils::TARGET_DEVICE)),
-                         TopKLayerTestCommon::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_TopK_K21, TopKLayerTestCommon,
-                         ::testing::Combine(::testing::ValuesIn(std::vector<int64_t>{1}),
-                                            ::testing::ValuesIn(std::vector<int64_t>{3}),
-                                            ::testing::ValuesIn(modes_Tilling),
-                                            ::testing::ValuesIn(std::vector<ov::op::v3::TopK::SortType>{
-                                                    ov::op::v3::TopK::SortType::SORT_VALUES}),
-                                            ::testing::ValuesIn(modelTypes_Tilling),
-                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
-                                                    std::vector<std::vector<ov::Shape>>{{{1, 8, 16, 21}}})),
-                                            ::testing::Values(test_utils::TARGET_DEVICE)),
-                         TopKLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(
+        smoke_TopK_AxisValUpTo32, TopKLayerTestCommon,
+        ::testing::Combine(::testing::ValuesIn(std::vector<int64_t>{1}), ::testing::ValuesIn(std::vector<int64_t>{3}),
+                           ::testing::ValuesIn(modes_Tilling),
+                           ::testing::ValuesIn(std::vector<ov::op::v3::TopK::SortType>{
+                                   ov::op::v3::TopK::SortType::SORT_VALUES}),
+                           ::testing::ValuesIn(modelTypes_Tilling),
+                           ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes)),
+                           ::testing::Values(test_utils::TARGET_DEVICE)),
+        TopKLayerTestCommon::getTestCaseName);
 
 }  // namespace
 
@@ -196,15 +196,14 @@ INSTANTIATE_TEST_SUITE_P(smoke_TopK11, TopK11LayerTestCommon,
                                             ::testing::Values(true), ::testing::Values(test_utils::TARGET_DEVICE)),
                          TopK11LayerTestCommon::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_TopK11_K1, TopK11LayerTestCommon,
-                         ::testing::Combine(::testing::Values(1), ::testing::Values(2),
-                                            ::testing::Values(ov::op::v3::TopK::Mode::MAX),
-                                            ::testing::Values(ov::op::v3::TopK::SortType::SORT_VALUES),
-                                            ::testing::Values(ov::element::f16),
-                                            ::testing::Values(ov::test::static_shapes_to_test_representation(
-                                                    std::vector<ov::Shape>({{{1, 300, 8}}}))),
-                                            ::testing::Values(true), ::testing::Values(test_utils::TARGET_DEVICE)),
-                         TopK11LayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(
+        smoke_TopK11_K1, TopK11LayerTestCommon,
+        ::testing::Combine(::testing::Values(1), ::testing::Values(2), ::testing::Values(ov::op::v3::TopK::Mode::MAX),
+                           ::testing::Values(ov::op::v3::TopK::SortType::SORT_VALUES),
+                           ::testing::Values(ov::element::f16),
+                           ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes_opset11)),
+                           ::testing::Values(true), ::testing::Values(test_utils::TARGET_DEVICE)),
+        TopK11LayerTestCommon::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_TopK11_K300, TopK11LayerTestCommon,
                          ::testing::Combine(::testing::Values(300), ::testing::Values(1),
@@ -217,6 +216,16 @@ INSTANTIATE_TEST_SUITE_P(smoke_TopK11_K300, TopK11LayerTestCommon,
                          TopK11LayerTestCommon::getTestCaseName);
 
 // Can't tile, require DDR
+INSTANTIATE_TEST_SUITE_P(smoke_TopK11_conformance, TopKDDRLayerTestCommon,
+                         ::testing::Combine(::testing::Values(1), ::testing::Values(3),
+                                            ::testing::Values(ov::op::v3::TopK::Mode::MAX),
+                                            ::testing::Values(ov::op::v3::TopK::SortType::SORT_VALUES),
+                                            ::testing::Values(ov::element::f32),
+                                            ::testing::Values(ov::test::static_shapes_to_test_representation(
+                                                    std::vector<ov::Shape>({{{1, 513, 513, 21}}}))),
+                                            ::testing::Values(true), ::testing::Values(test_utils::TARGET_DEVICE)),
+                         TopKDDRLayerTestCommon::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_TopK11_DDRAccess, TopKDDRLayerTestCommon,
                          ::testing::Combine(::testing::Values(1), ::testing::Values(-1),
                                             ::testing::Values(ov::op::v3::TopK::Mode::MAX),
@@ -226,5 +235,14 @@ INSTANTIATE_TEST_SUITE_P(smoke_TopK11_DDRAccess, TopKDDRLayerTestCommon,
                                                     std::vector<ov::Shape>({{{1, 5898240}}}))),
                                             ::testing::Values(true), ::testing::Values(test_utils::TARGET_DEVICE)),
                          TopKDDRLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_TopK11_DDRAccess_LargeLineBuffer, TopKDDRLayerTestCommon,
+        ::testing::Combine(
+                ::testing::Values(1), ::testing::Values(0), ::testing::Values(ov::op::v3::TopK::Mode::MAX),
+                ::testing::Values(ov::op::v3::TopK::SortType::SORT_VALUES), ::testing::Values(ov::element::f32),
+                ::testing::Values(ov::test::static_shapes_to_test_representation(std::vector<ov::Shape>({{250112}}))),
+                ::testing::Values(true), ::testing::Values(test_utils::TARGET_DEVICE)),
+        TopKDDRLayerTestCommon::getTestCaseName);
 
 }  // namespace

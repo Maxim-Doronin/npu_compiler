@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,10 +38,12 @@ class FqPreluSubGraphTest : public VpuOv2LayerTest {
         rel_threshold = 0.6f;
     }
 };
+
 TEST_F(FqPreluSubGraphTest, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 TEST_F(FqPreluSubGraphTest, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
@@ -75,10 +77,12 @@ class PreluFqSubGraphTest : public VpuOv2LayerTest {
         rel_threshold = 0.6f;
     }
 };
+
 TEST_F(PreluFqSubGraphTest, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 TEST_F(PreluFqSubGraphTest, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);

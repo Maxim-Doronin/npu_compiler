@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/ELF/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/types.hpp"
 
@@ -25,6 +25,7 @@ uint32_t getActCompressionEntryTileMask(VPUASM::NNDMAOp dmaOp, ELF::SymbolRefere
 SparsityMap getSparsityMapBuffTileMask(VPUASM::NNDMAOp dmaOp, ELF::SymbolReferenceMap& symRefMap);
 
 void setResourceRequirement(mlir::ModuleOp moduleOp, elf::NetworkMetadata& metadata);
+SmallVector<uint32_t> getCMXStackFrames(mlir::ModuleOp moduleOp);
 
 void insertBinaryDimsIntoVector(SmallVector<uint8_t>& dimsVector, vpux::NDTypeInterface ndType);
 void insertBinaryStridesIntoVector(SmallVector<uint8_t>& stridesVector, vpux::NDTypeInterface ndType);

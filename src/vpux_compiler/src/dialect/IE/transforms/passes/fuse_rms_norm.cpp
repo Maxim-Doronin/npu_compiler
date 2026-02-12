@@ -141,7 +141,7 @@ mlir::FailureOr<float> getEpsilon(mlir::Operation* op) {
 mlir::Value createGamma(mlir::OpBuilder& builder, mlir::Operation* op, int64_t size, float gammaScale) {
     const float weightData = 1.0f / gammaScale;
     const auto dataStorageType = mlir::RankedTensorType::get({size}, mlir::Float32Type::get(op->getContext()));
-    const auto constLoc = appendLoc(op->getLoc(), "_const");
+    const auto constLoc = appendLoc(op->getLoc(), "const");
     return Const::createConst(builder, constLoc, dataStorageType, ArrayRef(weightData));
 }
 
@@ -254,16 +254,16 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
                                                  reduceSize};
 
         auto inReshapeOp =
-                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "_in_reshape"), powerOp->getOperand(0),
+                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "in_reshape"), powerOp->getOperand(0),
                                               nullptr, false, getIntArrayAttr(&ctx, newInShape));
 
         // Create RMSOp
-        auto rmsOp = builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "_rms"), inReshapeOp, gamma, epsilonAttr);
+        auto rmsOp = builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "rms"), inReshapeOp, gamma, epsilonAttr);
 
         // Reshape Output
         auto outReshapeOp =
-                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "_out_reshape"), rmsOp->getResult(0),
-                                              nullptr, false, getIntArrayAttr(&ctx, powerInputShape));
+                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "out_reshape"), rmsOp->getResult(0), nullptr,
+                                              false, getIntArrayAttr(&ctx, powerInputShape));
 
         opBeforeScale->replaceAllUsesWith(outReshapeOp);
 
@@ -287,7 +287,7 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
 
     // Create RMSOp
     auto rmsOp =
-            builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "_rms"), powerOp->getOperand(0), gamma, epsilonAttr);
+            builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "rms"), powerOp->getOperand(0), gamma, epsilonAttr);
 
     replaceOp->replaceAllUsesWith(rmsOp);
 }
@@ -295,7 +295,7 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
 mlir::Value createGammaWithShape(mlir::OpBuilder& builder, mlir::Operation* op, ShapeRef shape) {
     const float weightData = 1.0f;
     const auto dataStorageType = mlir::RankedTensorType::get(shape, mlir::Float32Type::get(op->getContext()));
-    const auto constLoc = appendLoc(op->getLoc(), "_const");
+    const auto constLoc = appendLoc(op->getLoc(), "const");
     return Const::createConst(builder, constLoc, dataStorageType, ArrayRef(weightData));
 };
 
@@ -339,7 +339,7 @@ IE::RMSOp createRMSOp(mlir::OpBuilder& builder, mlir::Operation* headOp, mlir::V
         gamma = reshapeOp;
     }
     auto rmsOp =
-            builder.create<IE::RMSOp>(appendLoc(headOp->getLoc(), "_rms"), headOp->getOperand(0), gamma, epsilonAttr);
+            builder.create<IE::RMSOp>(appendLoc(headOp->getLoc(), "rms"), headOp->getOperand(0), gamma, epsilonAttr);
 
     return rmsOp;
 }

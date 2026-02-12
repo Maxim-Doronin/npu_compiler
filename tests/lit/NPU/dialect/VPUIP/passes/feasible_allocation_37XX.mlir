@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -113,12 +113,12 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
     %6 = async.await %r6 : !async.value<memref<1x32x96x96xf16, #NHWC>>
     return %6 : memref<1x32x96x96xf16, #NHWC>
 
-    // CHECK:       [[BUF_SPILL_WRITE:%.*]] = memref.alloc() : memref<1x32x96x96xf16, #NHWC, @DDR>
-    // CHECK:       [[BUF_SPILL_READ:%.*]] = VPURT.DeclareBuffer
+    // CHECK:       [[BUF_SPILL_WRITE:%.+]] = memref.alloc() : memref<1x32x96x96xf16, #NHWC, @DDR>
+    // CHECK:       [[BUF_SPILL_READ:%.+]] = VPURT.DeclareBuffer
     // CHECK-SAME:      > -> memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
-    // CHECK-NEXT:       VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x32x96x96xf16, #NHWC>) outputs([[BUF0:%.*]] :
+    // CHECK-NEXT:       VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x32x96x96xf16, #NHWC>) outputs([[BUF0:%.+]] :
 
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute
     // CHECK-NEXT:       VPUIP.NNDMA
@@ -137,13 +137,13 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
 
     // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute
-    // CHECK-SAME:      ([[R3]] as [[ARG1:%.*]]: !async.value<memref<1x32x96x96xf16, #NHWC, @DDR>>
+    // CHECK-SAME:      ([[R3]] as [[ARG1:%.+]]: !async.value<memref<1x32x96x96xf16, #NHWC, @DDR>>
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      spillId
-    // CHECK-SAME:      inputs([[ARG1:%.*]] : memref<1x32x96x96xf16, #NHWC, @DDR>) outputs([[BUF_SPILL_READ]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:      inputs([[ARG1:%.+]] : memref<1x32x96x96xf16, #NHWC, @DDR>) outputs([[BUF_SPILL_READ]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
 
     // CHECK:       [[T5:%.+]], [[R5:%.+]] = async.execute
-    // CHECK-SAME:      ([[R4]] as [[ARG2:%.*]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>,
+    // CHECK-SAME:      ([[R4]] as [[ARG2:%.+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>,
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:      input([[ARG2]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>
@@ -285,7 +285,7 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
     // CHECK-NEXT:      VPUIP.NNDMA
-    // CHECK:       [[T1:%.+]], [[R1:%.+]]:2 = async.execute {{.*}} ([[R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>)
+    // CHECK:       [[T1:%.+]], [[R1:%.+]]:2 = async.execute {{.+}} ([[R0]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>)
     // CHECK-NEXT:      VPUIP.NCEClusterTask
     // CHECK-SAME:       task_type = #VPUIP.nce_task_type<MAXPOOL>
     // CHECK-SAME:       input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
@@ -300,19 +300,19 @@ func.func @main(%in: memref<1x32x96x96xf16, #NHWC>, %out: memref<1x32x96x96xf16,
     // CHECK-SAME:      -> memref<1x32x96x96xf16, #NHWC, @DDR>
     // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
     // CHECK-NEXT:      VPUIP.NNDMA
-    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute {{.*}} ([[R1]]#0 as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute {{.+}} ([[R1]]#0 as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
     // CHECK-NEXT:      VPUIP.NCEClusterTask
     // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:        input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:       [[T_SPILL_READ:%.+]], [[R_SPILL_READ:%.+]] = async.execute {{.*}} ([[R_SPILL_WRITE]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, @DDR>>)
+    // CHECK:       [[T_SPILL_READ:%.+]], [[R_SPILL_READ:%.+]] = async.execute {{.+}} ([[R_SPILL_WRITE]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, @DDR>>)
     // CHECK-NEXT:      VPUIP.NNDMA
     // CHECK-SAME:       inputs([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, @DDR>)
     // CHECK-SAME:      -> memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute {{.*}} ([[R_SPILL_READ]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute {{.+}} ([[R_SPILL_READ]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
     // CHECK-NEXT:      VPUIP.NCEClusterTask
     // CHECK-SAME:        task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:        input([[INNER_ARG]] : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute {{.*}} ([[R6]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
+    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute {{.+}} ([[R6]] as [[INNER_ARG:[^:]+]]: !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>
     // CHECK-NEXT:      VPUIP.NNDMA
 }
 
@@ -535,10 +535,10 @@ func.func @main(%in: memref<1x32x64x64xf16, #NHWC>, %out: memref<1x32x64x64xf16,
     %result = async.await %r_dma_out : !async.value<memref<1x32x64x64xf16, #NHWC>>
     return %result : memref<1x32x64x64xf16, #NHWC>
 
-    // CHECK:       [[BUF_MASTER:%.*]] = VPURT.DeclareBuffer
+    // CHECK:       [[BUF_MASTER:%.+]] = VPURT.DeclareBuffer
     // CHECK-SAME:      > -> memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
-    // CHECK:       [[BUF_SPILL_WRITE:%.*]] = memref.alloc() : memref<1x64x64x64xf16, #NHWC, @DDR>
-    // CHECK:       [[BUF_SPILL_READ:%.*]] = VPURT.DeclareBuffer
+    // CHECK:       [[BUF_SPILL_WRITE:%.+]] = memref.alloc() : memref<1x64x64x64xf16, #NHWC, @DDR>
+    // CHECK:       [[BUF_SPILL_READ:%.+]] = VPURT.DeclareBuffer
     // CHECK-SAME:      > -> memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
@@ -573,27 +573,27 @@ func.func @main(%in: memref<1x32x64x64xf16, #NHWC>, %out: memref<1x32x64x64xf16,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
 
     // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute
-    // CHECK-SAME:      ([[R4]] as [[ARG0:%.*]]: !async.value<memref<1x64x64x64xf16, #NHWC, @DDR>>
+    // CHECK-SAME:      ([[R4]] as [[ARG0:%.+]]: !async.value<memref<1x64x64x64xf16, #NHWC, @DDR>>
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      spillId
     // CHECK-SAME:      inputs([[ARG0]] : memref<1x64x64x64xf16, #NHWC, @DDR>) outputs([[BUF_SPILL_READ]] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>)
 
     // CHECK:       [[T8:%.+]], [[R8:%.+]] = async.execute
-    // CHECK-SAME:      ([[R7]] as [[ARG1:%.*]]: !async.value<memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>>
-    // CHECK:       [[SUBVIEW_0:%.*]] = VPUIP.SubView [[ARG1]] [0, 0, 0, 0] [1, 32, 64, 64] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]> to memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
+    // CHECK-SAME:      ([[R7]] as [[ARG1:%.+]]: !async.value<memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>>
+    // CHECK:       [[SUBVIEW_0:%.+]] = VPUIP.SubView [[ARG1]] [0, 0, 0, 0] [1, 32, 64, 64] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]> to memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:      input([[SUBVIEW_0]] : memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
 
     // CHECK:       [[T9:%.+]], [[R9:%.+]] = async.execute
-    // CHECK:       [[SUBVIEW_1:%.*]] = VPUIP.SubView [[BUF_SPILL_READ]] [0, 0, 0, 0] [1, 32, 64, 64] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]> to memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
+    // CHECK:       [[SUBVIEW_1:%.+]] = VPUIP.SubView [[BUF_SPILL_READ]] [0, 0, 0, 0] [1, 32, 64, 64] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]> to memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:      input([[SUBVIEW_1]] : memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
 
     // CHECK:       [[T10:%.+]], [[R10:%.+]] = async.execute
-    // CHECK-SAME:      ([[R7]] as [[ARG2:%.*]]: !async.value<memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>>
-    // CHECK:       [[SUBVIEW_2:%.*]] = VPUIP.SubView [[ARG2]] [0, 32, 0, 0] [1, 32, 64, 64] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]> to memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
+    // CHECK-SAME:      ([[R7]] as [[ARG2:%.+]]: !async.value<memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>>
+    // CHECK:       [[SUBVIEW_2:%.+]] = VPUIP.SubView [[ARG2]] [0, 32, 0, 0] [1, 32, 64, 64] : memref<1x64x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]> to memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:      input([[SUBVIEW_2]] : memref<1x32x64x64xf16, {order = #NHWC, strides = [262144, 1, 4096, 64]}, [@CMX_NN, 0]>
@@ -758,13 +758,13 @@ func.func @main(%in: memref<1x48x75x75xf16, #NHWC>, %out: memref<1x48x75x75xf16,
     %result = async.await %r7 : !async.value<memref<1x48x75x75xf16, #NHWC>>
     return %result : memref<1x48x75x75xf16, #NHWC>
 
-    // CHECK:       [[BUF_SPILL_WRITE:%.*]] = memref.alloc() : memref<1x48x75x75xf16, #NHWC, @DDR>
-    // CHECK:       [[BUF_SPILL_READ0:%.*]] = VPURT.DeclareBuffer
-    // CHECK:       [[BUF_SPILL_READ1:%.*]] = VPURT.DeclareBuffer
+    // CHECK:       [[BUF_SPILL_WRITE:%.+]] = memref.alloc() : memref<1x48x75x75xf16, #NHWC, @DDR>
+    // CHECK:       [[BUF_SPILL_READ0:%.+]] = VPURT.DeclareBuffer
+    // CHECK:       [[BUF_SPILL_READ1:%.+]] = VPURT.DeclareBuffer
 
     // Operation 0 whose output will be later spilled
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
-    // CHECK-NEXT:       VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x48x75x75xf16, #NHWC>) outputs([[BUF_TO_SPILL:%.*]] :
+    // CHECK-NEXT:       VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x48x75x75xf16, #NHWC>) outputs([[BUF_TO_SPILL:%.+]] :
 
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute
     // CHECK-NEXT:       VPUIP.NNDMA
@@ -785,13 +785,13 @@ func.func @main(%in: memref<1x48x75x75xf16, #NHWC>, %out: memref<1x48x75x75xf16,
 
     // First SPILL READ of spilled buffer from operation 0
     // CHECK:       [[T5:%.+]], [[R5:%.+]] = async.execute
-    // CHECK-SAME:      ([[R3]] as [[ARG0:%.*]]: !async.value<memref<1x48x75x75xf16, #NHWC, @DDR>>
+    // CHECK-SAME:      ([[R3]] as [[ARG0:%.+]]: !async.value<memref<1x48x75x75xf16, #NHWC, @DDR>>
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      spillId
     // CHECK-SAME:      inputs([[ARG0]] : memref<1x48x75x75xf16, #NHWC, @DDR>) outputs([[BUF_SPILL_READ0]] : memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>)
 
     // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute
-    // CHECK-SAME:      ([[R5]] as [[ARG1:%.*]]: !async.value<memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>>,
+    // CHECK-SAME:      ([[R5]] as [[ARG1:%.+]]: !async.value<memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>>,
     // CHECK-NEXT:       VPUIP.NCEClusterTask
     // CHECK-SAME:       task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:      input([[ARG1]] : memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>
@@ -807,13 +807,13 @@ func.func @main(%in: memref<1x48x75x75xf16, #NHWC>, %out: memref<1x48x75x75xf16,
 
     // Second SPILL READ of spilled buffer from operation 0
     // CHECK:       [[T9:%.+]], [[R9:%.+]] = async.execute
-    // CHECK-SAME:      ([[R3]] as [[ARG2:%.*]]: !async.value<memref<1x48x75x75xf16, #NHWC, @DDR>>
+    // CHECK-SAME:      ([[R3]] as [[ARG2:%.+]]: !async.value<memref<1x48x75x75xf16, #NHWC, @DDR>>
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      spillId
     // CHECK-SAME:      inputs([[ARG2]] : memref<1x48x75x75xf16, #NHWC, @DDR>) outputs([[BUF_SPILL_READ1]] : memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>)
 
     // CHECK:       [[T10:%.+]], [[R10:%.+]] = async.execute
-    // CHECK-SAME:      ([[R9]] as [[ARG3:%.*]]: !async.value<memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>>,
+    // CHECK-SAME:      ([[R9]] as [[ARG3:%.+]]: !async.value<memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>>,
     // CHECK-NEXT:       VPUIP.NCEClusterTask
     // CHECK-SAME:       task_type = #VPUIP.nce_task_type<ELTWISE>
     // CHECK-SAME:      input([[ARG3]] : memref<1x48x75x75xf16, #NHWC, [@CMX_NN, 0]>
@@ -928,9 +928,9 @@ func.func @main(%in: memref<1x32x112x112xf16, #NHWC>, %out0: memref<1x32x112x112
     // Optimization of token dependencies (transitive reduction) is beyond
     // this pass and done as a separate step
 
-    // CHECK:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0>
-    // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <802816>
-    // CHECK:       [[BUF2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <802816>
+    // CHECK:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0>
+    // CHECK:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <802816>
+    // CHECK:       [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <802816>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
     // CHECK-NEXT:      VPUIP.NNDMA
@@ -1083,13 +1083,13 @@ func.func @main(%in: memref<1x80x60x60xf16, #NHWC>, %out: memref<1x80x60x60xf16,
     // Optimization of token dependencies (transitive reduction) is beyond
     // this pass and done as a separate step
 
-    // CHECK:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0>
-    // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <576000>
-    // CHECK:       [[BUF2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1152000>
-    // CHECK:       [[BUF3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0>
-    // CHECK:       [[BUF4:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1152000>
-    // CHECK:       [[BUF_SPILL_WRITE:%.*]] = memref.alloc() : memref<1x80x60x60xf16, #NHWC, @DDR>
-    // CHECK:       [[BUF_SPILL_READ:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <576000> -> memref<1x80x60x60xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0>
+    // CHECK:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <576000>
+    // CHECK:       [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1152000>
+    // CHECK:       [[BUF3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0>
+    // CHECK:       [[BUF4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1152000>
+    // CHECK:       [[BUF_SPILL_WRITE:%.+]] = memref.alloc() : memref<1x80x60x60xf16, #NHWC, @DDR>
+    // CHECK:       [[BUF_SPILL_READ:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <576000> -> memref<1x80x60x60xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute ->
     // CHECK-NEXT:       VPUIP.NNDMA
@@ -1258,36 +1258,36 @@ func.func @main(%input: !Input_DDR) -> !Output_DDR {
 
     return %output: !Output_DDR
 
-    // CHECK-DAG:       [[CST_WEIGHTS:%.*]] = const.Declare memref<64x32x3x3xf16, #NHWC, @DDR>
-    // CHECK-DAG:       [[CST_WEIGHTS_TABLE:%.*]] = const.Declare memref<64x1x1x4xsi32, @DDR> = dense<1> : tensor<64x1x1x4xsi32>, [#const.Reorder<#NCHW>]
-    // CHECK:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> <45056> -> !VPUIP.DistributedBuffer
-    // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer
-    // CHECK:       [[BUF2:%.*]] = VPURT.DeclareBuffer <CMX_NN> <49152> -> !VPUIP.DistributedBuffer
-    // CHECK:       [[BUF3:%.*]] = VPURT.DeclareBuffer <CMX_NN> <36864> -> !VPUIP.DistributedBuffer
-    // CHECK:       [[BUF4:%.*]] = memref.alloc() : memref<1x64x16x16xf16, #NHWC, @DDR>
+    // CHECK-DAG:       [[CST_WEIGHTS:%.+]] = const.Declare memref<64x32x3x3xf16, #NHWC, @DDR>
+    // CHECK-DAG:       [[CST_WEIGHTS_TABLE:%.+]] = const.Declare memref<64x1x1x4xsi32, @DDR> = dense<1> : tensor<64x1x1x4xsi32>, [#const.Reorder<#NCHW>]
+    // CHECK:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> <45056> -> !VPUIP.DistributedBuffer
+    // CHECK:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer
+    // CHECK:       [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> <49152> -> !VPUIP.DistributedBuffer
+    // CHECK:       [[BUF3:%.+]] = VPURT.DeclareBuffer <CMX_NN> <36864> -> !VPUIP.DistributedBuffer
+    // CHECK:       [[BUF4:%.+]] = memref.alloc() : memref<1x64x16x16xf16, #NHWC, @DDR>
 
-    // CHECK:       [[T0:%.*]] = async.execute
+    // CHECK:       [[T0:%.+]] = async.execute
     // CHECK-SAME:      VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0, 1]
     // CHECK-SAME:      cycleBegin = 0 : i64, cycleEnd = 1 : i64
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:          inputs(%arg0 : memref<1x32x16x16xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[BUF0]] : !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], kernel = [3, 3], pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T1:%.*]] = async.execute
+    // CHECK:       [[T1:%.+]] = async.execute
     // CHECK-SAME:      VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0]
     // CHECK-SAME:      cycleBegin = 1 : i64, cycleEnd = 2 : i64
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs([[CST_WEIGHTS]] : memref<64x32x3x3xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[BUF1]] : !VPUIP.DistributedBuffer<64x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T2:%.*]] = async.execute
+    // CHECK:       [[T2:%.+]] = async.execute
     // CHECK-SAME:      VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1]
     // CHECK-SAME:      cycleBegin = 1 : i64, cycleEnd = 2 : i64
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs([[CST_WEIGHTS_TABLE]] : memref<64x1x1x4xsi32, @DDR>)
     // CHECK-SAME:      outputs([[BUF2]] : !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T3:%.*]] = async.execute
+    // CHECK:       [[T3:%.+]] = async.execute
     // CHECK-SAME:      [[T0]], [[T1]], [[T2]]
     // CHECK-SAME:      VPUIP.executor = @DPU
     // CHECK-SAME:      cycleBegin = 2 : i64, cycleEnd = 3 : i64
@@ -1299,7 +1299,7 @@ func.func @main(%input: !Input_DDR) -> !Output_DDR {
     // CHECK-SAME:        parent_output([[BUF3]] : !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>)
     // CHECK-SAME:        outputs([[BUF3]] : !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T4:%.*]] = async.execute
+    // CHECK:       [[T4:%.+]] = async.execute
     // CHECK-SAME:      [[T3]]
     // CHECK-SAME:      VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0, 1]
     // CHECK-SAME:      cycleBegin = 3 : i64, cycleEnd = 4 : i64
@@ -1445,38 +1445,38 @@ func.func @main(%input: !BufMemrefDDR) -> !BufMemrefDDR {
     %6 = async.await %r6 : !async.value<!BufMemrefDDR>
     return %6 : !BufMemrefDDR
 
-    // CHECK-DAG:       [[CST0:%.*]] = const.Declare memref<1x64x64x64xf16, #NHWC, @DDR>
-    // CHECK-DAG:       [[CST1:%.*]] = const.Declare memref<64x1x1x4xsi32, #NHWC, @DDR>
+    // CHECK-DAG:       [[CST0:%.+]] = const.Declare memref<1x64x64x64xf16, #NHWC, @DDR>
+    // CHECK-DAG:       [[CST1:%.+]] = const.Declare memref<64x1x1x4xsi32, #NHWC, @DDR>
 
-    // CHECK:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
-    // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> <524288> -> !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
-    // CHECK:       [[BUF2:%.*]] = VPURT.DeclareBuffer <CMX_NN> <525312> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
-    // CHECK:       [[BUF3:%.*]] = VPURT.DeclareBuffer <CMX_NN> <1049600> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
-    // CHECK:       [[BUF4:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
-    // CHECK:       [[BUF5:%.*]] = VPURT.DeclareBuffer <CMX_NN> <1048576> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
-    // CHECK:       [[BUF6:%.*]] = memref.alloc() : memref<1x64x64x64xf16, #NHWC, @DDR>
-    // CHECK:       [[BUF_SPILL_WRITE:%.*]] = memref.alloc() : memref<1x64x64x64xf16, #NHWC, @DDR>
-    // CHECK:       [[BUF_SPILL_READ:%.*]] = VPURT.DeclareBuffer <CMX_NN> <524288> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> <524288> -> !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> <525312> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF3:%.+]] = VPURT.DeclareBuffer <CMX_NN> <1049600> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF4:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF5:%.+]] = VPURT.DeclareBuffer <CMX_NN> <1048576> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
+    // CHECK:       [[BUF6:%.+]] = memref.alloc() : memref<1x64x64x64xf16, #NHWC, @DDR>
+    // CHECK:       [[BUF_SPILL_WRITE:%.+]] = memref.alloc() : memref<1x64x64x64xf16, #NHWC, @DDR>
+    // CHECK:       [[BUF_SPILL_READ:%.+]] = VPURT.DeclareBuffer <CMX_NN> <524288> -> !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 
-    // CHECK:       [[T0:%.*]], [[R0:%.*]] = async.execute
+    // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs(%arg0 : memref<1x64x64x64xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[BUF0]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T1:%.*]], [[R1:%.*]] = async.execute
+    // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs([[CST1]] : memref<64x1x1x4xsi32, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[BUF1]] : !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T2:%.*]], [[R2:%.*]] = async.execute
+    // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs([[CST0]] : memref<1x64x64x64xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[BUF2]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T3:%.*]], [[R3:%.*]] = async.execute
+    // CHECK:       [[T3:%.+]], [[R3:%.+]] = async.execute
     // CHECK-SAME:    [[T0]], [[T1]]
-    // CHECK-SAME:    ([[R0]] as [[ARG1:%.*]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
-    // CHECK-SAME:     [[R1]] as [[ARG2:%.*]]: !async.value<!VPUIP.DistributedBuffer<64x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
+    // CHECK-SAME:    ([[R0]] as [[ARG1:%.+]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
+    // CHECK-SAME:     [[R1]] as [[ARG2:%.+]]: !async.value<!VPUIP.DistributedBuffer<64x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
     // CHECK-SAME:        -> !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:         task_type = #VPUIP.nce_task_type<MAXPOOL>
@@ -1486,16 +1486,16 @@ func.func @main(%input: !BufMemrefDDR) -> !BufMemrefDDR {
     // CHECK-SAME:         parent_output([[BUF3]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:         outputs([[BUF3]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T4:%.*]], [[R4:%.*]] = async.execute
+    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute
     // CHECK-SAME:    [[T0]]
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:         inputs([[BUF0]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:          outputs([[BUF_SPILL_WRITE]] : memref<1x64x64x64xf16, #NHWC, @DDR>)
 
-    // CHECK:       [[T5:%.*]], [[R5:%.*]] = async.execute
+    // CHECK:       [[T5:%.+]], [[R5:%.+]] = async.execute
     // CHECK-SAME:    [[T1]], [[T2]], [[T3]]
-    // CHECK-SAME:    ([[R2]] as [[ARG1:%.*]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>,
-    // CHECK-SAME:     [[R3]] as [[ARG2:%.*]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>)
+    // CHECK-SAME:    ([[R2]] as [[ARG1:%.+]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>,
+    // CHECK-SAME:     [[R3]] as [[ARG2:%.+]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>)
     // CHECK-SAME:      -> !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:         task_type = #VPUIP.nce_task_type<ELTWISE>
@@ -1505,18 +1505,18 @@ func.func @main(%input: !BufMemrefDDR) -> !BufMemrefDDR {
     // CHECK-SAME:         parent_output([[BUF4]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:         outputs([[BUF4]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T6:%.*]], [[R6:%.*]] = async.execute
+    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute
     // CHECK-SAME:    [[T3]], [[T5]]
-    // CHECK-SAME:    ([[R4]] as [[ARG1:%.*]]: !async.value<memref<1x64x64x64xf16, #NHWC, @DDR>>)
+    // CHECK-SAME:    ([[R4]] as [[ARG1:%.+]]: !async.value<memref<1x64x64x64xf16, #NHWC, @DDR>>)
     // CHECK-SAME:      -> !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
     // CHECK:        VPUIP.NNDMA
     // CHECK-SAME:     inputs([[ARG1]] : memref<1x64x64x64xf16, #NHWC, @DDR>)
     // CHECK-SAME:     outputs([[BUF_SPILL_READ]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T7:%.*]], [[R7:%.*]] = async.execute
+    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute
     // CHECK-SAME:    [[T0]], [[T5]], [[T6]]
-    // CHECK-SAME:    ([[R6]] as [[ARG1:%.*]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>,
-    // CHECK-SAME:     [[R5]] as [[ARG2:%.*]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>)
+    // CHECK-SAME:    ([[R6]] as [[ARG1:%.+]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>,
+    // CHECK-SAME:     [[R5]] as [[ARG2:%.+]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>)
     // CHECK-SAME:      -> !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:         task_type = #VPUIP.nce_task_type<ELTWISE>
@@ -1526,9 +1526,9 @@ func.func @main(%input: !BufMemrefDDR) -> !BufMemrefDDR {
     // CHECK-SAME:         parent_output([[BUF5]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:         outputs([[BUF5]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
-    // CHECK:       [[T8:%.*]], [[R8:%.*]] = async.execute
+    // CHECK:       [[T8:%.+]], [[R8:%.+]] = async.execute
     // CHECK-SAME:    [[T7]]
-    // CHECK-SAME:    ([[R7]] as [[ARG1:%.*]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>)
+    // CHECK-SAME:    ([[R7]] as [[ARG1:%.+]]: !async.value<!VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>>)
     // CHECK:        VPUIP.NNDMA
     // CHECK-SAME:     inputs([[ARG1]] : !VPUIP.DistributedBuffer<1x64x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:     outputs([[BUF6]] : memref<1x64x64x64xf16, #NHWC, @DDR>)
@@ -1811,21 +1811,21 @@ func.func @main(%in0: memref<1x32x48x48xf16, #NHWC>, %in1: memref<1x32x48x48xf16
     %end_vp2 = async.await %r_out_vp2 : !async.value<memref<1x32x48x48xf16, #NHWC>>
     return %end_vp1, %end_vp2 : memref<1x32x48x48xf16, #NHWC>, memref<1x32x48x48xf16, #NHWC>
 
-    // CHECK:       [[T0:%.*]], [[R0:%.*]] = async.execute
+    // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute
     // CHECK-SAME:      attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64,
     // CHECK-SAME:      cycleBegin = 0 : i64, cycleCost = 10 : i64, cycleEnd = 10 : i64}
 
-    // CHECK:       [[T1:%.*]], [[R1:%.*]] = async.execute
+    // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute
     // CHECK-SAME:      attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1], VPUIP.num_units = 1 : i64, "async-deps-index" = 1 : i64,
     // CHECK-SAME:      cycleBegin = 0 : i64, cycleCost = 10 : i64, cycleEnd = 10 : i64}
 
-    // CHECK:       [[T2:%.*]], [[R2:%.*]] = async.execute
+    // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
     // CHECK-SAME:      [[T0]]
     // CHECK-SAME:      [[R0]]
     // CHECK-SAME:      attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 2 : i64,
     // CHECK-SAME:      cycleBegin = 10 : i64, cycleCost = 40 : i64, cycleEnd = 50 : i64}
 
-    // CHECK:       [[T3:%.*]], [[R3:%.*]] = async.execute
+    // CHECK:       [[T3:%.+]], [[R3:%.+]] = async.execute
     // CHECK-SAME:      [[T2]]
     // CHECK-SAME:      [[R2]]
     // CHECK-SAME:      attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 3 : i64,
@@ -1833,7 +1833,7 @@ func.func @main(%in0: memref<1x32x48x48xf16, #NHWC>, %in1: memref<1x32x48x48xf16
 
     // Note: SHAVE_ACT above and NCE below execute during the same cycles
 
-    // CHECK:       [[T4:%.*]], [[R4:%.*]] = async.execute
+    // CHECK:       [[T4:%.+]], [[R4:%.+]] = async.execute
     // CHECK-SAME:      [[T1]], [[T2]]
     // CHECK-SAME:      [[R1]]
     // CHECK-SAME:      attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 4 : i64,
@@ -1841,19 +1841,19 @@ func.func @main(%in0: memref<1x32x48x48xf16, #NHWC>, %in1: memref<1x32x48x48xf16
 
     // Note: DPU above and DMA below execute during the same cycles
 
-    // CHECK:       [[T5:%.*]], [[R5:%.*]] = async.execute
+    // CHECK:       [[T5:%.+]], [[R5:%.+]] = async.execute
     // CHECK-SAME:      [[T3]]
     // CHECK-SAME:      [[R3]]
     // CHECK-SAME:      attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], VPUIP.num_units = 1 : i64, "async-deps-index" = 5 : i64,
     // CHECK-SAME:      cycleBegin = 80 : i64, cycleCost = 10 : i64, cycleEnd = 90 : i64}
 
-    // CHECK:       [[T6:%.*]], [[R6:%.*]] = async.execute
+    // CHECK:       [[T6:%.+]], [[R6:%.+]] = async.execute
     // CHECK-SAME:      [[T3]], [[T4]]
     // CHECK-SAME:      [[R4]]
     // CHECK-SAME:      attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 6 : i64,
     // CHECK-SAME:      cycleBegin = 90 : i64, cycleCost = 30 : i64, cycleEnd = 120 : i64}
 
-    // CHECK:       [[T7:%.*]], [[R7:%.*]] = async.execute
+    // CHECK:       [[T7:%.+]], [[R7:%.+]] = async.execute
     // CHECK-SAME:      [[T6]]
     // CHECK-SAME:      [[R6]]
     // CHECK-SAME:      attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], VPUIP.num_units = 1 : i64, "async-deps-index" = 7 : i64,

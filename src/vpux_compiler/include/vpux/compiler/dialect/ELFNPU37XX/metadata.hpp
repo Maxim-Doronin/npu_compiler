@@ -23,7 +23,7 @@ std::unique_ptr<elf::NetworkMetadata> constructMetadata(mlir::ModuleOp module, L
 void setResourceRequirement(mlir::ModuleOp moduleOp, elf::NetworkMetadata& metadata);
 
 elf::TensorRef createTensorRef(mlir::Value val, StringRef name);
-elf::TensorRef createTensorRef(vpux::NDTypeInterface type, StringRef name);
+elf::TensorRef createTensorRef(vpux::NDTypeInterface type, StringRef name, uint8_t flags = 0);
 
 elf::DType createDType(mlir::Type type);
 elf::OVNodeType createOVNodeType(mlir::Type type);

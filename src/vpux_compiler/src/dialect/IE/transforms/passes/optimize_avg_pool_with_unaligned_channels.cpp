@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
 #include <mlir/Support/LogicalResult.h>
@@ -98,9 +99,12 @@ bool AvgPoolToConv::isEligibleConvertAvgPoolToConv(IE::AvgPoolOp origOp) const {
     const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
     const auto SX = strides[Dims4D::Strides::X.ind()];
     const auto SY = strides[Dims4D::Strides::Y.ind()];
+    const auto padLeft = padBegin[Dims4D::PadsBegin::Left.ind()];
+    const auto padRight = padEnd[Dims4D::PadsEnd::Right.ind()];
 
     // Ensure strides of converted Convolution can be folded
-    if (!IE::isEligibleToFoldStrideKernel(inputType, outputType, KX, SX, SY, alignment, alignment, _log)) {
+    if (!IE::isEligibleToFoldStrideKernel(inputType, outputType, KX, SX, SY, alignment, alignment, padLeft, padRight,
+                                          _log)) {
         return false;
     }
 
@@ -151,13 +155,13 @@ mlir::LogicalResult AvgPoolToConv::matchAndRewrite(IE::AvgPoolOp origOp, mlir::P
     auto reorderFilter = rewriter.createOrFold<IE::ReorderOp>(origOp->getLoc(), reorderType, filter, orderMap);
 
     const auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
-    auto newConv = rewriter.create<IE::ConvolutionOp>(
-            origOp.getLoc(), origOp.getOutput().getType(), origOp.getInput(), reorderFilter, nullptr,
+    auto newConvResult = rewriter.createOrFold<IE::ConvolutionOp>(
+            origOp.getLoc(), origOp.getOutput().getType(), origOp.getInput(), reorderFilter, nullptr, /*scale*/ nullptr,
             origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), dilations,
             origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
             origOp.getInputPaddingAttr());
 
-    rewriter.replaceOp(origOp, newConv);
+    rewriter.replaceOp(origOp, newConvResult);
 
     _log.nest().trace("[{0}] Successfully convert AvgPool to Conv", getDebugName());
 
@@ -186,9 +190,7 @@ void OptimizeAvgPoolWithUnalignedChannelsPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<AvgPoolToConv>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 }  // namespace
 

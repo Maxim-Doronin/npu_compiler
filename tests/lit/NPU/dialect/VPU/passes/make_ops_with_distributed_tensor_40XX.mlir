@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1102,90 +1102,6 @@ func.func @FloorSWClustering(%arg0: tensor<1x1x1x513xf16>) -> tensor<1x1x1x513xf
 // CHECK-SAME{LITERAL}:                                     -> tensor<1x1x1x513xf16>
 // CHECK:               return [[OUT_CP]] : tensor<1x1x1x513xf16>
 
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateClustering
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateClustering(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-
-// CHECK:               [[LHS_CP:%.+]] = VPU.UnrolledType([[LHS]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-// CHECK-SAME{LITERAL}:                                     -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK:               [[RHS_CP:%.+]] = VPU.UnrolledType([[RHS]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-// CHECK-SAME{LITERAL}:                                     -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK:               [[LHS_SCALES_CP:%.+]] = VPU.UnrolledType([[LHS_SCALES]] : tensor<1x64x1x1xf16, {order = #NHWC}>
-// CHECK-SAME{LITERAL}:                                     -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK:               [[RHS_SCALES_CP:%.+]] = VPU.UnrolledType([[RHS_SCALES]] : tensor<1x64x1x1xf16, {order = #NHWC}>
-// CHECK-SAME{LITERAL}:                                     -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK:               [[OUT_ACC:%.+]] = VPU.Accumulate([[LHS_CP]], [[RHS_CP]], [[LHS_SCALES_CP]], [[RHS_SCALES_CP]]) : !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>,
-// CHECK-SAME{LITERAL}:                                     !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>,
-// CHECK-SAME{LITERAL}:                                     !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>,
-// CHECK-SAME{LITERAL}:                                     !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     emory_shapes = [[1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1], [1, 64, 1, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK-SAME{LITERAL}:                                     -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK:               [[OUT_CP:%.+]] = VPU.UnrolledType([[OUT_ACC]] : !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
-// CHECK-SAME{LITERAL}:                                     compute_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-// CHECK-SAME{LITERAL}:                                     memory_shapes = [[1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1], [1, 64, 16, 1]],
-// CHECK-SAME{LITERAL}:                                     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-// CHECK-SAME{LITERAL}:                                     -> tensor<1x64x16x1xf16, {order = #NHWC}>
-// CHECK:               return [[OUT_CP]] : tensor<1x64x16x1xf16, {order = #NHWC}>
 }
 
 // -----
@@ -2804,3 +2720,95 @@ func.func private @main_vf2(%arg0: tensor<1x512x1x3000xf16, {order = #NHWC}>) ->
 // CHECK:  [[UNROLLED_CONV1:%.+]] = VPU.UnrolledType([[CONV_1]] : !VPU.DistributedTensor<1x256x1x3000xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED"
 // CHECK:  [[CONCAT:%.+]] = VPU.Concat([[UNROLLED_CONV0]], [[UNROLLED_CONV1]])
 // CHECK:  return [[CONCAT]] : tensor<1x512x1x3000xf16, {order = #NHWC}>
+
+// -----
+
+// CHECK-LABEL: func.func @MaxPool8SOB
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<4x1x334x667xf16>
+func.func @MaxPool8SOB(%arg0: tensor<4x1x334x667xf16>) -> (tensor<4x1x167x334xf16>, tensor<4x1x167x334xsi32>) {
+    %output, %output_index = VPU.MaxPool8(%arg0) {axis = 0 : i64, dilations = [1, 1], index_element_type = si32,
+            initial_input_dims_attr = [4, 1, 667, 667], initial_input_offset_attr = [0, 0, 0, 0],
+            initial_output_dims_attr = [4, 1, 334, 334], initial_output_offset_attr = [0, 0, 0, 0],
+            kernel_size = [3, 3], multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverBatch>,
+            pads_begin = [1, 1], pads_end = [0, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]}
+            : tensor<4x1x334x667xf16> -> tensor<4x1x167x334xf16>, tensor<4x1x167x334xsi32>
+    return %output, %output_index : tensor<4x1x167x334xf16>, tensor<4x1x167x334xsi32>
+
+    // CHECK:       [[DATA:%.+]] = VPU.UnrolledType([[INPUT_0]] : tensor<4x1x334x667xf16>)
+    // CHECK-SAME:          -> !VPU.DistributedTensor<4x1x334x667xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:         compute_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:         compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]],
+    // CHECK-SAME{LITERAL}:         memory_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]]}>
+    // CHECK:       [[MAXPOOL8:%.+]], [[MAXPOOL8_INDEX:%.+]] = VPU.MaxPool8([[DATA]]) {
+    // CHECK-SAME:        axis = 0 : i64, dilations = [1, 1], index_element_type = si32,
+    // CHECK-SAME:        initial_input_dims_attr = [4, 1, 667, 667], initial_input_offset_attr = [0, 0, 0, 0],
+    // CHECK-SAME:        initial_output_dims_attr = [4, 1, 334, 334], initial_output_offset_attr = [0, 0, 0, 0],
+    // CHECK-SAME:        kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [0, 1],
+    // CHECK-SAME:        rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} :
+    // CHECK-SAME:        !VPU.DistributedTensor<4x1x334x667xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:        compute_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]],
+    // CHECK-SAME{LITERAL}:        memory_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]]}> ->
+    // CHECK-SAME:        !VPU.DistributedTensor<4x1x167x334xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:        compute_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]],
+    // CHECK-SAME{LITERAL}:        memory_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]]}>,
+    // CHECK-SAME:        !VPU.DistributedTensor<4x1x167x334xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:        compute_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]],
+    // CHECK-SAME{LITERAL}:        memory_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0]]}>
+    // CHECK:       [[OUT0:%.+]] = VPU.UnrolledType([[MAXPOOL8]]
+    // CHECK:       [[OUT1:%.+]] = VPU.UnrolledType([[MAXPOOL8_INDEX]]
+
+    // CHECK:       return [[OUT0]], [[OUT1]] : tensor<4x1x167x334xf16>, tensor<4x1x167x334xsi32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @MaxPool8AssignedSOK
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x4x334x667xf16>
+func.func @MaxPool8AssignedSOK(%arg0: tensor<1x4x334x667xf16>) -> (tensor<1x4x167x334xf16>, tensor<1x4x167x334xsi32>) {
+    %output, %output_index = VPU.MaxPool8(%arg0) {axis = 0 : i64, dilations = [1, 1], index_element_type = si32,
+            initial_input_dims_attr = [1, 4, 667, 667], initial_input_offset_attr = [0, 0, 0, 0],
+            initial_output_dims_attr = [1, 4, 334, 334], initial_output_offset_attr = [0, 0, 0, 0],
+            kernel_size = [3, 3], multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+            pads_begin = [1, 1], pads_end = [0, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]}
+            : tensor<1x4x334x667xf16> -> tensor<1x4x167x334xf16>, tensor<1x4x167x334xsi32>
+    return %output, %output_index : tensor<1x4x167x334xf16>, tensor<1x4x167x334xsi32>
+
+    // CHECK:       [[DATA:%.+]] = VPU.UnrolledType([[INPUT_0]] : tensor<1x4x334x667xf16>)
+    // CHECK-SAME:          -> !VPU.DistributedTensor<1x4x334x667xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:         compute_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:         compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]],
+    // CHECK-SAME{LITERAL}:         memory_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}>
+    // CHECK:       [[MAXPOOL8:%.+]], [[MAXPOOL8_INDEX:%.+]] = VPU.MaxPool8([[DATA]]) {
+    // CHECK-SAME:        axis = 0 : i64, dilations = [1, 1], index_element_type = si32,
+    // CHECK-SAME:        initial_input_dims_attr = [1, 4, 667, 667], initial_input_offset_attr = [0, 0, 0, 0],
+    // CHECK-SAME:        initial_output_dims_attr = [1, 4, 334, 334], initial_output_offset_attr = [0, 0, 0, 0],
+    // CHECK-SAME:        kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [0, 1],
+    // CHECK-SAME:        rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} :
+    // CHECK-SAME:        !VPU.DistributedTensor<1x4x334x667xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:        compute_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]],
+    // CHECK-SAME{LITERAL}:        memory_shapes = [[1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667], [1, 1, 334, 667]],
+    // CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}> ->
+    // CHECK-SAME:        !VPU.DistributedTensor<1x4x167x334xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:        compute_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]],
+    // CHECK-SAME{LITERAL}:        memory_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}>,
+    // CHECK-SAME:        !VPU.DistributedTensor<1x4x167x334xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64,
+    // CHECK-SAME{LITERAL}:        compute_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]],
+    // CHECK-SAME{LITERAL}:        memory_shapes = [[1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334], [1, 1, 167, 334]],
+    // CHECK-SAME{LITERAL}:        memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}>
+    // CHECK:       [[OUT0:%.+]] = VPU.UnrolledType([[MAXPOOL8]]
+    // CHECK:       [[OUT1:%.+]] = VPU.UnrolledType([[MAXPOOL8_INDEX]]
+
+    // CHECK:       return [[OUT0]], [[OUT1]] : tensor<1x4x167x334xf16>, tensor<1x4x167x334xsi32>
+}

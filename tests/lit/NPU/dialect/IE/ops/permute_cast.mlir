@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -42,9 +42,9 @@ func.func @FusePermuteCasts(%arg0: tensor<1x1000x1x1xf32>, %arg1: tensor<1x1000x
 
     // CHECK-NOT: IE.PermuteCast
     // CHECK-NOT: IE.PermuteCast
-    // CHECK:     %[[VAL_0:.*]] = IE.PermuteCast(%arg0) {dst_order = #NCHW, mem_perm = #NWHC} : tensor<1x1000x1x1xf32> -> tensor<1x1x1x1000xf32>
-    // CHECK:     %[[VAL_1:.*]] = IE.PermuteCast(%arg1) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x1000x1x1xf32, {order = #NHWC}> -> tensor<1x1x1000x1xf32>
-    // CHECK:     return %[[VAL_0]], %[[VAL_1]] : tensor<1x1x1x1000xf32>, tensor<1x1x1000x1xf32>
+    // CHECK:     [[VAL_0:%.+]] = IE.PermuteCast(%arg0) {dst_order = #NCHW, mem_perm = #NWHC} : tensor<1x1000x1x1xf32> -> tensor<1x1x1x1000xf32>
+    // CHECK:     [[VAL_1:%.+]] = IE.PermuteCast(%arg1) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x1000x1x1xf32, {order = #NHWC}> -> tensor<1x1x1000x1xf32>
+    // CHECK:     return [[VAL_0]], [[VAL_1]] : tensor<1x1x1x1000xf32>, tensor<1x1x1000x1xf32>
 }
 
 // -----
@@ -61,8 +61,8 @@ func.func @FuseMemPermAndPermCast(%arg0: tensor<1x1000x1x1xf32, {order = #NHWC}>
         tensor<1x1x1000x1xf32, {order = #NHWC}> -> tensor<1x1x1000x1xf32>
     return %1 : tensor<1x1x1000x1xf32>
 
-    // CHECK:     %[[VAL_0:.*]] = IE.PermuteCast(%arg0) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x1000x1x1xf32, {order = #NHWC}> -> tensor<1x1x1000x1xf32>
-    // CHECK:     return %[[VAL_0]] : tensor<1x1x1000x1xf32>
+    // CHECK:     [[VAL_0:%.+]] = IE.PermuteCast(%arg0) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x1000x1x1xf32, {order = #NHWC}> -> tensor<1x1x1000x1xf32>
+    // CHECK:     return [[VAL_0]] : tensor<1x1x1000x1xf32>
 }
 
 // -----

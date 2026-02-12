@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -109,15 +109,15 @@ def VPU_NCEConvolutionOp :
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weightsTable,
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_data_ptr,
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_sp_ptr,
-        Optional<AnyTypeOf<[4DTensorOf<[F32, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
+        Optional<AnyTypeOf<[4DTensorOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
         Optional<AnyTypeOf<[4DTensorOf<[F32]>, VPU_DistributedTensor]>>:$weight_table_bias,
         Optional<AnyTypeOf<[4DTensorOf<[I8, I4]>, VPU_DistributedTensor]>>:$weight_zero_points,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
-        VPU_PPEAttr:$ppe,
-        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
+        VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
 
@@ -254,15 +254,15 @@ def VPU_NCEMatMulOp :
         Optional<AnyTypeOf<[5DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weightsTable,
         Optional<AnyTypeOf<[5DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_data_ptr,
         Optional<AnyTypeOf<[5DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_sp_ptr,
-        Optional<AnyTypeOf<[5DTensorOf<[F32, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
+        Optional<AnyTypeOf<[5DTensorOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
         Optional<AnyTypeOf<[5DTensorOf<[F32]>, VPU_DistributedTensor]>>:$weight_table_bias,
         Optional<AnyTypeOf<[5DTensorOf<[I8, I4]>, VPU_DistributedTensor]>>:$weight_zero_points,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
-        VPU_PPEAttr:$ppe,
-        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
+        VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
         ConfinedAttr<I64ArrayAttr, [ArrayCount<5>]>:$rawFilterShape,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
@@ -344,14 +344,14 @@ def VPU_NCEDepthConvolutionOp :
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weightsTable,
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_data_ptr,
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_sp_ptr,
-        Optional<AnyTypeOf<[4DTensorOf<[F32, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
+        Optional<AnyTypeOf<[4DTensorOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
         Optional<AnyTypeOf<[4DTensorOf<[F32]>, VPU_DistributedTensor]>>:$weight_table_bias,
         Optional<AnyTypeOf<[4DTensorOf<[I8, I4]>, VPU_DistributedTensor]>>:$weight_zero_points,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
 
@@ -425,8 +425,10 @@ def VPU_NCECompressConvolutionOp :
                                                                      "doesLayerFitIntoCMX",
                                                                      "doesLayerChangeOutputAlignmentFitIntoCMX",
                                                                      "getDistributedTypeForOpOperand"]>,
-                DeclareOpInterfaceMethods<VPU_SparseOpInterface>
-            ]
+                DeclareOpInterfaceMethods<VPU_SparseOpInterface>,
+                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
+]
         > {
     let summary = "NCE version of Compressed Convolution layer";
 
@@ -443,7 +445,7 @@ def VPU_NCECompressConvolutionOp :
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
 
@@ -517,7 +519,7 @@ def VPU_NCEMaxPoolOp :
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -587,7 +589,7 @@ def VPU_NCEAveragePoolOp :
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -655,7 +657,7 @@ def VPU_NCEEltwiseOp :
 
         VPU_EltwiseTypeAttr:$op_type,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<BoolAttr>:$is_inplace,
@@ -729,7 +731,7 @@ def VPU_NCEReduceOp :
         AnyTypeOf<[4DTensorOf<[F16, BF16, quant_QuantizedType]>, VPU_DistributedTensor]>:$input,
         I64ArrayAttr:$axes,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
         VPU_ReduceTypeAttr:$op_type,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -802,7 +804,7 @@ def VPU_NCEPermuteOp :
         IntAttr:$expandedChannels,
         TypeAttr:$dstElemType,
         AffineMapAttr:$dstOrder,
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
@@ -839,10 +841,10 @@ def VPU_NCEInterpolateOp :
         VPU_LayerOp<
             "NCE.Interpolate",
             [
+                AttrSizedOperandSegments,
                 NoRegionArguments,
                 NoTerminator,
                 SingleBlock,
-                SameVariadicOperandSize,
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface, ["isOperationSplitOverHeightCompatible",
                                                                      "isOperationSplitOverWidthCompatible",
@@ -859,10 +861,15 @@ def VPU_NCEInterpolateOp :
         AnyTypeOf<[VPU_SparseTensor, VPU_DistributedTensor]>:$input,
         Optional<AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor, VPU_DistributedTensor]>>:$weights,
         Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weightsTable,
+        Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_data_ptr,
+        Optional<AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>>:$weight_table_sp_ptr,
+        Optional<AnyTypeOf<[4DTensorOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
+        Optional<AnyTypeOf<[4DTensorOf<[F32]>, VPU_DistributedTensor]>>:$weight_table_bias,
+        Optional<AnyTypeOf<[4DTensorOf<[I8, I4]>, VPU_DistributedTensor]>>:$weight_zero_points,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
 
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<VPU_NCEInterpolateModeAttr>:$mode
@@ -880,6 +887,11 @@ def VPU_NCEInterpolateOp :
         `(` $input
             (`,` $weights^ `` custom<OptionalTypes>(type($weights)))?
             (`,` $weightsTable^ `` custom<OptionalTypes>(type($weightsTable)))?
+            (`,` $weight_table_data_ptr^ `` custom<OptionalTypes>(type($weight_table_data_ptr)))?
+            (`,` $weight_table_sp_ptr^ `` custom<OptionalTypes>(type($weight_table_sp_ptr)))?
+            (`,` $weight_table_scale^ `` custom<OptionalTypes>(type($weight_table_scale)))?
+            (`,` $weight_table_bias^ `` custom<OptionalTypes>(type($weight_table_bias)))?
+            (`,` $weight_zero_points^ `` custom<OptionalTypes>(type($weight_zero_points)))?
         `)`
         attr-dict
         custom<OptionalTypes>(type($input)) ``
@@ -953,7 +965,7 @@ def VPU_StorageElementTableOp :
         TypeAttr:$dataElemType,
         I64ArrayAttr:$seSize,
         IntAttr:$seDepth,
-        OptionalAttr<VPU_SEAttr>:$seAttr,
+        OptionalAttr<VPU_SEAttrInterface>:$seAttr,
         OptionalAttr<I64ArrayAttr>:$dataStrides,
         OptionalAttr<I32ElementsAttr>:$basePtrs
     );
@@ -1021,6 +1033,43 @@ def VPU_PopulateWeightTableOp :
         )>
     ];
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
+
+def VPU_ZeroPointTableOp :
+        VPU_Op<
+            "ZeroPointTable",
+            [Pure]
+        > {
+    let summary = "Operation which helps to create zero-point table.";
+
+    let description = [{
+        This operation creates a zero-point table that will be converted to a constant in VPUIP dialect.
+        It holds the zero-point values and metadata needed to generate
+        the actual zero-point table data based on workload information.
+
+        The operation is populated by CreateNewWeightTablesData pass.
+
+        Arguments:
+        - weightsElemType: The element type of the weights tensor (e.g., !quant.uniform<i8:f16:0 ... >).
+          This determines the format and size of zero-point values in the table.
+        - workloadSizes: Optional array of channel counts extracted from each workload in the
+          associated NCE operation. Used to properly size and align the zero-point table entries.
+        - zeroPointTableData: Optional array containing the generated zero-point table data.
+    }];
+
+    let arguments = (ins
+        TypeAttr:$weightsElemType,
+        OptionalAttr<I64ArrayAttr>:$workloadSizes,
+        OptionalAttr<I64ArrayAttr>:$zeroPointTableData
+    );
+
+    let results = (outs
+        AnyTypeOf<[4DTensorOf<[I8]>, VPU_DistributedTensor]>:$output
+    );
+
+    let assemblyFormat = [{
+        attr-dict `->` type(results)
+    }];
 }
 
 #endif

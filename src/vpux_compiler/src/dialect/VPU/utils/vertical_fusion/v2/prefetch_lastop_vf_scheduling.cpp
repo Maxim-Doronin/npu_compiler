@@ -46,7 +46,8 @@ VFScenario PrefetchingLastOpVFScheduling::getType() const {
 
 void PrefetchingLastOpVFScheduling::correctInputPrefetchingCost(
         StrategyCost& prefetchCost, mlir::Operation* operation, VFConfig& config,
-        const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, const size_t index) const {
+        const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, SmallVector<StrategyCost>& prefetchCostList,
+        const size_t index) const {
     StrategyCost parentCost = 0;
     const auto isInput = llvm::find(config.getInputs(), operation) != config.getInputs().end();
     VPUX_THROW_WHEN(config.getOutputs().empty(), "Cannot find outputs for VF {0}", config.getSubgraph());
@@ -59,10 +60,15 @@ void PrefetchingLastOpVFScheduling::correctInputPrefetchingCost(
         auto foundCost = isolatedOperCost.find(lastOp);
         VPUX_THROW_WHEN(foundCost == isolatedOperCost.end(), "Cannot find the cost for {0}", *lastOp);
         parentCost = foundCost->second;
-        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, index - 1);
+
+        VPUX_THROW_WHEN(index - 1 >= prefetchCostList.size(), "Index {0} out of range for prefetchCostList of size {1}",
+                        index - 1, prefetchCostList.size());
+        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, prefetchCostList[index - 1]);
     } else {
         parentCost = getParentCost(operation, isolatedOperCost);
-        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, index);
+        VPUX_THROW_WHEN(index >= prefetchCostList.size(), "Index {0} out of range for prefetchCostList of size {1}",
+                        index, prefetchCostList.size());
+        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, prefetchCostList[index]);
     }
 
     prefetchCost = parentCost <= prefetchCost ? prefetchCost - parentCost : 0;

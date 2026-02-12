@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -210,6 +210,7 @@ TEST_F(MLIR_VPU_doesTopKLayerFitIntoCMX, TopKdoesNotFitCMX) {
         EXPECT_EQ(doesLayerFitIntoCMX, false);
     });
 }
+
 using MLIR_VPU_IsSupportedTileSize = vpux::VPU::arch40xx::UnitTest;
 
 TEST_F(MLIR_VPU_IsSupportedTileSize, UpsamlingSEP) {

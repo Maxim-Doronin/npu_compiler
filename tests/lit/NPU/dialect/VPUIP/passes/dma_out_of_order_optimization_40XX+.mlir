@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,10 +19,10 @@ func.func @DMAOutOfOrderOptimization() -> !type_DDR {
     %output = VPURT.DeclareBuffer <DDR> <49152> -> !type_DDR
 
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf1 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf1 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
     }
     return %output : !type_DDR
 
@@ -48,10 +48,10 @@ func.func @NoDMAOutOfOrderOptimizationDueToMemOverlap() -> !type_DDR {
     %output = VPURT.DeclareBuffer <DDR> <49152> -> !type_DDR
 
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%input : !type_DDR) outputs(%buf: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input : !type_DDR) outputs(%buf: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
     }
     return %output : !type_DDR
 
@@ -79,13 +79,13 @@ func.func @NoDMAOutOfOrderOptimizationOn3rdTaskDueToMemOverlapWith1stTask() -> !
     %output = VPURT.DeclareBuffer <DDR> <73728> -> !type_DDR
 
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf1 : !type_DDR) outputs(%buf2: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf1 : !type_DDR) outputs(%buf2: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf0 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
     }
     return %output : !type_DDR
 
@@ -118,16 +118,16 @@ func.func @DMAOutOfOrderOptimizationOn4thTaskEvenWithMemOverlapWith1stTask() -> 
     %output = VPURT.DeclareBuffer <DDR> <122880> -> !type_DDR
 
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf1 : !type_DDR) outputs(%buf2: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf1 : !type_DDR) outputs(%buf2: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf3 : !type_DDR) outputs(%buf4: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf3 : !type_DDR) outputs(%buf4: !type_DDR) -> !type_DDR
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf0 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
     }
     return %output : !type_DDR
 
@@ -162,10 +162,10 @@ func.func @ParallelDMAOutOfOrderOptimization() -> !type_DDR {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task waits(%bar0: !VPURT.Barrier) {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input : !type_DDR) outputs(%buf0: !type_DDR) -> !type_DDR
     }
     VPURT.Task waits(%bar0: !VPURT.Barrier) {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf1 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf1 : !type_DDR) outputs(%output: !type_DDR) -> !type_DDR
     }
     return %output : !type_DDR
 
@@ -196,10 +196,10 @@ func.func @NoDMAOutOfOrderOptimizationDueToMemOverlapWithDUPLICATEDBuffer() -> m
     %outbuf1 = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x128xf16, [@CMX_NN, 0]>
 
     VPURT.Task {
-      %0 = VPUIP.ConvertDMA {channelType = 1 : i64, port = 0 : i64} inputs(%inbuf0 : memref<1x1x1x128xf32, [@CMX_NN, 0]>) outputs(%outbuf0 : !type_CMX_DUPLICATED) -> !type_CMX_DUPLICATED
+      %0 = VPUIP.ConvertDMA {channelType = 1 : i64} <{port = 0 : i64}> inputs(%inbuf0 : memref<1x1x1x128xf32, [@CMX_NN, 0]>) outputs(%outbuf0 : !type_CMX_DUPLICATED) -> !type_CMX_DUPLICATED
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {channelType = 1 : i64, port = 0 : i64} inputs(%inbuf1 : memref<1x128xf16, [@CMX_NN, 0]>) outputs(%outbuf1 : memref<1x128xf16, [@CMX_NN, 0]>) -> memref<1x128xf16, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA {channelType = 1 : i64} <{port = 0 : i64}> inputs(%inbuf1 : memref<1x128xf16, [@CMX_NN, 0]>) outputs(%outbuf1 : memref<1x128xf16, [@CMX_NN, 0]>) -> memref<1x128xf16, [@CMX_NN, 0]>
     }
 
     return %outbuf1 : memref<1x128xf16, [@CMX_NN, 0]>
@@ -227,10 +227,10 @@ func.func @NoGatherDMAOutOfOrderOptimizationDueToIndicesMemOverlap() -> !type_CM
     %output = VPURT.DeclareBuffer <CMX_NN> [0] <10000> -> !type_CMX
 
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%indices : !indices_type_DDR) outputs(%indices_cmx: !indices_type_CMX) -> !indices_type_CMX
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%indices : !indices_type_DDR) outputs(%indices_cmx: !indices_type_CMX) -> !indices_type_CMX
     }
     VPURT.Task {
-      %0 = VPUIP.GatherDMA {channelType = 0 : i64, elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64}
+      %0 = VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64}>
                 inputs(%input : !type_DDR) indices(%indices_cmx : !indices_type_CMX)
                 outputs(%output : !type_CMX) -> !type_CMX
     }

@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2025 Intel Corporation
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache 2.0
 
 cmake_minimum_required(VERSION 3.20)
@@ -49,20 +49,20 @@ set(kernels_to_build)
 add_custom_target(act_shave_kernels_build)
 add_custom_target(act_shave_kernels_asm)
 
-if(NOT DEFINED MV_TOOLS_PATH AND DEFINED ENV{MV_TOOLS_DIR} AND DEFINED ENV{MV_TOOLS_VERSION})
-    set(MV_TOOLS_PATH $ENV{MV_TOOLS_DIR}/$ENV{MV_TOOLS_VERSION})
-endif()
+if(build_kernels)
+    if(NOT DEFINED MV_TOOLS_PATH AND DEFINED ENV{MV_TOOLS_DIR} AND DEFINED ENV{MV_TOOLS_VERSION})
+        set(MV_TOOLS_PATH $ENV{MV_TOOLS_DIR}/$ENV{MV_TOOLS_VERSION})
+    endif()
 
-# Enable building kernels from separate build folder if needed
-if(ENABLE_MLIR_COMPILER AND build_kernels)
-  exists_mv_tools_version(available)
-  if(NOT available)
-    get_mv_tools()
-  endif()
+    # Enable building kernels from separate build folder if needed
+    exists_mv_tools_version(available)
+    if(NOT available)
+        get_mv_tools()
+    endif()
 
-  get_mv_tools_path(MV_TOOLS_PATH)
+    get_mv_tools_path(MV_TOOLS_PATH)
 else()
-  set(MV_TOOLS_PATH "$ENV{IE_NPU_MV_TOOLS_PATH}")
+    set(MV_TOOLS_PATH "$ENV{IE_NPU_MV_TOOLS_PATH}")
 endif()
 
 if(build_kernels)
@@ -178,6 +178,8 @@ foreach(kernel_descrip IN LISTS kernel_descrip_list)
   if(kernel_cpunum STREQUAL "3720" AND rt_kernel)
     continue()
   endif()
+
+
   # Skip kernel build if not enabled
   if((rt_kernel AND NOT ENABLE_MANAGEMENT_KERNEL_BUILD) OR
      (firmware_kernel AND NOT ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD) OR

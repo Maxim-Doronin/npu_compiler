@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,9 +10,6 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Types.h>
-
-void setCompileMethodDebatch(mlir::ModuleOp module);
-bool hasCompileMethodDebatch(mlir::ModuleOp module);
 
 //
 // Generated

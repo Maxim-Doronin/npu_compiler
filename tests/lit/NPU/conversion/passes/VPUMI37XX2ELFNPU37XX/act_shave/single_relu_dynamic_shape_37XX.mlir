@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,33 +44,33 @@ module @SimpleActivation attributes {config.arch = #config.arch_kind<NPU37XX>, c
   }
 }
 
-//CHECK: %[[VAL0:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL1:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL2:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL3:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL4:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL5:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL6:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL7:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL8:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL9:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL10:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL13:.*]] = VPUMI37XX.DeclareKernelText
-//CHECK: %[[VAL14:.*]] = VPUMI37XX.DeclareKernelArgs
-//CHECK: %[[VAL15:.*]] = VPUMI37XX.DeclareKernelEntry
-//CHECK: %[[VAL16:.*]] = VPUMI37XX.ActKernelRange
-//CHECK: %[[VAL18:.*]] = VPUMI37XX.KernelParams
-//CHECK: %[[VAL17:.*]] = VPUMI37XX.ActKernelInvocation
+//CHECK: [[VAL0:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL1:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL2:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL3:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL4:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL5:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL6:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL7:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL8:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL9:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL10:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL13:%.+]] = VPUMI37XX.DeclareKernelText
+//CHECK: [[VAL14:%.+]] = VPUMI37XX.DeclareKernelArgs
+//CHECK: [[VAL15:%.+]] = VPUMI37XX.DeclareKernelEntry
+//CHECK: [[VAL16:%.+]] = VPUMI37XX.ActKernelRange
+//CHECK: [[VAL18:%.+]] = VPUMI37XX.KernelParams
+//CHECK: [[VAL17:%.+]] = VPUMI37XX.ActKernelInvocation
 
-//CHECK: %[[BUILTIN_SYMTABSEC:.*]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
-//CHECK: %[[SYMTABSEC:.*]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.tasks")
+//CHECK: [[BUILTIN_SYMTABSEC:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
+//CHECK: [[SYMTABSEC:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.tasks")
 
-//CHECK-DAG: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection(%[[SYMTABSEC]])
-//CHECK-NEXT: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-NEXT: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
+//CHECK-DAG: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection([[SYMTABSEC]])
+//CHECK-NEXT: ELFNPU37XX.Reloc baseOp([[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-NEXT: ELFNPU37XX.Reloc baseOp([[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
 
-//CHECK-DAG: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection(%[[BUILTIN_SYMTABSEC]])
-//CHECK-NEXT: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-NEXT: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-NEXT: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-NEXT: ELFNPU37XX.Reloc baseOp(%[[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
+//CHECK-DAG: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection([[BUILTIN_SYMTABSEC]])
+//CHECK-NEXT: ELFNPU37XX.Reloc baseOp([[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-NEXT: ELFNPU37XX.Reloc baseOp([[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-NEXT: ELFNPU37XX.Reloc baseOp([[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-NEXT: ELFNPU37XX.Reloc baseOp([[VAL18]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>

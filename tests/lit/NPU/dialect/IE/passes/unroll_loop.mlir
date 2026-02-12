@@ -143,9 +143,7 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>) -> (ten
     }
     return %0#0, %0#1 : tensor<3x4x6x10xf32>, tensor<2x3x4x5xf32>
 
-    // CHECK-DAG:       [[CST1:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
-    // CHECK-DAG:       [[CST2:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
-    // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+    // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
 
     // CHECK:       [[SLICE0:%.+]] = IE.Slice [[ARG0]]
     // CHECK-SAME:      [0, 0, 0, 0] [1, 4, 6, 10] : tensor<3x4x6x10xf32> to tensor<1x4x6x10xf32>
@@ -154,23 +152,30 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>) -> (ten
     // CHECK:       [[SLICE2:%.+]] = IE.Slice [[ARG0]]
     // CHECK-SAME:      [2, 0, 0, 0] [1, 4, 6, 10] : tensor<3x4x6x10xf32> to tensor<1x4x6x10xf32>
 
-    // CHECK:       [[ADDSLICE0:%.+]] = IE.Add([[SLICE0]], [[CST0]])
+    // CHECK:       [[CST0:%.+]] = const.Declare tensor<1xf32> = dense<0.000000e+00> : tensor<1xf32>
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG1]], [[CST0]])
+    // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
+    // CHECK:       [[ADDSLICE0:%.+]] = IE.Add([[SLICE0]], [[CST]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
-    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG1]], [[CST1]])
+    // CHECK:       [[CST1:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ADD0]], [[CST1]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
 
-    // CHECK:       [[ADDSLICE1:%.+]] = IE.Add([[SLICE1]], [[CST0]])
+    // CHECK:       [[ADDSLICE1:%.+]] = IE.Add([[SLICE1]], [[CST]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
+
+    // CHECK-DAG:       [[CST2:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
 
     // CHECK:       [[ADD2:%.+]] = IE.Add([[ADD1]], [[CST2]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
 
-    // CHECK:       [[ADDSLICE2:%.+]] = IE.Add([[SLICE2]], [[CST0]])
+    // CHECK:       [[ADDSLICE2:%.+]] = IE.Add([[SLICE2]], [[CST]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
@@ -216,10 +221,6 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>, %arg2: 
 
 }
 
-  // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
-  // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
-  // CHECK-DAG:       [[CST1:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
-
   // CHECK:       [[SLICE0:%.+]] = IE.Slice [[ARG0]]
   // CHECK-SAME:      [0, 0, 0, 0] [1, 4, 6, 10] : tensor<3x4x6x10xf32> to tensor<1x4x6x10xf32>
   // CHECK:       [[SLICE1:%.+]] = IE.Slice [[ARG0]]
@@ -227,27 +228,39 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>, %arg2: 
   // CHECK:       [[SLICE2:%.+]] = IE.Slice [[ARG0]]
   // CHECK-SAME:      [2, 0, 0, 0] [1, 4, 6, 10] : tensor<3x4x6x10xf32> to tensor<1x4x6x10xf32>
 
-  // CHECK:       [[ADDSLICE0:%.+]] = IE.Add([[SLICE0]], [[CST1]])
+
+
+  // CHECK:     [[CST:%.+]] = const.Declare tensor<1xf32> = dense<0.000000e+00> : tensor<1xf32>
+  // CHECK:     [[ADD1:%.+]] = IE.Add([[ARG2]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
+  // CHECK:     [[ADD2:%.+]] = IE.Add([[ARG1]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
+
+  // CHECK:       [[CST0:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+  // CHECK:       [[ADDSLICE0:%.+]] = IE.Add([[SLICE0]], [[CST0]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
-  // CHECK:       [[ADD4:%.+]] = IE.Add([[ARG2]], [[CST0]])
+  // CHECK:       [[CST1:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
+  // CHECK:       [[ADD4:%.+]] = IE.Add([[ADD1]], [[CST1]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
-  // CHECK:       [[ADD5:%.+]] = IE.Add([[ARG1]], [[CST0]])
+  // CHECK:       [[ADD5:%.+]] = IE.Add([[ADD2]], [[CST1]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
 
-  // CHECK:       [[ADDSLICE1:%.+]] = IE.Add([[SLICE1]], [[CST1]])
+  // CHECK:       [[CST2:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+  // CHECK:       [[ADDSLICE1:%.+]] = IE.Add([[SLICE1]], [[CST2]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
-  // CHECK:       [[ADD7:%.+]] = IE.Add([[ADD4]], [[CST]])
+
+  // CHECK:       [[CST3:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
+  // CHECK:       [[ADD7:%.+]] = IE.Add([[ADD4]], [[CST3]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
-  // CHECK:       [[ADD8:%.+]] = IE.Add([[ADD5]], [[CST]])
+  // CHECK:       [[ADD8:%.+]] = IE.Add([[ADD5]], [[CST3]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
 
-  // CHECK:       [[ADDSLICE2:%.+]] = IE.Add([[SLICE2]], [[CST1]])
+  // CHECK:       [[CST4:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+  // CHECK:       [[ADDSLICE2:%.+]] = IE.Add([[SLICE2]], [[CST4]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
@@ -290,10 +303,6 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>, %arg2: 
   return %0#0, %0#1, %0#2 : tensor<3x4x6x10xf32>, tensor<6x3x4x5xf32>, tensor<6x3x4x5xf32>
 }
 
-  // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
-  // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
-  // CHECK-DAG:       [[CST1:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
-
   // CHECK:       [[SLICE0:%.+]] = IE.Slice [[ARG0]]
   // CHECK-SAME:      [0, 0, 0, 0] [1, 4, 6, 10] : tensor<3x4x6x10xf32> to tensor<1x4x6x10xf32>
   // CHECK:       [[SLICE1:%.+]] = IE.Slice [[ARG0]]
@@ -301,37 +310,52 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<2x3x4x5xf32>, %arg2: 
   // CHECK:       [[SLICE2:%.+]] = IE.Slice [[ARG0]]
   // CHECK-SAME:      [2, 0, 0, 0] [1, 4, 6, 10] : tensor<3x4x6x10xf32> to tensor<1x4x6x10xf32>
 
-  // CHECK:       [[ADDSLICE0:%.+]] = IE.Add([[SLICE0]], [[CST1]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
-  // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
-  // CHECK:       [[ADD4:%.+]] = IE.Add([[ARG2]], [[CST0]])
+  // CHECK:       [[CST0:%.+]] = const.Declare tensor<1xf32> = dense<0.000000e+00> : tensor<1xf32>
+  // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG2]], [[CST0]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
-  // CHECK:       [[ADD5:%.+]] = IE.Add([[ARG1]], [[CST0]])
+  // CHECK:       [[ADD2:%.+]] = IE.Add([[ARG1]], [[CST0]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
 
-  // CHECK:       [[ADDSLICE1:%.+]] = IE.Add([[SLICE1]], [[CST1]])
+  // CHECK:       [[CST_SLICE0:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+  // CHECK:       [[ADDSLICE0:%.+]] = IE.Add([[SLICE0]], [[CST_SLICE0]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
-  // CHECK:       [[ADD7:%.+]] = IE.Add([[ARG2]], [[CST]])
+
+  // CHECK:       [[CST_PLUS1:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
+  // CHECK:       [[ADD3:%.+]] = IE.Add([[ARG2]], [[CST_PLUS1]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
-  // CHECK:       [[ADD8:%.+]] = IE.Add([[ARG1]], [[CST]])
+  // CHECK:       [[ADD4:%.+]] = IE.Add([[ARG1]], [[CST_PLUS1]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
 
-  // CHECK:       [[ADDSLICE2:%.+]] = IE.Add([[SLICE2]], [[CST1]])
+  // CHECK:       [[CST_SLICE1:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+  // CHECK:       [[ADDSLICE1:%.+]] = IE.Add([[SLICE1]], [[CST_SLICE1]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
+
+  // CHECK:       [[CST_PLUS2:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
+  // CHECK:       [[ADD5:%.+]] = IE.Add([[ARG2]], [[CST_PLUS2]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
+  // CHECK:       [[ADD6:%.+]] = IE.Add([[ARG1]], [[CST_PLUS2]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK-SAME:      : tensor<2x3x4x5xf32>, tensor<1xf32> -> tensor<2x3x4x5xf32>
+
+  // CHECK:       [[CST_SLICE2:%.+]] = const.Declare tensor<1x4x6x10xf32> = dense<1.000000e+00> : tensor<1x4x6x10xf32>
+  // CHECK:       [[ADDSLICE2:%.+]] = IE.Add([[SLICE2]], [[CST_SLICE2]])
   // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
   // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
   // CHECK:       [[CONCAT0:%.+]] = IE.Concat([[ADDSLICE0]], [[ADDSLICE1]], [[ADDSLICE2]])
   // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
   // CHECK-SAME:            : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<3x4x6x10xf32>
-  // CHECK:       [[CONCAT1:%.+]] = IE.Concat([[ARG1]], [[ADD5]], [[ADD8]])
+  // CHECK:       [[CONCAT1:%.+]] = IE.Concat([[ADD2]], [[ADD4]], [[ADD6]])
   // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
   // CHECK-SAME:            : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<6x3x4x5xf32>
-  // CHECK:       [[CONCAT2:%.+]] = IE.Concat([[ARG2]], [[ADD4]], [[ADD7]])
+  // CHECK:       [[CONCAT2:%.+]] = IE.Concat([[ADD1]], [[ADD3]], [[ADD5]])
   // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
   // CHECK-SAME:            : tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32>, tensor<2x3x4x5xf32> -> tensor<6x3x4x5xf32>
 
@@ -369,33 +393,32 @@ func.func @main(%arg0: tensor<1x5x3xsi32>) -> tensor<1x5x3xsi32> {
     }
     return %0 : tensor<1x5x3xsi32>
 
-  // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<1xsi32> = dense<2.000000e+00> : tensor<1xf32>, [#const.CastElemType<si32>]
-  // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<1xsi32> = dense<1.000000e+00> : tensor<1xf32>, [#const.CastElemType<si32>]
-  // CHECK-DAG:       [[CST1:%.+]] = const.Declare tensor<1x1x1xsi32> = dense<4> : tensor<1x1x1xsi32>
-  // CHECK-DAG:       [[CST2:%.+]] = const.Declare tensor<1xsi32> = dense<4> : tensor<1xsi32>
-  // CHECK-DAG:       [[CST3:%.+]] = const.Declare tensor<1xsi8> = dense<1> : tensor<1xsi8>
-  // CHECK-DAG:       [[CST4:%.+]] = const.Declare tensor<1xsi32> = dense<0.000000e+00> : tensor<1xf32>, [#const.CastElemType<si32>]
+  // CHECK:           [[CST_INCR:%.+]] = const.Declare tensor<1x1x1xsi32> = dense<4> : tensor<1x1x1xsi32>
+  // CHECK:           [[CST_BOUND:%.+]] = const.Declare tensor<1xsi32> = dense<4> : tensor<1xsi32>
+  // CHECK:           [[CST_EXEC:%.+]] = const.Declare tensor<1xsi8> = dense<1> : tensor<1xsi8>
+  // CHECK:           [[CST0:%.+]] = const.Declare tensor<1xf32> = dense<0.000000e+00> : tensor<1xf32>
+  // CHECK:           [[ZERO:%.+]] = IE.Convert([[CST0]]) {dstElemType = si32}
+  // CHECK-SAME:      : tensor<1xf32> -> tensor<1xsi32>
+  // CHECK:           [[LESS0:%.+]] = IE.Less([[ZERO]], [[CST_BOUND]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
+  // CHECK:           [[ADD0:%.+]] = IE.Add([[ARG0]], [[CST_INCR]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
 
-  // CHECK:           [[LESS0:%.+]] = IE.Less([[CST4]], [[CST2]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHECK-SAME:      tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
-  // CHECK:           [[ADD0:%.+]] = IE.Add([[ARG0]], [[CST1]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHECK-SAME:      tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
+  // CHECK:           [[CST1:%.+]] = const.Declare tensor<1xf32> = dense<1.000000e+00> : tensor<1xf32>
+  // CHECK:           [[ONE:%.+]] = IE.Convert([[CST1]]) {dstElemType = si32}
+  // CHECK-SAME:      : tensor<1xf32> -> tensor<1xsi32>
+  // CHECK:           [[LESS1:%.+]] = IE.Less([[ONE]], [[CST_BOUND]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
+  // CHECK:           [[ADD1:%.+]] = IE.Add([[ADD0]], [[CST_INCR]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
 
-  // CHECK:           [[LESS1:%.+]] = IE.Less([[CST0]], [[CST2]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHECK-SAME:      tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
-  // CHECK:           [[ADD1:%.+]] = IE.Add([[ADD0]], [[CST1]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHECK-SAME:      tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
-
-  // CHECK:           [[LESS2:%.+]] = IE.Less([[CST]], [[CST2]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHECK-SAME:      tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
-  // CHECK:           [[ADD2:%.+]] = IE.Add([[ADD1]], [[CST1]])
-  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
-  // CHECK-SAME:      tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
+  // CHECK:           [[CST2:%.+]] = const.Declare tensor<1xf32> = dense<2.000000e+00> : tensor<1xf32>
+  // CHECK:           [[TWO:%.+]] = IE.Convert([[CST2]]) {dstElemType = si32}
+  // CHECK-SAME:      : tensor<1xf32> -> tensor<1xsi32>
+  // CHECK:           [[LESS2:%.+]] = IE.Less([[TWO]], [[CST_BOUND]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xsi32>, tensor<1xsi32> -> tensor<1xi8>
+  // CHECK:           [[ADD2:%.+]] = IE.Add([[ADD1]], [[CST_INCR]])
+  // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x3xsi32>, tensor<1x1x1xsi32> -> tensor<1x5x3xsi32>
 
   // CHECK:           [[CONCAT0:%.+]] = IE.Concat([[LESS0]], [[LESS1]], [[LESS2]])
   // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
@@ -405,7 +428,7 @@ func.func @main(%arg0: tensor<1x5x3xsi32>) -> tensor<1x5x3xsi32> {
   // CHECK-SAME:            {per_axis = #IE.Concat<axis = 0 : i64>}
   // CHECK-SAME:            : tensor<1x5x3xsi32>, tensor<1x5x3xsi32>, tensor<1x5x3xsi32> -> tensor<3x5x3xsi32>
 
-  // CHECK:           [[LOOPSELECT:%.+]] = IE.LoopSelect([[CST3]], [[CONCAT0]], [[CONCAT1]])
+  // CHECK:           [[LOOPSELECT:%.+]] = IE.LoopSelect([[CST_EXEC]], [[CONCAT0]], [[CONCAT1]])
   // CHECK-SAME{LITERAL}:   {axis = 0 : i64, do_concat = false, stride = 1 : i64} :
   // CHECK-SAME:            tensor<1xsi8>, tensor<3xi8>, tensor<3x5x3xsi32> -> tensor<1x5x3xsi32>
 

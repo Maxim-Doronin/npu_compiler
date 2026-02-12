@@ -8,13 +8,10 @@
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/Builders.h>
-#include <mlir/IR/MLIRContext.h>
-#include <mlir/Pass/PassManager.h>
 
 namespace vpux {
 
 void addLogging(mlir::MLIRContext& ctx, Logger log);
-void addLogging(mlir::PassManager& pm, Logger log);
 
 class OpBuilderLogger final : public mlir::OpBuilder::Listener {
 public:

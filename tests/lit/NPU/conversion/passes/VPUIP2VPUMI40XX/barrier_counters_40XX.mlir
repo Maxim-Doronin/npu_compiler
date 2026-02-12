@@ -44,10 +44,10 @@ func.func private @barrier_counters(%arg0: memref<1x16x16x16xf16, #NHWC, @DDR>, 
     %m10 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x500xf32, [@CMX_NN, 0]>
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
+        %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b0 : !VPURT.Barrier) updates(%b1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
+        %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b1 : !VPURT.Barrier) updates(%b2 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %t0 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 33741 : i64, task_type = #VPUIP.nce_task_type<CONV>}
@@ -87,10 +87,10 @@ func.func private @barrier_counters(%arg0: memref<1x16x16x16xf16, #NHWC, @DDR>, 
 }
 }
 
-// CHECK: %0 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
-// CHECK: %1 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
-// CHECK: %2 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <2, -1> -> !VPURegMapped.Index<0:0:2>
-// CHECK: %3 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <3, -1> -> !VPURegMapped.Index<0:0:3>
+// CHECK: %0 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <0, -1> -> !VPURegMapped.Index<0:0:0>
+// CHECK: %1 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <1, -1> -> !VPURegMapped.Index<0:0:1>
+// CHECK: %2 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <2, -1> -> !VPURegMapped.Index<0:0:2>
+// CHECK: %3 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <3, -1> -> !VPURegMapped.Index<0:0:3>
 
 
 // -----
@@ -132,10 +132,10 @@ func.func private @barrier_counters(%arg0: memref<1x16x16x16xf16, #NHWC, @DDR>, 
     %m10 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x500xf32, [@CMX_NN, 0]>
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
+        %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b0 : !VPURT.Barrier) updates(%b1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
+        %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x1544xui8>) outputs(%m0 : memref<1x1x1x1544xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1544xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b1 : !VPURT.Barrier) updates(%b2 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %t0 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 33741 : i64, task_type = #VPUIP.nce_task_type<CONV>}
@@ -175,7 +175,7 @@ func.func private @barrier_counters(%arg0: memref<1x16x16x16xf16, #NHWC, @DDR>, 
 }
 }
 
-// CHECK: %0 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
-// CHECK: %1 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
-// CHECK: %2 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <2, -1> -> !VPURegMapped.Index<0:0:2>
-// CHECK: %3 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <3, -1> -> !VPURegMapped.Index<0:0:3>
+// CHECK: %0 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <0, -1> -> !VPURegMapped.Index<0:0:0>
+// CHECK: %1 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <1, -1> -> !VPURegMapped.Index<0:0:1>
+// CHECK: %2 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <2, -1> -> !VPURegMapped.Index<0:0:2>
+// CHECK: %3 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <3, -1> -> !VPURegMapped.Index<0:0:3>

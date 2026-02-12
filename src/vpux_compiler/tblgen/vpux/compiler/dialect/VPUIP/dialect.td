@@ -59,9 +59,9 @@ It handles such VPU-specifics as:
         static void setExecutorInstanceMask(mlir::async::ExecuteOp execOp, mlir::ArrayAttr executorInstanceMask);
         static llvm::StringLiteral getExecutorAttrName();
         static vpux::IndexedSymbolAttr getExecutor(mlir::async::ExecuteOp execOp);
-        static VPU::ExecutorKind getExecutorKind(mlir::async::ExecuteOp execOp);
+        static config::ExecutorKind getExecutorKind(mlir::async::ExecuteOp execOp);
         static bool hasExecutorInstanceMask(mlir::async::ExecuteOp execOp);
-        static bool isComputeExecutorKind(VPU::ExecutorKind executorKind);
+        static bool isComputeExecutorKind(config::ExecutorKind executorKind);
         static mlir::ArrayAttr getExecutorInstanceMask(mlir::async::ExecuteOp execOp);
 
         static void setupExtraInterfaces(mlir::DialectRegistry& registry);

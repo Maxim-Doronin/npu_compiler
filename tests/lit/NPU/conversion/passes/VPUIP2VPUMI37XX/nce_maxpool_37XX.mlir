@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,11 +43,11 @@ func.func private @maxpool_f16_f16(%arg0: memref<1x64x16x16xf16, #NHWC, @DDR>, %
 
 //CHECK-LABEL: @maxpool_f16_f16
 
-//CHECK: [[INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_INPUT:.*]]
-//CHECK: [[OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_OUTPUT:.*]]
-//CHECK: [[PARENT_INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_PARENT_INPUT:.*]]
-//CHECK: [[PARENT_OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_PARENT_OUTPUT:.*]]
-//CHECK: [[WEIGHT_TABLE:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> [[TYPE_WEIGHT_TABLE:.*]]
+//CHECK: [[INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_INPUT:.+]]
+//CHECK: [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_OUTPUT:.+]]
+//CHECK: [[PARENT_INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> [[TYPE_PARENT_INPUT:.+]]
+//CHECK: [[PARENT_OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE_PARENT_OUTPUT:.+]]
+//CHECK: [[WEIGHT_TABLE:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> [[TYPE_WEIGHT_TABLE:.+]]
 
 
 //CHECK-NOT: VPURT.Task

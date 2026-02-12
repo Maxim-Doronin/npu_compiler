@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,13 +17,13 @@ module @CallChain {
         %2 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         %3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %7 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
+            %7 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         }
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 0 : i64} inputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs(%0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %7 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs(%0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
     }
@@ -43,22 +43,22 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
     %call_1_barrier_done = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_0_barrier_done : !VPURT.Barrier) {
       %57 = func.call @cmx_declare_buffer(%farg0, %farg1) {debatched = [0, 2], reordering = 1} : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task waits(%call_0_barrier_done : !VPURT.Barrier) updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_1_barrier_done : !VPURT.Barrier) {
       %57 = func.call @cmx_declare_buffer(%farg0, %farg1) {debatched = [1, 2], reordering = 1} : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
@@ -69,25 +69,25 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
         // CHECK:  [[SLICE_0_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:  [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_0_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:  }
         // CHECK:  VPURT.Task waits([[SLICE_0_VAR_2]] : !VPURT.Barrier) updates([[UNKN_VAR:%.+]]: !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 1 : i64} inputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
+        // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:  }
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_0_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  }
         // CHECK:  [[SLICE_1_VAR_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 3]>
         // CHECK:   [[SLICE_1_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [4] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 4]>
         // CHECK:   [[SLICE_1_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 3]>) -> memref<1x3x64x64xf16, [@CMX_NN, 3]>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 3]>) -> memref<1x3x64x64xf16, [@CMX_NN, 3]>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 1 : i64} inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 3]>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 4]>) -> memref<1x3x64x64xf16, [@CMX_NN, 4]>
+        // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 3]>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 4]>) -> memref<1x3x64x64xf16, [@CMX_NN, 4]>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 4]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 4]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:   }
     // CHECK: return [[ARG0]] : tensor<2x3x64x64xf16>
 }
@@ -110,13 +110,13 @@ module @DoNotReorderCMX {
         %2 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         %3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %7 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
+            %7 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         }
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 0 : i64} inputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs(%0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %7 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs(%0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
     }
@@ -136,22 +136,22 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
     %call_1_barrier_done = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_0_barrier_done : !VPURT.Barrier) {
       %57 = func.call @cmx_declare_buffer(%farg0, %farg1) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task waits(%call_0_barrier_done : !VPURT.Barrier) updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_1_barrier_done : !VPURT.Barrier) {
       %57 = func.call @cmx_declare_buffer(%farg0, %farg1) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
@@ -162,25 +162,25 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
         // CHECK:  [[SLICE_0_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:  [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_0_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:  }
         // CHECK:  VPURT.Task waits([[SLICE_0_VAR_2]] : !VPURT.Barrier) updates([[UNKN_VAR:%.+]]: !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 1 : i64} inputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
+        // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:  }
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_0_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  }
         // CHECK:  [[SLICE_1_VAR_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:   [[SLICE_1_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:   [[SLICE_1_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 1 : i64} inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
+        // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) outputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:   }
     // CHECK: return [[ARG0]] : tensor<2x3x64x64xf16>
 }
@@ -291,22 +291,22 @@ func.func @cmx_iti_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x6
     %call_1_barrier_done = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_0_barrier_done : !VPURT.Barrier) {
       %57 = func.call @cmx_iti_buffer(%farg0, %farg1) {debatched = [0, 2], reordering = 1} : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task waits(%call_0_barrier_done : !VPURT.Barrier) updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_1_barrier_done : !VPURT.Barrier) {
       %57 = func.call @cmx_iti_buffer(%farg0, %farg1) {debatched = [1, 2], reordering = 1} : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
@@ -317,72 +317,72 @@ func.func @cmx_iti_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x6
         // CHECK:   [[SLICE_0_VAR_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <30720> -> !VPUIP.ITIBuffer<
         // CHECK:   1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 0],
         // CHECK:       inwardHaloRegions = [
-        // CHECK:           #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0 : i64>
+        // CHECK:           #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
         // CHECK:       ],
         // CHECK:       outwardHaloRegions = [
-        // CHECK:           #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:               #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1 : i64>
+        // CHECK:           #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:               #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1 : i64>
         // CHECK:           ]>
         // CHECK:   ]>
         // CHECK:   [[SLICE_0_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <30720> -> !VPUIP.ITIBuffer<
         // CHECK:     1x64x4x18xf16, {order = #NWCH}, [@CMX_NN, 1],
         // CHECK:     inwardHaloRegions = [
-        // CHECK:         #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*]]: i64>,
-        // CHECK:         #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*]]: i64>
+        // CHECK:         #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.+]]: i64>,
+        // CHECK:         #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.+]]: i64>
         // CHECK:     ],
         // CHECK:     outwardHaloRegions = [
-        // CHECK:         #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:             #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0 : i64>
+        // CHECK:         #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:             #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
         // CHECK:         ]>,
-        // CHECK:         #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:             #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 2 : i64>
+        // CHECK:         #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:             #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 2 : i64>
         // CHECK:         ]>
         // CHECK: ]>
         // CHECK:      [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>
         // CHECK:      [[SLICE_0_VAR_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>
         // CHECK:  VPURT.Task waits([[UNKN_BARRIER:%.+]] : !VPURT.Barrier) updates([[UNKN_BARRIER:%.+]] : !VPURT.Barrier) {
-        // CHECK:         [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask {[[NOT_IMPORTANT_MATCH:.*]]} input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) weights([[SLICE_0_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output([[SLICE_0_VAR_0]] : !VPUIP.ITIBuffer<
+        // CHECK:         [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask {[[NOT_IMPORTANT_MATCH:.+]]} input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) weights([[SLICE_0_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output([[SLICE_0_VAR_0]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 0],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1 : i64>
         // CHECK:          ]>
         // CHECK:  ]>) output_ITI_buff([[SLICE_0_VAR_1]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x18xf16, {order = #NWCH}, [@CMX_NN, 1],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1 : i64>,
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1 : i64>,
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
         // CHECK:          ]>,
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 2 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 2 : i64>
         // CHECK:          ]>
         // CHECK:  ]>) outputs([[SLICE_0_VAR_0]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 0],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1 : i64>
         // CHECK:          ]>
         // CHECK:  ]>) -> !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 0],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 1 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 1 : i64>
         // CHECK:          ]>
         // CHECK:  ]> variants : {
-        // CHECK:    DPUTask {cluster_id = 0 : i64, [[NOT_IMPORTANT_MATCH:.*]]}
+        // CHECK:    DPUTask {cluster_id = 0 : i64, [[NOT_IMPORTANT_MATCH:.+]]}
         // CHECK:  } PPE : {
         // CHECK:    PPETask {ppe = #VPU.PPEStub<>}
         // CHECK:  }
@@ -390,72 +390,72 @@ func.func @cmx_iti_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x6
         // CHECK:  [[SLICE_1_VAR_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <30720> -> !VPUIP.ITIBuffer<
         // CHECK:   1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 3],
         // CHECK:   inwardHaloRegions = [
-        // CHECK:       #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3 : i64>
+        // CHECK:       #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>
         // CHECK:   ],
         // CHECK:   outwardHaloRegions = [
-        // CHECK:       #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:           #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>
+        // CHECK:       #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:           #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>
         // CHECK:       ]>
         // CHECK:   ]>
         // CHECK:  [[SLICE_1_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [4] <30720> -> !VPUIP.ITIBuffer<
         // CHECK:    1x64x4x18xf16, {order = #NWCH}, [@CMX_NN, 4],
         // CHECK:    inwardHaloRegions = [
-        // CHECK:        #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>,
-        // CHECK:        #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>
+        // CHECK:        #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>,
+        // CHECK:        #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>
         // CHECK:    ],
         // CHECK:    outwardHaloRegions = [
-        // CHECK:        #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:            #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3 : i64>
+        // CHECK:        #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:            #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>
         // CHECK:        ]>,
-        // CHECK:        #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:            #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 5 : i64>
+        // CHECK:        #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:            #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 5 : i64>
         // CHECK:        ]>
         // CHECK:   ]>
         // CHECK:  [[SLICE_1_VAR_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>
         // CHECK:  [[SLICE_1_VAR_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]]: !VPURT.Barrier) updates([[UNKN_VAR:%.+]] : !VPURT.Barrier) {
-        // CHECK:  [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask {[[NOT_IMPORTANT_MATCH:.*]]} input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) weights([[SLICE_1_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_output([[SLICE_1_VAR_0]] : !VPUIP.ITIBuffer<
+        // CHECK:  [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask {[[NOT_IMPORTANT_MATCH:.+]]} input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) weights([[SLICE_1_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_output([[SLICE_1_VAR_0]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 3],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>
         // CHECK:          ]>
         // CHECK:  ]>) output_ITI_buff([[SLICE_1_VAR_1]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x18xf16, {order = #NWCH}, [@CMX_NN, 4],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>,
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>,
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>
         // CHECK:          ]>,
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 5 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 5 : i64>
         // CHECK:          ]>
         // CHECK:  ]>) outputs([[SLICE_1_VAR_0]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 3],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>
         // CHECK:          ]>
         // CHECK:  ]>) -> !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 3],
         // CHECK:      inwardHaloRegions = [
-        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3 : i64>
+        // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>
         // CHECK:      ],
         // CHECK:      outwardHaloRegions = [
-        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
-        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.*]], cluster_id = 4 : i64>
+        // CHECK:          #VPUIP.OutwardHaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3[[NOT_IMPORTANT_MATCH:.*inwardHaloRegions]] = [
+        // CHECK:              #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 4 : i64>
         // CHECK:          ]>
         // CHECK:  ]> variants : {
-        // CHECK:    DPUTask {cluster_id = 3 : i64, [[NOT_IMPORTANT_MATCH:.*]] : i64>}
+        // CHECK:    DPUTask {cluster_id = 3 : i64, [[NOT_IMPORTANT_MATCH:.+]] : i64>}
         // CHECK:  } PPE : {
         // CHECK:    PPETask {ppe = #VPU.PPEStub<>}
         // CHECK:  }
@@ -478,13 +478,13 @@ module @DDROffsetFromModuleForReorderingTest {
         %2 = VPURT.DeclareBuffer <DDR> <25002496> -> memref<1x3x64x64xf16, @DDR>
         %3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %7 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %7 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %7 = VPUIP.NNDMA {port = 0 : i64} inputs(%2 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %7 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%2 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
     }
@@ -504,22 +504,22 @@ func.func @ddr_decl_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x
     %call_1_barrier_done = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_0_barrier_done : !VPURT.Barrier) {
       %57 = func.call @ddr_decl_buffer(%farg0, %farg1) {debatched = [0, 2], reordering = 1} : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task waits(%call_0_barrier_done : !VPURT.Barrier) updates(%farg0_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 0 : i64} inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%filler0 : memref<1x3x64x64xf16, @DDR>) outputs(%farg0 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     VPURT.Task updates(%farg1_barrier_done : !VPURT.Barrier) {
-      %57 = VPUIP.NNDMA {port = 1 : i64} inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+      %57 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%filler1 : memref<1x3x64x64xf16, @DDR>) outputs(%farg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
     VPURT.Task waits(%farg0_barrier_done, %farg1_barrier_done : !VPURT.Barrier, !VPURT.Barrier) updates(%call_1_barrier_done : !VPURT.Barrier) {
       %57 = func.call @ddr_decl_buffer(%farg0, %farg1) {debatched = [1, 2], reordering = 1} : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
@@ -530,19 +530,19 @@ func.func @ddr_decl_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x
         // CHECK:  [[SLICE_0_VAR_1:%.+]] = VPURT.DeclareBuffer <DDR> <25002496> -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_0_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  }
         // CHECK:  VPURT.Task waits([[SLICE_0_VAR_2]] : !VPURT.Barrier) updates([[UNKN_VAR:%.+]]: !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 1 : i64} inputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_0_VAR_0]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_0_VAR_1]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  }
         // CHECK:  [[SLICE_1_VAR_0:%.+]] = VPURT.DeclareBuffer <DDR> <49384208> -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  [[SLICE_1_VAR_1:%.+]] = VPURT.DeclareBuffer <DDR> <50039568> -> memref<1x3x64x64xf16, @DDR>
         // CHECK:  [[SLICE_1_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 0 : i64} inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
-        // CHECK:       VPUIP.NNDMA {port = 1 : i64} inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+        // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:   }
     // CHECK: return [[ARG0]] : tensor<2x3x64x64xf16>
 }

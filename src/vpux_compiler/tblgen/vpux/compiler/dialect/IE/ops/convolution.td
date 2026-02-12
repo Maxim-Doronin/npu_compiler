@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,6 +18,7 @@ def IE_ConvolutionOp :
         IE_LayerOp<
             "Convolution",
             [
+                AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
                 DeclareOpInterfaceMethods<StaticShapeOpInterface>
             ]
@@ -28,13 +29,14 @@ def IE_ConvolutionOp :
         RankedTensorOf<[F16, F32, F64, quant_QuantizedType, SI32]>:$input,
         RankedTensorOf<[F16, F32, F64, quant_QuantizedType, SI32]>:$filter,
         Optional<RankedTensorOf<[F16, F32, F64, SI32]>>:$bias,
+        Optional<RankedTensorOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>>:$scale,
 
         I64ArrayAttr:$strides,
         I64ArrayAttr:$pads_begin,
         I64ArrayAttr:$pads_end,
         I64ArrayAttr:$dilations,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<F32Attr>:$static_scale, // constant applied to the weights table
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -45,9 +47,59 @@ def IE_ConvolutionOp :
         RankedTensorOf<[F16, F32, F64, quant_QuantizedType, SI32]>:$output
     );
 
+    let assemblyFormat = [{
+        `(`
+            $input `,`
+            $filter
+            (`,` $bias^)?
+            (`,` $scale^)?
+        `)`
+        attr-dict `:` type(operands) `->` type(results)
+    }];
+
     let hasCanonicalizer = 1;
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT];
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::Value":$filter,
+            "::mlir::ArrayAttr":$strides,
+            "::mlir::ArrayAttr":$pads_begin,
+            "::mlir::ArrayAttr":$pads_end,
+            "::mlir::ArrayAttr":$dilations
+        )>,
+        OpBuilder<(ins
+            "mlir::Type":$resultType,
+            "::mlir::Value":$input,
+            "::mlir::Value":$filter,
+            "::mlir::ArrayAttr":$strides,
+            "::mlir::ArrayAttr":$pads_begin,
+            "::mlir::ArrayAttr":$pads_end,
+            "::mlir::ArrayAttr":$dilations
+        )>,
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::Value":$filter,
+            "::mlir::Value":$bias,
+            "::mlir::Value":$scale,
+            "::mlir::ArrayAttr":$strides,
+            "::mlir::ArrayAttr":$pads_begin,
+            "::mlir::ArrayAttr":$pads_end,
+            "::mlir::ArrayAttr":$dilations
+        )>,
+        OpBuilder<(ins
+            "mlir::Type":$resultType,
+            "::mlir::Value":$input,
+            "::mlir::Value":$filter,
+            "::mlir::Value":$bias,
+            "::mlir::Value":$scale,
+            "::mlir::ArrayAttr":$strides,
+            "::mlir::ArrayAttr":$pads_begin,
+            "::mlir::ArrayAttr":$pads_end,
+            "::mlir::ArrayAttr":$dilations
+        )>,
+    ];
 }
 
 def IE_ConvolutionBackpropDataOp :
@@ -166,7 +218,7 @@ def IE_GroupConvolutionOp :
         I64ArrayAttr:$dilations,
         OptionalAttr<IntAttr>:$groups,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding
@@ -284,7 +336,7 @@ def IE_GroupTransposedConvolutionOp :
         I64ArrayAttr:$dilations,
         I64ArrayAttr:$spatial_output_padding,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding
@@ -312,7 +364,8 @@ def IE_MatMulOp :
         UnitAttr:$transpose_a,
         UnitAttr:$transpose_b,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
+        OptionalAttr<DictionaryAttr>:$clamp
     );
 
     let results = (outs
@@ -322,6 +375,22 @@ def IE_MatMulOp :
     let hasCanonicalizer = 1;
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION];
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "bool":$transposeA,
+            "bool":$transposeB
+        )>,
+        OpBuilder<(ins
+            "::mlir::Type":$output,
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "bool":$transposeA,
+            "bool":$transposeB
+        )>
+    ];
 }
 
 def IE_TransposedConvolutionOp :
@@ -375,7 +444,7 @@ def IE_TransposedConvolutionOp :
         I64ArrayAttr:$dilations,
         I64ArrayAttr:$spatial_output_padding,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding
@@ -384,8 +453,6 @@ def IE_TransposedConvolutionOp :
     let results = (outs
         AnyRankedTensor:$output
     );
-
-    let hasCanonicalizer = 1;
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT];
 }

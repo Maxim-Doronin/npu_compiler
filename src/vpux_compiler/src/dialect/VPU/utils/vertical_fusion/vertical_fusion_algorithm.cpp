@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -89,14 +89,12 @@ std::deque<std::shared_ptr<IVFScheduling<VFCase::VFConfigType>>> getSchedulingSc
         auto pipeliningChecks = vfFactory.createVFScenario(VFScenario::VF_PIPELINING, log);
         minimalCheck->addNext(std::move(pipeliningChecks));
     }
-
     auto prefetchingCheck = vfFactory.createVFScenario(VFScenario::LASTOP_PREFETCHING, log);
     auto weightsCheck = vfFactory.createVFScenario(VFScenario::WEIGHTS_PREFETCHING, log);
     auto fullPrefetching = vfFactory.createVFScenario(VFScenario::FULL_PREFETCHING, log);
     weightsCheck->addNext(std::move(fullPrefetching));
     prefetchingCheck->addNext(std::move(weightsCheck));
     minimalCheck->addNext(std::move(prefetchingCheck));
-
     vfChecks.emplace_back(std::move(minimalCheck));
 
     return vfChecks;
@@ -219,7 +217,7 @@ VPU::VF::v2::VFCase getVFCaseWithTiling(
         auto currentCheck = schedulingChecks.front();
         schedulingChecks.pop_front();
         auto numTiles = getOptimalTilingStrategy(currentCheck, dim, split, minTiles, maxTiles, minStorage, maxStorage,
-                                                 config, log);
+                                                 mergedCase.getConfig(), log);
 
         if (numTiles.has_value()) {
             mergedCase.setTilingNumber(dim, numTiles.value());

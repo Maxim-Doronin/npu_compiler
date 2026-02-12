@@ -1,11 +1,10 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinTypes.h>
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
-#include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/utils.hpp"
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 

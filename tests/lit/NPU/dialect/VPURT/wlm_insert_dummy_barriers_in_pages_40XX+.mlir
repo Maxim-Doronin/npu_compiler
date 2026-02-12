@@ -44,27 +44,27 @@ func.func @DmaGraph() -> memref<16x16x1x1xf16,  #NHWC, [@CMX_NN, 0]> {
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) wlmPage(0)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar0: !VPURT.Barrier) wlmPage(0)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task updates(%bar1: !VPURT.Barrier) wlmPage(0)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) wlmPage(1)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) wlmPage(1)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     return %buf0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>

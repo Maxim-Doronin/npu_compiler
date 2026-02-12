@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,7 +44,7 @@ func.func @MultipleInputSingleOutputBatched(%arg0: tensor<6x3x62x62xf32>, %arg1:
 
         // CHECK-DAG: [[CASTED_ARG0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<6x3x62x62xf32> to tensor<2x3x62x62xf32>
         // CHECK-DAG: [[CASTED_ARG1:%.+]] = builtin.unrealized_conversion_cast [[ARG1]] : tensor<6x48x60x57xf32> to tensor<2x48x60x57xf32>
-        // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<48x3x3x6xf32> = [[ANY_DATA:.*]] : tensor<48x3x3x6xf32>
+        // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<48x3x3x6xf32> = [[ANY_DATA:.+]] : tensor<48x3x3x6xf32>
         // CHECK: [[CONV_RES:%.+]] = IE.Convolution([[CASTED_ARG0]], [[CST]]) {
         // CHECK-SAME:              dilations = [1, 1],
         // CHECK-SAME:              pads_begin = [0, 0],

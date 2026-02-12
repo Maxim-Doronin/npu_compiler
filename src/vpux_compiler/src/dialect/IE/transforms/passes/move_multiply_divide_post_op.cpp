@@ -15,6 +15,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_MOVEMULTIPLYDIVIDEPOSTOP
@@ -169,7 +170,7 @@ mlir::LogicalResult MoveMultiplyDividePostLayerGeneric<ConcreteOp>::matchAndRewr
     origOpMapper.map(origOp->getOperands(), newOrigOpOperands);
     auto newOrigOp = rewriter.clone(*origOp, origOpMapper);
     vpux::inferReturnTypes(newOrigOp, vpux::InferShapedTypeMode::ALL);
-    rewriter.replaceAllUsesWith(layerOp->getResults(), newOrigOp->getResult(0));
+    rewriter.replaceOp(layerOp, newOrigOp);
 
     _log.trace("Successfully swap op with layerOp");
     return mlir::success();
@@ -270,14 +271,14 @@ mlir::LogicalResult MoveMultiplyDividePostConcat::matchAndRewrite(IE::ConcatOp o
             auto multiplyOp = p.value();
             auto reshapeOp = reshapeOps[p.index()];
             auto leftReshape =
-                    rewriter.create<IE::ReshapeOp>(appendLoc(reshapeOp->getLoc(), "_left_reshape"),
+                    rewriter.create<IE::ReshapeOp>(appendLoc(reshapeOp->getLoc(), "left_reshape"),
                                                    multiplyOp.getInput1(), nullptr, false,
                                                    getIntArrayAttr(ctx, getShape(reshapeOp.getOutput()).raw()))
                             .getOutput();
             multiplyLeftInputs.push_back(leftReshape);
 
             auto rightReshape =
-                    rewriter.create<IE::ReshapeOp>(appendLoc(reshapeOp->getLoc(), "_right_reshape"),
+                    rewriter.create<IE::ReshapeOp>(appendLoc(reshapeOp->getLoc(), "right_reshape"),
                                                    multiplyOp.getInput2(), nullptr, false,
                                                    getIntArrayAttr(ctx, getShape(reshapeOp.getOutput()).raw()))
                             .getOutput();
@@ -285,13 +286,13 @@ mlir::LogicalResult MoveMultiplyDividePostConcat::matchAndRewrite(IE::ConcatOp o
         }
     }
 
-    auto multiplyRightConcat = rewriter.create<IE::ConcatOp>(appendLoc(origOp->getLoc(), "_right_concat"),
+    auto multiplyRightConcat = rewriter.create<IE::ConcatOp>(appendLoc(origOp->getLoc(), "right_concat"),
                                                              mlir::ValueRange(multiplyRightInputs),
                                                              origOp.getPerAxisAttr(), origOp.getStaticOffsetsAttr());
-    auto multiplyLeftConcat = rewriter.create<IE::ConcatOp>(appendLoc(origOp->getLoc(), "_left_concat"),
+    auto multiplyLeftConcat = rewriter.create<IE::ConcatOp>(appendLoc(origOp->getLoc(), "left_concat"),
                                                             mlir::ValueRange(multiplyLeftInputs),
                                                             origOp.getPerAxisAttr(), origOp.getStaticOffsetsAttr());
-    auto multiply = rewriter.create<IE::MultiplyOp>(appendLoc(multiplyOps.front()->getLoc(), "_multiply_after_concat"),
+    auto multiply = rewriter.create<IE::MultiplyOp>(appendLoc(multiplyOps.front()->getLoc(), "multiply_after_concat"),
                                                     multiplyLeftConcat.getOutput(), multiplyRightConcat.getOutput(),
                                                     multiplyOps.front().getAutoBroadcastAttr(), nullptr, nullptr,
                                                     nullptr, nullptr);
@@ -328,9 +329,7 @@ void MoveMultiplyDividePostOpPass::safeRunOnFunc() {
     patterns.add<MoveMultiplyDividePostConcat>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

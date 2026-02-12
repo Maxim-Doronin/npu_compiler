@@ -26,11 +26,11 @@ func.func @testDynamicReshapeWithParameters(%arg0: tensor<4x1x16x?xf32, {bounds 
      %param_shape2 = IE.Concat(%cst_0, %dyn_dim, %cst_1) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<3xsi64>
 
      // First DynamicReshape operation with parameter shape
-     %0 = IE.DynamicReshape(%arg0, %param_shape1) {output_bounds = [10, 1, 64], output_shape = [-9223372036854775808, 1, 64]} : 
+     %0 = IE.DynamicReshape(%arg0, %param_shape1) {output_bounds = [10, 1, 64], output_shape = [-9223372036854775808, 1, 64]} :
           tensor<4x1x16x?xf32, {bounds = #const.OpaqueI64Elements<[4, 1, 16, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<3xsi64> -> tensor<?x1x64xf32, {bounds = #const.OpaqueI64Elements<[10, 1, 64]> : tensor<3xsi64>, order = #CHW}>
 
      // Second DynamicReshape operation with parameter shape
-     %1 = IE.DynamicReshape(%0, %param_shape2) {output_bounds = [1, 10, 64], output_shape = [1, -9223372036854775808, 64]} : 
+     %1 = IE.DynamicReshape(%0, %param_shape2) {output_bounds = [1, 10, 64], output_shape = [1, -9223372036854775808, 64]} :
           tensor<?x1x64xf32, {bounds = #const.OpaqueI64Elements<[10, 1, 64]> : tensor<3xsi64>, order = #CHW}>, tensor<3xsi64> -> tensor<1x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 64]> : tensor<3xsi64>, order = #CHW}>
 
      return %1 : tensor<1x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 64]> : tensor<3xsi64>, order = #CHW}>
@@ -61,10 +61,10 @@ func.func @testDynamicReshapeWithConstants(%arg0: tensor<4x1x16x?xf32, {bounds =
      %shape1 = const.Declare tensor<3xsi64> = dense<[-1, 1, 64]> : tensor<3xsi64>
      %shape2 = const.Declare tensor<3xsi64> = dense<[1, -1, 64]> : tensor<3xsi64>
 
-     %0 = IE.DynamicReshape(%arg0, %shape1) {output_bounds = [10, 1, 64], output_shape = [-9223372036854775808, 1, 64]} : 
+     %0 = IE.DynamicReshape(%arg0, %shape1) {output_bounds = [10, 1, 64], output_shape = [-9223372036854775808, 1, 64]} :
           tensor<4x1x16x?xf32, {bounds = #const.OpaqueI64Elements<[4, 1, 16, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<3xsi64> -> tensor<?x1x64xf32, {bounds = #const.OpaqueI64Elements<[10, 1, 64]> : tensor<3xsi64>, order = #CHW}>
 
-     %1 = IE.DynamicReshape(%0, %shape2) {output_bounds = [1, 10, 64], output_shape = [1, -9223372036854775808, 64]} : 
+     %1 = IE.DynamicReshape(%0, %shape2) {output_bounds = [1, 10, 64], output_shape = [1, -9223372036854775808, 64]} :
           tensor<?x1x64xf32, {bounds = #const.OpaqueI64Elements<[10, 1, 64]> : tensor<3xsi64>, order = #CHW}>, tensor<3xsi64> -> tensor<1x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 64]> : tensor<3xsi64>, order = #CHW}>
 
      return %1 : tensor<1x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 64]> : tensor<3xsi64>, order = #CHW}>
@@ -92,10 +92,10 @@ func.func @testDynamicReshapeWithParameterAndConstant(%arg0: tensor<4x1x16x?xf32
      %0 = IE.ShapeOf(%arg0) {dstElemType = si64} : tensor<4x1x16x?xf32, {bounds = #const.OpaqueI64Elements<[4, 1, 16, 10]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi64>
      %dyn_dim = IE.Slice %0 [3] [1] : tensor<4xsi64> to tensor<1xsi64>
      %2 = IE.Concat(%dyn_dim, %cst_1, %cst_0) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<3xsi64>
-     %3 = IE.DynamicReshape(%arg0, %2) {output_bounds = [10, 1, 64], output_shape = [-9223372036854775808, 1, 64]} : 
+     %3 = IE.DynamicReshape(%arg0, %2) {output_bounds = [10, 1, 64], output_shape = [-9223372036854775808, 1, 64]} :
           tensor<4x1x16x?xf32, {bounds = #const.OpaqueI64Elements<[4, 1, 16, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<3xsi64> -> tensor<?x1x64xf32, {bounds = #const.OpaqueI64Elements<[10, 1, 64]> : tensor<3xsi64>, order = #CHW}>
 
-     %4 = IE.DynamicReshape(%3, %shape2) {output_bounds = [1, 10, 64], output_shape = [1, -9223372036854775808, 64]} : 
+     %4 = IE.DynamicReshape(%3, %shape2) {output_bounds = [1, 10, 64], output_shape = [1, -9223372036854775808, 64]} :
           tensor<?x1x64xf32, {bounds = #const.OpaqueI64Elements<[10, 1, 64]> : tensor<3xsi64>, order = #CHW}>, tensor<3xsi64> -> tensor<1x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 64]> : tensor<3xsi64>, order = #CHW}>
 
 

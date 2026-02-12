@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,11 +39,15 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::VPU::verifyLayer(mlir::Operation* op) {
-    if (VPU::verifyOpLayout(op).failed()) {
-        return mlir::failure();
+    if (mlir::failed(VPU::verifyOpLayout(op))) {
+        return errorAt(op->getLoc(), "VPU::verifyOpLayout() failed for {0}", op->getName());
     }
 
-    return IE::verifyLayer(op);
+    if (mlir::failed(IE::verifyLayer(op))) {
+        return errorAt(op->getLoc(), "IE::verifyLayer() failed for {0}", op->getName());
+    }
+
+    return mlir::success();
 }
 
 //
@@ -351,6 +355,7 @@ void vpux::VPU::registerSWTilingInfoOpInterfaceCommon(mlir::DialectRegistry& reg
         VPU::NotEqualOp::attachInterface<SwLayerTilingInfoOpModel<VPU::NotEqualOp>>(*ctx);
         VPU::GreaterOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GreaterOp>>(*ctx);
         VPU::GreaterEqualOp::attachInterface<SwLayerTilingInfoOpModel<VPU::GreaterEqualOp>>(*ctx);
+        VPU::IsInfOp::attachInterface<SwLayerTilingInfoOpModel<VPU::IsInfOp>>(*ctx);
         VPU::LogicalOrOp::attachInterface<SwLayerTilingInfoOpModel<VPU::LogicalOrOp>>(*ctx);
         VPU::LogicalXorOp::attachInterface<SwLayerTilingInfoOpModel<VPU::LogicalXorOp>>(*ctx);
         VPU::LogicalNotOp::attachInterface<SwLayerTilingInfoOpModel<VPU::LogicalNotOp>>(*ctx);
@@ -388,6 +393,8 @@ void vpux::VPU::registerSWTilingInfoOpInterfaceCommon(mlir::DialectRegistry& reg
         VPU::AbsOp::attachInterface<SwLayerTilingInfoOpModel<VPU::AbsOp>>(*ctx);
         VPU::SoftMaxOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SoftMaxOp>>(*ctx);
         VPU::LogSoftmaxOp::attachInterface<SwLayerTilingInfoOpModel<VPU::LogSoftmaxOp>>(*ctx);
+        VPU::LogSoftmaxTopKOp::attachInterface<SwLayerTilingInfoOpModel<VPU::LogSoftmaxTopKOp>>(*ctx);
+        VPU::LogSoftmaxPeakOp::attachInterface<SwLayerTilingInfoOpModel<VPU::LogSoftmaxPeakOp>>(*ctx);
         VPU::TopKOp::attachInterface<SwLayerTilingInfoOpModel<VPU::TopKOp>>(*ctx);
         VPU::StridedSliceOp::attachInterface<SwLayerTilingInfoOpModel<VPU::StridedSliceOp>>(*ctx);
         VPU::SpaceToDepthOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SpaceToDepthOp>>(*ctx);
@@ -412,7 +419,6 @@ void vpux::VPU::registerSWTilingInfoOpInterfaceCommon(mlir::DialectRegistry& reg
         VPU::MaximumOp::attachInterface<SwLayerTilingInfoOpModel<VPU::MaximumOp>>(*ctx);
         VPU::MinimumOp::attachInterface<SwLayerTilingInfoOpModel<VPU::MinimumOp>>(*ctx);
         VPU::PadOp::attachInterface<SwLayerTilingInfoOpModel<VPU::PadOp>>(*ctx);
-        VPU::AccumulateOp::attachInterface<SwLayerTilingInfoOpModel<VPU::AccumulateOp>>(*ctx);
         VPU::RMSOp::attachInterface<SwLayerTilingInfoOpModel<VPU::RMSOp>>(*ctx);
         VPU::SDPAOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SDPAOp>>(*ctx);
         VPU::SDPAExtendedOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SDPAExtendedOp>>(*ctx);
@@ -433,6 +439,7 @@ void vpux::VPU::registerSWTilingInfoOpInterfaceCommon(mlir::DialectRegistry& reg
         VPU::CumSumOp::attachInterface<SwLayerTilingInfoOpModel<VPU::CumSumOp>>(*ctx);
         VPU::MultiplyOp::attachInterface<SwLayerTilingInfoOpModel<VPU::MultiplyOp>>(*ctx);
         VPU::FlashSDPAOp::attachInterface<SwLayerTilingInfoOpModel<VPU::FlashSDPAOp>>(*ctx);
+        VPU::ScatterElementsUpdateOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ScatterElementsUpdateOp>>(*ctx);
     });
 }
 

@@ -1,10 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
-
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
@@ -13,6 +12,7 @@
 
 namespace vpux::VPUIPDPU {
 enum class ODUDataBitWidth : uint32_t;
+enum class ODUReduceDataType : uint32_t;
 }  // namespace vpux::VPUIPDPU
 
 namespace vpux {
@@ -71,6 +71,8 @@ VPUIPDPU::ODUDataBitWidth getDataBitWidth(mlir::Type outActType);
 
 std::optional<ODUDataBitWidth> getOutDataWidth(mlir::Type outDataType);
 
+VPUIPDPU::ODUReduceDataType getOutReduceType(mlir::Type outDataType);
+
 template <typename TRegField_target_width_lsbType, typename TRegField_target_width_msbType>
 void computeLsbAndMsbFromTargetWidth(int64_t targetWidth, uint64_t& msbWidth, uint64_t& lsbWidth) {
     auto lsbBitWidth = TRegField_target_width_lsbType::getRegFieldWidth();
@@ -105,6 +107,57 @@ SmallVector<DataType> getZeroPoints(mlir::Type type) {
     }
 
     return quantZeroPoints;
+}
+
+// Helper trait to detect if VpuInputTensorDTypeEnum has FP4 member
+template <typename T, typename = void>
+struct has_FP4 : std::false_type {};
+
+template <typename T>
+struct has_FP4<T, std::void_t<decltype(T::FP4)>> : std::true_type {};
+
+template <typename FindRegType, typename RegsTypeList, typename VpuInputTensorDTypeEnum>
+uint64_t getTensorMode(mlir::Type type) {
+    static_assert(std::is_same<FindRegType, typename RegsTypeList::Type_amode>::value ||
+                          std::is_same<FindRegType, typename RegsTypeList::Type_wmode>::value ||
+                          std::is_same<FindRegType, typename RegsTypeList::Type_dma_acc_info_compress_dtype>::value ||
+                          std::is_same<FindRegType, typename RegsTypeList::Type_dma_acc_info_decompress_dtype>::value,
+                  "getTensorMode: Unsupported template argument FindRegType");
+
+    if (auto quantized = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
+        return getTensorMode<FindRegType, RegsTypeList, VpuInputTensorDTypeEnum>(quantized.getStorageType());
+    }
+    if (std::is_same<FindRegType, typename RegsTypeList::Type_amode>::value ||
+        std::is_same<FindRegType, typename RegsTypeList::Type_wmode>::value) {
+        if (type.isF16()) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::FP16);
+        } else if (type.isUnsignedInteger(16)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::U16);
+        } else if (type.isInteger(16)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::I16);
+        } else if (type.isUnsignedInteger(8)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::U8);
+        } else if (type.isInteger(8)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::I8);
+        } else if (type.isInteger(2)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::I2);
+        } else if (type.isBF16()) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::BF16);
+        } else if (type.isUnsignedInteger(4)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::U4);
+        } else if (type.isInteger(4)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::I4);
+        } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::FP8);
+        } else if (mlir::isa<mlir::Float8E4M3FNType>(type)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::HF8);
+        } else if (type.isF32()) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::FP32);
+        } else if (type.isInteger(32)) {
+            return static_cast<uint64_t>(VpuInputTensorDTypeEnum::I32);
+        }
+        VPUX_THROW("Invalid tensor type for DPU configuration {0}", type);
+    }
 }
 
 // Helper function to calculate zero point offset for input/output activations and weights

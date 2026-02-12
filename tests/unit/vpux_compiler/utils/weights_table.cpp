@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -55,6 +55,5 @@ TEST_F(MLIR_RetrieveScaleFromWeightTableUnitTest, retrieveScaleFromTable) {
 
     compareScaleRoundtrip(&ctx, 2.5, config::ArchKind::NPU37XX, false);
     compareScaleRoundtrip(&ctx, -0.000625, config::ArchKind::NPU40XX, false);
-
     compareScaleRoundtrip(&ctx, 1.025, config::ArchKind::NPU50XX, false);
 }

@@ -159,7 +159,7 @@ mlir::LogicalResult ConvertDMAViewLikeCopy::matchAndRewrite(VPUIP::ConvertDMAOp 
     rewriter.setInsertionPointAfter(userCopyOp.getOperation());
     auto newOutput = createNewViewLikeOps(rewriter, viewLikeOps, convertInput);
     auto newConvertOp =
-            rewriter.create<VPUIP::ConvertDMAOp>(appendLoc(convertOp->getLoc(), "_fused_dma"), newOutput, outputBuffer);
+            rewriter.create<VPUIP::ConvertDMAOp>(appendLoc(convertOp->getLoc(), "fused_dma"), newOutput, outputBuffer);
     rewriter.replaceOp(userCopyOp, newConvertOp.getOutput());
 
     for (auto viewLikeOp : viewLikeOps | reversed) {
@@ -327,9 +327,9 @@ mlir::LogicalResult ConvertDMASubViewCopy::matchAndRewrite(VPUIP::ConvertDMAOp c
 
     for (auto& [subViewOp, copyOp] : subViewCopyPair) {
         rewriter.setInsertionPointAfter(copyOp.getOperation());
-        auto newSubViewOp = rewriter.create<VPUIP::SubViewOp>(appendLoc(subViewOp->getLoc(), "_convert"), newOutput,
+        auto newSubViewOp = rewriter.create<VPUIP::SubViewOp>(appendLoc(subViewOp->getLoc(), "convert"), newOutput,
                                                               subViewOp.getStaticOffsets(), subViewOp.getStaticSizes());
-        auto newConvertOp = rewriter.create<VPUIP::ConvertDMAOp>(appendLoc(convertOp->getLoc(), "_fused_dma"),
+        auto newConvertOp = rewriter.create<VPUIP::ConvertDMAOp>(appendLoc(convertOp->getLoc(), "fused_dma"),
                                                                  newSubViewOp.getResult(), copyOp.getOutputBuff());
         rewriter.replaceOp(copyOp, newConvertOp.getOutput());
         if (subViewOp->use_empty()) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,15 +24,18 @@ func.func @multiple_clusters_dpu_soh_f16_f16_f16() {
   %14 = VPURT.DeclareBuffer <CMX_NN> [0] <102400> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
   %15 = VPURT.DeclareBuffer <CMX_NN> [1] <102400> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>
 
-  %31 = VPUMI40XX.DPUInvariant {clean_after = 0 : ui64, is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_4x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<CONV>} input(%12 : memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%6 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%14 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) outputs(%9 : memref<1x64x16x32xf16, #NHWC, [@CMX_NN, 0]>) -> <0:0:0> PPE : {
+  %31 = VPUMI40XX.DPUInvariant {is_segmented} <{clean_after = 0 : ui64, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+  kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_4x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<CONV>}>
+  input(%12 : memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%6 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%14 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>)
+  outputs(%9 : memref<1x64x16x32xf16, #NHWC, [@CMX_NN, 0]>) -> <0:0:0> PPE : {
   }
-  %33 = VPUMI40XX.DPUVariant calls(%31 : <0:0:0>) {inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>} -> <0:0:0>
-  %34 = VPUMI40XX.DPUVariant previousTask(%33 : !VPURegMapped.Index<0:0:0>) calls(%31 : <0:0:0>) {inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>} -> <0:0:1>
+  %33 = VPUMI40XX.DPUVariant calls(%31 : <0:0:0>) <{inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>}> -> <0:0:0>
+  %34 = VPUMI40XX.DPUVariant previousTask(%33 : !VPURegMapped.Index<0:0:0>) calls(%31 : <0:0:0>) <{inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>}> -> <0:0:1>
 
-  %35 = VPUMI40XX.DPUVariant calls(%31 : <0:0:0>) {inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>} -> <1:0:0>
-  %36 = VPUMI40XX.DPUVariant previousTask(%35 : !VPURegMapped.Index<1:0:0>) calls(%31 : <0:0:0>) {inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>} -> <1:0:1>
+  %35 = VPUMI40XX.DPUVariant calls(%31 : <0:0:0>) <{inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>}> -> <1:0:0>
+  %36 = VPUMI40XX.DPUVariant previousTask(%35 : !VPURegMapped.Index<1:0:0>) calls(%31 : <0:0:0>) <{inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0], nce_task_type = #VPUIP.nce_task_type<CONV>}> -> <1:0:1>
 
-  %b = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <4, -1> -> !VPURegMapped.Index<0:0:0>
+  %b = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <4, -1> -> !VPURegMapped.Index<0:0:0>
 
   %e0 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%33 -> %34 : <0:0:0> -> <0:0:1>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<DPUVariant>}
   %e1 = VPURegMapped.Enqueue at(%b : !VPURegMapped.Index<0:0:0>) (%35 -> %35 : <1:0:0> -> <1:0:0>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<DPUVariant>}
@@ -46,29 +49,29 @@ func.func @multiple_clusters_dpu_soh_f16_f16_f16() {
 //CHECK: VPUMI40XX.DPUInvariant
 //CHECK-NOT: taskLinkAttrName
 
-//CHECK: %[[VAR0:.+]] = VPUMI40XX.DPUVariant
+//CHECK: [[VAR0:%.+]] = VPUMI40XX.DPUVariant
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> [[VAR0_IDX:.+]]
 
-//CHECK: %[[VAR1:.+]] = VPUMI40XX.DPUVariant
+//CHECK: [[VAR1:%.+]] = VPUMI40XX.DPUVariant
 //CHECK-SAME: taskLinkAttrName = #VPURegMapped.IndexType<[[VAR0_IDX]]>
 //CHECK-SAME: -> [[VAR1_IDX:.+]]
 
-//CHECK: %[[VAR2:.+]] = VPUMI40XX.DPUVariant
+//CHECK: [[VAR2:%.+]] = VPUMI40XX.DPUVariant
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> [[VAR2_IDX:.+]]
 
-//CHECK: %[[VAR3:.+]] = VPUMI40XX.DPUVariant
+//CHECK: [[VAR3:%.+]] = VPUMI40XX.DPUVariant
 //CHECK-NOT: taskLinkAttrName
 //CHECK-SAME: -> [[VAR3_IDX:.+]]
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[VAR0]] -> %[[VAR0]] : [[VAR0_IDX]] -> [[VAR0_IDX]])
+//CHECK-SAME: ([[VAR0]] -> [[VAR0]] : [[VAR0_IDX]] -> [[VAR0_IDX]])
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[VAR2]] -> %[[VAR2]] : [[VAR2_IDX]] -> [[VAR2_IDX]])
+//CHECK-SAME: ([[VAR2]] -> [[VAR2]] : [[VAR2_IDX]] -> [[VAR2_IDX]])
 
 //CHECK: VPURegMapped.Enqueue
-//CHECK-SAME: (%[[VAR3]] -> %[[VAR3]] : [[VAR3_IDX]] -> [[VAR3_IDX]])
+//CHECK-SAME: ([[VAR3]] -> [[VAR3]] : [[VAR3_IDX]] -> [[VAR3_IDX]])
 
 //CHECK-NOT: VPURegMapped.Enqueue

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,6 +28,7 @@ TEST_P(TransposeLayerTest_NPU5010, SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

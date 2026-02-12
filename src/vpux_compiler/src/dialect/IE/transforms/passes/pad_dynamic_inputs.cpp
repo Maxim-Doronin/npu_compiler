@@ -28,7 +28,7 @@ void padInput(mlir::Operation* firstOp) {
         auto operand = firstOp->getOperand(i);
         if (IE::hasDynamicShapeAttr(operand)) {
             auto expand = builder.create<IE::DynamicExpandOp>(
-                    appendLoc(firstOp->getLoc(), "_expand_" + std::to_string(i)), operand);
+                    appendLoc(firstOp->getLoc(), "expand_" + std::to_string(i)), operand);
             firstOp->setOperand(i, expand.getOutput());
         }
     }

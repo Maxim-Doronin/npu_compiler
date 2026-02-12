@@ -107,6 +107,16 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
     }
 
     for (const auto& output : parentOutputBuffs) {
+        // In case some buffers are shared for inputs and outputs, reuse the unrolled buffers that were created for
+        // inputs
+        const auto inputBufferIt = llvm::find(parentInputBuffs, output);
+        if (inputBufferIt != parentInputBuffs.end()) {
+            for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
+                outputBuffs[clusterId].push_back(inputBuffs[clusterId][inputBufferIt.getIndex()]);
+            }
+            continue;
+        }
+
         auto currBuffs = VPUIP::getPerClusterSWComputeBuffers(_ctx, loc, "outputBuff", swTask, output,
                                                               OperandType::output, numClusters, builder, _log, true);
         for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
@@ -145,7 +155,7 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
 
     auto needUpdateAttrs = inDistributionMode == VPU::DistributionMode::OVERLAPPED ||
                            kernelEntryName == "lstm_sequence" || kernelEntryName == "lstm_dpu" ||
-                           isDequantizeTiledOverQuantAxis() ||
+                           kernelEntryName == "max_pool8" || isDequantizeTiledOverQuantAxis() ||
                            (inDistributionMode == VPU::DistributionMode::SEGMENTED && kernelEntryName == "gatherND");
 
     if (needUpdateAttrs) {
@@ -419,7 +429,7 @@ namespace vpux::VPUIP::arch37xx {
 void UnrollDistributedOpsStrategy::prepareOps(mlir::MLIRContext& ctx, Logger& log) {
     auto module = _funcOp->getParentOfType<mlir::ModuleOp>();
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     const VPUIP::ClusterDMARewriter dmaRewriter(&ctx, dmaPortCount, /*dmaFusionHandler=*/{}, log);

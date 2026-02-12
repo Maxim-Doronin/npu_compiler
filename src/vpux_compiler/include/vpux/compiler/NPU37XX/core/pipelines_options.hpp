@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,10 +17,7 @@ namespace arch37xx {
 // to avoid confusion when we have the same option for IE and the VPU dialect, but with a different value
 //
 
-struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, public vpux::BatchCompileOptionsAdapter {
-    DefaultHWOptionsDeviceBase(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
-    }
-
+struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
     BoolOption enableExperimentalSEPtrsOperations{*this, "enable-experimental-se-ptrs-operations",
                                                   llvm::cl::desc("Enable the experimental operation of SEP"),
                                                   llvm::cl::init(false)};
@@ -46,6 +43,10 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
     // VPUIP option shared with VPU pass
     BoolOption enableWeightsSwizzling{*this, "enable-weights-swizzling", ::llvm::cl::desc("Enable weights swizzling"),
                                       ::llvm::cl::init(true)};
+
+    BoolOption enableRunMVNNormalizeOnDPU{*this, "enable-run-mvn-normalize-on-dpu",
+                                          llvm::cl::desc("Enable RunMVNNormalizeOnDPU pass on DPU"),
+                                          llvm::cl::init(false)};
 };
 
 //

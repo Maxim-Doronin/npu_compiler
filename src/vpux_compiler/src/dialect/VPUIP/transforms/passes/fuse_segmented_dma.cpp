@@ -124,7 +124,7 @@ void FuseSegmentedDma::safeRunOnFunc() {
     };
 
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     const auto getPort = [=](SmallVector<VPURT::TaskOp> tasks) {

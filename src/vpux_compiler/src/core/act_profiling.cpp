@@ -191,8 +191,7 @@ mlir::Value ActShaveProfiler::getViewToBuffer(mlir::Operation* currentProfilingB
 
     _log.trace("Get view to profiling buffer, offset '{0}', size '{1}'", offset, sizes[0]);
 
-    auto subViewLoc =
-            appendLoc(currentProfilingBuffer->getLoc(), formatv("_actshaveProfilingSubview_{0}", offset).str());
+    auto subViewLoc = appendLoc(currentProfilingBuffer->getLoc(), "actshaveProfilingSubview_{0}", offset);
 
     auto sub = _builder.create<VPUIP::SubViewOp>(subViewLoc, currentProfilingBuffer->getResult(0),
                                                  SmallVector<int64_t>({static_cast<int>(offset)}), sizes);
@@ -208,7 +207,7 @@ mlir::Value ActShaveProfiler::replaceOpWithProfiledOp(VPUIP::SwKernelOp origSwTa
     auto profilingSlot = profilingBuffer;
     bool isCurrentSwTaskDistributed = vpux::VPUIP::hasDistributedOperand(origSwTask);
     if (this->_clustersNum > 1 && !isCurrentSwTaskDistributed) {
-        auto viewOpName = appendLoc(loc, "_view_cast");
+        auto viewOpName = appendLoc(loc, "view_cast");
         auto viewOp = _builder.create<VPUIP::ViewOp>(viewOpName, getTimestampType(1), profilingBuffer);
         profilingSlot = viewOp.getResult();
     }
@@ -237,7 +236,8 @@ VPUIP::DistributedBufferType ActShaveProfiler::getDistributedBufferType(unsigned
     const auto memKindAttr = IndexedSymbolAttr::get(_memKindAttr.getLeafNameAttr());
     auto distributedTensorAttr = VPU::DistributionInfoAttr::get(
             _ctx, distributionModeAttr, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr,
-            /*uniformDistributedSegments=*/mlir::UnitAttr::get(_ctx), nullptr, nullptr, nullptr, nullptr, nullptr);
+            /*uniformDistributedSegments=*/mlir::UnitAttr::get(_ctx), nullptr, nullptr, nullptr, nullptr, nullptr,
+            nullptr);
     return VPUIP::DistributedBufferType::get(_ctx, {totalElements}, getActShaveProfilingElementType(_ctx), layout,
                                              memKindAttr, distributedTensorAttr);
 }
@@ -277,7 +277,7 @@ mlir::Value ActShaveProfiler::copyToDdr(const ProfilingResults& profilingResults
         if (this->_clustersNum > 1 && isCurrentResultMemref) {
             // Result is a plain memref, need to cast back to DistributedBuffer
             auto distType = getDistributedBufferType(profRes.second * _profilingElementSize);
-            auto viewLoc = appendLoc(profResult.getLoc(), "_view_cast_to_distributed");
+            auto viewLoc = appendLoc(profResult.getLoc(), "view_cast_to_distributed");
             auto viewOp = _builder.create<VPUIP::ViewOp>(viewLoc, distType, profResult);
             concatInputs.push_back(viewOp.getResult());
         } else {

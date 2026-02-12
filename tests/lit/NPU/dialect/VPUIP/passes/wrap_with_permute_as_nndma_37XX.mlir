@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,6 +38,6 @@ func.func @NotWrapDepthToSpaceAsMultiClusterDMA(%arg0: memref<1x9x3x3xf16, #NHWC
 
     return %5: !OutputDistributedType
 
-    // CHECK: [[OUT_MEMREF:%.*]] = memref.alloc() : memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK: [[RESULT:%.*]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_DepthToSpaceOp inputs(%arg0 as %arg1: memref<1x9x3x3xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUT_MEMREF]] as %arg2: memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 -> memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK: [[OUT_MEMREF:%.+]] = memref.alloc() : memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK: [[RESULT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_DepthToSpaceOp inputs(%arg0 as %arg1: memref<1x9x3x3xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUT_MEMREF]] as %arg2: memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 -> memref<1x1x9x9xf16, #NHWC, [@CMX_NN, 0]>
 }

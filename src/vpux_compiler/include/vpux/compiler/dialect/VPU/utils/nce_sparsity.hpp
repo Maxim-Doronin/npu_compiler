@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/loop.hpp"
@@ -17,10 +18,6 @@
 
 #include <llvm/ADT/bit.h>
 #include <mlir/IR/Value.h>
-
-namespace vpux::VPUIP {
-class DPUTaskOp;
-}  // namespace vpux::VPUIP
 
 namespace vpux {
 namespace VPU {
@@ -36,6 +33,8 @@ const unsigned int DEFAULT_SPARSIFIABLE_INPUT_OPERAND_ID = 0;
 const unsigned int ELTWISE_SPARSIFIABLE_SECOND_INPUT_OPERAND_ID = 1;
 
 constexpr std::int32_t ALIGNMENT_REQUIREMENT_IN_ELEMENTS = 16;
+// each data-pointer/sparsity-pointer is stored on 4 bytes
+constexpr std::int32_t WEIGHTS_TABLE_POINTER_SIZE = 4;
 constexpr std::int32_t WEIGHTS_TABLE_READER_COUNT = 8;
 // each weight reader receives up to 32 bytes of data. for data/sparsity pointer tables, each element has 4 bytes, which
 // means that there are (at most) 8 elements to be read by each weight reader. so, by multiplying
@@ -43,18 +42,26 @@ constexpr std::int32_t WEIGHTS_TABLE_READER_COUNT = 8;
 // size has to be rounded up to the nearest multiple of WEIGHTS_TABLE_READER_ALIGNMENT = 64, the values to be added
 // representing the padding.
 constexpr std::int32_t WEIGHTS_TABLE_READER_ALIGNMENT = WEIGHTS_TABLE_READER_COUNT * 8;
-// In case of zero point only table, each workload is logically divided in groups of 128 zero-points, excepting the last
-// one which will contain the remaining ones, padded with -1 up to the nearest multiple of
-// WEIGHTS_TABLE_READER_ALIGNMENT=64.
-// Regarding the storage, 1. For the 8-bit case the constructed zero-point table will be aligned to 64 bytes, while all
-// non-last groups will be aligned to 128 bytes.
-// 2. For the 4-bit case the constructed zero-point table will be aligned to 32 bytes (as 2 zero-points are stored in
-// each byte), while all non-last groups will be aligned to 64 (half of 128).
-// More details regarding the usage of this constant can be found in the constructNewZeroPointOnlyTableForWorkload
-// function.
-constexpr std::int32_t ZERO_POINT_TABLE_READER_ALIGNMENT = 128;
+// In case of data/sparsity-pointer tables we use the same value (i.e. WEIGHTS_TABLE_READER_ALIGNMENT) for both padding
+// alignment and data shuffling logic.
+// On the other hand, as you might see below, for zero-point table we have one value for data shuffling logic
+// (ZERO_POINT_TABLE_PATTERN_LENGTH = 128), as the shuffling patterns repeats after 128 elements and another value for
+// the padding alignment (ZERO_POINT_TABLE_READER_ALIGNMENT = 32). In case of zero-point table, each workload is
+// logically divided in groups of ZERO_POINT_TABLE_PATTERN_LENGTH=128 zero-points. One trailing group might have less
+// zero-points.
+// Regarding the storage:
+// 1. For the 8-bit case, the constructed zero-point table will be aligned to ZERO_POINT_TABLE_READER_ALIGNMENT = 32
+// bytes, while all non-last groups will be aligned to ZERO_POINT_TABLE_PATTERN_LENGTH = 128 bytes.
+// 2. For the 4-bit case, the constructed zero-point table will be aligned to ZERO_POINT_TABLE_READER_ALIGNMENT = 32
+// bytes, while all non-last groups will be aligned to 64 bytes (half of ZERO_POINT_TABLE_PATTERN_LENGTH = 128, as 2
+// zero-points are stored in each byte).
+// For both cases, in the last group the padding value used will be PADDING_POSITION_INDICATOR = -1 (if alignment up to
+// the nearest multiple of ZERO_POINT_TABLE_READER_ALIGNMENT = 32 is needed).
+constexpr std::int32_t ZERO_POINT_TABLE_PATTERN_LENGTH = 128;
+constexpr std::int32_t ZERO_POINT_TABLE_READER_ALIGNMENT = 32;
 // in each final (and padded) group of 64 weights table sets there has to be a multiple of 16 valid sets (16, 32, 48 or
-// 64), that can be read from memory
+// 64), that can be read from memory; could be also referred to as first-level alignment; this way we would refer to
+// WEIGHTS_TABLE_READER_ALIGNMENT as second-level alignment
 constexpr std::int32_t WEIGHTS_TABLE_SETS_MIN_ALIGNMENT = 16;
 
 constexpr std::int32_t PADDING_POSITION_INDICATOR = -1;
@@ -114,7 +121,7 @@ llvm::unique_function<ScaleElemType(size_t)> getMultShiftFunc(mlir::Type inElemT
 }
 
 // this function is used for formatting both data pointers and sparsity pointers
-// for getting a formatted sparsity pointer, provide only the pointer (as there is no zeropoint in this case)
+// for getting a formatted sparsity pointer, provide only the pointer (as there is no zero-point in this case)
 template <typename T>
 int32_t getDataOrSparsityPointer(int32_t pointer, T zeroPoint = 0) {
     static_assert(std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t>,
@@ -167,18 +174,29 @@ public:
     static std::vector<int32_t> getZeroPointInversePermutationTableByK(int32_t k);
     static std::vector<int32_t> getPointerTableByK(int32_t k);
 
-    // Some observations regarding the below encoding and decoding functions between the zero point initial index and
+    // getZPTableAlignmentForWorkload returns the needed physical alignment for the zero-point table part corresponding
+    // to the given workload (size); this alignment has to be a multiple of ZERO_POINT_TABLE_READER_ALIGNMENT = 32
+    // bytes; if isZeroPoint4Bit=true, two zero-points will be later on stored in a single byte
+    static int32_t getZPTableAlignmentForWorkload(bool isZeroPoint4Bit, int32_t workloadSize);
+    // getZPTableLogicalAlignmentForWorkload returns the number of zero-points that are needed in order to satisfy the
+    // physical alignment to ZERO_POINT_TABLE_READER_ALIGNMENT = 32 bytes for the given workload (size); for the 8-bit
+    // case we will end up with a multiple of 32, while for the 4-bit case we will end up with a multiple of 64 (as two
+    // 4-bit zero-points will be stored in one byte)
+    static int32_t getZPTableLogicalAlignmentForWorkload(bool isZeroPoint4Bit, int32_t workloadSize);
+
+    // Some observations regarding the below encoding and decoding functions between the zero-point initial index and
     // its new index in the new format; these functions use statically-constructed vectors in order to deduce the result
-    // 1A) regarding the encoding functions, the zeroPointIndex argument represents an element's position in the
-    // original unshuffled zp table; on the other hand, this functions return the the position/index of the same element
-    // in the shuffled and constructed zp table, hence the name "encoding"
+    // 1A) regarding the encoding functions, the 'position' argument represents an element's index/position in the
+    // original unshuffled zp table; on the other hand, these functions return the position of the same element in the
+    // shuffled and constructed zp table, hence the name "encoding"
     // 1B) for 4-bit zero-points, for accessing the actual zp from the constructed table, you should divide by 2 the
     // position returned by this function and extract the corresponding 4-bits from the element residing there (bits
     // 0...3 if returned position is a multiple of 2 and bits 4...7 otherwise)
     static int32_t encodePositionInWorkloadInNewZeroPointOnlyTableLayout(int32_t position, int32_t k);
     // 1C) encodePositionInNewZeroPointOnlyTableLayout returns -2 if the given position is invalid, out of the range of
     // valid indices (no zero-point resides there)
-    static int32_t encodePositionInNewZeroPointOnlyTableLayout(int32_t position, std::vector<int32_t> workloads);
+    static int32_t encodePositionInNewZeroPointOnlyTableLayout(bool isZeroPoint4Bit, int32_t position,
+                                                               std::vector<int32_t> workloads);
     // 2A) in these decoding functions, the position represents the index at which a given element is in the shuffled
     // and constructed zp table; on the other hand, they return the position/index of the same element in the original
     // unshuffled zp table, hence the name "decoding"
@@ -188,7 +206,8 @@ public:
     static int32_t decodePositionInWorkloadInNewZeroPointOnlyTableLayout(int32_t position, int32_t k);
     // 2C) decodePositionInNewZeroPointOnlyTableLayout returns -1 if a padding value resides at that position and -2 if
     // the given position is invalid, out of the range of valid indices (no zero-point/padding value resides there)
-    static int32_t decodePositionInNewZeroPointOnlyTableLayout(int32_t position, std::vector<int32_t> workloads);
+    static int32_t decodePositionInNewZeroPointOnlyTableLayout(bool isZeroPoint4Bit, int32_t position,
+                                                               std::vector<int32_t> workloads);
 
     template <typename T>
     static void setFourBitZPInPalletizedByte(ArrayRef<T> table, std::vector<T>& result, int32_t newPos,
@@ -217,16 +236,22 @@ public:
                                                          std::vector<T>& result) {
         int32_t range = end - start;
 
-        VPUX_THROW_WHEN(start % WEIGHTS_TABLE_READER_ALIGNMENT != 0,
+        VPUX_THROW_WHEN(ptrStartingIndex + range > static_cast<int32_t>(ptrs.size()),
+                        "Zero-point table access out of bounds: trying to access indices {0}..{1} but zero points "
+                        "array size is {2}",
+                        ptrStartingIndex, ptrStartingIndex + range - 1, ptrs.size());
+        VPUX_THROW_WHEN(start % ZERO_POINT_TABLE_READER_ALIGNMENT != 0,
                         "The starting index of the range ({0}) is not a multiple of {1}", start,
-                        WEIGHTS_TABLE_READER_ALIGNMENT);
+                        ZERO_POINT_TABLE_READER_ALIGNMENT);
         VPUX_THROW_WHEN(range % WEIGHTS_TABLE_SETS_MIN_ALIGNMENT != 0, "Range length ({0}) is not a multiple of {1}",
                         range, WEIGHTS_TABLE_SETS_MIN_ALIGNMENT);
-        VPUX_THROW_WHEN(range < WEIGHTS_TABLE_SETS_MIN_ALIGNMENT || range > ZERO_POINT_TABLE_READER_ALIGNMENT,
+        VPUX_THROW_WHEN(range < WEIGHTS_TABLE_SETS_MIN_ALIGNMENT || range > ZERO_POINT_TABLE_PATTERN_LENGTH,
                         "Range ({0}) should not be less than {1}, nor greater than {2}", range,
-                        WEIGHTS_TABLE_SETS_MIN_ALIGNMENT, ZERO_POINT_TABLE_READER_ALIGNMENT);
+                        WEIGHTS_TABLE_SETS_MIN_ALIGNMENT, ZERO_POINT_TABLE_PATTERN_LENGTH);
 
-        auto map = getZeroPointInversePermutationTableByK(range);
+        int32_t alignRangeUpToMultipleOf16 = vpux::alignValUp(range, WEIGHTS_TABLE_SETS_MIN_ALIGNMENT);
+
+        auto map = getZeroPointInversePermutationTableByK(alignRangeUpToMultipleOf16);
         for (auto index = start; index < end; index++) {
             if (isZeroPoint4Bit) {
                 auto newPos = start + map[index - start];
@@ -242,22 +267,13 @@ public:
     static void constructNewZeroPointOnlyTableForWorkload(bool isZeroPoint4Bit, std::vector<T>& mappedTable,
                                                           int32_t workloadStartingIndex, int32_t workloadSize,
                                                           int32_t ptrStartingIndex, ArrayRef<T> ptrs) {
-        int32_t alignment = ZERO_POINT_TABLE_READER_ALIGNMENT;
+        int32_t alignment = ZERO_POINT_TABLE_PATTERN_LENGTH;
         int32_t countGroupsOf128ZP = workloadSize / alignment;
         int32_t remainingZPInLastGroup = workloadSize % alignment;
 
-        // In what follows, we will use alignment as a shortcut for logical alignment, in order to keep this description
-        // abstract and independent of the storage/physical part, in which each byte can store either one 8-bit
-        // zero-point or two 4-bit zero-points.
         // We firstly arrange the workload zero-points based on chunks (groups) of 128 elements and finally (see the
-        // next if conditional) we will arrange the remainig chunk of less than 128 elements, if that's the case; the
-        // last chunk will be aligned to 64 if there are at most 64 elements in it and to 128 otherwise; therefore, due
-        // to this last chunk/group, a workload can end up being aligned to 64 and not to 128 (see the
-        // constructNewZeroPointOnlyTable function as well, where we align each workload to 64 elements). It should be
-        // pointed out that this logic gets enforced because 128 zero points end up at different positions whether they
-        // are aligned as being part of 2 groups of 64 elements or as part of a single group; compared to
-        // data/sparsity-pointer tables, for which we have mapping tables only up to K=64 (e.g. pointersK48), for zero
-        // point only tables we have such mappings for K up to 128 (e.g. zeroPointsK112).
+        // next if conditional) we will arrange the remaining chunk of less than 128 elements, if that's the case (the
+        // last chunk will be aligned to 32 bytes).
         for (int index = 0; index < countGroupsOf128ZP; index++) {
             mapElementsToNewZeroPointOnlyTableFormat(isZeroPoint4Bit, ptrs, workloadStartingIndex + index * alignment,
                                                      workloadStartingIndex + index * alignment + alignment,
@@ -272,11 +288,11 @@ public:
         }
     }
 
-    // function that constructs a zero point only table (in the new format) starting from a vector that
-    // contains the zero points in ascending order based on their indices
+    // function that constructs a zero-point table (in the new format) starting from a vector that
+    // contains the zero-points in ascending order based on their indices
     // workloadSizes is needed for the shuffling logic
     // typename T should be one of uint8_t (for U4 and U8) and int8_t (for I4 and I8)
-    // set isZeroPoint4Bit = true only if the zero points should be stored on 4 bits each
+    // set isZeroPoint4Bit = true only if the zero-points should be stored on 4 bits each
     template <typename T>
     static std::vector<T> constructNewZeroPointOnlyTable(bool isZeroPoint4Bit, ArrayRef<int32_t> workloadSizes,
                                                          ArrayRef<T> ptrs) {
@@ -284,29 +300,41 @@ public:
                 std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>,
                 "Typename should be one of uint8_t (for U4 and U8 zero-points) and int8_t (for I4 and I8 zero-points)");
 
+        // mappedTableSize and workloadStartingIndex are similar, differing only for the 4 bit case: that's because
+        // mappedTableSize references the physical size, in which two zero-points get stored in one byte, while
+        // workloadStartingIndex references a logical position, more precisely the number of zero-points and padding
+        // values preceding this workload
         int32_t mappedTableSize = 0;
         for (auto workloadSize : workloadSizes) {
-            if (isZeroPoint4Bit) {
-                mappedTableSize += vpux::alignValUp(workloadSize / 2, WEIGHTS_TABLE_READER_ALIGNMENT / 2);
-            } else {
-                mappedTableSize += vpux::alignValUp(workloadSize, WEIGHTS_TABLE_READER_ALIGNMENT);
-            }
+            mappedTableSize += getZPTableAlignmentForWorkload(isZeroPoint4Bit, workloadSize);
         }
 
-        std::vector<T> mappedTable(mappedTableSize, -1);
+        // in case of legacy weight table and data/sparsity-pointer tables we also used an alignment to
+        // WEIGHTS_TABLE_SETS_MIN_ALIGNMENT = 16; instead of using a dummy/random padding value for this first-level
+        // alignment, we used the value corresponding to the last valid output channel; in case of zero-point table, as
+        // memory accesses are not involved, we can just keep the dummy value (i.e. PADDING_POSITION_INDICATOR = -1)
+        // that is set now during initialization, thus avoiding any other post-processing
+        std::vector<T> mappedTable(mappedTableSize, PADDING_POSITION_INDICATOR);
 
         int32_t workloadStartingIndex = 0;
         int32_t ptrStartingIndex = 0;
-        for (unsigned long index = 0; index < workloadSizes.size(); index++) {
-            constructNewZeroPointOnlyTableForWorkload(isZeroPoint4Bit, mappedTable, workloadStartingIndex,
-                                                      workloadSizes[index], ptrStartingIndex, ptrs);
-            workloadStartingIndex += vpux::alignValUp(workloadSizes[index], WEIGHTS_TABLE_READER_ALIGNMENT);
-            ptrStartingIndex += workloadSizes[index];
+        for (auto workloadSize : workloadSizes) {
+            constructNewZeroPointOnlyTableForWorkload(isZeroPoint4Bit, mappedTable, workloadStartingIndex, workloadSize,
+                                                      ptrStartingIndex, ptrs);
+            workloadStartingIndex += getZPTableLogicalAlignmentForWorkload(isZeroPoint4Bit, workloadSize);
+            ptrStartingIndex += workloadSize;
         }
 
         return mappedTable;
     }
 
+    // getNewPointerTableLogicalAlignmentForWorkload returns the needed logical/element-wise alignment for the part of
+    // the data-pointer/sparsity-pointer table corresponding to the given workload (size); this alignment has to be a
+    // multiple of WEIGHTS_TABLE_READER_ALIGNMENT = 64 elements
+    static int32_t getNewPointerTableLogicalAlignmentForWorkload(int32_t workloadSize);
+    // as each data-pointer/sparsity-pointer table element has WEIGHTS_TABLE_POINTER_SIZE = 4 bytes, this function
+    // simply returns 4 * getNewPointerTableLogicalAlignmentForWorkload(workloadSize)
+    static int32_t getNewPointerTableAlignmentForWorkload(int32_t workloadSize);
     static void mapElementsToNewPointerTableFormat(const std::vector<int32_t>& ptrs, int32_t start, int32_t end,
                                                    int32_t ptrStartingIndex, std::vector<int32_t>& result);
     static void constructNewPointerTableForWorkload(std::vector<int32_t>& mappedTable, int32_t workloadStartingIndex,
@@ -560,12 +588,14 @@ std::vector<T> getScaleTable(mlir::Type inElemType, mlir::Type outElemType,
     mlir::Type scalesType = nullptr;
     if (std::is_same<T, float>::value) {
         scalesType = mlir::Float32Type::get(inElemType.getContext());
+    } else if (std::is_same<T, vpux::type::float8_e8m0>::value) {
+        scalesType = mlir::Float8E8M0FNUType::get(inElemType.getContext());
     } else if (std::is_same<T, vpux::type::float8_e5m2>::value) {
         scalesType = mlir::Float8E5M2Type::get(inElemType.getContext());
     } else if (std::is_same<T, vpux::type::float8_e4m3>::value) {
         scalesType = mlir::Float8E4M3FNType::get(inElemType.getContext());
     } else {
-        VPUX_THROW("Only F32/F8E5M2/F8E4M3 scales are supported in the new weights table format");
+        VPUX_THROW("Only F32/F8E8M0/F8E5M2/F8E4M3 scales are supported in the new weights table format");
     }
 
     auto getMultShift = getMultShiftFunc<T>(inElemType, outElemType, weightsElemType, ppeConverter,
@@ -585,14 +615,14 @@ std::vector<float> getBiasTable(mlir::Type inElemType, mlir::Type outElemType,
                                 mlir::Type weightsElemType = nullptr, const Const::ContentAttr& bias = {});
 
 // typename T should be one of uint8_t (for U4 and U8) and int8_t (for I4 and I8)
-// set isZeroPoint4Bit = true only if the zero points should be stored on 4 bits each
-// so, for U4 zero points set: T=uint8_t and isZeroPoint4Bit=true
-// for U8 zero points set: T=uint8_t and isZeroPoint4Bit=false
-// for I4 zero points set: T=int8_t and isZeroPoint4Bit=true
-// for I8 zero points set: T=int8_t and isZeroPoint4Bit=false
+// set isZeroPoint4Bit = true only if the zero-points should be stored on 4 bits each
+// so, for U4 zero-points set: T=uint8_t and isZeroPoint4Bit=true
+// for U8 zero-points set: T=uint8_t and isZeroPoint4Bit=false
+// for I4 zero-points set: T=int8_t and isZeroPoint4Bit=true
+// for I8 zero-points set: T=int8_t and isZeroPoint4Bit=false
 template <typename T>
-std::vector<T> getZeroPointOnlyTable(ArrayRef<int32_t> workloadSizes, int64_t OC, mlir::Type weightsElemType,
-                                     bool isZeroPoint4Bit, ArrayRef<T> zeroPoints) {
+std::vector<T> getZeroPointTable(ArrayRef<int32_t> workloadSizes, int64_t OC, mlir::Type weightsElemType,
+                                 bool isZeroPoint4Bit, ArrayRef<T> zeroPoints) {
     VPUX_THROW_WHEN(weightsElemType == nullptr || !mlir::isa<mlir::quant::QuantizedType>(weightsElemType),
                     "weightsElemType has to be a quantized type, not {0}", weightsElemType);
 
@@ -601,14 +631,14 @@ std::vector<T> getZeroPointOnlyTable(ArrayRef<int32_t> workloadSizes, int64_t OC
     if (std::is_same_v<T, uint8_t>) {
         VPUX_THROW_UNLESS(storageType.isUnsignedInteger(8) || (storageType.isUnsignedInteger(4) && isZeroPoint4Bit),
                           "The storage type of the quantized weightsElemType {0} has to be the same as the type of the "
-                          "zero points",
+                          "zero-points",
                           storageType);
     } else if (std::is_same_v<T, int8_t>) {
         VPUX_THROW_UNLESS(
                 ((storageType.isSignedInteger(8) || storageType.isSignlessInteger(8))) ||
                         ((storageType.isSignedInteger(4) || storageType.isSignlessInteger(4)) && isZeroPoint4Bit),
                 "The storage type of the quantized weightsElemType {0} has to be the same as the type of the "
-                "zero points",
+                "zero-points",
                 storageType);
     } else {
         VPUX_THROW("Template argument type has to be uint8_t or int8_t");

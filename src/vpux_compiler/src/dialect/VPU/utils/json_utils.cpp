@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/json_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 
@@ -170,6 +171,117 @@ void createStrategyJSONFromOperations(llvm::json::Value& json,
     json = llvm::json::Value(std::move(opsToStrategies));
 }
 
+void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
+                               llvm::MapVector<mlir::Location, mlir::Operation*>& operations) {
+    llvm::json::Object manualStrategyObject = *manualStrategyValue.getAsObject();
+    std::unordered_map<std::string, llvm::SmallVector<mlir::Operation*>> vfHashToOps;
+    std::unordered_map<std::string, mlir::Attribute> vfHashToTilingAttr;
+    for (auto& item : manualStrategyObject) {
+        // skip if it's not found in the map
+        auto opLoc = item.first.str();
+        auto opIter = llvm::find_if(operations, [&](auto& op) {
+            return vpux::stringifyPrimaryLocation(op.first) == opLoc;
+        });
+        if (opIter == operations.end()) {
+            continue;
+        }
+        auto op = opIter->second;
+        const auto getOpPointer = [](auto& op) -> mlir::Operation* {
+            return &op;
+        };
+
+        // skip if vertical fusion is disabled or not configured
+        auto currOpStrategyObject = item.second.getAsObject();
+        auto iter = currOpStrategyObject->find(vpux::verticalFusion);
+        auto needManualConfiguration =
+                iter != currOpStrategyObject->end() && iter->second.getAsString().value_or("True") == "False";
+        if (needManualConfiguration) {
+            continue;
+        }
+
+        // skip if no tiling strategy found
+        iter = currOpStrategyObject->find(vpux::tilingStrategy);
+        if (iter == currOpStrategyObject->end()) {
+            continue;
+        }
+        auto dummyAttr = getIntArrayAttr(op->getContext(), Shape(4));
+        auto manualAttribute = convertJSONToAttr(dummyAttr, iter->second);
+
+        // skip if no vertical fusion hash found
+        iter = currOpStrategyObject->find(vpux::verticalFusionHash);
+        if (iter == currOpStrategyObject->end()) {
+            continue;
+        }
+
+        // Only try to manually overwrite VF ops before MergeVF pass
+        auto parentVerticalFusionOp = op->getParentOfType<VPU::VerticalFusionOp>();
+        if (parentVerticalFusionOp == nullptr) {
+            continue;
+        }
+        auto operations = to_small_vector(parentVerticalFusionOp.getBody()->without_terminator() |
+                                          transformed(getOpPointer) | filtered([](mlir::Operation* op) {
+                                              return mlir::isa_and_nonnull<VPU::VerticalFusionOpInterface>(op);
+                                          }));
+        if (operations.size() != 1) {
+            continue;
+        }
+        auto opHash = iter->second.getAsString().value_or("").str();
+        auto existedTilingIter = vfHashToTilingAttr.find(opHash);
+        if (existedTilingIter == vfHashToTilingAttr.end()) {
+            vfHashToTilingAttr.emplace(opHash, manualAttribute);
+        } else if (existedTilingIter->second != manualAttribute) {
+            Logger::global().warning("Got mismatched tiling strategies for VFRegion: {0}", opHash);
+        }
+        vfHashToOps[opHash].push_back(parentVerticalFusionOp);
+    }
+    for (auto& item : vfHashToOps) {
+        auto& ops = item.second;
+        llvm::sort(ops, [](mlir::Operation* a, mlir::Operation* b) {
+            return a->isBeforeInBlock(b);
+        });
+
+        while (ops.size() > 1) {
+            auto vfOp = ops.back();
+            ops.pop_back();
+            // get next VF to be merged
+            auto operands = to_small_vector(vfOp->getOperands() | filtered([&](auto operand) {
+                                                auto parentOp = findParent(operand);
+                                                return parentOp != nullptr && llvm::find(ops, parentOp) != ops.end();
+                                            }));
+            if (operands.empty()) {
+                Logger::global().warning("No parent VF found for merging with current VF {0}",
+                                         vpux::stringifyPrimaryLocation(vfOp->getLoc()));
+                break;
+            }
+            llvm::sort(operands, [](auto& operandA, auto& operandB) {
+                return findParent(operandA)->isBeforeInBlock(findParent(operandB));
+            });
+
+            auto operand = operands.back();
+            auto nearestParent = findParent(operand);
+            ops.erase(llvm::find(ops, nearestParent));
+
+            auto parent = operand.getDefiningOp();
+            auto fusedOp = vfOp;
+            while (isPureViewOp(parent) || parent == nearestParent) {
+                mlir::OpBuilder builder(parent);
+                fusedOp = VPU::fuseOpsInBlock(builder, mlir::cast<VPU::VerticalFusionOp>(fusedOp), parent,
+                                              mlir::cast<mlir::ArrayAttr>(vfHashToTilingAttr[item.first]), true);
+
+                if (parent == nearestParent) {
+                    break;
+                }
+                parent = parent->getOperand(0).getDefiningOp();
+            }
+
+            vfOp->replaceAllUsesWith(fusedOp);
+            vfOp->erase();
+            parent->erase();
+            ops.push_back(fusedOp);
+        }
+    }
+}
+
 void overwriteManualStrategy(llvm::json::Value& manualStrategyValue,
                              llvm::MapVector<mlir::Location, mlir::Operation*>& operations) {
     DenseMap<mlir::Operation*, std::pair<llvm::json::Value, bool>> vfOpVisited;
@@ -230,6 +342,30 @@ void overwriteManualStrategy(llvm::json::Value& manualStrategyValue,
                                                  manualAttribute, opName, op.second->getLoc());
                         op.second->setAttr(tilingStrategy, manualAttribute);
                     }
+                } else if (it->first.str() == verticalFusion) {
+                    // Disable vertical fusion if related attribute is set to False
+                    if (parentVerticalFusionOp == nullptr) {
+                        continue;
+                    }
+                    const auto getOpPointer = [](auto& op) -> mlir::Operation* {
+                        return &op;
+                    };
+                    auto operations =
+                            to_small_vector(parentVerticalFusionOp.getBody()->without_terminator() |
+                                            transformed(getOpPointer) | filtered([](mlir::Operation* op) {
+                                                return mlir::isa_and_nonnull<VPU::VerticalFusionOpInterface>(op);
+                                            }));
+                    if (operations.size() > 1) {
+                        continue;
+                    }
+
+                    auto iter = currOpStrategyObject.find(vpux::verticalFusion);
+                    auto isVerticalFusionDisabled = iter != currOpStrategyObject.end() &&
+                                                    iter->second.getAsString().value_or("True") == "False";
+                    if (isVerticalFusionDisabled) {
+                        parentVerticalFusionOp.setIsManualConfigured(true);
+                        continue;
+                    }
                 } else {
                     auto attrType = it->first.str();
                     VPUX_THROW_WHEN(!isAllowedAttr(attrType), "Unsupported Attribute '{0}'", it->first.str());
@@ -243,6 +379,7 @@ void overwriteManualStrategy(llvm::json::Value& manualStrategyValue,
             }
         }
     }
+    overwriteManualVFStrategy(manualStrategyValue, operations);
 }
 
 void updateAttributeValue(llvm::json::Value& json, const std::string& opName, StringRef attribute,

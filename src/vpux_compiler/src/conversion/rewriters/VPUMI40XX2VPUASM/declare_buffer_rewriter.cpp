@@ -7,7 +7,9 @@
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 
 #include <vpux_elf/types/vpu_extensions.hpp>
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
+#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/ELF/IR/attributes.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 namespace vpux {
@@ -39,6 +41,9 @@ mlir::FailureOr<SymbolizationResult> DeclareBufferRewriter::symbolize(VPURT::Dec
         auto buffType = VPUASM::BufferType::get(ctx, memLocation, memref, traits);
         auto newDeclareBufOp = rewriter.create<VPUASM::DeclareBufferOp>(op.getLoc(), symName, buffType);
         operation = newDeclareBufOp.getOperation();
+        if (auto offsets = op->getAttr(vpux::viewOffsetsAttrName)) {
+            newDeclareBufOp->setAttr(vpux::viewOffsetsAttrName, offsets);
+        }
 
         rewriter.eraseOp(op);
     } else {

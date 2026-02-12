@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -80,7 +80,8 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
 
     const auto indicesDistModeAttr = getDistModeAttr(distributedIndicesType);
     VPUX_THROW_UNLESS(
-            indicesDistModeAttr != nullptr && indicesDistModeAttr.getValue() == VPU::DistributionMode::DUPLICATED,
+            indicesDistModeAttr != nullptr && (indicesDistModeAttr.getValue() == VPU::DistributionMode::DUPLICATED ||
+                                               indicesDistModeAttr.getValue() == VPU::DistributionMode::SEGMENTED),
             "Unsupported input distributed mode: {0}", indicesDistModeAttr);
     const auto outputDistModeAttr = getDistModeAttr(distributedOutputType);
     VPUX_THROW_UNLESS(
@@ -109,9 +110,13 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
         const auto inputShapeOffsets = distributedOutputType.getPerClusterMemoryShapeOffsets();
 
         const auto numClusters = checked_cast<int64_t>(inputShapes.size());
-        inputBuffers = VPUIP::getSplitBuffers(_ctx, loc, "input", input, inputShapes, inputShapeOffsets, numClusters,
-                                              rewriter);
-
+        // If indices is segmented, means we split the indices, then we could not split the input.
+        if (indicesDistModeAttr.getValue() == VPU::DistributionMode::SEGMENTED) {
+            inputBuffers = SmallVector<mlir::Value>(numClusters, input);
+        } else {
+            inputBuffers = VPUIP::getSplitBuffers(_ctx, loc, "input", input, inputShapes, inputShapeOffsets,
+                                                  numClusters, rewriter);
+        }
         indicesBuffers = VPUIP::getPerClusterMemoryBuffers(_ctx, loc, "indices", indices, numClusters, rewriter);
         outputBuffers = VPUIP::getPerClusterMemoryBuffers(_ctx, loc, "output", output, numClusters, rewriter);
     }
@@ -123,7 +128,7 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
 
     int64_t dmaPort = 0;
     for (size_t clusterId = 0; clusterId < numClusters; ++clusterId) {
-        const auto newLoc = appendLoc(gatherDmaOp->getLoc(), "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(gatherDmaOp->getLoc(), "cluster_{0}", clusterId);
         auto newGatherDMAOp = VPURT::wrapIntoTaskOp<VPUIP::GatherDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffers[clusterId],
                 indicesBuffers[clusterId], outputBuffers[clusterId], gatherDmaOp.getElementSize(),
@@ -160,7 +165,7 @@ void UnrollGatherDMAPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     mlir::RewritePatternSet patterns(&ctx);

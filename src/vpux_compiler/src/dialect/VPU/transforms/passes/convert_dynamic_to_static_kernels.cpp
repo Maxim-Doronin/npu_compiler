@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/scf/scf_analysis_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -15,6 +16,8 @@
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/IRMapping.h>
+
+#include "vpux/compiler/dialect/HostExec/params.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_CONVERTDYNAMICTOSTATICKERNELS
@@ -65,19 +68,29 @@ mlir::func::FuncOp createStaticFuncOp(mlir::func::FuncOp dynFuncOp, SmallVector<
     auto newFuncName = dynFuncOp.getName().str() + "_static";
     assert(moduleOp.lookupSymbol<mlir::func::FuncOp>(newFuncName) == nullptr && "static function already exists");
 
-    mlir::Operation* hasOpWithPadAttr = nullptr;
-    dynFuncOp.walk([&](mlir::Operation* op) {
-        if (mlir::isa<VPU::VPUDialect>(op->getDialect())) {
-            if (VPU::isNceOpWithPadAttr(op)) {
-                hasOpWithPadAttr = op;
-                return mlir::WalkResult::interrupt();
-            }
-        }
-        return mlir::WalkResult::advance();
-    });
-
     auto newFuncType = mlir::FunctionType::get(moduleOp->getContext(), mlir::TypeRange(newFuncResultTypes), {});
     return VPU::cloneFuncOp(dynFuncOp, newFuncName, newFuncType);
+}
+
+// Set dynamic shape attributes on function arguments and results. The attributes are used in AddNetInfoToModule pass
+// to specify which network data info have dynamic strides.
+static void setDynamicShapeAttributes(mlir::OpBuilder& builder, mlir::func::FuncOp oldFuncOp,
+                                      mlir::func::FuncOp newFuncOp) {
+    llvm::StringRef dynmicStridesAttrName = HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
+
+    for (auto [idx, argType] : llvm::enumerate(oldFuncOp.getArgumentTypes())) {
+        auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(argType);
+        if (!tensorType.hasStaticShape()) {
+            newFuncOp.setArgAttr(idx, dynmicStridesAttrName, builder.getBoolAttr(true));
+        }
+    }
+
+    for (auto [idx, resultType] : llvm::enumerate(oldFuncOp.getResultTypes())) {
+        auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(resultType);
+        if (!tensorType.hasStaticShape()) {
+            newFuncOp.setResultAttr(idx, dynmicStridesAttrName, builder.getBoolAttr(true));
+        }
+    }
 }
 
 mlir::func::CallOp ConvertDynamicToStaticKernelsPass::rewriteCallOpWithStaticType(
@@ -109,6 +122,8 @@ mlir::func::CallOp ConvertDynamicToStaticKernelsPass::rewriteCallOpWithStaticTyp
         newFuncOp = moduleOp.lookupSymbol<mlir::func::FuncOp>(staticFuncOpName);
     } else {
         newFuncOp = createStaticFuncOp(funcOp, staticOperands, moduleOp);
+
+        setDynamicShapeAttributes(builder, funcOp, newFuncOp);
     }
     assert(newFuncOp != nullptr && "Expected to find or create a static function");
 
@@ -310,7 +325,7 @@ void ConvertDynamicToStaticKernelsPass::safeRunOnModule() {
         }
 
         SmallVector<mlir::tensor::CastOp> castOps;
-        auto sortedResults = VPU::collectOpsInTopologicalOrder(startNodes, getNeighbors, stopSearch);
+        auto sortedResults = vpux::VPU::collectOpsInTopologicalOrder(startNodes, getNeighbors, stopSearch);
 
         llvm::DenseMap<mlir::Value, mlir::RankedTensorType> mapValueToStaticShape;
         llvm::SmallPtrSet<mlir::Operation*, DEFAULT_OPERATION_SET_SIZE> visitedCallOps;

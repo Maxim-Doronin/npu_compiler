@@ -26,10 +26,10 @@ module @dmaSwProfiling {
     %profBufCmx = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<2xui64, [@CMX_NN, 0]>
     %profOutput = VPURT.DeclareBuffer <ProfilingOutput> [0] <0> -> memref<2xui64>
 
-    %profCmxToOut = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%profBufCmx : memref<2xui64, [@CMX_NN, 0]>) outputs(%profOutput : memref<2xui64>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
-    %profDmaEnd = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%profReg : memref<1xui64, @Register>) outputs(%profSlotEnd : memref<1xui64, [@CMX_NN, 0]>) nextDMAIdx(%profCmxToOut : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
-    %dma = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) nextDMAIdx(%profDmaEnd : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
-    %profDmaStart = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%profReg : memref<1xui64, @Register>) outputs(%profSlotStart : memref<1xui64, [@CMX_NN, 0]>) nextDMAIdx(%dma : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %profCmxToOut = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%profBufCmx : memref<2xui64, [@CMX_NN, 0]>) outputs(%profOutput : memref<2xui64>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
+    %profDmaEnd = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%profReg : memref<1xui64, @Register>) outputs(%profSlotEnd : memref<1xui64, [@CMX_NN, 0]>) nextDMAIdx(%profCmxToOut : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
+    %dma = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) nextDMAIdx(%profDmaEnd : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+    %profDmaStart = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%profReg : memref<1xui64, @Register>) outputs(%profSlotStart : memref<1xui64, [@CMX_NN, 0]>) nextDMAIdx(%dma : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 
     return %arg1, %arg2 : memref<1x2x3x4xf16, @DDR>, memref<4xui32>
 

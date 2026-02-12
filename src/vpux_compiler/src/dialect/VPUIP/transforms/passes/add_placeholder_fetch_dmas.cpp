@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,8 +10,8 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPURT/utils/wlm_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_ADDPLACEHOLDERFETCHDMAS
@@ -20,6 +20,7 @@ namespace vpux::VPUIP {
 }  // namespace vpux::VPUIP
 
 using namespace vpux;
+
 namespace {
 
 //
@@ -30,8 +31,8 @@ using BlockRange = SmallVector<std::pair<size_t, size_t>>;
 
 struct FetchDMAData {
     size_t insertionPoint = 0;
-    SmallVector<IndexType> consumes;
-    SmallVector<IndexType> producesIn;
+    SmallVector<VPURT::IndexType> consumes;
+    SmallVector<VPURT::IndexType> producesIn;
     VPUIP::FetchDMAAttr fetchDmaAttr;
 };
 
@@ -41,7 +42,8 @@ struct PlannedInsertionsData {
     mlir::Operation* barrierInsertionPoint = nullptr;
 
     SmallVector<FetchDMAData> fetchDMAsToInsert;
-    llvm::DenseMap<IndexType, std::pair<SmallVector<IndexType>, SmallVector<IndexType>>> barrierAddConsumerProducerMap;
+    llvm::DenseMap<VPURT::IndexType, std::pair<SmallVector<VPURT::IndexType>, SmallVector<VPURT::IndexType>>>
+            barrierAddConsumerProducerMap;
 };
 
 class AddPlaceholderFetchDMAsPass final : public VPUIP::impl::AddPlaceholderFetchDMAsBase<AddPlaceholderFetchDMAsPass> {
@@ -61,7 +63,7 @@ private:
 
 VPURT::TaskOp createFetchDma(mlir::OpBuilder& builder, mlir::Value inputBuf, mlir::Value outputBuf,
                              BarrierInfo& barrierInfo, VPUIP::FetchDMAAttr fetchDMAData) {
-    auto newDMA = createFetchDMA(builder, inputBuf, outputBuf, 0, {}, {}, fetchDMAData);
+    auto newDMA = VPURT::createFetchDMA(builder, inputBuf, outputBuf, 0, {}, {}, fetchDMAData);
     barrierInfo.addNewTaskOp(newDMA);
     return newDMA;
 }
@@ -87,8 +89,8 @@ void AddPlaceholderFetchDMAsPass::realizePlannedInsertions(mlir::OpBuilder& buil
 
     // Create as many dummy barriers as were indexed during scheduling
     for (size_t i = 0; i < preparedInsertions.newBarrierIndex; ++i) {
-        auto newBarrierOp =
-                createNewBarrier(builder, barrierInfo, preparedInsertions.barrierInsertionPoint, nullptr, nullptr);
+        auto newBarrierOp = VPURT::createNewBarrier(builder, barrierInfo, preparedInsertions.barrierInsertionPoint,
+                                                    nullptr, nullptr);
         dummyBarriers.push_back(newBarrierOp);
     }
 
@@ -144,7 +146,7 @@ void AddPlaceholderFetchDMAsPass::planFetchDMAAndBarriersInsertionPerQueue(Block
         FetchDMAData fetchDMAData;
         auto insertionIndex = barrierInfo.getIndex(firstTaskOp);
         fetchDMAData.insertionPoint = insertionIndex;
-        fetchDMAData.fetchDmaAttr = getFetchDMAAttr(groupIdx, barrierInfo, executionGroup[groupIdx].front());
+        fetchDMAData.fetchDmaAttr = VPURT::getFetchDMAAttr(groupIdx, barrierInfo, executionGroup[groupIdx].front());
         emptyInsertions.fetchDMAsToInsert.push_back(fetchDMAData);
     }
 
@@ -153,64 +155,114 @@ void AddPlaceholderFetchDMAsPass::planFetchDMAAndBarriersInsertionPerQueue(Block
         return;
     }
 
+    VPURT::TaskQueueType fetchDmaQueueType{config::ExecutorKind::DMA_NN,
+                                           getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
+
+    std::optional<size_t> blockIdxOfTaskControlMap;
+    std::pair<SmallVector<llvm::BitVector>, size_t> taskControlMapAndOffset;
+
     size_t groupIdx = 2;
     auto grandParentGroup = executionGroup.front();
     auto parentGroup = executionGroup[1];
     auto travelingGroup = executionGroup[groupIdx];
     while (groupIdx < executionGroup.size()) {
+        _log.trace("Planning FetchDMA for execution group {0}", groupIdx);
+        _log = _log.nest();
+        VPUX_THROW_WHEN(grandParentGroup.empty(), "GrandParent execution group is empty");
+        VPUX_THROW_WHEN(parentGroup.empty(), "Parent execution group is empty");
+
         auto firstTaskParentGroup = parentGroup[0];
         auto lastTaskParentGroup = parentGroup.back();
-        auto lastTaskGrandParentGroup = grandParentGroup[grandParentGroup.size() - 1];
+        auto lastTaskGrandParentGroup = grandParentGroup.back();
+        _log.trace("lastTaskGrandParentGroup {0}, firstTaskParentGroup {1}, lastTaskParentGroup {2}",
+                   lastTaskGrandParentGroup, firstTaskParentGroup, lastTaskParentGroup);
 
-        auto dummyBarrierOneProducer = firstTaskParentGroup;
-        // If parent group only has one task, then we cannot enqueue in parallel to parent
-        if (firstTaskParentGroup == lastTaskParentGroup) {
-            dummyBarrierOneProducer = lastTaskGrandParentGroup;
-        }
+        // Find if there is an existing DMA that can be reused as insertion point
+        // firstTaskParentGroup -> ... -> SomeDMA -> ... -> lastTaskParentGroup
+        // FetchDMA for current group can be placed right before such SomeDMA
+        std::optional<size_t> reuseDma = std::nullopt;
+        auto dmaTask1Opt = barrierInfo.getNextTaskOnQueue(firstTaskParentGroup, fetchDmaQueueType);
+        auto dmaTask2Opt = barrierInfo.getPrevTaskOnQueue(lastTaskParentGroup, fetchDmaQueueType);
+        if (dmaTask1Opt.has_value() && dmaTask2Opt.has_value() && dmaTask1Opt.value() <= dmaTask2Opt.value()) {
+            _log.trace("Check if any DMA between {0} and {1} can be reused", dmaTask1Opt.value(), dmaTask2Opt.value());
 
-        auto dummyBarrierTwoConsumer = lastTaskParentGroup;
-
-        FetchDMAData fetchDMAData;
-        // If both tasks are in different blocks, we may need a sync task as consumer for PlaceholderFetchDMA
-        if (!inSameTaskBlock(lastTaskParentGroup, dummyBarrierOneProducer, blockRange)) {
-            auto syncPoint = barrierInfo.getControlGraphSyncPoint(dummyBarrierOneProducer);
-            // dummyBarrierOneProducer is NOT the sync task — safe to use sync as consumer
-            if (dummyBarrierOneProducer != syncPoint.value()) {
-                dummyBarrierTwoConsumer = syncPoint.value();
-            } else {
-                // dummyBarrierOneProducer IS the sync task
-                auto blockInd1 = barrierInfo.getControlGraphBlockIndex(dummyBarrierOneProducer);
-                auto blockInd2 = barrierInfo.getControlGraphBlockIndex(lastTaskParentGroup);
-
-                if (blockInd1 + 1 == blockInd2) {
-                    // Tasks are in consecutive blocks — use parent directly as consumer
-                    dummyBarrierTwoConsumer = lastTaskParentGroup;
-                } else {
-                    // Need next block's sync point as consumer
-                    auto nextSync = barrierInfo.getNextBlockSyncPoint(dummyBarrierOneProducer);
-                    VPUX_THROW_UNLESS(nextSync.has_value(), "No next block sync point found for FetchDMA consumer");
-                    dummyBarrierTwoConsumer = nextSync.value();
+            auto currentDma = dmaTask1Opt;
+            // Scan if there is any DMA between dmaTask1Opt and dmaTask2Opt that can be reused
+            while (currentDma.has_value() && currentDma.value() <= dmaTask2Opt.value()) {
+                _log.trace("Considering DMA task at index {0}", currentDma.value());
+                if (barrierInfo.isDepFromTaskAToTaskB(firstTaskParentGroup, currentDma.value(), taskControlMapAndOffset,
+                                                      blockIdxOfTaskControlMap) &&
+                    barrierInfo.isDepFromTaskAToTaskB(currentDma.value(), lastTaskParentGroup, taskControlMapAndOffset,
+                                                      blockIdxOfTaskControlMap)) {
+                    _log.nest().trace("Reusing existing DMA task at index {0} for FetchDMA of group {1}",
+                                      currentDma.value(), groupIdx);
+                    reuseDma = currentDma;
+                    break;
                 }
+                currentDma = barrierInfo.getNextTaskOnQueue(currentDma.value(), fetchDmaQueueType);
             }
         }
 
-        // 1. LastOfGrandParent/FirstOfParent → B1
-        size_t barOneDummyIdx = emptyInsertions.newBarrierIndex++;
-        auto& producersToAdd = emptyInsertions.barrierAddConsumerProducerMap[{barOneDummyIdx, Type::Dummy}].second;
-        producersToAdd.push_back({dummyBarrierOneProducer, Type::Real});
+        FetchDMAData fetchDMAData;
+        if (reuseDma.has_value()) {
+            //  reuseDmaWaitBar -> FetchDMA → reuseDMA
+            fetchDMAData.insertionPoint = reuseDma.value() - 1;
+            for (auto waitBar : barrierInfo.getWaitBarriers(reuseDma.value())) {
+                fetchDMAData.consumes.push_back({waitBar, VPURT::Type::Real});
+            }
+        } else {
+            auto dummyBarrierOneProducer = firstTaskParentGroup;
+            // If parent group only has one task, then we cannot enqueue in parallel to parent
+            if (firstTaskParentGroup == lastTaskParentGroup) {
+                dummyBarrierOneProducer = lastTaskGrandParentGroup;
+                _log.trace("Parent group has single task, setting dummyBarrierOneProducer to lastTaskGrandParentGroup");
+            }
 
-        // 2. B1 → FetchDMA → B2
-        fetchDMAData.insertionPoint = dummyBarrierOneProducer;
-        fetchDMAData.consumes = {{barOneDummyIdx, Type::Dummy}};
+            auto dummyBarrierTwoConsumer = lastTaskParentGroup;
 
-        size_t barTwoDummyIdx = emptyInsertions.newBarrierIndex++;
-        fetchDMAData.producesIn = {{barTwoDummyIdx, Type::Dummy}};
+            // If both tasks are in different blocks, we may need a sync task as consumer for PlaceholderFetchDMA
+            if (!VPURT::inSameTaskBlock(lastTaskParentGroup, dummyBarrierOneProducer, blockRange)) {
+                auto syncPoint = barrierInfo.getControlGraphSyncPoint(dummyBarrierOneProducer);
+                // dummyBarrierOneProducer is NOT the sync task — safe to use sync as consumer
+                if (dummyBarrierOneProducer != syncPoint.value()) {
+                    dummyBarrierTwoConsumer = syncPoint.value();
+                } else {
+                    // dummyBarrierOneProducer IS the sync task
+                    auto blockInd1 = barrierInfo.getControlGraphBlockIndex(dummyBarrierOneProducer);
+                    auto blockInd2 = barrierInfo.getControlGraphBlockIndex(lastTaskParentGroup);
 
-        // 3. B2 → LastOfParent (or syncTask)
-        auto& consumersToAdd = emptyInsertions.barrierAddConsumerProducerMap[{barTwoDummyIdx, Type::Dummy}].first;
-        consumersToAdd.push_back({dummyBarrierTwoConsumer, Type::Real});
+                    if (blockInd1 + 1 == blockInd2) {
+                        // Tasks are in consecutive blocks — use parent directly as consumer
+                        dummyBarrierTwoConsumer = lastTaskParentGroup;
+                    } else {
+                        // Need next block's sync point as consumer
+                        auto nextSync = barrierInfo.getNextBlockSyncPoint(dummyBarrierOneProducer);
+                        VPUX_THROW_UNLESS(nextSync.has_value(), "No next block sync point found for FetchDMA consumer");
+                        dummyBarrierTwoConsumer = nextSync.value();
+                    }
+                }
+            }
 
-        fetchDMAData.fetchDmaAttr = getFetchDMAAttr(groupIdx, barrierInfo, travelingGroup.front());
+            // 1. LastOfGrandParent/FirstOfParent → B1
+            size_t barOneDummyIdx = emptyInsertions.newBarrierIndex++;
+            auto& producersToAdd =
+                    emptyInsertions.barrierAddConsumerProducerMap[{barOneDummyIdx, VPURT::Type::Dummy}].second;
+            producersToAdd.push_back({dummyBarrierOneProducer, VPURT::Type::Real});
+
+            // 2. B1 → FetchDMA → B2
+            fetchDMAData.insertionPoint = dummyBarrierOneProducer;
+            fetchDMAData.consumes = {{barOneDummyIdx, VPURT::Type::Dummy}};
+
+            size_t barTwoDummyIdx = emptyInsertions.newBarrierIndex++;
+            fetchDMAData.producesIn = {{barTwoDummyIdx, VPURT::Type::Dummy}};
+
+            // 3. B2 → LastOfParent (or syncTask)
+            auto& consumersToAdd =
+                    emptyInsertions.barrierAddConsumerProducerMap[{barTwoDummyIdx, VPURT::Type::Dummy}].first;
+            consumersToAdd.push_back({dummyBarrierTwoConsumer, VPURT::Type::Real});
+        }
+
+        fetchDMAData.fetchDmaAttr = VPURT::getFetchDMAAttr(groupIdx, barrierInfo, travelingGroup.front());
         emptyInsertions.fetchDMAsToInsert.push_back(fetchDMAData);
 
         grandParentGroup = parentGroup;
@@ -220,6 +272,7 @@ void AddPlaceholderFetchDMAsPass::planFetchDMAAndBarriersInsertionPerQueue(Block
         if (groupIdx < executionGroup.size()) {
             travelingGroup = executionGroup[groupIdx];
         }
+        _log = _log.unnest();
     }
 }
 
@@ -238,6 +291,7 @@ void AddPlaceholderFetchDMAsPass::safeRunOnFunc() {
             !barrierOps.empty() ? *barrierOps.begin() : &netFunc.getBody().front().front();
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
+    const int numBarriersBefore = barrierInfo.getNumOfBarrierOps();
 
     // Get the blockRanges to check we don't add deps between blocks
     BlockRange blockRange;
@@ -248,15 +302,13 @@ void AddPlaceholderFetchDMAsPass::safeRunOnFunc() {
     }
 
     // Build task queue type map for all queues in order to test paths between tasks on different FIFOs.
-    barrierInfo.initializeTaskQueueTypeMap(
-            {VPU::ExecutorKind::DMA_NN, VPU::ExecutorKind::DPU, VPU::ExecutorKind::SHAVE_ACT});
     barrierInfo.buildTaskQueueTypeMap();
 
     // Will have a map for each cluster along with task index of the task
     auto taskQueues = VPURT::getTaskOpQueues(netFunc, barrierInfo);
 
     // Initialize fetchDmaQueueType for DMA_NN executor on DDR channel, port 0
-    VPURT::TaskQueueType fetchDmaQueueType{VPU::ExecutorKind::DMA_NN,
+    VPURT::TaskQueueType fetchDmaQueueType{config::ExecutorKind::DMA_NN,
                                            getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
     // firstTaskOp is used as insertion point for FetchDMAs for initial 2 execution groups
     // If we have any DMAs on supported port and channel then FetchDMAs must be placed before them
@@ -275,21 +327,44 @@ void AddPlaceholderFetchDMAsPass::safeRunOnFunc() {
     auto swGroups = execGroupAnalysis.getActShvExecutionGroups();
 
     for (auto& [_, executionGroups] : dpuGroups) {
+        _log.trace("Planning FetchDMA and Barriers for DPU queue");
         planFetchDMAAndBarriersInsertionPerQueue(blockRange, executionGroups, barrierInfo, firstTaskOp,
                                                  dmaFetchInsertions);
     }
     for (auto& [_, executionGroups] : swGroups) {
+        _log.trace("Planning FetchDMA and Barriers for SHV queue");
         planFetchDMAAndBarriersInsertionPerQueue(blockRange, executionGroups, barrierInfo, firstTaskOp,
                                                  dmaFetchInsertions);
+    }
+
+    if (dmaFetchInsertions.fetchDMAsToInsert.empty()) {
+        _log.info("No FetchDMAs to insert");
+        barrierInfo.clearAttributes();
+        return;
     }
 
     realizePlannedInsertions(builder, barrierInfo, dmaFetchInsertions);
     finalizeBarrierInfo(barrierInfo, netFunc, _log);
 
+    // After insertion perform verification if FetchDMAs satisfy constraints
+    barrierInfo = BarrierInfo{netFunc};
+    barrierInfo.buildTaskQueueTypeMap();
+
     // Log the number of inserted FetchDMAs
-    if (!dmaFetchInsertions.fetchDMAsToInsert.empty()) {
-        _log.info("Inserted '{0}' FetchDMAs", dmaFetchInsertions.fetchDMAsToInsert.size());
-    }
+    _log.info("Inserted '{0}' FetchDMAs", dmaFetchInsertions.fetchDMAsToInsert.size());
+    const int numBarriersAfter = barrierInfo.getNumOfBarrierOps();
+    _log.info("Inserted '{0}' barriers, before: '{1}', after '{2}'", numBarriersAfter - numBarriersBefore,
+              numBarriersBefore, numBarriersAfter);
+
+    execGroupAnalysis = ExecutionGroupAnalysis{netFunc};
+    dpuGroups = execGroupAnalysis.getDPUExecutionGroups();
+    swGroups = execGroupAnalysis.getActShvExecutionGroups();
+
+    VPUX_THROW_WHEN(!verifyFetchDmaDependencies(netFunc, barrierInfo, dpuGroups, _log),
+                    "Unsafe dependencies for Fetch DMA around DPUs");
+    VPUX_THROW_WHEN(!verifyFetchDmaDependencies(netFunc, barrierInfo, swGroups, _log),
+                    "Unsafe dependencies for Fetch DMA around SHVs");
+    barrierInfo.clearAttributes();
 }
 
 }  // namespace

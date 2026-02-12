@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,7 +46,7 @@ module @spaceToDepth {
     //CHECK:    [[OUTPUT_BUFFER_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1216> -> memref<1x16x2x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>
 
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %9 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x4x6x12xf16, #NHWC>) outputs(%3 : memref<1x4x6x12xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x4x6x12xf16, #NHWC, [@CMX_NN, 0]>
+      %9 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x4x6x12xf16, #NHWC>) outputs(%3 : memref<1x4x6x12xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x4x6x12xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     //CHECK-NOT:  VPUIP.NNDMA
@@ -65,7 +65,7 @@ module @spaceToDepth {
     //CHECK-SAME: -> !VPURegMapped.Index<0:0:0>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %9 = VPUIP.SpaceToDepthDMA {block_size = 2 : i64, internalDataFlow = #VPUIP.InternalDataFlowAttr<inputType = memref<1x4x1x2x6x2xf16, {order = #map, strides = [288, 1, 96, 48, 8, 4]}, [@CMX_NN, 0]>, outputType = memref<1x2x2x4x1x6xf16, {order = #map1, strides = [288, 8, 4, 1, 96, 16]}, [@CMX_NN, 0]>, mappingOrder = #map2, loopOrder = #map>, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, port = 0 : i64} inputs(%4 : memref<1x4x2x12xf16, {order = #NHWC, strides = [288, 1, 48, 4]}, [@CMX_NN, 0]>) outputs(%7 : memref<1x16x1x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>) -> memref<1x16x1x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>
+      %9 = VPUIP.SpaceToDepthDMA <{block_size = 2 : i64, internalDataFlow = #VPUIP.InternalDataFlowAttr<inputType = memref<1x4x1x2x6x2xf16, {order = #map, strides = [288, 1, 96, 48, 8, 4]}, [@CMX_NN, 0]>, outputType = memref<1x2x2x4x1x6xf16, {order = #map1, strides = [288, 8, 4, 1, 96, 16]}, [@CMX_NN, 0]>, mappingOrder = #map2, loopOrder = #map>, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, port = 0 : i64}> inputs(%4 : memref<1x4x2x12xf16, {order = #NHWC, strides = [288, 1, 48, 4]}, [@CMX_NN, 0]>) outputs(%7 : memref<1x16x1x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>) -> memref<1x16x1x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>
     }
 
     //CHECK-NOT:  VPUIP.NNDMA
@@ -88,7 +88,7 @@ module @spaceToDepth {
     //CHECK-SAME: -> !VPURegMapped.Index<0:1:0>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %9 = VPUIP.SpaceToDepthDMA {block_size = 2 : i64, internalDataFlow = #VPUIP.InternalDataFlowAttr<inputType = memref<1x4x2x2x6x2xf16, {order = #map, strides = [288, 1, 96, 48, 8, 4]}, [@CMX_NN, 0]>, outputType = memref<1x2x2x4x2x6xf16, {order = #map1, strides = [288, 8, 4, 1, 96, 16]}, [@CMX_NN, 0]>, mappingOrder = #map2, loopOrder = #map>, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, port = 1 : i64} inputs(%5 : memref<1x4x4x12xf16, {order = #NHWC, strides = [288, 1, 48, 4]}, [@CMX_NN, 0]>) outputs(%8 : memref<1x16x2x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>) -> memref<1x16x2x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>
+      %9 = VPUIP.SpaceToDepthDMA <{block_size = 2 : i64, internalDataFlow = #VPUIP.InternalDataFlowAttr<inputType = memref<1x4x2x2x6x2xf16, {order = #map, strides = [288, 1, 96, 48, 8, 4]}, [@CMX_NN, 0]>, outputType = memref<1x2x2x4x2x6xf16, {order = #map1, strides = [288, 8, 4, 1, 96, 16]}, [@CMX_NN, 0]>, mappingOrder = #map2, loopOrder = #map>, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, port = 1 : i64}> inputs(%5 : memref<1x4x4x12xf16, {order = #NHWC, strides = [288, 1, 48, 4]}, [@CMX_NN, 0]>) outputs(%8 : memref<1x16x2x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>) -> memref<1x16x2x6xf16, {order = #NHWC, strides = [288, 1, 96, 16]}, [@CMX_NN, 0]>
     }
 
     //CHECK-NOT:  VPUIP.NNDMA
@@ -110,7 +110,7 @@ module @spaceToDepth {
     //CHECK-SAME: -> !VPURegMapped.Index<1:1:0>
 
     VPURT.Task waits(%1 : !VPURT.Barrier) updates(%2 : !VPURT.Barrier) {
-      %9 = VPUIP.NNDMA {port = 0 : i64} inputs(%6 : memref<1x16x3x6xf16, #NHWC, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x16x3x6xf16, #NHWC>) -> memref<1x16x3x6xf16, #NHWC>
+      %9 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%6 : memref<1x16x3x6xf16, #NHWC, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x16x3x6xf16, #NHWC>) -> memref<1x16x3x6xf16, #NHWC>
     }
 
     //CHECK-NOT:  VPUIP.NNDMA

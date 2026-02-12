@@ -323,10 +323,11 @@ bool vpux::VPU::NCEPermuteOp::checkStrategyCompatibility(VPU::MultiClusterStrate
 vpux::VPU::DistributionInfo vpux::VPU::NCEPermuteOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles) {
     return VPU::getNCEExplicitDistributionInfo(mlir::dyn_cast<VPU::NCEOpInterface>(getOperation()), shape,
                                                distributionMode, numTiles, numClusters, alignment,
-                                               uniformDistributedSegments, overlapParams);
+                                               uniformDistributedSegments, overlapParams, memoryNumTiles);
 }
 
 bool VPU::NCEPermuteOp::isOperationSplitOverHeightCompatible(const vpux::TileInfo& outputTile) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,32 +60,32 @@ func.func @FuseConstantsConv(%in : !Input_DDR) -> !OutputStub_CMX {
 
     // CHECK:       [[OUT_BUF1:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
     // CHECK:       [[OUT_BUF2:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[VAR_INPUT:%.*]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
+    // CHECK:       [[VAR_INPUT:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[OUT_BUF1]]  : memref<1x16x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x16x16x16xf16, #NHWC, @CMX_NN>
 
     // CHECK:       [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x384xui8>
     // CHECK-NOT:   [[WEIGHT_TABLE:%.+]] = const.Declare !WeightsTable_DDR
     // CHECK-NOT:   [[WEIGHTS:%.+]] = const.Declare !Weights_DDR
 
-    // CHECK:       [[VAR0:%.*]] = memref.alloc() : memref<1x1x1x384xui8, [@CMX_NN, 0]>
-    // CHECK:       [[VAR1:%.*]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x384xui8>)
+    // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x1x1x384xui8, [@CMX_NN, 0]>
+    // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x384xui8>)
     // CHECK-SAME:      outputs([[VAR0]] : memref<1x1x1x384xui8, [@CMX_NN, 0]>) -> memref<1x1x1x384xui8, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR2:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] :
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] :
     // CHECK-SAME:		memref<1x1x1x384xui8, [@CMX_NN, 0]> to memref<1x1x1x256xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [384, 384, 384, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR3:%.*]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
+    // CHECK:       [[VAR3:%.+]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [384, 384, 384, 1]}, [@CMX_NN, 0]> to memref<16x1x1x4xsi32, @CMX_NN>
 
-    // CHECK:       [[VAR4:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 256] [1, 1, 1, 128] :
+    // CHECK:       [[VAR4:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 256] [1, 1, 1, 128] :
     // CHECK-SAME:		memref<1x1x1x384xui8, [@CMX_NN, 0]> to memref<1x1x1x128xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [384, 384, 384, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR5:%.*]] = VPUIP.ViewOp [[VAR4]] : memref<1x1x1x128xui8,
+    // CHECK:       [[VAR5:%.+]] = VPUIP.ViewOp [[VAR4]] : memref<1x1x1x128xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [384, 384, 384, 1]}, [@CMX_NN, 0]> to memref<16x1x1x4xf16, #NHWC, @CMX_NN>
 
-    // CHECK:       [[VAR6:%.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[VAR6:%.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:          constantsFused = true,
     // CHECK-SAME:          kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:          kernel_size = [1, 1],
@@ -162,32 +162,32 @@ func.func @FuseConstantsConv(%in : !Input_DDR) -> !OutputStub_CMX {
 
     // CHECK:       [[OUT_BUF1:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
     // CHECK:       [[OUT_BUF2:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[VAR_INPUT:%.*]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
+    // CHECK:       [[VAR_INPUT:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[OUT_BUF1]]  : memref<1x16x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x16x16x16xf16, #NHWC, @CMX_NN>
 
     // CHECK:   [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x288xui8> = dense<1> : tensor<16x1x1x4xsi32>, [#const.FuseWeights<tensor<1x1x1x288xui8>, weightsTable = <dense<1> : tensor<16x1x1x4xsi32>>, weights = <dense<1.000000e+00> : tensor<16x1x1x4xf16>, [#const.CastElemType<si4>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]>>]
     // CHECK-NOT:   [[WEIGHT_TABLE:%.+]] = const.Declare !WeightsTable_DDR
     // CHECK-NOT:   [[WEIGHTS:%.+]] = const.Declare !Weights_DDR
 
-    // CHECK:       [[VAR0:%.*]] = memref.alloc() : memref<1x1x1x288xui8, [@CMX_NN, 0]>
-    // CHECK:       [[VAR1:%.*]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x288xui8>)
+    // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x1x1x288xui8, [@CMX_NN, 0]>
+    // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x288xui8>)
     // CHECK-SAME:      outputs([[VAR0]] : memref<1x1x1x288xui8, [@CMX_NN, 0]>) -> memref<1x1x1x288xui8, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR2:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] :
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] :
     // CHECK-SAME:		memref<1x1x1x288xui8, [@CMX_NN, 0]> to memref<1x1x1x256xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [288, 288, 288, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR3:%.*]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
+    // CHECK:       [[VAR3:%.+]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [288, 288, 288, 1]}, [@CMX_NN, 0]> to memref<16x1x1x4xsi32, @CMX_NN>
 
-    // CHECK:       [[VAR4:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 256] [1, 1, 1, 32] :
+    // CHECK:       [[VAR4:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 256] [1, 1, 1, 32] :
     // CHECK-SAME:		memref<1x1x1x288xui8, [@CMX_NN, 0]> to memref<1x1x1x32xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [288, 288, 288, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR5:%.*]] = VPUIP.ViewOp [[VAR4]] : memref<1x1x1x32xui8,
+    // CHECK:       [[VAR5:%.+]] = VPUIP.ViewOp [[VAR4]] : memref<1x1x1x32xui8,
     // CHECK-SAME:		{order = #NCHW, strides = [288, 288, 288, 1]}, [@CMX_NN, 0]> to memref<16x1x1x4x!qElemType, #NHWC, @CMX_NN>
 
-    // CHECK:       [[VAR6:%.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[VAR6:%.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:          constantsFused = true,
     // CHECK-SAME:          kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:          kernel_size = [1, 1],
@@ -260,21 +260,21 @@ func.func @FuseConstantsMaxPool(%in : !Input_DDR) -> !OutputStub_CMX {
 
     // CHECK:       [[OUT_BUF1:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
     // CHECK:       [[OUT_BUF2:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[VAR_INPUT:%.*]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
+    // CHECK:       [[VAR_INPUT:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[OUT_BUF1]] : memref<1x16x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x16x16x16xf16, #NHWC, @CMX_NN>
 
     // CHECK:       [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x256xui8>
     // CHECK-NOT:   [[WEIGHT_TABLE:%.+]] = const.Declare !WeightsTable_DDR
 
-    // CHECK:       [[VAR0:%.*]] = memref.alloc() : memref<1x1x1x256xui8, [@CMX_NN, 0]>
-    // CHECK:       [[VAR1:%.*]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x256xui8>)
+    // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x1x1x256xui8, [@CMX_NN, 0]>
+    // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x256xui8>)
     // CHECK-SAME:      outputs([[VAR0]] : memref<1x1x1x256xui8, [@CMX_NN, 0]>) -> memref<1x1x1x256xui8, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR2:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] : memref<1x1x1x256xui8, [@CMX_NN, 0]> to memref<1x1x1x256xui8, [@CMX_NN, 0]>
-    // CHECK:       [[VAR3:%.*]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] : memref<1x1x1x256xui8, [@CMX_NN, 0]> to memref<1x1x1x256xui8, [@CMX_NN, 0]>
+    // CHECK:       [[VAR3:%.+]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
     // CHECK-SAME:		[@CMX_NN, 0]> to memref<16x1x1x4xsi32, @CMX_NN>
 
-    // CHECK:       [[VAR6:%.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[VAR6:%.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:          constantsFused = true,
     // CHECK-SAME:          kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:          kernel_size = [1, 1],
@@ -358,7 +358,7 @@ func.func @FuseConstantsConvSparseWeights(%in : !Input_DDR) -> !OutputStub_CMX {
 
     // CHECK:       [[OUT_BUF1:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
     // CHECK:       [[OUT_BUF2:%.+]] = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[VAR_INPUT:%.*]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
+    // CHECK:       [[VAR_INPUT:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[OUT_BUF1]] : memref<1x16x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x16x16x16xf16, #NHWC, @CMX_NN>
 
     // CHECK:       [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x1024xui8>
@@ -366,33 +366,33 @@ func.func @FuseConstantsConvSparseWeights(%in : !Input_DDR) -> !OutputStub_CMX {
     // CHECK-NOT:   [[WEIGHTS:%.+]] = const.Declare !Weights_DDR
     // CHECK-NOT:   [[WEIGHTS_SM:%.+]] = const.Declare !WeightsSM_DDR
 
-    // CHECK:       [[VAR0:%.*]] = memref.alloc() : memref<1x1x1x1024xui8, [@CMX_NN, 0]>
-    // CHECK:       [[VAR1:%.*]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x1024xui8>)
+    // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x1x1x1024xui8, [@CMX_NN, 0]>
+    // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs([[FUSED_CONSTANT]] : memref<1x1x1x1024xui8>)
     // CHECK-SAME:      outputs([[VAR0]] : memref<1x1x1x1024xui8, [@CMX_NN, 0]>) -> memref<1x1x1x1024xui8, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR2:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] :
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 0] [1, 1, 1, 256] :
     // CHECK-SAME:      memref<1x1x1x1024xui8, [@CMX_NN, 0]> to memref<1x1x1x256xui8,
     // CHECK-SAME:      {order = #NCHW, strides = [1024, 1024, 1024, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR3:%.*]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
+    // CHECK:       [[VAR3:%.+]] = VPUIP.ViewOp [[VAR2]] : memref<1x1x1x256xui8,
     // CHECK-SAME:      {order = #NCHW, strides = [1024, 1024, 1024, 1]}, [@CMX_NN, 0]> to memref<16x1x1x4xsi32, @CMX_NN>
 
-    // CHECK:       [[VAR4:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 256] [1, 1, 1, 512] :
+    // CHECK:       [[VAR4:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 256] [1, 1, 1, 512] :
     // CHECK-SAME:      memref<1x1x1x1024xui8, [@CMX_NN, 0]> to memref<1x1x1x512xui8,
     // CHECK-SAME:      {order = #NCHW, strides = [1024, 1024, 1024, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR5:%.*]] = VPUIP.ViewOp [[VAR4]] :
+    // CHECK:       [[VAR5:%.+]] = VPUIP.ViewOp [[VAR4]] :
     // CHECK-SAME:      memref<1x1x1x512xui8, {order = #NCHW, strides = [1024, 1024, 1024, 1]}, [@CMX_NN, 0]> to
     // CHECK-SAME:      memref<16x16x1x1xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<16> : tensor<16xi64>, alignment = 16 : i64>}, @CMX_NN>
 
-    // CHECK:       [[VAR6:%.*]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 768] [1, 1, 1, 256] :
+    // CHECK:       [[VAR6:%.+]] = VPUIP.SubView [[VAR1]] [0, 0, 0, 768] [1, 1, 1, 256] :
     // CHECK-SAME:      memref<1x1x1x1024xui8, [@CMX_NN, 0]> to memref<1x1x1x256xui8,
     // CHECK-SAME:      {order = #NCHW, strides = [1024, 1024, 1024, 1]}, [@CMX_NN, 0]>
 
-    // CHECK:       [[VAR7:%.*]] = VPUIP.ViewOp [[VAR6]] : memref<1x1x1x256xui8,
+    // CHECK:       [[VAR7:%.+]] = VPUIP.ViewOp [[VAR6]] : memref<1x1x1x256xui8,
     // CHECK-SAME:      {order = #NCHW, strides = [1024, 1024, 1024, 1]}, [@CMX_NN, 0]> to memref<16x1x1x128xi1, @CMX_NN>
 
-    // CHECK:       [[VAR8:%.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[VAR8:%.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:          constantsFused = true,
     // CHECK-SAME:          kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:          kernel_size = [1, 1],
@@ -812,10 +812,10 @@ func.func @DoNotFuseWeightsFromNonConstant(%input : !Input_0_DDR, %input1 : !Inp
         outputs(%alloc : memref<1x64x1x4xf16, #NHWC, [@CMX_NN, 0]>)
         -> memref<1x64x1x4xf16, #NHWC, [@CMX_NN, 0]>
     %alloc_0 = memref.alloc() : memref<80x64x1x1xf16, #NHWC, @DDR>
-    %1 = VPUIP.ExpandDMA {
+    %1 = VPUIP.ExpandDMA <{
             pads_begin = [0, 0, 0, 0],
             pads_end = [4, 0, 0, 0]
-        }
+        }>
         inputs(%input : !Input_0_DDR)
         outputs(%alloc_0 : memref<80x64x1x1xf16, #NHWC, @DDR>)
         -> memref<80x64x1x1xf16, #NHWC, @DDR>
@@ -902,7 +902,7 @@ func.func @DoNotFuseWeightsFromNonConstant(%input : !Input_0_DDR, %input1 : !Inp
 
     // CHECK:   [[BUF_OUT_4_CMX:%.+]] = memref.alloc() : memref<1x80x1x4xf16, #NHWC, [@CMX_NN, 0]>
 
-    // CHECK:       [[NCE_TASK:%.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[NCE_TASK:%.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:          kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:          kernel_size = [1, 1],
     // CHECK-SAME:          kernel_strides = [1, 1],

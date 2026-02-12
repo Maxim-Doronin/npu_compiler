@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,11 +24,11 @@ func.func @PatchWeightTableWeightsOnlyAutopad() -> memref<16x1x1x4xsi32, [@CMX_N
 
     return %weight_table : memref<16x1x1x4xsi32, [@CMX_NN, 0]>
 
-    // CHECK:       [[WEIGHT_TABLE_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1024> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
-    // CHECK:       [[WEIGHTS_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <[[WEIGHTS_ADDR:[^>]+]]> -> memref<3x4x1x1xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:       [[CONST:%.*]] = const.Declare memref<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>, [#const.RelocateWeightsTable<weightsPtr=[[[WEIGHTS_ADDR]]], sparsityPtr=16777215 : i64, offsets=[0], weightsTableSize=256 : i64, weightsElemBitSize=16 : i64, channelOffset=0 : i64, originalOC=3 : i64>]
-    // CHECK:       [[NDMA_OP:.*]] = VPUIP.NNDMA inputs([[CONST]] : memref<16x1x1x4xsi32>) outputs([[WEIGHT_TABLE_BUF]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
-    // CHECK:       [[NCE_CLUST_TASK_OP:.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[WEIGHT_TABLE_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1024> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+    // CHECK:       [[WEIGHTS_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <[[WEIGHTS_ADDR:[^>]+]]> -> memref<3x4x1x1xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[CONST:%.+]] = const.Declare memref<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>, [#const.RelocateWeightsTable<weightsPtr=[[[WEIGHTS_ADDR]]], sparsityPtr=16777215 : i64, offsets=[0], weightsTableSize=256 : i64, weightsElemBitSize=16 : i64, channelOffset=0 : i64, originalOC=3 : i64>]
+    // CHECK:       [[NDMA_OP:.+]] = VPUIP.NNDMA inputs([[CONST]] : memref<16x1x1x4xsi32>) outputs([[WEIGHT_TABLE_BUF]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+    // CHECK:       [[NCE_CLUST_TASK_OP:.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:  weights([[WEIGHTS_BUF]] : memref<3x4x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-SAME:  weight_table([[WEIGHT_TABLE_BUF]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
 }

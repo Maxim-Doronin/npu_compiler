@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -374,6 +375,10 @@ mlir::LogicalResult ReshapeMVNPattern::replacePattern() {
     mlir::OpBuilder builder(_mvnOp);
     auto ctx = builder.getContext();
 
+    // Set insertion point for constants at the beginning of the function to ensure consistent placement
+    auto func = _mvnOp->getParentOfType<mlir::func::FuncOp>();
+    mlir::OpBuilder::InsertionGuard guard(builder);
+
     const auto mvnInputType = mlir::cast<NDTypeInterface>(_mvnOp.getInput().getType());
     auto internalReshapeAttr = getIntArrayAttr(ctx, mvnInputType.getShape());
 
@@ -413,8 +418,10 @@ mlir::LogicalResult ReshapeMVNPattern::replacePattern() {
             const auto newConstType = outType.changeElemType(qElemType.getExpressedType()).changeDimsOrder(permute);
             auto newConstAttr = quantizedConst.transformContentAttr().dequantize().reorder(permute).get();
 
+            builder.setInsertionPointToStart(&func.front());
             auto inFilter = builder.create<Const::DeclareOp>(filter.getLoc(), newConstType, std::move(newConstAttr));
             inFilter->setLoc(quantizedConst->getLoc());
+            builder.setInsertionPoint(_mvnOp);
             _log.trace("GroupConvolution filter dequantized");
             filterConst = inFilter;
         }
@@ -433,7 +440,10 @@ mlir::LogicalResult ReshapeMVNPattern::replacePattern() {
         const auto newFilterShape = Shape{_newChannelSize, 1, 1, 1};
         const auto filterType = mlir::cast<NDTypeInterface>(filterConst.getOutput().getType());
         const auto dataStorageType = mlir::cast<mlir::RankedTensorType>(filterType.changeShape(newFilterShape));
+
+        builder.setInsertionPointToStart(&func.front());
         auto newFilter = Const::createFloatConst(builder, filter.getLoc(), dataStorageType, newFilterVals);
+        builder.setInsertionPoint(_mvnOp);
 
         auto newGroupConvOp = mlir::cast<IE::GroupConvolutionOp>(cloneOpAndReplaceInputs(
                 _groupConvOp, {_groupConvOp.getInput(), _groupConvOp.getFilter()}, {newMvnOp.getResult(), newFilter}));
@@ -499,9 +509,7 @@ void FuseReshapeMvnPass::safeRunOnFunc() {
     patterns.add<FuseReshapeMvn>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1213,11 +1213,11 @@ void SubgraphOptimizer::optimizeStrategyAvoidSpillingOnSubgraph(VPU::ClusteredOp
 
                 auto originalInputSpillingCost = getOutputSpillingCostToMultiClusterLayer(
                         clusteredParent, parentOldStrategy, _configForCalcOrigCost);
-                auto rollbackInputSpillingCost = getOutputSpillingCostToMultiClusterLayer(
-                        clusteredParent, parentNewStrategy, _configForCalcRollbackCost);
                 _log.trace("[Subgraph Optimizer] add original input spilling cost {0} from op {1} at {2} with strategy "
                            "{3}",
                            originalInputSpillingCost, parent->getName(), parent->getLoc(), parentOldStrategy);
+                auto rollbackInputSpillingCost = getOutputSpillingCostToMultiClusterLayer(
+                        clusteredParent, parentNewStrategy, _configForCalcRollbackCost);
                 _log.trace("[Subgraph Optimizer] add rollback input spilling cost {0} from op {1} at {2} with strategy "
                            "{3}",
                            rollbackInputSpillingCost, parent->getName(), parent->getLoc(), parentNewStrategy);
@@ -1328,6 +1328,25 @@ bool isSOHUser(mlir::Operation* op) {
     return true;
 }
 
+bool isKUser(mlir::Operation* op) {
+    if (auto userClusterOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(op)) {
+        auto userStrategyAttr = userClusterOp.getMultiClusterStrategy();
+        if (!userStrategyAttr.has_value()) {
+            return false;
+        }
+        auto strategy = userStrategyAttr.value();
+        if (strategy != VPU::MultiClusterStrategy::SplitOverKernel &&
+            strategy != VPU::MultiClusterStrategy::Clustering) {
+            return false;
+        }
+    } else if (mlir::isa_and_nonnull<VPU::GroupSparseTensorOp, VPU::QuantizeCastOp>(op)) {
+        return llvm::all_of(op->getResult(0).getUsers(), isKUser);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void SubgraphOptimizer::tryInheritStrategyFromParent(VPU::ClusteredOpInterface clusteredOp) {
     auto parent = clusteredOp->getOperand(0);
     if (parent != nullptr) {
@@ -1371,7 +1390,7 @@ void SubgraphOptimizer::optimizeStrategyAvoidSpillingOnModel() {
     // In these cases, now that parent has greedy strategy, try first to align with the parent
     const auto callbackForParentGreedyStrategy = [this](VPU::ClusteredOpInterface clusteredOp) {
         auto swOp = mlir::dyn_cast_or_null<VPU::SWOpInterface>(clusteredOp.getOperation());
-        bool useParentStrategy = mlir::isa<VPU::ConcatOp>(clusteredOp.getOperation()) ||
+        bool useParentStrategy = mlir::isa_and_nonnull<VPU::ConcatOp>(clusteredOp.getOperation()) ||
                                  (swOp != nullptr && !swOp.supportCycleCostCalculation());
         if (useParentStrategy) {
             tryInheritStrategyFromParent(clusteredOp);
@@ -1419,6 +1438,48 @@ void SubgraphOptimizer::optimizeStrategyAvoidSpillingOnModel() {
     };
     _func.walk(callbackForHK);
 
+    const auto clusteringOptimizationCallBack = [this](VPU::ClusteredOpInterface clusteredOp) {
+        removeClusteringStrategyAvoidSpillingOnSubgraph(clusteredOp);
+    };
+    _func.walk<mlir::WalkOrder::PostOrder, mlir::ReverseIterator>(clusteringOptimizationCallBack);
+}
+
+/* Perform those optimizations that are only for single layers or a single producer and its consumer(s)
+    Compared to subgraph scope, this does not attempt to detect shortcuts or remove spilling caused
+    by incompatible multi-clustering strategies */
+void SubgraphOptimizer::optimizeStrategyPairsOnModel() {
+    // Some ops don't have good greedy strategy because they lack cycle cost support
+    // In these cases, now that parent has greedy strategy, try to align with the parent
+    const auto callbackForParentGreedyStrategy = [this](VPU::ClusteredOpInterface clusteredOp) {
+        auto swOp = mlir::dyn_cast_or_null<VPU::SWOpInterface>(clusteredOp.getOperation());
+        bool useParentStrategy = mlir::isa_and_nonnull<VPU::ConcatOp>(clusteredOp.getOperation()) ||
+                                 (swOp != nullptr && !swOp.supportCycleCostCalculation());
+        if (useParentStrategy) {
+            tryInheritStrategyFromParent(clusteredOp);
+        }
+    };
+    _func.walk(callbackForParentGreedyStrategy);
+
+    // TODO will no longer be needed after #E-193567
+    const auto callbackToSetHK = [this](VPU::ClusteredOpInterface clusteredOp) {
+        auto currentStrategyAttr = clusteredOp.getMultiClusterStrategy();
+        if (!currentStrategyAttr.has_value()) {
+            return;
+        }
+        if (currentStrategyAttr.value() != VPU::MultiClusterStrategy::SplitOverHeight ||
+            !isValidStrategy(clusteredOp, VPU::MultiClusterStrategy::HKSwitch)) {
+            return;
+        }
+        // Check if all the users are SOK or Clustering
+        if (llvm::all_of(clusteredOp->getResult(0).getUsers(), isKUser)) {
+            _log.trace("Converting strategy from SOH to HKSwitch for op {0} at {1}", clusteredOp->getName(),
+                       clusteredOp->getLoc());
+            clusteredOp.setMultiClusterStrategy(VPU::MultiClusterStrategy::HKSwitch);
+        }
+    };
+    _func.walk(callbackToSetHK);
+
+    // TODO will no longer be needed after #E-193566
     const auto clusteringOptimizationCallBack = [this](VPU::ClusteredOpInterface clusteredOp) {
         removeClusteringStrategyAvoidSpillingOnSubgraph(clusteredOp);
     };

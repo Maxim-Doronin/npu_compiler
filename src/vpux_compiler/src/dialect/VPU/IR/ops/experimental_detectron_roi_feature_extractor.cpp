@@ -5,7 +5,9 @@
 
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auxiliary_buffers.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 using namespace vpux;
 
@@ -39,10 +41,10 @@ void VPU::ExperimentalDetectronROIFeatureExtractorOp::build(mlir::OpBuilder& ods
                                                             IE::ExperimentalDetectronROIFeatureExtractorAttr attr) {
     const auto auxBufferTypes = getAuxiliaryBufferTypes(inputs, attr);
     VPUX_THROW_WHEN(auxBufferTypes.size() != 4, "Expected 4 auxiliary buffer types, got {0}", auxBufferTypes.size());
-    auto reorderedRois = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[0]);
-    auto originalRoiMap = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[1]);
-    auto outputRoisFeaturesTemp = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[2]);
-    auto levels = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[3]);
+    auto reorderedRois = VPU::createConstantAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[0]);
+    auto originalRoiMap = VPU::createConstantAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[1]);
+    auto outputRoisFeaturesTemp = VPU::createConstantAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[2]);
+    auto levels = VPU::createConstantAuxiliaryBuffer(odsBuilder, odsState.location, auxBufferTypes[3]);
     build(odsBuilder, odsState, inputs, reorderedRois, originalRoiMap, outputRoisFeaturesTemp, levels, attr);
 }
 
@@ -113,6 +115,7 @@ llvm::LogicalResult VPU::ExperimentalDetectronROIFeatureExtractorOp::verify() {
     return mlir::success();
 }
 
-SmallVector<mlir::Value> VPU::ExperimentalDetectronROIFeatureExtractorOp::getAuxiliaryBuffers() {
-    return {getReorderedRois(), getOriginalRoiMap(), getOutputRoisFeaturesTemp(), getLevels()};
+SmallVector<mlir::OpOperand*> VPU::ExperimentalDetectronROIFeatureExtractorOp::getAuxiliaryBuffers() {
+    return {&getReorderedRoisMutable(), &getOriginalRoiMapMutable(), &getOutputRoisFeaturesTempMutable(),
+            &getLevelsMutable()};
 }

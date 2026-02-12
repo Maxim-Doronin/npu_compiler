@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,8 +46,7 @@ struct ActivationSparsityOptions : mlir::PassPipelineOptions<ActivationSparsityO
 
     template <class OtherOptions>
     explicit ActivationSparsityOptions(const OtherOptions& options) {
-        enableActivationSparsity = options.enableActivationSparsity;
-        actSparsityProfile = options.actSparsityProfile;
+        this->matchAndCopyOptionValuesFrom(options);
     }
 };
 
@@ -57,10 +56,11 @@ struct ActivationSparsityOptions : mlir::PassPipelineOptions<ActivationSparsityO
 
 struct WeightsSparsityOptions : mlir::PassPipelineOptions<WeightsSparsityOptions> {
     StrOption weightsSparsityHeuristic{*this, "weights-sparsity-heuristic",
-                                       llvm::cl::desc("Weights sparsity heuristic (ratio or cmx)"),
-                                       llvm::cl::init("ratio")};
+                                       llvm::cl::desc("Weights sparsity heuristic (RATIO or CMX)"),
+                                       llvm::cl::init("RATIO")};
     DoubleOption weightsSparsityThreshold{*this, "weights-sparsity-threshold",
-                                          llvm::cl::desc("Weights sparsity threshold")};
+                                          llvm::cl::desc("Threshold for ratio of sparse weights values"),
+                                          llvm::cl::init(-1.0)};
     Int64Option weightsSparsityLargeConstThreshold{*this, "weights-sparsity-large-const-threshold",
                                                    llvm::cl::desc("Weights sparsity large const threshold")};
     Int64Option weightsSparsityComputeOpThreshold{
@@ -72,11 +72,7 @@ struct WeightsSparsityOptions : mlir::PassPipelineOptions<WeightsSparsityOptions
 
     template <class OtherOptions>
     explicit WeightsSparsityOptions(const OtherOptions& options) {
-        weightsSparsityHeuristic = options.weightsSparsityHeuristic;
-        weightsSparsityThreshold = options.weightsSparsityThreshold;
-        weightsSparsityLargeConstThreshold = options.weightsSparsityLargeConstThreshold;
-        weightsSparsityComputeOpThreshold = options.weightsSparsityComputeOpThreshold;
-        enableWeightSwizzling = options.enableWeightsSwizzling;
+        this->matchAndCopyOptionValuesFrom(options);
     }
 };
 
@@ -102,6 +98,12 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
 
     BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
                                llvm::cl::init(false)};
+
+    BoolOption enableDynamicDimAlignment{
+            *this, "dynamic-dim-alignment",
+            llvm::cl::desc(
+                    "Align dynamic dimensions during tiling to make it easier to merge strided DMAs into batched DMAs"),
+            llvm::cl::init(false)};
 
     IntOption opTilingCacheThreshold{
             *this, "op-tiling-cache-threshold",
@@ -156,11 +158,13 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
             *this, "workload-management-mode",
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
-            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
+            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
             ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
                                           "WLM with split into subgraphs (pages)"),
                                clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                           "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                               clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                                          "PWLM with split into subgraphs (pages)"),
                                clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                           "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                           "enqueue algorithm at VPUMI"))};
@@ -202,7 +206,7 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     BoolOption wlmRollback{
             *this, "wlm-rollback",
             llvm::cl::desc("When compilation with WLM fails, automatically switch to WLM-disabled pipeline"),
-            llvm::cl::init(true)};
+            llvm::cl::init(false)};
 
     BoolOption enableSwKernelFifoPerShaveEngine{*this, "enable-sw-kernel-fifo-per-shave-engine",
                                                 llvm::cl::desc("Enable dedicated FIFO for each ActShave engine"),
@@ -275,6 +279,10 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     BoolOption enableVPUNNPreSplit{*this, "enable-vpunn-pre-split", llvm::cl::desc("Enable VPUNN pre-split API"),
                                    llvm::cl::init(false)};
 
+    // SetupEnableODULocalRegion pass option
+    BoolOption enableODULocalRegion{*this, "enable-odu-local-region", llvm::cl::desc("Enable ODU local region"),
+                                    llvm::cl::init(false)};
+
     // SetupEnableDCIM pass options
     BoolOption enableDCIM{*this, "enable-dcim", ::llvm::cl::desc("Enable DCIM"), ::llvm::cl::init(true)};
 
@@ -316,6 +324,7 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     InitCompilerOptions(config::ArchKind archParam, config::CompilationMode compilationModeParam) {
         arch = std::string(config::stringifyEnum(archParam));
         compilationMode = std::string(config::stringifyEnum(compilationModeParam));
+        allowCustomValues = true;
     }
 
 public:
@@ -368,12 +377,13 @@ std::unique_ptr<mlir::Pass> createCompressDmaReserveMemPass(Logger log = Logger:
 std::unique_ptr<mlir::Pass> createSWKernelInstructionPrefetchReserveMemForDummyKernelsPass(
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSWKernelDataPrefetchReserveMemPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createCloneReservedResourcesFromTopModulePass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createShaveStacksReserveMemPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createOptimizeSharedInputCopyForConcatPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCMXConcatPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitNCEOpsOntoWorkloadsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCorrectNCEWorkloadsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createCreateNewWeightTablesDataPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createResolveEltwiseWithZTiledWorkloadsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createShiftOutputWorkloadsForHaloPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMakeOpsWithDistributedTensorPass(bool enableExplicitDistributionInfoAttr = false,
@@ -423,7 +433,9 @@ std::unique_ptr<mlir::Pass> createFuseNCEInterpolateConsumersPass(Logger log = L
 std::unique_ptr<mlir::Pass> createAddExplicitPaddingBeforeNCEPermutePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOutputPipelineTilingPass(bool enablePrefetchTiling = true,
                                                            Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSCFVerticalFusionPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSCFVerticalFusionPass(bool enableDynamicDimAlignment = false,
+                                                        Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSCFMulticlusteringPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSCFFuseLastViewLikeOpPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createLegalizeDynamicShapeConcatForSWLayersPass(Logger log = Logger::global());
@@ -433,6 +445,8 @@ std::unique_ptr<mlir::Pass> createConcatRepeatingBlocksOutliningPass(int64_t min
 std::unique_ptr<mlir::Pass> createOutlineEntireMainContentPass(const Logger& log = Logger::global());
 std::unique_ptr<mlir::Pass> createBoundedTensorsToDynamicDimsMaskPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveReflectPadToCMXPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createMoveTensorOpsToCMXPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createRunMVNNormalizeOnDPUPass(Logger log = Logger::global());
 
 void buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::InitCompilerOptions& options,
                                Logger log = Logger::global());
@@ -482,23 +496,25 @@ std::unique_ptr<mlir::Pass> createTileGatherPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createTilingStrategyAssignmentPass(bool enablePrefetchTiling = true,
                                                                bool enableVpunnCostForTiling = false,
                                                                StringRef enableShaveDDRAccessOptimization = "true",
+                                                               bool enableDynamicDimAlignment = false,
                                                                Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createApplyTilingPass(bool enableSCFTiling = false, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createApplyTilingPass(bool enableSCFTiling = false, bool enableDynamicDimAlignment = false,
+                                                  Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWrapVerticalFusionRegionPass(
-        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveViewOpsToVerticalFusionPass(
-        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 // Tracking number [E#76838]
 // Turn on the enableVerticalFusionPipelining when VF pipelining is enabled
 std::unique_ptr<mlir::Pass> createMergeVfSubgraphsPass(
         bool enableVerticalFusionPipelining = false, bool enablePrefetchTiling = true,
-        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createVfTilingPass(
         bool enableVerticalFusionPipelining = false, bool enableVFScheduleTrace = false,
-        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createVerticalFusionOutliningPass();
 std::unique_ptr<mlir::Pass> createVerticalFusionOutliningPass(const TilingOptions& options,
@@ -509,6 +525,7 @@ std::unique_ptr<mlir::Pass> createEnsureNCEOpsSizeRequirementsPass(
         bool skipNonConvOC = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvolutionSplitOverInputChannelPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseClampPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFuseConvertPass(Logger log = Logger::global());
 
 // If optimizeOnlyOuterConcat is true, only optimize when concat dimension is the highest dimension
 std::unique_ptr<mlir::Pass> createOptimizeConcatPass(bool optimizeOnlyOuterConcat = false,
@@ -534,6 +551,7 @@ void buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& opti
 //
 
 void buildScfComputeOpsOutliningPipeline(mlir::OpPassManager& pm, const vpux::StrOption& loopUnrollFactor,
+                                         bool enableProfiling, const vpux::BoolOption& enableCascadedUnrolling,
                                          Logger log = Logger::global());
 
 //
@@ -667,7 +685,10 @@ std::unique_ptr<mlir::Pass> createConvertDynamicToStaticKernelsPass(Logger log =
 std::unique_ptr<mlir::Pass> createConvertVPUOpsToUpstreamOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createRestorePadAttrAfterSCFTilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustBlockSizeForScfTilingPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createUnrollSCFLoopPass(StringRef loopUnrollFactor = "", Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnrollSCFLoopPass(StringRef loopUnrollFactor = "",
+                                                    bool enableCascadedUnrolling = true, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFullUnrollSCFLoopPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSCFLoopAnalysisAndDebugPass(Logger log = Logger::global());
 
 //
 // Registration

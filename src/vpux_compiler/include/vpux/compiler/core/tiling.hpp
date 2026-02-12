@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -189,8 +189,8 @@ mlir::FailureOr<OutputTiling> fillDividedTilesYuvToRgbOp(ShapeRef divisors, Shap
 
 // fill tiles taken into consideration restrictions of every operation in the list.
 // This function is used for VF tile size calculation
-mlir::FailureOr<OutputTiling> fillDividedTiles(ArrayRef<mlir::Operation*> operations, ShapeRef divisors,
-                                               ShapeRef shape);
+mlir::FailureOr<OutputTiling> fillDividedTiles(ArrayRef<mlir::Operation*> operations, ShapeRef divisors, ShapeRef shape,
+                                               const std::function<bool(mlir::Operation*)>& isOpNeedDynAlignment);
 
 bool isSpatialFirstNestedTiling(mlir::Operation* op, ShapeRef divisors);
 bool isWeightsFirstNestedTiling(mlir::Operation* op, ShapeRef divisors);
@@ -411,7 +411,7 @@ void updatePadOpAttrsAfterTiling(const ShapeRef outShape, const TileInfo& outTil
 //
 
 InputTiling backInferDepthToSpaceTile(const vpux::TileInfo& outputTile, ShapeRef origInputShape, int64_t blockSize,
-                                      vpux::Logger);
+                                      int64_t outChPadding, vpux::Logger);
 
 //
 // DimRange
@@ -482,12 +482,15 @@ SmallVector<int64_t> alignShape(ArrayRef<int64_t> shape, std::optional<ArrayRef<
 SmallVector<Strides> adaptStrides(ShapeRef origShape, StridesRef origStrides, ArrayRef<Shape> adaptedShapes,
                                   DimsOrder dimsOrder);
 
+SmallVector<int64_t> getMinNumTiles(mlir::Operation* op);
+
+SmallVector<int64_t> getMaxNumTiles(mlir::Operation* op, bool checkMinimalWidthAndHeight = false,
+                                    bool checkWorkloadEfficiency = false);
+
 //
 // EltwiseOp
 //
 
-SmallVector<int64_t> getMaxNumTiles(mlir::Operation* op, bool checkMinimalWidthAndHeight = false,
-                                    bool checkWorkloadEfficiency = false);
 InputTiling backInferEltwiseTile(mlir::Operation* op, const vpux::TileInfo& outputTile);
 
 // SWLayer
@@ -567,7 +570,8 @@ std::pair<Dim, int64_t> getAlignDimAndSize(mlir::Operation* op);
 /*
  * Gets alignment for operation based on tiling
  */
-std::optional<SmallVector<int64_t>> getAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape);
+SmallVector<int64_t> getAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape,
+                                  bool canUseDynamicAlignment = true);
 
 /*
  * Check if the shape size is divisible with alignment

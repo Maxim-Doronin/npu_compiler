@@ -12,17 +12,17 @@
 #include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/IR/AffineMap.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 using namespace vpux;
 
 namespace {
 
-static mlir::LogicalResult convertViewLikeOp(mlir::Operation* op, mlir::PatternRewriter& rewriter) {
+static mlir::LogicalResult convertViewLikeOp(mlir::Operation* op, mlir::Value input, mlir::PatternRewriter& rewriter) {
     // Collapse to a 1D tensor then expand to the output memory shape.
     // This sequence should then be canonicalized if possible.
     // At the moment we don't do anything more complex since there is no evidence
     // that it would justify the added complexity.
-    auto input = ShaveCodeGen::convertToLinalgValue(op->getOperand(0), rewriter);
     auto loc = op->getLoc();
 
     auto numElem = mlir::cast<NDTypeInterface>(input.getType()).getNumElements();
@@ -51,37 +51,33 @@ static mlir::LogicalResult convertViewLikeOp(mlir::Operation* op, mlir::PatternR
     expandReassocMap.emplace_back(dimExpand);
 
     input = rewriter.create<mlir::tensor::ExpandShapeOp>(loc, expandResultType, input, expandReassocMap);
+    rewriter.replaceOp(op, input);
 
-    rewriter.replaceOp(
-            op, ShaveCodeGen::convertFromLinalgValue(input, op->getResult(0).getType(), rewriter).getDefiningOp());
     return mlir::success();
 }
 
-class IEPermuteCastToCollapseExpand : public mlir::OpRewritePattern<IE::PermuteCastOp> {
+template <typename SrcOp>
+class IEViewLikeToCollapseExpand : public mlir::OpConversionPattern<SrcOp> {
 public:
-    using mlir::OpRewritePattern<IE::PermuteCastOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<SrcOp>::OpConversionPattern;
+    using OpAdaptor = typename mlir::OpConversionPattern<SrcOp>::OpAdaptor;
 
-    mlir::LogicalResult matchAndRewrite(IE::PermuteCastOp op, mlir::PatternRewriter& rewriter) const final {
-        if (op.getMemPerm().isIdentity()) {
-            return rewriter.notifyMatchFailure(op, "no lowering needed for PermuteCast with identity mem permute");
+    mlir::LogicalResult matchAndRewrite(SrcOp op, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const final {
+        auto rankedOutTy = mlir::cast<mlir::RankedTensorType>(op.getResult().getType());
+        if (adaptor.getOperands()[0].getType() == ShaveCodeGen::normalizeType(rankedOutTy)) {
+            rewriter.replaceOp(op, adaptor.getOperands()[0]);
+            return mlir::success();
         }
-        return convertViewLikeOp(op, rewriter);
-    }
-};
-
-class IEAffineReshapeToCollapseExpand : public mlir::OpRewritePattern<IE::AffineReshapeOp> {
-public:
-    using mlir::OpRewritePattern<IE::AffineReshapeOp>::OpRewritePattern;
-
-    mlir::LogicalResult matchAndRewrite(IE::AffineReshapeOp op, mlir::PatternRewriter& rewriter) const final {
-        return convertViewLikeOp(op, rewriter);
+        return convertViewLikeOp(op, adaptor.getOperands()[0], rewriter);
     }
 };
 
 }  // namespace
 
-void ShaveCodeGen::populateIEShapeManipulationToTensorPatterns(mlir::RewritePatternSet& patternSet) {
+void ShaveCodeGen::populateIEShapeManipulationToTensorPatterns(mlir::RewritePatternSet& patternSet,
+                                                               mlir::TypeConverter& typeConverter) {
     auto& ctx = *patternSet.getContext();
-    patternSet.add<IEPermuteCastToCollapseExpand>(&ctx);
-    patternSet.add<IEAffineReshapeToCollapseExpand>(&ctx);
+    patternSet.add<IEViewLikeToCollapseExpand<IE::PermuteCastOp>, IEViewLikeToCollapseExpand<IE::AffineReshapeOp>>(
+            typeConverter, &ctx);
 }

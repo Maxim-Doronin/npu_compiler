@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -58,7 +58,7 @@ net.NetworkInfo
         return %0 : tensor<1x8x24x64xf16>
     }
 
-    // CHECK:       [[NORMALIZEL2:%.*]] = IE.NormalizeL2(%arg0)
+    // CHECK:       [[NORMALIZEL2:%.+]] = IE.NormalizeL2(%arg0)
     // CHECK-SAME:       {axes_value = [1 : si64], eps = 0.33000001311302185 : f64, eps_mode = #IE.eps_mode<ADD>}
     // CHECK-SAME:        : tensor<1x8x24x64xf16> -> tensor<1x8x24x64xf16>
 

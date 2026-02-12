@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -247,7 +247,7 @@ mlir::Value M2IProfilingPass::getViewToBuffer(mlir::OpBuilder& builder, mlir::Op
 
     _log.trace("Get view to profiling buffer, offset '{0}', size '{1}'", offset, sizes[0]);
 
-    auto subViewLoc = appendLoc(currentProfilingBuffer->getLoc(), formatv("_m2iProfilingSubview_{0}", offset).str());
+    auto subViewLoc = appendLoc(currentProfilingBuffer->getLoc(), "m2iProfilingSubview_{0}", offset);
 
     auto sub = builder.create<VPUIP::SubViewOp>(subViewLoc, currentProfilingBuffer->getResult(0),
                                                 SmallVector<int64_t>({static_cast<int>(offset)}), sizes);
@@ -266,11 +266,10 @@ mlir::Value M2IProfilingPass::replaceOpWithProfiledOp(mlir::OpBuilder& builder, 
     auto newM2iTask = builder.create<VPUIP::M2ITaskOp>(
             loc, newResultTypes, m2iTask.getInput(), m2iTask.getOutputBuff(), m2iTask.getProfilingData(),
             m2iTask.getDoCscAttr(), m2iTask.getDoNormAttr(), m2iTask.getInFmtAttr(), m2iTask.getOutFmtAttr(),
-            m2iTask.getChromaInReverseChannelsAttr(), m2iTask.getChromaOutReverseChannelsAttr(),
-            m2iTask.getLumaInReverseChannelsAttr(), m2iTask.getLumaOutReverseChannelsAttr(),
-            m2iTask.getScaleFactorXAttr(), m2iTask.getScaleFactorYAttr(), m2iTask.getNormAttr(),
-            m2iTask.getTileOffsetXAttr(), m2iTask.getTileOffsetYAttr(), m2iTask.getProfilingMetadataAttr(),
-            m2iTask.getInterpAttr());
+            m2iTask.getChromaInReverseChannels(), m2iTask.getChromaOutReverseChannels(),
+            m2iTask.getLumaInReverseChannels(), m2iTask.getLumaOutReverseChannels(), m2iTask.getScaleFactorXAttr(),
+            m2iTask.getScaleFactorYAttr(), m2iTask.getNormAttr(), m2iTask.getTileOffsetXAttr(),
+            m2iTask.getTileOffsetYAttr(), m2iTask.getProfilingMetadataAttr(), m2iTask.getInterpAttr());
 
     newM2iTask.setProfilingMetadataAttr(profMeta);
     newM2iTask.getProfilingDataMutable().assign(profilingBuffer);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,476 +8,2045 @@
 // REQUIRES: arch-NPU37XX
 
 //CHECK: {
-//CHECK: majorVersion: 2,
-//CHECK: platform: {
-//CHECK: device: 2
-//CHECK: },
-//CHECK: profilingBuffer: {
-//CHECK: sections: [ {
-//CHECK: type: 1,
-//CHECK: size: 192
-//CHECK: }, {
-//CHECK: type: 3,
-//CHECK: offset: 192,
-//CHECK: size: 256
-//CHECK: }, {
-//CHECK: type: 4,
-//CHECK: offset: 448,
-//CHECK: size: 480
-//CHECK: }, {
-//CHECK: type: 5,
-//CHECK: offset: 960,
-//CHECK: size: 64
-//CHECK: } ],
-//CHECK: size: 1024
-//CHECK: },
-//CHECK: dmaTasks: [ {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 0 ],
-//CHECK: dataIndex: 16
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 0 ],
-//CHECK: dataIndex: 1
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 0 ],
-//CHECK: dataIndex: 17
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 1 ],
-//CHECK: dataIndex: 2
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 1 ],
-//CHECK: dataIndex: 18
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [ 2 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 1 ],
-//CHECK: dataIndex: 3
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [ 2 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 1 ],
-//CHECK: dataIndex: 19
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [ 1 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 3 ],
-//CHECK: dataIndex: 4
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [ 1 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 3 ],
-//CHECK: dataIndex: 20
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_0",
-//CHECK: waitBarriers: [ 3 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 4 ],
-//CHECK: dataIndex: 5
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_1",
-//CHECK: waitBarriers: [ 3 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 4 ],
-//CHECK: dataIndex: 21
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
-//CHECK: waitBarriers: [ 3 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 5 ],
-//CHECK: dataIndex: 6
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_0",
-//CHECK: waitBarriers: [ 6 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 5 ],
-//CHECK: dataIndex: 7
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_1",
-//CHECK: waitBarriers: [ 6 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 5 ],
-//CHECK: dataIndex: 22
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_0",
-//CHECK: waitBarriers: [ 5 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 7 ],
-//CHECK: dataIndex: 8
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_1",
-//CHECK: waitBarriers: [ 5 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 7 ],
-//CHECK: dataIndex: 23
-//CHECK: }, {
-//CHECK: name: "conv2/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
-//CHECK: waitBarriers: [ 5 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "conv2/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 8 ],
-//CHECK: dataIndex: 9
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [ 11 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 12 ],
-//CHECK: dataIndex: 10
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [ 11 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 12 ],
-//CHECK: dataIndex: 24
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [ 11 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 12 ],
-//CHECK: dataIndex: 11
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [ 11 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 12 ],
-//CHECK: dataIndex: 25
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [ 12 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 13 ],
-//CHECK: dataIndex: 12
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [ 12 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 13 ],
-//CHECK: dataIndex: 26
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [ 12 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 13 ],
-//CHECK: dataIndex: 13
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [ 12 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [ 13 ],
-//CHECK: dataIndex: 27
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_0",
-//CHECK: waitBarriers: [ 14 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: dataIndex: 14
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_1",
-//CHECK: waitBarriers: [ 14 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: dataIndex: 28
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_0",
-//CHECK: waitBarriers: [ 14 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_0",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: dataIndex: 15
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_1",
-//CHECK: waitBarriers: [ 14 ],
-//CHECK: updateBarriers: [  ],
-//CHECK: isProfBegin: true
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/_cluster_1",
-//CHECK: waitBarriers: [  ],
-//CHECK: updateBarriers: [  ],
-//CHECK: dataIndex: 29
-//CHECK: } ],
-//CHECK: dpuTasks: [ {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/cluster_0",
-//CHECK: taskId: 1,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 4 ],
-//CHECK: updateBarriers: [ 6 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/cluster_1",
-//CHECK: clusterId: 1,
-//CHECK: taskId: 1,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 4 ],
-//CHECK: updateBarriers: [ 6 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_0",
-//CHECK: taskId: 2,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 7 ],
-//CHECK: updateBarriers: [ 9 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_1",
-//CHECK: clusterId: 1,
-//CHECK: taskId: 2,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 7 ],
-//CHECK: updateBarriers: [ 9 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "relu1?t_Relu/cluster_0",
-//CHECK: taskId: 3,
-//CHECK: numVariants: 2,
-//CHECK: maxVariants: 2,
-//CHECK: waitBarriers: [ 9 ],
-//CHECK: updateBarriers: [ 8 ],
-//CHECK: workloadIds: [ 0, 1 ]
-//CHECK: }, {
-//CHECK: name: "relu1?t_Relu/cluster_1",
-//CHECK: clusterId: 1,
-//CHECK: taskId: 3,
-//CHECK: numVariants: 2,
-//CHECK: maxVariants: 2,
-//CHECK: waitBarriers: [ 9 ],
-//CHECK: updateBarriers: [ 8 ],
-//CHECK: workloadIds: [ 0, 1 ]
-//CHECK: }, {
-//CHECK: name: "conv2/WithoutBiases?t_Convolution/cluster_0",
-//CHECK: taskId: 4,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 8 ],
-//CHECK: updateBarriers: [ 10 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "conv2/WithoutBiases?t_Convolution/cluster_1",
-//CHECK: clusterId: 1,
-//CHECK: taskId: 4,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 8 ],
-//CHECK: updateBarriers: [ 10 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/cluster_0",
-//CHECK: taskId: 5,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 10 ],
-//CHECK: updateBarriers: [ 11 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/cluster_1",
-//CHECK: clusterId: 1,
-//CHECK: taskId: 5,
-//CHECK: numVariants: 1,
-//CHECK: maxVariants: 1,
-//CHECK: waitBarriers: [ 10 ],
-//CHECK: updateBarriers: [ 11 ],
-//CHECK: workloadIds: [ 0 ]
-//CHECK: } ],
-//CHECK: swTasks: [ {
-//CHECK: name: "data?t_Parameter/converted_to_f16/tile_0/cluster_0",
-//CHECK: waitBarriers: [ 0 ],
-//CHECK: updateBarriers: [ 2 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/tile_0/cluster_1",
-//CHECK: waitBarriers: [ 0 ],
-//CHECK: updateBarriers: [ 2 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: clusterId: 1
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/tile_1/cluster_0",
-//CHECK: waitBarriers: [ 0 ],
-//CHECK: updateBarriers: [ 2 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: dataIndex: 1,
-//CHECK: tileId: 1
-//CHECK: }, {
-//CHECK: name: "data?t_Parameter/converted_to_f16/tile_1/cluster_1",
-//CHECK: waitBarriers: [ 0 ],
-//CHECK: updateBarriers: [ 2 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: dataIndex: 1,
-//CHECK: tileId: 1,
-//CHECK: clusterId: 1
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/tile_0/cluster_0",
-//CHECK: waitBarriers: [ 13 ],
-//CHECK: updateBarriers: [ 14 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: dataIndex: 2
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/tile_0/cluster_1",
-//CHECK: waitBarriers: [ 13 ],
-//CHECK: updateBarriers: [ 14 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: dataIndex: 2,
-//CHECK: clusterId: 1
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/tile_1/cluster_0",
-//CHECK: waitBarriers: [ 13 ],
-//CHECK: updateBarriers: [ 14 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: dataIndex: 3,
-//CHECK: tileId: 1
-//CHECK: }, {
-//CHECK: name: "relu2?t_Relu/converted_to_f32/tile_1/cluster_1",
-//CHECK: waitBarriers: [ 13 ],
-//CHECK: updateBarriers: [ 14 ],
-//CHECK: taskType: "",
-//CHECK: clusterSize: 4,
-//CHECK: dataIndex: 3,
-//CHECK: tileId: 1,
-//CHECK: clusterId: 1
-//CHECK: } ]
-//CHECK: }
+//CHECK-NEXT:  "majorVersion": 2,
+//CHECK-NEXT:  "minorVersion": 3,
+//CHECK-NEXT:  "platform": {
+//CHECK-NEXT:    "device": 2
+//CHECK-NEXT:  },
+//CHECK-NEXT:  "profilingBuffer": {
+//CHECK-NEXT:    "sections": [ {
+//CHECK-NEXT:      "type": 1,
+//CHECK-NEXT:      "size": 192,
+//CHECK-NEXT:      "typeLabel": "dpu"
+//CHECK-NEXT:    }, {
+//CHECK-NEXT:      "type": 3,
+//CHECK-NEXT:      "offset": 192,
+//CHECK-NEXT:      "size": 256,
+//CHECK-NEXT:      "typeLabel": "actshave"
+//CHECK-NEXT:    }, {
+//CHECK-NEXT:      "type": 4,
+//CHECK-NEXT:      "offset": 448,
+//CHECK-NEXT:      "size": 480,
+//CHECK-NEXT:      "typeLabel": "dma"
+//CHECK-NEXT:    }, {
+//CHECK-NEXT:      "type": 5,
+//CHECK-NEXT:      "offset": 960,
+//CHECK-NEXT:      "size": 64,
+//CHECK-NEXT:      "typeLabel": "pll"
+//CHECK-NEXT:    } ],
+//CHECK-NEXT:    "size": 1024
+//CHECK-NEXT:  },
+//CHECK-NEXT:  "dmaTasks": [ {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 0 ],
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 0 ],
+//CHECK-NEXT:    "dataIndex": 16,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 0 ],
+//CHECK-NEXT:    "dataIndex": 1,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 0 ],
+//CHECK-NEXT:    "dataIndex": 17,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 1 ],
+//CHECK-NEXT:    "dataIndex": 2,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_expand_copy_3_2/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 1 ],
+//CHECK-NEXT:    "dataIndex": 18,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 2 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 1 ],
+//CHECK-NEXT:    "dataIndex": 3,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 2 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 1 ],
+//CHECK-NEXT:    "dataIndex": 19,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 1 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 3 ],
+//CHECK-NEXT:    "dataIndex": 4,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 1 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 3 ],
+//CHECK-NEXT:    "dataIndex": 20,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 3 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 4 ],
+//CHECK-NEXT:    "dataIndex": 5,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 3 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 4 ],
+//CHECK-NEXT:    "dataIndex": 21,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
+//CHECK-NEXT:    "waitBarriers": [ 3 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 5 ],
+//CHECK-NEXT:    "dataIndex": 6,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 6 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 5 ],
+//CHECK-NEXT:    "dataIndex": 7,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 6 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 5 ],
+//CHECK-NEXT:    "dataIndex": 22,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 5 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 7 ],
+//CHECK-NEXT:    "dataIndex": 8,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 5 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 7 ],
+//CHECK-NEXT:    "dataIndex": 23,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv2/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
+//CHECK-NEXT:    "waitBarriers": [ 5 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv2/WithoutBiases?t_Convolution/_fused_constant/_fused_tile",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 8 ],
+//CHECK-NEXT:    "dataIndex": 9,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 11 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 12 ],
+//CHECK-NEXT:    "dataIndex": 10,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 11 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 12 ],
+//CHECK-NEXT:    "dataIndex": 24,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 11 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 12 ],
+//CHECK-NEXT:    "dataIndex": 11,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 11 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 12 ],
+//CHECK-NEXT:    "dataIndex": 25,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 12 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 13 ],
+//CHECK-NEXT:    "dataIndex": 12,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 12 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 13 ],
+//CHECK-NEXT:    "dataIndex": 26,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 12 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 13 ],
+//CHECK-NEXT:    "dataIndex": 13,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 12 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [ 13 ],
+//CHECK-NEXT:    "dataIndex": 27,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "DDR",
+//CHECK-NEXT:    "sourceMemoryKind": "DDR",
+//CHECK-NEXT:    "destinationMemoryKind": "CMX",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 14 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "dataIndex": 14,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 14 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "dataIndex": 28,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 14 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_0",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "dataIndex": 15,
+//CHECK-NEXT:    "portId": 0,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 14 ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "isProfBegin": true,
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/_cluster_1",
+//CHECK-NEXT:    "waitBarriers": [  ],
+//CHECK-NEXT:    "updateBarriers": [  ],
+//CHECK-NEXT:    "dataIndex": 29,
+//CHECK-NEXT:    "portId": 1,
+//CHECK-NEXT:    "channelType": "CMX",
+//CHECK-NEXT:    "sourceMemoryKind": "CMX",
+//CHECK-NEXT:    "destinationMemoryKind": "DDR",
+//CHECK-NEXT:    "tensorShapeInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "tensorStrideInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 8 ],
+//CHECK-NEXT:        "elemType": "ui8"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  } ],
+//CHECK-NEXT:  "dpuTasks": [ {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/cluster_0",
+//CHECK-NEXT:    "taskId": 1,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 4 ],
+//CHECK-NEXT:    "updateBarriers": [ 6 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 31 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      }, {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 31 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 16, 31 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 0, 0 ],
+//CHECK-NEXT:      "outEnd": [ 30, 2, 63 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/cluster_1",
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "taskId": 1,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 4 ],
+//CHECK-NEXT:    "updateBarriers": [ 6 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 31 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      }, {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 31 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 16, 31 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 0, 0 ],
+//CHECK-NEXT:      "outEnd": [ 30, 2, 63 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_0",
+//CHECK-NEXT:    "taskId": 2,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 7 ],
+//CHECK-NEXT:    "updateBarriers": [ 9 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 16, 32, 62 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      }, {
+//CHECK-NEXT:        "dimensions": [ 48, 16, 3, 3 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 30, 60 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 0, 0 ],
+//CHECK-NEXT:      "outEnd": [ 59, 29, 47 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_1",
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "taskId": 2,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 7 ],
+//CHECK-NEXT:    "updateBarriers": [ 9 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 16, 30, 62 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      }, {
+//CHECK-NEXT:        "dimensions": [ 48, 16, 3, 3 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 30, 60 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 30, 0 ],
+//CHECK-NEXT:      "outEnd": [ 59, 59, 47 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu1?t_Relu/cluster_0",
+//CHECK-NEXT:    "taskId": 3,
+//CHECK-NEXT:    "numVariants": 2,
+//CHECK-NEXT:    "maxVariants": 2,
+//CHECK-NEXT:    "waitBarriers": [ 9 ],
+//CHECK-NEXT:    "updateBarriers": [ 8 ],
+//CHECK-NEXT:    "workloadIds": [ 0, 1 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 30, 60 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 16, 30 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 0, 0 ],
+//CHECK-NEXT:      "outEnd": [ 29, 15, 31 ]
+//CHECK-NEXT:    }, {
+//CHECK-NEXT:      "outStart": [ 0, 0, 32 ],
+//CHECK-NEXT:      "outEnd": [ 29, 15, 47 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu1?t_Relu/cluster_1",
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "taskId": 3,
+//CHECK-NEXT:    "numVariants": 2,
+//CHECK-NEXT:    "maxVariants": 2,
+//CHECK-NEXT:    "waitBarriers": [ 9 ],
+//CHECK-NEXT:    "updateBarriers": [ 8 ],
+//CHECK-NEXT:    "workloadIds": [ 0, 1 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 30, 60 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 14, 30 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 16, 0 ],
+//CHECK-NEXT:      "outEnd": [ 29, 29, 31 ]
+//CHECK-NEXT:    }, {
+//CHECK-NEXT:      "outStart": [ 0, 16, 32 ],
+//CHECK-NEXT:      "outEnd": [ 29, 29, 47 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv2/WithoutBiases?t_Convolution/cluster_0",
+//CHECK-NEXT:    "taskId": 4,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 8 ],
+//CHECK-NEXT:    "updateBarriers": [ 10 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 16, 30 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      }, {
+//CHECK-NEXT:        "dimensions": [ 64, 48, 3, 3 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 14, 28 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 0, 0 ],
+//CHECK-NEXT:      "outEnd": [ 27, 13, 63 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "conv2/WithoutBiases?t_Convolution/cluster_1",
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "taskId": 4,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 8 ],
+//CHECK-NEXT:    "updateBarriers": [ 10 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 48, 14, 30 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      }, {
+//CHECK-NEXT:        "dimensions": [ 64, 48, 3, 3 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 14, 28 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 14, 0 ],
+//CHECK-NEXT:      "outEnd": [ 27, 27, 63 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/cluster_0",
+//CHECK-NEXT:    "taskId": 5,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 10 ],
+//CHECK-NEXT:    "updateBarriers": [ 11 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 14, 28 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 7, 14 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 0, 0 ],
+//CHECK-NEXT:      "outEnd": [ 13, 6, 63 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/cluster_1",
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "taskId": 5,
+//CHECK-NEXT:    "numVariants": 1,
+//CHECK-NEXT:    "maxVariants": 1,
+//CHECK-NEXT:    "waitBarriers": [ 10 ],
+//CHECK-NEXT:    "updateBarriers": [ 11 ],
+//CHECK-NEXT:    "workloadIds": [ 0 ],
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 14, 28 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 7, 14 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    },
+//CHECK-NEXT:    "variantInfo": [ {
+//CHECK-NEXT:      "outStart": [ 0, 7, 0 ],
+//CHECK-NEXT:      "outEnd": [ 13, 13, 63 ]
+//CHECK-NEXT:    } ]
+//CHECK-NEXT:  } ],
+//CHECK-NEXT:  "swTasks": [ {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/tile_0/cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 0 ],
+//CHECK-NEXT:    "updateBarriers": [ 2 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 16, 62 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 16, 62 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/tile_0/cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 0 ],
+//CHECK-NEXT:    "updateBarriers": [ 2 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 16, 62 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 16, 62 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/tile_1/cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 0 ],
+//CHECK-NEXT:    "updateBarriers": [ 2 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "dataIndex": 1,
+//CHECK-NEXT:    "tileId": 1,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 15, 62 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 15, 62 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "data?t_Parameter/converted_to_f16/tile_1/cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 0 ],
+//CHECK-NEXT:    "updateBarriers": [ 2 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "dataIndex": 1,
+//CHECK-NEXT:    "tileId": 1,
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 15, 62 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 3, 15, 62 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/tile_0/cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 13 ],
+//CHECK-NEXT:    "updateBarriers": [ 14 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "dataIndex": 2,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 4, 14 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 4, 14 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/tile_0/cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 13 ],
+//CHECK-NEXT:    "updateBarriers": [ 14 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "dataIndex": 2,
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 4, 14 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 4, 14 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/tile_1/cluster_0",
+//CHECK-NEXT:    "waitBarriers": [ 13 ],
+//CHECK-NEXT:    "updateBarriers": [ 14 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "dataIndex": 3,
+//CHECK-NEXT:    "tileId": 1,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 14 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 14 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  }, {
+//CHECK-NEXT:    "name": "relu2?t_Relu/converted_to_f32/tile_1/cluster_1",
+//CHECK-NEXT:    "waitBarriers": [ 13 ],
+//CHECK-NEXT:    "updateBarriers": [ 14 ],
+//CHECK-NEXT:    "taskType": "",
+//CHECK-NEXT:    "clusterSize": 4,
+//CHECK-NEXT:    "dataIndex": 3,
+//CHECK-NEXT:    "tileId": 1,
+//CHECK-NEXT:    "clusterId": 1,
+//CHECK-NEXT:    "tensorInfo": {
+//CHECK-NEXT:      "inputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 14 ],
+//CHECK-NEXT:        "elemType": "f16"
+//CHECK-NEXT:      } ],
+//CHECK-NEXT:      "outputs": [ {
+//CHECK-NEXT:        "dimensions": [ 1, 64, 3, 14 ],
+//CHECK-NEXT:        "elemType": "f32"
+//CHECK-NEXT:      } ]
+//CHECK-NEXT:    }
+//CHECK-NEXT:  } ]
+//CHECK-NEXT:}

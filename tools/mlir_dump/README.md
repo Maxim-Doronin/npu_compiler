@@ -14,7 +14,7 @@ running
 ```bash
 export IE_NPU_IR_PRINTING_FILTER=.*
 export IE_NPU_IR_PRINTING_ORDER=before_after
-export IE_NPU_IR_PRINTING_FILE=tmp.mlir
+export IE_NPU_IR_PRINTING_LOCATION=tmp.mlir
 ./compile_tool ...
 ```
 produces a single 'tmp.mlir' file that contains MLIR dumps before and after

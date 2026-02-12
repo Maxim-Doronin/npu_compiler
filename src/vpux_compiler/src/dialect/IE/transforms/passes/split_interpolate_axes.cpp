@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SPLITINTERPOLATEAXES
@@ -97,8 +98,8 @@ mlir::LogicalResult InterpolateOpConverter::matchAndRewrite(IE::InterpolateOp or
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto interpolate1OutputType = outputType.changeShape(vpux::ShapeRef(interpolate1Shape));
 
-    auto interpolate1 = rewriter.create<IE::InterpolateOp>(
-            appendLoc(loc, "_interpolate1"), interpolate1OutputType, origOp.getInput(), origOp.getSizes(),
+    auto interpolate1Result = rewriter.createOrFold<IE::InterpolateOp>(
+            appendLoc(loc, "interpolate1"), interpolate1OutputType, origOp.getInput(), origOp.getSizes(),
             origOp.getScales(), origOp.getAxes(), sizesAttr1, scalesAttr1, axesAttr1, origOp.getTileOffsetAttrAttr(),
             origOp.getInitialInputDimsAttrAttr(), origOp.getInitialOutputDimsAttrAttr(), origOp.getAttr(),
             origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
@@ -121,13 +122,13 @@ mlir::LogicalResult InterpolateOpConverter::matchAndRewrite(IE::InterpolateOp or
 
     auto interpolate2OutputType = outputType.changeShape(vpux::ShapeRef(interpolate2Shape));
 
-    auto interpolate2 = rewriter.create<IE::InterpolateOp>(
-            appendLoc(loc, "_interpolate2"), interpolate2OutputType, interpolate1.getOutput(), origOp.getSizes(),
+    auto interpolate2Result = rewriter.createOrFold<IE::InterpolateOp>(
+            appendLoc(loc, "interpolate2"), interpolate2OutputType, interpolate1Result, origOp.getSizes(),
             origOp.getScales(), origOp.getAxes(), sizesAttr2, scalesAttr2, axesAttr2, origOp.getTileOffsetAttrAttr(),
             origOp.getInitialInputDimsAttrAttr(), origOp.getInitialOutputDimsAttrAttr(), origOp.getAttr(),
             origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
-    rewriter.replaceOp(origOp, interpolate2);
+    rewriter.replaceOp(origOp, interpolate2Result);
     return mlir::success();
 }
 
@@ -137,14 +138,12 @@ mlir::LogicalResult InterpolateOpConverter::matchAndRewrite(IE::InterpolateOp or
 
 void SplitInterpolateAxesPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<InterpolateOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

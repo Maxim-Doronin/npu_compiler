@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,11 +12,14 @@
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
@@ -40,6 +43,12 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+// Threshold for determining if a filter is large enough to benefit from decomposition
+// For LLM models, the vocabulary embedding layer (where filter represents the vocabulary dictionary)
+// typically exceeds 100MB even for small models (e.g., 0.5B parameters) when using FP16 precision
+// This threshold is set based on empirical statistics from LLM vocabulary sizes
+constexpr vpux::Byte LARGE_FILTER_THRESHOLD = vpux::MB(100);
 
 template <typename InOp_t, typename OutOp_t>
 OutOp_t checkOp(InOp_t inOp, const std::function<mlir::Value(InOp_t)>& valGetter,
@@ -127,8 +136,8 @@ mlir::quant::QuantizedType getQuantizedElementTypeFromFakeQuantize(IE::FakeQuant
     auto outHighConst = fqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
     const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
     const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
-    return getQuantizedType(outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getLevels(),
-                            fqOp.getLowFpType(), realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast(), true);
+    return IE::getQuantizedType(outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getLevels(),
+                                fqOp.getLowFpType(), realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast(), true);
 }
 
 bool checkFQ(IE::FakeQuantizeOp fqOp) {
@@ -253,32 +262,55 @@ std::vector<double> rewriteFQOutputParams(IE::FakeQuantizeOp fakeQuantize, mlir:
     auto insertionPointBackup = rewriter.saveInsertionPoint();
     rewriter.setInsertionPointAfter(oHiConst);
     // Change zero point to 128 by modifying outputLow/High
-    auto oldOutLoContent = oLoConst.getContentAttr().fold();
-    auto oldOutLoValues = to_small_vector(oldOutLoContent.getValues<vpux::type::float16>());
-
-    std::transform(oldOutLoValues.begin(), oldOutLoValues.end(), diff.begin(), oldOutLoValues.begin(),
-                   [](vpux::type::float16 origOutLo, vpux::type::float16 diff) {
-                       return origOutLo + diff;
-                   });
+    auto oldOutLoContent = oLoConst.getContent();
+    auto oldOutHiContent = oHiConst.getContent();
 
     auto newOutLoType =
             mlir::RankedTensorType::get(mlir::cast<NDTypeInterface>(oLoConst.getOutput().getType()).getShape(),
                                         mlir::Float16Type::get(rewriter.getContext()));
-    auto newOutLoValuesAttr = mlir::DenseElementsAttr::get(newOutLoType, ArrayRef(oldOutLoValues));
-    auto newLoInput = rewriter.create<Const::DeclareOp>(oLoConst.getLoc(), oLoConst.getType(),
-                                                        Const::ContentAttr::get(newOutLoValuesAttr));
-
-    // Change outHigh to make zp =128
-    auto oldOutHiContent = oHiConst.getContentAttr().fold();
-    auto oldOutHiValues = to_small_vector(oldOutHiContent.getValues<vpux::type::float16>());
-    std::transform(oldOutHiValues.begin(), oldOutHiValues.end(), diff.begin(), oldOutHiValues.begin(),
-                   [](vpux::type::float16 origOutHi, vpux::type::float16 diff) {
-                       return origOutHi + diff;
-                   });
     auto newOutHiType =
             mlir::RankedTensorType::get(mlir::cast<NDTypeInterface>(oHiConst.getOutput().getType()).getShape(),
                                         mlir::Float16Type::get(rewriter.getContext()));
-    auto newOutHiValuesAttr = mlir::DenseElementsAttr::get(newOutHiType, ArrayRef(oldOutHiValues));
+
+    mlir::DenseElementsAttr newOutLoValuesAttr;
+    mlir::DenseElementsAttr newOutHiValuesAttr;
+
+    if (oldOutLoContent.isSplat() && oldOutHiContent.isSplat() && diff.size() == 1) {
+        // For splat case, only need to update single value
+        const auto oldLoValue = static_cast<vpux::type::float16>(oldOutLoContent.getSplatValue<double>());
+        const auto oldHiValue = static_cast<vpux::type::float16>(oldOutHiContent.getSplatValue<double>());
+        const auto diffValue = static_cast<vpux::type::float16>(diff[0]);
+
+        newOutLoValuesAttr = mlir::DenseElementsAttr::get(newOutLoType, oldLoValue + diffValue);
+        newOutHiValuesAttr = mlir::DenseElementsAttr::get(newOutHiType, oldHiValue + diffValue);
+    } else {
+        // For non-splat case, need to transform all values
+        auto oldOutLoValues = to_small_vector(oldOutLoContent.getValues<vpux::type::float16>());
+        auto oldOutHiValues = to_small_vector(oldOutHiContent.getValues<vpux::type::float16>());
+
+        VPUX_THROW_UNLESS(oldOutLoValues.size() == diff.size(),
+                          "Size mismatch: oldOutLoValues has {0} elements but diff has {1} elements",
+                          oldOutLoValues.size(), diff.size());
+        VPUX_THROW_UNLESS(oldOutHiValues.size() == diff.size(),
+                          "Size mismatch: oldOutHiValues has {0} elements but diff has {1} elements",
+                          oldOutHiValues.size(), diff.size());
+
+        std::transform(oldOutLoValues.begin(), oldOutLoValues.end(), diff.begin(), oldOutLoValues.begin(),
+                       [](vpux::type::float16 origOutLo, double diffVal) {
+                           return origOutLo + static_cast<vpux::type::float16>(diffVal);
+                       });
+
+        std::transform(oldOutHiValues.begin(), oldOutHiValues.end(), diff.begin(), oldOutHiValues.begin(),
+                       [](vpux::type::float16 origOutHi, double diffVal) {
+                           return origOutHi + static_cast<vpux::type::float16>(diffVal);
+                       });
+
+        newOutLoValuesAttr = mlir::DenseElementsAttr::get(newOutLoType, ArrayRef(oldOutLoValues));
+        newOutHiValuesAttr = mlir::DenseElementsAttr::get(newOutHiType, ArrayRef(oldOutHiValues));
+    }
+
+    auto newLoInput = rewriter.create<Const::DeclareOp>(oLoConst.getLoc(), oLoConst.getType(),
+                                                        Const::ContentAttr::get(newOutLoValuesAttr));
     auto newHiInput = rewriter.create<Const::DeclareOp>(oHiConst.getLoc(), oHiConst.getType(),
                                                         Const::ContentAttr::get(newOutHiValuesAttr));
 
@@ -315,37 +347,70 @@ applyReshapeFromAdjustConvolutionInputShape(IE::TransposeOp transposeInput, mlir
     return std::make_tuple(isReshaped, reduceSumInput, reshapeInput);
 }
 
-IE::MultiplyOp createOpsToCalculateFix(IE::ConvolutionOp convOp,
-                                       mlir::TypedValue<::mlir::RankedTensorType> reduceSumInput,
-                                       std::vector<double>& diff, mlir::PatternRewriter& rewriter) {
-    // Input -> [IE.ReduceSum (axes = [1])] -> IE.Multiply ([128 - zp] * scales)
-    // Reduce   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+IE::ConvertOp createOpsToCalculateFix(IE::ConvolutionOp convOp,
+                                      mlir::TypedValue<::mlir::RankedTensorType> reduceSumInput,
+                                      std::vector<double>& diff, mlir::PatternRewriter& rewriter) {
+    // Check if we need F32 conversion based on whether static_scale is present. Creating FP32 ReduceSum will affect
+    // performance. In this way we limit FP32 convertion only when static_scale is present.
+    const bool useF32 = convOp.getStaticScaleAttr() != nullptr;
+    const float staticScale =
+            convOp.getStaticScaleAttr() ? convOp.getStaticScaleAttr().getValue().convertToFloat() : 1.0f;
+
+    mlir::Value reduceInput = reduceSumInput;
+    mlir::Type computeType = mlir::Float16Type::get(rewriter.getContext());
+
+    if (useF32) {
+        // Input -> [IE.Convert(f32)] -> [IE.ReduceSum (axes = [1])] -> IE.Multiply ([128 - zp] * scales * static_scale)
+        auto convertToF32 = rewriter.create<IE::ConvertOp>(appendLoc(convOp.getLoc(), "_to_f32"), reduceSumInput,
+                                                           mlir::Float32Type::get(rewriter.getContext()));
+        reduceInput = convertToF32.getOutput();
+        computeType = mlir::Float32Type::get(rewriter.getContext());
+    }
+
+    // Reduce
     SmallVector<int64_t> reductionAxes = {1};
-    auto reduce = rewriter.create<IE::ReduceSumOp>(appendLoc(convOp.getLoc(), "_reduce"), reduceSumInput, nullptr,
+    auto reduce = rewriter.create<IE::ReduceSumOp>(appendLoc(convOp.getLoc(), "_reduce"), reduceInput, nullptr,
                                                    getIntArrayAttr(rewriter.getContext(), ArrayRef(reductionAxes)),
                                                    /*keep_dims=*/true, nullptr, nullptr);
-    // Input -> IE.ReduceSum (axes = [1]) -> IE.Multiply ([128 - zp] * scales)
-    // Rescale values                                     ^^^^^^^^^^^^^^^^^^^
-    // SmallVector<float> newScales = {(zp - 128) * scale};
+    // Input -> IE.ReduceSum (axes = [1]) -> IE.Multiply ([128 - zp] * scales * static_scale)
+    // Rescale values                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    // SmallVector<float> newScales = {(zp - 128) * scale * static_scale};
     // Negate the value to replace IE.Subtract with IE.Add
-    SmallVector<vpux::type::float16> newScales(diff.size());
-    std::transform(diff.begin(), diff.end(), newScales.begin(), [](auto diffVal) {
-        return -diffVal;
-    });
+
     auto OC = mlir::cast<NDTypeInterface>(convOp.getFilter().getType()).getShape()[Dims4D::Filter::OC];
-    const auto newScalesShape = mlir::RankedTensorType::get(SmallVector<int64_t, 4>{1, OC, 1, 1},
-                                                            mlir::Float16Type::get(rewriter.getContext()));
-    const auto newScalesAttr = mlir::DenseElementsAttr::get(newScalesShape, ArrayRef(newScales));
-    auto newScalesVal = rewriter.create<Const::DeclareOp>(appendLoc(convOp.getLoc(), "new_scales"), newScalesShape,
-                                                          Const::ContentAttr::get(newScalesAttr));
+    const auto newScalesShape = mlir::RankedTensorType::get(SmallVector<int64_t, 4>{1, OC, 1, 1}, computeType);
+
+    mlir::Value newScalesVal;
+    if (useF32) {
+        SmallVector<float> newScales(diff.size());
+        std::transform(diff.begin(), diff.end(), newScales.begin(), [staticScale](auto diffVal) {
+            return -diffVal * staticScale;
+        });
+        const auto newScalesAttr = mlir::DenseElementsAttr::get(newScalesShape, ArrayRef(newScales));
+        newScalesVal = rewriter.create<Const::DeclareOp>(appendLoc(convOp.getLoc(), "new_scales"), newScalesShape,
+                                                         Const::ContentAttr::get(newScalesAttr));
+    } else {
+        SmallVector<vpux::type::float16> newScales(diff.size());
+        std::transform(diff.begin(), diff.end(), newScales.begin(), [](auto diffVal) {
+            return vpux::type::float16(-diffVal);
+        });
+        const auto newScalesAttr = mlir::DenseElementsAttr::get(newScalesShape, ArrayRef(newScales));
+        newScalesVal = rewriter.create<Const::DeclareOp>(appendLoc(convOp.getLoc(), "new_scales"), newScalesShape,
+                                                         Const::ContentAttr::get(newScalesAttr));
+    }
+
     // Input -> IE.ReduceSum (axes = [1]) -> [IE.Multiply] ([128 - zp] * scales)
     // Multiply reduced sum by scales        ^^^^^^^^^^^^^
     auto rescale = rewriter.create<IE::MultiplyOp>(
-            appendLoc(convOp.getLoc(), "rescale"), reduce.getOutput(), newScalesVal.getOutput(),
+            appendLoc(convOp.getLoc(), "rescale"), reduce.getOutput(), newScalesVal,
             IE::AutoBroadcastTypeAttr::get(rewriter.getContext(), IE::AutoBroadcastType::NUMPY),
             /*postOp=*/nullptr,
             /*clamp=*/nullptr, nullptr, nullptr);
-    return rescale;
+
+    // Convert to f16 to match convolution output type
+    auto convertToF16 = rewriter.create<IE::ConvertOp>(appendLoc(convOp.getLoc(), "_to_f16"), rescale.getOutput(),
+                                                       mlir::Float16Type::get(rewriter.getContext()));
+    return convertToF16;
 }
 
 IE::AffineReshapeOp rollbackAdjustConvolutionInputShapeReshape(IE::AddOp subtract, mlir::PatternRewriter& rewriter) {
@@ -369,14 +434,23 @@ IE::AffineReshapeOp rollbackAdjustConvolutionInputShapeReshape(IE::AddOp subtrac
 bool isConversionBeneficial(IE::ConvolutionOp convOp, double decompositionEnablementRatio) {
     const auto convInputSize = mlir::cast<NDTypeInterface>(convOp.getInput().getType()).getTotalAllocSize();
     const auto convFilterSize = mlir::cast<NDTypeInterface>(convOp.getFilter().getType()).getTotalAllocSize();
-    const auto convSize = convFilterSize + convInputSize;
-    const auto newOpSize = estimateNewOpsSize(convOp);
-    const auto convToNewOpRatio = (double)convSize.count() / newOpSize.count();
+    const auto totalConvSize = convFilterSize + convInputSize;
+    const auto newOpsSize = estimateNewOpsSize(convOp);
+    const auto sizeRatio = static_cast<double>(totalConvSize.count()) / newOpsSize.count();
 
-    // Most of the time runtime dequantization is more efficient than this method, however for some layers new ops added
-    // with this are really small compared to original matmul, so if new ops are smaller
-    // 1/_decompositionEnablementRatio(250) of original matmul we use this method
-    return convToNewOpRatio >= decompositionEnablementRatio;
+    // Strategy 1: Large filters always benefit from decomposition
+    // For LLM vocabulary embedding layers, the filter (vocabulary dictionary) size typically exceeds
+    // 100MB even for 0.5B parameter models in FP16 precision. For such large filters, decomposition
+    // is always beneficial regardless of the overhead from new operations.
+    const bool isLargeFilter = (convFilterSize > LARGE_FILTER_THRESHOLD);
+
+    // Strategy 2: Decomposition is beneficial when new ops have small overhead
+    // Most of the time runtime dequantization is more efficient than this method, however for some layers
+    // new ops added with this are really small compared to original matmul, so if new ops are smaller than
+    // 1/decompositionEnablementRatio (e.g., 1/250) of original matmul we use this method
+    const bool hasSmallOverhead = (sizeRatio >= decompositionEnablementRatio);
+
+    return isLargeFilter || hasSmallOverhead;
 }
 
 bool isOneByOneConvolution(IE::ConvolutionOp convOp) {
@@ -414,10 +488,6 @@ mlir::LogicalResult FixMatmulZeroPointRewriter::matchAndRewrite(IE::ConvolutionO
     auto oneByOneConv = isOneByOneConvolution(convOp);
     if (!oneByOneConv) {
         return matchFailed(nestedLog, rewriter, convOp, "Only convolutions with 1x1 kernels are supported");
-    }
-
-    if (convOp.getStaticScaleAttr()) {
-        return matchFailed(nestedLog, rewriter, convOp, "Convolution has static_scale, skipping optimization");
     }
 
     auto asymmetricFQ = getMatchingFakeQuantizeOp(convOp);
@@ -461,9 +531,10 @@ mlir::LogicalResult FixMatmulZeroPointRewriter::matchAndRewrite(IE::ConvolutionO
 
     auto convInput = isReshaped ? reshapeInput.getOutput() : transposeInput.getOutput();
 
+    // Keep static_scale on convolution, but REMOVE post_op.
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
-            convOp->getLoc(), convInput, convOp.getFilter(), convOp.getBias(), convOp.getStrides(),
-            convOp.getPadsBegin(), convOp.getPadsEnd(), convOp.getDilations(), convOp.getPostOpAttr(),
+            convOp->getLoc(), convInput, convOp.getFilter(), convOp.getBias(), convOp.getScale(), convOp.getStrides(),
+            convOp.getPadsBegin(), convOp.getPadsEnd(), convOp.getDilations(), /*postOp=*/nullptr,
             convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(),
             convOp.getInputPaddingAttr());
 
@@ -472,7 +543,7 @@ mlir::LogicalResult FixMatmulZeroPointRewriter::matchAndRewrite(IE::ConvolutionO
     auto subtract = rewriter.create<IE::AddOp>(
             appendLoc(convOp.getLoc(), "subtract_reduction"), newConvOp->getResult(0), rescale.getOutput(),
             IE::AutoBroadcastTypeAttr::get(rewriter.getContext(), IE::AutoBroadcastType::NUMPY),
-            /*postOp=*/nullptr,
+            /*postOp=*/convOp.getPostOpAttr(),  // Apply post_op to the sum!
             /*clamp=*/nullptr, nullptr, nullptr);
 
     auto endTransposeInput = subtract.getOutput();
@@ -525,9 +596,7 @@ void ProcessAsymmetricZeroPointsForMatmulPass::safeRunOnFunc() {
     auto func = getOperation();
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FixMatmulZeroPointRewriter>(&ctx, _decompositionEnablementRatio, _log);
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

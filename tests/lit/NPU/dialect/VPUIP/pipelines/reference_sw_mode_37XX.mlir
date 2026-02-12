@@ -56,7 +56,7 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.com
         // CHECK:   [[BUFF3:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1000xf16, @DDR>
 
         // CHECK:   VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK-NEXT:  VPUIP.NNDMA {port = 0 : i64} inputs([[BUFF2]] : memref<1x1x1x1000xf16, @DDR>) outputs([[DISTR_BUFF0]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+        // CHECK-NEXT:  VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF2]] : memref<1x1x1x1000xf16, @DDR>) outputs([[DISTR_BUFF0]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
         // CHECK-NEXT:  }
 
         // CHECK:   VPURT.Task waits([[BAR0]]  : !VPURT.Barrier) updates([[BAR1]]  : !VPURT.Barrier) {
@@ -64,11 +64,11 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.com
         // CHECK-SAME:                    outputs([[DISTR_BUFF1]] as {{[^:]+}}: !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) on tile 0 -> !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>{
 
         // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
-        // CHECK:       %10 = VPUIP.NNDMA {port = 0 : i64} inputs([[DISTR_BUFF1]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[BUFF1]] : memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR>
+        // CHECK:       %10 = VPUIP.NNDMA <{port = 0 : i64}> inputs([[DISTR_BUFF1]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[BUFF1]] : memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR>
         // CHECK:   }
 
         // CHECK:    VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) {
-        // CHECK:        %10 = VPUIP.NNDMA {port = 0 : i64} inputs([[BUFF3]] : memref<1x1000xf16, @DDR>) outputs([[BUFF0]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
+        // CHECK:        %10 = VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF3]] : memref<1x1000xf16, @DDR>) outputs([[BUFF0]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
         // CHECK:    }
     }
 }

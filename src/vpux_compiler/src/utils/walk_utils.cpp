@@ -5,8 +5,8 @@
 
 #include "vpux/compiler/utils/walk_utils.hpp"
 
-#include <llvm/ADT/SmallVector.h>
-#include <numeric>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Rewrite/PatternApplicator.h>
 
 using namespace vpux;
 

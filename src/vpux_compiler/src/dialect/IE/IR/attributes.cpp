@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -34,18 +34,6 @@ void IE::IEDialect::registerAttributes() {
             >();
 }
 
-namespace {
-constexpr StringLiteral debatchCompileMethod = "VPU.debatch";
-}
-
-void setCompileMethodDebatch(mlir::ModuleOp module) {
-    auto enabledMethod = getIntAttr(module.getContext(), 1);
-    module->setAttr(debatchCompileMethod, enabledMethod);
-}
-
-bool hasCompileMethodDebatch(mlir::ModuleOp module) {
-    return module ? module->hasAttr(debatchCompileMethod) : false;
-}
 //
 // Generated
 //

@@ -39,7 +39,7 @@ IE::SliceOp createFrameSlice(mlir::PatternRewriter& rewriter, mlir::Location loc
     SmallVector<int64_t> frameShape = to_small_vector(inputShape);
     frameShape[frameShape.size() - 1] = frameSize;
 
-    return rewriter.create<IE::SliceOp>(appendLoc(loc, "_frame_{0}_slice", frameIdx),
+    return rewriter.create<IE::SliceOp>(appendLoc(loc, "frame_{0}_slice", frameIdx),
                                         mlir::RankedTensorType::get(frameShape, elemType), input,
                                         getIntArrayAttr(ctx, offsets), getIntArrayAttr(ctx, sizes));
 }
@@ -149,14 +149,14 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
         const auto frameWithAxisType = mlir::RankedTensorType::get(frameWithAxisShape, elemType);
         const auto frameWithAxisShapeAttr = getIntArrayAttr(ctx, frameWithAxisShape);
 
-        auto frameReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "_frame_add_axis"), frameWithAxisType,
-                                                             frame, nullptr, false, frameWithAxisShapeAttr);
+        auto frameReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "frame_add_axis"), frameWithAxisType, frame,
+                                                             nullptr, false, frameWithAxisShapeAttr);
         reshapedFrames.push_back(frameReshapeOp.getOutput());
     }
 
     const auto concatAxis = 1;
     const auto concatAxisAttr = getIntAttr(ctx, concatAxis);
-    auto concatOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "_frames_concat"), reshapedFrames, concatAxisAttr);
+    auto concatOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "frames_concat"), reshapedFrames, concatAxisAttr);
 
     auto framesResult = concatOp.getResult();
     const auto actualFramesType = mlir::cast<vpux::NDTypeInterface>(framesResult.getType());
@@ -166,7 +166,7 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
     if (window) {
         auto autoBroadcastAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NUMPY);
 
-        windowedFrames = rewriter.create<IE::MultiplyOp>(appendLoc(loc, "_windowing_multiply"), framesResult, window,
+        windowedFrames = rewriter.create<IE::MultiplyOp>(appendLoc(loc, "windowing_multiply"), framesResult, window,
                                                          autoBroadcastAttr, nullptr, nullptr, nullptr, nullptr)
                                  .getOutput();
         _log.trace("Applied windowing function");
@@ -184,7 +184,7 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
 
     const auto rdftOutputType = mlir::RankedTensorType::get(rdftOutputShape, elemType);
 
-    auto rdftOp = rewriter.create<IE::RDFTOp>(appendLoc(loc, "_rdft"), rdftOutputType, windowedFrames, nullptr, nullptr,
+    auto rdftOp = rewriter.create<IE::RDFTOp>(appendLoc(loc, "rdft"), rdftOutputType, windowedFrames, nullptr, nullptr,
                                               rdftAxesAttr, rdftSignalSizeAttr);
 
     auto rdftOutput = rdftOp.getResult();
@@ -199,8 +199,8 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
         const auto permutationMap = mlir::AffineMap::getPermutationMap(transposeOrder, ctx);
         const auto permutationMapAttr = mlir::AffineMapAttr::get(permutationMap);
 
-        finalOutput = rewriter.create<IE::TransposeOp>(appendLoc(loc, "_transpose"), transposedType, rdftOutput,
-                                                       nullptr, permutationMapAttr)
+        finalOutput = rewriter.create<IE::TransposeOp>(appendLoc(loc, "transpose"), transposedType, rdftOutput, nullptr,
+                                                       permutationMapAttr)
                               .getOutput();
         _log.trace("Applied transpose, final shape: {0}", transposedShape);
     }
@@ -217,7 +217,7 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
         const auto squeezedType = mlir::RankedTensorType::get(squeezedShape, elemType);
         const auto squeezedShapeAttr = getIntArrayAttr(ctx, squeezedShape);
 
-        auto squeezeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "_output_squeeze"), squeezedType, finalOutput,
+        auto squeezeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "output_squeeze"), squeezedType, finalOutput,
                                                         nullptr, false, squeezedShapeAttr);
         finalOutput = squeezeOp.getOutput();
     }

@@ -9,11 +9,11 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -30,6 +30,8 @@ using namespace vpux;
 
 namespace {
 
+constexpr int64_t ADJUST_CONV_ALIGNMENT = 4;
+
 struct SliceAndPaddingParameters {
     int64_t index;
     int64_t offsetX;
@@ -39,13 +41,6 @@ struct SliceAndPaddingParameters {
     Shape padStart;
     Shape padEnd;
 };
-
-Shape getSlicedShape(int64_t dilationX, int64_t dilationY, int64_t kernelX, int64_t kernelY) {
-    Shape slicedShape(2);
-    slicedShape[Dims4D::Kernel::X] = dilationX > 1 ? kernelX : 1;
-    slicedShape[Dims4D::Kernel::Y] = dilationY > 1 ? kernelY : 1;
-    return slicedShape;
-}
 
 mlir::Value createNewOp(mlir::PatternRewriter& rewriter, mlir::Operation* origOp, ArrayRef<mlir::Value> operands,
                         ShapeRef padStart, ShapeRef padEnd, bool updatePad, bool removePostOp, StringRef locSuffix) {
@@ -80,38 +75,12 @@ mlir::Value createNewOp(mlir::PatternRewriter& rewriter, mlir::Operation* origOp
     return newOp->getResult(0);
 }
 
-SmallVector<mlir::Value> getSlicedFilters(mlir::PatternRewriter& rewriter, mlir::Operation* origOp, mlir::Value input,
-                                          ShapeRef slicedShape, ShapeRef filterShape) {
-    SmallVector<mlir::Value> slicedFilters;
-    const auto IC = filterShape[Dims4D::Filter::IC];
-    const auto OC = filterShape[Dims4D::Filter::OC];
-    const auto kernelY = filterShape[Dims4D::Filter::KY];
-    const auto kernelX = filterShape[Dims4D::Filter::KX];
-    mlir::MLIRContext* ctx = origOp->getContext();
-
-    for (int64_t kx = 0; kx < slicedShape[Dims4D::Kernel::X]; kx++) {
-        for (int64_t ky = 0; ky < slicedShape[Dims4D::Kernel::Y]; ky++) {
-            Shape offsets(filterShape.size());
-            offsets[Dims4D::Filter::KX] = kx;
-            offsets[Dims4D::Filter::KY] = ky;
-            SmallVector<int64_t> sliceShape{OC, IC, kernelY / slicedShape[Dims4D::Kernel::Y],
-                                            kernelX / slicedShape[Dims4D::Kernel::X]};
-            auto slice = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("filter_slice_{0}_{1}"), kx, ky),
-                                                      input, getIntArrayAttr(ctx, offsets.raw()),
-                                                      getIntArrayAttr(ctx, sliceShape));
-            slicedFilters.push_back(slice);
-        }
-    }
-
-    return slicedFilters;
-}
-
 // The func will return activation slice parmeter which included offset and size for both Height and width
 // dimension. Also return the padding parameter for the new convolution
-SmallVector<SliceAndPaddingParameters> getActivationSliceAndPaddingParameters(ShapeRef slicedShape, ShapeRef padStart,
-                                                                              ShapeRef padEnd, ShapeRef inputShape,
-                                                                              ShapeRef outputShape, ShapeRef dilations,
-                                                                              ShapeRef strides) {
+SmallVector<SliceAndPaddingParameters> getActivationSliceAndPaddingParameters(
+        ArrayRef<int64_t> kernelOffsetsX, ArrayRef<int64_t> kernelSizesX, ArrayRef<int64_t> kernelOffsetsY,
+        ArrayRef<int64_t> kernelSizesY, ShapeRef padStart, ShapeRef padEnd, ShapeRef inputShape, ShapeRef outputShape,
+        ShapeRef dilations, ShapeRef strides) {
     SmallVector<SliceAndPaddingParameters> parameters;
     auto getParameters = [](int64_t start, int64_t end, int64_t padding, int64_t dimension) {
         int64_t padStart, padEnd, offset, size;
@@ -136,58 +105,49 @@ SmallVector<SliceAndPaddingParameters> getActivationSliceAndPaddingParameters(Sh
         return std::make_tuple(offset, size, padStart, padEnd);
     };
 
-    for (int64_t kx = 0; kx < slicedShape[Dims4D::Kernel::X]; kx++) {
+    for (size_t kxIndex = 0; kxIndex < kernelOffsetsX.size(); kxIndex++) {
+        int64_t kx = kernelOffsetsX[kxIndex];
+        int64_t kxSize = kernelSizesX[kxIndex];
         int64_t offsetX = 0, sizeX = 0;
         Shape newPadStart(padStart.size());
         Shape newPadEnd(padEnd.size());
 
-        if (slicedShape[Dims4D::Kernel::X] == 1) {
-            // no slice, using the original parameter.
-            offsetX = 0;
-            sizeX = inputShape[Dims4D::Act::W];
-            newPadStart[Dims4D::PadsBegin::Left] = padStart[Dims4D::PadsBegin::Left];
-            newPadEnd[Dims4D::PadsEnd::Right] = padEnd[Dims4D::PadsEnd::Right];
-        } else {
-            int64_t startW = kx * dilations[Dims4D::Dilation::X];
-            int64_t endW = outputShape[Dims4D::Act::W] * strides[Dims4D::Strides::X] + startW;
-            // in padding range, no need to compute, just continue
-            if (startW >= inputShape[Dims4D::Act::W] + padStart[Dims4D::PadsBegin::Left]) {
-                continue;
-            }
-            if (endW <= padStart[Dims4D::PadsBegin::Left]) {
-                continue;
-            }
-
-            // 2. get activation slice parameter and padding parameter, for W
-            std::tie(offsetX, sizeX, newPadStart[Dims4D::PadsBegin::Left], newPadEnd[Dims4D::PadsEnd::Right]) =
-                    getParameters(startW, endW, padStart[Dims4D::PadsBegin::Left], inputShape[Dims4D::Act::W]);
+        int64_t startW = kx * dilations[Dims4D::Dilation::X];
+        int64_t expandedKernelX = (kxSize - 1) * dilations[Dims4D::Dilation::X] + 1;
+        int64_t endW = outputShape[Dims4D::Act::W] * strides[Dims4D::Strides::X] + startW + expandedKernelX - 1;
+        // in padding range, no need to compute, just continue
+        if (startW >= inputShape[Dims4D::Act::W] + padStart[Dims4D::PadsBegin::Left]) {
+            continue;
+        }
+        if (endW <= padStart[Dims4D::PadsBegin::Left]) {
+            continue;
         }
 
-        for (int64_t ky = 0; ky < slicedShape[Dims4D::Kernel::Y]; ky++) {
-            int64_t offsetY = 0, sizeY = 0;
-            if (slicedShape[Dims4D::Kernel::Y] == 1) {
-                // no slice, using the original parameter.
-                offsetY = 0;
-                sizeY = inputShape[Dims4D::Act::H];
-                newPadStart[Dims4D::PadsBegin::Top] = padStart[Dims4D::PadsBegin::Top];
-                newPadEnd[Dims4D::PadsEnd::Bottom] = padEnd[Dims4D::PadsEnd::Bottom];
-            } else {
-                int64_t startH = ky * dilations[Dims4D::Dilation::Y];
-                int64_t endH = outputShape[Dims4D::Act::H] * strides[Dims4D::Strides::Y] + startH;
-                // in padding range, no need to compute, just continue
-                if (startH >= inputShape[Dims4D::Act::H] + padStart[Dims4D::PadsBegin::Top]) {
-                    continue;
-                }
-                if (endH <= padStart[Dims4D::PadsBegin::Top]) {
-                    continue;
-                }
+        // 2. get activation slice parameter and padding parameter, for W
+        std::tie(offsetX, sizeX, newPadStart[Dims4D::PadsBegin::Left], newPadEnd[Dims4D::PadsEnd::Right]) =
+                getParameters(startW, endW, padStart[Dims4D::PadsBegin::Left], inputShape[Dims4D::Act::W]);
 
-                // 2. get activation slice parameter and padding parameter, for H
-                std::tie(offsetY, sizeY, newPadStart[Dims4D::PadsBegin::Top], newPadEnd[Dims4D::PadsEnd::Bottom]) =
-                        getParameters(startH, endH, padStart[Dims4D::PadsBegin::Top], inputShape[Dims4D::Act::H]);
+        for (size_t kyIndex = 0; kyIndex < kernelOffsetsY.size(); kyIndex++) {
+            int64_t ky = kernelOffsetsY[kyIndex];
+            int64_t kySize = kernelSizesY[kyIndex];
+            int64_t offsetY = 0, sizeY = 0;
+
+            int64_t startH = ky * dilations[Dims4D::Dilation::Y];
+            int64_t expandedKernelY = (kySize - 1) * dilations[Dims4D::Dilation::Y] + 1;
+            int64_t endH = outputShape[Dims4D::Act::H] * strides[Dims4D::Strides::Y] + startH + expandedKernelY - 1;
+            // in padding range, no need to compute, just continue
+            if (startH >= inputShape[Dims4D::Act::H] + padStart[Dims4D::PadsBegin::Top]) {
+                continue;
+            }
+            if (endH <= padStart[Dims4D::PadsBegin::Top]) {
+                continue;
             }
 
-            int64_t index = kx * slicedShape[Dims4D::Kernel::Y] + ky;
+            // 2. get activation slice parameter and padding parameter, for H
+            std::tie(offsetY, sizeY, newPadStart[Dims4D::PadsBegin::Top], newPadEnd[Dims4D::PadsEnd::Bottom]) =
+                    getParameters(startH, endH, padStart[Dims4D::PadsBegin::Top], inputShape[Dims4D::Act::H]);
+
+            int64_t index = kxIndex * kernelOffsetsY.size() + kyIndex;
             parameters.push_back(
                     SliceAndPaddingParameters{index, offsetX, sizeX, offsetY, sizeY, newPadStart, newPadEnd});
         }
@@ -195,22 +155,51 @@ SmallVector<SliceAndPaddingParameters> getActivationSliceAndPaddingParameters(Sh
     return parameters;
 }
 
-// here is the optimization for dilated convolution or group convolution that expanded kernels
-// are bigger than HW limitation(11x11). For example if kernel is 2x2, dilation is 15x15,
-// we split the filter to 4 1x1 filter, then use IE.add to add each of them one by one.
-// The detail step is :
-// 1. slice the filter, from 2x2 to 4 1x1
-// 2. get activation slice parameters(offset and size) and padding parameters of the small convolution
-// 3. slice activation and create new convolution
-// 4. add the new convolution one by one
-//
-//      [act]        [w]                     [act]       [w]         [act]        [w]
-//        |           |           to           |          |            |           |
-//       -(dilatedConv)-                    (slice)    (slice)      (slice)     (slice)
-//                                             |          |            |           |
-//                                               -(conv)-                -(conv)-
-//                                                   |                       |
-//                                                     ---- (eltwise) -----
+/*
+ Optimization for dilated convolution or group convolution where expanded kernels
+ exceed the HW limitation (e.g., 11x11).
+
+ 1. If the dilated kernel fits into the hardware limit (e.g. 11x11), we simply expand the weights
+    by inserting zeros (ExpandDilatedOp) and run a single convolution. This is generally the most efficient approach.
+
+ 2. If the dilated kernel is too large, we use a hybrid strategy:
+    We split the original kernel into smaller "sub-kernels".
+    Each sub-kernel is chosen such that when dilated, it fits within the hardware limit.
+
+    Example: Kernel 4x4, Dilation 4, MaxKernel 11.
+    Expanded size: (4-1)*4 + 1 = 13 > 11.
+    Max SubKernel: (3-1)*4 + 1 = 9 <= 11.
+
+    Instead of maximizing the chunk size (which would result in 3x3, 3x1, 1x3, 1x1),
+    we use a balanced splitting strategy to distribute work evenly.
+    So we split into 2x2 chunks.
+
+        Convert Dilated Convolution
+          Input        Filter (4x4, dil=4)
+        [N, C, H, W]   [OC, IC, 4, 4]
+             \             /
+           Dilated Convolution
+                    |
+                  Output
+    =>
+                  Filter (4x4)
+                      |
+                 Split Filter
+           (Balanced split, e.g. 2x2)
+        /          |           |          \
+    SubFilter1  SubFilter2  SubFilter3  SubFilter4
+    (2x2,dil=4) (2x2,dil=4) (2x2,dil=4) (2x2,dil=4)
+        |           |           |           |
+      Input       Input       Input       Input
+        |           |           |           |
+    Slice Input Slice Input Slice Input Slice Input
+        |           |           |           |
+    Convolution Convolution Convolution Convolution
+         \          |           |          /
+                    AddOp (Chain)
+                        |
+                      Output
+*/
 
 //
 // ConvGeneralRewriter
@@ -230,6 +219,47 @@ private:
 };
 
 template <class ConcreteOp>
+bool isExpandedSubKernelFitIntoCMX(ConcreteOp origOp, ShapeRef filterShape, ShapeRef dilations, int64_t subKernelSizeX,
+                                   int64_t subKernelSizeY, Logger log) {
+    const auto filterType = mlir::cast<NDTypeInterface>(origOp.getFilter().getType());
+    const auto outputType = mlir::cast<NDTypeInterface>(origOp->getResult(0).getType());
+    SmallVector<int64_t> expandedFilterShapeVec(filterShape.raw().begin(), filterShape.raw().end());
+    // Calculate the shape of the expanded sub-kernel
+    const auto expandedSubKernelX = (subKernelSizeX - 1) * dilations[Dims4D::Dilation::X] + 1;
+    const auto expandedSubKernelY = (subKernelSizeY - 1) * dilations[Dims4D::Dilation::Y] + 1;
+
+    // max kernel size after being split and applying ExpandDilatedOp
+    expandedFilterShapeVec[Dims4D::Filter::KX.ind()] = expandedSubKernelX;
+    expandedFilterShapeVec[Dims4D::Filter::KY.ind()] = expandedSubKernelY;
+    // min OC after being tiled
+    expandedFilterShapeVec[Dims4D::Filter::OC.ind()] = VPU::NCEInvariant::getAlignment(outputType.getElementType());
+
+    // max IC when groupconv converted to conv
+    if (auto groupConvOp = mlir::dyn_cast<IE::GroupConvolutionOp>(origOp.getOperation())) {
+        if (groupConvOp.getGroups().has_value()) {
+            expandedFilterShapeVec[Dims4D::Filter::IC.ind()] *= groupConvOp.getGroups().value();
+        }
+    }
+
+    auto maxExpandedSubKernelShape = Shape(expandedFilterShapeVec);
+    const auto expandedFilterType = filterType.changeShape(maxExpandedSubKernelShape);
+
+    // Calculate memory requirement for the expanded weights
+    SmallVector<Byte> buffers = {expandedFilterType.getTotalAllocSize()};
+    auto expandedFilterSize =
+            vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(origOp), buffers).count();
+    const auto cmxSize = vpux::VPU::getTotalCMXSize(origOp).count();
+
+    if (expandedFilterSize > cmxSize) {
+        log.trace("Force split to 1x1 because expanded sub-filter size {0} exceeds CMX size {1}", expandedFilterSize,
+                  cmxSize);
+        return false;
+    }
+
+    return true;
+}
+
+template <class ConcreteOp>
 mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
                                                                      mlir::PatternRewriter& rewriter) const {
     _log.trace("Got dilated '{0}'layer at '{1}'", origOp->getName(), origOp->getLoc());
@@ -238,19 +268,23 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
 
     const auto kernelY = filterShape[Dims4D::Filter::KY];
     const auto kernelX = filterShape[Dims4D::Filter::KX];
-    const auto expandKernelX = (kernelX - 1) * dilations[Dims4D::Dilation::X] + 1;
-    const auto expandKernelY = (kernelY - 1) * dilations[Dims4D::Dilation::Y] + 1;
+    const auto expandedKernelX = (kernelX - 1) * dilations[Dims4D::Dilation::X] + 1;
+    const auto expandedKernelY = (kernelY - 1) * dilations[Dims4D::Dilation::Y] + 1;
     const auto maxKernelSize = config::getMaxKernelSize(origOp);
 
-    const auto isKernelSupportedByNCE = expandKernelX <= maxKernelSize && expandKernelY <= maxKernelSize;
+    const auto isKernelSupportedByNCE = (expandedKernelX <= maxKernelSize) && (expandedKernelY <= maxKernelSize);
     const auto isFilterConstant = mlir::succeeded(IE::getConstParentOp(origOp.getFilter()));
 
-    // The dilation can be resolved by expanding the filter with zeroes by the dilation factor
-    // This can only be done if the expanded filter still satisfies the kernel size limitation of the NCE, otherwise it
-    // would execute on SHAVE and lose performance
-    // Additionally, the filter has to be a constant to ensure that the IE.ExpandDilated operation gets folded into a
-    // constant transformation since there is no full lowering path for this operation
-    if (isKernelSupportedByNCE && isFilterConstant) {
+    _log.trace("Split dilated '{0}' layer at '{1}'", origOp->getName(), origOp->getLoc());
+    const auto padStart = Shape(parseIntArrayAttr<int64_t>(origOp.getPadsBegin()));
+    const auto padEnd = Shape(parseIntArrayAttr<int64_t>(origOp.getPadsEnd()));
+    const auto strides = Shape(parseIntArrayAttr<int64_t>(origOp.getStrides()));
+    const auto inputShape = getShape(origOp->getOperand(0));
+    const auto outputShape = getShape(origOp->getResult(0));
+    mlir::MLIRContext* ctx = origOp->getContext();
+
+    // 1. If the dilated kernel fits into the hardware limit, use ExpandDilatedOp and single convolution.
+    if (isFilterConstant && isKernelSupportedByNCE) {
         _log.trace("Expand dilated '{0}' layer at '{1}'", origOp->getName(), origOp->getLoc());
         auto dilatedFilter = rewriter.create<IE::ExpandDilatedOp>(takeOpLoc(origOp, "dilatedfilter_in"),
                                                                   origOp.getFilter(), origOp.getDilations());
@@ -262,23 +296,104 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
         return mlir::success();
     }
 
-    _log.trace("Split dilated '{0}' layer at '{1}'", origOp->getName(), origOp->getLoc());
-    const auto padStart = Shape(parseIntArrayAttr<int64_t>(origOp.getPadsBegin()));
-    const auto padEnd = Shape(parseIntArrayAttr<int64_t>(origOp.getPadsEnd()));
-    const auto strides = Shape(parseIntArrayAttr<int64_t>(origOp.getStrides()));
-    const auto inputShape = getShape(origOp->getOperand(0));
-    const auto outputShape = getShape(origOp->getResult(0));
-    mlir::MLIRContext* ctx = origOp->getContext();
+    // 2. If the dilated kernel is too large, we use a hybrid strategy.
+    //  Calculate the MAXIMUM sub-kernel size that fits into maxKernelSize after dilation.
+    //  Formula: (subK - 1) * dilation + 1 <= maxKernelSize
+    //        => subK - 1 <= (maxKernelSize - 1) / dilation
+    //        => subK <= (maxKernelSize - 1) / dilation + 1
+    int64_t maxSubKernelSizeX = (maxKernelSize - 1) / dilations[Dims4D::Dilation::X] + 1;
+    int64_t maxSubKernelSizeY = (maxKernelSize - 1) / dilations[Dims4D::Dilation::Y] + 1;
 
-    auto slicedShape = getSlicedShape(dilations[Dims4D::Dilation::X], dilations[Dims4D::Dilation::Y], kernelX, kernelY);
+    // Ensure at least 1x1
+    maxSubKernelSizeX = std::max<int64_t>(maxSubKernelSizeX, 1);
+    maxSubKernelSizeY = std::max<int64_t>(maxSubKernelSizeY, 1);
 
-    // 1. slice Filters
-    SmallVector<mlir::Value> slicedFilters =
-            getSlicedFilters(rewriter, origOp, origOp.getFilter(), slicedShape, filterShape);
+    // Calculate the balanced sub-kernel size to distribute the work more evenly.
+    const auto numSplitsX = (kernelX + maxSubKernelSizeX - 1) / maxSubKernelSizeX;
+    const auto numSplitsY = (kernelY + maxSubKernelSizeY - 1) / maxSubKernelSizeY;
+
+    int64_t subKernelSizeX = (kernelX + numSplitsX - 1) / numSplitsX;
+    int64_t subKernelSizeY = (kernelY + numSplitsY - 1) / numSplitsY;
+
+    // Check if the expanded sub-kernel fits into CMX.
+    // Even if the sub-kernel dimensions fit into the hardware kernel limit (e.g. 11x11),
+    // the total memory required for the expanded weights (even with sparse tensor) might exceed CMX size.
+    // If it exceeds CMX, we must force a 1x1 split to minimize memory usage.
+    // TODO(E#195803): Split filter when it exceeds CMX even if tiled and sparse tensor applied. Then remove current
+    // logic codes.
+    const bool isFitIntoCMX =
+            isExpandedSubKernelFitIntoCMX(origOp, filterShape, dilations, subKernelSizeX, subKernelSizeY, _log);
+
+    // If filter is not constant, we cannot use ExpandDilatedOp (runtime expansion not supported easily).
+    // So we must fallback to 1x1 split (subKernelSize = 1), which effectively implements the "Split" strategy.
+    if (!isFilterConstant || !isFitIntoCMX) {
+        subKernelSizeX = 1;
+        subKernelSizeY = 1;
+    }
+
+    // Optimization for H=1 or W=1:
+    // If the input has H=1 or W=1, subsequent optimizations (like AdjustConvInputShape) might require
+    // the kernel size to be aligned (e.g. divisible by 4) to work correctly.
+    // If the expanded sub-kernel size is not divisible by 4, we fallback to 1x1 split to avoid breaking those
+    // optimizations.
+    if (inputShape[Dims4D::Act::H] == 1 || inputShape[Dims4D::Act::W] == 1) {
+        const auto expandedSubKernelX = (subKernelSizeX - 1) * dilations[Dims4D::Dilation::X] + 1;
+        if (subKernelSizeX > 1 && expandedSubKernelX % ADJUST_CONV_ALIGNMENT != 0) {
+            subKernelSizeX = 1;
+        }
+        const auto expandedSubKernelY = (subKernelSizeY - 1) * dilations[Dims4D::Dilation::Y] + 1;
+        if (subKernelSizeY > 1 && expandedSubKernelY % ADJUST_CONV_ALIGNMENT != 0) {
+            subKernelSizeY = 1;
+        }
+    }
+
+    SmallVector<int64_t> kernelOffsetsX, kernelSizesX;
+    for (int64_t kx = 0; kx < kernelX; kx += subKernelSizeX) {
+        kernelOffsetsX.push_back(kx);
+        kernelSizesX.push_back(std::min(subKernelSizeX, kernelX - kx));
+    }
+
+    SmallVector<int64_t> kernelOffsetsY, kernelSizesY;
+    for (int64_t ky = 0; ky < kernelY; ky += subKernelSizeY) {
+        kernelOffsetsY.push_back(ky);
+        kernelSizesY.push_back(std::min(subKernelSizeY, kernelY - ky));
+    }
+
+    // 1. Slice Filters and Expand
+    SmallVector<mlir::Value> slicedFilters;
+    const auto IC = filterShape[Dims4D::Filter::IC];
+    const auto OC = filterShape[Dims4D::Filter::OC];
+
+    for (size_t kxI = 0; kxI < kernelOffsetsX.size(); ++kxI) {
+        for (size_t kyI = 0; kyI < kernelOffsetsY.size(); ++kyI) {
+            int64_t kx = kernelOffsetsX[kxI];
+            int64_t ky = kernelOffsetsY[kyI];
+            int64_t sizeX = kernelSizesX[kxI];
+            int64_t sizeY = kernelSizesY[kyI];
+
+            Shape offsets(filterShape.size());
+            offsets[Dims4D::Filter::KX] = kx;
+            offsets[Dims4D::Filter::KY] = ky;
+            SmallVector<int64_t> sliceShape{OC, IC, sizeY, sizeX};
+
+            auto slice =
+                    rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "filter_slice_{0}_{1}", kx, ky), origOp.getFilter(),
+                                                 getIntArrayAttr(ctx, offsets.raw()), getIntArrayAttr(ctx, sliceShape));
+
+            if (sizeX == 1 && sizeY == 1) {
+                slicedFilters.push_back(slice);
+            } else {
+                auto dilatedFilter = rewriter.create<IE::ExpandDilatedOp>(
+                        takeOpLoc(origOp, "dilatedfilter_{0}_{1}", kx, ky), slice, origOp.getDilations());
+                slicedFilters.push_back(dilatedFilter);
+            }
+        }
+    }
 
     // 2. get activation slice parameters and padding parameters
-    auto activationSliceAndPaddingParameters = getActivationSliceAndPaddingParameters(
-            slicedShape, padStart, padEnd, inputShape, outputShape, dilations, strides);
+    auto activationSliceAndPaddingParameters =
+            getActivationSliceAndPaddingParameters(kernelOffsetsX, kernelSizesX, kernelOffsetsY, kernelSizesY, padStart,
+                                                   padEnd, inputShape, outputShape, dilations, strides);
     VPUX_THROW_UNLESS(activationSliceAndPaddingParameters.size() > 0, "no any activation slice");
 
     // 3. slice activation and create new convolution
@@ -330,8 +445,8 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
         mlir::Value add = newConvs.front();
         for (size_t i = 1; i < newConvs.size(); i++) {
             const auto isLast = (i == newConvs.size() - 1);
-            add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, StringLiteral("add_{0}"), i), add, newConvs[i],
-                                             broadcastType, isLast ? origOp.getPostOpAttr() : nullptr,
+            add = rewriter.create<IE::AddOp>(takeOpLoc(origOp, "add_{0}", i), add, newConvs[i], broadcastType,
+                                             isLast ? origOp.getPostOpAttr() : nullptr,
                                              isLast ? origOp.getClampAttr() : nullptr, origOp.getOutputPaddingAttr(),
                                              origOp.getInputPaddingAttr())
                           ->getResult(0);

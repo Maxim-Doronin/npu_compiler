@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,7 +33,7 @@ func.func @DmaSequenceDoNotOptimizeBarriers(%arg0: memref<1x16x32x32xf16, #NHWC,
 
     return %arg1 : memref<1x16x32x32xf16, #NHWC, @DDR>
 
-    // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     // CHECK:       VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
     // CHECK:       VPUIP.NNDMA

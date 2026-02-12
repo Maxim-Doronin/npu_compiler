@@ -156,7 +156,7 @@ mlir::LogicalResult SplitInterpolate::matchAndRewrite(VPU::InterpolateOp origOp,
             newScalesAttr = getFPArrayAttr(getContext(), newScales);
         }
 
-        auto newLoc = appendLoc(origOp.getLoc(), "_interpolate_on_Dim_{0}", dim.ind());
+        auto newLoc = appendLoc(origOp.getLoc(), "interpolate_on_Dim_{0}", dim.ind());
         if (newOutputType != nullptr) {
             return rewriter
                     .create<VPU::InterpolateOp>(
@@ -265,7 +265,7 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
                 mlir::cast<vpux::NDTypeInterface>(origOp.getShift().getType()).getElementType(),
                 getTensorAttr(rewriter.getContext(), shiftDimOrder, nullptr));
         const auto shiftValue = Const::createConst(rewriter, shiftLoc, newShiftType, newShift);
-        auto newLoc = appendLoc(origOp.getLoc(), "_roll_on_Dim_{0}", dim.ind());
+        auto newLoc = appendLoc(origOp.getLoc(), "roll_on_Dim_{0}", dim.ind());
         return rewriter.create<VPU::RollOp>(newLoc, inputVal, shiftValue, newAxesValue).getOutput();
     };
 

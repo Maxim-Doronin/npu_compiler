@@ -18,9 +18,10 @@ def IE_AndOp :
         IE_LayerOp<
             "And",
             [
-                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                IE_EltwiseOp,
                 Commutative,
-                IE_EltwiseOp
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine And layer";
@@ -61,9 +62,10 @@ def IE_LogicalOrOp :
         IE_LayerOp<
             "LogicalOr",
             [
-                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                IE_EltwiseOp,
                 Commutative,
-                IE_EltwiseOp
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine LogicalOr layer";

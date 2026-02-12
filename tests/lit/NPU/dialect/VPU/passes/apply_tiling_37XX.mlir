@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,7 +31,8 @@ func.func @SplitNCEPermute(%arg0: tensor<1x31x224x224xf16>) -> tensor<1x32x224x2
     // CHECK-SAME:          dstElemType = !qElemType,
     // CHECK-SAME:          dstOrder = #NHWC,
     // CHECK-SAME:          expandedChannels = 16 : i64,
-    // CHECK-SAME:          ppe = #VPU.PPEStub<>}
+    // CHECK-SAME:          ppe = #VPU.PPEStub<>,
+    // CHECK-SAME:          tiling_loop_index = 0 : i64}
     // CHECK-SAME:      -> tensor<1x16x224x224x!qElemType, {order = #NHWC}>
 
     // Tile 1
@@ -43,7 +44,8 @@ func.func @SplitNCEPermute(%arg0: tensor<1x31x224x224xf16>) -> tensor<1x32x224x2
     // CHECK-SAME:          dstElemType = !qElemType,
     // CHECK-SAME:          dstOrder = #NHWC,
     // CHECK-SAME:          expandedChannels = 16 : i64,
-    // CHECK-SAME:          ppe = #VPU.PPEStub<>}
+    // CHECK-SAME:          ppe = #VPU.PPEStub<>,
+    // CHECK-SAME:          tiling_loop_index = 0 : i64}
     // CHECK-SAME:      -> tensor<1x16x224x224x!qElemType, {order = #NHWC}>
 
     // Concat

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
@@ -320,7 +321,10 @@ namespace {
 
 class ConvertPerAxisToOffsets final : public mlir::OpRewritePattern<IE::ConcatOp> {
 public:
-    using mlir::OpRewritePattern<IE::ConcatOp>::OpRewritePattern;
+    ConvertPerAxisToOffsets(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ConcatOp>(ctx, benefit) {
+        this->setDebugName("ConvertPerAxisToOffsets");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -362,7 +366,10 @@ namespace {
 
 class FuseConcat final : public mlir::OpRewritePattern<IE::ConcatOp> {
 public:
-    using OpRewritePattern::OpRewritePattern;
+    FuseConcat(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ConcatOp>(ctx, benefit) {
+        this->setDebugName("FuseConcat");
+    }
 
     mlir::LogicalResult matchAndRewrite(IE::ConcatOp op, mlir::PatternRewriter& rewriter) const final;
 };
@@ -424,7 +431,10 @@ namespace {
 
 class FuseConstConcat final : public mlir::OpRewritePattern<IE::ConcatOp> {
 public:
-    using OpRewritePattern::OpRewritePattern;
+    FuseConstConcat(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ConcatOp>(ctx, benefit) {
+        this->setDebugName("FuseConstConcat");
+    }
 
     mlir::LogicalResult matchAndRewrite(IE::ConcatOp op, mlir::PatternRewriter& rewriter) const final;
 };
@@ -528,7 +538,10 @@ namespace {
 
 class FuseSliceConcat final : public mlir::OpRewritePattern<IE::ConcatOp> {
 public:
-    using OpRewritePattern::OpRewritePattern;
+    FuseSliceConcat(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ConcatOp>(ctx, benefit) {
+        this->setDebugName("FuseSliceConcat");
+    }
 
     mlir::LogicalResult matchAndRewrite(IE::ConcatOp op, mlir::PatternRewriter& rewriter) const final;
 };
@@ -658,6 +671,14 @@ void vpux::IE::ConcatOp::getCanonicalizationPatterns(mlir::RewritePatternSet& re
     results.add<FuseConcat>(ctx);
     results.add<FuseSliceConcat>(ctx);
     results.add<FuseConstConcat>(ctx);
+}
+
+void vpux::IE::registerConcatOpRewriters(RewriterRegistry& registry, ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                         size_t index) {
+    registry.registerRewriter<ConvertPerAxisToOffsets>("convert-per-axis-to-offsets", benefitLevels[index]);
+    registry.registerRewriter<FuseConcat>("fuse-concat", benefitLevels[index]);
+    registry.registerRewriter<FuseSliceConcat>("fuse-slice-concat", benefitLevels[index]);
+    registry.registerRewriter<FuseConstConcat>("fuse-const-concat", benefitLevels[index]);
 }
 
 //

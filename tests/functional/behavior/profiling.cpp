@@ -6,6 +6,8 @@
 #include "vpux/utils/core/env.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include "common/npu_test_env_cfg.hpp"
+#include "common/utils.hpp"
 #include "intel_npu/npu_private_properties.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -20,6 +22,8 @@
 #include <set>
 #include <sstream>
 #include <utility>
+
+namespace utils = ov::test::utils;
 
 class ProfilingTempReportEnv {
 public:
@@ -84,19 +88,16 @@ protected:
     }
 };
 
-typedef std::string PlatformId;
+typedef int VoidParam;
 
-class ProfilingSubgraphSanityTest : public ProfilingSubgraphTestBase, public testing::WithParamInterface<PlatformId> {
+class ProfilingSubgraphSanityTest : public ProfilingSubgraphTestBase, public testing::WithParamInterface<VoidParam> {
 protected:
     void runTest() {
-        const auto platform = GetParam();
-        run(platform);
+        run(utils::getTestDeviceId());
     }
 };
 
-// use tuples to get pretty printing for free
-using ProfilingTestConfig = std::tuple<std::string, std::optional<unsigned>>;
-using ProfilingTestParams = std::tuple<ProfilingTestConfig, std::string>;
+using ProfilingTestParams = std::tuple<std::string>;
 
 class ProfilingSubgraphTest :
         public ProfilingSubgraphTestBase,
@@ -106,34 +107,20 @@ protected:
     }
 
     void runTest() {
-        const auto& config = std::get<0>(GetParam());
-        const auto platform = std::get<0>(config);
-        run(platform);
+        run(utils::getTestDeviceId());
     }
 
 public:
     static std::string getTestCaseName(const testing::TestParamInfo<ProfilingSubgraphTest::ParamType>& info) {
-        const auto& [config, compilerType] = info.param;
-        const auto& [platform, nTiles] = config;
-        std::stringstream name;
-        name << "NPU" << platform << '_';
-        if (nTiles.has_value()) {
-            name << *nTiles << "T_";
-        }
-        name << compilerType;
-        return name.str();
+        const auto& [compilerType] = info.param;
+        return compilerType;
     }
 
 private:
     void SetUp() override {
-        const auto& [config, compilerType] = GetParam();
-        const auto& [platform, nTiles] = config;
-
+        const auto& [compilerType] = GetParam();
         configuration.emplace(ov::enable_profiling.name(), true);
         configuration.emplace(ov::intel_npu::compiler_type.name(), compilerType);
-        if (nTiles.has_value()) {
-            configuration.emplace(ov::intel_npu::tiles.name(), nTiles.value());
-        }
 
         ProfilingSubgraphTestBase::SetUp();
 
@@ -202,10 +189,8 @@ TEST_P(ProfilingSubgraphSanityTest, ProfilingDisabledTest) {
 }
 
 INSTANTIATE_TEST_SUITE_P(precommit_BehaviorTest_ProfilingDisabledTest, ProfilingSubgraphSanityTest,
-                         testing::Values(ov::intel_npu::Platform::NPU3720, ov::intel_npu::Platform::NPU4000),
-                         [](const testing::TestParamInfo<PlatformId>& info) {
-                             return "NPU" + info.param;
-                         });
+                         testing::ValuesIn(std::vector<VoidParam>{0}),
+                         (utils::appendPlatformTypeTestName<ProfilingSubgraphSanityTest>));
 
 // Profiling enabled test cases
 
@@ -213,12 +198,6 @@ TEST_P(ProfilingSubgraphTest, ProfilingTest) {
     runTest();
 }
 
-INSTANTIATE_TEST_SUITE_P(
-        precommit_BehaviorTest_ProfilingTest, ProfilingSubgraphTest,
-        testing::Combine(testing::Values(ProfilingTestConfig{ov::intel_npu::Platform::NPU3720, std::nullopt},
-                                         ProfilingTestConfig{ov::intel_npu::Platform::NPU4000, 1},
-                                         ProfilingTestConfig{ov::intel_npu::Platform::NPU4000, 2},
-                                         ProfilingTestConfig{ov::intel_npu::Platform::NPU4000, 3},
-                                         ProfilingTestConfig{ov::intel_npu::Platform::NPU4000, std::nullopt}),
-                         testing::Values("MLIR", "DRIVER")),
-        ProfilingSubgraphTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(precommit_BehaviorTest_ProfilingTest, ProfilingSubgraphTest,
+                         testing::Values("PLUGIN", "DRIVER"),
+                         (utils::appendPlatformTypeTestName<ProfilingSubgraphTest>));

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/utils/content.hpp"
 #include "vpux/utils/core/func_ref.hpp"
@@ -163,11 +164,6 @@ SpecializedContentSetup(mlir::Type, ArrayRef<TransformAttrInterface>, Callable&&
 /// use this instead of the "specialized" version: prefer explicit content
 /// construction (from setup's transformations) to implicit `.get()`.
 using ContentSetup = SpecializedContentSetup<detail::NoopGet>;
-
-llvm::hash_code stableHashForCastElemType(mlir::Type type);
-llvm::hash_code stableHashForConvertElemType(mlir::Type type);
-llvm::hash_code stableHashForChangeShapeAndElemType(mlir::ArrayAttr shape, mlir::Type type);
-
 }  // namespace vpux::Const
 
 //

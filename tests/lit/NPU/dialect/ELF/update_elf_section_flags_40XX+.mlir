@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -87,7 +87,7 @@ func.func @main() {
       VPUASM.MappedInference @MappedInference : dmas([]) actKernelRanges([@ActKernelRange_0_0]) actKernelInvocations([@ActKernelInvocation_0_0]) barriers(@program.barrier::@ConfigureBarrier_0_0) actShaveRt(@shave.runtime::@ActShaveRt) dmaCount([[0, 0], [0, 0]]) invariantCount([0, 0]) variantCount([0, 0]) actKernelRangesCount([2, 0]) actKernelInvocationsCount([2, 0]) mediaCount(0) barrierCount(3) mappedInferenceVersion(@note.MappedInferenceVersion::@MappedInferenceVersion_0_0)
     }
     ELF.CreateSection @note.LoaderABIVersion aligned(4) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
-      ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+      ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     }
     ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
       ELF.Symbol @elfsym.buffer.Constant.0.constant of(@buffer.Constant.0.constant) type(<STT_SECTION>) size(0) value(0)

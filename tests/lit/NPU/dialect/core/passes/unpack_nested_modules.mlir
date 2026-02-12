@@ -250,7 +250,7 @@ module @VPUIP {
         %b_fooCall1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         VPURT.Task updates(%b_fooCall1CopyIn : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%netIn : memref<f16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%netIn : memref<f16, @DDR>)
                 outputs(%inAlloc : memref<f16, @DDR>)
                 -> memref<f16, @DDR>
         }
@@ -261,7 +261,7 @@ module @VPUIP {
         }
 
         VPURT.Task waits(%b_fooCall1 : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%outAlloc : memref<f16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%outAlloc : memref<f16, @DDR>)
                 outputs(%netOut : memref<f16, @DDR>)
                 -> memref<f16, @DDR>
         }

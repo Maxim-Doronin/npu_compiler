@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,116 +60,116 @@ module @Test attributes {config.arch = #config.arch_kind<NPU37XX>, config.compil
   }
 }
 
-//CHECK: %[[VAL0:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL1:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL2:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL3:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL5:.*]] = VPUMI37XX.DeclareKernelText
-//CHECK: %[[VAL6:.*]] = VPUMI37XX.DeclareKernelArgs
-//CHECK: %[[VAL7:.*]] = VPUMI37XX.DeclareKernelEntry
-//CHECK: %[[VAL8:.*]] = VPUMI37XX.ActKernelRange
-//CHECK: %[[VAL10:.*]] = VPUMI37XX.KernelParams
-//CHECK: %[[VAL9:.*]] = VPUMI37XX.ActKernelInvocation
+//CHECK: [[VAL0:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL1:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL2:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL3:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL5:%.+]] = VPUMI37XX.DeclareKernelText
+//CHECK: [[VAL6:%.+]] = VPUMI37XX.DeclareKernelArgs
+//CHECK: [[VAL7:%.+]] = VPUMI37XX.DeclareKernelEntry
+//CHECK: [[VAL8:%.+]] = VPUMI37XX.ActKernelRange
+//CHECK: [[VAL10:%.+]] = VPUMI37XX.KernelParams
+//CHECK: [[VAL9:%.+]] = VPUMI37XX.ActKernelInvocation
 
-//CHECK: %[[VAL12:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL13:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL14:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL15:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL17:.*]] = VPUMI37XX.DeclareKernelText
-//CHECK: %[[VAL18:.*]] = VPUMI37XX.DeclareKernelArgs
-//CHECK: %[[VAL19:.*]] = VPUMI37XX.DeclareKernelEntry
-//CHECK: %[[VAL20:.*]] = VPUMI37XX.ActKernelRange
-//CHECK: %[[VAL22:.*]] = VPUMI37XX.KernelParams
-//CHECK: %[[VAL21:.*]] = VPUMI37XX.ActKernelInvocation
+//CHECK: [[VAL12:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL13:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL14:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL15:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL17:%.+]] = VPUMI37XX.DeclareKernelText
+//CHECK: [[VAL18:%.+]] = VPUMI37XX.DeclareKernelArgs
+//CHECK: [[VAL19:%.+]] = VPUMI37XX.DeclareKernelEntry
+//CHECK: [[VAL20:%.+]] = VPUMI37XX.ActKernelRange
+//CHECK: [[VAL22:%.+]] = VPUMI37XX.KernelParams
+//CHECK: [[VAL21:%.+]] = VPUMI37XX.ActKernelInvocation
 
-//CHECK: %[[VAL24:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL25:.*]] = VPURT.DeclareBuffer
-//CHECK: %[[VAL26:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL27:.*]] = VPUMI37XX.ConfigureBarrier
-//CHECK: %[[VAL29:.*]] = VPUMI37XX.DeclareKernelText
-//CHECK: %[[VAL30:.*]] = VPUMI37XX.DeclareKernelArgs
-//CHECK: %[[VAL31:.*]] = VPUMI37XX.DeclareKernelEntry
-//CHECK: %[[VAL32:.*]] = VPUMI37XX.ActKernelRange
-//CHECK: %[[VAL34:.*]] = VPUMI37XX.KernelParams
-//CHECK: %[[VAL33:.*]] = VPUMI37XX.ActKernelInvocation
+//CHECK: [[VAL24:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL25:%.+]] = VPURT.DeclareBuffer
+//CHECK: [[VAL26:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL27:%.+]] = VPUMI37XX.ConfigureBarrier
+//CHECK: [[VAL29:%.+]] = VPUMI37XX.DeclareKernelText
+//CHECK: [[VAL30:%.+]] = VPUMI37XX.DeclareKernelArgs
+//CHECK: [[VAL31:%.+]] = VPUMI37XX.DeclareKernelEntry
+//CHECK: [[VAL32:%.+]] = VPUMI37XX.ActKernelRange
+//CHECK: [[VAL34:%.+]] = VPUMI37XX.KernelParams
+//CHECK: [[VAL33:%.+]] = VPUMI37XX.ActKernelInvocation
 
-//CHECK-DAG: %[[VAL48:.*]] = VPUMI37XX.ActShaveRt kernel("nnActEntry") -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: %[[VAL49:.*]] = ELFNPU37XX.CreateSection {{.*}} {secAddrAlign = 1024 : i64, secInfo = 0 : i64, secName = ".text.actKernelRtConfigSec"} -> !ELFNPU37XX.Section {
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL48]] : !VPURegMapped.Index<0:0:0>
-//CHECK: %[[VAL50:.*]]  = ELFNPU37XX.Symbol %[[VAL49]] name("sym_actKernelRtConfigsSec") : !ELFNPU37XX.Section
+//CHECK-DAG: [[VAL48:%.+]] = VPUMI37XX.ActShaveRt kernel("nnActEntry") -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL49:%.+]] = ELFNPU37XX.CreateSection {{.+}} {secAddrAlign = 1024 : i64, secInfo = 0 : i64, secName = ".text.actKernelRtConfigSec"} -> !ELFNPU37XX.Section {
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL48]] : !VPURegMapped.Index<0:0:0>
+//CHECK: [[VAL50:%.+]]  = ELFNPU37XX.Symbol [[VAL49]] name("sym_actKernelRtConfigsSec") : !ELFNPU37XX.Section
 
-//CHECK-DAG: %[[VAL51:.*]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.actKernelRtConfig")
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL50]] : !ELFNPU37XX.Symbol
+//CHECK-DAG: [[VAL51:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.actKernelRtConfig")
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL50]] : !ELFNPU37XX.Symbol
 
-//CHECK-DAG: %[[KERNELTEXT:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.KernelText"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL5]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.Pad {{.*}}
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL17]] : !VPURegMapped.Index<0:0:1>
-//CHECK-NEXT: ELFNPU37XX.Pad {{.*}}
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL29]] : !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[KERNELTEXT:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.KernelText"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL5]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.Pad {{.+}}
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL17]] : !VPURegMapped.Index<0:0:1>
+//CHECK-NEXT: ELFNPU37XX.Pad {{.+}}
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL29]] : !VPURegMapped.Index<0:0:2>
 //CHECK-NEXT: ELFNPU37XX.Pad size(128)
 
-//CHECK-DAG: %[[KERNELDATA:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.KernelData"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL6]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL18]] : !VPURegMapped.Index<0:0:1>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL30]] : !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[KERNELDATA:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.KernelData"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL6]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL18]] : !VPURegMapped.Index<0:0:1>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL30]] : !VPURegMapped.Index<0:0:2>
 
-//CHECK-DAG: %[[KERNELPARAMS:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.KernelParams"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL10]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.Pad {{.*}}
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL22]] : !VPURegMapped.Index<0:0:1>
-//CHECK-NEXT: ELFNPU37XX.Pad {{.*}}
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL34]] : !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[KERNELPARAMS:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.KernelParams"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL10]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.Pad {{.+}}
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL22]] : !VPURegMapped.Index<0:0:1>
+//CHECK-NEXT: ELFNPU37XX.Pad {{.+}}
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL34]] : !VPURegMapped.Index<0:0:2>
 
-//CHECK-DAG: %[[ACTKERNELR:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.ActKernelRanges"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL8]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL20]] : !VPURegMapped.Index<0:0:1>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL32]] : !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[ACTKERNELR:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.ActKernelRanges"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL8]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL20]] : !VPURegMapped.Index<0:0:1>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL32]] : !VPURegMapped.Index<0:0:2>
 
-//CHECK-DAG: %[[ACTKERNELI:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.ActKernelInvocations"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL9]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL21]] : !VPURegMapped.Index<0:0:1>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL33]] : !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[ACTKERNELI:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.ActKernelInvocations"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL9]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL21]] : !VPURegMapped.Index<0:0:1>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL33]] : !VPURegMapped.Index<0:0:2>
 
-//CHECK: %[[BUILTIN_SYMTABSEC:.*]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
-//CHECK: %[[SYMTABSEC:.*]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.tasks")
+//CHECK: [[BUILTIN_SYMTABSEC:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
+//CHECK: [[SYMTABSEC:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.tasks")
 
-//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection(%[[SYMTABSEC]])
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
+//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection([[SYMTABSEC]])
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
 
-//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection(%[[BUILTIN_SYMTABSEC]])
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
+//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.KernelParams") sourceSymbolTableSection([[BUILTIN_SYMTABSEC]])
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL22]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL34]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
 
-//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelRanges") sourceSymbolTableSection(%[[SYMTABSEC]])
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL8]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL20]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL32]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
+//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelRanges") sourceSymbolTableSection([[SYMTABSEC]])
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL8]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL20]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL32]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
 
-//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelInvocations") sourceSymbolTableSection(%[[BUILTIN_SYMTABSEC]])
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL9]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32_RTM>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL21]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32_RTM>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL33]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32_RTM>
+//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelInvocations") sourceSymbolTableSection([[BUILTIN_SYMTABSEC]])
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL9]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32_RTM>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL21]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32_RTM>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL33]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32_RTM>
 
-//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelInvocations") sourceSymbolTableSection(%[[SYMTABSEC]])
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL9]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL9]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL21]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL21]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL33]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
-//CHECK-DAG ELFNPU37XX.Reloc baseOp(%[[VAL33]] : !VPURegMapped.Index<0:0:2>) {{.*}} <R_VPU_32>
+//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelInvocations") sourceSymbolTableSection([[SYMTABSEC]])
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL9]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL9]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL21]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL21]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL33]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>
+//CHECK-DAG ELFNPU37XX.Reloc baseOp([[VAL33]] : !VPURegMapped.Index<0:0:2>) {{.+}} <R_VPU_32>

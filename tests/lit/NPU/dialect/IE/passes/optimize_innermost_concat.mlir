@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-innermost-concat %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-mem-permute-processing-rewriters="rewriter=optimize-innermost-concat-set" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>

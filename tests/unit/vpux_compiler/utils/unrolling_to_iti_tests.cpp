@@ -164,7 +164,7 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOH) {
     const auto kernelStrides = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 kernelStrides, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
     auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
@@ -331,7 +331,7 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_SOK) {
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
     auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
@@ -528,7 +528,7 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_HKSwitch) {
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
     auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
@@ -611,6 +611,235 @@ TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_HKSwitch) {
 
         expectedOutwardHalos.push_back(
                 getOutwardHalo(&ctx, haloShapeAttr, clusterId, sliceOffset, inwardOffsets, clustersToBroadcastTo));
+
+        EXPECT_EQ(expectedOutwardHalos.size(), itiType.getOutwardHaloRegions().size());
+        for (const auto expectedHalo : expectedOutwardHalos) {
+            const auto count = llvm::count(itiType.getOutwardHaloRegions(), expectedHalo);
+            EXPECT_EQ(count, 1);
+        }
+
+        // Ensure there is a 1:1 match between inward halo in outward halo and one of the inward halos of the
+        // output_iti_buffs
+        checkOutwardHalosConsumersMatchOutputIti(itiType.getOutwardHaloRegions(), outItiPerCluster[clusterId]);
+    }
+}
+
+/*
+SOK->SOH SEGMENTED|OVERLAPPED on 3 tiles -> ITIBuffer
+
+!VPUIP.DistributedBuffer<
+    1x96x48x48xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @CMX_NN, {
+    mode = "OVERLAPPED|SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64,
+    compute_shapes = [[1, 32, 48, 48], [1, 32, 48, 48], [1, 32, 48, 48]],
+    compute_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0]],
+    memory_shapes = [[1, 96, 16, 48], [1, 96, 16, 48], [1, 96, 16, 48]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 16, 0], [0, 0, 32, 0]]
+}>
+
+to
+
+!OutputITI0 = !VPUIP.ITIBuffer<
+    1x96x48x48xf16, #NHWC, [@CMX_NN, 0],
+    inwardHaloRegions = [
+        #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 32, 0, 0], cluster_id = 0 : i64>,
+        #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 64, 0, 0], cluster_id = 0 : i64>
+    ],
+    outwardHaloRegions = [
+        #VPUIP.OutwardHaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 0, 16, 0], cluster_id = 0 : i64,
+        inwardHaloRegions = [
+            #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 0, 16, 0], cluster_id = 1 : i64>
+        ]>,
+        #VPUIP.OutwardHaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 0, 32, 0], cluster_id = 0 : i64,
+        inwardHaloRegions = [
+            #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 0, 32, 0], cluster_id = 2 : i64>
+        ]>
+]>
+
+!OutputITI1 = !VPUIP.ITIBuffer<
+    1x96x48x48xf16, #NHWC, [@CMX_NN, 1],
+    inwardHaloRegions = [
+        #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 0, 16, 0], cluster_id = 1 : i64>,
+        #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 64, 16, 0], cluster_id = 1 : i64>
+    ],
+    outwardHaloRegions = [
+        #VPUIP.OutwardHaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 32, 0, 0], cluster_id = 1 : i64,
+inwardHaloRegions = [ #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 32, 0, 0], cluster_id = 0 : i64>
+        ]>,
+        #VPUIP.OutwardHaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 32, 32, 0], cluster_id = 1 : i64,
+inwardHaloRegions = [ #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 32, 32, 0], cluster_id = 2 : i64>
+        ]>
+]>
+
+!OutputITI2 = !VPUIP.ITIBuffer<
+    1x96x48x48xf16, #NHWC, [@CMX_NN, 2],
+    inwardHaloRegions = [
+        #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 0, 32, 0], cluster_id = 2 : i64>,
+        #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 32, 32, 0], cluster_id = 2 : i64>
+    ],
+    outwardHaloRegions = [
+        #VPUIP.OutwardHaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 64, 0, 0], cluster_id = 2 : i64,
+inwardHaloRegions = [ #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 64, 0, 0], cluster_id = 0 : i64>
+        ]>,
+        #VPUIP.OutwardHaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 64, 16, 0], cluster_id = 2 : i64,
+inwardHaloRegions = [ #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 48], offset = [0, 64, 16, 0], cluster_id = 1 : i64>
+        ]>
+]>
+
+*/
+
+TEST_F(MLIR_ITIUnrollTest, getPerClusterOutputHaloBuffers_KHSwitch) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPUIP::VPUIPDialect>();
+    ctx.loadDialect<VPURT::VPURTDialect>();
+
+    const int64_t numClusters = 3;
+
+    const auto distributionModeAttr =
+            VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED);
+    const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, numClusters, 1, 1}));
+    const auto numClustersAttr = getIntAttr(&ctx, numClusters);
+    const auto memNumTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, numClusters, 1}));
+
+    const auto shape = SmallVector<int64_t>({1, 96, 48, 48});
+    const auto elemType = mlir::Float16Type::get(&ctx);
+
+    const auto orderAttr = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(&ctx));
+    const auto elemStrides = SmallVector<int64_t>({96 * 48 * 48, 1, 96 * 48, 96});
+    const auto stridesAttr = getIntArrayAttr(&ctx, elemStrides);
+    const auto layout = vpux::MemRefAttr::get(orderAttr, stridesAttr,
+                                              /*allocSize=*/nullptr, &ctx);
+
+    const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
+
+    // For SEGMENTED|OVERLAPPED mode with KHSwitch: C dimension segmented, H dimension in memory
+    // Compute shapes: Split on C dimension (96 / 3 = 32 channels per cluster), full H
+    // Memory shapes: Full C dimension, split on H dimension (48 / 3 = 16 lines per cluster)
+    const auto computeShapes = SmallVector<SmallVector<int64_t>>{
+            {1, 32, 48, 48},  // Cluster 0: channels 0-31
+            {1, 32, 48, 48},  // Cluster 1: channels 32-63
+            {1, 32, 48, 48}   // Cluster 2: channels 64-95
+    };
+    const auto computeOffsets = SmallVector<SmallVector<int64_t>>{
+            {0, 0, 0, 0},   // Cluster 0
+            {0, 32, 0, 0},  // Cluster 1
+            {0, 64, 0, 0}   // Cluster 2
+    };
+    const auto memoryShapes = SmallVector<SmallVector<int64_t>>{
+            {1, 96, 16, 48},  // Cluster 0: lines 0-15
+            {1, 96, 16, 48},  // Cluster 1: lines 16-31
+            {1, 96, 16, 48}   // Cluster 2: lines 32-47
+    };
+    const auto memoryOffsets = SmallVector<SmallVector<int64_t>>{
+            {0, 0, 0, 0},   // Cluster 0
+            {0, 0, 16, 0},  // Cluster 1
+            {0, 0, 32, 0}   // Cluster 2
+    };
+
+    const auto computeShapesAttr = getIntArrayOfArray(&ctx, computeShapes);
+    const auto computeOffsetsAttr = getIntArrayOfArray(&ctx, computeOffsets);
+    const auto memoryShapesAttr = getIntArrayOfArray(&ctx, memoryShapes);
+    const auto memoryOffsetsAttr = getIntArrayOfArray(&ctx, memoryOffsets);
+
+    const auto distributedAttr = VPU::DistributionInfoAttr::get(
+            &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
+            computeShapesAttr, computeOffsetsAttr, memoryShapesAttr, memoryOffsetsAttr, nullptr, memNumTilesAttr);
+
+    const auto distributedBufferType =
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
+    auto ndType = mlir::cast<vpux::NDTypeInterface>(distributedBufferType);
+
+    const auto expectedStrides = ndType.getStrides();
+
+    mlir::OpBuilder builder(&ctx);
+    auto clusterOperand = builder.create<VPURT::DeclareBufferOp>(mlir::UnknownLoc::get(&ctx), distributedBufferType,
+                                                                 VPURT::BufferSection::CMX_NN, /*byte_offset=*/0);
+    VPUX_SCOPE_EXIT {
+        clusterOperand->erase();
+    };
+
+    SmallVector<mlir::Value> outPerCluster;
+    SmallVector<SmallVector<mlir::Value>> outItiPerCluster;
+    VPUX_SCOPE_EXIT {
+        for (auto value : outPerCluster) {
+            value.getDefiningOp()->erase();
+        }
+    };
+
+    std::tie(outPerCluster, outItiPerCluster) = VPUIP::getPerClusterOutputHaloBuffers(
+            &ctx, mlir::UnknownLoc::get(&ctx), "output", clusterOperand, numClusters);
+
+    EXPECT_EQ(outPerCluster.size(), numClusters);
+    EXPECT_EQ(outItiPerCluster.size(), numClusters);
+
+    const SmallVector<int64_t> linesPerCluster = {16, 16, 16};
+    const int64_t channelsPerCluster = shape[Dims4D::Act::C.ind()] / numClusters;  // 96 / 3 = 32
+
+    for (int64_t clusterId = 0; clusterId < numClusters; clusterId++) {
+        auto itiType = mlir::dyn_cast<vpux::VPUIP::ITIBufferType>(outPerCluster[clusterId].getType());
+        EXPECT_TRUE(itiType != nullptr);
+
+        const auto shape = mlir::cast<vpux::NDTypeInterface>(itiType).getShape();
+        EXPECT_EQ(shape, vpux::ShapeRef({1, 96, 48, 48}));
+
+        const auto strides = mlir::cast<vpux::NDTypeInterface>(itiType).getStrides();
+        EXPECT_EQ(strides, expectedStrides);
+
+        // Check inward halos are of expected shape and are placed at the right offset
+        // For KHSwitch (SEGMENTED|OVERLAPPED): compute is segmented on C, memory is segmented on H
+        // Inward halos receive data from other clusters in the compute dimension (C dimension)
+        // BUT the offset includes BOTH C dimension (producer) AND H dimension (consumer's memory position)
+        auto expectedInwardHalos = SmallVector<VPUIP::HaloRegionAttr>();
+        for (int64_t prodCluster = 0; prodCluster < numClusters; prodCluster++) {
+            if (clusterId == prodCluster) {
+                continue;
+            }
+
+            // Inward halo shape: use compute shape from producer cluster
+            // Shape is [N, channelsPerCluster, linesPerCluster, W]
+            auto inwardHaloShapeAttr =
+                    getIntArrayAttr(&ctx, SmallVector<int64_t>{shape[Dims4D::Act::N], channelsPerCluster,
+                                                               linesPerCluster[clusterId], shape[Dims4D::Act::W]});
+
+            // Inward halo offset: C offset (producer's channels) + H offset (consumer's memory position)
+            expectedInwardHalos.push_back(getInwardHalo(
+                    &ctx, inwardHaloShapeAttr,
+                    SmallVector<int64_t>{0, prodCluster * channelsPerCluster, clusterId * linesPerCluster[0], 0},
+                    clusterId));
+        }
+
+        EXPECT_EQ(expectedInwardHalos.size(), itiType.getInwardHaloRegions().size());
+        for (const auto expectedHalo : expectedInwardHalos) {
+            const auto count = llvm::count(itiType.getInwardHaloRegions(), expectedHalo);
+            EXPECT_EQ(count, 1);
+        }
+
+        // Check outward halos are of expected shape and start at the right offset. Additionally, ensure
+        // the corresponding inward halos have correct offsets.
+        // For KHSwitch: outward halos send data in memory dimension (H dimension)
+        auto expectedOutwardHalos = SmallVector<VPUIP::OutwardHaloRegionAttr>();
+
+        // Outward halo shape: this cluster's compute shape with memory lines
+        // Shape is [N, channelsPerCluster, linesPerCluster, W]
+        auto haloShapeAttr =
+                getIntArrayAttr(&ctx, SmallVector<int64_t>{shape[Dims4D::Act::N], channelsPerCluster,
+                                                           linesPerCluster[clusterId], shape[Dims4D::Act::W]});
+
+        // For each memory cluster, create an outward halo at the corresponding H offset
+        for (int64_t targetCluster = 0; targetCluster < numClusters; targetCluster++) {
+            if (clusterId == targetCluster) {
+                continue;
+            }
+
+            // Outward halo offset: C offset for this cluster's data + H offset for target memory position
+            SmallVector<int64_t> outwardOffset = {0, clusterId * channelsPerCluster, targetCluster * linesPerCluster[0],
+                                                  0};
+            // Inward halo offset: same as outward (target receives at this position)
+            SmallVector<SmallVector<int64_t>> inwardOffsets = {outwardOffset};
+            SmallVector<int64_t> targetClusters = {targetCluster};
+
+            expectedOutwardHalos.push_back(
+                    getOutwardHalo(&ctx, haloShapeAttr, clusterId, outwardOffset, inwardOffsets, targetClusters));
+        }
 
         EXPECT_EQ(expectedOutwardHalos.size(), itiType.getOutwardHaloRegions().size());
         for (const auto expectedHalo : expectedOutwardHalos) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,11 +53,10 @@ func.func @main(%arg0: memref<1x1000xf16, @DDR>, %arg1: memref<1x1000xf16, @DDR>
     %profiling_cmx = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<8xui32, [@CMX_NN, 0]>
     %dummy_cmx = VPURT.DeclareBuffer <CMX_NN> [0] <1473528> -> memref<1x1x1x1xf16, [@CMX_NN, 0]>
 
-    // Dummy kernel for prefetch share the same I/O cmx,
-    // and must have a skipProfiling as attr
+    // Dummy kernel for prefetch share the same I/O cmx
     VPURT.Task {
       %dummy_result = VPUIP.SW.Kernel
-      {resultSegmentSizes = array<i32: 1, 0, 0>, skipProfiling}
+      {resultSegmentSizes = array<i32: 1, 0, 0>}
                   @VPU.SW::@builtin_SoftMax
                   inputs(%dummy_cmx as %arg3: memref<1x1x1x1xf16, [@CMX_NN, 0]>)
                   outputs(%dummy_cmx as %arg4: memref<1x1x1x1xf16, [@CMX_NN, 0]>)
@@ -92,10 +91,10 @@ func.func @main(%arg0: memref<1x1000xf16, @DDR>, %arg1: memref<1x1000xf16, @DDR>
 
 }
 
-//CHECK: %[[VAL0:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
-//CHECK-NEXT: %[[VAL1:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <2000> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
-//CHECK-NEXT: %[[VAL2:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<8xui32, [@CMX_NN, 0]>
-//CHECK-NEXT: %[[VAL3:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1473528> -> memref<1x1x1x1xf16, [@CMX_NN, 0]>
-//CHECK-NEXT: %[[VAL4:.*]] = VPUMI40XX.ProfilingMetadata
+//CHECK: [[VAL0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
+//CHECK-NEXT: [[VAL1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2000> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
+//CHECK-NEXT: [[VAL2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<8xui32, [@CMX_NN, 0]>
+//CHECK-NEXT: [[VAL3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1473528> -> memref<1x1x1x1xf16, [@CMX_NN, 0]>
+//CHECK-NEXT: [[VAL4:%.+]] = VPUMI40XX.ProfilingMetadata
 
 //CHECK: VPUMI40XX.MappedInference

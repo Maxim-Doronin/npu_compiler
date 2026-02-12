@@ -26,7 +26,7 @@ func.func @AddFakeQuantizeFusionPerTensorFQRhs(%arg0: tensor<1x12x512x1xf32>) ->
     // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<-1.97680879> : tensor<1x1x1x1xf32>
     // CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<13.025034> : tensor<1x1x1x1xf32>
     // CHECK-DAG:   [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1x1xf32>
-    // CHECK:       [[MUL:%.+]] = IE.Multiply([[INPUT]], [[INPUT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x12x512x1xf32>, tensor<1x12x512x1xf32> -> tensor<1x12x512x1xf32>
+    // CHECK-DAG:       [[MUL:%.+]] = IE.Multiply([[INPUT]], [[INPUT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x12x512x1xf32>, tensor<1x12x512x1xf32> -> tensor<1x12x512x1xf32>
     // CHECK-NOT:   IE.FakeQuantize
     // CHECK-NOT:   IE.Add
     // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[MUL]], [[CST_0]], [[CST]], [[CST_2]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x12x512x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x12x512x1xf32>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -566,7 +566,7 @@ public:
 class AsyncLayerOpModelForDMA final : public VPUIP::AsyncLayerOpInterface::FallbackModel<AsyncLayerOpModelForDMA> {
 public:
     IndexedSymbolAttr getExecutor(mlir::Operation* origOp) const {
-        return VPUIP::getExecutorAttr(origOp, VPU::ExecutorKind::DMA_NN);
+        return VPUIP::getExecutorAttr(origOp, config::ExecutorKind::DMA_NN);
     }
 };
 
@@ -576,7 +576,7 @@ class AsyncLayerOpModelForCallOp final :
                                                            ConcreteCallOpT> {
 public:
     IndexedSymbolAttr getExecutor(mlir::Operation* origOp) const {
-        return VPUIP::getExecutorAttr(origOp, VPU::ExecutorKind::NCE);
+        return VPUIP::getExecutorAttr(origOp, config::ExecutorKind::NCE);
     }
 };
 
@@ -656,9 +656,9 @@ template <class ConcreteCallOpT>
 class TaskOpModelForCallOp final :
         public VPUIP::TaskOpInterface::ExternalModel<TaskOpModelForCallOp<ConcreteCallOpT>, ConcreteCallOpT> {
 public:
-    static VPU::ExecutorKind getExecutorKind() {
+    static config::ExecutorKind getExecutorKind() {
         // TODO: Analyze and define executor type for funcOp - E#117624
-        return VPU::ExecutorKind::UNKNOWN;
+        return config::ExecutorKind::UNKNOWN;
     }
 };
 
@@ -727,6 +727,8 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::GridSampleOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::SoftMaxOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LogSoftmaxOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::LogSoftmaxTopKOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::LogSoftmaxPeakOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LoopSelectOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::HSwishOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::MVNOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -822,6 +824,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::GreaterEqualOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LessOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LessEqualOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::IsInfOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LogicalOrOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::HSigmoidOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LogicalXorOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -882,7 +885,6 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::IRDFTOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::RDFTUncutOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::IRDFTLastAxisOp::attachInterface<SoftwareLayerOpModel>(*ctx);
-        VPU::AccumulateOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::RangeOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::NonZeroOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::ShapeOfOp::attachInterface<SoftwareLayerOpModel>(*ctx);

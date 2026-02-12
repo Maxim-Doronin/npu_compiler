@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,18 +68,20 @@ public:
     }
 };
 
-// Slice input, merged input and concat output cases on 3720
-class LoopSubGraphTestConstExecCond_NPU3720 : public LoopSubGraphTestConstExecCond {};
-TEST_F(LoopSubGraphTestConstExecCond_NPU3720, NPU3720_TestKindSubgraph) {
+// Slice input, merged input and concat output cases
+TEST_F(LoopSubGraphTestConstExecCond, NPU3720_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-// Slice input, merged input and concat output cases on 4000
-class LoopSubGraphTestConstExecCond_NPU4000 : public LoopSubGraphTestConstExecCond {};
-TEST_F(LoopSubGraphTestConstExecCond_NPU4000, NPU4000_TestKindSubgraph) {
+TEST_F(LoopSubGraphTestConstExecCond, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
+}
+
+TEST_F(LoopSubGraphTestConstExecCond, NPU5010_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 class LoopSubGraphTestParamExecCond1 : public LoopSubGraphTestCommon {
@@ -125,18 +127,19 @@ public:
     }
 };
 
-// Slice input, merged input and concat output cases on 3720
-class LoopSubGraphTestParamExecCond1_NPU3720 : public LoopSubGraphTestParamExecCond1 {};
-TEST_F(LoopSubGraphTestParamExecCond1_NPU3720, NPU3720_TestKindSubgraph) {
+// Slice input, merged input and concat output cases
+TEST_F(LoopSubGraphTestParamExecCond1, NPU3720_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-// Slice input, merged input and concat output cases on 4000
-class LoopSubGraphTestParamExecCond1_NPU4000 : public LoopSubGraphTestParamExecCond1 {};
-TEST_F(LoopSubGraphTestParamExecCond1_NPU4000, NPU4000_TestKindSubgraph) {
+TEST_F(LoopSubGraphTestParamExecCond1, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
+}
+TEST_F(LoopSubGraphTestParamExecCond1, NPU5010_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 class LoopSubGraphTestParamExecCond2 : public LoopSubGraphTestCommon {
@@ -182,18 +185,20 @@ public:
     }
 };
 
-// Slice input, merged input and concat output cases on 3720
-class LoopSubGraphTestParamExecCond2_NPU3720 : public LoopSubGraphTestParamExecCond2 {};
-TEST_F(LoopSubGraphTestParamExecCond2_NPU3720, NPU3720_TestKindSubgraph) {
+// Slice input, merged input and concat output cases
+TEST_F(LoopSubGraphTestParamExecCond2, NPU3720_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-// Slice input, merged input and concat output cases on 4000
-class LoopSubGraphTestParamExecCond2_NPU4000 : public LoopSubGraphTestParamExecCond2 {};
-TEST_F(LoopSubGraphTestParamExecCond2_NPU4000, NPU4000_TestKindSubgraph) {
+TEST_F(LoopSubGraphTestParamExecCond2, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
+}
+
+TEST_F(LoopSubGraphTestParamExecCond2, NPU5010_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 }  // namespace ov::test

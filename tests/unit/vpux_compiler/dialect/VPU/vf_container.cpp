@@ -7,7 +7,6 @@
 
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_pipeline_container.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
@@ -68,7 +67,6 @@ TEST_F(MLIR_VPU_VFContainer, VF_PipelineContainerCost) {
 
     auto container = VPU::VFPipelineContainer();
     // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
     auto layerCost = std::make_unique<VPU::LayerVPUNNCost>(func);
 
     auto operationStorage = std::make_unique<VPU::TilingOperationStorage>();
@@ -123,7 +121,6 @@ TEST_F(MLIR_VPU_VFContainer, VF_LinearContainerCost) {
 
     auto container = VPU::VFLinearContainer();
     // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
     auto layerCost = std::make_unique<VPU::LayerVPUNNCost>(func);
 
     auto operationStorage = std::make_unique<VPU::TilingOperationStorage>();

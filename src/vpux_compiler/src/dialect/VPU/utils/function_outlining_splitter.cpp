@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,9 +9,9 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/utils/outlining_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/outlining_utils.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
 
 using namespace vpux;

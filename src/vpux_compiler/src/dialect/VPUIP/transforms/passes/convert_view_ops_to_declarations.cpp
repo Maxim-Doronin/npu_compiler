@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,12 +7,15 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -44,6 +47,7 @@ public:
 
 private:
     Byte calculateOffset(mlir::Value val) const;
+    Shape calculateDimOffsets(mlir::Value val) const;
 
 private:
     const AliasesInfo* _aliasInfo = nullptr;
@@ -71,6 +75,44 @@ Byte ViewLikeRewrite::calculateOffset(mlir::Value val) const {
     return offset;
 }
 
+Shape ViewLikeRewrite::calculateDimOffsets(mlir::Value val) const {
+    Shape viewOffsets{};
+    Shape addendOffsets{};
+
+    if (auto source = _aliasInfo->getSource(val)) {
+        viewOffsets = calculateDimOffsets(source);
+    }
+
+    if (auto declareOp = mlir::dyn_cast_or_null<VPURT::DeclareBufferOp>(val.getDefiningOp())) {
+        if (declareOp->hasAttr(vpux::viewOffsetsAttrName)) {
+            addendOffsets = Shape(parseIntArrayAttr<int64_t>(
+                    mlir::dyn_cast_or_null<mlir::ArrayAttr>(declareOp->getAttr(vpux::viewOffsetsAttrName))));
+        }
+    }
+
+    if (auto subViewOp = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(val.getDefiningOp())) {
+        addendOffsets = Shape(parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets()));
+    }
+
+    auto viewOffsetsVec = to_small_vector(viewOffsets);
+    if (!viewOffsetsVec.empty()) {
+        auto tensorRank = checked_cast<size_t>(mlir::cast<vpux::NDTypeInterface>(val.getType()).getRank());
+        if (tensorRank > viewOffsetsVec.size()) {
+            viewOffsetsVec.insert(viewOffsetsVec.end(), tensorRank - viewOffsetsVec.size(), 0);
+        }
+    }
+    if (!addendOffsets.empty()) {
+        auto addendOffsetsVec = to_small_vector(addendOffsets);
+        if (viewOffsetsVec.size() < addendOffsetsVec.size()) {
+            viewOffsetsVec.insert(viewOffsetsVec.end(), addendOffsetsVec.size() - viewOffsetsVec.size(), 0);
+        }
+        std::transform(viewOffsetsVec.begin(), viewOffsetsVec.end(), addendOffsetsVec.begin(), viewOffsetsVec.begin(),
+                       std::plus<>{});
+    }
+
+    return Shape(viewOffsetsVec);
+}
+
 mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface origOp,
                                                      mlir::PatternRewriter& rewriter) const {
     if (!mlir::isa<Core::ReinterpretCastOp, VPUIP::GenericReshapeOp, VPUIP::SubViewOp, VPUIP::PermuteCastOp,
@@ -83,6 +125,7 @@ mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface o
 
     const auto origVal = mlir::isa<VPUIP::NonDistributedCastOp>(origOp) ? origOp->getOperand(0) : origOp->getResult(0);
     const Byte offset = calculateOffset(origVal);
+    auto dimOffsets = calculateDimOffsets(origVal);
 
     const auto rootVal = _aliasInfo->getRoot(origVal);
 
@@ -103,15 +146,23 @@ mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface o
     }
 
     const auto outType = origOp->getResult(0).getType();
-    auto swizzlingScheme = getSwizzlingSchemeAttr(outType);
+    auto swizzlingScheme = VPUIP::getSwizzlingSchemeAttr(outType);
     mlir::IntegerAttr swizzlingKey;
     if (swizzlingScheme && swizzlingScheme.getKey().getInt() != 0) {
         swizzlingKey = swizzlingScheme.getKey();
     }
 
     mlir::ArrayAttr sectionIndexAttr = sectionIndex.has_value() ? sectionIndex.value() : nullptr;
-    rewriter.replaceOpWithNewOp<VPURT::DeclareBufferOp>(origOp, outType, section, sectionIndexAttr, offset.count(),
-                                                        swizzlingKey);
+    auto newDeclareOp = rewriter.replaceOpWithNewOp<VPURT::DeclareBufferOp>(origOp, outType, section, sectionIndexAttr,
+                                                                            offset.count(), swizzlingKey);
+
+    if (!dimOffsets.empty() &&
+        (section == VPURT::BufferSection::NetworkInput || section == VPURT::BufferSection::NetworkOutput) &&
+        vpux::net::isArgStrided(origOp->getParentOfType<mlir::ModuleOp>(),
+                                declareOp.getNonEmptySectionIndex().front())) {
+        newDeclareOp->setAttr(vpux::viewOffsetsAttrName, getIntArrayAttr(getContext(), dimOffsets));
+    }
+
     return mlir::success();
 }
 

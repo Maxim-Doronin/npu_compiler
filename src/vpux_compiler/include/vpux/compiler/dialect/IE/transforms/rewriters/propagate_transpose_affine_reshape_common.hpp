@@ -26,6 +26,9 @@ std::optional<int64_t> getNewSoftmaxAxisAfterSwappingWithAffineReshape(IE::SoftM
                                                                        IE::AffineReshapeOp affineReshapeOp,
                                                                        const Logger& log);
 
+std::optional<int64_t> getNewSoftmaxAxisAfterSwappingWithShapeCast(IE::SoftMaxOp softmaxOp, IE::ShapeCastOp shapeCastOp,
+                                                                   const Logger& log);
+
 //
 // MoveTransposeAffineReshapeThroughAdd
 //

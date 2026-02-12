@@ -7,12 +7,15 @@
 
 #include <vpux/utils/logger/logger.hpp>
 
-#include <mlir/Transforms/DialectConversion.h>
-
 namespace llvm {
 class Module;
 class LLVMContext;
 }  // namespace llvm
+
+namespace mlir {
+class ModuleOp;
+class SymbolRefAttr;
+}  // namespace mlir
 
 namespace vpux {
 

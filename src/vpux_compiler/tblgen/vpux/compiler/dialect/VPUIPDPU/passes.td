@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,6 +26,7 @@ def ExpandDPUConfig : PassBase<"expand-dpu-config", "vpux::FunctionPass"> {
         "vpux::VPUIPDPU::VPUIPDPUDialect",
         "vpux::ELF::ELFDialect"
     ];
+
     let options = [
         Option<
             "npu5PPEBackwardsCompatibilityModeOpt", "npu5-ppe-backwards-compatibility-mode",

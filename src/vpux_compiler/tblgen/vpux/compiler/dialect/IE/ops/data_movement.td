@@ -118,7 +118,10 @@ def IE_ConcatOp :
 
 def IE_DepthToSpaceOp :
         IE_LayerOp<
-            "DepthToSpace"
+            "DepthToSpace",
+            [
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
+            ]
         > {
     let summary = "InferenceEngine DepthToSpace layer";
 
@@ -436,7 +439,10 @@ def IE_PadOp :
 
         IE_PadModeAttr:$mode,
         OptionalAttr<I64ArrayAttr>:$output_padding,
-        OptionalAttr<I64ArrayAttr>:$input_padding
+        OptionalAttr<I64ArrayAttr>:$input_padding,
+
+        OptionalAttr<I64ArrayAttr>:$output_shape,
+        OptionalAttr<I64ArrayAttr>:$output_bounds
     );
 
     let results = (outs
@@ -641,7 +647,10 @@ def IE_ShuffleChannelsOp :
 
 def IE_SliceOp :
         IE_LayerOp<
-            "Slice"
+            "Slice",
+            [
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface, ["shouldJITCompile", "shouldJITCompileToEnableFusion"]>,
+            ]
         > {
     let summary = "Extract single slice from tensor";
 

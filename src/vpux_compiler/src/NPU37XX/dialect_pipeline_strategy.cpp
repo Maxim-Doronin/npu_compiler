@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,12 +43,11 @@ public:
         overwriteIfUnset(options.enableFuseClampOperations, false);
         overwriteIfUnset(options.enableConvertPrecisionToFP16, true);
         overwriteIfUnset(options.enableConvertNonConstantPadToSliceAndConcat, true);
-        overwriteIfUnset(options.enableSimpleSchedule, true);
         overwriteIfUnset(options.reduceParallelControlFlows, true);
         overwriteIfUnset(options.enableGroupedMatMul, false);
-        overwriteIfUnset(options.fuseScalesToAccumulate, false);
         overwriteIfUnset(options.enableFP16CompressedConvolution, false);
         overwriteIfUnset(options.enableVPUNNPreSplit, false);
+        overwriteIfUnset(options.enableODULocalRegion, false);
         overwriteIfUnset(options.enableInPlaceBufferization, false);
         overwriteIfUnset(options.useMemrefForHostFunctionBufferization, false);
         overwriteIfUnset(options.enableRuntimeDequant, false);
@@ -57,14 +56,13 @@ public:
         overwriteIfUnset(options.enableForceZMajorConcat, false);
         overwriteIfUnset(options.enableSwapTransposeWithFQ, false);
         overwriteIfUnset(options.enableAlignScales, false);
-        overwriteIfUnset(options.fuseMvn6ScaleBias, false);
         overwriteIfUnset(options.enableConvertFCToConv, false);
         overwriteIfUnset(options.enableAdjustNonZeroFakeQuant, false);
         overwriteIfUnset(options.enableExtraStaticShapeOps, false);
 
         overwriteIfUnset(options.enableConvertFFTToConv, false);
-        overwriteIfUnset(options.enableConvertToSdpaExtended, false);
         overwriteIfUnset(options.enableDecomposeGRUSequence, false);
+        overwriteIfUnset(options.enableConvertToReduceMeanSquare, false);
     }
 };
 

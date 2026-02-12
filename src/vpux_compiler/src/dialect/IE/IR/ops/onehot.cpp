@@ -131,10 +131,11 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::OneHotOp oneHotOp, m
     const auto onValueAttrValue = onValueContent.getSplatValue<float>();
     const auto offValueAttrValue = offValueContent.getSplatValue<float>();
 
-    rewriter.replaceOpWithNewOp<IE::OneHotOp>(
-            oneHotOp, oneHotOp.getType(), oneHotOp.getInput(), nullptr, nullptr, nullptr,
-            rewriter.getI64IntegerAttr(depthAttrValue), rewriter.getF64FloatAttr(onValueAttrValue),
-            rewriter.getF64FloatAttr(offValueAttrValue), oneHotOp.getAxisAttr(), oneHotOp.getOutputType());
+    rewriter.replaceOpWithNewOp<IE::OneHotOp>(oneHotOp, oneHotOp.getType(), oneHotOp.getInput(), nullptr, nullptr,
+                                              nullptr, rewriter.getI64IntegerAttr(depthAttrValue),
+                                              rewriter.getF64FloatAttr(onValueAttrValue),
+                                              rewriter.getF64FloatAttr(offValueAttrValue), oneHotOp.getAxisAttr(),
+                                              oneHotOp.getModeAttr(), oneHotOp.getOutputType());
 
     return mlir::success();
 }

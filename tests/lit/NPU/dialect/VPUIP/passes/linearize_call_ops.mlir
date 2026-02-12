@@ -12,7 +12,7 @@ module @ParallelCallOps {
 func.func private @function1(%arg0: memref<10xf16>) -> memref<10xf16> {
     %alloc = memref.alloc() : memref<10xf16>
     %t0, %f0 = async.execute -> (!async.value<memref<10xf16>>) {
-        %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<10xf16>) outputs(%alloc : memref<10xf16>) -> memref<10xf16>
+        %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<10xf16>) outputs(%alloc : memref<10xf16>) -> memref<10xf16>
         async.yield %0 : memref<10xf16>
     }
     return %alloc : memref<10xf16>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,11 +18,12 @@
 #include <memory>
 #include <optional>
 
-namespace vpux::VPU {
+namespace vpux {
+
+namespace VPU {
 enum class MemoryKind : uint64_t;
 }
 
-namespace vpux {
 namespace VPUIP {
 
 //
@@ -40,8 +41,8 @@ bool isOp(mlir::Operation* op) {
 ConditionFunc makeStubCondition();
 
 std::unique_ptr<mlir::Pass> createAddPlaceholderFetchDMAsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createLegalizeScheduleForPartialWlmFetchDmasPass(
-        const int virtualBarrierThreshold = VIRTUAL_BARRIER_THRESHOLD_WLM, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddPlaceholderFetchDMAsPWLMPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createLegalizeScheduleForPartialWlmFetchDmasPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseSegmentedDmaPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitDMAToBalanceLoadPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDetectDMASplitCandidatePass(Logger log = Logger::global());
@@ -66,7 +67,7 @@ std::unique_ptr<mlir::Pass> createDumpStatisticsOfTaskOpsPass(Logger log = Logge
 std::unique_ptr<mlir::Pass> createUnrollDistributedOpsPass(Logger log = Logger::global(),
                                                            std::optional<bool> enableSegmentedDmaFusion = std::nullopt);
 std::unique_ptr<mlir::Pass> createUnrollSwKernelPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createDMABarrierOptimizationPass(
+std::unique_ptr<mlir::Pass> createBarrierOptimizationPass(
         std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt, Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createFuseConstantsPass(Logger log = Logger::global());
@@ -89,10 +90,10 @@ std::unique_ptr<mlir::Pass> createPatchWeightsTablePass(Logger log = Logger::glo
 std::unique_ptr<mlir::Pass> createPatchPopulateWeightTableWithShavePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDMATaskProfilingAfterBarrierSchedPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCaptureWorkpointPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createDPUProfilingPass(MemKindCreateFunc memKindCb, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createDPUProfilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createM2IProfilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createGroupProfilingBuffersPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createActShaveProfilingPass(MemKindCreateFunc memKindCb, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createActShaveProfilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWrapWithPermuteAsNNDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeTileOpAsNNDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeExpandSubviewPass(Logger log = Logger::global());
@@ -104,7 +105,9 @@ std::unique_ptr<mlir::Pass> createSwizzlingPass(const bool enableWeightSwizzling
 std::unique_ptr<mlir::Pass> createOperationStubbingPass(ConditionFunc condition = makeStubCondition(),
                                                         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvWeightsCompressionPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createUngroupSparseBuffersPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUngroupBufferSectionRewriterExecutorPass(bool enableReorderSubViewOp,
+                                                                           Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUngroupBufferSectionRewriterExecutorPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPropagateSparsityCompressionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFlattenSparseWeightsTypesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createComputeSESizesPass(std::optional<bool> onlyInputsConcatOverC = std::nullopt,
@@ -123,6 +126,7 @@ std::unique_ptr<mlir::Pass> createConvertVPUIPCopyToSWCopyPass(Logger log = Logg
 std::unique_ptr<mlir::Pass> createAddCopyBetweenSWKernelsAndNetworkIOPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDispatchedInlinerPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddSwKernelInstructionPrefetchPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUnrollShaveCacheOpsPass(Logger log = Logger::global());
 
 //
 // Asynchronous Scheduling pipeline
@@ -136,7 +140,6 @@ std::unique_ptr<mlir::Pass> createAsyncRegionsOutliningPass(size_t asyncRegionOu
 std::unique_ptr<mlir::Pass> createWrapIntoAsyncRegionsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveWaitResultToAsyncBlockArgsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCalculateAsyncRegionCycleCostPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createGroupAsyncExecuteOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveViewOpsIntoAsyncRegionsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeAsyncDepsPass(Logger log = Logger::global());
 
@@ -147,6 +150,7 @@ std::unique_ptr<mlir::Pass> createOptimizeAsyncDepsPass(Logger log = Logger::glo
 void buildHardwareAdaptationPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createConvertTransferOpsToDMAsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createLegalizeStridedDMAsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertAllocationsToDeclarationsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertFuncArgsToDeclarationsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertViewOpsToDeclarationsPass(Logger log = Logger::global());
@@ -163,7 +167,8 @@ std::unique_ptr<mlir::Pass> createUngroupBoundedBuffersAsFuncArgsPass(Logger log
 
 std::unique_ptr<mlir::Pass> createFeasibleAllocationPass(
         MemKindCreateFunc memKindCb, MemKindCreateFunc secondLvlMemKindCb = nullptr,
-        const bool linearizeSchedule = false, const bool enablePipelining = true, const bool enablePrefetching = true,
+        const bool linearizeSchedule = false, const bool enableLoopAllocation = false,
+        const bool enablePipelining = true, const bool enablePrefetching = true,
         const bool optimizeFragmentation = true, const bool optimizeDynamicSpilling = true,
         const bool enableMultiScheduleHeuristic = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createQueryArgsAllocationAnalysisPass(Logger log = Logger::global());
@@ -198,7 +203,7 @@ void buildShaveCodeGenPipeline(mlir::OpPassManager& pm);
 void buildOptimizeCopiesPipeline(mlir::OpPassManager& pm, const OptimizeCopiesOptionsBase& options,
                                  Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeCopiesPass(
-        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        const WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUniquifyWeightsTableCopiesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeConcatViewCopiesPass(Logger log = Logger::global());
@@ -212,7 +217,7 @@ std::unique_ptr<mlir::Pass> createFuseLastCopyPass(Logger log = Logger::global()
 // DefaultHWOptions(for all devices)
 //
 
-struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
+struct DefaultHWOptionsDialectBase : public virtual DefaultHWOptionsBase {
     BoolOption enableM2IProfiling{*this, "m2i-profiling", llvm::cl::desc("Enable M2I task profiling"),
                                   llvm::cl::init(true)};
 
@@ -221,9 +226,6 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
 
     BoolOption enableOptimizeConstCopies{*this, "optimize-const-copies", llvm::cl::desc("Enable optimize-const-copies"),
                                          llvm::cl::init(true)};
-
-    BoolOption enableGroupAsyncExecuteOps{*this, "group-async-execute-ops",
-                                          llvm::cl::desc("Enable group-async-execute-ops pass"), llvm::cl::init(false)};
 
     BoolOption enableConstantFusion{*this, "constant-fusion", llvm::cl::desc("Enable constant fusion"),
                                     llvm::cl::init(true)};

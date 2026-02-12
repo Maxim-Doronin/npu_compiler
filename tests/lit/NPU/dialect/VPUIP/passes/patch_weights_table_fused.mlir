@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -55,27 +55,27 @@ func.func @PatchFusedConstantWithSpill() ->  memref<1x126x2x2xf16, #NHWC, [@CMX_
 
     return %10 : memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>
 
-    // CHECK:   [[INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1008x14x14xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <556416> -> memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:   [[FUSED_CONSTANT:%.*]] = const.Declare memref<1x1x1x784xui8> =
+    // CHECK:   [[INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1008x14x14xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <556416> -> memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:   [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x784xui8> =
     // CHECK-SAME:  #const.RelocateWeightsTable<weightsPtr=[1837312], sparsityPtr=16777215 : i64, offsets=[0], weightsTableSize=256 : i64, weightsElemBitSize=16 : i64, channelOffset=0 : i64, originalOC=0 : i64>
 
-    // CHECK:   [[FUSED_CONSTANT_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <540288> -> memref<1x1x1x784xui8, [@CMX_NN, 0]>
-    // CHECK:   [[FUSED_CONSTANT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x784xui8, @DDR>
-    // CHECK:   [[FUSED_CONSTANT_2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1837056> -> memref<1x1x1x784xui8, [@CMX_NN, 0]>
+    // CHECK:   [[FUSED_CONSTANT_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <540288> -> memref<1x1x1x784xui8, [@CMX_NN, 0]>
+    // CHECK:   [[FUSED_CONSTANT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x784xui8, @DDR>
+    // CHECK:   [[FUSED_CONSTANT_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1837056> -> memref<1x1x1x784xui8, [@CMX_NN, 0]>
 
-    // CHECK:   [[COPY_OP_1:.*]] = VPUIP.NNDMA inputs([[FUSED_CONSTANT]] : memref<1x1x1x784xui8>) outputs([[FUSED_CONSTANT_1]] : memref<1x1x1x784xui8, [@CMX_NN, 0]>) -> memref<1x1x1x784xui8, [@CMX_NN, 0]>
-    // CHECK:   [[COPY_OP_2:.*]] = VPUIP.NNDMA
-    // CHECK:   [[COPY_OP_3:.*]] = VPUIP.NNDMA
+    // CHECK:   [[COPY_OP_1:.+]] = VPUIP.NNDMA inputs([[FUSED_CONSTANT]] : memref<1x1x1x784xui8>) outputs([[FUSED_CONSTANT_1]] : memref<1x1x1x784xui8, [@CMX_NN, 0]>) -> memref<1x1x1x784xui8, [@CMX_NN, 0]>
+    // CHECK:   [[COPY_OP_2:.+]] = VPUIP.NNDMA
+    // CHECK:   [[COPY_OP_3:.+]] = VPUIP.NNDMA
 
-    // CHECK:   [[SUBVIEW_1:.*]] = VPUIP.SubView
-    // CHECK:   [[SUBVIEW_2:.*]] = VPUIP.SubView
-    // CHECK:   [[SUBVIEW_3:.*]] = VPUIP.SubView
+    // CHECK:   [[SUBVIEW_1:.+]] = VPUIP.SubView
+    // CHECK:   [[SUBVIEW_2:.+]] = VPUIP.SubView
+    // CHECK:   [[SUBVIEW_3:.+]] = VPUIP.SubView
 
-    // CHECK:   [[VIEW_1:.*]] = VPUIP.ViewOp
-    // CHECK:   [[VIEW_2:.*]] = VPUIP.ViewOp
-    // CHECK:   [[VIEW_3:.*]] = VPUIP.ViewOp
-    // CHECK:   [[NCE_CLUST_TASK_OP:.*]] = VPUIP.NCEClusterTask
+    // CHECK:   [[VIEW_1:.+]] = VPUIP.ViewOp
+    // CHECK:   [[VIEW_2:.+]] = VPUIP.ViewOp
+    // CHECK:   [[VIEW_3:.+]] = VPUIP.ViewOp
+    // CHECK:   [[NCE_CLUST_TASK_OP:.+]] = VPUIP.NCEClusterTask
 }
 
 // -----
@@ -139,16 +139,16 @@ func.func @PatchFusedConstantWithSpillAsyncConstruct() -> !IpOp_Stub {
     %5 = async.await %r3 : !async.value<memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>>
     return %5 : memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
 
-    // CHECK-DAG:   [[FUSED_CONSTANT:%.*]] = const.Declare memref<1x1x1x5120xui8> =
+    // CHECK-DAG:   [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x5120xui8> =
     // CHECK-SAME:  #const.RelocateWeightsTable<weightsPtr=[1405952], sparsityPtr=16777215 : i64, offsets=[0], weightsTableSize=1024 : i64, weightsElemBitSize=16 : i64, channelOffset=0 : i64, originalOC=0 : i64>
-    // CHECK:   [[INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <173184> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[DDR_FUSED_BUF:%.*]] = VPUIP.StaticAlloc<2076800> -> memref<1x1x1x5120xui8, @DDR>
-    // CHECK:   [[FUSED_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1404928> -> memref<1x1x1x5120xui8, [@CMX_NN, 0]>
+    // CHECK:   [[INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <173184> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[DDR_FUSED_BUF:%.+]] = VPUIP.StaticAlloc<2076800> -> memref<1x1x1x5120xui8, @DDR>
+    // CHECK:   [[FUSED_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1404928> -> memref<1x1x1x5120xui8, [@CMX_NN, 0]>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<1x1x1x5120xui8, [@CMX_NN, 0]>>
-    // CHECK:           [[VAR0:%.*]] = VPUIP.NNDMA
+    // CHECK:           [[VAR0:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:          inputs([[FUSED_CONSTANT]] : memref<1x1x1x5120xui8>)
     // CHECK-SAME:          outputs([[FUSED_BUF]] : memref<1x1x1x5120xui8, [@CMX_NN, 0]>)
     // CHECK:           async.yield [[VAR0]] : memref<1x1x1x5120xui8, [@CMX_NN, 0]>
@@ -156,24 +156,24 @@ func.func @PatchFusedConstantWithSpillAsyncConstruct() -> !IpOp_Stub {
 
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<1x1x1x5120xui8, @DDR>>
-    // CHECK:           [[VAR1:%.*]] = VPUIP.NNDMA
+    // CHECK:           [[VAR1:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:          inputs([[FUSED_BUF]] : memref<1x1x1x5120xui8, [@CMX_NN, 0]>)
     // CHECK-SAME:          outputs([[DDR_FUSED_BUF]] : memref<1x1x1x5120xui8, @DDR>
     // CHECK:           async.yield [[VAR1]] : memref<1x1x1x5120xui8, @DDR>
 
     // CHECK:       [[T2:%.+]], [[R2:%.+]] = async.execute
-    // CHECK:       ([[R1]] as [[ARG1:%.*]]: !async.value<memref<1x1x1x5120xui8, @DDR>>)
+    // CHECK:       ([[R1]] as [[ARG1:%.+]]: !async.value<memref<1x1x1x5120xui8, @DDR>>)
     // CHECK-SAME:          -> !async.value<memref<1x1x1x5120xui8, [@CMX_NN, 0]>>
-    // CHECK:           [[VAR2:%.*]] = VPUIP.NNDMA
+    // CHECK:           [[VAR2:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:          inputs([[ARG1]] : memref<1x1x1x5120xui8, @DDR>)
     // CHECK-SAME:          outputs([[FUSED_BUF]] : memref<1x1x1x5120xui8, [@CMX_NN, 0]>)
     // CHECK:           async.yield [[VAR2]] : memref<1x1x1x5120xui8, [@CMX_NN, 0]>
 
     // CHECK:       [[T3:%.+]], [[R3:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK:       [[SUBVIEW_1:%.*]] = VPUIP.SubView
-    // CHECK:       [[SUBVIEW_2:%.*]] = VPUIP.SubView
-    // CHECK:       [[VIEW_1:%.*]] = VPUIP.ViewOp
-    // CHECK:       [[VIEW_2:%.*]] = VPUIP.ViewOp
-    // CHECK:   [[NCE_CLUST_TASK_OP:.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[SUBVIEW_1:%.+]] = VPUIP.SubView
+    // CHECK:       [[SUBVIEW_2:%.+]] = VPUIP.SubView
+    // CHECK:       [[VIEW_1:%.+]] = VPUIP.ViewOp
+    // CHECK:       [[VIEW_2:%.+]] = VPUIP.ViewOp
+    // CHECK:   [[NCE_CLUST_TASK_OP:.+]] = VPUIP.NCEClusterTask
 }

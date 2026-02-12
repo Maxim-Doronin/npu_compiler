@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -79,37 +79,37 @@ module @TwoConstants {
 
     // CHECK-INIT-FULL: func.func @init([[OV_1:%.+]]: tensor<1x1x5x1xui8>, [[OV_2:%.+]]: tensor<2x1x1x2xf16>)
     // CHECK-INIT-FULL-SAME: -> tensor<25xi8>
-    // CHECK-INIT-FULL:     [[OV1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<5xi8>
-    // CHECK-INIT-FULL:     [[OV2_0:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<8xi8>
-    // CHECK-INIT-FULL:     [[OV2_1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<12xi8>
+    // CHECK-INIT-FULL:     [[OV1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<5xi8>
+    // CHECK-INIT-FULL:     [[OV2_0:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<8xi8>
+    // CHECK-INIT-FULL:     [[OV2_1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<12xi8>
     // CHECK-INIT-FULL:     [[CONCAT:%.+]] = IE.Concat([[OV1]], [[OV2_0]], [[OV2_1]]) {per_axis = #IE.Concat<axis = 0 : i64>}
     // CHECK-INIT-FULL:     return [[CONCAT]]
 
     // CHECK-MAIN-FULL: func.func @main([[IN:%.+]]: tensor<4x16xf16>, [[BLOB:%.+]]: tensor<25xi8>)
     // CHECK-MAIN-FULL-SAME: -> tensor<4x16xf16>
     // CHECK-MAIN-FULL:     [[SLICE0:%.+]] = VPU.Slice [[BLOB]] [0] [5]
-    // CHECK-MAIN-FULL:     [[CAST0:%.+]] = Core.ReinterpretCast([[SLICE0]]) {{.*}} -> tensor<1x1x5x1xui8>
+    // CHECK-MAIN-FULL:     [[CAST0:%.+]] = Core.ReinterpretCast([[SLICE0]]) {{.+}} -> tensor<1x1x5x1xui8>
     // CHECK-MAIN-FULL:     [[SLICE1:%.+]] = VPU.Slice [[BLOB]] [5] [8]
-    // CHECK-MAIN-FULL:     [[CAST1:%.+]] = Core.ReinterpretCast([[SLICE1]]) {{.*}} -> tensor<2x1x1x2xf16>
+    // CHECK-MAIN-FULL:     [[CAST1:%.+]] = Core.ReinterpretCast([[SLICE1]]) {{.+}} -> tensor<2x1x1x2xf16>
     // CHECK-MAIN-FULL:     [[SLICE2:%.+]] = VPU.Slice [[BLOB]] [13] [12]
-    // CHECK-MAIN-FULL:     [[CAST2:%.+]] = Core.ReinterpretCast([[SLICE2]]) {{.*}} -> tensor<2x1x1x3xf16>
+    // CHECK-MAIN-FULL:     [[CAST2:%.+]] = Core.ReinterpretCast([[SLICE2]]) {{.+}} -> tensor<2x1x1x3xf16>
     // CHECK-MAIN-FULL:     return [[IN]]
 
 
     // CHECK-INIT-PART0: func.func @init_part0([[OV_1:%.+]]: tensor<1x1x5x1xui8>) -> tensor<1x1x5x1xui8>
 
     // CHECK-INIT-PART1: func.func @init_part1([[OV_2:%.+]]: tensor<2x1x1x2xf16>) -> tensor<20xi8>
-    // CHECK-INIT-PART1:    [[OV2_0:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<8xi8>
-    // CHECK-INIT-PART1:    [[OV2_1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<12xi8>
+    // CHECK-INIT-PART1:    [[OV2_0:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<8xi8>
+    // CHECK-INIT-PART1:    [[OV2_1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<12xi8>
     // CHECK-INIT-PART1:    [[CONCAT:%.+]] = IE.Concat([[OV2_0]], [[OV2_1]]) {per_axis = #IE.Concat<axis = 0 : i64>}
     // CHECK-INIT-PART1:    return [[CONCAT]]
 
     // CHECK-MAIN-PARTS: func.func @main([[IN:%.+]]: tensor<4x16xf16>, [[OV_1:%.+]]: tensor<1x1x5x1xui8>, [[BLOB1:%.+]]: tensor<20xi8>)
     // CHECK-MAIN-PARTS-SAME: -> tensor<4x16xf16>
     // CHECK-MAIN-PARTS:    [[SLICE10:%.+]] = VPU.Slice [[BLOB1]] [0] [8]
-    // CHECK-MAIN-PARTS:    [[CAST10:%.+]] = Core.ReinterpretCast([[SLICE10]]) {{.*}} -> tensor<2x1x1x2xf16>
+    // CHECK-MAIN-PARTS:    [[CAST10:%.+]] = Core.ReinterpretCast([[SLICE10]]) {{.+}} -> tensor<2x1x1x2xf16>
     // CHECK-MAIN-PARTS:    [[SLICE11:%.+]] = VPU.Slice [[BLOB1]] [8] [12]
-    // CHECK-MAIN-PARTS:    [[CAST11:%.+]] = Core.ReinterpretCast([[SLICE11]]) {{.*}} -> tensor<2x1x1x3xf16>
+    // CHECK-MAIN-PARTS:    [[CAST11:%.+]] = Core.ReinterpretCast([[SLICE11]]) {{.+}} -> tensor<2x1x1x3xf16>
     // CHECK-MAIN-PARTS:    return [[IN]]
 }
 
@@ -194,17 +194,17 @@ module @QuantizedType {
     // CHECK-INIT-FULL: func.func @init([[OV_DUMMY:%.+]]: tensor<2xf16>, [[OV_1:%.+]]: tensor<2xf16>) -> tensor<11xi8>
     // CHECK-INIT-FULL:     [[BOUNDARY_CAST0:%.+]] = IE.QuantizeCast({{%.+}}) {dstElemType = ui8}
     // CHECK-INIT-FULL:     [[BOUNDARY_CAST1:%.+]] = IE.QuantizeCast({{%.+}}) {dstElemType = ui8}
-    // CHECK-INIT-FULL:     [[OV1_1:%.+]] = Core.ReinterpretCast([[BOUNDARY_CAST0]]) {{.*}} -> tensor<2xi8>
-    // CHECK-INIT-FULL:     [[OV1_0:%.+]] = Core.ReinterpretCast([[BOUNDARY_CAST1]]) {{.*}} -> tensor<5xi8>
+    // CHECK-INIT-FULL:     [[OV1_1:%.+]] = Core.ReinterpretCast([[BOUNDARY_CAST0]]) {{.+}} -> tensor<2xi8>
+    // CHECK-INIT-FULL:     [[OV1_0:%.+]] = Core.ReinterpretCast([[BOUNDARY_CAST1]]) {{.+}} -> tensor<5xi8>
     // CHECK-INIT-FULL:     [[CONCAT:%.+]] = IE.Concat({{%.+}}, [[OV1_1]], [[OV1_0]]) {per_axis = #IE.Concat<axis = 0 : i64>}
     // CHECK-INIT-FULL:     return [[CONCAT]]
 
     // CHECK-MAIN-FULL: func.func @main([[IN:%.+]]: tensor<4x16xf16>, [[BLOB:%.+]]: tensor<11xi8>)
     // CHECK-MAIN-FULL-SAME: -> tensor<4x16xf16>
     // CHECK-MAIN-FULL:     [[SLICE_OV1_1:%.+]] = VPU.Slice [[BLOB]] [4] [2]
-    // CHECK-MAIN-FULL:     [[CAST_OV1_1:%.+]] = Core.ReinterpretCast([[SLICE_OV1_1]]) {{.*}} -> tensor<2xui8>
+    // CHECK-MAIN-FULL:     [[CAST_OV1_1:%.+]] = Core.ReinterpretCast([[SLICE_OV1_1]]) {{.+}} -> tensor<2xui8>
     // CHECK-MAIN-FULL:     [[SLICE_OV1_0:%.+]] = VPU.Slice [[BLOB]] [6] [5]
-    // CHECK-MAIN-FULL:     [[CAST_OV1_0:%.+]] = Core.ReinterpretCast([[SLICE_OV1_0]]) {{.*}} -> tensor<5xui8>
+    // CHECK-MAIN-FULL:     [[CAST_OV1_0:%.+]] = Core.ReinterpretCast([[SLICE_OV1_0]]) {{.+}} -> tensor<5xui8>
     // CHECK-MAIN-FULL:     [[BOUNDARY_CAST0:%.+]] = VPU.QuantizeCast([[CAST_OV1_1]]) {dstElemType = [[QTYPE]]}
     // CHECK-MAIN-FULL:     [[BOUNDARY_CAST1:%.+]] = VPU.QuantizeCast([[CAST_OV1_0]]) {dstElemType = [[QTYPE]]}
     // CHECK-MAIN-FULL:     return [[IN]]
@@ -212,17 +212,17 @@ module @QuantizedType {
     // CHECK-INIT-PART0: func.func @init_part0([[DUMMY:%.+]]: tensor<2xf16>) -> tensor<2xf16>
 
     // CHECK-INIT-PART1: func.func @init_part1([[OV_1:%.+]]: tensor<2xf16>) -> tensor<7xi8>
-    // CHECK-INIT-PART1:    [[OV1_1:%.+]] = Core.ReinterpretCast({{.*}}) {{.*}} -> tensor<2xi8>
-    // CHECK-INIT-PART1:    [[OV1_0:%.+]] = Core.ReinterpretCast({{.*}}) {{.*}} -> tensor<5xi8>
+    // CHECK-INIT-PART1:    [[OV1_1:%.+]] = Core.ReinterpretCast({{.+}}) {{.+}} -> tensor<2xi8>
+    // CHECK-INIT-PART1:    [[OV1_0:%.+]] = Core.ReinterpretCast({{.+}}) {{.+}} -> tensor<5xi8>
     // CHECK-INIT-PART1:    [[CONCAT:%.+]] = IE.Concat([[OV1_1]], [[OV1_0]]) {per_axis = #IE.Concat<axis = 0 : i64>}
     // CHECK-INIT-PART1:    return [[CONCAT]]
 
     // CHECK-MAIN-PARTS: func.func @main([[IN:%.+]]: tensor<4x16xf16>, [[DUMMY:%.+]]: tensor<2xf16>, [[BLOB:%.+]]: tensor<7xi8>)
     // CHECK-MAIN-PARTS-SAME: -> tensor<4x16xf16>
     // CHECK-MAIN-PARTS:    [[SLICE_OV1_1:%.+]] = VPU.Slice [[BLOB]] [0] [2]
-    // CHECK-MAIN-PARTS:    [[CAST_OV1_1:%.+]] = Core.ReinterpretCast([[SLICE_OV1_1]]) {{.*}} -> tensor<2xui8>
+    // CHECK-MAIN-PARTS:    [[CAST_OV1_1:%.+]] = Core.ReinterpretCast([[SLICE_OV1_1]]) {{.+}} -> tensor<2xui8>
     // CHECK-MAIN-PARTS:    [[SLICE_OV1_0:%.+]] = VPU.Slice [[BLOB]] [2] [5]
-    // CHECK-MAIN-PARTS:    [[CAST_OV1_0:%.+]] = Core.ReinterpretCast([[SLICE_OV1_0]]) {{.*}} -> tensor<5xui8>
+    // CHECK-MAIN-PARTS:    [[CAST_OV1_0:%.+]] = Core.ReinterpretCast([[SLICE_OV1_0]]) {{.+}} -> tensor<5xui8>
     // CHECK-MAIN-PARTS:    [[BOUNDARY_CAST0:%.+]] = VPU.QuantizeCast([[CAST_OV1_1]]) {dstElemType = [[QTYPE]]}
     // CHECK-MAIN-PARTS:    [[BOUNDARY_CAST1:%.+]] = VPU.QuantizeCast([[CAST_OV1_0]]) {dstElemType = [[QTYPE]]}
     // CHECK-MAIN-PARTS:    return [[IN]]
@@ -288,9 +288,9 @@ module @SimpleOutlining {
 
     // CHECK-INIT-FULL: func.func @init([[OV_DUMMY:%.+]]: tensor<1x1x1x2xf16>, [[OV_1:%.+]]: tensor<1x1x1x2xf16>)
     // CHECK-INIT-FULL-SAME: -> tensor<24xi8>
-    // CHECK-INIT-FULL:     [[OV1_1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<4xi8>
-    // CHECK-INIT-FULL:     [[OV1_0:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<10xi8>
-    // CHECK-INIT-FULL:     [[OV1_2:%.+]] = Core.ReinterpretCast({{%.+}}) {{.*}} -> tensor<6xi8>
+    // CHECK-INIT-FULL:     [[OV1_1:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<4xi8>
+    // CHECK-INIT-FULL:     [[OV1_0:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<10xi8>
+    // CHECK-INIT-FULL:     [[OV1_2:%.+]] = Core.ReinterpretCast({{%.+}}) {{.+}} -> tensor<6xi8>
     // CHECK-INIT-FULL:     [[CONCAT:%.+]] = IE.Concat([[OV1_1]], [[OV1_0]], {{%.+}}, [[OV1_2]]) {per_axis = #IE.Concat<axis = 0 : i64>}
     // CHECK-INIT-FULL:     return [[CONCAT]]
 
@@ -300,13 +300,13 @@ module @SimpleOutlining {
     // CHECK-MAIN-FULL: func.func @main([[IN:%.+]]: tensor<4x16xf16>, [[BLOB:%.+]]: tensor<24xi8>)
     // CHECK-MAIN-FULL-SAME: -> tensor<4x16xf16>
     // CHECK-MAIN-FULL:     [[SLICE_OV1_1:%.+]] = VPU.Slice [[BLOB]] [0] [4]
-    // CHECK-MAIN-FULL:     [[CAST_OV1_1:%.+]] = Core.ReinterpretCast([[SLICE_OV1_1]]) {{.*}} -> tensor<1x1x1x2xf16>
+    // CHECK-MAIN-FULL:     [[CAST_OV1_1:%.+]] = Core.ReinterpretCast([[SLICE_OV1_1]]) {{.+}} -> tensor<1x1x1x2xf16>
     // CHECK-MAIN-FULL:     [[SLICE_OV1_0:%.+]] = VPU.Slice [[BLOB]] [4] [10]
-    // CHECK-MAIN-FULL:     [[CAST_OV1_0:%.+]] = Core.ReinterpretCast([[SLICE_OV1_0]]) {{.*}} -> tensor<1x1x1x5xf16>
+    // CHECK-MAIN-FULL:     [[CAST_OV1_0:%.+]] = Core.ReinterpretCast([[SLICE_OV1_0]]) {{.+}} -> tensor<1x1x1x5xf16>
     // CHECK-MAIN-FULL:     [[SLICE_DUMMY:%.+]] = VPU.Slice [[BLOB]] [14] [4]
-    // CHECK-MAIN-FULL:     [[CAST_DUMMY:%.+]] = Core.ReinterpretCast([[SLICE_DUMMY]]) {{.*}} -> tensor<1x1x1x2xf16>
+    // CHECK-MAIN-FULL:     [[CAST_DUMMY:%.+]] = Core.ReinterpretCast([[SLICE_DUMMY]]) {{.+}} -> tensor<1x1x1x2xf16>
     // CHECK-MAIN-FULL:     [[SLICE_OV1_2:%.+]] = VPU.Slice [[BLOB]] [18] [6]
-    // CHECK-MAIN-FULL:     [[CAST_OV1_2:%.+]] = Core.ReinterpretCast([[SLICE_OV1_2]]) {{.*}} -> tensor<1x1x1x3xf16>
+    // CHECK-MAIN-FULL:     [[CAST_OV1_2:%.+]] = Core.ReinterpretCast([[SLICE_OV1_2]]) {{.+}} -> tensor<1x1x1x3xf16>
     // CHECK-MAIN-FULL:     {{%.+}} = call @main_part1([[CAST_OV1_2]])
     // CHECK-MAIN-FULL:     return [[IN]]
 }
@@ -671,7 +671,7 @@ module @GenAllSpecialCase {
 
 
     // CHECK-MAIN-FULL: func.func @main({{%.+}}: tensor<4x16xf16>, [[BLOB:%.+]]: tensor<20xi8>)
-    // CHECK-MAIN-FULL: {{%.+}} = VPU.Slice [[BLOB]] [0] [4] {{.*}} to tensor<4xi8>
-    // CHECK-MAIN-FULL: {{%.+}} = VPU.Slice [[BLOB]] [4] [6] {{.*}} to tensor<6xi8>
-    // CHECK-MAIN-FULL: {{%.+}} = VPU.Slice [[BLOB]] [10] [10] {{.*}} to tensor<10xi8>
+    // CHECK-MAIN-FULL: {{%.+}} = VPU.Slice [[BLOB]] [0] [4] {{.+}} to tensor<4xi8>
+    // CHECK-MAIN-FULL: {{%.+}} = VPU.Slice [[BLOB]] [4] [6] {{.+}} to tensor<6xi8>
+    // CHECK-MAIN-FULL: {{%.+}} = VPU.Slice [[BLOB]] [10] [10] {{.+}} to tensor<10xi8>
 }

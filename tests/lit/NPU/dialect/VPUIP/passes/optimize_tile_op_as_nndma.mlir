@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,7 +31,7 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
   }
 
 // CHECK-LABEL:  func.func @Fuse1x1SwKernelTileIntoClusterCopy
-// CHECK-SAME:    ([[INPUT:%.*]]: memref<1x96x1x1xf16, @DDR>)
+// CHECK-SAME:    ([[INPUT:%.+]]: memref<1x96x1x1xf16, @DDR>)
 func.func @Fuse1x1SwKernelTileIntoClusterCopy(%arg0: memref<1x96x1x1xf16, @DDR>)
         -> (!OutputDistributed1, !OutputDistributed1, !OutputDistributed2) {
     %0 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%arg0 : memref<1x96x1x1xf16, @DDR>) -> memref<1x96x1x1xf16, #NHWC, @DDR>
@@ -89,32 +89,32 @@ func.func @Fuse1x1SwKernelTileIntoClusterCopy(%arg0: memref<1x96x1x1xf16, @DDR>)
     // CHECK:       [[PERMUTECAST:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs([[INPUT]] : memref<1x96x1x1xf16, @DDR>) -> memref<1x96x1x1xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC:%.+]] = memref.alloc() : memref<1x96x43x1xf16, #NHWC, @DDR>
-    // CHECK:       [[PERAXISTILEDMA:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 43 : i64}
+    // CHECK:       [[PERAXISTILEDMA:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 43 : i64}>
     // CHECK-SAME:          inputs([[PERMUTECAST]] : memref<1x96x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ALLOC]] : memref<1x96x43x1xf16, #NHWC, @DDR>) -> memref<1x96x43x1xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC_0:%.+]] = memref.alloc() : memref<1x96x43x1xf16, #NHWC, @DDR>
-    // CHECK:       [[PERAXISTILEDMA_0:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 43 : i64}
+    // CHECK:       [[PERAXISTILEDMA_0:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 43 : i64}>
     // CHECK-SAME:          inputs([[PERMUTECAST]] : memref<1x96x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ALLOC_0]] : memref<1x96x43x1xf16, #NHWC, @DDR>) -> memref<1x96x43x1xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC_1:%.+]] = memref.alloc() : memref<1x96x42x1xf16, #NHWC, @DDR>
-    // CHECK:       [[PERAXISTILEDMA_1:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 42 : i64}
+    // CHECK:       [[PERAXISTILEDMA_1:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 42 : i64}>
     // CHECK-SAME:          inputs([[PERMUTECAST]] : memref<1x96x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ALLOC_1]] : memref<1x96x42x1xf16, #NHWC, @DDR>) -> memref<1x96x42x1xf16, #NHWC, @DDR>
 
     // CHECK:       [[CMXBUF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x96x43x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[PERAXISTILEDMA_2:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 128 : i64}
+    // CHECK:       [[PERAXISTILEDMA_2:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 128 : i64}>
     // CHECK-SAME:          inputs([[PERAXISTILEDMA]] : memref<1x96x43x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[CMXBUF]] : !VPUIP.DistributedBuffer<1x96x43x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x96x43x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK:       [[CMXBUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x96x43x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[PERAXISTILEDMA_3:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 128 : i64}
+    // CHECK:       [[PERAXISTILEDMA_3:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 128 : i64}>
     // CHECK-SAME:          inputs([[PERAXISTILEDMA_0]] : memref<1x96x43x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[CMXBUF_0]] : !VPUIP.DistributedBuffer<1x96x43x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x96x43x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK:       [[CMXBUF_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[PERAXISTILEDMA_4:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 128 : i64}
+    // CHECK:       [[PERAXISTILEDMA_4:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 128 : i64}>
     // CHECK-SAME:          inputs([[PERAXISTILEDMA_1]] : memref<1x96x42x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[CMXBUF_1]] : !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
@@ -142,7 +142,7 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
   }
 
 // CHECK-LABEL:  func.func @Fuse2x2SwKernelTileIntoClusterCopy
-// CHECK-SAME:    ([[INPUT:%.*]]: memref<1x96x2x2xf16, @DDR>)
+// CHECK-SAME:    ([[INPUT:%.+]]: memref<1x96x2x2xf16, @DDR>)
 func.func @Fuse2x2SwKernelTileIntoClusterCopy(%arg0: memref<1x96x2x2xf16, @DDR>)
         -> (!OutputDistributed, !OutputDistributed, !OutputDistributed) {
     %0 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%arg0 : memref<1x96x2x2xf16, @DDR>) -> memref<1x96x2x2xf16, #NHWC, @DDR>
@@ -200,32 +200,32 @@ func.func @Fuse2x2SwKernelTileIntoClusterCopy(%arg0: memref<1x96x2x2xf16, @DDR>)
     // CHECK:       [[PERMUTECAST:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs([[INPUT]] : memref<1x96x2x2xf16, @DDR>) -> memref<1x96x2x2xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC:%.+]] = memref.alloc() : memref<1x96x42x2xf16, #NHWC, @DDR>
-    // CHECK:       [[PERAXISTILEDMA:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 21 : i64}
+    // CHECK:       [[PERAXISTILEDMA:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 21 : i64}>
     // CHECK-SAME:          inputs([[PERMUTECAST]] : memref<1x96x2x2xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ALLOC]] : memref<1x96x42x2xf16, #NHWC, @DDR>) -> memref<1x96x42x2xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC_0:%.+]] = memref.alloc() : memref<1x96x42x2xf16, #NHWC, @DDR>
-    // CHECK:       [[PERAXISTILEDMA_0:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 21 : i64}
+    // CHECK:       [[PERAXISTILEDMA_0:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 21 : i64}>
     // CHECK-SAME:          inputs([[PERMUTECAST]] : memref<1x96x2x2xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ALLOC_0]] : memref<1x96x42x2xf16, #NHWC, @DDR>) -> memref<1x96x42x2xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC_1:%.+]] = memref.alloc() : memref<1x96x42x2xf16, #NHWC, @DDR>
-    // CHECK:       [[PERAXISTILEDMA_1:%.+]] = VPUIP.PerAxisTileDMA {axis = 2 : i64, tiles = 21 : i64}
+    // CHECK:       [[PERAXISTILEDMA_1:%.+]] = VPUIP.PerAxisTileDMA <{axis = 2 : i64, tiles = 21 : i64}>
     // CHECK-SAME:          inputs([[PERMUTECAST]] : memref<1x96x2x2xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ALLOC_1]] : memref<1x96x42x2xf16, #NHWC, @DDR>) -> memref<1x96x42x2xf16, #NHWC, @DDR>
 
     // CHECK:       [[CMXBUF:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[PERAXISTILEDMA_2:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 64 : i64}
+    // CHECK:       [[PERAXISTILEDMA_2:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 64 : i64}>
     // CHECK-SAME:          inputs([[ARG0:%[^:]+]] : memref<1x96x42x2xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[ARG1:%[^:]+]] : !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK:       [[CMXBUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[PERAXISTILEDMA_3:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 64 : i64}
+    // CHECK:       [[PERAXISTILEDMA_3:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 64 : i64}>
     // CHECK-SAME:          inputs([[PERAXISTILEDMA_0]] : memref<1x96x42x2xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[CMXBUF_0]] : !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK:       [[CMXBUF_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:       [[PERAXISTILEDMA_4:%.+]] = VPUIP.PerAxisTileDMA {axis = 3 : i64, tiles = 64 : i64}
+    // CHECK:       [[PERAXISTILEDMA_4:%.+]] = VPUIP.PerAxisTileDMA <{axis = 3 : i64, tiles = 64 : i64}>
     // CHECK-SAME:          inputs([[PERAXISTILEDMA_1]] : memref<1x96x42x2xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[CMXBUF_1]] : !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x96x42x128xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
@@ -260,7 +260,7 @@ VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 409
   }
 
 // CHECK-LABEL:  func.func @NotFuseSwKernelTileIntoClusterCopyForIncompatibleOutput
-// CHECK-SAME:    ([[INPUT:%.*]]: memref<1x96x2x2xf16, @DDR>)
+// CHECK-SAME:    ([[INPUT:%.+]]: memref<1x96x2x2xf16, @DDR>)
 func.func @NotFuseSwKernelTileIntoClusterCopyForIncompatibleOutput(%arg0: memref<1x96x2x2xf16, @DDR>)
         -> (!OutputDistributed1, !OutputDistributed1, !OutputDistributed2) {
     %0 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%arg0 : memref<1x96x2x2xf16, @DDR>) -> memref<1x96x2x2xf16, #NHWC, @DDR>

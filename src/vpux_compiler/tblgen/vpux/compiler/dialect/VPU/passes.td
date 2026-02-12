@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -145,19 +145,17 @@ def SWKernelInstructionPrefetchReserveMemForDummyKernels : PassBase<"sw-kernel-i
 }
 
 //
-// CloneReservedResourcesFromTopModule
+// ShaveStacksReserveMem
 //
 
-def CloneReservedResourcesFromTopModule : PassBase<"clone-reserved-resources-from-top-module", "vpux::ModulePass"> {
-    let summary = "Clone reserved memory resources from top module into outlined nested modules";
+def ShaveStacksReserveMem : PassBase<"shave-stacks-reserve-mem", "vpux::ModulePass"> {
+    let summary = "Reserve memory for SHAVE stacks";
 
     let description = [{
-        Outlining done at VPU stage creates modules without reserved memory resources which can cause compilation
-        issues down the pipeline as scheduling will work with different memory constraints to tiling. This pass clones
-        reserved resources to avoid this issue.
+        This pass adds in ModuleOp information about reserved memory in CMX for additional SHAVE stacks.
     }];
 
-    let constructor = "vpux::VPU::createCloneReservedResourcesFromTopModulePass()";
+    let constructor = "vpux::VPU::createShaveStacksReserveMemPass()";
 }
 
 //
@@ -180,6 +178,29 @@ def SCFVerticalFusion : PassBase<"scf-vertical-fusion", "vpux::FunctionPass"> {
     }];
 
     let constructor = "vpux::VPU::createSCFVerticalFusionPass()";
+
+    let options = [
+        Option<
+            "enableDynamicDimAlignment", "enable-dynamic-dim-alignment",
+            "bool", "false",
+            "Align dynamic dimensions during tiling to make it easier to merge strided DMAs into batched DMAs"
+        >
+    ];
+}
+
+//
+// SCFMulticlustering
+//
+
+def SCFMulticlustering : PassBase<"scf-multiclustering", "vpux::FunctionPass"> {
+    let summary = "Wrap ops with multicluster strategy into an scf.forall loop.";
+
+    let description = [{
+        All ops with a multicluster strategy attached will be wrapped into an scf.forall
+        loop which describes how its inputs/outputs are sliced and distributed per cluster.
+    }];
+
+    let constructor = "vpux::VPU::createSCFMulticlusteringPass()";
 }
 
 //
@@ -417,6 +438,7 @@ def WrapVerticalFusionRegion : PassBase<"wrap-in-vertical-fusion", "vpux::Functi
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT enabled"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT disabled"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
             )}]
@@ -449,6 +471,7 @@ def MoveViewOpsToVF : PassBase<"move-view-ops-to-vf", "vpux::FunctionPass"> {
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
             )}]
@@ -508,6 +531,7 @@ def MergeVfSubgraphs : PassBase<"merge-vertical-fusion-subgraphs", "vpux::Functi
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
             )}]
@@ -611,6 +635,7 @@ def VfTiling : PassBase<"vertical-fusion-tiling", "vpux::FunctionPass"> {
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
             )}]
@@ -712,6 +737,29 @@ def CorrectNCEWorkloads : PassBase<"correct-NCE-workloads", "vpux::FunctionPass"
     }];
 
     let constructor = "vpux::VPU::createCorrectNCEWorkloadsPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
+// CreateNewWeightTablesData
+//
+
+def CreateNewWeightTablesData : PassBase<"create-new-weight-tables-data", "vpux::FunctionPass"> {
+    let summary = "Correct new weight tables data with known workloads information";
+    let description = [{
+        This pass updates dedicated operations for table creation, used by NCE operations with the new weight table format.
+        It creates the zero-point table data and appends it to attribute of ZeroPointTableOp operation. Following steps are done:
+        - Extracting workload channel counts from NCE operation
+        - Slicing quantization parameters (zero-points and scales) to match the NCE operation's output channels
+        - Generating zero-point table data with correct workload sizes
+        - Updating distributed types and memory shapes, to ensure proper 32-byte alignment
+        - Updating CopyOp operations which have ZeroPointTableOp as input
+    }];
+
+    let constructor = "vpux::VPU::createCreateNewWeightTablesDataPass()";
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
@@ -1315,6 +1363,11 @@ def TilingStrategyAssignment : PassBase<"tiling-strategy-assignment", "vpux::Fun
             "enableShaveDDRAccessOptimization", "enable-shave-ddr-access-optimization",
             "std::string", [{"true"}],
             "SHAVE DDR access optimization option (true, false or auto)"
+        >,
+        Option<
+            "enableDynamicDimAlignment", "enable-dynamic-dim-alignment",
+            "bool", "false",
+            "Align dynamic dimensions during tiling to make it easier to merge strided DMAs into batched DMAs"
         >
     ];
 }
@@ -1337,6 +1390,11 @@ def ApplyTiling : PassBase<"apply-tiling", "vpux::FunctionPass"> {
             "enableSCFTiling", "enable-scf-tiling",
             "bool", "false",
             "Flag to enable tiling with scf dialect"
+        >,
+        Option<
+            "enableDynamicDimAlignment", "enable-dynamic-dim-alignment",
+            "bool", "false",
+            "Align dynamic dimensions during tiling to make it easier to merge strided DMAs into batched DMAs"
         >
     ];
 
@@ -1609,6 +1667,24 @@ def FuseClampPass : PassBase<"fuse-clamp", "vpux::FunctionPass"> {
 }
 
 //
+// FuseConvertPass
+//
+
+def FuseConvertPass : PassBase<"fuse-convert", "vpux::FunctionPass"> {
+    let summary = "Fuses VPU.Convert into previous operation";
+
+    let description = [{
+        Fuses VPU.Convert into previous operation
+    }];
+
+    let constructor = "vpux::VPU::createFuseConvertPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect"
+    ];
+}
+
+//
 // OptimizeConcat
 //
 
@@ -1793,6 +1869,11 @@ def SetTargetIndependentPassOptions : PassBase<"set-target-independent-options",
             "enableVPUNNPreSplit", "enable-vpunn-pre-split",
             "bool", "false",
             "Enable VPUNN pre-split API"
+        >,
+        Option<
+            "enableODULocalRegion", "enable-odu-local-region",
+            "bool", "false",
+            "Enable ODU Local Region"
         >,
         Option<
             "weightsTableReuseMode", "weights-table-reuse-mode",
@@ -2769,6 +2850,27 @@ def ConvertVPUOpsToUpstreamOps : PassBase<"convert-vpuops-to-upstream", "vpux::M
 }
 
 //
+// MoveTensorOpsToCMX
+//
+
+def MoveTensorOpsToCMX : PassBase<"move-tensor-ops-to-cmx", "vpux::FunctionPass"> {
+    let summary = "Move tensor dialect operations to CMX";
+
+    let description = [{
+        Pass does the following transformations:
+        - Move tensor.Pad operation which was moved outside due to SCF tiling support to CMX.
+        - Swap tensor.cast feeding into tensor.insert_slice with its Copy op predecessor.
+    }];
+
+    let constructor = "vpux::VPU::createMoveTensorOpsToCMXPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect",
+        "mlir::tensor::TensorDialect"
+    ];
+}
+
+//
 // RestorePadAttrAfterSCFTiling
 //
 
@@ -2968,6 +3070,149 @@ def UnrollSCFLoop : PassBase<"unroll-scf-loop", "vpux::ModulePass"> {
             "loopUnrollFactor", "loop-unroll-factor",
             "std::string", [{"1,1,1,1"}],
             "Loop unroll factor for the SCF loop"
+        >,
+        Option<
+            "enableCascadedUnrolling", "enable-cascaded-unrolling",
+            "bool", "true",
+            "Enables cascaded multi-stage loop unrolling with progressively decreasing unroll factors. "
+            "Instead of a single unrolling pass, the compiler applies multiple unrolling stages, "
+            "where each stage's epilogue becomes the input for the next stage with a smaller factor. "
+            "This technique reduces the number of residual (non-unrolled) iterations at the cost of "
+            "generating larger code. Works transparently for both static and dynamic loop bounds."
+
+            "Algorithm: Given an initial unroll factor N, generates a sequence of factors by "
+            "successive division by 2: N, N/2, N/4, ..., until factor reaches 1."
+            "Each stage:"
+            "1. Creates a loop with current factor (step = base_step x factor)"
+            "2. Marks it with 'unrolled-factor' attribute"
+            "3. Generates corresponding merged NPU kernel function"
+            "4. Passes remaining iterations to next stage as epilogue"
+
+            "Example with loop-unroll-factor=1,1,10,1 (unroll H dimension by factor 10):"
+            "  Input: Loop iterating H=0..X with step=47 (e.g., X=1024)"
+            "  Stage 1 - Factor 10: Loop(0..X-X%470, step=470) {'unrolled-factor'=10}"
+            "    → Calls merged_vpu_func_0 with 470xW tensor (contains 10 slices of 47XW)"
+            "  Stage 2 - Factor 5: Loop(X-X%470..X-X%94, step=235) {'unrolled-factor'=5}"
+            "    → Calls merged_vpu_func_1 with 235xW tensor (contains 5 slices of 47xW)"
+            "  Stage 3 - Factor 2: Loop(X-X%94..X-X%47, step=94) {'unrolled-factor'=2}"
+            "    → Calls merged_vpu_func_2 with 94xW tensor (contains 2 slices of 47xW)"
+            "  Residual: Loop(X-X%47..X, step=47) [no unrolling]"
+            "    → Calls main_func_static with 47xW tensor (single iteration)"
+
+            "Benefits: Significantly reduces residual loop iterations, improving performance "
+            "for both cases:"
+            " - static loops (when iteration count doesn't divide evenly by unroll factor) "
+            " - dynamic loops (with runtime-determined upper bounds). "
+
+            "Trade-off: Increases compiled code size due to multiple specialized kernel functions."
         >
+    ];
+}
+
+//
+// FullUnrollSCFLoop
+//
+
+def FullUnrollSCFLoop : PassBase<"full-unroll-scf-loop", "vpux::ModulePass"> {
+    let summary = "Unrolls SCF loops";
+
+    let description = [{
+        Fully unroll scf loops to operations supported in NPU compiler
+
+        For instance:
+
+        %result = scf.for %i = %c0 to %c8 step %c2 iter_args(%arg = %init) -> tensor<1x16x8x32xf16> {
+            %slice = tensor.extract_slice %input[0, 0, %i, 0] [1, 16, 1, 32] [1, 1, 1, 1]
+            %processed = VPU.SomeOp %slice0 : tensor<1x16x1x32xf16> -> tensor<1x16x1x32xf16>
+            %updated = tensor.insert_slice %processed0 into %arg[0, 0, %i, 0] [1, 16, 1, 32] [1, 1, 1, 1]
+
+            scf.yield %updated1 : tensor<1x16x8x32xf16>
+        }
+
+        will be unrolled to
+
+        %slice0 = tensor.extract_slice %input[0, 0, 0, 0] [1, 16, 1, 32] [1, 1, 1, 1]
+        %processed0 = VPU.Op %slice0 : tensor<1x16x1x32xf16> -> tensor<1x16x1x32xf16>
+        %updated0 = tensor.insert_slice %processed0 into %arg[0, 0, 0, 0] [1, 16, 1, 32] [1, 1, 1, 1]
+
+        %slice1 = tensor.extract_slice %input[0, 0, 1, 0] [1, 16, 1, 32] [1, 1, 1, 1]
+        %processed1 = VPU.Op %slice1 : tensor<1x16x1x32xf16> -> tensor<1x16x1x32xf16>
+        %updated1 = tensor.insert_slice %processed1 into %updated0[0, 0, 1 0] [1, 16, 1, 32] [1, 1, 1, 1]
+
+        after unrolling and IR simplifications mlir upstream operations will be converted to
+        NPU Compiler ops
+
+        tensor.extract_slice -> Slice
+        tensor.insert_slice -> Concat
+
+    ```
+    }];
+
+    let constructor = "vpux::VPU::createFullUnrollSCFLoopPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect",
+        "mlir::tensor::TensorDialect",
+        "mlir::arith::ArithDialect",
+        "mlir::scf::SCFDialect"
+    ];
+}
+
+
+
+//
+// RunMVNNormalizeOnDPU
+//
+
+def RunMVNNormalizeOnDPU : PassBase<"run-mvn-normalize-on-dpu", "vpux::FunctionPass"> {
+    let summary = "Decompose MVN Normalize to run on DPU";
+
+    let description = [{
+        The pass decomposes MVN Normalize operation into multiple operations that can run on DPU.
+            }];
+
+    let constructor = "vpux::VPU::createRunMVNNormalizeOnDPUPass()";
+}
+
+
+//
+// SCF Loop Analysis and Debug
+//
+
+def SCFLoopAnalysisAndDebug : PassBase<"scf-loop-analysis-and-debug", "vpux::ModulePass"> {
+    let summary = "Provides static analysis and debug information for SCF loops";
+
+    let description = [{
+        This pass performs comprehensive static analysis of SCF (Structured Control Flow) loop hierarchies
+        and generates detailed debug output to help understand loop behavior and optimization opportunities.
+
+        The pass outputs detailed debug information including:
+        - Operation hierarchy with proper nesting levels
+        - Iteration ranges and stable operation states for each interval
+        - Evaluated tensor slice sizes and padding values across loop iterations
+        - Consolidated interval groups showing which patterns can be merged
+
+        This analysis is crucial for debugging SCF tiling transformations and understanding
+        how tensor operations behave across different loop iterations before optimization passes.
+
+        Runtime Analysis Attributes:
+        - `upperbound` attribute on scf.for operations: Specifies the runtime upper bound value for
+          dynamic loop ranges. Without the attribute set, the upper bound value is obtained from the bounds attribute
+          on the dynamic tensor.
+          Example: scf.for %i = %c0 to %dim step %c90 {upperbound=1440}
+
+        - `analyze` attribute on operations: Marks specific operations (affine.max, affine.min,
+          affine.apply, arith ops) for detailed value tracking and evaluation across loop iterations.
+          The analyzer computes and displays all unique result values for marked operations, helping
+          identify patterns and optimization opportunities.
+          Example: %result = affine.max affine_map<(d0) -> (d0 - 1, 0)>(%iv) {analyze="op1"}
+    }];
+
+    let constructor = "vpux::VPU::createSCFLoopAnalysisAndDebugPass()";
+
+    let dependentDialects = [
+        "vpux::VPU::VPUDialect",
+        "mlir::scf::SCFDialect",
+        "mlir::tensor::TensorDialect"
     ];
 }

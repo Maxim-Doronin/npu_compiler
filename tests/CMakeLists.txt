@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -23,6 +23,6 @@ if (ENABLE_NPU_FUZZ_TESTS)
     add_subdirectory(fuzz)
 endif()
 
-if (ENABLE_NPU_MICRO_BENCHMARKS AND ENABLE_MLIR_COMPILER)
+if (ENABLE_NPU_MICRO_BENCHMARKS)
     add_subdirectory(micro_benchmarks)
 endif()

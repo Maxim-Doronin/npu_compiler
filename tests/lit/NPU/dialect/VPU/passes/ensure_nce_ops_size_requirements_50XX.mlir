@@ -49,57 +49,55 @@ func.func @SplitQuantNCEConvOverOC(%arg0: tensor<1x32x16x16x!qElemType, {order =
 
 // -----
 
-// Checking tiling retry logic, will generate 189 tiles. For slice and depthconv, check the first two and last two, ignor others.
-// For concat, only check the first and last input, ignor others
+// Checking tiling retry logic, will generate 252 tiles. For slice and conv, check the first two and last two, ignore others.
+// For concat, only check the first and last input, ignore others
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL:   @CheckTilingRetryLogic
-// CHECK-SAME:    [[INPUT:%arg[0-9]]]: tensor<1x6193152x1x1xf16, {order = #NHWC}>
-func.func @CheckTilingRetryLogic(%arg0: tensor<1x6193152x1x1xf16, {order = #NHWC}>,
+// CHECK-SAME:    [[INPUT0:%arg[0-9]]]: tensor<1x16x1x1xf16, {order = #NHWC}>
+// CHECK-SAME:    [[INPUT1:%arg[0-9]]]: tensor<6193152x16x1x1xf16, {order = #NHWC}>
+// CHECK-SAME:    [[INPUT2:%arg[0-9]]]: tensor<6193152x1x1x4xsi32, {order = #NCHW}>
+func.func @CheckTilingRetryLogic(%arg0: tensor<1x16x1x1xf16, {order = #NHWC}>,
                                 %arg1: tensor<6193152x16x1x1xf16, {order = #NHWC}>,
                                 %arg2: tensor<6193152x1x1x4xsi32, {order = #NCHW}>) -> tensor<1x6193152x1x1xf16, {order = #NHWC}> {
-  %0 = VPU.NCE.DepthConvolution(%arg0, %arg1, %arg2) {
+  %0 = VPU.NCE.Convolution(%arg0, %arg1, %arg2) {
         ppe = #VPU.PPEStub<>,
         multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
         pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-        rawFilterShape = [6193152, 1, 1, 1],
-        strides = [1, 1]} -> tensor<1x6193152x1x1xf16, {order = #NHWC}>
+        rawFilterShape = [6193152, 16, 1, 1],
+        strides = [1, 1]} : tensor<1x16x1x1xf16, {order = #NHWC}>, tensor<6193152x16x1x1xf16, {order = #NHWC}>, tensor<6193152x1x1x4xsi32, {order = #NCHW}> -> tensor<1x6193152x1x1xf16, {order = #NHWC}>
 
   return %0 : tensor<1x6193152x1x1xf16, {order = #NHWC}>
 
-   //CHECK:    [[ACT_SLICE_FIRST:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 24576, 1, 1] : tensor<1x6193152x1x1xf16, {order = #NHWC}> to tensor<1x24576x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTS_SLICE_FIRST:%.+]] = VPU.Slice %arg1 [0, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTSTABLE_SLICE_FIRST:%.+]] = VPU.Slice %arg2 [0, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
-   //CHECK:    [[DEPTHCONV_FIRST:%.+]] = VPU.NCE.DepthConvolution([[ACT_SLICE_FIRST]], [[WEIGHTS_SLICE_FIRST]], [[WEIGHTSTABLE_SLICE_FIRST]])
+   //CHECK:    [[WEIGHTS_SLICE_FIRST:%.+]] = VPU.Slice [[INPUT1]] [0, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
+   //CHECK:    [[WEIGHTSTABLE_SLICE_FIRST:%.+]] = VPU.Slice [[INPUT2]] [0, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
+   //CHECK:    [[CONV_FIRST:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[WEIGHTS_SLICE_FIRST]], [[WEIGHTSTABLE_SLICE_FIRST]])
    //CHECK-SAME:              multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
    //CHECK-SAME:              -> tensor<1x24576x1x1xf16, {order = #NHWC}>
 
-   //CHECK:    [[ACT_SLICE_1:%.+]]  = VPU.Slice %arg0 [0, 24576, 0, 0] [1, 24576, 1, 1] : tensor<1x6193152x1x1xf16, {order = #NHWC}> to tensor<1x24576x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTS_SLICE_1:%.+]] = VPU.Slice %arg1 [24576, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTSTABLE_SLICE_1:%.+]] = VPU.Slice %arg2 [24576, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
-   //CHECK:    [[DEPTHCONV_1:%.+]] = VPU.NCE.DepthConvolution([[ACT_SLICE_1]], [[WEIGHTS_SLICE_1]], [[WEIGHTSTABLE_SLICE_1]])
+   //CHECK:    [[WEIGHTS_SLICE_1:%.+]] = VPU.Slice [[INPUT1]] [24576, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
+   //CHECK:    [[WEIGHTSTABLE_SLICE_1:%.+]] = VPU.Slice [[INPUT2]] [24576, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
+   //CHECK:    [[CONV_1:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[WEIGHTS_SLICE_1]], [[WEIGHTSTABLE_SLICE_1]])
    //CHECK-SAME:              multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
    //CHECK-SAME:              -> tensor<1x24576x1x1xf16, {order = #NHWC}>
 
-   //CHECK:    [[ACT_SLICE_187:%.+]] = VPU.Slice %arg0 [0, 147456, 0, 0] [1, 24576, 1, 1] : tensor<1x6193152x1x1xf16, {order = #NHWC}> to tensor<1x24576x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTS_SLICE_187:%.+]] = VPU.Slice %arg1 [147456, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTSTABLE_SLICE_187:%.+]] = VPU.Slice %arg2 [147456, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
-   //CHECK:    [[DEPTHCONV_187:%.+]] = VPU.NCE.DepthConvolution([[ACT_SLICE_187]], [[WEIGHTS_SLICE_187]], [[WEIGHTSTABLE_SLICE_187]])
+   //CHECK:    [[WEIGHTS_SLICE_250:%.+]] = VPU.Slice [[INPUT1]] [6144000, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
+   //CHECK:    [[WEIGHTSTABLE_SLICE_250:%.+]] = VPU.Slice [[INPUT2]] [6144000, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
+   //CHECK:    [[CONV_250:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[WEIGHTS_SLICE_250]], [[WEIGHTSTABLE_SLICE_250]])
    //CHECK-SAME:              multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
    //CHECK-SAME:              -> tensor<1x24576x1x1xf16, {order = #NHWC}>
 
-   //CHECK:    [[ACT_SLICE_LAST:%.+]] = VPU.Slice %arg0 [0, 172032, 0, 0] [1, 24576, 1, 1] : tensor<1x6193152x1x1xf16, {order = #NHWC}> to tensor<1x24576x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTS_SLICE_LAST:%.+]] = VPU.Slice %arg1 [172032, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
-   //CHECK:    [[WEIGHTSTABLE_SLICE_LAST:%.+]] = VPU.Slice %arg2 [172032, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
-   //CHECK:    [[DEPTHCONV_LAST:%.+]] = VPU.NCE.DepthConvolution([[ACT_SLICE_LAST]], [[WEIGHTS_SLICE_LAST]], [[WEIGHTSTABLE_SLICE_LAST]])
+   //CHECK:    [[WEIGHTS_SLICE_LAST:%.+]] = VPU.Slice [[INPUT1]] [6168576, 0, 0, 0] [24576, 16, 1, 1] : tensor<6193152x16x1x1xf16, {order = #NHWC}> to tensor<24576x16x1x1xf16, {order = #NHWC}>
+   //CHECK:    [[WEIGHTSTABLE_SLICE_LAST:%.+]] = VPU.Slice [[INPUT2]] [6168576, 0, 0, 0] [24576, 1, 1, 4] : tensor<6193152x1x1x4xsi32, {order = #NCHW}> to tensor<24576x1x1x4xsi32>
+   //CHECK:    [[CONV_LAST:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[WEIGHTS_SLICE_LAST]], [[WEIGHTSTABLE_SLICE_LAST]])
    //CHECK-SAME:              multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
    //CHECK-SAME:              -> tensor<1x24576x1x1xf16, {order = #NHWC}>
 
-   //CHECK:    [[CONCAT:%.+]] = VPU.Concat([[DEPTHCONV_FIRST]],
-   //CHECK-NOT:      DEPTHCONV_1
-   //CHECK-NOT:      DEPTHCONV_187
-   //CHECK:         [[DEPTHCONV_LAST]]
+   //CHECK:    [[CONCAT:%.+]] = VPU.Concat([[CONV_FIRST]],
+   //CHECK-SAME:     [[CONV_1]]
+   //CHECK-SAME:     [[CONV_250]]
+   //CHECK-SAME:     [[CONV_LAST]])
    //CHECK-SAME:     -> tensor<1x6193152x1x1xf16, {order = #NHWC}>
 
    //CHECK:    return  [[CONCAT:%.+]] tensor<1x6193152x1x1xf16, {order = #NHWC}>

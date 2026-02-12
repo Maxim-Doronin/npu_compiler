@@ -43,13 +43,16 @@ mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Loca
                                       int64_t inStartZ, int64_t inEndZ, int64_t outStartZ, int64_t outEndZ,
                                       std::optional<int64_t> outChannelOffset, VPUIP::NCETaskType taskType,
                                       const vpux::NDTypeInterface& inActType, const vpux::NDTypeInterface& outActType,
-                                      std::optional<mlir::ArrayAttr> kernelSize) {
+                                      std::optional<mlir::ArrayAttr> kernelSize, bool hasWeightTable) {
     if (taskType == VPUIP::NCETaskType::REDUCEMEAN || taskType == VPUIP::NCETaskType::REDUCESUMSQUARE ||
         taskType == VPUIP::NCETaskType::REDUCESUM) {
-        // weight_start is updated during run-time relocation by addition with weight_table address
-        auto outputZ = outActType.getShape()[Dims4D::Act::C];
-        auto weightStart = (outStartZ - outChannelOffset.value_or(0)) % outputZ;
-        weightStart <<= 4;
+        int64_t weightStart = 0;
+        if (hasWeightTable) {
+            // weight_start is updated during run-time relocation by addition with weight_table address
+            auto outputZ = outActType.getShape()[Dims4D::Act::C];
+            weightStart = (outStartZ - outChannelOffset.value_or(0)) % outputZ;
+            weightStart <<= 4;
+        }
 
         auto inputZ = inActType.getShape()[Dims4D::Act::C];
         auto outSizeZ = getRangeSize(outStartZ, outEndZ);
@@ -70,14 +73,12 @@ mlir::LogicalResult buildIDUWeightSet(mlir::OpBuilder& builder, const mlir::Loca
         }
 
         builder.create<IDUWeightSetOp>(loc, weightStart, weightNum, weightSize);
-    } else {
-        if (arch40xx::IDU::buildIDUWeightSet(builder, loc, log, inStartZ, inEndZ, outStartZ, outEndZ, outChannelOffset,
-                                             taskType, inActType, outActType, kernelSize)
-                    .failed()) {
-            return mlir::failure();
-        }
+
+        return mlir::success();
     }
-    return mlir::success();
+
+    return arch40xx::IDU::buildIDUWeightSet(builder, loc, log, inStartZ, inEndZ, outStartZ, outEndZ, outChannelOffset,
+                                            taskType, inActType, outActType, kernelSize, hasWeightTable);
 }
 
 }  // namespace vpux::VPUIPDPU::arch50xx::IDU
@@ -132,7 +133,7 @@ mlir::LogicalResult vpux::VPUIPDPU::arch50xx::buildDPUVariantIDU(VPUASM::DPUVari
         auto inActType = getBufferType(inAct);
         if (buildIDUWeightSet(builder, origVarOp.getLoc(), log, inStartZ, inEndZ, outStartZ, outEndZ,
                               origInvOp.getOutChannelOffset(), origInvOp.getNceTaskType(), inActType, outActType,
-                              origInvOp.getKernelSize())
+                              origInvOp.getKernelSize(), origVarOp.getWeightTable().has_value())
                     .failed()) {
             return mlir::failure();
         }

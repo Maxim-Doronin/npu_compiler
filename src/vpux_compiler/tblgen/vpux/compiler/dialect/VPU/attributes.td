@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -74,28 +74,6 @@ def VPU_ActShaveTaskType:
 }
 
 def VPU_ActShaveTaskTypeAttr : VPU_EnumAttr<VPU_ActShaveTaskType, "task_type">;
-
-//
-// ExecutorKind
-//
-
-def VPU_ExecutorKind :
-        VPU_I64EnumAttr<
-            "ExecutorKind",
-            "Representd hardware executror resources",
-            [
-                I64EnumAttrCase<"DMA_NN",    0>,
-                I64EnumAttrCase<"NCE",       1>,
-                I64EnumAttrCase<"DPU",       2>,
-                I64EnumAttrCase<"SHAVE_NN",  3>,
-                I64EnumAttrCase<"SHAVE_ACT", 4>,
-                I64EnumAttrCase<"M2I",       5>,
-                I64EnumAttrCase<"UNKNOWN",   6>,
-            ]
-        > {
-}
-
-def VPU_ExecutorKindAttr : VPU_EnumAttr<VPU_ExecutorKind, "executor_kind">;
 
 //
 // VFScenario
@@ -253,8 +231,9 @@ def VPU_MPEMode :
                 I64EnumAttrCase<"CUBOID_16x16", 3>,
                 I64EnumAttrCase<"CUBOID_8x16",  4>,
                 I64EnumAttrCase<"CUBOID_4x16",  5>,
-                I64EnumAttrCase<"DCIM",         6>,
-                I64EnumAttrCase<"NOP",          7>
+                I64EnumAttrCase<"DCIM_IC128",   6>,
+                I64EnumAttrCase<"DCIM_IC32",    7>,
+                I64EnumAttrCase<"NOP",          8>
             ]
         > {
 }
@@ -317,17 +296,6 @@ def VPU_PPEModeAttr : VPU_EnumAttr<VPU_PPEMode, "ppe_mode">;
 //
 // PPEAttr
 //
-
-class VPU_PPEAttrBase<Pred condition, string summary> : Attr<condition, summary> {
-    let storageType = [{ vpux::VPU::PPEAttr }];
-    let returnType = [{ vpux::VPU::PPEAttr }];
-    let convertFromStorage = "$_self";
-}
-
-def VPU_PPEAttr : VPU_PPEAttrBase<CPred<"mlir::isa<vpux::VPU::PPEAttr>($_self)">,
-                                      "PPE attribute"> {
-        string cppType = "vpux::VPU::PPEAttr";
-}
 
 def VPU_PPEStubAttr : VPU_Attr<"PPEStub", [
         DeclareAttrInterfaceMethods<VPU_PPEAttrInterface>
@@ -407,21 +375,6 @@ def VPU_PPEFpAttr : VPU_Attr<"PPEFp", [
 
     let assemblyFormat = "`<` struct(params) `>`";
 }
-
-//
-// MPEEngineAttr
-//
-
-class VPU_MPEEngineAttrBase<Pred condition, string summary> : Attr<condition, summary> {
-    let storageType = [{ vpux::VPU::MPEEngineAttr }];
-    let returnType = [{ vpux::VPU::MPEEngineAttr }];
-    let convertFromStorage = "$_self";
-}
-
-def VPU_MPEEngineAttr : VPU_MPEEngineAttrBase<CPred<"$_self.isa<vpux::VPU::MPEEngineAttr>()">,
-                                      "MPE Engine attribute"> {
-        string cppType = "vpux::VPU::MPEEngineAttr";
-    }
 
 include "vpux/compiler/NPU37XX/dialect/VPU/attributes.td"
 
@@ -527,7 +480,11 @@ def VPU_DistributionModeAttr : VPU_EnumAttr<VPU_DistributionMode, "tensor_distri
 //      * SEGMENTED | MULTICASTED - similar to SEGMENTED | DUPLICATED but used for cases when we
 //      broadcast the data and segment across the channel dimension. In future this will be removed
 //      in favor of only SEGMENTED | DUPLICATED
-// num_tiles - shape for tiling data and compute across clusters
+//      * SEGMENTED | OVERLAPPED - such a combination means that computation is segmented
+//      across clusters based on num_tiles, while data is segmented across clusters based on memory_num_tiles.
+//      Note that num_tiles and memory_num_tiles use different tiling axes.
+// num_tiles - shape for tiling compute across clusters. If memory_num_tiles is not specified or invalid,
+//      num_tiles also represents the shape for tiling data across clusters.
 //      * size of num_tiles is equal to the data shape size
 //      * amount of tiling per one axis is usually equal to num_clusters
 //      unless tiling is done on multiple axes
@@ -567,6 +524,10 @@ def VPU_DistributionModeAttr : VPU_EnumAttr<VPU_DistributionMode, "tensor_distri
 // equal_memory_and_compute_view - used with OVERLAP mode
 //      * indicates compute view should be obtained by applying memory view calculations
 //      * necessary when having output OVERLAPPED, but without proper halo support
+// memory_num_tiles - shape for tiling data across clusters
+//      * size of num_tiles is equal to the data shape size
+//      * amount of tiling per one axis is usually equal to num_clusters
+//      unless tiling is done on multiple axes
 //
 /////////////////////////////
 
@@ -584,7 +545,8 @@ def VPU_DistributionInfoAttr : VPU_Attr<"DistributionInfo"> {
         OptionalParameter<"mlir::ArrayAttr">:$compute_offsets,
         OptionalParameter<"mlir::ArrayAttr">:$memory_shapes,
         OptionalParameter<"mlir::ArrayAttr">:$memory_offsets,
-        OptionalParameter<"mlir::UnitAttr">:$equal_memory_and_compute_view
+        OptionalParameter<"mlir::UnitAttr">:$equal_memory_and_compute_view,
+        OptionalParameter<"mlir::ArrayAttr">:$memory_num_tiles
     );
 }
 
@@ -623,22 +585,6 @@ def VPU_SparsityCompressionAttr : VPU_Attr<"SparsityCompression"> {
 
     let assemblyFormat = "`<` struct(params) `>`";
 }
-
-
-//
-// SEAttr
-//
-
-class VPU_SEAttrBase<Pred condition, string summary> : Attr<condition, summary> {
-    let storageType = [{ vpux::VPU::SEAttr }];
-    let returnType = [{ vpux::VPU::SEAttr }];
-    let convertFromStorage = "$_self";
-}
-
-def VPU_SEAttr : VPU_SEAttrBase<CPred<"$_self.isa<vpux::VPU::SEAttr>()">,
-                                      "Storage Element attribute"> {
-        string cppType = "vpux::VPU::SEAttr";
-    }
 
 //
 // SEInterpolateAttr

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,13 +67,13 @@ def RewriteConvert :
 
 def createSoftMaxOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::SoftMaxOp>($_loc, $0, $1, $2)
+            $_builder.create<vpux::VPU::SoftMaxOp>($_loc, $0, $1, $2, $3)
         }]>;
 
 def RewriteSoftMax :
         Pat<
-            (IE_SoftMaxOp $input, $axisInd, $padSize),
-            (createSoftMaxOp $input, $axisInd, $padSize)
+            (IE_SoftMaxOp $input, $axisInd, $padSize, $dstElemType),
+            (createSoftMaxOp $input, $axisInd, $padSize, $dstElemType)
         >;
 
 //
@@ -82,13 +82,13 @@ def RewriteSoftMax :
 
 def createLogSoftmaxOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::LogSoftmaxOp>($_loc, $0, $1)
+            $_builder.create<vpux::VPU::LogSoftmaxOp>($_loc, $0, $1, $2)
         }]>;
 
 def RewriteLogSoftmax :
         Pat<
-            (IE_LogSoftmaxOp $input, $axisInd),
-            (createLogSoftmaxOp $input, $axisInd)
+            (IE_LogSoftmaxOp $input, $axisInd, $padSize),
+            (createLogSoftmaxOp $input, $axisInd, $padSize)
         >;
 
 //
@@ -218,9 +218,7 @@ def RewriteLRN_IE :
 def createBroadcastOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::BroadcastOp> (
-                $_loc, $0, $1,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3)
+                $_loc, $0, $1, $2, $3)
         }]>;
 
 def RewriteBroadcast :
@@ -262,7 +260,7 @@ def RewriteExtractImagePatches :
         >;
 
 //
-// IE.Reduce[Max|Mean|Prod|Sum|Min|L1|L2|LogicalOr|LogicalAnd|MeanSquare]Op -> VPU.Reduce[Max|Mean|Prod|Sum|Min|L1|L2|LogicalOr|LogicalAnd|MeanSquare]Op
+// IE.Reduce[Max|Mean|Prod|Sum|Min|L1|L2|LogicalOr|LogicalAnd]Op -> VPU.Reduce[Max|Mean|Prod|Sum|Min|L1|L2|LogicalOr|LogicalAnd]Op
 //
 
 class createReduceOp<string type> :
@@ -324,11 +322,6 @@ def RewriteReduceL2 :
             (IE_ReduceL2Op $input, $axes, $axes_value, $keep_dims),
             (createReduceOp<"L2"> $input, $axes_value, $keep_dims)
         >;
-def RewriteReduceMeanSquare :
-        Pat<
-            (IE_ReduceMeanSquareOp $input, $axes, $axes_value, $keep_dims),
-            (createReduceOp<"MeanSquare"> $input, $axes_value, $keep_dims)
-        >;
 
 //
 // IE.FakeQuantize -> VPU.FakeQuantize
@@ -353,7 +346,7 @@ def RewriteFakeQuantize :
 def createFakeConvertOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::FakeConvertOp>(
-                $_loc, $0, $1, $2.size() == 1 ? $2[0] : nullptr, $3)
+                $_loc, $0, $1, $2, $3)
         }]>;
 
 def RewriteFakeConvert :
@@ -385,19 +378,18 @@ def RewriteMaxPool :
 def createConvolutionOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::ConvolutionOp>(
-                $_loc, $0, $1,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3, $4, $5, $6, $7)
+                $_loc, $0, $1, $2, $3, $4, $5, $6, $7)
         }]>;
 
 // Note: AttrConstraint is not allowed so cannot use IsNullAttr from OpBase.td
-class IsNull<string desc> : Constraint<CPred<"!$_self">, desc>;
+class IsNullAttr<string desc> : Constraint<CPred<"!$_self">, desc>;
 def RewriteConvolution :
         Pat<
-            (IE_ConvolutionOp $input, $filter, $bias, $strides, $pads_begin, $pads_end, $dilations, $post_op, $clamp, $static_scale, $output_padding, $input_padding),
+            (IE_ConvolutionOp $input, $filter, $bias, $scale, $strides, $pads_begin, $pads_end, $dilations, $post_op, $clamp, $static_scale, $output_padding, $input_padding),
             (createConvolutionOp $input, $filter, $bias, $strides, $pads_begin, $pads_end, $dilations, $post_op, $clamp, $static_scale),
             [
-                (IsNull<"static_scale must be null">:$static_scale)
+                (IsNullAttr<"static_scale must be null">:$static_scale),
+                (IsNullAttr<"scale must be null">:$scale)
             ]
         >;
 
@@ -529,9 +521,7 @@ def RewriteSelu :
 def createReshapeOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::ReshapeOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2, $3)
+                $_loc, $0, $1, $2, $3)
         }]>;
 
 def RewriteReshape :
@@ -562,9 +552,7 @@ def RewriteAffineReshape :
 def createSqueezeOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::SqueezeOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2)
+                $_loc, $0, $1, $2)
         }]>;
 
 def RewriteSqueeze :
@@ -580,9 +568,7 @@ def RewriteSqueeze :
 def createUnsqueezeOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::UnsqueezeOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2)
+                $_loc, $0, $1, $2)
         }]>;
 
 def RewriteUnsqueeze :
@@ -1159,6 +1145,21 @@ def RewriteNotEqual :
         >;
 
 //
+// IE.IsInf -> VPU.IsInf
+//
+
+def createIsInfOp :
+        NativeCodeCall<[{
+            $_builder.create<vpux::VPU::IsInfOp>($_loc, $0)
+        }]>;
+
+def RewriteIsInf :
+        Pat<
+            (IE_IsInfOp $input1),
+            (createIsInfOp $input1)
+        >;
+
+//
 // IE.LogicalNot -> VPU.LogicalNot
 //
 
@@ -1195,8 +1196,7 @@ def RewriteBitwiseNot :
 def createEmbeddingBagPackedSumOp :
         NativeCodeCall<[{
                 $_builder.create<vpux::VPU::EmbeddingBagPackedSumOp>(
-                      $_loc, $0, $1,
-                      $2.size() == 1 ? $2[0] : nullptr)
+                      $_loc, $0, $1, $2)
         }]>;
 
 def RewriteEmbeddingBagPackedSum :
@@ -1213,8 +1213,7 @@ def RewriteEmbeddingBagPackedSum :
 def createFullyConnectedOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::FullyConnectedOp>(
-                $_loc, $0, $1,
-                $2.size() == 1 ? $2[0] : nullptr)
+                $_loc, $0, $1, $2)
         }]>;
 
 def RewriteFullyConnected :
@@ -1235,8 +1234,8 @@ def createMatMulOp :
 
 def RewriteMatMul :
         Pat<
-            (IE_MatMulOp $input1, $input2, $transpose_a, $transpose_b, $post_op),
-            (createMatMulOp $input1, $input2, $transpose_a, $transpose_b, $post_op)
+            (IE_MatMulOp $input1, $input2, $transpose_a, $transpose_b, $post_op, $clamp),
+            (createMatMulOp $input1, $input2, $transpose_a, $transpose_b, $post_op, $clamp)
         >;
 
 //
@@ -1278,9 +1277,7 @@ def RewriteGRN :
 def createSwishOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::SwishOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2)
+                $_loc, $0, $1, $2)
         }]>;
 
 def RewriteSwish :
@@ -1296,10 +1293,7 @@ def RewriteSwish :
 def createDetectionOutputOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::DetectionOutputOp>(
-                $_loc, $0, $1, $2,
-                $3.size() == 1 ? $3[0] : nullptr,
-                $4.size() == 1 ? $4[0] : nullptr,
-                $5)
+                $_loc, $0, $1, $2, $3, $4, $5)
         }]>;
 
 def RewriteDetectionOutput :
@@ -1331,9 +1325,7 @@ def RewriteReverse :
 def createScaleShiftOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::ScaleShiftOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2.size() == 1 ? $2[0] : nullptr)
+                $_loc, $0, $1, $2)
         }]>;
 
 def RewriteScaleShift :
@@ -1456,17 +1448,14 @@ def RewriteCTCGreedyDecoder :
 def createPadOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::PadOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3.size() == 1 ? $3[0] : nullptr,
-                $4, $5, $6, $7, $8, $9)
+                $_loc, $0, $1, $2, $3,
+                $4, $5, $6, $7, $8, $9, $10, $11, vpux::VPU::BoundsRepresentationAttr::get($_loc.getContext(), vpux::VPU::BoundsRepresentation::BOUNDS))
         }]>;
 
 def RewritePad :
         Pat<
-            (IE_PadOp $input, $pads_begin, $pads_end, $pad_value, $pads_begin_attr, $pads_end_attr, $pad_value_attr, $mode, $output_padding, $input_padding),
-            (createPadOp $input, $pads_begin, $pads_end, $pad_value, $pads_begin_attr, $pads_end_attr, $pad_value_attr, $mode, $output_padding, $input_padding)
+            (IE_PadOp $input, $pads_begin, $pads_end, $pad_value, $pads_begin_attr, $pads_end_attr, $pad_value_attr, $mode, $output_padding, $input_padding, $output_shape, $output_bounds),
+            (createPadOp $input, $pads_begin, $pads_end, $pad_value, $pads_begin_attr, $pads_end_attr, $pad_value_attr, $mode, $output_padding, $input_padding, $output_shape, $output_bounds)
         >;
 
 //
@@ -1492,11 +1481,7 @@ def RewriteSlice :
 def createStridedSliceOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::StridedSliceOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3.size() == 1 ? $3[0] : nullptr,
-                $4, $5, $6, $7, $8, $9, $10, $11)
+                $_loc, $0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         }]>;
 
 def RewriteStridedSlice :
@@ -1611,10 +1596,7 @@ def RewriteMVN :
 def createMVN6Op :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::MVN6Op>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3, $4, $5, $6)
+                $_loc, $0, $1, $2, $3, $4, $5, $6)
         }]>;
 
 def RewriteMVN6 :
@@ -1630,9 +1612,7 @@ def RewriteMVN6 :
 def createGatherOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::GatherOp>(
-                $_loc, $0, $1,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3, $4, $5)
+                $_loc, $0, $1, $2, $3, $4, $5)
         }]>;
 
 def RewriteGather :
@@ -1696,10 +1676,7 @@ def RewriteGatherTree :
 def createYuvToRgbOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::YuvToRgbOp>(
-                $_loc, $0,
-                $1.size() == 1 ? $1[0] : nullptr,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3, $4, nullptr)
+                $_loc, $0, $1, $2, $3, $4, nullptr)
         }]>;
 
 def RewriteYuvToRgb :
@@ -1715,14 +1692,14 @@ def RewriteYuvToRgb :
 def createOneHotOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::OneHotOp>(
-            $_loc, $0, $1, $2, $3, $4, $5)
+            $_loc, $0, $1, $2, $3, $4, $5, $6)
         }]>;
 
 def RewriteOneHot :
         Pat<
             (IE_OneHotOp $input, $depth, $on_value, $off_value, $depth_attr,
-             $on_value_attr, $off_value_attr, $axis_attr, $outputType),
-            (createOneHotOp $input, $depth_attr, $on_value_attr, $off_value_attr, $axis_attr, $outputType)
+             $on_value_attr, $off_value_attr, $axis_attr, $mode, $outputType),
+            (createOneHotOp $input, $depth_attr, $on_value_attr, $off_value_attr, $axis_attr, $mode, $outputType)
         >;
 
 //
@@ -1970,7 +1947,7 @@ def RewriteReverseSequence :
 def createDepthToSpaceOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::DepthToSpaceOp>(
-                $_loc, $0, $1, $2, $3)
+                $_loc, $0, $1, $2, $3, nullptr)
         }]>;
 
 def RewriteDepthToSpace :
@@ -2025,7 +2002,7 @@ def RewriteGRUSequenceLastPart :
 
 def createGRUGatesOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::GRUGatesOp>($_loc, $0, $1, $2, $3.size() == 1 ? $3[0] : nullptr)
+            $_builder.create<vpux::VPU::GRUGatesOp>($_loc, $0, $1, $2, $3)
         }]>;
 
 def RewriteGRUGates :
@@ -2040,7 +2017,7 @@ def RewriteGRUGates :
 def createDeformablePSROIPoolingOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::DeformablePSROIPoolingOp>(
-                $_loc, $0, $1, $2.size() == 1 ? $2[0] : nullptr, $3, $4, $5, $6, $7, $8, $9, $10)
+                $_loc, $0, $1, $2,  $3, $4, $5, $6, $7, $8, $9, $10)
         }]>;
 def RewriteDeformablePSROIPooling :
         Pat<
@@ -2198,6 +2175,22 @@ def RewriteNonZero :
             (IE_NonZeroOp $input, $dstElemType),
             (createNonZeroOp $input)
         >;
+//
+// IE.ReduceMeanSquareOp -> VPU.ReduceMeanSquareOp
+//
+
+def createReduceMeanSquareOp :
+        NativeCodeCall<[{
+            $_builder.create<vpux::VPU::ReduceMeanSquareOp>($_loc, $0, $1, $2, $3)
+        }]>;
+
+
+def RewriteReduceMeanSquare :
+        Pat<
+            (IE_ReduceMeanSquareOp $input, $axes, $epsilon, $axes_value, $keep_dims),
+            (createReduceMeanSquareOp $input, $axes_value, $keep_dims, $epsilon)
+        >;
+
 
 //
 // IE.RMSOp -> VPU.RMSOp
@@ -2231,9 +2224,7 @@ def RewriteInverse :
 def createDeformableConvolutionOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::DeformableConvolutionOp>(
-                $_loc, $0, $1, $2,
-                $3.size() == 1 ? $3[0] : nullptr,
-                $4, $5, $6, $7, $8, $9, $10, nullptr)
+                $_loc, $0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, nullptr)
         }]>;
 
 def RewriteDeformableConvolution :
@@ -2259,9 +2250,7 @@ def RewriteDynamicExpandOp :
 def createDynamicDequantizeOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::DynamicDequantizeOp>(
-                $_loc, $0, $1,
-                $2.size() == 1 ? $2[0] : nullptr,
-                $3)
+                $_loc, $0, $1, $2, $3)
         }]>;
 
 def RewriteDynamicDequantizeOp :
@@ -2291,10 +2280,7 @@ def RewriteRoPE :
 
 def createSDPAOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::SDPAOp>($_loc, $0, $1, $2,
-            $3.size() == 1 ? $3[0] : nullptr,
-            $4.size() == 1 ? $4[0] : nullptr,
-            nullptr)
+            $_builder.create<vpux::VPU::SDPAOp>($_loc, $0, $1, $2, $3, $4, nullptr)
         }]>;
 
 def RewriteSDPA :
@@ -2309,16 +2295,13 @@ def RewriteSDPA :
 
 def createSDPAExtendedOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::SDPAExtendedOp>($_loc, $0, $1, $2,
-            $3.size() == 1 ? $3[0] : nullptr,
-            $4.size() == 1 ? $4[0] : nullptr,
-            $5)
+            $_builder.create<vpux::VPU::SDPAExtendedOp>($_loc, $0, $1, $2, $3, $4, $5, $6)
         }]>;
 
 def RewriteSDPAExtended :
         Pat<
-            (IE_SDPAExtendedOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $padSizeS),
-            (createSDPAExtendedOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $padSizeS)
+            (IE_SDPAExtendedOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias, $padSizeS),
+            (createSDPAExtendedOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias, $padSizeS)
         >;
 
 //

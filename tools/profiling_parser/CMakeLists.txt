@@ -10,6 +10,8 @@ find_package(gflags QUIET)
 add_tool_target(
     NAME ${TARGET_NAME}
     ROOT ${CMAKE_CURRENT_SOURCE_DIR}
+    INCLUDES
+        $<TARGET_PROPERTY:flatbuffers,INTERFACE_INCLUDE_DIRECTORIES>
     LINK_LIBRARIES
         flatbuffers
         openvino::gflags_nothreads_static

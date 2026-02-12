@@ -87,7 +87,7 @@ def VPU_ClusteredOpInterface : OpInterface<"ClusteredOpInterface"> {
                 "vpux::VPU::DistributionInfo", "getExplicitDistributionInfoAttr",
                 (ins "vpux::ShapeRef":$shape, "vpux::VPU::DistributionMode":$distributionMode,
                 "ArrayRef<int64_t>":$numTiles, "const int64_t":$numClusters, "ArrayRef<int64_t>":$alignment,
-                "const bool":$uniformDistributedSegments, "const vpux::VPU::OverlapDistributionParams&":$overlapParams)
+                "const bool":$uniformDistributedSegments, "const vpux::VPU::OverlapDistributionParams&":$overlapParams, "const std::optional<ArrayRef<int64_t>>":$memoryNumTiles)
                 >,
 
         InterfaceMethod<
@@ -224,7 +224,7 @@ def VPU_AuxiliaryBufferOpInterface : OpInterface<"AuxiliaryBufferOpInterface"> {
     let methods = [
         InterfaceMethod<
             "Get the auxiliary buffer(s)",
-            "vpux::SmallVector<mlir::Value>", "getAuxiliaryBuffers", (ins)
+            "vpux::SmallVector<mlir::OpOperand*>", "getAuxiliaryBuffers", (ins)
         >
     ];
 }
@@ -697,7 +697,7 @@ class VPU_PPETaskOpBase<Dialect dialect, string mnemonic, list<Trait> props = []
     let summary = "PPE Type";
 
     let arguments = (ins
-        VPU_PPEAttr:$ppe,
+        VPU_PPEAttrInterface:$ppe,
         OptionalAttr<F64Attr>:$ppe_fp_scale,
         OptionalAttr<F64Attr>:$ppe_fp_bias
     );

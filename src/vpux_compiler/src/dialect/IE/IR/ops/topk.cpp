@@ -4,8 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -43,7 +43,7 @@ mlir::LogicalResult vpux::IE::TopKOp::inferReturnTypeComponents(
     const auto inType = mlir::cast<mlir::ShapedType>(topK.getInput().getType());
     const auto inputShape = inType.getShape();
 
-    const auto kValue = getConstOrAttrValue(topK.getK(), topK.getKValueAttr());
+    const auto kValue = Const::getConstOrAttrValue(topK.getK(), topK.getKValueAttr());
 
     if (mlir::failed(kValue)) {
         return mlir::failure();
@@ -86,7 +86,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::TopKOp topKOp, mlir:
         return mlir::failure();
     }
 
-    const auto kValue = getConstOrAttrValue(topKOp.getK(), topKOp.getKValueAttr());
+    const auto kValue = Const::getConstOrAttrValue(topKOp.getK(), topKOp.getKValueAttr());
 
     if (mlir::failed(kValue)) {
         return mlir::failure();

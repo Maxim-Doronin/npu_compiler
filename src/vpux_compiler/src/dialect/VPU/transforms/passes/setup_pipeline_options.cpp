@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,6 @@
 #include "vpux/compiler/NPU50XX/dialect/VPU/impl/ppe_factory.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/utils/setup_pipeline_options_utils.hpp"
@@ -100,11 +99,6 @@ void SetupPipelineOptionsPass::initializeFromOptions() {
     } else {
         _log.error("Unknown PPE version name: '{0}'", ppeVersion);
     }
-
-    // Register the default cost model factory singleton
-    VPU::CostModelConfig::setFactory(arch);
-    // Create the ShaveUtil based on how Factory was generated
-    VPU::CostModelConfig::setCMShaveUtils(arch);
 }
 
 void SetupPipelineOptionsPass::safeRunOnModule() {

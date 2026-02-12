@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <llvm/ADT/SmallVector.h>
+#include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/Support/LLVM.h>
 
 #include "vpux/compiler/core/layers.hpp"
@@ -10,6 +11,8 @@
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
 using namespace vpux;
@@ -66,9 +69,8 @@ mlir::LogicalResult vpux::IE::DepthToSpaceOp::inferReturnTypeComponents(
     if (inShape[Dims4D::Act::C] == mlir::ShapedType::kDynamic) {
         return errorAt(loc, "Input channels dimension is dynamic, cannot infer output shape");
     }
-    if (inShape[Dims4D::Act::N] == mlir::ShapedType::kDynamic) {
-        return errorAt(loc, "Input batch size dimension is dynamic, cannot infer output shape");
-    }
+
+    // TODO E#194482 Add tests for the possibility of relaxing the legacy dynamic batch constraint
 
     int64_t paddedIC = 0;
     int64_t paddedOC = 0;
@@ -124,5 +126,64 @@ mlir::LogicalResult IE::DepthToSpaceOp::verify() {
     if (getBlockSize() <= 0) {
         return errorAt(*this, "Block size should be a positive integer, while it is {0}", getBlockSize());
     }
+    return mlir::success();
+}
+
+mlir::LogicalResult IE::DepthToSpaceOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                          mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+    // Parse attributes
+    auto blockSize = getBlockSize();
+
+    const auto inputShapedType = mlir::cast<mlir::ShapedType>(getInput().getType());
+    const auto outputShapedType = mlir::cast<mlir::ShapedType>(getOutput().getType());
+
+    VPUX_THROW_WHEN(inputShapedType.getRank() != 4 || outputShapedType.getRank() != 4,
+                    "reify D2S: Unsupported input or output rank: {0} , {1}", inputShapedType.getRank(),
+                    outputShapedType.getRank());
+
+    auto makeIndex = [&](int64_t value) {
+        return builder.createOrFold<mlir::arith::ConstantIndexOp>(loc, value);
+    };
+
+    auto getInputDimVal = [&](int64_t idx, mlir::Location dimLoc) {
+        auto inputDim = reifyDim(builder, getInput(), idx, dimLoc);
+        auto inputDimVal = mlir::dyn_cast<mlir::Value>(inputDim);
+        VPUX_THROW_WHEN(inputDimVal == nullptr, "Failed to reify input dimension {0} for input {1} at location {2}",
+                        idx, getInput(), loc);
+
+        return inputDimVal;
+    };
+
+    // Use generator functions based on index for each output dimension
+    auto computeShapeForDim = [&](int64_t idx) -> mlir::OpFoldResult {
+        auto dimLoc = appendLoc(loc, "dim_{0}", idx);
+
+        if (idx == Dims4D::Act::N.ind()) {
+            return reifyDim(builder, getInput(), idx, dimLoc);
+        } else if (idx == Dims4D::Act::C.ind()) {
+            // outC = inC / (blockSize * blockSize)
+            auto inputDimVal = getInputDimVal(idx, dimLoc);
+            return builder.createOrFold<mlir::arith::DivSIOp>(dimLoc, inputDimVal, makeIndex(blockSize * blockSize));
+        } else if (idx == Dims4D::Act::H.ind() || idx == Dims4D::Act::W.ind()) {
+            // outHW = inHW * blockSize
+            auto inputDimVal = getInputDimVal(idx, dimLoc);
+
+            return builder.createOrFold<mlir::arith::MulIOp>(dimLoc, inputDimVal, makeIndex(blockSize));
+        } else {
+            VPUX_THROW("Unexpected dimension index {0}", idx);
+        }
+    };
+
+    SmallVector<mlir::OpFoldResult> outShape;
+    for (const auto dim : llvm::seq<int64_t>(0, outputShapedType.getRank())) {
+        if (outputShapedType.isDynamicDim(dim)) {
+            outShape.push_back(mlir::getValueOrCreateConstantIndexOp(builder, loc, computeShapeForDim(dim)));
+        } else {
+            outShape.push_back(builder.getIndexAttr(outputShapedType.getDimSize(dim)));
+        }
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape));
     return mlir::success();
 }

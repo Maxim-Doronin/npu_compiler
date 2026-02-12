@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,13 +24,13 @@ func.func @RemoveQuantDequantSequence(%arg0: tensor<1x3x16x16xf16>) -> (tensor<1
 
   return %6, %4 : tensor<1x3x14x14xf16>, tensor<1x3x14x14xf16>
 
-  //CHECK: [[VAL1:%.*]] = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType>
-  //CHECK: [[VAL0:%.*]] = const.Declare tensor<3x3x3x3x!qElemType1> =
+  //CHECK: [[VAL1:%.+]] = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType>
+  //CHECK: [[VAL0:%.+]] = const.Declare tensor<3x3x3x3x!qElemType1> =
   //CHECK-SAME:                 dense<1.000000e+00> : tensor<3x3x3x3xf16>,
   //CHECK-SAME:                 [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>]
-  //CHECK: [[VAL2:%.*]] = IE.Dequantize(%cst) {dstElemType = f16} : tensor<3x3x3x3x!qElemType1> -> tensor<3x3x3x3xf16>
+  //CHECK: [[VAL2:%.+]] = IE.Dequantize(%cst) {dstElemType = f16} : tensor<3x3x3x3x!qElemType1> -> tensor<3x3x3x3xf16>
 
-  //CHECK: [[VAL3:%.*]] = IE.Convolution(%arg0, [[VAL2]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x16x16xf16>, tensor<3x3x3x3xf16> -> tensor<1x3x14x14xf16>
+  //CHECK: [[VAL3:%.+]] = IE.Convolution(%arg0, [[VAL2]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x16x16xf16>, tensor<3x3x3x3xf16> -> tensor<1x3x14x14xf16>
   //CHECK: return [[VAL3]], [[VAL3]]
 }
 
@@ -49,11 +49,11 @@ func.func @RemoveQuantReshapeDequantSequence(%arg0: tensor<1x4420x1x2xf16>, %arg
         tensor<1x4420x1x2xf16>, tensor<1x4420x1x2xf16> -> tensor<1x4420x1x2xf16>
   return %5 : tensor<1x4420x1x2xf16>
 
-  //CHECK: [[VAL0:%.*]] = IE.AffineReshape(%arg0)
+  //CHECK: [[VAL0:%.+]] = IE.AffineReshape(%arg0)
   //CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 4420, 2]} : tensor<1x4420x1x2xf16> -> tensor<1x1x4420x2xf16>
-  //CHECK: [[VAL1:%.*]] = IE.AffineReshape([[VAL0]])
+  //CHECK: [[VAL1:%.+]] = IE.AffineReshape([[VAL0]])
   //CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1, 2], [3]], shape_value = [1, 4420, 1, 2]} : tensor<1x1x4420x2xf16> -> tensor<1x4420x1x2xf16>
-  //CHECK: [[VAL2:%.*]] = IE.Add([[VAL1]], %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4420x1x2xf16>, tensor<1x4420x1x2xf16> -> tensor<1x4420x1x2xf16>
+  //CHECK: [[VAL2:%.+]] = IE.Add([[VAL1]], %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4420x1x2xf16>, tensor<1x4420x1x2xf16> -> tensor<1x4420x1x2xf16>
   //CHECK: return [[VAL2]]
 }
 
@@ -73,7 +73,7 @@ func.func @RemoveQuantReshapeDequantMaxPool(%arg0: tensor<1x64x40x112x112xf16>) 
   %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x64x40x112x112x!qElemType> -> tensor<1x64x40x112x112xf16>
   return %2 : tensor<1x64x40x112x112xf16>
 
-    //CHECK: [[MAXPOOL:%.*]] = IE.MaxPool(%arg0) {kernel_size = [3, 3, 3], pads_begin = [1, 1, 1], pads_end = [1, 1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1, 1]} : tensor<1x64x40x112x112xf16> -> tensor<1x64x40x112x112xf16>
+    //CHECK: [[MAXPOOL:%.+]] = IE.MaxPool(%arg0) {kernel_size = [3, 3, 3], pads_begin = [1, 1, 1], pads_end = [1, 1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1, 1]} : tensor<1x64x40x112x112xf16> -> tensor<1x64x40x112x112xf16>
     //CHECK: return [[MAXPOOL]] : tensor<1x64x40x112x112xf16>
 }
 

@@ -171,7 +171,8 @@ bool vpux::VPU::YuvToRgbOp::checkStrategyCompatibility(VPU::MultiClusterStrategy
 vpux::VPU::DistributionInfo vpux::VPU::YuvToRgbOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> /* alignment */, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     SmallVector<int64_t> yuvAlignment(shape.size(), 1);
 
     // Set alignment to 2 only on the dimension that is being tiled AND is even

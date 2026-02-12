@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,8 +24,8 @@ func.func @ConvertFP16ToFP32UsingSW(%arg0: tensor<1x3x4x4xf16>) -> tensor<1x3x4x
     return %0 : tensor<1x3x4x4xf32>
 
     // CHECK-NOT: VPU.Convert
-    // CHECK: [[ALLOC_OUT:%.*]] = memref.alloc() : memref<1x3x4x4xf32>
-    // CHECK: [[SW:%.*]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Convert inputs([[INPUT]] as [[INNER_ARG0:[^:]+]]: memref<1x3x4x4xf16>) outputs([[ALLOC_OUT]] as [[INNER_ARG1:[^:]+]]: memref<1x3x4x4xf32>) on tile 0 -> memref<1x3x4x4xf32>{
+    // CHECK: [[ALLOC_OUT:%.+]] = memref.alloc() : memref<1x3x4x4xf32>
+    // CHECK: [[SW:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Convert inputs([[INPUT]] as [[INNER_ARG0:[^:]+]]: memref<1x3x4x4xf16>) outputs([[ALLOC_OUT]] as [[INNER_ARG1:[^:]+]]: memref<1x3x4x4xf32>) on tile 0 -> memref<1x3x4x4xf32>{
     // CHECK:   VPUIP.SW.Kernel.run([[INNER_ARG0]], [[INNER_ARG1]]) : memref<1x3x4x4xf16>, memref<1x3x4x4xf32>
     // CHECK: }
     // CHECK: return [[SW]]

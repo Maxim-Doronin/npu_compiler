@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,11 +7,11 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_RESOLVEDMAWITHSWIZZLING
@@ -54,7 +54,7 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
     auto func = getOperation();
 
     func->walk([&](VPURT::TaskOp taskOp) {
-        if (taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
+        if (taskOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
             return;
         }
 
@@ -73,8 +73,8 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
         const auto inputBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
         const auto outputBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutputBuff().getType());
 
-        auto inputSwizzling = getSwizzlingKey(inputBuffType);
-        auto outputSwizzling = getSwizzlingKey(outputBuffType);
+        auto inputSwizzling = VPUIP::getSwizzlingKey(inputBuffType);
+        auto outputSwizzling = VPUIP::getSwizzlingKey(outputBuffType);
 
         VPUX_THROW_WHEN(inputSwizzling != outputSwizzling, "Incompatible swizzling setting on task - '{0}'", taskOp);
 
@@ -98,7 +98,7 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
         auto inputAligned = (buffRealSize == buffAllocSize);
         auto outputAligned = (outputBuffRealSize == outputBuffAllocSize);
 
-        if (dmaOp.getCompressCandidateAttr() != nullptr) {
+        if (dmaOp.getCompressCandidate()) {
             if (inputBuffType.getMemoryKind() == VPU::MemoryKind::CMX_NN) {
                 // Potential activation compression. Only input needs to have size aligned
                 // Assume output is already aligned
@@ -161,7 +161,7 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
         if (auto inputBuff = dmaOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>()) {
             // Create new source flat buffer with aligned size
             auto newInputBuff = builder.create<VPURT::DeclareBufferOp>(
-                    appendLoc(inputBuff->getLoc(), "_flat_buffer_alloc"), newInputBuffType, inputBuff.getSectionAttr(),
+                    appendLoc(inputBuff->getLoc(), "flat_buffer_alloc"), newInputBuffType, inputBuff.getSectionAttr(),
                     inputBuff.getSectionIndexAttr(), inputBuff.getByteOffsetAttr(), inputBuff.getSwizzlingKeyAttr());
             _log.nest().trace("Create new source flat buffer allocation of shape - '{0}', op - '{1}'",
                               ShapeRef(newShape), newInputBuff->getLoc());
@@ -179,17 +179,17 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
         // Create new destination flat buffer
         builder.setInsertionPoint(outputBuff);
         auto newOutputBuff = builder.create<VPURT::DeclareBufferOp>(
-                appendLoc(outputBuff->getLoc(), "_flat_buffer_alloc"), newOutputBuffType, outputBuff.getSectionAttr(),
+                appendLoc(outputBuff->getLoc(), "flat_buffer_alloc"), newOutputBuffType, outputBuff.getSectionAttr(),
                 outputBuff.getSectionIndexAttr(), outputBuff.getByteOffsetAttr(), outputBuff.getSwizzlingKeyAttr());
         _log.nest().trace("Create new destination flat buffer allocation of shape - '{0}', op - '{1}'",
                           ShapeRef(newShape), newOutputBuff->getLoc());
 
         builder.setInsertionPoint(dmaOp);
         auto newDmaOp = builder.create<VPUIP::NNDMAOp>(
-                appendLoc(dmaOp->getLoc(), "_flat_buffer_dma"), newInputOp->getResult(0), newOutputBuff,
-                dmaOp.getPortAttr(), dmaOp.getIsOutOfOrderAttr(), dmaOp.getIsCriticalAttr(), dmaOp.getSpillIdAttr(),
-                dmaOp.getCompressCandidateAttr(), /*dmaHwpId=*/nullptr,
-                /*profilingMetadata=*/nullptr, dmaOp.getSplitCandidateAttr(), /*profiling_buffer_mgmt=*/nullptr,
+                appendLoc(dmaOp->getLoc(), "flat_buffer_dma"), newInputOp->getResult(0), newOutputBuff,
+                dmaOp.getPortAttr(), dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(), dmaOp.getSpillIdAttr(),
+                dmaOp.getCompressCandidate(), /*dmaHwpId=*/nullptr,
+                /*profilingMetadata=*/nullptr, dmaOp.getSplitCandidate(), /*profiling_buffer_mgmt=*/false,
                 dmaOp.getFusionIdAttr());
         _log.nest().trace("Create new DMA - '{0}'", newDmaOp->getLoc());
 

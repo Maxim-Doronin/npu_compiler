@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,8 +27,9 @@ public:
 
 public:
     ValueOrderedSet getUsedBuffers(mlir::Operation* op) const;
-    ValueOrderedSet getInputBuffers(mlir::Operation* op);
-    ValueOrderedSet getOutputBuffers(mlir::Operation* op);
+    ValueOrderedSet getInputBuffers(mlir::Operation* op) const;
+    ValueOrderedSet getOutputBuffers(mlir::Operation* op) const;
+    ValueOrderedSet getAllBuffers() const;
     size_t eraseUser(mlir::Value val, mlir::Operation* op);
     bool isBufferUsedByOp(mlir::Value val, mlir::Operation* op) const;
 

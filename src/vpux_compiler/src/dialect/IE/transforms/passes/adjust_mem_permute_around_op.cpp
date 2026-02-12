@@ -221,9 +221,9 @@ mlir::LogicalResult AdjustForEltwise::matchAndRewrite(IE::LayerOpInterface origO
     }
 
     for (auto& inputOperand : origOp->getOpOperands()) {
-        auto inMemPermuteOp = rewriter.createOrFold<IE::MemPermuteOp>(
-                takeOpLoc(origOp, llvm::formatv("_input_{0}", inputOperand.getOperandNumber())), inputOperand.get(),
-                newOrder.toAffineMap(ctx), bestMemPerm);
+        auto inMemPermuteOp =
+                rewriter.createOrFold<IE::MemPermuteOp>(takeOpLoc(origOp, "input_{0}", inputOperand.getOperandNumber()),
+                                                        inputOperand.get(), newOrder.toAffineMap(ctx), bestMemPerm);
         inputOperand.set(inMemPermuteOp);
     }
 
@@ -236,7 +236,7 @@ mlir::LogicalResult AdjustForEltwise::matchAndRewrite(IE::LayerOpInterface origO
     // add permutes to output
     rewriter.setInsertionPointAfter(origOp);
     auto outMemPermuteOp = rewriter.create<IE::MemPermuteOp>(
-            takeOpLoc(origOp, "_output"), output, origOrder.toAffineMap(ctx), mlir::inversePermutation(bestMemPerm));
+            takeOpLoc(origOp, "output"), output, origOrder.toAffineMap(ctx), mlir::inversePermutation(bestMemPerm));
     output.replaceAllUsesExcept(outMemPermuteOp.getOutput(), outMemPermuteOp);
 
     rewriter.finalizeOpModification(origOp);
@@ -600,9 +600,8 @@ mlir::LogicalResult AdjustForConcat::matchAndRewrite(IE::ConcatOp concatOp, mlir
     for (const auto& item : concatOp.getInputs() | indexed) {
         const auto& input = item.value();
         const auto& idx = item.index();
-        auto newInPermuteOp =
-                rewriter.createOrFold<IE::MemPermuteOp>(takeOpLoc(concatOp, llvm::formatv("_input_{0}", idx)), input,
-                                                        outMemPermuteOp.getDstOrder(), outPermuteMemPerm);
+        auto newInPermuteOp = rewriter.createOrFold<IE::MemPermuteOp>(takeOpLoc(concatOp, "input_{0}", idx), input,
+                                                                      outMemPermuteOp.getDstOrder(), outPermuteMemPerm);
         newConcatInputs.push_back(newInPermuteOp);
     }
 
@@ -697,12 +696,12 @@ mlir::LogicalResult AdjustForNCEEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp 
     int index = 0;  // Initialize a counter for unique identifiers
     for (auto& inputOperand : origOp->getOpOperands()) {
         auto inMemPermuteOp =
-                rewriter.create<IE::MemPermuteOp>(appendLoc(origOp->getLoc(), "_input_permute" + std::to_string(index)),
+                rewriter.create<IE::MemPermuteOp>(appendLoc(origOp->getLoc(), "input_permute" + std::to_string(index)),
                                                   inputOperand.get(), newOrder.toAffineMap(ctx), bestMemPerm);
         // Create permute cast to satisfy type requirement of NCE Eltwise
         auto inputPermuteCastOp = rewriter.create<IE::PermuteCastOp>(
-                appendLoc(origOp->getLoc(), "_input_permute_cast" + std::to_string(index)),
-                inMemPermuteOp->getResult(0), dstOrder, idMap);
+                appendLoc(origOp->getLoc(), "input_permute_cast" + std::to_string(index)), inMemPermuteOp->getResult(0),
+                dstOrder, idMap);
         inputOperand.set(inputPermuteCastOp->getResult(0));
         index++;
     }
@@ -714,11 +713,11 @@ mlir::LogicalResult AdjustForNCEEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp 
     output.setType(newOutputType);
 
     rewriter.setInsertionPointAfter(origOp);
-    auto outputPermuteCastOp = rewriter.create<IE::PermuteCastOp>(appendLoc(origOp->getLoc(), "_output_permute_cast"),
+    auto outputPermuteCastOp = rewriter.create<IE::PermuteCastOp>(appendLoc(origOp->getLoc(), "output_permute_cast"),
                                                                   output, newOrder.toAffineMap(ctx), idMap);
     // Add permutes to output
     auto outMemPermuteOp = rewriter.create<IE::MemPermuteOp>(
-            appendLoc(origOp->getLoc(), "_output_permute"), outputPermuteCastOp->getResult(0),
+            appendLoc(origOp->getLoc(), "output_permute"), outputPermuteCastOp->getResult(0),
             origOrder.toAffineMap(ctx), mlir::inversePermutation(bestMemPerm));
     output.replaceAllUsesExcept(outMemPermuteOp.getOutput(), outputPermuteCastOp);
 

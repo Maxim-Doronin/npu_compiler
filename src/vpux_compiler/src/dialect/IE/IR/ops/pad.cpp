@@ -11,8 +11,6 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
-#include <mlir/IR/PatternMatch.h>
-
 using namespace vpux;
 
 mlir::LogicalResult vpux::IE::PadOp::inferReturnTypeComponents(
@@ -33,19 +31,32 @@ mlir::LogicalResult vpux::IE::PadOp::inferReturnTypeComponents(
     if (mlir::failed(padBegin)) {
         return mlir::failure();
     }
+
     const auto padEnd = IE::extractPads(loc, pad.getPadsEnd(), pad.getPadsEndAttr(), inputShape);
     if (mlir::failed(padEnd)) {
         return mlir::failure();
     }
+
     if (pad.getMode() == IE::PadMode::CONSTANT && pad.getPadValue() == nullptr && !pad.getPadValueAttr().has_value()) {
         return errorAt(loc, "pad_mode is CONSTANT but pad_value hasn't provided");
     }
 
-    const auto newType = inType.pad(ShapeRef(padBegin.value()), ShapeRef(padEnd.value()));
-    const auto newTensorType = mlir::cast<mlir::RankedTensorType>(newType);
-    inferredReturnShapes.emplace_back(newTensorType.getShape(), newTensorType.getElementType(),
-                                      getTensorAttr(newTensorType));
+    if (!padBegin.value().empty() && !padEnd.value().empty()) {
+        const auto newType = inType.pad(ShapeRef(padBegin.value()), ShapeRef(padEnd.value()));
+        const auto newTensorType = mlir::cast<mlir::RankedTensorType>(newType);
+        inferredReturnShapes.emplace_back(newTensorType.getShape(), newTensorType.getElementType(),
+                                          getTensorAttr(newTensorType));
+    } else {
+        const auto outShape = parseIntArrayAttr<int64_t>(pad.getOutputShapeAttr());
+        const auto outBounds = parseIntArrayAttr<int64_t>(pad.getOutputBoundsAttr());
 
+        const auto inType = mlir::cast<mlir::RankedTensorType>(pad.getInput().getType());
+
+        const auto outDesc = vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()),
+                                                 vpux::getMemorySpace(inType), BoundsRef(outBounds));
+
+        inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
+    }
     return mlir::success();
 }
 
@@ -69,6 +80,21 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
         return mlir::failure();
     }
 
+    // All inputs are not `Constant`
+    const bool padsBeginIsConst = padOp.getPadsBegin().getDefiningOp<Const::DeclareOp>() != nullptr;
+    const bool padsEndIsConst = padOp.getPadsEnd().getDefiningOp<Const::DeclareOp>() != nullptr;
+    const bool padValueIsConst =
+            padOp.getPadValue() && padOp.getPadValue().getDefiningOp<Const::DeclareOp>() != nullptr;
+
+    if (!padsBeginIsConst && !padsEndIsConst) {
+        if (padOp.getMode() != vpux::IE::PadMode::CONSTANT) {
+            return mlir::failure();
+        }
+        if (!padValueIsConst) {
+            return mlir::failure();
+        }
+    }
+
     const auto inType = mlir::cast<vpux::NDTypeInterface>(padOp.getInput().getType());
     const auto inputShape = inType.getShape();
 
@@ -78,7 +104,13 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
     if (mlir::failed(padsBegin)) {
         return mlir::failure();
     }
-    const auto padsBeginAttr = getIntArrayAttr(padOp.getContext(), padsBegin.value());
+    const auto padsBeginAttr =
+            padsBegin.value().empty() ? nullptr : getIntArrayAttr(padOp.getContext(), padsBegin.value());
+    const auto padsBeginValue =
+            padsBeginAttr ? nullptr : padOp.getPadsBegin();  // in case if pad_begin is a tensor not a constant
+
+    VPUX_THROW_WHEN(padsBeginAttr == nullptr && padsBeginValue == nullptr,
+                    "PadOp is malformed: required input 'pads_begin' is not provided at {0}", padOp->getLoc());
 
     // convert pads_end
 
@@ -86,7 +118,12 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
     if (mlir::failed(padsEnd)) {
         return mlir::failure();
     }
-    const auto padsEndAttr = getIntArrayAttr(padOp.getContext(), padsEnd.value());
+    const auto padsEndAttr = padsEnd.value().empty() ? nullptr : getIntArrayAttr(padOp.getContext(), padsEnd.value());
+    const auto padsEndValue =
+            padsEndAttr ? nullptr : padOp.getPadsEnd();  // in case if pad_end is a tensor not a constant
+
+    VPUX_THROW_WHEN(padsEndAttr == nullptr && padsEndValue == nullptr,
+                    "PadOp is malformed: required input 'pads_end' is not provided at {0}", padOp->getLoc());
 
     // convert pad_value
 
@@ -99,26 +136,25 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::PadOp padOp, mlir::P
 
         auto padValueConst = padOp.getPadValue().getDefiningOp<Const::DeclareOp>();
         if (padValueConst == nullptr) {
-            // Cannot convert const to attr: 'pad_value' is not const
-            return mlir::failure();
-        }
-
-        if (const auto& attr = padValueConst.getContentAttr(); !attr.isSplat()) {
-            // Cannot convert const to attr: 'pad_value' is not splat const
-            return mlir::failure();
+            return errorAt(padOp, "Cannot convert const to attr: 'pad_value' is not const");
         }
 
         const auto padValueContent = padValueConst.getContent();
+        if (!padValueContent.isSplat()) {
+            return errorAt(padOp, "Cannot convert const to attr: 'pad_value' is not splat const");
+        }
+
         const auto padValue = padValueContent.getSplatValue<float>();
         const auto padValueAttr = getFPAttr(padOp.getContext(), padValue);
-
-        rewriter.replaceOpWithNewOp<IE::PadOp>(padOp, padOp.getInput(), nullptr, nullptr, nullptr, padsBeginAttr,
-                                               padsEndAttr, padValueAttr, padOp.getMode(), padOp.getOutputPaddingAttr(),
-                                               padOp.getInputPaddingAttr());
+        rewriter.replaceOpWithNewOp<IE::PadOp>(padOp, padOp.getInput(), padsBeginValue, padsEndValue, nullptr,
+                                               padsBeginAttr, padsEndAttr, padValueAttr, padOp.getMode(),
+                                               padOp.getOutputPaddingAttr(), padOp.getInputPaddingAttr(),
+                                               padOp.getOutputShapeAttr(), padOp.getOutputBoundsAttr());
     } else {
-        rewriter.replaceOpWithNewOp<IE::PadOp>(padOp, padOp.getInput(), nullptr, nullptr, nullptr, padsBeginAttr,
-                                               padsEndAttr, nullptr, padOp.getMode(), padOp.getOutputPaddingAttr(),
-                                               padOp.getInputPaddingAttr());
+        rewriter.replaceOpWithNewOp<IE::PadOp>(padOp, padOp.getInput(), padsBeginValue, padsEndValue, nullptr,
+                                               padsBeginAttr, padsEndAttr, nullptr, padOp.getMode(),
+                                               padOp.getOutputPaddingAttr(), padOp.getInputPaddingAttr(),
+                                               padOp.getOutputShapeAttr(), padOp.getOutputBoundsAttr());
     }
     return mlir::success();
 }

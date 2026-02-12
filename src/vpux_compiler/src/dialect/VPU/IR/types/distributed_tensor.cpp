@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -66,6 +66,9 @@ void VPU::DistributedTensorType::print(mlir::AsmPrinter& printer) const {
     }
     if (distribution.getEqualMemoryAndComputeView() != nullptr) {
         printer << ", equal_memory_and_compute_view";
+    }
+    if (distribution.getMemoryNumTiles() != nullptr) {
+        printer << ", memory_num_tiles = " << distribution.getMemoryNumTiles();
     }
     printer << "}";
 
@@ -147,6 +150,7 @@ mlir::Type VPU::DistributedTensorType::parse(mlir::AsmParser& parser) {
     mlir::ArrayAttr memoryShapes;
     mlir::ArrayAttr memoryOffsets;
     mlir::UnitAttr equalComputeAndMemoryView;
+    mlir::ArrayAttr memoryNumTiles;
 
     while (parser.parseOptionalRBrace()) {
         if (parser.parseComma()) {
@@ -211,14 +215,18 @@ mlir::Type VPU::DistributedTensorType::parse(mlir::AsmParser& parser) {
             if (parser.parseAttribute(memoryOffsets)) {
                 return Type();
             }
+        } else if (attrName == "memory_num_tiles") {
+            if (parser.parseAttribute(memoryNumTiles)) {
+                return Type();
+            }
         } else {
             return Type();
         }
     }
-    auto distributedAttr =
-            VPU::DistributionInfoAttr::get(parser.getContext(), distributionModeAttr, numTiles, kernel, pads, strides,
-                                           numClusters, alignment, uniformDistributedSegments, computeShapes,
-                                           computeOffsets, memoryShapes, memoryOffsets, equalComputeAndMemoryView);
+    auto distributedAttr = VPU::DistributionInfoAttr::get(
+            parser.getContext(), distributionModeAttr, numTiles, kernel, pads, strides, numClusters, alignment,
+            uniformDistributedSegments, computeShapes, computeOffsets, memoryShapes, memoryOffsets,
+            equalComputeAndMemoryView, memoryNumTiles);
 
     if (mlir::succeeded(parser.parseOptionalGreater())) {
         return static_cast<mlir::Type>(
@@ -295,7 +303,7 @@ mlir::RankedTensorType VPU::DistributedTensorType::getCompactType() const {
 SmallVector<Shape> VPU::DistributedTensorType::getPerClusterComputeShapes() const {
     auto distribution = getDistribution();
     if (distribution.getComputeShapes() == nullptr) {
-        return VPU::getPerClusterComputeShapes(getShape(), distribution);
+        return VPU::getPerClusterComputeShapes(getShape(), distribution, getElementType());
     }
 
     return VPU::arrayAttrToVecOfShapes(distribution.getComputeShapes());
@@ -308,7 +316,7 @@ SmallVector<Shape> VPU::DistributedTensorType::getPerClusterComputeShapes() cons
 SmallVector<Shape> VPU::DistributedTensorType::getPerClusterComputeShapeOffsets() const {
     auto distribution = getDistribution();
     if (distribution.getComputeOffsets() == nullptr) {
-        return VPU::getPerClusterComputeShapeOffsets(getShape(), distribution);
+        return VPU::getPerClusterComputeShapeOffsets(getShape(), distribution, getElementType());
     }
 
     return VPU::arrayAttrToVecOfShapes(distribution.getComputeOffsets());
@@ -330,7 +338,8 @@ SmallVector<Shape> VPU::DistributedTensorType::getPerClusterComputeShapeOffsets(
 SmallVector<Shape> VPU::DistributedTensorType::getPerClusterMemoryShapes() const {
     auto distribution = getDistribution();
     if (distribution.getMemoryShapes() == nullptr) {
-        auto optionalPerClusterMemoryShapes = VPU::getPerClusterMemoryShapes(getShape(), distribution);
+        auto optionalPerClusterMemoryShapes =
+                VPU::getPerClusterMemoryShapes(getShape(), distribution, getElementType());
         VPUX_THROW_UNLESS(optionalPerClusterMemoryShapes.has_value(),
                           "Cannot get per cluster memory shapes. Shape {0}, Unsupported distribution: {1}", getShape(),
                           distribution);
@@ -347,7 +356,7 @@ SmallVector<Shape> VPU::DistributedTensorType::getPerClusterMemoryShapes() const
 SmallVector<Shape> VPU::DistributedTensorType::getPerClusterMemoryShapeOffsets() const {
     auto distribution = getDistribution();
     if (distribution.getMemoryOffsets() == nullptr) {
-        return VPU::getPerClusterMemoryShapeOffsets(getShape(), distribution);
+        return VPU::getPerClusterMemoryShapeOffsets(getShape(), distribution, getElementType());
     }
 
     return VPU::arrayAttrToVecOfShapes(distribution.getMemoryOffsets());

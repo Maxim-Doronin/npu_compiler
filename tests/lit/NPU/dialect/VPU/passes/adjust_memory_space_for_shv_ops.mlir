@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --adjust-memory-space-for-shv-ops %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --adjust-memory-space-for-shv-ops %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // Case A: Not all input and output tensors fit in CMX. Try to work as much as possible with CMX.
@@ -259,4 +259,60 @@ func.func @SHAVEConvert(%input: tensor<1x3x4x4xf16>)
     // CHECK:       [[OUTPUT_DDR:%.+]] = VPU.Copy([[PERMUTE_CAST]])
     // CHECK-SAME:    -> tensor<1x3x4x4xf32>
     // CHECK:       return [[OUTPUT_DDR]]
+}
+
+// -----
+
+// CHECK-LABEL: @TopKWithAuxBuffer
+// CHECK-SAME:  ([[INPUT_DDR:%.+]]: tensor<1x1x1x1001xf16>)
+func.func @TopKWithAuxBuffer(%input: tensor<1x1x1x1001xf16>) -> (tensor<1x1x1x1xf16>, tensor<1x1x1x1xsi32>) {
+    %aux = VPU.Empty : tensor<1x1x1x16016xui8>
+    %output_values, %target_shape = VPU.TopK(%input, %aux) {
+        axis = 3 : i64, element_type = si32, k_value = 1 : i64, mode = #IE.topk_mode<MAX>, sort = #IE.topk_sort_type<SORT_VALUES>
+    } : tensor<1x1x1x1001xf16>, tensor<1x1x1x16016xui8> -> tensor<1x1x1x1xf16>, tensor<1x1x1x1xsi32>
+    return %output_values, %target_shape : tensor<1x1x1x1xf16>, tensor<1x1x1x1xsi32>
+
+    // CHECK:       [[AUX_CMX:%.+]] = VPU.Empty : tensor<1x1x1x16016xui8, {mem_space = [@CMX_NN, 0], order = #NCHW}>
+    // CHECK:       [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT_DDR]])
+    // CHECK-SAME:    -> tensor<1x1x1x1001xf16, {mem_space = [@CMX_NN, 0], order = #NCHW}>
+    // CHECK:       [[OUTPUT:%.+]], [[TARGET_SHAPE:%.+]] = VPU.TopK([[INPUT_CMX]], [[AUX_CMX]])
+    // CHECK-SAME:    -> tensor<1x1x1x1xf16, {mem_space = [@CMX_NN, 0], order = #NCHW}>, tensor<1x1x1x1xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
+    // CHECK:       [[TENSOR_SHAPE_DDR:%.+]] = VPU.Copy([[TARGET_SHAPE]])
+    // CHECK-SAME:    -> tensor<1x1x1x1xsi32>
+    // CHECK:       [[OUTPUT_DDR:%.+]] = VPU.Copy([[OUTPUT]])
+    // CHECK-SAME:    -> tensor<1x1x1x1xf16>
+    // CHECK:       return [[OUTPUT_DDR]], [[TENSOR_SHAPE_DDR]]
+}
+
+// -----
+
+module {
+
+config.Resources 4 of @NCE at 1.850000e+03 MHz {
+    config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+    config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+    config.ExecutorResource 2 of @SHAVE_ACT
+}
+
+// CHECK-LABEL:   @DetectionOutputSortWithConstantAuxBuffers
+// CHECK-SAME:  [[INPUT_DDR:%.+]]: tensor<1x1x11x76725xf16>)
+func.func @DetectionOutputSortWithConstantAuxBuffers(%confidence: tensor<1x1x11x76725xf16>) -> (tensor<1x1x11x76725xf16>, tensor<1x1x11x76725xsi32>, tensor<1x1x11x1xsi32>) {
+    %aux_indices = const.Declare tensor<1x1x11x76725xsi32> = dense<0> : tensor<1x1x11x76725xsi32>
+    %aux_sorting = const.Declare tensor<1x1x32x256xsi32> = dense<0> : tensor<1x1x32x256xsi32>
+    %out_confidence, %out_indices, %out_sizes = VPU.DetectionOutputSort(%confidence, %aux_indices, %aux_sorting) {
+        confidence_threshold = 0.20000000298023224 : f64, top_k = 100 : i64
+    } : tensor<1x1x11x76725xf16>, tensor<1x1x11x76725xsi32>, tensor<1x1x32x256xsi32> -> tensor<1x1x11x76725xf16>, tensor<1x1x11x76725xsi32>, tensor<1x1x11x1xsi32>
+    return %out_confidence, %out_indices, %out_sizes : tensor<1x1x11x76725xf16>, tensor<1x1x11x76725xsi32>, tensor<1x1x11x1xsi32>
+
+    // CHECK:       [[AUX_INDICES:%.+]] = const.Declare tensor<1x1x11x76725xsi32> = dense<0> : tensor<1x1x11x76725xsi32>
+    // CHECK:       [[AUX_SORTING:%.+]] = const.Declare tensor<1x1x32x256xsi32> = dense<0> : tensor<1x1x32x256xsi32>
+    // CHECK:       [[AUX_SORTING_CMX:%.+]] = VPU.Copy([[AUX_SORTING]]) {out_mem_space = [@CMX_NN, 0]}
+    // CHECK-SAME:    -> tensor<1x1x32x256xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
+    // CHECK:       [[OUT_CONFIDENCE:%.+]], [[OUT_INDICES:%.+]], [[OUT_SIZES:%.+]] = VPU.DetectionOutputSort([[INPUT_DDR]], [[AUX_INDICES]], [[AUX_SORTING_CMX]])
+    // CHECK-SAME:    -> tensor<1x1x11x76725xf16>, tensor<1x1x11x76725xsi32>, tensor<1x1x11x1xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
+    // CHECK:       [[OUT_SIZES_DDR:%.+]] = VPU.Copy([[OUT_SIZES]])
+    // CHECK-SAME:    -> tensor<1x1x11x1xsi32>
+    // CHECK:       return [[OUT_CONFIDENCE]], [[OUT_INDICES]], [[OUT_SIZES_DDR]] : tensor<1x1x11x76725xf16>, tensor<1x1x11x76725xsi32>, tensor<1x1x11x1xsi32>
+}
+
 }

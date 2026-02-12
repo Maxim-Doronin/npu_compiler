@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/core/layers.hpp"
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -79,14 +80,19 @@ mlir::LogicalResult replaceExtractImagePatchesWithTranspose(IE::ExtractImagePatc
     // The equivalent permutation order
     log.trace("ExtractImagePatches op is replaced with a Transpose op - '{0}'", op->getLoc());
     const auto orderOutputAttr = mlir::AffineMapAttr::get(vpux::DimsOrder::NWHC.toAffineMap(ctx));
-    auto newOp = rewriter.replaceOpWithNewOp<IE::TransposeOp>(op, op.getType(), op.getData(), nullptr, orderOutputAttr);
+    auto newOp = rewriter.create<IE::TransposeOp>(op.getLoc(), op.getType(), op.getData(), nullptr, orderOutputAttr);
     extendOpLoc(newOp, "as_transpose");
+    rewriter.replaceAllOpUsesWith(op, newOp.getOutput());
     return mlir::success();
 }
 
 mlir::LogicalResult ConvertToReduceSumRewriter::matchAndRewrite(IE::ExtractImagePatchesOp origOp,
                                                                 mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    if (origOp->getUses().empty()) {
+        return mlir::failure();  // operation is already handled
+    }
 
     // Check if ExtractImagePatches is equivalent with a single Transpose
     if (!isExtractImagePatchesJustTranspose(origOp, _log)) {
@@ -165,7 +171,9 @@ mlir::LogicalResult ConvertToReduceSumRewriter::matchAndRewrite(IE::ExtractImage
             unsqueezeAxis.push_back(belowReduceSumOpAxes[0]);
         }
         const auto unsqueezeAxesAttr = getIntArrayAttr(getContext(), unsqueezeAxis);
-        rewriter.replaceOpWithNewOp<IE::UnsqueezeOp>(belowReduceSumOp, newReduceSumOp, nullptr, unsqueezeAxesAttr);
+        auto newUnsqueezeOp =
+                rewriter.create<IE::UnsqueezeOp>(belowReduceSumOp.getLoc(), newReduceSumOp, nullptr, unsqueezeAxesAttr);
+        rewriter.replaceAllOpUsesWith(belowReduceSumOp, newUnsqueezeOp);
         return mlir::success();
     }
 
@@ -191,6 +199,10 @@ private:
 mlir::LogicalResult ConvertToSliceConcatRewriter::matchAndRewrite(IE::ExtractImagePatchesOp origOp,
                                                                   mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    if (origOp->getUses().empty()) {
+        return mlir::failure();  // operation is already handled
+    }
 
     // Check if ExtractImagePatches is equivalent with with NxSlice->Concat sequence
     if (origOp.getSizes() == nullptr || origOp.getStrides() == nullptr || origOp.getRates() == nullptr ||
@@ -266,13 +278,15 @@ mlir::LogicalResult ConvertToSliceConcatRewriter::matchAndRewrite(IE::ExtractIma
             staticOffsets[vpux::Dims4D::Act::H.ind()] = idx;
             mlir::SmallVector<int64_t> staticSizes = to_small_vector(dataShape.raw());
             staticSizes[vpux::Dims4D::Act::H.ind()] = sizesHeight;
-            auto sliceOp = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("slice_{0}"), idx),
-                                                        origOp.getData(), getIntArrayAttr(ctx, staticOffsets),
+            auto sliceOp = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "slice_{0}", idx), origOp.getData(),
+                                                        getIntArrayAttr(ctx, staticOffsets),
                                                         getIntArrayAttr(ctx, staticSizes));
             sliceOpValues.push_back(sliceOp.getResult());
         }
         if (suitableReshape) {
-            rewriter.replaceOpWithNewOp<IE::ConcatOp>(affineReshapeOp, sliceOpValues, vpux::Dims4D::Act::C);
+            auto newConcatOp =
+                    rewriter.create<IE::ConcatOp>(affineReshapeOp.getLoc(), sliceOpValues, vpux::Dims4D::Act::C);
+            rewriter.replaceAllOpUsesWith(affineReshapeOp, newConcatOp);
         } else {
             auto concatOp = rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "out_reshape"), sliceOpValues,
                                                           vpux::Dims4D::Act::C);
@@ -280,7 +294,9 @@ mlir::LogicalResult ConvertToSliceConcatRewriter::matchAndRewrite(IE::ExtractIma
             const auto transposeShape = transposeOp.getType().getShape();
             const auto transposeShapeAttr = getIntArrayAttr(ctx, transposeShape);
 
-            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(transposeOp, concatOp, nullptr, false, transposeShapeAttr);
+            auto newReshapeOp =
+                    rewriter.create<IE::ReshapeOp>(transposeOp.getLoc(), concatOp, nullptr, false, transposeShapeAttr);
+            rewriter.replaceAllOpUsesWith(transposeOp, newReshapeOp);
         }
         return mlir::success();
     };
@@ -362,9 +378,13 @@ void ConvertExtractImagePatchesPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ConvertToReduceSumRewriter>(&ctx, _log);
     patterns.add<ConvertToSliceConcatRewriter>(&ctx, _log);
-    IE::ReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
+    collectOpsAndApplyPatterns(func, std::move(patterns));
+
+    mlir::RewritePatternSet reshapePatterns(&ctx);
+    IE::ReshapeOp::getCanonicalizationPatterns(reshapePatterns, &ctx);
+
+    if (mlir::failed(applyPatternsGreedily(func, std::move(reshapePatterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
 }

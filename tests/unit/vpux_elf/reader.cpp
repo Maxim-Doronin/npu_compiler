@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,6 +48,7 @@ ELFHeader createTemplateFileHeader() {
 
 constexpr size_t headerTableSize = 3;
 constexpr size_t indexToCheck = 1;
+constexpr size_t secHeaderStrIdxSecSize = 1;
 
 }  // namespace
 
@@ -65,7 +66,10 @@ TEST(ELFReaderTests, ReadingTheCorrectELFHeaderDoesntThrow) {
 
     auto fileHeader = createTemplateFileHeader();
     fileHeader.e_shnum = headerTableSize;
+    auto secHeaderStrIdx = headerTableSize - 1;
+    fileHeader.e_shstrndx = secHeaderStrIdx;
     sectionHeaders[indexToCheck].sh_offset = sizeof(fileHeader);
+    sectionHeaders[secHeaderStrIdx].sh_size = secHeaderStrIdxSecSize;
 
     std::vector<uint8_t> buffer;
     buffer.insert(buffer.end(), reinterpret_cast<uint8_t*>(&fileHeader),
@@ -82,7 +86,10 @@ TEST(ELFReaderTests, ELFHeaderIsReadCorrectly) {
 
     auto fileHeader = createTemplateFileHeader();
     fileHeader.e_shnum = headerTableSize;
+    auto secHeaderStrIdx = headerTableSize - 1;
+    fileHeader.e_shstrndx = secHeaderStrIdx;
     sectionHeaders[indexToCheck].sh_offset = sizeof(fileHeader);
+    sectionHeaders[secHeaderStrIdx].sh_size = secHeaderStrIdxSecSize;
 
     std::vector<uint8_t> buffer;
     buffer.insert(buffer.end(), reinterpret_cast<uint8_t*>(&fileHeader),

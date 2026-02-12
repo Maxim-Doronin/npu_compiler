@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,15 +31,23 @@ using namespace vpux;
 
 namespace {
 
-mlir::Type getAuxiliaryBufferType(mlir::Value query, mlir::Value key) {
-    auto queryShape = getShape(query);
-    auto keyShape = getShape(key);
+mlir::Type getAuxiliaryBufferType(mlir::Value query, mlir::Value key, mlir::ModuleOp module) {
+    const auto queryShape = getShape(query);
+    const auto keyShape = getShape(key);
     VPUX_THROW_UNLESS(queryShape.size() >= 2 && keyShape.size() >= 2,
                       "Expected rank of Query and Key tensors to be at least 2D, got: {0}, {1}", queryShape, keyShape);
-    auto sourceSeqLen = keyShape[Dim(keyShape.size() - 2)];
-    auto bufferShape = to_small_vector(queryShape);
-    bufferShape[bufferShape.size() - 1] = sourceSeqLen;
+
+    const auto targetSeqLen = queryShape[Dim(keyShape.size() - 2)];
+    const auto sourceSeqLen = keyShape[Dim(keyShape.size() - 2)];
+
+    // Have 2 buffers per SHAVE for double buffering when tiling on Heads (channels)
+    // Have 1 buffer for both SHAVEs when tiling on TargetSequenceLength (height)
+    const auto numShavesPerTile = vpux::config::getNumOfEnginesOnTile(module, config::ExecutorKind::SHAVE_ACT);
+    const auto numBuffers = (queryShape[Dims4D::Act::C] > 1) ? (2 * numShavesPerTile) : 1;
+
+    const auto bufferShape = SmallVector<int64_t>{1, numBuffers, targetSeqLen, sourceSeqLen};
     const auto auxBufferType = mlir::RankedTensorType::get(bufferShape, getFp16Type(query.getContext()));
+
     return auxBufferType;
 }
 
@@ -55,9 +63,7 @@ mlir::Type createDpuDescriptorBufferType(mlir::MLIRContext* ctx, mlir::ModuleOp 
                       "Can't represent DpuDescriptorBuffer ({0} bytes) with an int32_t tensor.", dpuDescriptorBytes);
     const auto bufferSize = checked_cast<int64_t>(dpuDescriptorBufferBytes / sizeof(int32_t));
 
-    auto tileExecutor = config::getTileExecutor(module);
-    const auto numShavesPerTile = tileExecutor.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
-
+    const auto numShavesPerTile = vpux::config::getNumOfEnginesOnTile(module, config::ExecutorKind::SHAVE_ACT);
     const auto shape = SmallVector<int64_t>{1, 1, numShavesPerTile, bufferSize};
     return mlir::RankedTensorType::get(shape, getSInt32Type(ctx));
 }
@@ -88,33 +94,31 @@ mlir::Value createWeightsTable(mlir::OpBuilder& builder, mlir::ModuleOp module, 
 void vpux::VPU::FlashSDPAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value query,
                                    mlir::Value key, mlir::Value value, mlir::Value inputRunningOutput,
                                    mlir::Value inputRunningMax, mlir::Value inputRunningSum, mlir::Value attentionMask,
-                                   mlir::Value scale, mlir::IntegerAttr sourceSeqLenPadSize) {
-    auto trueAttr = mlir::BoolAttr::get(odsBuilder.getContext(), true);
-
+                                   mlir::IntegerAttr sourceSeqLenPadSize, mlir::BoolAttr isHead,
+                                   mlir::BoolAttr isTail) {
     build(odsBuilder, odsState, query, key, value, inputRunningOutput, inputRunningMax, inputRunningSum, attentionMask,
-          scale, sourceSeqLenPadSize, /*isHead*/ trueAttr, /*isTail*/ trueAttr, /*kvNumBlocks*/ nullptr,
+          sourceSeqLenPadSize, isHead, isTail, /*kvNumBlocks*/ nullptr,
           /*multiClusterStrategy*/ nullptr);
 }
 
 void vpux::VPU::FlashSDPAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value query,
                                    mlir::Value key, mlir::Value value, mlir::Value inputRunningOutput,
                                    mlir::Value inputRunningMax, mlir::Value inputRunningSum, mlir::Value attentionMask,
-                                   mlir::Value scale, mlir::IntegerAttr sourceSeqLenPadSize, mlir::BoolAttr isHead,
-                                   mlir::BoolAttr isTail, mlir::IntegerAttr kvNumBlocks,
-                                   VPU::MultiClusterStrategyAttr multiClusterStrategy) {
+                                   mlir::IntegerAttr sourceSeqLenPadSize, mlir::BoolAttr isHead, mlir::BoolAttr isTail,
+                                   mlir::IntegerAttr kvNumBlocks, VPU::MultiClusterStrategyAttr multiClusterStrategy) {
     auto loc = odsState.location;
-
-    const auto auxBuffType = getAuxiliaryBufferType(query, key);
-    auto auxBuffer = VPU::createAuxiliaryBuffer(odsBuilder, loc, auxBuffType);
-
     auto module = getModuleOp(odsBuilder);
+
+    const auto auxBuffType = getAuxiliaryBufferType(query, key, module);
+    auto auxBuffer = VPU::createEmptyAuxiliaryBuffer(odsBuilder, loc, auxBuffType);
+
     auto dpuDescriptorBufferType = createDpuDescriptorBufferType(odsBuilder.getContext(), module);
-    auto dpuDescriptorBuffer =
-            VPU::createAuxiliaryBuffer(odsBuilder, appendLoc(loc, "dpuDescriptorBuffer"), dpuDescriptorBufferType);
+    auto dpuDescriptorBuffer = VPU::createConstantAuxiliaryBuffer(odsBuilder, appendLoc(loc, "dpuDescriptorBuffer"),
+                                                                  dpuDescriptorBufferType);
 
     auto valueType = mlir::cast<NDTypeInterface>(value.getType());
     auto valueShape = valueType.getShape();
-    auto sourceSeqLen = valueShape[Dim(valueShape.size() - 1)];
+    auto sourceSeqLen = valueShape[Dim(valueShape.size() - 2)];
 
     auto queryType = mlir::cast<NDTypeInterface>(query.getType());
     auto queryShape = queryType.getShape();
@@ -123,13 +127,13 @@ void vpux::VPU::FlashSDPAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationS
     auto dpuWeightsTable0 = createWeightsTable(odsBuilder, module, appendLoc(loc, "weightsTable0"), sourceSeqLen,
                                                qkEmbedding, elemType);
 
-    auto vEmbedding = valueShape[Dim(valueShape.size() - 2)];
+    auto vEmbedding = valueShape[Dim(valueShape.size() - 1)];
     auto dpuWeightsTable1 =
             createWeightsTable(odsBuilder, module, appendLoc(loc, "weightsTable1"), vEmbedding, sourceSeqLen, elemType);
 
     build(odsBuilder, odsState, query, key, value, auxBuffer, dpuDescriptorBuffer, dpuWeightsTable0, dpuWeightsTable1,
-          inputRunningOutput, inputRunningMax, inputRunningSum, attentionMask, scale, sourceSeqLenPadSize, isHead,
-          isTail, kvNumBlocks, multiClusterStrategy);
+          inputRunningOutput, inputRunningMax, inputRunningSum, attentionMask, sourceSeqLenPadSize, isHead, isTail,
+          kvNumBlocks, multiClusterStrategy);
 }
 
 mlir::LogicalResult vpux::VPU::FlashSDPAOp::inferReturnTypes(mlir::MLIRContext* ctx,
@@ -190,18 +194,12 @@ bool vpux::VPU::FlashSDPAOp::fitIntoCMXAfterKeyValueTiling(::llvm::ArrayRef<vpux
         };
 
         changeSeqLen(tiledBuffersStorage[1], Dims4D::Act::H, tiledSourceSeqLen);  // Key
-        changeSeqLen(tiledBuffersStorage[2], Dims4D::Act::W, tiledSourceSeqLen);  // Value
+        changeSeqLen(tiledBuffersStorage[2], Dims4D::Act::H, tiledSourceSeqLen);  // Value
         changeSeqLen(tiledBuffersStorage[3], Dims4D::Act::W, tiledSourceSeqLen);  // Auxiliary buffer
 
         changeSeqLen(tiledBuffersStorage[5], Dims4D::Act::H, tiledSourceSeqLen);  // WeightsTable0 buffer
 
-        // AttentionMask and Scale are optional operands
-        // The 10th buffer might either be AttentionMask, Scale or RunningOutput
-        // Only AttentionMask has Width == SourceSeqLen
-        //
-        // Double check the number of buffers to avoid mistaking AttentionMask with RunningOutput
-        // when SourceSeqLen == ValueEmbeddingSize
-        if (buffers.size() > minNumberOfBuffers && tiledBuffersStorage[10].getShape()[Dims4D::Act::W] == sourceSeqLen) {
+        if (buffers.size() > minNumberOfBuffers) {
             changeSeqLen(tiledBuffersStorage[10], Dims4D::Act::W, tiledSourceSeqLen);  // AttentionMask buffer
         }
     }
@@ -211,7 +209,8 @@ bool vpux::VPU::FlashSDPAOp::fitIntoCMXAfterKeyValueTiling(::llvm::ArrayRef<vpux
         return buffer.getTotalAllocSize();
     });
 
-    auto totalAvailableCMXSize = getTotalCMXFragmentationAwareSize(getOperation()).count();
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
+                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
 
     auto arch = config::getArch(getOperation());
     auto requiredMemory = vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffersSize).count();
@@ -249,13 +248,23 @@ InputTiling vpux::VPU::FlashSDPAOp::backInferTileInfo(const vpux::TileInfo& outp
     auto keyShape = getShape(getKey());
     auto attentionMaskShape =
             (getAttentionMask() != nullptr) ? getShape(getAttentionMask()) : std::optional<ShapeRef>{};
-    auto scaleShape = (getScale() != nullptr) ? getShape(getScale()) : std::optional<ShapeRef>{};
+
+    auto module = getModuleOp(getOperation());
+    const auto numShavesPerTile = vpux::config::getNumOfEnginesOnTile(module, config::ExecutorKind::SHAVE_ACT);
+    auto auxBufferShape = Shape(getShape(getAuxBuffer()));
+
+    auto needsDoubleBuffering = (outputTile.shape[Dims4D::Act::C] > 1);
+    if (needsDoubleBuffering) {
+        auxBufferShape[Dims4D::Act::C] = 2 * numShavesPerTile;
+    } else {
+        auxBufferShape[Dims4D::Act::C] = 1;
+    }
 
     auto dpuDescriptorBufferShape = getShape(getDpuDescriptorBuffer());
     auto weightsTable0Shape = getShape(getDpuWeightsTable0());
     auto weightsTable1Shape = getShape(getDpuWeightsTable1());
 
-    return FlashSDPAOpInputTiling(outputTile, keyShape, attentionMaskShape, scaleShape, dpuDescriptorBufferShape,
+    return FlashSDPAOpInputTiling(outputTile, keyShape, attentionMaskShape, auxBufferShape, dpuDescriptorBufferShape,
                                   weightsTable0Shape, weightsTable1Shape);
 }
 
@@ -275,16 +284,29 @@ mlir::FailureOr<OutputTiling> vpux::VPU::FlashSDPAOp::getTilingStrategy(TilingMo
 // ClusteredOpInterface
 //
 
-bool vpux::VPU::FlashSDPAOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    return strategy == VPU::MultiClusterStrategy::Clustering ||
-           strategy == VPU::MultiClusterStrategy::SplitOverKernel ||
-           strategy == VPU::MultiClusterStrategy::SplitOverHeight;
+bool vpux::VPU::FlashSDPAOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
+    if (strategy == VPU::MultiClusterStrategy::Clustering) {
+        return true;
+    }
+
+    const auto queryShape = getShape(getQuery());
+    const auto numHeads = checked_cast<size_t>(queryShape[Dims4D::Act::C]);
+    const auto targetSeqLen = checked_cast<size_t>(queryShape[Dims4D::Act::H]);
+
+    if (targetSeqLen >= numTiles) {
+        return strategy == VPU::MultiClusterStrategy::SplitOverHeight;
+    } else if (numHeads >= numTiles) {
+        return strategy == VPU::MultiClusterStrategy::SplitOverKernel;
+    }
+
+    return false;
 }
 
 vpux::VPU::DistributionInfo vpux::VPU::FlashSDPAOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -320,10 +342,6 @@ llvm::LogicalResult VPU::FlashSDPAOp::verify() {
         allShapes.push_back(getShape(getAttentionMask()));
     }
 
-    if (getScale() != nullptr) {
-        allShapes.push_back(getShape(getScale()));
-    }
-
     VPUX_THROW_UNLESS(allShapes.size() == getNumOperands(),
                       "Not all operands are considered for verification: shapes collected '{0}' != number of operands "
                       "'{1}' at '{2}'",
@@ -355,12 +373,12 @@ llvm::LogicalResult VPU::FlashSDPAOp::verify() {
     }
 
     const auto sourceSeqLen = keyShape[Dims4D::Act::H];
-    if (valueShape[Dims4D::Act::W] != sourceSeqLen || auxBufferShape[Dims4D::Act::W] != sourceSeqLen ||
+    if (valueShape[Dims4D::Act::H] != sourceSeqLen || auxBufferShape[Dims4D::Act::W] != sourceSeqLen ||
         dpuWeightsTable0Shape[Dims4D::Act::H] != sourceSeqLen) {
         return errorAt(getOperation(), "SourceSequenceLength dimension doesn't match between operands");
     }
 
-    const auto vEmbedding = valueShape[Dims4D::Act::H];
+    const auto vEmbedding = valueShape[Dims4D::Act::W];
     if (inRunningOutput[Dims4D::Act::W] != vEmbedding || dpuWeightsTable1Shape[Dims4D::Act::H] != vEmbedding) {
         return errorAt(getOperation(), "vEmbedding dimension doesn't match between operands");
     }
@@ -375,22 +393,16 @@ llvm::LogicalResult VPU::FlashSDPAOp::verify() {
         }
     }
 
-    if (auto scale = getScale()) {
-        auto scaleShape = getShape(scale);
-        if (scaleShape != Shape{1, 1, 1, 1}) {
-            return errorAt(getOperation(), "Scale tensor must have shape {1, 1, 1, 1}");
-        }
-    }
+    auto module = getModuleOp(getOperation());
 
     auto auxBufferType = mlir::cast<NDTypeInterface>(getAuxBuffer().getType());
-    auto expectedType = mlir::cast<NDTypeInterface>(getAuxiliaryBufferType(getQuery(), getKey()));
+    auto expectedType = mlir::cast<NDTypeInterface>(getAuxiliaryBufferType(getQuery(), getKey(), module));
     auto auxTypeComparison = VPU::compareTypes(getOperation()->getLoc(), auxBufferType, expectedType);
     if (mlir::failed(auxTypeComparison)) {
         return auxTypeComparison;
     }
 
     auto dpuDescBufType = mlir::cast<NDTypeInterface>(getDpuDescriptorBuffer().getType());
-    auto module = getModuleOp(getOperation());
 
     // Skip this check to have a one LIT test for multiple architectures
     if (config::getArch(module) != config::ArchKind::UNKNOWN) {
@@ -405,6 +417,6 @@ llvm::LogicalResult VPU::FlashSDPAOp::verify() {
     return mlir::success();
 }
 
-SmallVector<mlir::Value> VPU::FlashSDPAOp::getAuxiliaryBuffers() {
-    return {getAuxBuffer(), getDpuDescriptorBuffer()};
+SmallVector<mlir::OpOperand*> VPU::FlashSDPAOp::getAuxiliaryBuffers() {
+    return {&getAuxBufferMutable(), &getDpuDescriptorBufferMutable()};
 }

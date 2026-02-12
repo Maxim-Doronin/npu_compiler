@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -856,4 +856,19 @@ func.func @NotFuseLastCopyChangesInputIsBlockArgument(%arg0: memref<1x2x4x4xf16>
     // CHECK-SAME:      @VPU.SW::@builtin_Sigmoid
     // CHECK:       [[VAR2:%.+]] = VPUIP.Copy
     // CHECK:       return [[VAR0]], [[VAR1]], [[VAR2]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: func.func @NotFuseLastStridedCopy
+func.func @NotFuseLastStridedCopy(%arg0: memref<1x196x49x49xf16, {order = #NCHW, strides = [614656, 3136, 64, 1]}, @DDR>,
+                                  %arg1: memref<49x4x49x49xf16, @DDR>) -> (memref<49x4x49x49xf16, @DDR>) {
+    %0 = VPUIP.ShapeCast {shape = [49, 4, 49, 49]} inputs(%arg0 : memref<1x196x49x49xf16, {order = #NCHW, strides = [614656, 3136, 64, 1]}, @DDR>) -> memref<49x4x49x49xf16, {order = #NCHW, strides = [12544, 3136, 64, 1]}, @DDR>
+    %1 = VPUIP.Copy inputs(%0 : memref<49x4x49x49xf16, {order =#NCHW, strides = [12544, 3136, 64, 1]}, @DDR>) outputs(%arg1 : memref<49x4x49x49xf16, @DDR>) -> memref<49x4x49x49xf16, @DDR>
+    return %1 : memref<49x4x49x49xf16, @DDR>
+    // CHECK:   [[VAL0:%.+]] = VPUIP.ShapeCast
+    // CHECK:   [[VAL1:%.+]] = VPUIP.Copy
+    // CHECK:   return [[VAL1]]
 }

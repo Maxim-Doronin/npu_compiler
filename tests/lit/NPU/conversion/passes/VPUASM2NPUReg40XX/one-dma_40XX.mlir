@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -239,7 +239,7 @@ module @UnrollDistributedExpandDMAOutputWithTransactionAttr {
             acceleration_mode(<DISABLE>) tile_indexes([0, 1])
       }
       ELF.CreateSection @note.LoaderABIVersion aligned(64) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
-        ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+        ELF.ABIVersion {sym_name = "LoaderABIVersion"}
       }
       ELF.CreateSection @perf.metrics aligned(64) secType(VPU_SHT_PERF_METRICS) secFlags("SHF_NONE") secLocation(<DDR>) {
         ELF.PerformanceMetricsSection @PerfMetrics

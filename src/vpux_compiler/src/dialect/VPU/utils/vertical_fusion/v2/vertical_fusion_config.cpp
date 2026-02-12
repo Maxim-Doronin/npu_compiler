@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/hash_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -19,15 +21,73 @@ VFConfig::VFConfig(VPU::VerticalFusionOp vfOp, bool enableVFPipelining /*true*/,
           _isPipelineEnabled(enableVFPipelining),
           _firstVFNeedsTiling(firstVFNeedsTiling),
           _secondVFNeedsTiling(secondVFNeedsTiling) {
+    init();
     _isVFPipelineCandidate = _isPipelineEnabled && isVFPipelinePattern();
 }
 
 VFConfig::VFConfig(const llvm::SetVector<mlir::Operation*>& operations): _subgraph(nullptr), _isPipelineEnabled(true) {
     _vfOps = operations;
+    init();
     _isVFPipelineCandidate = isVFPipelinePattern();
 }
 
-bool VFConfig::isVFPipelinePattern() {
+VFConfig::VFConfig(const VFConfig& other)
+        : _subgraph(other._subgraph),
+          _largestOp(other._largestOp),
+          _inputOps(other._inputOps),
+          _outputOps(other._outputOps),
+          _vfOps(other._vfOps),
+          _isVFPipelineCandidate(other._isVFPipelineCandidate),
+          _isPipelineEnabled(other._isPipelineEnabled),
+          _firstVFNeedsTiling(other._firstVFNeedsTiling),
+          _secondVFNeedsTiling(other._secondVFNeedsTiling) {
+}
+
+VFConfig::VFConfig(VFConfig&& other)
+        : _subgraph(other._subgraph),
+          _largestOp(other._largestOp),
+          _inputOps(std::move(other._inputOps)),
+          _outputOps(std::move(other._outputOps)),
+          _vfOps(std::move(other._vfOps)),
+          _isVFPipelineCandidate(other._isVFPipelineCandidate),
+          _isPipelineEnabled(other._isPipelineEnabled),
+          _firstVFNeedsTiling(other._firstVFNeedsTiling),
+          _secondVFNeedsTiling(other._secondVFNeedsTiling) {
+    _tilesCache = std::move(other._tilesCache);
+}
+
+VFConfig& VFConfig::operator=(const VFConfig& other) {
+    if (this != &other) {
+        _subgraph = other._subgraph;
+        _largestOp = other._largestOp;
+        _inputOps = other._inputOps;
+        _outputOps = other._outputOps;
+        _vfOps = other._vfOps;
+        _isVFPipelineCandidate = other._isVFPipelineCandidate;
+        _isPipelineEnabled = other._isPipelineEnabled;
+        _firstVFNeedsTiling = other._firstVFNeedsTiling;
+        _secondVFNeedsTiling = other._secondVFNeedsTiling;
+    }
+    return *this;
+}
+
+VFConfig& VFConfig::operator=(VFConfig&& other) {
+    if (this != &other) {
+        _subgraph = other._subgraph;
+        _largestOp = other._largestOp;
+        _inputOps = std::move(other._inputOps);
+        _outputOps = std::move(other._outputOps);
+        _vfOps = std::move(other._vfOps);
+        _isVFPipelineCandidate = other._isVFPipelineCandidate;
+        _isPipelineEnabled = other._isPipelineEnabled;
+        _firstVFNeedsTiling = other._firstVFNeedsTiling;
+        _secondVFNeedsTiling = other._secondVFNeedsTiling;
+        _tilesCache = std::move(other._tilesCache);
+    }
+    return *this;
+}
+
+bool VFConfig::isVFPipelinePattern() const {
     // if we have operations with both executors
     const auto filterNCE = [](mlir::Operation* op) {
         return mlir::isa<VPU::NCEOpInterface>(op);
@@ -54,13 +114,14 @@ bool VFConfig::isVFPipelinePattern() {
     return !(llvm::all_of(checkedOperations, filterNCE) || llvm::all_of(checkedOperations, filterSWKernels));
 }
 
-void VFConfig::validateConfig() {
+void VFConfig::validateConfig() const {
     VPUX_THROW_WHEN(_vfOps.empty() && _subgraph == nullptr,
                     "Vertical fusion config should be enabled by wrapped operation or list of operations");
 }
 
-const llvm::SetVector<mlir::Operation*>& VFConfig::getVFOperations() {
+void VFConfig::init() {
     validateConfig();
+
     if (_vfOps.empty()) {
         const auto getOpPointer = [](auto& op) -> mlir::Operation* {
             return &op;
@@ -69,61 +130,6 @@ const llvm::SetVector<mlir::Operation*>& VFConfig::getVFOperations() {
         _vfOps.insert(operations.begin(), operations.end());
     }
 
-    return _vfOps;
-}
-
-SmallVector<mlir::Operation*> VFConfig::getOperationsForTiling() {
-    return to_small_vector(getVFOperations() | filtered([](auto* operation) {
-                               return mlir::isa_and_nonnull<VPU::VerticalFusionOpInterface>(operation);
-                           }));
-}
-
-void VFConfig::invalidatePointers() {
-    if (_subgraph != nullptr) {
-        _vfOps.clear();
-    }
-    _largestOp = nullptr;
-    _inputOps.clear();
-    _outputOps.clear();
-    _tilesCache.clear();
-}
-
-VPU::VerticalFusionOp VFConfig::getSubgraph() const {
-    return _subgraph;
-}
-
-mlir::Operation* VFConfig::getLargestOp() {
-    if (_largestOp == nullptr) {
-        auto operations = getVFOperations();
-
-        const auto sumTypes = [&](const Byte& sum, mlir::Value value) {
-            return sum + mlir::cast<vpux::NDTypeInterface>(value.getType()).getTotalAllocSize();
-        };
-
-        const auto getAllocationSize = [&](auto valueList) -> Byte {
-            return std::accumulate(valueList.begin(), valueList.end(), Byte(0), sumTypes);
-        };
-        const auto getTotalAllocationSize = [&](auto& operation) {
-            if (operation->hasAttr(isInPlace)) {
-                return getAllocationSize(operation->getOperands());
-            }
-            return getAllocationSize(operation->getOperands()) + getAllocationSize(operation->getResults());
-        };
-
-        auto largestOperation = std::max_element(operations.begin(), operations.end(), [&](auto& op1, auto& op2) {
-            return getTotalAllocationSize(op1) < getTotalAllocationSize(op2);
-        });
-
-        if (largestOperation == operations.end()) {
-            return nullptr;
-        }
-
-        _largestOp = *largestOperation;
-    }
-    return _largestOp;
-}
-
-const SmallVector<mlir::Operation*>& VFConfig::getInputs() {
     if (_inputOps.empty()) {
         auto operations = getVFOperations();
         const auto allOperandsInputs = [&](auto* current) -> bool {
@@ -162,10 +168,6 @@ const SmallVector<mlir::Operation*>& VFConfig::getInputs() {
             _inputOps.emplace_back(operation);
         }
     }
-    return _inputOps;
-}
-
-const SmallVector<mlir::Operation*>& VFConfig::getOutputs() {
     if (_outputOps.empty()) {
         if (_subgraph != nullptr) {
             _outputOps = to_small_vector(_subgraph.getBody()->getTerminator()->getOperands() |
@@ -182,6 +184,58 @@ const SmallVector<mlir::Operation*>& VFConfig::getOutputs() {
             _outputOps = to_small_vector(operations | filtered(hasNoUserInVF));
         }
     }
+
+    if (_largestOp == nullptr) {
+        auto operations = getVFOperations();
+
+        const auto sumTypes = [&](const Byte& sum, mlir::Value value) {
+            return sum + mlir::cast<vpux::NDTypeInterface>(value.getType()).getTotalAllocSize();
+        };
+
+        const auto getAllocationSize = [&](auto valueList) -> Byte {
+            return std::accumulate(valueList.begin(), valueList.end(), Byte(0), sumTypes);
+        };
+        const auto getTotalAllocationSize = [&](auto& operation) {
+            if (operation->hasAttr(isInPlace)) {
+                return getAllocationSize(operation->getOperands());
+            }
+            return getAllocationSize(operation->getOperands()) + getAllocationSize(operation->getResults());
+        };
+
+        auto largestOperation = std::max_element(operations.begin(), operations.end(), [&](auto& op1, auto& op2) {
+            return getTotalAllocationSize(op1) < getTotalAllocationSize(op2);
+        });
+
+        if (largestOperation != operations.end()) {
+            _largestOp = *largestOperation;
+        }
+    }
+}
+
+const llvm::SetVector<mlir::Operation*>& VFConfig::getVFOperations() const {
+    validateConfig();
+    return _vfOps;
+}
+
+SmallVector<mlir::Operation*> VFConfig::getOperationsForTiling() const {
+    return to_small_vector(getVFOperations() | filtered([](auto* operation) {
+                               return mlir::isa_and_nonnull<VPU::VerticalFusionOpInterface>(operation);
+                           }));
+}
+
+VPU::VerticalFusionOp VFConfig::getSubgraph() const {
+    return _subgraph;
+}
+
+mlir::Operation* VFConfig::getLargestOp() const {
+    return _largestOp;
+}
+
+const SmallVector<mlir::Operation*>& VFConfig::getInputs() const {
+    return _inputOps;
+}
+
+const SmallVector<mlir::Operation*>& VFConfig::getOutputs() const {
     return _outputOps;
 }
 
@@ -190,15 +244,19 @@ bool VFConfig::isPipelined() const {
 }
 
 SmallVector<NDTypeInterface> VFConfig::getOperationTypes(mlir::Operation* operation) {
-    getVFOperations();
     VPUX_THROW_WHEN(!_vfOps.contains(operation), "Cannot find operation {0} in VF", *operation);
 
     auto origShape = Shape(getShape(operation->getResult(0)));
-    if (_tilesCache.find(operation) == _tilesCache.end()) {
-        _tilesCache[operation][origShape] = getTileTypes(operation, TileInfo(origShape));
+    const auto hash = computeOpShapeHash(operation, origShape);
+    auto cachedTypes = _tilesCache.find(hash);
+    if (cachedTypes.has_value()) {
+        return cachedTypes.value();
     }
 
-    return _tilesCache[operation][origShape];
+    auto strategy = getMultiClusterStrategyFromOp(operation);
+    auto tiledTypes = getTileTypes(operation, TileInfo(origShape), strategy);
+    _tilesCache.insert(hash, tiledTypes);
+    return tiledTypes;
 }
 
 bool VFConfig::firstVFNeedTiling() const {
@@ -211,15 +269,24 @@ bool VFConfig::secondVFNeedTiling() const {
 
 SmallVector<NDTypeInterface> VFConfig::getOperationTypes(mlir::Operation* operation, const TileInfo& outTile,
                                                          const ArrayRef<TileInfo> inputTiles) {
-    auto cachedTypes = _tilesCache.find(operation);
-    if (cachedTypes == _tilesCache.end() || cachedTypes->second.find(outTile.shape) == cachedTypes->second.end()) {
-        std::optional<InputTiling> inputTiling = std::nullopt;
-        if (!inputTiles.empty()) {
-            inputTiling = InputTiling(inputTiles);
-        }
-        _tilesCache[operation][outTile.shape] = getTileTypes(operation, outTile, inputTiling);
+    const auto hash = computeOpShapeHash(operation, outTile.shape);
+    auto cachedTypes = _tilesCache.find(hash);
+    if (cachedTypes.has_value()) {
+        return cachedTypes.value();
     }
 
-    return _tilesCache[operation][outTile.shape];
+    std::optional<InputTiling> inputTiling;
+    if (!inputTiles.empty()) {
+        inputTiling = InputTiling(inputTiles);
+    }
+    auto strategy = getMultiClusterStrategyFromOp(operation);
+    auto tiledTypes = getTileTypes(operation, outTile, strategy, inputTiling);
+    _tilesCache.insert(hash, tiledTypes);
+    return tiledTypes;
+}
+
+llvm::hash_code VFConfig::computeOpShapeHash(mlir::Operation* operation, ShapeRef outShape) const {
+    auto hash = VPU::hashOperationForTiling(operation);
+    return llvm::hash_combine(hash, llvm::hash_combine_range(outShape.begin(), outShape.end()));
 }
 }  // namespace vpux::VPU::VF::v2

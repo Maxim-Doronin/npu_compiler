@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,9 +37,9 @@ static llvm::cl::opt<ActionType> Action(llvm::cl::desc("Actions to perform"),
 
 static llvm::cl::opt<vpux::config::ArchKind> Platform(
         llvm::cl::desc("Specify the platform type"),
-        llvm::cl::values(clEnumValN(vpux::config::ArchKind::NPU40XX, "NPU40XX", "LNL platform")
+        llvm::cl::values(clEnumValN(vpux::config::ArchKind::NPU40XX, "NPU40XX", "LNL platform"),
+                         clEnumValN(vpux::config::ArchKind::NPU50XX, "NPU50XX", "PTL platform")
                          // clang-format off
-        , clEnumValN(vpux::config::ArchKind::NPU50XX, "NPU50XX", "PTL platform")
         ), llvm::cl::init(vpux::config::ArchKind::NPU40XX));
 // clang-format on
 
@@ -328,8 +328,13 @@ llvm::Error generate(llvm::raw_ostream& stream, const llvm::RecordKeeper& record
         }
         auto registerNode = Node{reg};
 
-        const auto fieldsListInit = llvm::dyn_cast<llvm::ListInit>(reg->getValue("_fields")->getValue());
-        for (auto field : fieldsListInit->getValues()) {
+        const auto fieldsListInit = llvm::cast<llvm::ListInit>(reg->getValue("_fields")->getValue());
+        if (!fieldsListInit) {
+            return llvm::make_error<llvm::StringError>(
+                    "Register " + std::string(registerName) + " has invalid _fields initializer",
+                    llvm::inconvertibleErrorCode());
+        }
+        for (auto field : *fieldsListInit) {
             const auto fieldName = llvm::dyn_cast<llvm::StringInit>(field)->getValue();
             if (!fields.contains(fieldName)) {
                 return llvm::make_error<llvm::StringError>(
@@ -366,9 +371,14 @@ llvm::Error generate(llvm::raw_ostream& stream, const llvm::RecordKeeper& record
         }
         auto descriptorNode = Node{descriptor};
 
-        const auto registersListInit = llvm::dyn_cast<llvm::ListInit>(descriptor->getValue("_registers")->getValue());
-        for (auto reg : registersListInit->getValues()) {
-            const auto registerName = llvm::dyn_cast<llvm::StringInit>(reg)->getValue();
+        const auto registersListInit = llvm::cast<llvm::ListInit>(descriptor->getValue("_registers")->getValue());
+        if (!registersListInit) {
+            return llvm::make_error<llvm::StringError>(
+                    "Descriptor " + std::string(descriptorName) + " has invalid _registers initializer",
+                    llvm::inconvertibleErrorCode());
+        }
+        for (auto& reg : *registersListInit) {
+            const auto registerName = llvm::cast<llvm::StringInit>(reg)->getValue();
             if (!registers.contains(registerName)) {
                 return llvm::make_error<llvm::StringError>("Descriptor " + std::string(descriptorName) +
                                                                    " contains unknown register " +

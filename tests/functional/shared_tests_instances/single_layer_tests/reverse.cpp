@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,6 +68,7 @@ TEST_P(ReverseLayerTestCommon, NPU5010_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

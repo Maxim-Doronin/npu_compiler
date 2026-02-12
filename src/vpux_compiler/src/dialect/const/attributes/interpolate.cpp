@@ -339,18 +339,5 @@ void vpux::Const::InterpolateAttr::print(mlir::AsmPrinter& printer) const {
 }
 
 llvm::hash_code vpux::Const::InterpolateAttr::getStableHashValue() const {
-    const auto axes = parseIntArrayAttr<int64_t>(getAxes());
-    const auto sizes = parseIntArrayAttr<int64_t>(getSizes());
-    const auto mode = getMode().getValue();
-    const auto coordMode = getCoordMode().getValue();
-    const auto nearestMode = getNearestMode().getValue();
-    const auto antialias = getAntialias().getValue();
-    const auto padsBegin = parseIntArrayAttr<int64_t>(getPadsBegin());
-    const auto padsEnd = parseIntArrayAttr<int64_t>(getPadsEnd());
-    const auto cubeCoeff = getCubeCoeff().getValue();
-
-    return llvm::hash_combine(getMnemonic(), llvm::hash_value(ArrayRef<int64_t>(axes)),
-                              llvm::hash_value(ArrayRef<int64_t>(sizes)), mode, coordMode, nearestMode, antialias,
-                              llvm::hash_value(ArrayRef<int64_t>(padsBegin)),
-                              llvm::hash_value(ArrayRef<int64_t>(padsEnd)), cubeCoeff);
+    VPUX_THROW("Not implemented.");
 }

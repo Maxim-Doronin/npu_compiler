@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/auxiliary_buffers.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -11,8 +12,13 @@
 
 using namespace vpux;
 
-mlir::Value VPU::createAuxiliaryBuffer(mlir::OpBuilder& builder, mlir::Location opLoc, mlir::Type type) {
-    const auto loc = appendLoc(opLoc, "_aux");
+mlir::Value VPU::createEmptyAuxiliaryBuffer(mlir::OpBuilder& builder, mlir::Location opLoc, mlir::Type type) {
+    const auto loc = appendLoc(opLoc, "aux");
+    return builder.create<VPU::EmptyOp>(loc, type);
+}
+
+mlir::Value VPU::createConstantAuxiliaryBuffer(mlir::OpBuilder& builder, mlir::Location opLoc, mlir::Type type) {
+    const auto loc = appendLoc(opLoc, "aux");
     auto ndType = mlir::cast<NDTypeInterface>(type);
     if (mlir::isa<mlir::Float16Type>(ndType.getElementType())) {
         std::vector<type::float16> vals(ndType.getShape().totalSize(), 0.0f);
@@ -26,9 +32,14 @@ mlir::Value VPU::createAuxiliaryBuffer(mlir::OpBuilder& builder, mlir::Location 
     } else if (ndType.getElementType() == getSInt32Type(builder.getContext())) {
         std::vector<int32_t> vals(ndType.getShape().totalSize(), 0);
         return Const::createConst(builder, loc, mlir::cast<mlir::RankedTensorType>(type), ArrayRef(vals));
-    } else {
+    } else if (ndType.getElementType() == getUInt8Type(builder.getContext())) {
         std::vector<uint8_t> vals(ndType.getTotalAllocSize().count(), 0);
         return Const::createConst(builder, loc, mlir::cast<mlir::RankedTensorType>(type), ArrayRef(vals));
+    } else if (ndType.getElementType() == getSInt8Type(builder.getContext())) {
+        std::vector<int8_t> vals(ndType.getTotalAllocSize().count(), 0);
+        return Const::createConst(builder, loc, mlir::cast<mlir::RankedTensorType>(type), ArrayRef(vals));
+    } else {
+        VPUX_THROW("Unknown element type for constant auxiliary buffer: {0}", ndType.getElementType());
     }
 }
 

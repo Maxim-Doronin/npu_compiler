@@ -22,7 +22,7 @@ func.func @main(%arg0: tensor<10xf16>) -> tensor<1xf16> {
 This example contains one main function operation that has one input value, one output value and two inner operations: `dialect.operation` and `return`. Breaking down the first inner operation, we have:
 - `"dialect.operation"` as the operation name
 - `%arg0` as the operand of the operation, whose type is `tensor<10xf16>`
-- `%0` as the result of the operation, whose type is `tensor<1xf16>`; this result value is defined before it is used by the `result` user.
+- `%0` as the result of the operation, whose type is `tensor<1xf16>`; this result value is defined before it is used by the `return` user.
 
 All of these concepts will be explained in the following sections. For now, it is sufficient to understand the general format of the IR and its SSA constraints.
 
@@ -58,7 +58,7 @@ The snippet above shows two main things:
 - `OpBase.td` is included, in order to have the concept of `Dialect` known;
 - `IE_Dialect` is defined as being of the `Dialect` class, which comes with a number of fields: `summary`, `description`, `name`, `cppNamespace`, etc.
 
-The IE dialect is placed into its own unique namespace called `vpux::IE`. The generated sources will ensure all of the concepts that are part of the dialect will also be placed into this namespace. For this particular dialect, the sources that are generated can be found in the `IE/generated/dialect.hpp.inc` and `IE/generated/dialect.cpp.inc` files created in your local build directory. It is generally a good idea to get familiar with the generated sources, in order to understand how MLIR actually works.
+The IE dialect is placed into its own unique namespace called `vpux::IE`. The generated sources will ensure all of the concepts that are part of the dialect will also be placed into this namespace. For this particular dialect, the sources that are generated can be found in the `IE/dialect.hpp.inc` and `IE/dialect.cpp.inc` files created in your local build directory. It is generally a good idea to get familiar with the generated sources, in order to understand how MLIR actually works.
 
 Dialects are used to separate parts or components of the compilation. In our case, the IE dialect is meant to be a 1-to-1 mapping with the OpenVINO opset and it is the highest level of representation in the compiler. As the compilation progresses, the concepts that are defined in IE dialect will be converted to another dialect, such as VPU, in order to represent more hardware-specific information. However, concepts from different dialects can co-exist into one module (e.g. IE attributes and VPU operations).
 
@@ -72,14 +72,14 @@ We are going to continue using the IE and Builtin dialect for the majority of th
 
 Once a dialect is created, operations can be added to it. Operations are a core MLIR concept whose semantics can be user-defined - they can represent functions, instructions, layers etc. One practical example for this project is a Convolution. It generally has two inputs (data and weights), an output and attributes (padding, kernel size, kernel strides). MLIR is capable of representing the concept of a Convolution as an operation.
 
-For IE dialect, all operation are defined in the [IE/ops.td](../../tblgen/vpux/compiler/dialect/IE/ops.td) file. This dialect already offers a helper class for generating operations into the dialect:
+For IE dialect, all operation are defined in the `.td` files found in the [IE/ops/](../../tblgen/vpux/compiler/dialect/IE/ops/) directory. This dialect already offers a helper class for generating operations into the dialect, found in [IE/ops/base.td](../../tblgen/vpux/compiler/dialect/IE/ops/base.td):
 
 ```MLIR
 class IE_Op<string mnemonic, list<Trait> traits = []> :
         Op<IE_Dialect, mnemonic, traits>;
 ```
 
-This class inherits from the base `Op` class that MLIR provides via [OpBase.td](https://mlir.llvm.org/docs/DefiningDialects/Operations/#operation-definition), but makes sure the operations created using it end up in the IE dialect. Every operation that is defined using the `Op` TableGen class will result in a C++ class generated for the operation that implement the `mlir::Op` interface. Let's see this in action by creating a new `GettingStarted` operation:
+This class inherits from the base `Op` class that MLIR provides via [OpBase.td](https://mlir.llvm.org/docs/DefiningDialects/Operations/#operation-definition), but makes sure the operations created using it end up in the IE dialect. Every operation that is defined using the `Op` TableGen class will result in a C++ class generated for the operation that implement the `mlir::Op` interface. Let's see this in action by creating a new `GettingStarted` operation. Add the following snippet to [IE/ops/convolution.td](../../tblgen/vpux/compiler/dialect/IE/ops/convolution.td):
 
 ```MLIR
 def IE_GettingStartedOp : IE_Op<"GettingStarted"> {
@@ -95,7 +95,11 @@ def IE_GettingStartedOp : IE_Op<"GettingStarted"> {
 }
 ```
 
-The operation has one input and one output which are of `AnyRankedTensor` type. We will discuss types in a following section, but for the moment it is sufficient to understand that this type represents the input and output data as a tensor. After building the project, you can find the following classes generated in the `IE/generated/ops.hpp.inc` file from your build directory, accompanied by the `IE/generated/ops.cpp.inc` file, the latter containing the definitions of some methods:
+> Note: The `IE` dialect that we are using here has multiple Tablegen files which will generate the code for the operations. It would have also been possible to have a single such file (e.g. `IE/ops.td`), but this dialect is split this way based on the semantics of the operations. The new operation could be added to any of these `.td` files, not necessarily `IE/ops/convolution.td`.
+
+> Note: After making changes to a Tablegen file, it is necessary to rebuild the project. The project can be rebuilt using the same command as the one used to build the project originally (e.g. running `cmake --build build-x86_64/Debug` from the compiler's root directory); see the [how_to_build.md](../../../../guides/how_to_build.md) file.
+
+The operation has one input and one output which are of `AnyRankedTensor` type. We will discuss types in a following section, but for the moment it is sufficient to understand that this type represents the input and output data as a tensor. After building the project, you can find the following classes generated in the `IE/ops/convolution.hpp.inc` file from your build directory (e.g. inside the `build-x86_64/Debug` directory for a Debug build), accompanied by the `IE/ops/convolution.cpp.inc` file, the latter containing the definitions of some methods (some small variations may exist since the writing of this document):
 
 ```C++
 namespace vpux {
@@ -131,16 +135,16 @@ public:
   // Accessors for the operands of the operation
   // For this operation, the input is the only operand. Based on the name of the operand used in TableGen, helper methods
   // are created to work with it: `input` and `inputMutable`. Internally, these helper methods make use of the generic
-  // `getODSOperandIndexAndLength` and `getODSOperands` methods (see the associated `ops.cpp.inc` file from the same directory)
+  // `getODSOperandIndexAndLength` and `getODSOperands` methods (see the associated `convolution.cpp.inc` file from the same directory)
   std::pair<unsigned, unsigned> getODSOperandIndexAndLength(unsigned index);
   ::mlir::Operation::operand_range getODSOperands(unsigned index);
-  ::mlir::Value input();
-  ::mlir::MutableOperandRange inputMutable();
+  ::mlir::TypedValue<::mlir::RankedTensorType> getInput();
+  ::mlir::OpOperand &getInputMutable();
 
   // Similar accessors are created for the results of the operation, which in this case is the output value
   std::pair<unsigned, unsigned> getODSResultIndexAndLength(unsigned index);
   ::mlir::Operation::result_range getODSResults(unsigned index);
-  ::mlir::Value output();
+  ::mlir::TypedValue<::mlir::RankedTensorType> getOutput();
 
   // Builders for the operation
   // These will be called when a GettingStarted operation is created. Multiple builders are created for an operation; the one
@@ -160,31 +164,10 @@ public:
 MLIR_DECLARE_EXPLICIT_TYPE_ID(vpux::IE::GettingStartedOp)
 ```
 
-All of the operands and results of an operation will be represented by the `mlir::Value` class. The main features provided by this class are:
+All of the operands and results of an operation will be represented by the `mlir::Value` class, which has multiple specializations, such as `mlir::TypedValue`. The main features provided by this class are:
 - the type of the value (of class `mlir::Type`)
 - an accessor for the operation that generated the value (i.e. the defining operation)
 - accessors to the users of the value; i.e. operations consuming the value
-
-Along with the generated sources, operation-specific documentation is also generated in [docs/dialect/_IE.md](../../docs/dialect/_IE.md):
-
-```md
-### `IE.GettingStarted` (vpux::IE::GettingStartedOp)
-
-Simple layer used as an example
-
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `input` | ranked tensor of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `output` | ranked tensor of any type values
-```
 
 ### Printing and parsing
 
@@ -227,14 +210,14 @@ def IE_GettingStartedOp : IE_Op<"GettingStarted"> {
 }
 ```
 
-The effect of the custom assembly format is the presence of the following methods in the operation's class declaration from `IE/generated/ops.hpp.inc`:
+The effect of the custom assembly format is the presence of the following methods in the operation's class declaration from `IE/dialect.hpp.inc`:
 
 ```C++
   static ::mlir::ParseResult parse(::mlir::OpAsmParser &parser, ::mlir::OperationState &result);
   void print(::mlir::OpAsmPrinter &_odsPrinter);
 ```
 
-Along with the following definitions of the methods in `IE/generated/ops.cpp.inc`:
+Along with the following definitions of the methods in `IE/ops/convolution.cpp.inc`:
 
 ```C++
 // Describes how the operation is parsed when read from an IR, based on the format provided in `assemblyFormat`:
@@ -339,7 +322,7 @@ def IE_GettingStartedOp : IE_Op<"GettingStarted"> {
 }
 ```
 
-This extra code will be copied to the operation's declaration in `IE/generated/ops.hpp.inc`, with public access:
+This extra code will be copied to the operation's declaration in `IE/ops/convolution.hpp.inc`, with public access:
 
 ```C++
 public:
@@ -350,10 +333,10 @@ public:
   bool customMethod(int x);
 ```
 
-The definition of `customMethod` can be provided externally. For example, the following definition can be set in `src/vpux_compiler/src/dialect/IE/IR/ops/getting_started.cpp`:
+The definition of `customMethod` can be provided externally. For example, the following definition can be set in a new file, `src/vpux_compiler/src/dialect/IE/IR/ops/getting_started.cpp`:
 
 ```C++
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 
 bool vpux::IE::GettingStartedOp::customMethod(int x) {
     return x >= 0;
@@ -415,33 +398,31 @@ class GettingStartedOp : // ... {
   // ...
 
   // Getters for each attribute, returning either attribute objects (e.g. `mlir::IntegerAttr`) or the underlying object (e.g. int64_t)
-  mlir::IntegerAttr myIntAttr();
-  int64_t myInt();
-  ::mlir::ArrayAttr myIntArrayAttr();
-  ::mlir::ArrayAttr myIntArray();
-  ::mlir::FloatAttr myOptionalFloatAttr();
-  ::llvm::Optional< ::llvm::APFloat > myOptionalFloat();
-  mlir::IntegerAttr myDefaultValuedIntAttr();
-  int64_t myDefaultValuedInt();
+  int64_t getMyInt();
+  ::mlir::ArrayAttr getMyIntArrayAttr();
+  ::mlir::ArrayAttr getMyIntArray();
+  ::mlir::FloatAttr getMyOptionalFloatAttr();
+  ::std::optional< ::llvm::APFloat > getMyOptionalFloat();
+  mlir::IntegerAttr getMyDefaultValuedIntAttr();
+  int64_t getMyDefaultValuedInt();
 
   // Setters for each attribute
-  void myIntAttr(mlir::IntegerAttr attr);
-  void myIntArrayAttr(::mlir::ArrayAttr attr);
-  void myOptionalFloatAttr(::mlir::FloatAttr attr);
-  void myDefaultValuedIntAttr(mlir::IntegerAttr attr);
+  void setMyIntAttr(mlir::IntegerAttr attr);
+  void setMyInt(int64_t attrValue);
+  void setMyIntArrayAttr(::mlir::ArrayAttr attr);
+  void setMyOptionalFloatAttr(::mlir::FloatAttr attr);
+  void setMyOptionalFloat(::std::optional<::llvm::APFloat> attrValue);
+  void setMyDefaultValuedIntAttr(mlir::IntegerAttr attr);
+  void setMyDefaultValuedInt(int64_t attrValue);
   ::mlir::Attribute removeMyOptionalFloatAttr();
 
   // Builders for the operation, updated to be able to set the values for the attributes
   // Variants are also created accepting the underlying type for attributes directly, where the wrapper `mlir::Attribute` class is handled inside
-  static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Type output, ::mlir::Value input, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt);
-  static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::TypeRange resultTypes, ::mlir::Value input, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt);
+  static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Type output, ::mlir::Value input, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt = nullptr);
+  static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::TypeRange resultTypes, ::mlir::Value input, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt = nullptr);
   static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Type output, ::mlir::Value input, int64_t myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, int64_t myDefaultValuedInt = 10);
   static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::TypeRange resultTypes, ::mlir::Value input, int64_t myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, int64_t myDefaultValuedInt = 10);
   static void build(::mlir::OpBuilder &, ::mlir::OperationState &odsState, ::mlir::TypeRange resultTypes, ::mlir::ValueRange operands, ::llvm::ArrayRef<::mlir::NamedAttribute> attributes = {});
-
-  // Method to populate unset attributes that have a the DefaultValuedAttr specifier
-  // Not present if there are no attributes with this specifier present
-  static void populateDefaultAttrs(const ::mlir::RegisteredOperationName &opName, ::mlir::NamedAttrList &attributes);
 ```
 
 Every type of attribute will inherit from the base `mlir::Attribute` class. This is true for both builtin attributes as well as custom attributes. Let's see this in practice with a custom attribute. Introduce the following code in [IE/attributes.td](../../tblgen/vpux/compiler/dialect/IE/attributes.td):
@@ -469,7 +450,7 @@ def IE_GettingStartedAttr : IE_Attr<"GettingStarted"> {
 
 The `parameters` list contains the types of values that are part of the attribute. It uses a string to identify the base type of the parameter, making it compatible with any attribute type - even ones that are defined manually in C++ instead of using TableGen. There are also specifiers for parameters, similar to those we have seen before for operation attributes, which allow specifying optional ones, default-valued ones etc.
 
-After building the project, the following code will be generated in `IE/generated/attributes.hpp.inc`:
+After building the project, the following code will be generated in `IE/attributes.hpp.inc`:
 
 ```C++
 // GettingStartedAttrStorage will actually contain the values inside the attribute, while GettingStartedAttr will only contain
@@ -482,6 +463,8 @@ struct GettingStartedAttrStorage;
 class GettingStartedAttr : public ::mlir::Attribute::AttrBase<GettingStartedAttr, ::mlir::Attribute, detail::GettingStartedAttrStorage> {
 public:
   using Base::Base;
+  static constexpr ::llvm::StringLiteral name = "IE.GettingStarted";
+  static constexpr ::llvm::StringLiteral dialectName = "IE";
 public:
   // Method to create a GettingStartedAttr object with the given parameters
   static GettingStartedAttr get(::mlir::MLIRContext *context, mlir::BoolAttr boolParameter, mlir::FloatAttr floatParameter);
@@ -502,7 +485,7 @@ public:
 };
 ```
 
-Feel free to also explore the implementations for the methods and storage class in `IE/generated/attributes.cpp.inc`.
+Feel free to also explore the implementations for the methods and storage class in `IE/attributes.cpp.inc`.
 
 With the custom attribute created, it can now be used in our operation:
 
@@ -547,7 +530,7 @@ This is how the attributes are used in the IR:
 ```MLIR
 module {
     func.func @main(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x16x3x3xf16> {
-        %0 = IE.GettingStarted(%arg0, %arg1) {
+        %0 = IE.GettingStarted(%arg0) {
             gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.0>,
             myInt = 5 : i64,
             myIntArray = [1, 2, 3]
@@ -568,31 +551,32 @@ def IE_GettingStartedOp : IE_Op<"GettingStarted"> {
     // ...
 
     let builders = [
-        // Builder containing the input value and only the required attributes
+        // Builder containing the output type, the input value and only the required attributes
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::IntegerAttr":$myInt, "mlir::ArrayAttr":$myIntArray,
-                 "vpux::IE::GettingStartedAttr":$gettingStarted)
+            (ins "mlir::Type":$output,
+                 "mlir::Value":$input,
+                 "mlir::IntegerAttr":$myInt, "mlir::ArrayAttr":$myIntArray, "vpux::IE::GettingStartedAttr":$gettingStarted)
         >
     ];
 }
 ```
 
-The following method declaration will be added to the operation's generated class in `IE/generated/ops.hpp.inc`:
+The following method declaration will be added to the operation's generated class in `IE/ops/convolution.hpp.inc`:
 
 ```C++
-static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, mlir::Type type, mlir::Value input, mlir::IntegerAttr myInt, mlir::ArrayAttr myIntArray, vpux::IE::GettingStartedAttr gettingStarted);
+static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, mlir::Type output, mlir::Value input, mlir::IntegerAttr myInt, mlir::ArrayAttr myIntArray, vpux::IE::GettingStartedAttr gettingStarted);
 ```
 
-The method should also be defined in `src/vpux_compiler/src/dialect/IE/IR/ops/getting_started.cpp`:
+The method should also be defined in `src/vpux_compiler/src/dialect/IE/IR/ops/getting_started.cpp`, where we can call the full builder and pass `nullptr` to the unspecified attributes:
 
 ```C++
 void vpux::IE::GettingStartedOp::build(mlir::OpBuilder& /*odsBuilder*/, mlir::OperationState& odsState, mlir::Type output,
                                        mlir::Value input, mlir::IntegerAttr myInt, mlir::ArrayAttr myIntArray,
                                        vpux::IE::GettingStartedAttr gettingStarted) {
     odsState.addOperands(input);
-    odsState.addAttribute(myIntAttrName(odsState.name), myInt);
-    odsState.addAttribute(myIntArrayAttrName(odsState.name), myIntArray);
-    odsState.addAttribute(gettingStartedAttrName(odsState.name), gettingStarted);
+    odsState.getOrAddProperties<Properties>().myInt = myInt;
+    odsState.getOrAddProperties<Properties>().myIntArray = myIntArray;
+    odsState.getOrAddProperties<Properties>().gettingStarted = gettingStarted;
     odsState.addTypes(output);
 }
 ```
@@ -623,7 +607,7 @@ public:
 
 `mlir::RankedTensorType` also contains another `mlir::Type` inside, the element type, which is usually instantiated to a class like `mlir::IntegerType`, `mlir::FloatType` or `mlir::quant::QuantizedType`. This shows the open nature of the type system in MLIR: the semantics of the types are given by the way they are created and utilized.
 
-When `AnyRankedTensor` is used for values of an operation, constraints are added to the operation itself. For `GettingStartedOp`, the `IE/generated/ops.cpp.inc` file contains the following code which ensures the type constraints are satisfied:
+When `AnyRankedTensor` is used for values of an operation, constraints are added to the operation itself. For `GettingStartedOp`, the `IE/ops/convolution.cpp.inc` file contains the following code which ensures the type constraints are satisfied:
 
 ```C++
 // Returns success if a specific constraint is satisfied
@@ -631,9 +615,9 @@ When `AnyRankedTensor` is used for values of an operation, constraints are added
 static ::mlir::LogicalResult __mlir_ods_local_type_constraint_ops4(
     ::mlir::Operation *op, ::mlir::Type type, ::llvm::StringRef valueKind,
     unsigned valueIndex) {
-  // The type has to be a `mlir::TensorType` and it must have a rank (i.e. the number of dimensions is known)
-  // Note: `mlir::TensorType` inherits from `mlir::ShapedType`, which is why the cast to the latter can be executed
-  if (!((((type.isa<::mlir::TensorType>())) && ((mlir::cast<::mlir::ShapedType>(type).hasRank()))) && ([](::mlir::Type elementType) { return (true); }(mlir::cast<::mlir::ShapedType>(type).getElementType())))) {
+  // The type has to be a `mlir::RankedTensorType` and it can have any element type
+  // Note: `mlir::RankedTensorType` inherits from `mlir::ShapedType`, which is why the cast to the latter can be executed
+  if (!(((::llvm::isa<::mlir::RankedTensorType>(type))) && ([](::mlir::Type elementType) { return (true); }(::llvm::cast<::mlir::ShapedType>(type).getElementType())))) {
     return op->emitOpError(valueKind) << " #" << valueIndex
         << " must be ranked tensor of any type values, but got " << type;
   }
@@ -676,7 +660,7 @@ Similar to attributes, custom types can also be created. Let's see this in pract
 
 def IE_GettingStartedTensor : IE_Type<"GettingStartedTensor"> {
     let parameters = (ins
-        ArrayRefParameter<"int64_t">:$shape,
+        "mlir::ArrayAttr":$shape,
         "mlir::Type":$elementType
     );
 }
@@ -738,7 +722,7 @@ add_vpux_type(IE)
 
 
 /*
- * In `src/vpux_compiler/include/vpux/compiler/dialect/IE/types.hpp`
+ * In `src/vpux_compiler/include/vpux/compiler/dialect/IE/IR/types.hpp`
  * Includes the class declaration for the new type
  */
 #pragma once
@@ -750,14 +734,14 @@ add_vpux_type(IE)
 
 
 /*
- * In `src/vpux_compiler/src/dialect/IE/types.cpp`
+ * In `src/vpux_compiler/src/dialect/IE/IR/types.cpp`
  * Includes the class definition of the new type
  *
  * The `types.cpp.inc` file contains two sections that can be included which are guarded by `GET_TYPEDEF_CLASSES` and `GET_TYPEDEF_LIST`
  * The first one contains the definitions of the type classes, while the second one contains a list of all the type symbols, which can be used
  * to register the types into the dialect
  */
-#include "vpux/compiler/dialect/IE/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/types.hpp"
 
 #define GET_TYPEDEF_CLASSES
 #include <vpux/compiler/dialect/IE/types.cpp.inc>
@@ -787,7 +771,7 @@ def IE_Dialect : Dialect {
 
 
 /*
- * In `src/vpux_compiler/src/dialect/IE/dialect.cpp`:
+ * In `src/vpux_compiler/src/dialect/IE/IR/dialect.cpp`:
  * Calls the registration method defined before
  */
 void vpux::IE::IEDialect::initialize() {
@@ -796,12 +780,19 @@ void vpux::IE::IEDialect::initialize() {
 }
 
 /*
- * In `src/vpux_compiler/src/dialect/IE/ops.cpp`:
+ * In `src/vpux_compiler/src/dialect/IE/IR/ops.cpp`:
  * Since the new type is now used for the operation's operand, a constraint will be generated
  * in the operation's source file to ensure the type is correct
  * The type symbol has to be visible for the compilation to succeed
  */
-#include "vpux/compiler/dialect/IE/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/types.hpp"
+
+/*
+ * In `src/vpux_compiler/include/vpux/compiler/dialect/IE/IR/ops/convolution.hpp`)
+ * Similarly, the operation's declaration class also references the new type, so the type symbol
+ * has to be visible for the compilation to succeed
+ */
+#include "vpux/compiler/dialect/IE/IR/types.hpp"
 ```
 
 The same process applies for attributes. However, this is already done in the compiler, which is why it was not necessary to handle this when we added a custom attribute before.
@@ -810,12 +801,12 @@ Now that the new type is used in the operation, let's see how the operation look
 
 ```MLIR
 module {
-    func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<numElements = 10, elementType = f16>) -> tensor<1x16x3x3xf16> {
+    func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<shape = [10, 5], elementType = f16>) -> tensor<1x16x3x3xf16> {
         %0 = IE.GettingStarted(%arg0, %arg1) {
             gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.0>,
             myInt = 5 : i64,
             myIntArray = [1, 2, 3]
-        } : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<numElements = 10, elementType = f16> -> tensor<1x16x3x3xf16>
+        } : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<shape = [10, 5], elementType = f16> -> tensor<1x16x3x3xf16>
         return %0 : tensor<1x16x3x3xf16>
     }
 }
@@ -857,7 +848,7 @@ def IE_GettingStartedOpInterface : OpInterface<"GettingStartedOpInterface"> {
 }
 ```
 
-The following code is generated in `IE/generated/ops_interfaces.hpp.inc` after building the project:
+The following code is generated in `IE/ops_interfaces.hpp.inc` after building the project:
 
 ```C++
 namespace vpux {
@@ -885,7 +876,7 @@ public:
   struct Trait : public detail::GettingStartedOpInterfaceTrait<ConcreteOp> {};
 
   // The methods of the interface
-  void firstMethod(int value);
+  int firstMethod(int value);
   bool secondMethod();
 };
 
@@ -906,7 +897,7 @@ namespace detail {
 } // namespace vpux
 ```
 
-The code might seem a bit confusing, but in essence it contains the methods that were specified in TableGen and the default implementations for the methods that have them. Let's see how this interface looks when it is attached to an operation. Add the interface to the GettingStarted operation in [IE/ops.td](../../tblgen/vpux/compiler/dialect/IE/ops.td):
+The code might seem a bit confusing, but in essence it contains the methods that were specified in TableGen and the default implementations for the methods that have them. Let's see how this interface looks when it is attached to an operation. Add the interface to the GettingStarted operation in [IE/ops/convolution.td](../../tblgen/vpux/compiler/dialect/IE/ops/convolution.td):
 
 ``` MLIR
 def IE_GettingStartedOp :
@@ -958,7 +949,7 @@ def IE_GettingStartedOp :
 }
 ```
 
-When looking at the generated class of the operation in `IE/generated/ops.hpp.inc`, the following changes can be seen:
+When looking at the generated class of the operation in `IE/ops/convolution.hpp.inc`, the following changes can be seen:
 
 ```C++
 // The operation inherits from `IE::GettingStartedOpInterface::Trait`
@@ -984,7 +975,7 @@ The interface mechanism also allows adding static methods (using `StaticInterfac
 
 Many useful interfaces come builtin with MLIR. One of the most useful ones is called `InferTypeOpInterface` (and its counterpart `InferShapedTypeOpInterface` for `mlir::ShapedType`). This interface allows the operation to infer its return type(s) upon creation, based on the given operands and attributes. Without this interface, the return type would have to be manually computed / specified every time an operation is created. It also comes with methods to check the inferred type against the one set into the return value, in case the type was set manually, as well as a method to decide if and what discrepancy between the inferred and actual return type is allowed.
 
-Let's add this interface to our operation in [IE/ops.td](../../tblgen/vpux/compiler/dialect/IE/ops.td):
+Let's add this interface to our operation in [IE/ops/convolution.td](../../tblgen/vpux/compiler/dialect/IE/ops/convolution.td):
 
 ```MLIR
 def IE_GettingStartedOp :
@@ -1038,8 +1029,8 @@ The `inferReturnTypes` method can then be defined in `src/vpux_compiler/src/dial
 
 ```C++
 mlir::LogicalResult vpux::IE::GettingStartedOp::inferReturnTypes(
-        mlir::MLIRContext* context, llvm::Optional<mlir::Location> location, mlir::ValueRange operands,
-        mlir::DictionaryAttr attributes, mlir::RegionRange /*regions*/,
+        mlir::MLIRContext* context, std::optional<mlir::Location> location, mlir::ValueRange operands,
+        mlir::DictionaryAttr attributes, ::mlir::OpaqueProperties properties, mlir::RegionRange /*regions*/,
         llvm::SmallVectorImpl<mlir::Type>& inferredReturnTypes) {
     // Locations are a useful debugging feature that allows tracing the history of an operation
     // Since the parameter is optional, an unknown location object is created in case no value is set
@@ -1051,7 +1042,7 @@ mlir::LogicalResult vpux::IE::GettingStartedOp::inferReturnTypes(
     // and attributes of the operation. Additionally, it contains a verify method that checks whether
     // the constraints of the operation are satisfied. If the constraints are not satisfied, the return
     // type might not be inferrable so a failure is returned.
-    IE::GettingStartedOpAdaptor gettingStartedOp(operands, attributes);
+    IE::GettingStartedOpAdaptor gettingStartedOp(operands, attributes, properties);
     if (mlir::failed(gettingStartedOp.verify(loc))) {
         return mlir::failure();
     }
@@ -1059,7 +1050,7 @@ mlir::LogicalResult vpux::IE::GettingStartedOp::inferReturnTypes(
     // `input()` returns a `mlir::Value` object from which we extract the `mlir::Type`
     // This type is then passed to the output for this particular example operation, but the creation of
     // the output type varies from operation to operation
-    const auto inputType = gettingStartedOp.input().getType();
+    const auto inputType = gettingStartedOp.getInput().getType();
     inferredReturnTypes.push_back(inputType);
 
     // Success is returned when the return type has been inferred
@@ -1067,28 +1058,29 @@ mlir::LogicalResult vpux::IE::GettingStartedOp::inferReturnTypes(
 }
 ```
 
-After the interface has been added to the operation, variants of builders have also been created that receive no return type as a parameter. An example from the `IE/generated/ops.hpp.inc` file:
+After the interface has been added to the operation, variants of builders have also been created that receive no return type as a parameter. An example from the `IE/ops/convolution.hpp.inc` file:
 
 ```C++
-  // Builder with `mlir::Type output` as a parameter
-  static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Type output, ::mlir::Value input, ::mlir::Value secondInput, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt, vpux::IE::GettingStartedAttr gettingStarted);
-  // Builder without `mlir::Type output` as a parameter
-  static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Value input, ::mlir::Value secondInput, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt, vpux::IE::GettingStartedAttr gettingStarted);
+// Builder with `mlir::Type output` as a parameter
+static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Type output, ::mlir::Value input, ::mlir::Value secondInput, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt, vpux::IE::GettingStartedAttr gettingStarted);
+// Builder without `mlir::Type output` as a parameter
+static void build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Value input, ::mlir::Value secondInput, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt, vpux::IE::GettingStartedAttr gettingStarted);
 ```
 
-These builders internally call the `inferReturnTypes` method of the operation, as can be seen in the `IE/generated/ops.cpp.inc` file:
+These builders internally call the `inferReturnTypes` method of the operation, as can be seen in the `IE/ops/convolution.cpp.inc` file:
 
 ```C++
 void GettingStartedOp::build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::Value input, ::mlir::Value secondInput, mlir::IntegerAttr myInt, ::mlir::ArrayAttr myIntArray, /*optional*/::mlir::FloatAttr myOptionalFloat, mlir::IntegerAttr myDefaultValuedInt, vpux::IE::GettingStartedAttr gettingStarted) {
-  // ...
-  ::llvm::SmallVector<::mlir::Type, 2> inferredReturnTypes;
-  if (::mlir::succeeded(GettingStartedOp::inferReturnTypes(odsBuilder.getContext(),
-                odsState.location, odsState.operands,
-                odsState.attributes.getDictionary(odsState.getContext()),
-                /*regions=*/{}, inferredReturnTypes)))
-    odsState.addTypes(inferredReturnTypes);
-  else
-    ::llvm::report_fatal_error("Failed to infer result type(s).");
+    // ...
+    ::llvm::SmallVector<::mlir::Type, 2> inferredReturnTypes;
+    if (::mlir::succeeded(GettingStartedOp::inferReturnTypes(odsBuilder.getContext(),
+                    odsState.location, odsState.operands,
+                    odsState.attributes.getDictionary(odsState.getContext()),
+                    odsState.getRawProperties(),
+                    odsState.regions, inferredReturnTypes)))
+        odsState.addTypes(inferredReturnTypes);
+    else
+        ::mlir::detail::reportFatalInferReturnTypesError(odsState);
 }
 ```
 
@@ -1120,31 +1112,37 @@ def HandleGettingStarted : PassBase<"handle-getting-started", "mlir::OperationPa
 }
 ```
 
-The constructor that was mentioned in TableGen format also has to be declared & defined. It can be declared in the [IE/transforms/passes.hpp](../../src/vpux_compiler/include/vpux/compiler/dialect/IE/transforms/passes.hpp) file:
+The constructor that was mentioned in TableGen format also has to be declared & defined. It can be declared in the [IE/transforms/passes.hpp](../../include/vpux/compiler/dialect/IE/transforms/passes.hpp) file:
 
 ```C++
 // This declaration has to be added before `IE/passes.hpp.inc` is included in the same file,
-// since the generated pass code makes use of it (see `IE/generated/passes.hpp.inc` for details)
+// since the generated pass code makes use of it (see `IE/passes.hpp.inc` for details)
 std::unique_ptr<mlir::Pass> createHandleGettingStartedPass();
 ```
 
-Now, let's define the pass itself. The TableGen code provided the base class (`HandleGettingStartedBase`) which can be used to define the logic of the pass. Create a file `src/vpux_compiler/src/dialect/IE/passes/handle_getting_started.cpp` with the following content:
+Now, let's define the pass itself. The TableGen code provided the base class (`HandleGettingStartedBase`) which can be used to define the logic of the pass. Create a file `src/vpux_compiler/src/dialect/IE/transforms/passes/handle_getting_started.cpp` with the following content:
 
 ```C++
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
+
+// Include the generated `HandleGettingStartedBase` class for the pass
+namespace vpux::IE {
+#define GEN_PASS_DECL_HANDLEGETTINGSTARTED
+#define GEN_PASS_DEF_HANDLEGETTINGSTARTED
+#include "vpux/compiler/dialect/IE/passes.hpp.inc"
+}  // namespace vpux::IE
 
 using namespace vpux;
 
 namespace {
 
 // The main class of the pass, inheriting from the base class that was generated
-class HandleGettingStartedPass : public IE::HandleGettingStartedBase<HandleGettingStartedPass> {
+class HandleGettingStartedPass : public IE::impl::HandleGettingStartedBase<HandleGettingStartedPass> {
 public:
-    explicit HandleGettingStartedPass() {
-    }
+    explicit HandleGettingStartedPass() = default;
 
 private:
     // The entrypoint into the pass. Since this is a Function pass (i.e. specialized for `mlir::func::FuncOp`),
@@ -1156,7 +1154,7 @@ private:
         // Iterate over all `IE::GettingStartedOp` operations in the function op
         func.walk([](IE::GettingStartedOp op) {
             // Get the value of the `myInt` attribute and print it
-            auto intValue = op.myInt();
+            auto intValue = op.getMyInt();
             std::cout << intValue << std::endl;
 
             // Create a new mlir::IntegerAttr object with a 64-bit type and value 100
@@ -1165,7 +1163,7 @@ private:
             auto newIntAttr = mlir::IntegerAttr::get(intType, newIntValue);
 
             // Set the new value attribute into the operation
-            op.myIntAttr(newIntAttr);
+            op.setMyIntAttr(newIntAttr);
         });
     }
 };
@@ -1182,12 +1180,12 @@ With the pass defined, we can now execute it over an IR. Set the following conte
 
 ```MLIR
 module {
-    func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<numElements = 10, elementType = f16>) -> tensor<1x16x3x3xf16> {
+    func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<shape = [10, 5], elementType = f16>) -> tensor<1x16x3x3xf16> {
         %0 = IE.GettingStarted(%arg0, %arg1) {
             gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.0>,
             myInt = 5 : i64,
             myIntArray = [1, 2, 3]
-        } : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<numElements = 10, elementType = f16> -> tensor<1x16x3x3xf16>
+        } : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<shape = [10, 5], elementType = f16> -> tensor<1x16x3x3xf16>
         return %0 : tensor<1x16x3x3xf16>
     }
 }
@@ -1204,8 +1202,8 @@ The following content will be printed:
 ```
 5
 module {
-  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<numElements = 10, elementType = f16>) -> tensor<1x16x3x3xf16> {
-    %0 = IE.GettingStarted(%arg0, %arg1) {gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.000000e+00 : f64>, myInt = 100 : i64, myIntArray = [1, 2, 3]} : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<numElements = 10, elementType = f16> -> tensor<1x16x3x3xf16>
+  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<shape = [10, 5], elementType = f16>) -> tensor<1x16x3x3xf16> {
+    %0 = IE.GettingStarted(%arg0, %arg1) {gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.000000e+00 : f64>, myInt = 100 : i64, myIntArray = [1, 2, 3]} : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<shape = [10, 5], elementType = f16> -> tensor<1x16x3x3xf16>
     return %0 : tensor<1x16x3x3xf16>
   }
 }
@@ -1222,13 +1220,19 @@ The previous example was a small pass where we manually iterate over some operat
 Let's see this with an example. Replace the code pass with the following:
 
 ```C++
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 using namespace vpux;
+
+namespace vpux::IE {
+#define GEN_PASS_DECL_HANDLEGETTINGSTARTED
+#define GEN_PASS_DEF_HANDLEGETTINGSTARTED
+#include "vpux/compiler/dialect/IE/passes.hpp.inc"
+}  // namespace vpux::IE
 
 namespace {
 
@@ -1247,7 +1251,7 @@ private:
     // positive value and decrement the value (creating a new operation each time) until the value zero is reached
     mlir::LogicalResult matchAndRewrite(IE::GettingStartedOp origOp, mlir::PatternRewriter& rewriter) const final {
         // Extracts the value of the `myInt` attribute
-        auto intValue = origOp.myInt();
+        auto intValue = origOp.getMyInt();
 
         // In case the value is already zero or negative, a failure is returned
         // Failure in the context of the pattern rewriter means that this operation is not a match - this pattern should
@@ -1268,19 +1272,18 @@ private:
 
         // Creates a new `IE::GettingStarted` operation that replaces the original one. Internally, `replaceOpWithNewOp`
         // will call the builder of the operation that matches the given argument list
-        rewriter.replaceOpWithNewOp<IE::GettingStartedOp>(origOp, origOp.input(), origOp.secondInput(), newIntAttr,
-                                                          origOp.myIntArrayAttr(), origOp.myOptionalFloatAttr(),
-                                                          origOp.myDefaultValuedIntAttr(), origOp.gettingStartedAttr());
+        rewriter.replaceOpWithNewOp<IE::GettingStartedOp>(
+                origOp, origOp.getInput(), origOp.getSecondInput(), newIntAttr, origOp.getMyIntArrayAttr(),
+                origOp.getMyOptionalFloatAttr(), origOp.getMyDefaultValuedIntAttr(), origOp.getGettingStartedAttr());
 
         // The pattern rewriter has successfully transformed the IR
         return mlir::success();
     }
 };
 
-class HandleGettingStartedPass : public IE::HandleGettingStartedBase<HandleGettingStartedPass> {
+class HandleGettingStartedPass : public IE::impl::HandleGettingStartedBase<HandleGettingStartedPass> {
 public:
-    explicit HandleGettingStartedPass() {
-    }
+    explicit HandleGettingStartedPass() = default;
 
 private:
     void runOnOperation() final {
@@ -1300,8 +1303,7 @@ private:
 
         // Calls the pattern applicator over the function operation with the pattern set and
         // the previously-defined configuration
-    if (mlir::failed(applyPatternsGreedily(
-        func, std::move(patterns), config))) {
+        if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), config))) {
             // In case something went wrong, signal a failure to stop compilation
             signalPassFailure();
         }
@@ -1324,8 +1326,8 @@ By running `vpux-opt` over the same input IR, the following output is produced:
 1
 0
 module {
-  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<numElements = 10, elementType = f16>) -> tensor<1x16x3x3xf16> {
-    %0 = IE.GettingStarted(%arg0, %arg1) {gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.000000e+00 : f64>, myInt = 0 : i64, myIntArray = [1, 2, 3]} : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<numElements = 10, elementType = f16> -> tensor<1x16x3x3xf16>
+  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<shape = [10, 5], elementType = f16>) -> tensor<1x16x3x3xf16> {
+    %0 = IE.GettingStarted(%arg0, %arg1) {gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.000000e+00 : f64>, myInt = 0 : i64, myIntArray = [1, 2, 3]} : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<shape = [10, 5], elementType = f16> -> tensor<1x16x3x3xf16>
     return %0 : tensor<1x16x3x3xf16>
   }
 }
@@ -1336,8 +1338,6 @@ This shows that the pattern has been applied a total of five times over the IR. 
 That is the way the greedy pattern rewrite driver works: it applies the registered patterns until a target point is reached or until a maximum number of iterations is reached (configurable using `mlir::GreedyRewriteConfig`). It also provides other features, such as making use of the benefit of the pattern rewriter to decide the application order. More information on this driver can be found [here](https://mlir.llvm.org/docs/PatternRewriter/#greedy-pattern-rewrite-driver).
 
 As shown in the example, the pattern rewriters also come with an API which allows the user to more easily transform the IR. We have seen `replaceOpWithNewOp`, which creates a new operation and replaces an existing one with it, but there are more methods available: `eraseOp` to remove an operation that has no uses, `create` to create an operation, `replaceOp` to change the uses of an operation to some new values etc. More information on these methods can be found [here](https://mlir.llvm.org/docs/PatternRewriter/#pattern-rewriter). One important thing to remember is that all of the transformations inside a pattern rewriter should be done using the `mlir::PatternRewriter&` parameter of the `matchAndRewrite` function.
-
-As a note, the example above uses the `matchAndRewrite` method of the pattern rewriter. It is also possible to use separate `match` and `rewrite` methods if that is desired. When using a single function, no change should take place until the match is considered successful, otherwise the IR might end up in an invalid state.
 
 With that covered, let's see another type of pattern application driver: dialect conversion. This driver introduces the concept of legality of operations to identify what operations should be handled by the pattern rewriters. It can be used for converting between dialects or even within a dialect.
 
@@ -1353,12 +1353,18 @@ Beside the conversion target, the conversion mode is also something that has to 
 To see this in practice, replace the pass code with the following:
 
 ```C++
-#include "vpux/compiler/dialect/IE/IR/ops.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 
 using namespace vpux;
+
+namespace vpux::IE {
+#define GEN_PASS_DECL_HANDLEGETTINGSTARTED
+#define GEN_PASS_DEF_HANDLEGETTINGSTARTED
+#include "vpux/compiler/dialect/IE/passes.hpp.inc"
+}  // namespace vpux::IE
 
 namespace {
 
@@ -1375,15 +1381,14 @@ public:
                                         mlir::ConversionPatternRewriter& rewriter) const final {
         // Replaces the use of the operation's output with the operation's input, thus leaving the operation without
         // uses and foldable (i.e. removable in this case)
-        rewriter.replaceOp(origOp, origOp.input());
+        rewriter.replaceOp(origOp, origOp.getInput());
         return mlir::success();
     }
 };
 
-class HandleGettingStartedPass : public IE::HandleGettingStartedBase<HandleGettingStartedPass> {
+class HandleGettingStartedPass : public IE::impl::HandleGettingStartedBase<HandleGettingStartedPass> {
 public:
-    explicit HandleGettingStartedPass() {
-    }
+    explicit HandleGettingStartedPass() = default;
 
 private:
     void runOnOperation() final {
@@ -1396,7 +1401,7 @@ private:
         // is less or equal to zero
         mlir::ConversionTarget target(ctx);
         target.addDynamicallyLegalOp<IE::GettingStartedOp>([](IE::GettingStartedOp op) -> bool {
-            return op.myInt() <= 0;
+            return op.getMyInt() <= 0;
         });
 
         // Adds the conversion pattern to the set
@@ -1422,7 +1427,7 @@ Executing the pass over the same input IR will produce the following output IR:
 
 ```
 module {
-  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<numElements = 10, elementType = f16>) -> tensor<1x16x3x3xf16> {
+  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<shape = [10, 5], elementType = f16>) -> tensor<1x16x3x3xf16> {
     return %arg0 : tensor<1x16x3x3xf16>
   }
 }
@@ -1438,7 +1443,7 @@ The dialect conversion driver also supports converting the types that an operati
 
 Pattern rewriters can also be applied to operations directly, in the form of canonicalizers. The canonicalizer pass is a commonly-used builtin pass which applies some globally applied rules and the operation pattern rewriters using a greedy driver. Some of the global rules are the elimination of operations that have no uses, constant folding etc.
 
-To add a canonicalizer to an operation, the following flag should be set in TableGen. For the GettingStarted operation, this can be done in [IE/ops.td](../../tblgen/vpux/compiler/dialect/IE/ops.td):
+To add a canonicalizer to an operation, the following flag should be set in TableGen. For the GettingStarted operation, this can be done in [IE/ops/convolution.td](../../tblgen/vpux/compiler/dialect/IE/ops/convolution.td):
 ```MLIR
 def IE_GettingStartedOp :
         // ...
@@ -1461,7 +1466,7 @@ public:
 private:
     mlir::LogicalResult matchAndRewrite(vpux::IE::GettingStartedOp origOp,
                                         mlir::PatternRewriter& rewriter) const final {
-        auto intValue = origOp.myInt();
+        auto intValue = origOp.getMyInt();
         if (intValue <= 0) {
             return mlir::failure();
         }
@@ -1471,39 +1476,40 @@ private:
         auto newIntAttr = mlir::IntegerAttr::get(intType, newIntValue);
 
         rewriter.replaceOpWithNewOp<vpux::IE::GettingStartedOp>(
-                origOp, origOp.input(), origOp.secondInput(), newIntAttr, origOp.myIntArrayAttr(),
-                origOp.myOptionalFloatAttr(), origOp.myDefaultValuedIntAttr(), origOp.gettingStartedAttr());
+                origOp, origOp.getInput(), origOp.getSecondInput(), newIntAttr, origOp.getMyIntArrayAttr(),
+                origOp.getMyOptionalFloatAttr(), origOp.getMyDefaultValuedIntAttr(), origOp.getGettingStartedAttr());
         return mlir::success();
     }
 };
 
-// The implementation of the method declared by `hasCanonicalizer = 1`, in which the desired patterns are added to the set
-void vpux::IE::GettingStartedOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
-                                                             mlir::MLIRContext* ctx) {
-    patterns.add<GettingStartedOpRewriter>(ctx);
+// The implementation of the method declared by `hasCanonicalizer = 1`, in which the desired patterns are added to the
+// set
+void vpux::IE::GettingStartedOp::getCanonicalizationPatterns(mlir::RewritePatternSet& results,
+                                                             mlir::MLIRContext* context) {
+    results.add<GettingStartedOpRewriter>(context);
 }
 ```
 
 After building the project, the canonicalizer can be run by running the `canonicalize` pass:
 
 ```sh
-./vpux-opt --vpu-arch=NPU37XX --canonicalize debug/getting_started.mlir
+./vpux-opt --vpu-arch=NPU37XX --canonicalize getting_started.mlir
 ```
 
 When using the same input IR as the other examples (with `myInt = 5`), the following IR will be generated which has `myInt = 0`.
 
 ```
 module {
-  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<numElements = 10, elementType = f16>) -> tensor<1x16x3x3xf16> {
-    %0 = IE.GettingStarted(%arg0, %arg1) {gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.000000e+00 : f64>, myInt = 0 : i64, myIntArray = [1, 2, 3]} : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<numElements = 10, elementType = f16> -> tensor<1x16x3x3xf16>
+  func.func @main(%arg0: tensor<1x16x3x3xf16>, %arg1: !IE.GettingStartedTensor<shape = [10, 5], elementType = f16>) -> tensor<1x16x3x3xf16> {
+    %0 = IE.GettingStarted(%arg0, %arg1) {gettingStarted = #IE.GettingStarted<boolParameter = true, floatParameter = 1.000000e+00 : f64>, myInt = 0 : i64, myIntArray = [1, 2, 3]} : tensor<1x16x3x3xf16>, !IE.GettingStartedTensor<shape = [10, 5], elementType = f16> -> tensor<1x16x3x3xf16>
     return %0 : tensor<1x16x3x3xf16>
   }
 }
 ```
 
-Canonicalizers are generally used for small changes that are operation specific and that might need to be applied multiple times (e.g. when simplifying an operation which reaches the non-simplified state multiple times as the compilation progresses).
+Canonicalizers are generally used for small changes that are operation specific and that might need to be applied multiple times (e.g. when simplifying an operation which reaches the non-simplified state multiple times as the compilation progresses). They should not be used for legalizing the IR, as the application of the canonicalizers is best-effort and will not guarantee that all parts of the IR will be legalized.
 
-Another specific type of canonicalizer is folding. It represents a more limited type of canonicalization which cannot create or erase operations, but it might replace the associated operation. In other words, folding can only affect the local operation that it is defined for. Compared to general canonicalizers, folding occurs in multiple places during compilation, not just when the canonicalizer pass executes. For example, when the `createOrFold` method runs or during dialect conversion. It can be enabled by using the `hasFolder` flag of the operation in TableGen and by defining the resulting `fold` method.
+Another specific type of canonicalizer is folding. It represents a more limited type of canonicalization which cannot create or erase operations, but it might replace the associated operation. In other words, folding can only affect the local operation that it is defined for. Compared to general canonicalizers, folding occurs in multiple places during compilation, not just when the canonicalizer pass executes. For example, when the `createOrFold` method runs or during dialect conversion or when called manually in a pass. It can be enabled by using the `hasFolder` flag of the operation in TableGen and by defining the resulting `fold` method.
 
 More information on canonicalization can be found [here](https://mlir.llvm.org/docs/Canonicalization/).
 

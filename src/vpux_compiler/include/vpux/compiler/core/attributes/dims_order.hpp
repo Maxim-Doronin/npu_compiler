@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -199,6 +199,8 @@ inline bool operator!=(DimsOrder order1, DimsOrder order2) {
 std::optional<Dim> getHighestNonTrivialDim(ShapeRef shape, const DimsOrder& dimOrder);
 
 std::optional<Dim> getInnermostNonTrivialDim(ShapeRef shape, const DimsOrder& dimOrder);
+
+std::optional<Dim> getInnermostDynamicDim(ShapeRef shape, const DimsOrder& dimOrder);
 
 }  // namespace vpux
 

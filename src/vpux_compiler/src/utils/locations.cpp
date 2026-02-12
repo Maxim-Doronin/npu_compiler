@@ -5,17 +5,14 @@
 
 #include "vpux/compiler/utils/locations.hpp"
 
-#include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/format.hpp"
-#include "vpux/utils/core/small_vector.hpp"
+#include <mlir/IR/BuiltinAttributes.h>
 
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
-#include <mlir/Dialect/Func/IR/FuncOps.h>
-#include <mlir/IR/BuiltinOps.h>
+#include "vpux/utils/core/range.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
 mlir::Location vpux::createLayerLocation(mlir::MLIRContext* ctx, const std::string& layerName,
                                          const std::string& layerType) {
@@ -38,7 +35,7 @@ mlir::Location vpux::getValueLocation(mlir::Value val) {
         }
         for (auto p : producerOp->getResults() | indexed) {
             if (p.value() == val) {
-                return takeOpLoc(producerOp, StringLiteral("res_{0}"), p.index());
+                return takeOpLoc(producerOp, "res_{0}", p.index());
             }
         }
         VPUX_THROW("Unsupported number of results");

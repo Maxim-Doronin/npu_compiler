@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,20 +43,20 @@ module attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationM
   }
   ///
 
-  //CHECK:        [[IN_BOUND:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        [[IN_DYN_SHAPE:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        [[OUT_BOUND:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        [[OUT_DYN_SHAPE:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        %[[VAL1:.*]] = VPUMI37XX.DeclareKernelText
-  //CHECK:        %[[VAL2:.*]] = VPUMI37XX.DeclareKernelEntry
-  //CHECK:        %[[VAL3:.*]] = VPUMI37XX.DeclareKernelArgs
-  //CHECK:        %[[VAL4:.*]] = VPUMI37XX.ActKernelRange
+  //CHECK:        [[IN_BOUND:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[IN_DYN_SHAPE:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[OUT_BOUND:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[OUT_DYN_SHAPE:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[VAL1:%.+]] = VPUMI37XX.DeclareKernelText
+  //CHECK:        [[VAL2:%.+]] = VPUMI37XX.DeclareKernelEntry
+  //CHECK:        [[VAL3:%.+]] = VPUMI37XX.DeclareKernelArgs
+  //CHECK:        [[VAL4:%.+]] = VPUMI37XX.ActKernelRange
 
-  //CHECK:        %[[VAL5:.*]] = VPUMI37XX.KernelParams
+  //CHECK:        [[VAL5:%.+]] = VPUMI37XX.KernelParams
   //CHECK-SAME:   inputs([[IN_BOUND]]
   //CHECK-SAME:   outputs([[OUT_BOUND]]
   //CHECK-SAME:   dynamicInputShapes(([[IN_DYN_SHAPE]])
   //CHECK-SAME:   dynamicOutputShapes(([[OUT_DYN_SHAPE]])
 
-  //CHECK:        %[[VAL6:.*]] = VPUMI37XX.ActKernelInvocation
+  //CHECK:        [[VAL6:%.+]] = VPUMI37XX.ActKernelInvocation
 }

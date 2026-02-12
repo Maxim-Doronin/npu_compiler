@@ -28,68 +28,67 @@ namespace {
 // LayerWithPostOpModel50XX
 //
 
-bool isSupportedHWPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) {
-    return llvm::TypeSwitch<mlir::Operation*, bool>(postOp)
-            .Case<IE::ReLUOp, IE::LeakyReluOp, IE::ClampOp>([](auto) {
-                return true;
-            })
-            .Case<IE::TanhOp, IE::SigmoidOp, IE::SwishOp, IE::GeluOp, IE::HSwishOp>([](auto postOp) {
-                if constexpr (std::is_same_v<std::decay_t<decltype(postOp)>, IE::SwishOp>) {
-                    auto betaAttr = postOp.getBetaValue();
-                    // Only beta >= 1.0 is supported in sprLUT
-                    if (betaAttr.has_value() && betaAttr.value().convertToDouble() < 1.0) {
-                        return false;
-                    }
-                }
-                // Cannot apply per-channel output scale when using sprLUT.
-                return config::isSprLUTEnabled(postOp) && !VPU::hasPerChannelQuantizedOutput(postOp);
-            })
-            .Case<IE::ExpOp>([&](auto) {
-                // if postOp output is in fp32, we cannot use sprlut to estimate exp function
-                for (auto result : mainOp->getResults()) {
-                    auto type = result.getType();
-                    if (auto shapedType = mlir::dyn_cast<mlir::ShapedType>(type)) {
-                        if (shapedType.getElementType().isF32()) {
+template <class MainOpType>
+class LayerWithPostOpModel : public VPU::LayerWithPostOpModelBase<LayerWithPostOpModel<MainOpType>, MainOpType> {
+public:
+    static bool isSupportedHWClampOp(mlir::Operation*, IE::ClampOp, const LogCb&) {
+        return true;
+    }
+
+    static bool isSupportedHWPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) {
+        return llvm::TypeSwitch<mlir::Operation*, bool>(postOp)
+                // TODO: remove option after E#-83187
+                .Case<IE::ClampOp>([&](auto) {
+                    return isSupportedHWClampOp(mainOp, mlir::cast<IE::ClampOp>(postOp), logCb);
+                })
+                .template Case<IE::ReLUOp, IE::LeakyReluOp>([](auto) {
+                    return true;
+                })
+                .template Case<IE::TanhOp, IE::SigmoidOp, IE::SwishOp, IE::GeluOp, IE::HSwishOp>([](auto postOp) {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(postOp)>, IE::SwishOp>) {
+                        auto betaAttr = postOp.getBetaValue();
+                        // Only beta >= 1.0 is supported in sprLUT
+                        if (betaAttr.has_value() && betaAttr.value().convertToDouble() < 1.0) {
                             return false;
                         }
                     }
-                }
-                return config::isSprLUTEnabled(postOp) && !VPU::hasPerChannelQuantizedOutput(postOp);
-            })
-            .Default([&](mlir::Operation*) {
-                logCb(llvm::formatv("{0} at `{1}` is not supported on this HW platform", postOp->getName(),
-                                    postOp->getLoc()));
-                return false;
-            });
-}
-
-template <typename ConcreteModel, typename MainOpType>
-class LayerWithPostOpModelBase : public VPU::LayerWithClampOpModel<ConcreteModel, MainOpType> {
-public:
-    bool isSupportedPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) const {
-        if (config::getCompilationMode(postOp) == config::CompilationMode::ReferenceSW) {
-            return false;
-        }
-
-        if (!isSupportedHWPostOp(mainOp, postOp, logCb)) {
-            return false;
-        }
-
-        return VPU::NCEInvariant::isSupported(mlir::cast<MainOpType>(mainOp)).succeeded();
+                    // Cannot apply per-channel output scale when using sprLUT.
+                    return config::isSprLUTEnabled(postOp) && !VPU::hasPerChannelQuantizedOutput(postOp);
+                })
+                .template Case<IE::ExpOp>([&](auto) {
+                    // if postOp output is in fp32, we cannot use sprlut to estimate exp function
+                    for (auto result : mainOp->getResults()) {
+                        auto type = result.getType();
+                        if (auto shapedType = mlir::dyn_cast<mlir::ShapedType>(type)) {
+                            if (shapedType.getElementType().isF32()) {
+                                return false;
+                            }
+                        }
+                    }
+                    return config::isSprLUTEnabled(postOp) && !VPU::hasPerChannelQuantizedOutput(postOp);
+                })
+                .Default([&](mlir::Operation*) {
+                    logCb(llvm::formatv("{0} at `{1}` is not supported on this HW platform", postOp->getName(),
+                                        postOp->getLoc()));
+                    return false;
+                });
     }
-};
 
-template <class MainOpType>
-class LayerWithPostOpUsingBiasAndStaticScaleModel final :
-        public LayerWithPostOpModelBase<LayerWithPostOpUsingBiasAndStaticScaleModel<MainOpType>, MainOpType> {
-public:
     bool supportsFuseBiasScale(mlir::Operation*) const {
-        return true;
+        return _supportsFuseBiasScale;
     }
+
+protected:
+    bool _supportsFuseBiasScale = false;
 };
 
 template <class MainOpType>
-class LayerWithPostOpModel final : public LayerWithPostOpModelBase<LayerWithPostOpModel<MainOpType>, MainOpType> {};
+class LayerWithPostOpUsingBiasAndStaticScaleModel final : public LayerWithPostOpModel<MainOpType> {
+public:
+    LayerWithPostOpUsingBiasAndStaticScaleModel() {
+        this->_supportsFuseBiasScale = true;
+    }
+};
 
 }  // namespace
 

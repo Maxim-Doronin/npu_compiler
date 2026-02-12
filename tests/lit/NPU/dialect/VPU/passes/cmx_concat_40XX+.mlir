@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -98,9 +98,9 @@ func.func @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput(
 
     return %output: !SecondConvOutputDistributed
 
-    //CHECK:        [[CST:%.*]] = const.Declare tensor<1x128x16x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK:        [[CST:%.+]] = const.Declare tensor<1x128x16x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x1xf16>, [#const.Reorder<#NHWC>]
 
-    //CHECK:        [[CST_INPUT:%.*]] =  VPU.Copy([[CST]])
+    //CHECK:        [[CST_INPUT:%.+]] =  VPU.Copy([[CST]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x128x16x1xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 128, 9, 1], [1, 128, 9, 1]],
@@ -108,7 +108,7 @@ func.func @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput(
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 128, 9, 1], [1, 128, 9, 1]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0]]}>
 
-    //CHECK:        [[INPUT_CMX:%.*]] = VPU.Copy([[INPUT]])
+    //CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x128x16x157xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 128, 9, 157], [1, 128, 9, 157]],
@@ -116,7 +116,7 @@ func.func @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput(
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 128, 9, 157], [1, 128, 9, 157]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0]]}>
 
-    //CHECK:        [[CONV_OUTPUT:%.*]] = VPU.NCE.Convolution([[INPUT_CMX]], [[WEIGHTS0]], [[WTABLE]])
+    //CHECK:        [[CONV_OUTPUT:%.+]] = VPU.NCE.Convolution([[INPUT_CMX]], [[WEIGHTS0]], [[WTABLE]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x128x16x157xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 128, 8, 157], [1, 128, 8, 157]],
@@ -124,7 +124,7 @@ func.func @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput(
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 128, 9, 157], [1, 128, 9, 157]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0]]}>
 
-    //CHECK:        [[CONCAT_OUTPUT:%.*]] = VPU.Concat([[CST_INPUT]], [[CONV_OUTPUT]])
+    //CHECK:        [[CONCAT_OUTPUT:%.+]] = VPU.Concat([[CST_INPUT]], [[CONV_OUTPUT]])
     //CHECK-SAME{LITERAL}:             {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1]]} :
     //CHECK-SAME:       !VPU.DistributedTensor<1x128x16x1xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
@@ -145,7 +145,7 @@ func.func @ConcatDistributedOpWithExplicitDistributedAttrAndConstantSecondInput(
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 128, 9, 158], [1, 128, 9, 158]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0]]}>
 
-    //CHECK:        [[OUTPUT:%.*]] = VPU.NCE.Convolution([[CONCAT_OUTPUT]]
+    //CHECK:        [[OUTPUT:%.+]] = VPU.NCE.Convolution([[CONCAT_OUTPUT]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x128x16x158xf16, #NHWC, @CMX_NN
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 128, 8, 158], [1, 128, 8, 158]],
     //CHECK-SAME{LITERAL}:       compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0]],
@@ -298,7 +298,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
 
     return %output0, %output1: !ConvOut23, !ConvOut23
 
-    //CHECK:        [[IN0_CMX:%.*]] =  VPU.Copy([[INPUT0]])
+    //CHECK:        [[IN0_CMX:%.+]] =  VPU.Copy([[INPUT0]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
@@ -306,7 +306,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]]}>
 
-    //CHECK:        [[CONV0_OUT:%.*]] = VPU.NCE.Convolution([[IN0_CMX]], [[WEIGHTS0]], [[WTABLE0]])
+    //CHECK:        [[CONV0_OUT:%.+]] = VPU.NCE.Convolution([[IN0_CMX]], [[WEIGHTS0]], [[WTABLE0]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 64, 20, 16], [1, 64, 20, 16]],
@@ -314,7 +314,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 64, 20, 18], [1, 64, 20, 18]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]]}>
 
-    //CHECK:        [[IN1_CMX:%.*]] = VPU.Copy([[INPUT1]])
+    //CHECK:        [[IN1_CMX:%.+]] = VPU.Copy([[INPUT1]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x16x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 16, 20, 16], [1, 16, 20, 16]],
@@ -322,7 +322,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 16, 20, 16], [1, 16, 20, 16]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]]}>
 
-    //CHECK:        [[CONV1_OUT:%.*]] = VPU.NCE.Convolution([[IN1_CMX]], [[WEIGHTS1]], [[WTABLE1]])
+    //CHECK:        [[CONV1_OUT:%.+]] = VPU.NCE.Convolution([[IN1_CMX]], [[WEIGHTS1]], [[WTABLE1]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x16x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 16, 20, 16], [1, 16, 20, 16]],
@@ -330,7 +330,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 16, 20, 18], [1, 16, 20, 18]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]]}>
 
-    //CHECK:        [[CONCAT_OUT:%.*]] = VPU.Concat([[CONV0_OUT]], [[CONV1_OUT]])
+    //CHECK:        [[CONCAT_OUT:%.+]] = VPU.Concat([[CONV0_OUT]], [[CONV1_OUT]])
     //CHECK-SAME{LITERAL}:             {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]} :
     //CHECK-SAME:       !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
@@ -351,7 +351,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 80, 20, 18], [1, 80, 20, 18]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 14]]}>
 
-    //CHECK: [[SLICE0:%.*]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 0, 0] [1, 80, 12, 32]
+    //CHECK: [[SLICE0:%.+]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 0, 0] [1, 80, 12, 32]
     //CHECK-SAME:           to !VPU.DistributedTensor<1x80x12x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 80, 12, 18], [1, 80, 12, 18]],
@@ -367,7 +367,7 @@ func.func @SOWProducersSOWConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 64, 12, 16], [1, 64, 12, 16]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 16]]}>
 
-        //CHECK: [[SLICE1:%.*]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 8, 0] [1, 80, 12, 32]
+        //CHECK: [[SLICE1:%.+]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 8, 0] [1, 80, 12, 32]
     //CHECK-SAME:           to !VPU.DistributedTensor<1x80x12x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 80, 12, 18], [1, 80, 12, 18]],
@@ -1103,7 +1103,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
 
     return %output0, %output1: !ConvOut23, !ConvOut23
 
-    //CHECK:        [[IN0_CMX:%.*]] =  VPU.Copy([[FUNC_IN0]])
+    //CHECK:        [[IN0_CMX:%.+]] =  VPU.Copy([[FUNC_IN0]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
@@ -1111,7 +1111,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONV0_OUT:%.*]] = VPU.NCE.Convolution([[IN0_CMX]], [[W0]], [[WT0]])
+    //CHECK:        [[CONV0_OUT:%.+]] = VPU.NCE.Convolution([[IN0_CMX]], [[W0]], [[WT0]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
@@ -1119,7 +1119,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[IN1_CMX:%.*]] = VPU.Copy([[FUNC_IN1]])
+    //CHECK:        [[IN1_CMX:%.+]] = VPU.Copy([[FUNC_IN1]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x32x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
@@ -1127,7 +1127,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONV1_OUT:%.*]] = VPU.NCE.Convolution([[IN1_CMX]], [[W1]], [[WT1]])
+    //CHECK:        [[CONV1_OUT:%.+]] = VPU.NCE.Convolution([[IN1_CMX]], [[W1]], [[WT1]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x32x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 16, 20, 32], [1, 16, 20, 32]],
@@ -1135,7 +1135,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[D_CAST0:%.*]] = VPU.DistributedCast([[CONV0_OUT]] :
+    //CHECK:        [[D_CAST0:%.+]] = VPU.DistributedCast([[CONV0_OUT]] :
     //CHECK-SAME:          !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:               {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
@@ -1149,7 +1149,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:         memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[D_CAST1:%.*]] = VPU.DistributedCast([[CONV1_OUT]] :
+    //CHECK:        [[D_CAST1:%.+]] = VPU.DistributedCast([[CONV1_OUT]] :
     //CHECK-SAME:          !VPU.DistributedTensor<1x32x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:               {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 16, 20, 32], [1, 16, 20, 32]],
@@ -1163,7 +1163,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:         memory_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
     //CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONCAT_OUT:%.*]] = VPU.Concat([[D_CAST0]], [[D_CAST1]])
+    //CHECK:        [[CONCAT_OUT:%.+]] = VPU.Concat([[D_CAST0]], [[D_CAST1]])
     //CHECK-SAME{LITERAL}:             {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]} :
     //CHECK-SAME:       !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
@@ -1184,7 +1184,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 96, 20, 32], [1, 96, 20, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK: [[SLICE0:%.*]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 0, 0] [1, 96, 12, 32]
+    //CHECK: [[SLICE0:%.+]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 0, 0] [1, 96, 12, 32]
     //CHECK-SAME:           to !VPU.DistributedTensor<1x96x12x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 96, 12, 32], [1, 96, 12, 32]],
@@ -1200,7 +1200,7 @@ func.func @SOKProducersSOKConsumersOfConcatWithExplicitDistributedAttrWithHSlice
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 64, 12, 32], [1, 64, 12, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK: [[SLICE1:%.*]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 8, 0] [1, 96, 12, 32]
+    //CHECK: [[SLICE1:%.+]] = VPU.Slice [[CONCAT_OUT]] [0, 0, 8, 0] [1, 96, 12, 32]
     //CHECK-SAME:           to !VPU.DistributedTensor<1x96x12x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 96, 12, 32], [1, 96, 12, 32]],
@@ -1419,7 +1419,7 @@ func.func @ComplexConcatWithExplicitDistribution(
 
     return %output0, %output1: !ConvOut23, !ConvOut23
 
-    //CHECK:        [[IN0_CMX:%.*]] =  VPU.Copy([[FUNC_IN0]])
+    //CHECK:        [[IN0_CMX:%.+]] =  VPU.Copy([[FUNC_IN0]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
@@ -1427,7 +1427,7 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONV0_OUT:%.*]] = VPU.NCE.Convolution([[IN0_CMX]], [[W0]], [[WT0]])
+    //CHECK:        [[CONV0_OUT:%.+]] = VPU.NCE.Convolution([[IN0_CMX]], [[W0]], [[WT0]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
@@ -1435,10 +1435,10 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONV0_DDR:%.*]] =  VPU.Copy([[CONV0_OUT]])
+    //CHECK:        [[CONV0_DDR:%.+]] =  VPU.Copy([[CONV0_OUT]])
     //CHECK-SAME:       -> tensor<1x64x20x32xf16, {mem_space = @DDR, order = #NHWC}>
 
-    //CHECK:        [[IN1_CMX:%.*]] = VPU.Copy([[FUNC_IN1]])
+    //CHECK:        [[IN1_CMX:%.+]] = VPU.Copy([[FUNC_IN1]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x32x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
@@ -1446,7 +1446,7 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONV1_OUT:%.*]] = VPU.NCE.Convolution([[IN1_CMX]], [[W1]], [[WT1]])
+    //CHECK:        [[CONV1_OUT:%.+]] = VPU.NCE.Convolution([[IN1_CMX]], [[W1]], [[WT1]])
     //CHECK-SAME:                -> !VPU.DistributedTensor<1x32x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                        {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:                compute_shapes = [[1, 16, 20, 32], [1, 16, 20, 32]],
@@ -1454,7 +1454,7 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:                memory_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
     //CHECK-SAME{LITERAL}:                memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[D_CAST0:%.*]] = VPU.DistributedCast([[CONV0_OUT]] :
+    //CHECK:        [[D_CAST0:%.+]] = VPU.DistributedCast([[CONV0_OUT]] :
     //CHECK-SAME:          !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:               {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
@@ -1468,7 +1468,7 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:         memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[D_CAST1:%.*]] = VPU.DistributedCast([[CONV1_OUT]] :
+    //CHECK:        [[D_CAST1:%.+]] = VPU.DistributedCast([[CONV1_OUT]] :
     //CHECK-SAME:          !VPU.DistributedTensor<1x32x20x32xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:               {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
     //CHECK-SAME{LITERAL}:       compute_shapes = [[1, 16, 20, 32], [1, 16, 20, 32]],
@@ -1482,7 +1482,7 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:         memory_shapes = [[1, 32, 20, 32], [1, 32, 20, 32]],
     //CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[CONCAT_OUT:%.*]] = VPU.Concat([[D_CAST0]], [[D_CAST1]])
+    //CHECK:        [[CONCAT_OUT:%.+]] = VPU.Concat([[D_CAST0]], [[D_CAST1]])
     //CHECK-SAME{LITERAL}:             {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0]]} :
     //CHECK-SAME:       !VPU.DistributedTensor<1x64x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
@@ -1511,15 +1511,15 @@ func.func @ComplexConcatWithExplicitDistribution(
     //CHECK-SAME{LITERAL}:       memory_shapes = [[1, 64, 20, 32], [1, 64, 20, 32]],
     //CHECK-SAME{LITERAL}:       memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[IN2_CMX:%.*]] = VPU.Copy([[FUNC_IN2]])
+    //CHECK:        [[IN2_CMX:%.+]] = VPU.Copy([[FUNC_IN2]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x16x10x16xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
 
-    //CHECK:        [[OUT_INTERP:%.*]] = VPU.Interpolate([[IN2_CMX]]
+    //CHECK:        [[OUT_INTERP:%.+]] = VPU.Interpolate([[IN2_CMX]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x16x20x32xf16, #NHWC, @CMX_NN
     //CHECK-SAME:               {mode = "DUPLICATED", num_clusters = 2 : i64
 
-    //CHECK:        [[INTERP_DDR:%.*]] =  VPU.Copy([[OUT_INTERP]])
+    //CHECK:        [[INTERP_DDR:%.+]] =  VPU.Copy([[OUT_INTERP]])
     //CHECK-SAME:       -> tensor<1x16x20x32xf16, {mem_space = @DDR, order = #NHWC}>
 
     // CHECK:       VPU.Concat([[CONV0_DDR]], [[INTERP_DDR]])

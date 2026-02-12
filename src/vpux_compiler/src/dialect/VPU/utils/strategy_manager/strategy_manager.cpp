@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,8 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/gather_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
@@ -204,13 +206,30 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                         }
                         return;
                     }
+                    if (mlir::isa<VPU::MaxPool8Op>(origOp)) {
+                        auto inputType =
+                                mlir::cast<vpux::NDTypeInterface>(origOp.getOperation()->getOperand(0).getType());
+                        if (inputType.getRank() != 4) {
+                            _log.trace("MaxPool8Op with rank {0} is not supported by multi-cluster strategy "
+                                       "assignment, skipping",
+                                       inputType.getRank());
+                            return;
+                        }
+                        auto bestStrategy = VPU::getDefaultLayerStrategy(
+                                mlir::cast<VPU::ClusteredOpInterface>(origOp.getOperation()));
+                        _log.trace("Best strategy for MaxPool8 is {0}", bestStrategy.value());
+                        if (bestStrategy.has_value()) {
+                            setLayerStrategy(bestStrategy.value(), origOp.getOperation());
+                        }
+                        return;
+                    }
 
                     if (mlir::isa<VPU::MemPermuteOp>(origOp)) {
                         auto memPermuteOp = mlir::dyn_cast<VPU::MemPermuteOp>(origOp.getOperation());
                         auto memPerm = memPermuteOp.getMemPerm();
                         auto module = getModuleOp(memPermuteOp.getOperation());
                         const auto dmaPortNum =
-                                config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+                                config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
                         if (VPUIP::isBeneficialForUsingPermuteDMA(config::getArch(memPermuteOp.getOperation()),
                                                                   inputType, outputType, memPerm, dmaPortNum, _log)) {
                             _log.trace("Operation {0} is mapped to permute DMA, do not assign strategy", origOp);
@@ -376,8 +395,12 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                         setLayerStrategy(VPU::MultiClusterStrategy::SplitOverGroup, origOp.getOperation());
                     }
                 })
-                .Case<GatherDMAOp>([&](GatherDMAOp /*origOp*/) {
-                    // Multiclustering is not yet enabled for Gather DMA op
+                .Case<GatherDMAOp>([&](GatherDMAOp origOp) {
+                    // Only enable SOB now, other strategies may have accuracy issue, details in #E190615
+                    if (VPU::isOutermostGatherDMAWithLowBit(origOp) &&
+                        origOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverBatch, _numTiles)) {
+                        setLayerStrategy(VPU::MultiClusterStrategy::SplitOverBatch, origOp.getOperation());
+                    }
                     return;
                 })
                 .Default([&](mlir::Operation* unknownOp) -> void {
@@ -391,7 +414,11 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
 
 void StrategyManager::optimizeMulticlusterStrategy() {
     if (_mcOptimizationScope == VPU::MCOptimizationScope::SUBGRAPH) {
+        _log.trace("Executing Subgraph Optimizations");
         _optimizer.optimizeStrategyAvoidSpillingOnModel();
+    } else if (_mcOptimizationScope == VPU::MCOptimizationScope::LOCAL) {
+        _log.trace("Executing Local Optimizations");
+        _optimizer.optimizeStrategyPairsOnModel();
     }
 }
 

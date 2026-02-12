@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,6 +31,7 @@ private:
     SmallVector<SmallVector<int64_t>> _memoryShapes = {};
     SmallVector<SmallVector<int64_t>> _memoryOffsets = {};
     bool _equalMemoryAndComputeView = false;
+    std::optional<SmallVector<int64_t>> _memoryNumTiles = std::nullopt;
 
 public:
     DistributionInfo() = default;
@@ -39,7 +40,7 @@ public:
                      ArrayRef<int64_t> alignment, const bool hasUniformDistributedSegments,
                      ArrayRef<SmallVector<int64_t>> computeShapes, ArrayRef<SmallVector<int64_t>> computeOffsets,
                      ArrayRef<SmallVector<int64_t>> memoryShapes, ArrayRef<SmallVector<int64_t>> memoryOffsets,
-                     const bool hasEqualMemoryAndComputeView) {
+                     const bool hasEqualMemoryAndComputeView, std::optional<ArrayRef<int64_t>> memoryNumTiles) {
         _distributionMode = mode;
         _numTiles = SmallVector<int64_t>(numTiles);
         _kernel = SmallVector<int64_t>(kernel);
@@ -65,6 +66,9 @@ public:
         }
 
         _equalMemoryAndComputeView = hasEqualMemoryAndComputeView;
+        _memoryNumTiles = memoryNumTiles.has_value()
+                                  ? std::optional<SmallVector<int64_t>>(SmallVector<int64_t>(memoryNumTiles.value()))
+                                  : std::nullopt;
     }
 
     ~DistributionInfo() = default;
@@ -182,6 +186,13 @@ public:
     }
     void setPadding(const Padding& padding) {
         _pad = padding;
+    }
+
+    std::optional<ArrayRef<int64_t>> getMemoryNumTiles() const {
+        return _memoryNumTiles;
+    }
+    void setMemoryNumTiles(ArrayRef<int64_t> memoryNumTiles) {
+        _memoryNumTiles = SmallVector<int64_t>(memoryNumTiles);
     }
 
     void printFormat(llvm::raw_ostream& stream) const;

@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 
-#include "vpux/compiler/utils/allocate_buffers.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
 
@@ -144,8 +144,8 @@ mlir::LogicalResult ExpandSubviewConverter::matchAndRewrite(VPUIP::ExpandOp expa
     auto newSubviewOp =
             rewriter.create<VPUIP::SubViewOp>(lastSubviewOp.getLoc(), expandOp.getInput(), staticOffsets, staticSizes);
 
-    auto outputBuffers = allocateBuffers(_log, expandOp->getLoc(), rewriter, lastSubviewOp->getOpResults(),
-                                         /*individualBuffers =*/false);
+    auto outputBuffers = VPUIP::allocateBuffers(_log, expandOp->getLoc(), rewriter, lastSubviewOp->getOpResults(),
+                                                /*individualBuffers =*/false);
     rewriter.replaceOpWithNewOp<VPUIP::ExpandOp>(lastSubviewOp, newSubviewOp.getResult(), outputBuffers[0],
                                                  expandOp.getPadsBeginAttr(), expandOp.getPadsEndAttr());
 

@@ -5,33 +5,18 @@
 
 #pragma once
 
-#include <cmath>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
-
-#define ROUND_MODE_TO_NEAREST_EVEN
 
 namespace vpux {
 namespace type {
 class bfloat16 {
 public:
     bfloat16() = default;
-    bfloat16(float value)
-            : m_value{
-#if defined ROUND_MODE_TO_NEAREST
-                      round_to_nearest(value)
-#elif defined ROUND_MODE_TO_NEAREST_EVEN
-                      round_to_nearest_even(value)
-#elif defined ROUND_MODE_TRUNCATE
-                      truncate(value)
-#else
-#error "ROUNDING_MODE must be one of ROUND_MODE_TO_NEAREST, ROUND_MODE_TO_NEAREST_EVEN, or ROUND_MODE_TRUNCATE"
-#endif
-              } {
+    bfloat16(float value): m_value{round_to_nearest_even(value)} {
     }
 
     template <typename I>
@@ -240,7 +225,7 @@ public:
         return vpux::type::bfloat16::from_bits(0);
     }
     static constexpr bool is_iec559 = false;
-    static constexpr bool is_bounded = false;
+    static constexpr bool is_bounded = true;
     static constexpr bool is_modulo = false;
     static constexpr bool traps = false;
     static constexpr bool tinyness_before = false;

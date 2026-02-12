@@ -23,7 +23,7 @@ func.func @setOffsets() {
       VPUASM.ActShaveRtStack @ActShaveRtStack_0_11 : 16384
     }
     ELF.CreateSection @program.nnrt_config aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
-      NPUReg40XX.NNrtConfig descriptor = <
+      NPUReg40XX.NNrtConfig <{descriptor = #NPUReg40XX.VpuNNRTConfig<
           VpuNNRTConfig {
             NNRTCfg_reserved = UINT 0,
             NNRTCfg_runtime_entry = UINT 0x1C000A60,
@@ -50,10 +50,10 @@ func.func @setOffsets() {
             NNRTCfg_logAddrDmaHwp = UINT 0,
             NNRTCfg_HwpCfgAddr = UINT 0,
           } requires 11:4:10
-        > {actShaveRt = @shave.runtime::@ActShaveRt, dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer6, isActKernelInvocations, actShaveStacks = [@shave.stack::@ActShaveRtStack_0_0,
+        >, actShaveRt = @shave.runtime::@ActShaveRt, dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer6, isActKernelInvocations, actShaveStacks = [@shave.stack::@ActShaveRtStack_0_0,
         @shave.stack::@ActShaveRtStack_0_1, @shave.stack::@ActShaveRtStack_0_2, @shave.stack::@ActShaveRtStack_0_3, @shave.stack::@ActShaveRtStack_0_4,
         @shave.stack::@ActShaveRtStack_0_5, @shave.stack::@ActShaveRtStack_0_6, @shave.stack::@ActShaveRtStack_0_7, @shave.stack::@ActShaveRtStack_0_8,
-        @shave.stack::@ActShaveRtStack_0_9, @shave.stack::@ActShaveRtStack_0_10, @shave.stack::@ActShaveRtStack_0_11], sym_name = "MappedInference_nnrtConfigManaged"}
+        @shave.stack::@ActShaveRtStack_0_9, @shave.stack::@ActShaveRtStack_0_10, @shave.stack::@ActShaveRtStack_0_11], sym_name = "MappedInference_nnrtConfigManaged"}>
     }
     ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
       ELF.Symbol @elfsym.shave.stack of(@shave.stack) type(<STT_SECTION>) size(0) value(0)

@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <utility>
 
@@ -49,7 +50,7 @@ mlir::LogicalResult LSTMCellRewriter::matchAndRewrite(IE::LSTMCellOp lstmCell, m
     mlir::Value newInput = lstmCell.getInputData();
     if (lstmCell.getWeights()) {
         newInput = rewriter.create<IE::MatMulOp>(takeOpLoc(lstmCell, "in_mul"), lstmCell.getInputData(),
-                                                 lstmCell.getWeights(), false, true, nullptr);
+                                                 lstmCell.getWeights(), false, true);
     }
 
     if (lstmCell.getBiases()) {
@@ -61,7 +62,7 @@ mlir::LogicalResult LSTMCellRewriter::matchAndRewrite(IE::LSTMCellOp lstmCell, m
 
     const mlir::Value matMulHiddenState =
             rewriter.create<IE::MatMulOp>(takeOpLoc(lstmCell, "mul_hid"), lstmCell.getInitialHiddenState(),
-                                          lstmCell.getRecurrenceWeights(), false, true, nullptr);
+                                          lstmCell.getRecurrenceWeights(), false, true);
 
     const mlir::Value lstmGatesInput = rewriter.create<IE::AddOp>(
             takeOpLoc(lstmCell, "gates"), newInput, matMulHiddenState,
@@ -98,9 +99,7 @@ void DecomposeLSTMCellPass::safeRunOnFunc() {
     patterns.add<LSTMCellRewriter>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

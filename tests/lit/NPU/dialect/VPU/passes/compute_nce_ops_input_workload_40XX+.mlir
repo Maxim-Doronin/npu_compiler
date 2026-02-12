@@ -1326,7 +1326,6 @@ func.func @NCEPermuteInputWorkloadsChannels(%arg0: tensor<1x3x224x224xf16>) -> t
 }>
 
 !Weights_CMX = tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>
-!WeightsTable_CMX = tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}>
 
 !InputDataStub_CMX = tensor<1x16x32x32xf16, {mem_space = @CMX_NN, order = #NHWC}>
 !InputSMStub_CMX = tensor<1x16x64x64xi1, {mem_space = @CMX_NN, order = #NHWC}>
@@ -1343,7 +1342,7 @@ func.func @NCEPermuteInputWorkloadsChannels(%arg0: tensor<1x3x224x224xf16>) -> t
 
 // CHECK-LABEL: @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLines
 module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLines  {
-  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX, %arg4: !WeightsTable_CMX) -> !Output_CMX {
+  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX) -> !Output_CMX {
     %input_sparse = VPU.GroupSparseTensor(%arg0, %arg1, %arg2) {
                         seAttr = #VPU.SEInterpolate<
                           mode = <NEAREST>,
@@ -1354,7 +1353,7 @@ module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLines  {
                           initial_output_shape = [1, 16, 64, 64]>}
                     -> !Input_CMX
 
-    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3, %arg4) {
+    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3) {
               minimumHardwareExecutionCost = 2886 : i64,
               mode = #VPU.nce_interpolate_mode<NEAREST>,
               ppe = #VPU.PPEStub<>,
@@ -1451,7 +1450,6 @@ module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLines  {
 }>
 
 !Weights_CMX = tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>
-!WeightsTable_CMX = tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}>
 
 !InputDataStub_CMX = tensor<1x16x32x32xf16, {mem_space = @CMX_NN, order = #NHWC}>
 !InputSMStub_CMX = tensor<1x16x64x64xi1, {mem_space = @CMX_NN, order = #NHWC}>
@@ -1468,7 +1466,7 @@ module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLines  {
 
 // CHECK-LABEL: @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLinesWithExplicitOffset
 module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLinesWithExplicitOffset  {
-  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX, %arg4: !WeightsTable_CMX) -> !Output_CMX {
+  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX) -> !Output_CMX {
     %input_sparse = VPU.GroupSparseTensor(%arg0, %arg1, %arg2) {
                         seAttr = #VPU.SEInterpolate<
                           mode = <NEAREST>,
@@ -1479,7 +1477,7 @@ module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLinesWithExplicitOffset
                           initial_output_shape = [1, 16, 64, 64]>}
                     -> !Input_CMX
 
-    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3, %arg4) {
+    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3) {
               minimumHardwareExecutionCost = 2886 : i64,
               mode = #VPU.nce_interpolate_mode<NEAREST>,
               ppe = #VPU.PPEStub<>,
@@ -1572,7 +1570,6 @@ module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLinesWithExplicitOffset
 }>
 
 !Weights_CMX = tensor<16x16x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
-!WeightsTable_CMX = tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}>
 
 !InputDataStub_CMX = tensor<1x16x32x32xf16, {mem_space = @CMX_NN, order = #NHWC}>
 !InputSMStub_CMX = tensor<1x16x130x130xi1, {mem_space = @CMX_NN, order = #NHWC}>
@@ -1589,7 +1586,7 @@ module @SparseNearestNCEInterpolateInputWorkloadsSOHExtraLinesWithExplicitOffset
 
 // CHECK-LABEL: @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines
 module @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines  {
-  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX, %arg4: !WeightsTable_CMX) -> !Output_CMX {
+  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX) -> !Output_CMX {
     %input_sparse = VPU.GroupSparseTensor(%arg0, %arg1, %arg2) {
                         seAttr = #VPU.SEInterpolate<
                           mode = <BILINEAR>,
@@ -1600,7 +1597,7 @@ module @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines  {
                           initial_output_shape = [1, 16, 64, 64]>}
                     -> !Input_CMX
 
-    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3, %arg4) {
+    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3) {
               minimumHardwareExecutionCost = 14721 : i64,
               mode = #VPU.nce_interpolate_mode<BILINEAR>,
               ppe = #VPU.PPEStub<>,
@@ -1697,7 +1694,6 @@ module @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines  {
 }>
 
 !Weights_CMX = tensor<16x16x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
-!WeightsTable_CMX = tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}>
 
 !InputDataStub_CMX = tensor<1x16x32x32xf16, {mem_space = @CMX_NN, order = #NHWC}>
 !InputSMStub_CMX = tensor<1x16x130x130xi1, {mem_space = @CMX_NN, order = #NHWC}>
@@ -1714,7 +1710,7 @@ module @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines  {
 
 // CHECK-LABEL: @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines
 module @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines  {
-  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX, %arg4: !WeightsTable_CMX) -> !Output_CMX {
+  func.func @main(%arg0: !InputData_CMX, %arg1: !InputSM_CMX, %arg2: !InputSET_CMX, %arg3: !Weights_CMX) -> !Output_CMX {
     %input_sparse = VPU.GroupSparseTensor(%arg0, %arg1, %arg2) {
                         seAttr = #VPU.SEInterpolate<
                           mode = <BILINEAR>,
@@ -1725,7 +1721,7 @@ module @SparseBilinearNCEInterpolateInputWorkloadsSOHExtraLines  {
                           initial_output_shape = [1, 16, 64, 64]>}
                     -> !Input_CMX
 
-    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3, %arg4) {
+    %output_cmx = VPU.NCE.Interpolate(%input_sparse, %arg3) {
               minimumHardwareExecutionCost = 14721 : i64,
               mode = #VPU.nce_interpolate_mode<BILINEAR>,
               ppe = #VPU.PPEStub<>,

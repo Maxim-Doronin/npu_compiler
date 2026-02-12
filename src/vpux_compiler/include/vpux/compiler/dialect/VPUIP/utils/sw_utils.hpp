@@ -1,12 +1,16 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/utils/logging.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/small_string.hpp"
@@ -24,12 +28,7 @@ class LayerOpInterface;
 }  // namespace vpux::VPU
 namespace vpux::VPUIP {
 struct KernelInfo;
-class SwKernelOp;
-class SwKernelRun;
 }  // namespace vpux::VPUIP
-namespace vpux::VPURT {
-class TaskOp;
-}  // namespace vpux::VPURT
 
 namespace vpux {
 namespace VPUIP {
@@ -45,6 +44,8 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "activation_gelu",
                                                                  "softmax",
                                                                  "log_softmax",
+                                                                 "log_softmax_topk",
+                                                                 "log_softmax_peak",
                                                                  "matmul",
                                                                  "activation_hswish",
                                                                  "activation_hardsigmoid",
@@ -131,8 +132,8 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "i420_to_rgb",
                                                                  "activation_relu"};
 
-const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {"mvn1",     "lstm_cell", "lstm_sequence",
-                                                                 "lstm_dpu", "reorder",   "sdpa_extended"};
+const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {
+        "mvn1", "lstm_cell", "lstm_sequence", "lstm_dpu", "reorder", "sdpa_extended", "flash_sdpa"};
 
 const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {
         "softmax",          "eltwise_mul",         "activation_sin",      "activation_cos",
@@ -202,6 +203,8 @@ const SmallVector<StringLiteral> SW_KERNELS_NEED_TILING_ALIGNMENT = {"mvn1",
 
 const SmallVector<StringLiteral> SW_KERNELS_USE_DPU = {"lstm_dpu", "sdpa_extended", "flash_sdpa"};
 
+constexpr StringLiteral vpuTaskTypeAttrName = "VPU.task_type";
+
 SmallVector<mlir::Attribute> kernelArgsRange(VPUIP::SwKernelOp swKernelOp);
 
 mlir::SymbolRefAttr createBuiltInFunction(mlir::ModuleOp module, mlir::StringRef builtInFunctionName,
@@ -261,6 +264,10 @@ bool hasInputsInDDR(VPUIP::SwKernelOp swKernelTask);
 
 int64_t getSwKernelTilingAddressAlignment(VPUIP::SwKernelOp swkernelOp, config::ArchKind arch);
 std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(config::ArchKind arch);
+
+mlir::SymbolRefAttr createCacheHandlingFunction(mlir::MLIRContext* ctx, OpBuilderLogger& builderLog, Logger log,
+                                                VPUIP::SwKernelOp origOp, mlir::StringRef functionName,
+                                                VPU::ActShaveTaskType type);
 
 }  // namespace VPUIP
 }  // namespace vpux

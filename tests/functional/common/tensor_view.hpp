@@ -81,7 +81,7 @@ private:
     void init(const ov::Tensor& tensor, const ov::Shape* shape = nullptr) {
         static_assert(!std::is_pointer_v<ElementType>, "Underlying type must not be a pointer");
 
-        _data = reinterpret_cast<ElementType*>(tensor.data());
+        _data = reinterpret_cast<ElementType*>(const_cast<void*>(tensor.data()));
         _shape = tensor.get_shape();
 
         const auto typeSizeRatio = sizeof(ElementType) / tensor.get_element_type().size();

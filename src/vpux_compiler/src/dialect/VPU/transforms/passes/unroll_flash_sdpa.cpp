@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -97,8 +98,10 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
     // Padding on SequenceLength is 0 for all operations except the last one
     auto zeroPadAttr = getIntAttr(rewriter, 0);
 
-    // Initial Query tensor slice that will be scaled by the first FlashSDPAOp
     auto query = origOp.getQuery();
+
+    const auto initIsHead = origOp.getIsHead();
+    const auto initIsTail = origOp.getIsTail();
 
     auto i = int64_t{0};
     while (true) {
@@ -109,7 +112,7 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
         auto keySlice = createSlice(rewriter, appendLoc(origOp->getLoc(), "key_slice_{0}", i), origOp.getKey(),
                                     Dims4D::Act::H, beginOffset, endOffset, log);
         auto valueSlice = createSlice(rewriter, appendLoc(origOp->getLoc(), "value_slice_{0}", i), origOp.getValue(),
-                                      Dims4D::Act::W, beginOffset, endOffset, log);
+                                      Dims4D::Act::H, beginOffset, endOffset, log);
 
         auto attentionMaskSlice = mlir::Value{nullptr};
         if (origOp.getAttentionMask() != nullptr) {
@@ -117,16 +120,15 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
                                              origOp.getAttentionMask(), Dims4D::Act::W, beginOffset, endOffset, log);
         }
 
-        auto isHeadAttr = mlir::BoolAttr::get(ctx, i == 0);
-        auto isTailAttr = mlir::BoolAttr::get(ctx, i + 1 == kvNumBlocks);
+        auto isHeadAttr = mlir::BoolAttr::get(ctx, initIsHead && (i == 0));
+        auto isTailAttr = mlir::BoolAttr::get(ctx, initIsTail && (i + 1 == kvNumBlocks));
 
         auto sourceSeqLenPadSize = (i + 1 == kvNumBlocks) ? origOp.getSourceSeqLenPadSizeAttr() : zeroPadAttr;
 
         auto tileLoc = appendLoc(origOp->getLoc(), "flash_sdpa_kv_tile_{0}", i);
-        auto tiledOp = rewriter.create<VPU::FlashSDPAOp>(tileLoc, query, keySlice, valueSlice, out, max, sum,
-                                                         attentionMaskSlice, origOp.getScale(), sourceSeqLenPadSize,
-                                                         isHeadAttr, isTailAttr, /*kvNumBlocksAttr*/ nullptr,
-                                                         origOp.getMultiClusterStrategyAttr());
+        auto tiledOp = rewriter.create<VPU::FlashSDPAOp>(
+                tileLoc, query, keySlice, valueSlice, out, max, sum, attentionMaskSlice, sourceSeqLenPadSize,
+                isHeadAttr, isTailAttr, /*kvNumBlocksAttr*/ nullptr, origOp.getMultiClusterStrategyAttr());
 
         log.trace("Unrolled {0} - {1}", tiledOp->getName(), tiledOp->getResult(0));
 
@@ -174,6 +176,7 @@ void UnrollFlashSDPA::safeRunOnFunc() {
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<VPU::FlashSDPAOp>(isLegal);
     target.addLegalOp<VPU::SliceOp>();
+    target.addLegalOp<VPU::EmptyOp>();
     target.addLegalOp<Const::DeclareOp>();
 
     mlir::RewritePatternSet patterns(&ctx);

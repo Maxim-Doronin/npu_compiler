@@ -7,6 +7,7 @@
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferize_sw_ops_interface.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
@@ -19,6 +20,7 @@
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/Value.h>
 #include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPU {
@@ -107,6 +109,11 @@ private:
 
         const auto cmxIndices = getOptimalCMXPlacement(op, totalAvailableCMX);
 
+        SmallVector<mlir::OpOperand*> auxBuffers;
+        if (auto auxBuffOp = mlir::dyn_cast<VPU::AuxiliaryBufferOpInterface>(op)) {
+            auxBuffers = auxBuffOp.getAuxiliaryBuffers();
+        }
+
         mlir::OpBuilder builder(op);
         for (auto& operand : llvm::make_early_inc_range(op->getOpOperands())) {
             if (cmxIndices.operands.find(operand.getOperandNumber()) == cmxIndices.operands.end()) {
@@ -120,6 +127,22 @@ private:
                 _log.nest().trace("Operand {0} is already in CMX", operand.getOperandNumber());
                 continue;
             }
+            if (llvm::find_if(auxBuffers, [&](mlir::OpOperand* auxOperand) {
+                    return auxOperand->getOperandNumber() == operand.getOperandNumber();
+                }) != auxBuffers.end()) {
+                if (auto emptyOp = input.getDefiningOp<VPU::EmptyOp>()) {
+                    _log.nest().trace("Operand {0} is an empty auxiliary buffer. Moving directly to CMX without a copy",
+                                      operand.getOperandNumber());
+                    auto type = mlir::cast<NDTypeInterface>(emptyOp.getType());
+                    auto newType = mlir::cast<mlir::RankedTensorType>(type.changeMemSpace(memSpaceCMX));
+                    emptyOp.getResult().setType(newType);
+                    continue;
+                }
+                _log.nest().trace("Operand {0} is an auxiliary buffer, but cannot find the producer operation to move"
+                                  "directly to CMX (e.g. it might be a constant). A copy will be inserted",
+                                  operand.getOperandNumber());
+            }
+
             _log.nest().trace("Moving operand {0} to CMX", operand.getOperandNumber());
             const auto copiedInput = copyIntoMemSpace(
                     builder, appendLoc(op->getLoc(), "input-{0}-CMX", operand.getOperandNumber()), input, memSpaceCMX);

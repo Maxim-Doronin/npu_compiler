@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,5 +28,5 @@ module @NoConstants {
     }
 
     // CHECK-MAIN: func.func @main({{%.+}}: tensor<4x16xf16>) -> tensor<4x16xf16>
-    // CHECK-MAIN-NEXT:  {{%.+}} = {{.*}} dense_resource<some_other_origin> {{.*}} [#const.Add<1.000000e+00 : f64>]
+    // CHECK-MAIN-NEXT:  {{%.+}} = {{.+}} dense_resource<some_other_origin> {{.+}} [#const.Add<1.000000e+00 : f64>]
 }

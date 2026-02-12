@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,19 +47,28 @@ SmallVector<int64_t> restoreTilingBySplit(int64_t rank, const VFSplit& split);
 // Return Vf tiling split from strategy
 VFSplit getVFTilingSplit(ArrayRef<int64_t> tilingStrategy);
 
+// Get dim for optimization (the one without tiling value)
+std::optional<Dim> getNonTiledDimForVFOptimization(const VFSplit& vfSplit);
+
 // Get number of tiles from split
 int64_t getVFTilesLen(const VFSplit& vfSplit);
 
 // calculate limit for number of tiles for set of operations
-int64_t getTilingLimit(Dim axis, VFConfig& config, bool tilingOnHW = false);
+int64_t getTilingLimit(Dim axis, VFConfig& config, bool multiDimTiling = false);
 
 // if the maxTile is too large, return the cbrt of it if it's a valid max tile candidate
 std::optional<int64_t> getCbrtMaxTileCandidate(int64_t minTile, int64_t maxTile);
 
 // Determines if the operand represents shared weights for the operation in Vertical Fusion
-bool isOperandSharedWeightsForTiling(mlir::Operation* op, mlir::Value operand, ShapeRef tiledShape);
+bool isOperandSharedWeightsForTiling(mlir::Operation* op, mlir::Value operand, const TileInfo& tileInfo);
 
-// dump VF scheduling trace to JSON file
+// Dump VF scheduling trace to JSON file
 void printVFSchedulingTrace(mlir::func::FuncOp funcOp, const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction,
                             Logger log);
+
+// Get dim for optimization (the one without tiling value)
+std::optional<Dim> getVFOptimizedDim(const VFSplit& vfSplit);
+
+// Get the mapped VF block argument for the operand, the intermediate view like op will be ignored
+mlir::BlockArgument getVFBlockArgument(mlir::Value operand);
 }  // namespace vpux::VPU::VF::v2

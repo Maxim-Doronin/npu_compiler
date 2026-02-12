@@ -55,7 +55,7 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     %b1 = VPURT.ConfigureBarrier<1> -> !VPURT.Barrier
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%1 : memref<1x1x1x1000xf16>) outputs(%in_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%1 : memref<1x1x1x1000xf16>) outputs(%in_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
     }
 
     // Genetic Kernel information for the scheduler.
@@ -76,7 +76,7 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     }
 
     VPURT.Task waits(%b1 : !VPURT.Barrier) {
-        %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%out_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16>
+        %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%out_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16>
     }
     return %2: memref<1x1x1x1000xf16>
 

@@ -5,6 +5,9 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -56,20 +59,27 @@ mlir::LogicalResult vpux::IE::NonMaxSuppressionOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<mlir::ShapedType>(nms.getInBoxScores().getType());
-    mlir::Type outType = mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed);
+    const auto inScoresType = mlir::cast<vpux::NDTypeInterface>(nms.getInBoxScores().getType());
+    const auto inScoresShapeInfo = ShapeInfo::fromNDType(inScoresType);
+    const auto actualShape = inScoresShapeInfo.isDynamic() ? inScoresShapeInfo.bounds : inScoresShapeInfo.shape;
+    const auto numBatches = actualShape[0];
+    const auto numClasses = actualShape[1];
+    const auto numBoxes = std::min(actualShape[2], extractMaxOutputBoxesPerClass(nms));
+    SmallVector<int64_t> outShape{numBatches * numClasses * numBoxes, 3};
+    TensorAttr outTensorAttr = nullptr;
 
-    const auto maxOutputBoxesPerClass = extractMaxOutputBoxesPerClass(nms);
+    if (inScoresShapeInfo.isDynamic()) {
+        // Handle dynamic case: use the actual shape as bound and set output shape to dynamic
+        Bounds bounds(outShape);
+        outTensorAttr = vpux::getTensorAttr(ctx, nullptr, nullptr, bounds);
+        outShape = SmallVector<int64_t>{mlir::ShapedType::kDynamic, 3};
+    }
 
-    const auto numBatches = inType.getShape()[0];
-    const auto numClasses = inType.getShape()[1];
-    const auto numBoxes = inType.getShape()[2];
-    const auto minBoxes = std::min(numBoxes, maxOutputBoxesPerClass);
-    const SmallVector<int64_t> outShape{minBoxes * numBatches * numClasses, 3};
     const SmallVector<int64_t> validOutputsShape{1};
-    inferredReturnShapes.emplace_back(outShape, outType);
-    inferredReturnShapes.emplace_back(outShape, inType.getElementType());
-    inferredReturnShapes.emplace_back(validOutputsShape, outType);
+    auto s32Type = mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed);
+    inferredReturnShapes.emplace_back(outShape, s32Type, outTensorAttr);
+    inferredReturnShapes.emplace_back(outShape, inScoresType.getElementType(), outTensorAttr);
+    inferredReturnShapes.emplace_back(validOutputsShape, s32Type);
 
     return mlir::success();
 }

@@ -7,6 +7,7 @@
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/strings.hpp"
@@ -121,7 +122,7 @@ StringRef vpux::getTaskType(const ScheduledOpInfo& op) {
         taskType = "DMA-spill-in";
     } else if (op.isOriginalSpillWriteOp()) {
         taskType = "DMA-spill-out";
-    } else if (op.queueType.execKind == VPU::ExecutorKind::DMA_NN) {
+    } else if (op.queueType.execKind == config::ExecutorKind::DMA_NN) {
         if (op.isDataOp()) {
             taskType = "DMA-in";
         } else {
@@ -353,7 +354,7 @@ void vpux::createTracingJSON(mlir::func::FuncOp& netFunc, MemLiveRangeInfo& live
         }
 
         auto executor = VPUIP::VPUIPDialect::getExecutor(execOp).getLeafName().str();
-        if (auto dmaTask = vpux::getDmaTypeOp(execOp)) {
+        if (auto dmaTask = VPUIP::getDmaTypeOp(execOp)) {
             executor = executor + "_CH_" + std::to_string(getDMAQueueIdEncoding(dmaTask.getChannelType()));
         }
         uint32_t executorMask = 1;

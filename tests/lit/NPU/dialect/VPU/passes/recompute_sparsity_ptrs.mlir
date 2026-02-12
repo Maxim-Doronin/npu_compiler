@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,7 +27,7 @@ func.func @RecomputePtrsForSparseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
     // CHECK-SAME{LITERAL}:     [[[1, 128, 1, 1]]], [[[1, 160, 1, 1]]], [[[1, 192, 1, 1]]], [[[1, 224, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 256, 1, 1]]], [[[1, 288, 1, 1]]], [[[1, 320, 1, 1]]], [[[1, 352, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 384, 1, 1]]], [[[1, 416, 1, 1]]], [[[1, 448, 1, 1]]], [[[1, 480, 1, 1]]]]>
-    // CHECK:                 %{{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
+    // CHECK:                 {{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
     // CHECK-SAME:                 -> tensor<1x16x16x16xf16, {order = #NHWC}>
 }
 
@@ -48,7 +48,7 @@ func.func @DontChangePtrsForDenseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK-DAG:       [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
-    // CHECK:       %{{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
+    // CHECK:       {{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
     // CHECK-SAME:       -> tensor<1x16x16x16xf16, {order = #NHWC}>
 }
 

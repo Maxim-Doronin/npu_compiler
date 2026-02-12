@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
@@ -99,8 +100,8 @@ mlir::Value paddingChannel(mlir::Operation* origOp, mlir::PatternRewriter& rewri
                            ShapeRef padsEnd, size_t expandDim) {
     auto sliceOp = origOp->getOperand(0).getDefiningOp<IE::SliceOp>();
     if (sliceOp == nullptr) {
-        return rewriter.createOrFold<IE::ExpandOp>(appendLoc(origOp->getLoc(), llvm::formatv("_pad_{0}", padsEnd)),
-                                                   expandValue, std::nullopt, padsEnd);
+        return rewriter.createOrFold<IE::ExpandOp>(appendLoc(origOp->getLoc(), "pad_{0}", padsEnd), expandValue,
+                                                   std::nullopt, padsEnd);
     }
 
     return expandWithOffset(takeOpLoc(origOp, "expand_input"), rewriter, origOp, sliceOp, expandValue, padsEnd,
@@ -111,14 +112,14 @@ mlir::Value paddingFilter(mlir::Operation* origOp, mlir::PatternRewriter& rewrit
                           Shape padsEnd) {
     auto sliceOp = origOp->getOperand(0).getDefiningOp<IE::SliceOp>();
     if (sliceOp == nullptr) {
-        return rewriter.createOrFold<IE::ExpandOp>(appendLoc(expandValue.getLoc(), "_pad_filter"), expandValue,
+        return rewriter.createOrFold<IE::ExpandOp>(appendLoc(expandValue.getLoc(), "pad_filter"), expandValue,
                                                    std::nullopt, ShapeRef(padsEnd));
     }
     auto firstExpand = expandWithOffset(takeOpLoc(origOp, "expand_filter"), rewriter, origOp, sliceOp, expandValue,
                                         padsEnd, Dims4D::Act::C.ind());
 
     padsEnd[Dims4D::Filter::IC] = 0;
-    return rewriter.createOrFold<IE::ExpandOp>(appendLoc(origOp->getLoc(), "_pad_filter"), firstExpand, std::nullopt,
+    return rewriter.createOrFold<IE::ExpandOp>(appendLoc(origOp->getLoc(), "pad_filter"), firstExpand, std::nullopt,
                                                ShapeRef(padsEnd));
 }
 
@@ -232,8 +233,8 @@ mlir::Value padConvFilter(mlir::PatternRewriter& rewriter, mlir::Operation* orig
         Shape filterPadsEnd2(filterShape.size(), 0);
         filterPadsEnd2[Dims4D::Filter::OC] = outChanPadEnd;
         paddedFilter = rewriter.createOrFold<IE::ExpandOp>(
-                appendLoc(origOp->getLoc(), llvm::formatv("_{0}_{1}", filterPadsEnd1, filterPadsEnd2)), paddedFilter1,
-                std::nullopt, ShapeRef(filterPadsEnd2));
+                appendLoc(origOp->getLoc(), "{0}_{1}", filterPadsEnd1, filterPadsEnd2), paddedFilter1, std::nullopt,
+                ShapeRef(filterPadsEnd2));
     } else {
         // Const filter expand or expand on OC only
         paddedFilter = paddingFilter(origOp, rewriter, filterOperand, std::move(filterPadsEnd));
@@ -294,7 +295,10 @@ int64_t calculateAlignmentRequirementForExpandOpConversion(const vpux::NDTypeInt
 }
 
 bool beneficialToPadHeight(IE::ExpandOp origOp) {
-    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    return beneficialToPadHeight(origOp.getInput().getType());
+}
+
+bool beneficialToPadHeight(vpux::NDTypeInterface expandInType) {
     const auto expandInShape = expandInType.getShape();
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
 
@@ -312,24 +316,30 @@ bool beneficialToPadHeight(IE::ExpandOp origOp) {
 }
 
 bool beneficialToReshapeHeightToChannel(IE::ExpandOp origOp) {
-    auto inShape = getShape(origOp.getInput());
+    return beneficialToReshapeHeightToChannel(origOp.getInput().getType(), origOp.getOutput().getType());
+}
+
+bool beneficialToReshapeHeightToChannel(vpux::NDTypeInterface inputType, vpux::NDTypeInterface outputType) {
+    auto inShape = inputType.getShape();
     if (inShape[Dims4D::Act::W] != 1) {
         return false;
     }
 
-    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
-    const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
+    const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(inputType);
     if (inShape[Dims4D::Act::H] % convolutionAlignment != 0) {
         return false;
     }
 
     constexpr int64_t THRESHOLD_FOR_BENEFICIAL_CONVERSION = 4096;
-    auto outShape = getShape(origOp.getOutput());
+    auto outShape = outputType.getShape();
     return outShape.totalSize() >= THRESHOLD_FOR_BENEFICIAL_CONVERSION;
 }
 
 bool beneficialToPadWidth(IE::ExpandOp origOp) {
-    const auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    return beneficialToPadWidth(origOp.getInput().getType(), origOp.getOutput());
+}
+
+bool beneficialToPadWidth(vpux::NDTypeInterface expandInType, mlir::Value origExpandOutput) {
     const auto expandInShape = expandInType.getShape();
     const auto expandInW = expandInShape[Dims4D::Act::W];
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
@@ -355,11 +365,11 @@ bool beneficialToPadWidth(IE::ExpandOp origOp) {
         return false;
     }
 
-    if (!origOp.getResult().hasOneUse()) {
+    if (!origExpandOutput.hasOneUse()) {
         return false;
     }
 
-    mlir::Operation* userOp = *origOp.getResult().getUsers().begin();
+    mlir::Operation* userOp = *origExpandOutput.getUsers().begin();
     if (!mlir::isa<IE::ConvolutionOp, IE::TransposedConvolutionOp, IE::MaxPoolOp, IE::AvgPoolOp>(userOp)) {
         return false;
     }
@@ -388,51 +398,105 @@ bool beneficialToPadWidth(IE::ExpandOp origOp) {
            alignedInWWithPad / stridesData[Dims4D::Strides::X.ind()];
 }
 
+void convertExpandTypesToSupportedLayout(IE::ExpandOp expandOp, vpux::DimsOrder supportedLayout,
+                                         vpux::NDTypeInterface& expandInType, vpux::NDTypeInterface& expandOutType,
+                                         SmallVector<int64_t>& padsBegin, SmallVector<int64_t>& padsEnd) {
+    expandInType = mlir::cast<vpux::NDTypeInterface>(expandOp.getInput().getType());
+    expandOutType = mlir::cast<vpux::NDTypeInterface>(expandOp.getOutput().getType());
+    const auto expandInLayout = expandInType.getDimsOrder();
+
+    if (expandInLayout == supportedLayout) {
+        return;
+    }
+    const auto ctx = expandOp.getContext();
+    const auto inferExpandType = [&](mlir::Value input) -> std::optional<vpux::NDTypeInterface> {
+        SmallVector<mlir::ShapedTypeComponents> inferredReturnShapes;
+        inferPermuteReturnTypeComponents(input,
+                                         DimsOrder::NCHW.toAffineMap(ctx),  // mem_perm = NCHW
+                                         supportedLayout.toAffineMap(ctx),  // dst_order = NHWC
+                                         inferredReturnShapes,
+                                         false  // strictInfer = false
+        );
+        if (!inferredReturnShapes.empty()) {
+            const auto outputType = mlir::RankedTensorType::get(inferredReturnShapes[0].getDims(),
+                                                                inferredReturnShapes[0].getElementType(),
+                                                                inferredReturnShapes[0].getAttribute());
+            return mlir::cast<vpux::NDTypeInterface>(outputType);
+        }
+        return std::nullopt;
+    };
+    const auto inferElemTypeInfoIn = inferExpandType(expandOp.getInput());
+    const auto inferElemTypeInfoOut = inferExpandType(expandOp.getOutput());
+    if (!inferElemTypeInfoIn.has_value() || !inferElemTypeInfoOut.has_value()) {
+        return;
+    }
+    expandInType = inferElemTypeInfoIn.value();
+    expandOutType = inferElemTypeInfoOut.value();
+
+    const vpux::Shape padsBeginShape(padsBegin);
+    const auto padBeginMemShape = expandInLayout.toMemoryOrder(padsBeginShape);
+    padsBegin = supportedLayout.toLogicalOrder(padBeginMemShape).raw();
+
+    const vpux::Shape padsEndShape(padsEnd);
+    const auto padEndMemShape = expandInLayout.toMemoryOrder(padsEndShape);
+    padsEnd = supportedLayout.toLogicalOrder(padEndMemShape).raw();
+}
+
 bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugName) {
     const auto expandInType = mlir::cast<vpux::NDTypeInterface>(expandOp.getInput().getType());
     const auto expandOutType = mlir::cast<vpux::NDTypeInterface>(expandOp.getOutput().getType());
+    const auto expandOutput = expandOp.getOutput();
+    const auto padsBegin = parseIntArrayAttr<int64_t>(expandOp.getPadsBeginAttr());
+    const auto padsEnd = parseIntArrayAttr<int64_t>(expandOp.getPadsEndAttr());
+    const auto moduleOp = getModuleOp(expandOp);
+    return isEligibleConvertToConv(expandOutput, expandInType, expandOutType, padsBegin, padsEnd, moduleOp,
+                                   expandOp->getLoc(), log, debugName);
+}
+
+bool isEligibleConvertToConv(mlir::Value origExpandOutput, vpux::NDTypeInterface expandInType,
+                             vpux::NDTypeInterface expandOutType, ArrayRef<int64_t> expandPadsBegin,
+                             ArrayRef<int64_t> expandPadsEnd, mlir::ModuleOp moduleOp, mlir::Location loc, Logger log,
+                             StringRef debugName) {
     const auto supportedLayout = DimsOrder::NHWC;
     const auto expandInLayout = expandInType.getDimsOrder();
     if (expandInLayout != supportedLayout) {
-        log.trace("[{0}]: Expand at {1} has {2} input layout, expected {3}", debugName, expandOp.getLoc(),
-                  expandInLayout, supportedLayout);
+        log.trace("[{0}]: Expand at {1} has {2} input layout, expected {3}", debugName, loc, expandInLayout,
+                  supportedLayout);
         return false;
     }
     const auto expandOutLayout = expandOutType.getDimsOrder();
     if (expandOutLayout != supportedLayout) {
-        log.trace("[{0}]: Expand at {1} has {2} output layout, expected {3}", debugName, expandOp.getLoc(),
-                  expandOutLayout, supportedLayout);
+        log.trace("[{0}]: Expand at {1} has {2} output layout, expected {3}", debugName, loc, expandOutLayout,
+                  supportedLayout);
         return false;
     }
-    const auto expandPadsBegin = parseIntArrayAttr<int64_t>(expandOp.getPadsBeginAttr());
     if (expandPadsBegin.size() != 4) {
-        log.trace("[{0}]: Expand at {1} has {2}-d start padding. Only 4-d shapes are supported", debugName,
-                  expandOp.getLoc(), expandPadsBegin.size());
+        log.trace("[{0}]: Expand at {1} has {2}-d start padding. Only 4-d shapes are supported", debugName, loc,
+                  expandPadsBegin.size());
         return false;
     }
     const auto isConflictingPadBegin = [](const int64_t pad) -> bool {
         return pad != 0;
     };
     if (std::any_of(expandPadsBegin.begin(), expandPadsBegin.end(), isConflictingPadBegin)) {
-        log.trace("[{0}]: Expand at {1} has {2} start padding. Expected to have [0, 0, 0, 0]", debugName,
-                  expandOp.getLoc(), expandPadsBegin);
+        log.trace("[{0}]: Expand at {1} has {2} start padding. Expected to have [0, 0, 0, 0]", debugName, loc,
+                  expandPadsBegin);
         return false;
     }
-    const auto expandPadsEnd = parseIntArrayAttr<int64_t>(expandOp.getPadsEndAttr());
     if (expandPadsEnd.size() != 4) {
-        log.trace("[{0}]: Expand at {1} has {2}-d end padding. Only 4-d shapes are supported", debugName,
-                  expandOp.getLoc(), expandPadsEnd.size());
+        log.trace("[{0}]: Expand at {1} has {2}-d end padding. Only 4-d shapes are supported", debugName, loc,
+                  expandPadsEnd.size());
         return false;
     }
     if (expandPadsEnd[Dims4D::Act::N.ind()] != 0 || expandPadsEnd[Dims4D::Act::C.ind()] <= 0 ||
         expandPadsEnd[Dims4D::Act::H.ind()] != 0 || expandPadsEnd[Dims4D::Act::W.ind()] != 0) {
-        log.trace("[{0}]: Expand at {1} has {2} end padding. Expected to have [0, C, 0, 0]", debugName,
-                  expandOp.getLoc(), expandPadsEnd);
+        log.trace("[{0}]: Expand at {1} has {2} end padding. Expected to have [0, C, 0, 0]", debugName, loc,
+                  expandPadsEnd);
         return false;
     }
     const auto expandInShape = expandInType.getShape();
     if (expandInShape.size() != 4) {
-        log.trace("[{0}]: Expand at {1} has {2}-d shape. Only 4-d shapes are supported", debugName, expandOp.getLoc(),
+        log.trace("[{0}]: Expand at {1} has {2}-d shape. Only 4-d shapes are supported", debugName, loc,
                   expandInShape.size());
         return false;
     }
@@ -440,7 +504,7 @@ bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugN
     if (!expandInType.getElementType().isF16() &&
         !mlir::isa<mlir::quant::QuantizedType>(expandInType.getElementType())) {
         log.trace("[{0}]: Expand at {1} has {2} element type. Only float16 and quantized types are supported",
-                  debugName, expandOp.getLoc(), expandInType.getElementType());
+                  debugName, loc, expandInType.getElementType());
         return false;
     }
 
@@ -457,34 +521,34 @@ bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugN
     if (expandInShape[Dims4D::Act::C] > 32 && (ratioH > 0.7 || ratioW > 0.7)) {
         log.trace("[{0}]: Expansion at {1} has {2} channels exceeds '32', and spatial size (H {3} * W {4})."
                   "Converting to convolution is not beneficial",
-                  debugName, expandOp.getLoc(), expandInShape[Dims4D::Act::C], expandInShape[Dims4D::Act::H],
+                  debugName, loc, expandInShape[Dims4D::Act::C], expandInShape[Dims4D::Act::H],
                   expandInShape[Dims4D::Act::W]);
         return false;
     }
 
     const auto convolutionAlignment = IE::calculateAlignmentRequirementForExpandOpConversion(expandInType);
-    const auto isToReshape = beneficialToReshapeHeightToChannel(expandOp);
-    if (!isToReshape && !beneficialToPadHeight(expandOp) && !beneficialToPadWidth(expandOp)) {
+    const auto isToReshape = beneficialToReshapeHeightToChannel(expandInType, expandOutType);
+    if (!isToReshape && !beneficialToPadHeight(expandInType) && !beneficialToPadWidth(expandInType, origExpandOutput)) {
         log.trace("[{0}]: Expand at {1} has shape {2} not compatible with alignment {3}. Expand to conv only for case "
                   "beneficialToReshapeHeightToChannel or beneficialToPadHeight or beneficialToPadWidth",
-                  debugName, expandOp.getLoc(), expandInShape, convolutionAlignment);
+                  debugName, loc, expandInShape, convolutionAlignment);
         return false;
     }
 
     if (!isToReshape && expandInShape[Dims4D::Act::N] != 1) {
-        log.trace("[{0}]: Expand at {1} has batch {2}. Expected to have 1", debugName, expandOp.getLoc(),
+        log.trace("[{0}]: Expand at {1} has batch {2}. Expected to have 1", debugName, loc,
                   expandInShape[Dims4D::Act::N]);
         return false;
     }
 
-    if (VPU::inputCompatibleWithAutoPad(expandInType) && config::hasAutoPaddingIDU(getModuleOp(expandOp))) {
-        const auto hasConvUser = llvm::any_of(expandOp.getOutput().getUsers(), [](mlir::Operation* userOp) {
+    if (VPU::inputCompatibleWithAutoPad(expandInType) && config::hasAutoPaddingIDU(moduleOp)) {
+        const auto hasConvUser = llvm::any_of(origExpandOutput.getUsers(), [](mlir::Operation* userOp) {
             return mlir::isa<IE::ConvolutionOp>(userOp);
         });
         if (hasConvUser) {
             log.trace("[{0}]: Expand at {1} has a candidate user which could use IDU autopad. Converting to "
                       "convolution is not beneficial",
-                      debugName, expandOp.getLoc());
+                      debugName, loc);
             return false;
         }
     }

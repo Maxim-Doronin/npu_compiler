@@ -71,8 +71,8 @@ NDTypeInterface getConcatDistributedType(VPU::DistributedTypeInterface origType,
             distribution = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
         }
 
-        auto newDistributedAttr =
-                getConcatExplicitDistributedAttrForNewShape(distribution, shape, origType.getContext());
+        auto newDistributedAttr = getConcatExplicitDistributedAttrForNewShape(
+                distribution, shape, distributedDataType.getElementType(), origType.getContext());
         return mlir::cast<vpux::NDTypeInterface>(
                 origType.changeTypeComponentsForExplicitDistribution(typeComponents, newDistributedAttr));
     }

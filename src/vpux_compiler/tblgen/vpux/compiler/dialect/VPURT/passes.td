@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,21 +28,12 @@ def AssignPhysicalBarriers : PassBase<"assign-physical-barriers", "vpux::Functio
             "Number of physical barriers, available for use"
         >,
         Option<
-            "colorBinEnableOpt", "color-bin-enable",
-            "bool", "",
-            "Enable color bin physical barrier assignment algorithm"
-        >,
-        Option<
-            "virtualBarrierThresholdForWlmOpt", "workload-management-barrier-count-threshold",
-            "int", "",
-            "Threshold for WLM optimization"
-        >,
-        Option<
             "workloadManagementModeOpt", "workload-management-mode",
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "FWLM with split into subgraphs(pages)")
@@ -555,6 +546,28 @@ def FindWlmEnqueueDmasBarrier : PassBase<"find-wlm-enqueue-dmas-barrier", "vpux:
     }];
 
     let constructor = "vpux::VPURT::createFindWlmEnqueueDmasBarrierPass()";
+
+    let options = [
+        Option<
+            "numBarriersOpt", "num-barriers",
+            "int", "",
+            "Number of physical barriers, available for use"
+        >
+    ];
+}
+
+//
+// FindWlmEnqueueBarrierWithPages
+//
+
+def FindWlmEnqueueBarrierWithPages : PassBase<"find-wlm-enqueue-barrier-with-pages", "vpux::FunctionPass"> {
+    let summary = "For Partial WLM with WLM pages split find barriers for task enqueue";
+
+    let description = [{
+        This pass for each task finds a barrier at which its safe to enqueue the task
+    }];
+
+    let constructor = "vpux::VPURT::createFindWlmEnqueueBarrierWithPagesPass()";
 
     let options = [
         Option<

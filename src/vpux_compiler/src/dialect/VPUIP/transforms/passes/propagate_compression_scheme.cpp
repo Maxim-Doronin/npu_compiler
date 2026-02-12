@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,10 +7,10 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 namespace vpux::VPUIP {
@@ -116,7 +116,7 @@ void PropagateSparsityCompression::safeRunOnFunc() {
         const auto strides = outputType.getStrides();
         const auto newOutputType = getMemRefType(outputType.getShape(), outputType.getElementType(),
                                                  outputType.getDimsOrder(), outputType.getMemSpace(), strides,
-                                                 vpux::getSwizzlingSchemeAttr(outputType), sparsityCompressionAttr);
+                                                 VPUIP::getSwizzlingSchemeAttr(outputType), sparsityCompressionAttr);
 
         constOp.getOutput().setType(newOutputType);
 

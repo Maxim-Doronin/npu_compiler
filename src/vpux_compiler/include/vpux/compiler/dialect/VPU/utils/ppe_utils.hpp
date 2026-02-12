@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,26 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/utils/attributes_properties_conversion.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/utils/core/type/bfloat16.hpp"
 #include "vpux/utils/core/type/float16.hpp"
 
 namespace vpux::VPU {
+
+class EltwiseQuantizationApproximation {
+public:
+    EltwiseQuantizationApproximation(double input1Target, double input2Target, double outputTarget,
+                                     VPU::EltwiseType eltwiseType);
+
+    const QuantizationApproximation& input1() const;
+    const QuantizationApproximation& input2() const;
+    const QuantizationApproximation& output() const;
+
+private:
+    QuantizationApproximation _input1;
+    QuantizationApproximation _input2;
+    QuantizationApproximation _output;
+};
 
 double computeQuantScale(mlir::Type inputType, mlir::Type outputType);
 double computeQuantScaleWithWeightedOps(mlir::Type inputType, mlir::Type outputType, mlir::Type weightsType);

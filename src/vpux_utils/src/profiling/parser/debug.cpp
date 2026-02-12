@@ -12,6 +12,7 @@
 
 #include "vpux/utils/core/range.hpp"
 
+#include <iomanip>
 #include <memory>
 #include <ostream>
 

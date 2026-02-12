@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -88,6 +89,30 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherDMAOp::getTilingStrategy(TilingMo
     const auto indicesSize = indicesType.getCompactAllocSize();
     const auto outputRank = static_cast<int64_t>(outputShape.size());
 
+    auto isSub8BitElementType = [](vpux::NDTypeInterface outputType) -> bool {
+        const auto outputElemType = outputType.getElementType();
+        auto getStorageBitWidth = [](mlir::Type elemType) -> std::optional<uint32_t> {
+            return mlir::TypeSwitch<mlir::Type, std::optional<uint32_t>>(elemType)
+                    .Case<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType,
+                          vpux::type::QuantileFloatType, mlir::quant::QuantileQuantizedType,
+                          mlir::quant::QuantileQuantizedPerAxisType>([](auto quantType) {
+                        return mlir::cast<mlir::IntegerType>(quantType.getStorageType()).getWidth();
+                    })
+                    .Default([](mlir::Type type) -> std::optional<uint32_t> {
+                        if (type.isIntOrFloat()) {
+                            return type.getIntOrFloatBitWidth();
+                        }
+                        return std::nullopt;
+                    });
+        };
+
+        if (auto bitWidth = getStorageBitWidth(outputElemType)) {
+            return *bitWidth < 8;
+        }
+
+        return false;
+    };
+
     SmallVector<int64_t> dataBeforeAxisRange, indicesRange, dataAfterAxisRange;
     for (int64_t i = 0; i < outputRank; ++i) {
         if (i < axisValue) {
@@ -100,7 +125,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherDMAOp::getTilingStrategy(TilingMo
     }
 
     SmallVector<int64_t> tileDimOrder;
-    if (inputSize > indicesSize) {
+    // Prefer tiling along indices or higher dimensions when input element type is less than 8 bits, to
+    // avoid unsupported DMA like transferring 12 bits. This is not a 100% workable solution, but in most cases,
+    // if the data is 4-bit, the size of the innermost dimension is even.
+    // Therefore, tiling along indices or higher dimensions is preferred.
+    if (inputSize > indicesSize && !isSub8BitElementType(outputType)) {
         // TileDimOrder: {dataBeforeAxisRange, dataAfterAxisRange, indicesRange}.
         tileDimOrder.insert(tileDimOrder.end(), dataBeforeAxisRange.begin(), dataBeforeAxisRange.end());
         tileDimOrder.insert(tileDimOrder.end(), dataAfterAxisRange.begin(), dataAfterAxisRange.end());
@@ -128,6 +157,11 @@ bool vpux::VPU::GatherDMAOp::checkStrategyCompatibility(VPU::MultiClusterStrateg
     if (indicesShape.size() != 4) {
         return false;
     }
+
+    if (strategy == VPU::MultiClusterStrategy::SplitOverBatch) {
+        return indicesShape[Dims4D::Act::N] >= checked_cast<int64_t>(numTiles);
+    }
+
     if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
         return indicesShape[Dims4D::Act::H] == 1 && outputShape[Dims4D::Act::H] >= checked_cast<int64_t>(numTiles);
     }
@@ -142,12 +176,14 @@ bool vpux::VPU::GatherDMAOp::checkStrategyCompatibility(VPU::MultiClusterStrateg
 vpux::VPU::DistributionInfo vpux::VPU::GatherDMAOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& /*overlapParams*/) {
+        const vpux::VPU::OverlapDistributionParams& /*overlapParams*/,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     VPUX_THROW_UNLESS(distributionMode != VPU::DistributionMode::OVERLAPPED,
                       "Overlapped distribution mode is not supported for GatherDMAOp");
 
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     return getNonOverlappedDistributedNative(shape, distributionMode, numTiles, numClusters, alignment,
-                                             uniformDistributedSegments);
+                                             uniformDistributedSegments, outputType.getElementType());
 }
 
 vpux::NDTypeInterface vpux::VPU::GatherDMAOp::getDistributedTypeForOpOperand(mlir::OpOperand& operand,
@@ -159,7 +195,20 @@ vpux::NDTypeInterface vpux::VPU::GatherDMAOp::getDistributedTypeForOpOperand(mli
     if (operand.get() == origOp.getInput()) {
         return mlir::dyn_cast<NDTypeInterface>(origOp.getInput().getType());
     }
+
+    const auto strategy = clusteredOp.getMultiClusterStrategy().value();
     if (operand.get() == origOp.getIndices()) {
+        if (strategy == VPU::MultiClusterStrategy::SplitOverBatch) {
+            auto* ctx = clusteredOp->getContext();
+            auto numClusters = VPU::getOptimalNumClusters(clusteredOp, getShape(origOp.getOutput()), strategy);
+            auto activationTensorNumTiles =
+                    getIntArrayAttr(ctx, getActivationTensorNumTiles(clusteredOp, numClusters, strategy));
+
+            return getDistributedTypeFromInput(clusteredOp, operand.get(), VPU::DistributionMode::SEGMENTED,
+                                               activationTensorNumTiles, {}, strategy, hasExplicitDistributedAttr,
+                                               siblingsAnalysis);
+        }
+
         return getDistributedTypeFromInput(clusteredOp, operand.get(), VPU::DistributionMode::DUPLICATED, {}, {},
                                            VPU::MultiClusterStrategy::Clustering, hasExplicitDistributedAttr,
                                            siblingsAnalysis);

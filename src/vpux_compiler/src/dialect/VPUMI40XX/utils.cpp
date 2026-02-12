@@ -224,16 +224,16 @@ size_t getTaskBinarySize(VPURegMapped::TaskType taskType, [[maybe_unused]] confi
     return taskBinarySize40XX.at(taskType);
 }
 
-VPURegMapped::TaskType convertExecutorKindToExecutableTaskType(VPU::ExecutorKind kind) {
+VPURegMapped::TaskType convertExecutorKindToExecutableTaskType(config::ExecutorKind kind) {
     VPURegMapped::TaskType returnType;
     switch (kind) {
-    case VPU::ExecutorKind::DMA_NN:
+    case config::ExecutorKind::DMA_NN:
         returnType = VPURegMapped::TaskType::DMA;
         break;
-    case VPU::ExecutorKind::DPU:
+    case config::ExecutorKind::DPU:
         returnType = VPURegMapped::TaskType::DPUVariant;
         break;
-    case VPU::ExecutorKind::SHAVE_ACT:
+    case config::ExecutorKind::SHAVE_ACT:
         returnType = VPURegMapped::TaskType::ActKernelInvocation;
         break;
     default:

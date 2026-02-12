@@ -5,46 +5,37 @@
 
 #pragma once
 
-#include <vpux/compiler/utils/types.hpp>
+#include "vpux/utils/core/mem_size.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
 namespace vpux {
 class NDTypeInterface;
 
 class DMAPattern {
 public:
-    DMAPattern(mlir::SmallVector<int64_t> dims, mlir::SmallVector<int64_t> strides)
+    DMAPattern(SmallVector<int64_t> dims, SmallVector<int64_t> strides)
             : dims(std::move(dims)), strides(std::move(strides)) {
     }
     DMAPattern() = default;
 
-    mlir::SmallVector<int64_t> dims;
-    mlir::SmallVector<int64_t> strides;
+    SmallVector<int64_t> dims;
+    SmallVector<int64_t> strides;
 };
 
 class DMATransaction {
 public:
-    DMATransaction(llvm::SmallVector<DMAPattern> inputs, mlir::SmallVector<DMAPattern> outputs)
+    DMATransaction(SmallVector<DMAPattern> inputs, SmallVector<DMAPattern> outputs)
             : inputs(std::move(inputs)), outputs(std::move(outputs)) {
     }
     DMATransaction() = default;
 
-    mlir::SmallVector<DMAPattern> inputs;
-    mlir::SmallVector<DMAPattern> outputs;
+    SmallVector<DMAPattern> inputs;
+    SmallVector<DMAPattern> outputs;
 };
 
 DMAPattern reduceDimsForDma(SmallVector<int64_t> memShape, SmallVector<vpux::MemSize<vpux::MemType::Bit>> memStrides,
-                            int64_t elemSize);
-
+                            int64_t elemSize, bool strided);
 void patchDimsForNPU37XX(DMAPattern& dmaPattern);
-
-DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
-                                                mlir::AffineMap mappingOrder, mlir::AffineMap loopOrder);
-
-DMATransaction getDMATransactionFromPermutation(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
-                                                mlir::AffineMap mappingOrder, mlir::SmallVector<int64_t> loopOrder);
-
-DMATransaction getDMATransactionFromExpand(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
-                                           mlir::ArrayAttr padsBegin, mlir::ArrayAttr padsEnd);
 
 std::tuple<SmallVector<int64_t>, SmallVector<Bit>, int64_t> getTypeInfo(NDTypeInterface type);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -64,7 +64,7 @@ public:
     }
 
     void SetUp() override {
-        configuration["NPU_COMPILER_TYPE"] = "MLIR";
+        configuration["NPU_COMPILER_TYPE"] = "PLUGIN";
 
         // create a subgraph (MatMul -> Divide) that will be lowered into a HW
         // convolution
@@ -119,10 +119,12 @@ TEST_P(MatMulWithDivideTestCommon, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MatMulWithDivideTestCommon, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 const std::vector<ov::element::Type> elementTypes = {ov::element::f32};
 
 INSTANTIATE_TEST_SUITE_P(MatMulWithDivide, MatMulWithDivideTestCommon, ::testing::ValuesIn(elementTypes),

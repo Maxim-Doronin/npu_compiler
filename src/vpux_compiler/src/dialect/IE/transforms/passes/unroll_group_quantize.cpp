@@ -75,7 +75,7 @@ SmallVector<mlir::Value> GenericUnrollBase<ConcreteOp>::splitValue(const mlir::V
     const auto staticSizesAttr = getIntArrayAttr(rewriter.getContext(), staticSizes);
     SmallVector<mlir::Value> inputChunks;
     for (const auto& idx : irange(groups)) {
-        const auto loc = appendLoc(val.getLoc(), "_slice_{0}", idx);
+        const auto loc = appendLoc(val.getLoc(), "slice_{0}", idx);
         SmallVector<int64_t> offsets(valShape.size(), 0);
         offsets[axis] = idx;
         const auto offsetsAttr = getIntArrayAttr(rewriter.getContext(), offsets);
@@ -156,7 +156,7 @@ SmallVector<mlir::Value> UnrollFakeQuantize::splitInputs(IE::FakeQuantizeOp fqOp
     SmallVector<mlir::Value> fqResults;
     const auto groups = data.size();
     for (const auto& idx : irange(groups)) {
-        const auto loc = appendLoc(fqOp.getLoc(), "_slice_{0}", idx);
+        const auto loc = appendLoc(fqOp.getLoc(), "slice_{0}", idx);
         auto reducedFq = rewriter.create<IE::FakeQuantizeOp>(
                 loc, data[idx], getValue(inLow, idx), getValue(inHigh, idx), getValue(outLow, idx),
                 getValue(outHigh, idx), fqOp.getLevelsAttr(), fqOp.getLowFpTypeAttr(), fqOp.getAutoBroadcast());
@@ -194,7 +194,7 @@ SmallVector<mlir::Value> UnrollDynamicDequantize::splitInputs(IE::DynamicDequant
     SmallVector<mlir::Value> deQuantizeResults;
     const auto groups = input.size();
     for (const auto& idx : irange(groups)) {
-        const auto loc = appendLoc(origOp.getLoc(), "_slice_{0}", idx);
+        const auto loc = appendLoc(origOp.getLoc(), "slice_{0}", idx);
         auto reduceDequantize = rewriter.create<IE::DynamicDequantizeOp>(
                 loc, getValue(input, idx), getValue(scale, idx), hasZeroPoint ? getValue(zeroPoint, idx) : nullptr,
                 origOp.getDstElemType());

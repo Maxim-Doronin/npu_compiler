@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -529,14 +529,14 @@ func.func @ShapeOf(%DATA: tensor<1x8x48x48xf16, {dynamic_dims_mask = #const.Opaq
     // CHECK-SAME:      inputs([[SHAPE]]
     // CHECK-SAME:      outputs([[ALLOC_SHAPE]]
 
-    // CHECK: [[OUT_SHAPE:%.*]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: [[OUT:%.*]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_ShapeOf
+    // CHECK: [[OUT_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
+    // CHECK: [[OUT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_ShapeOf
     // CHECK-SAME: inputs([[COPY_SHAPE]]
     // CHECK-SAME: outputs([[OUT_SHAPE]]
 
-    // CHECK: [[RES_SHAPE:%.*]] = memref.alloc() : memref<4xsi32>
+    // CHECK: [[RES_SHAPE:%.+]] = memref.alloc() : memref<4xsi32>
 
-    // CHECK: [[COPY_OUT:%.*]] = VPUIP.Copy
+    // CHECK: [[COPY_OUT:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[OUT]]
     // CHECK-SAME: outputs([[RES_SHAPE]]
     // CHECK-SAME: -> memref<4xsi32>
@@ -562,7 +562,7 @@ func.func @SkipStaticPermuteCast(%arg0: tensor<1x32x32x16xf16, {order = #NCHW}>)
     return %PERMUTE_CAST : tensor<1x16x32x32xf16, {order = #NHWC}>
 
     // CHECK-NOT:   VPUIP.SW.Kernel
-    // CHECK:   [[PERMUTE_CAST:%.*]] = VPUIP.PermuteCast {
+    // CHECK:   [[PERMUTE_CAST:%.+]] = VPUIP.PermuteCast {
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NCHW
     // CHECK-SAME: }
@@ -667,7 +667,7 @@ func.func @DynamicDequantizeSWLayer(%input: tensor<16x7x3x51xi4>, %scale: tensor
     // CHECK: [[OUT_ALLOC:%.+]] = memref.alloc() : memref<16x7x3x51xf16>
     // CHECK: [[OUTPUT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_DynamicDequantize
     // CHECK-SAME:                inputs([[IN_CAST]] as [[ARG_0:%.+]]: memref<16x7x3x51x!qElemType>, [[SCALE]] as [[ARG_1:%.+]]: memref<16x1x3x1xf16>, [[ZP]] as [[ARG_2:%.+]]: memref<16x7x1x51xi4>)
-    // CHECK-SAME:                outputs([[OUT_ALLOC]] as [[ARG_3:%.*]]: memref<16x7x3x51xf16>) on tile 0 -> memref<16x7x3x51xf16>
+    // CHECK-SAME:                outputs([[OUT_ALLOC]] as [[ARG_3:%.+]]: memref<16x7x3x51xf16>) on tile 0 -> memref<16x7x3x51xf16>
     // CHECK-SAME:            {
     // CHECK:                   VPUIP.SW.Kernel.run {attrs = [9223372036854775807]}([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]]) : memref<16x7x3x51x!qElemType>, memref<16x1x3x1xf16>, memref<16x7x1x51xi4>, memref<16x7x3x51xf16>
     // CHECK:                 }
@@ -1021,6 +1021,7 @@ func.func @DynamicExpandSWLayerFP32(%input: tensor<1x3x20x20xf32, {dynamic_dims_
 // -----
 
 // CHECK-LABEL: @ExperimentalDetectronROIFeatureExtractor
+// CHECK-SAME:  ([[ARG0:%.+]]: memref<100x4xf32>, [[ARG1:%.+]]: memref<1x64x192x320xf32>, [[ARG2:%.+]]: memref<1x64x96x160xf32>, [[ARG3:%.+]]: memref<1x64x48x80xf32>)
 func.func @ExperimentalDetectronROIFeatureExtractor(%arg0: tensor<100x4xf32>, %arg1: tensor<1x64x192x320xf32>, %arg2: tensor<1x64x96x160xf32>, %arg3: tensor<1x64x48x80xf32>) -> (tensor<100x64x14x14xf32>, tensor<100x4xf32>) {
     %aux_reordered_rois = const.Declare tensor<400xf32> = dense<0.000000e+00> : tensor<400xf32>
     %aux_original_roi_map = const.Declare tensor<100xui32> = dense<0> : tensor<100xui32>
@@ -1032,15 +1033,34 @@ func.func @ExperimentalDetectronROIFeatureExtractor(%arg0: tensor<100x4xf32>, %a
       -> tensor<100x64x14x14xf32>, tensor<100x4xf32>
     return %output, %outputROIs : tensor<100x64x14x14xf32>, tensor<100x4xf32>
 
-    // CHECK:  [[AUX_REORDERED_ROIS:%.+]] = const.Declare memref<400xf32> = dense<0.000000e+00> : tensor<400xf32>
-    // CHECK:  [[AUX_ORIGINAL_ROI_MAP:%.+]] = const.Declare memref<100xui32> = dense<0> : tensor<100xui32>
-    // CHECK:  [[AUX_OUTPUT_ROIS_FEATURES:%.+]] = const.Declare memref<1254400xf32> = dense<0.000000e+00> : tensor<1254400xf32>
-    // CHECK:  [[AUX_LEVELS:%.+]] = const.Declare memref<100xui32> = dense<0> : tensor<100xui32>
-    // CHECK:  [[ALLOC_0:%.+]] = memref.alloc() : memref<100x64x14x14xf32>
-    // CHECK:  [[ALLOC_1:%.+]] = memref.alloc() : memref<100x4xf32>
-    // CHECK:  [[SW:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_ExperimentalDetectronROIFeatureExtractor inputs([[ARG0:%.+]] as [[ARG4:%.+]]: memref<100x4xf32>, [[ARG0:%.+]] as [[ARG5:%.+]]: memref<1x64x192x320xf32>, [[ARG1:%.+]] as [[ARG6:%.+]]: memref<1x64x96x160xf32>, [[ARG3:%.+]] as [[ARG7:%.+]]: memref<1x64x48x80xf32>, [[AUX_REORDERED_ROIS:%.+]] as [[ARG8:%.+]]: memref<400xf32>, [[AUX_ORIGINAL_ROI_MAP:%.+]] as [[ARG9:%.+]]: memref<100xui32>, [[AUX_OUTPUT_ROIS_FEATURES:%.+]] as [[ARG10:%.+]]: memref<1254400xf32>, [[AUX_LEVELS:%.+]] as [[ARG11:%.+]]: memref<100xui32>) outputs([[ALLOC_0:%.+]] as [[ARG12:%.+]]: memref<100x64x14x14xf32>, [[ALLOC_1:%.+]] as [[ARG13:%.+]]: memref<100x4xf32>) on tile 0 -> (memref<100x64x14x14xf32>, memref<100x4xf32>){
-    // CHECK:  VPUIP.SW.Kernel.run {attrs = [9223372036854775807, 14, 2, 0, [4, 8, 16]]}([[ARG4:%.+]], [[ARG5:%.+]], [[ARG6:%.+]], [[ARG7:%.+]], [[ARG8:%.+]], [[ARG9:%.+]], [[ARG10:%.+]], [[ARG11:%.+]], [[ARG12:%.+]], [[ARG13:%.+]]) : memref<100x4xf32>, memref<1x64x192x320xf32>, memref<1x64x96x160xf32>, memref<1x64x48x80xf32>, memref<400xf32>, memref<100xui32>, memref<1254400xf32>, memref<100xui32>, memref<100x64x14x14xf32>, memref<100x4xf32>
-    // CHECK:  [[SW]]#0, [[SW]]#1 : memref<100x64x14x14xf32>, memref<100x4xf32>
+    // CHECK:       [[AUX_REORDERED_ROIS:%.+]] = const.Declare memref<400xf32> = dense<0.000000e+00> : tensor<400xf32>
+    // CHECK:       [[AUX_ORIGINAL_ROI_MAP:%.+]] = const.Declare memref<100xui32> = dense<0> : tensor<100xui32>
+    // CHECK:       [[AUX_OUTPUT_ROIS_FEATURES:%.+]] = const.Declare memref<1254400xf32> = dense<0.000000e+00> : tensor<1254400xf32>
+    // CHECK:       [[AUX_LEVELS:%.+]] = const.Declare memref<100xui32> = dense<0> : tensor<100xui32>
+    // CHECK:       [[ALLOC_0:%.+]] = memref.alloc() : memref<100x64x14x14xf32>
+    // CHECK:       [[ALLOC_1:%.+]] = memref.alloc() : memref<100x4xf32>
+    // CHECK:       [[SW:%.+]]:6 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 6, 0, 0>} @VPU.SW::@builtin_ExperimentalDetectronROIFeatureExtractor
+    // CHECK-SAME:    inputs([[ARG0]] as [[INNER_ARG0:%[^:]+]]: memref<100x4xf32>,
+    // CHECK-SAME:           [[ARG1]] as [[INNER_ARG1:%[^:]+]]: memref<1x64x192x320xf32>,
+    // CHECK-SAME:           [[ARG2]] as [[INNER_ARG2:%[^:]+]]: memref<1x64x96x160xf32>,
+    // CHECK-SAME:           [[ARG3]] as [[INNER_ARG3:%[^:]+]]: memref<1x64x48x80xf32>,
+    // CHECK-SAME:           [[AUX_REORDERED_ROIS]] as [[INNER_AUX_REORDERED_ROIS:%[^:]+]]: memref<400xf32>,
+    // CHECK-SAME:           [[AUX_ORIGINAL_ROI_MAP]] as [[INNER_AUX_ORIGINAL_ROI_MAP:%[^:]+]]: memref<100xui32>,
+    // CHECK-SAME:           [[AUX_OUTPUT_ROIS_FEATURES]] as [[INNER_AUX_OUTPUT_ROIS_FEATURES:%[^:]+]]: memref<1254400xf32>,
+    // CHECK-SAME:           [[AUX_LEVELS]] as [[INNER_AUX_LEVELS:%[^:]+]]: memref<100xui32>)
+    // CHECK-SAME:    outputs([[ALLOC_0]] as [[INNER_ALLOC_0:%[^:]+]]: memref<100x64x14x14xf32>,
+    // CHECK-SAME:            [[ALLOC_1]] as [[INNER_ALLOC_1:%[^:]+]]: memref<100x4xf32>
+    // CHECK-SAME:            [[AUX_REORDERED_ROIS]] as [[INNER_AUX_REORDERED_ROIS_OUT:%[^:]+]]: memref<400xf32>,
+    // CHECK-SAME:            [[AUX_ORIGINAL_ROI_MAP]] as [[INNER_AUX_ORIGINAL_ROI_MAP_OUT:%[^:]+]]: memref<100xui32>,
+    // CHECK-SAME:            [[AUX_OUTPUT_ROIS_FEATURES]] as [[INNER_AUX_OUTPUT_ROIS_FEATURES_OUT:%[^:]+]]: memref<1254400xf32>,
+    // CHECK-SAME:            [[AUX_LEVELS]] as [[INNER_AUX_LEVELS_OUT:%[^:]+]]: memref<100xui32>)
+    // CHECK-SAME:    on tile 0 -> (memref<100x64x14x14xf32>, memref<100x4xf32>, memref<400xf32>, memref<100xui32>, memref<1254400xf32>, memref<100xui32>){
+    // CHECK:       VPUIP.SW.Kernel.run {attrs = [9223372036854775807, 14, 2, 0, [4, 8, 16]]}(
+    // CHECK-SAME:            [[INNER_ARG0]], [[INNER_ARG1]], [[INNER_ARG2]], [[INNER_ARG3]],
+    // CHECK-SAME:            [[INNER_AUX_REORDERED_ROIS]], [[INNER_AUX_ORIGINAL_ROI_MAP]], [[INNER_AUX_OUTPUT_ROIS_FEATURES]], [[INNER_AUX_LEVELS]],
+    // CHECK-SAME:            [[INNER_ALLOC_0]], [[INNER_ALLOC_1]],
+    // CHECK-SAME:            [[INNER_AUX_REORDERED_ROIS_OUT]], [[INNER_AUX_ORIGINAL_ROI_MAP_OUT]], [[INNER_AUX_OUTPUT_ROIS_FEATURES_OUT]], [[INNER_AUX_LEVELS_OUT]])
+    // CHECK:       [[SW]]#0, [[SW]]#1 : memref<100x64x14x14xf32>, memref<100x4xf32>
 }
 
 // -----
@@ -1396,4 +1416,22 @@ func.func @AvgPool16SWLayer(%arg0: tensor<1x2x5x5xf16>) -> tensor<1x2x1x1xf16> {
 // CHECK-SAME: memref<1x2x5x5xf16>, memref<1x2x1x1xf16>
 // CHECK:    }
 // CHECK:    return [[RES]] : memref<1x2x1x1xf16>
+}
+
+// -----
+
+#C = affine_map<(d0) -> (d0)>
+
+!Distributed = !VPU.DistributedTensor<100xf16, #C, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+func.func @EmptyOp() -> (tensor<1000xf16>, tensor<1000xf16, {mem_space = [@CMX_NN, 0], order = #C}>, !Distributed) {
+    %ddr = VPU.Empty : tensor<1000xf16>
+    %cmx = VPU.Empty : tensor<1000xf16, {mem_space = [@CMX_NN, 0], order = #C}>
+    %distributed = VPU.Empty : !Distributed
+    return %ddr, %cmx, %distributed : tensor<1000xf16>, tensor<1000xf16, {mem_space = [@CMX_NN, 0], order = #C}>, !Distributed
+
+    // CHECK: [[DDR:%.+]] = memref.alloc() : memref<1000xf16>
+    // CHECK: [[CMX:%.+]] = memref.alloc() : memref<1000xf16, [@CMX_NN, 0]>
+    // CHECK: [[DISTRIBUTED:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<100xf16, #C, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // return [[DDR]], [[CMX]], [[DISTRIBUTED]]
 }

@@ -16,12 +16,12 @@
 #include <mlir/IR/ValueRange.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 
+namespace vpux::config {
+enum class ExecutorKind : uint64_t;
+}  // namespace vpux::config
 namespace vpux::IE {
 class LayerLayoutInfo;
 }  // namespace vpux::IE
-namespace vpux::VPU {
-enum class ExecutorKind : uint64_t;
-}  // namespace vpux::VPU
 namespace VPUNN {
 class VPUCostModel;
 }  // namespace VPUNN
@@ -56,7 +56,7 @@ void getLayerEffects(mlir::Operation* op, SmallVectorImpl<MemoryEffect>& effects
 using MemoryEffect = mlir::SideEffects::EffectInstance<mlir::MemoryEffects::Effect>;
 void getTaskEffects(mlir::Operation* op, SmallVectorImpl<MemoryEffect>& effects);
 
-IndexedSymbolAttr getExecutorAttr(mlir::Operation* op, VPU::ExecutorKind kind);
+IndexedSymbolAttr getExecutorAttr(mlir::Operation* op, config::ExecutorKind kind);
 
 IndexedSymbolAttr getTaskOpExecutor(mlir::Operation* op);
 

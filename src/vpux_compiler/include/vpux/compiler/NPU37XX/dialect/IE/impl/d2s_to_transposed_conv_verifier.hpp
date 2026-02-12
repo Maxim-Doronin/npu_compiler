@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,10 +12,10 @@ namespace vpux::IE::arch37xx {
 /*
    Class for DepthSpace to TransposedConv conversion verifier for NPU37XX
 */
-class D2SToTransposedConvVerifier : public D2SToTransposedConvVerifierBase {
+class D2SToTransposedConvVerifier : public vpux::IE::D2SToTransposedConvVerifierBase {
 public:
-    mlir::LogicalResult isBeneficialConversion(Logger log, mlir::PatternRewriter& rewriter,
-                                               IE::DepthToSpaceOp d2sOp) const override;
+    mlir::LogicalResult isBeneficialConversion(Logger log, mlir::PatternRewriter& rewriter, IE::DepthToSpaceOp d2sOp,
+                                               const bool seOpsEnabled) const override;
 };
 
 }  // namespace vpux::IE::arch37xx

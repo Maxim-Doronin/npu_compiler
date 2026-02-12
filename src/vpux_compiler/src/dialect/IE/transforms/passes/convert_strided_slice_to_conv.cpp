@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -84,11 +84,9 @@ IE::ConvolutionOp createStridedSliceConv(mlir::Value input, mlir::ArrayRef<int64
 
     const auto grpConvOutType = origOutType.changeShape(outShape);
 
-    auto newLoc = appendLoc(loc, "_strided_slice_Conv_1_1");
-    return rewriter.create<IE::ConvolutionOp>(newLoc, grpConvOutType, input, weights, /*bias=*/nullptr, stridesAttr,
-                                              padBeginAttr, padEndAttr, dilationsAttr,
-                                              /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputPaddingAttr=*/nullptr, /*inputPaddingAttr=*/nullptr);
+    auto newLoc = appendLoc(loc, "strided_slice_Conv_1_1");
+    return rewriter.create<IE::ConvolutionOp>(newLoc, grpConvOutType, input, weights, stridesAttr, padBeginAttr,
+                                              padEndAttr, dilationsAttr);
 }
 
 IE::ConvolutionOp createParallelStridedSliceToConv(mlir::Value input, mlir::ArrayRef<int64_t> strides,
@@ -145,10 +143,8 @@ IE::ConvolutionOp createParallelStridedSliceToConv(mlir::Value input, mlir::Arra
     const auto origOutType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto convOutType = origOutType.changeShape(outShape);
     auto newLoc = appendLoc(loc, "parallel_strided_slice_Conv");
-    return rewriter.create<IE::ConvolutionOp>(newLoc, convOutType, input, weights, /*bias=*/nullptr, stridesAttr,
-                                              padBeginAttr, padEndAttr, dilationsAttr,
-                                              /*post_opAttr=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputPadding*/ nullptr, /*inputPadding*/ nullptr);
+    return rewriter.create<IE::ConvolutionOp>(newLoc, convOutType, input, weights, stridesAttr, padBeginAttr,
+                                              padEndAttr, dilationsAttr);
 }
 
 //

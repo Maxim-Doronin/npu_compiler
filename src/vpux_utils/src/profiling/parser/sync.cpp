@@ -65,6 +65,14 @@ RawProfilingRecords getRelatedTasksOfKind(
     return tasks;
 }
 
+std::vector<RawProfilingRecord::BarrierIdType> getBarriersIntersection(const RawProfilingRecord::BarriersSet& set1,
+                                                                       const RawProfilingRecord::BarriersSet& set2) {
+    std::vector<RawProfilingRecord::BarrierIdType> barriersIntersection;
+    std::set_intersection(set1.cbegin(), set1.cend(), set2.cbegin(), set2.cend(),
+                          std::back_inserter(barriersIntersection));
+    return barriersIntersection;
+}
+
 SynchronizationPointsContainer findSynchronizationPoints(const RawProfilingRecords& taskGroup1,
                                                          const RawProfilingRecords& taskGroup2,
                                                          SynchronizationPointKind pointKind) {
@@ -98,7 +106,7 @@ SynchronizationPointsContainer findSynchronizationPoints(const RawProfilingRecor
     }
 
     // Possible synchronization points occurs on covered from both directions barriers
-    const auto commonBarriers = RawProfilingRecord::getBarriersIntersection(waitBarriers, updateBarriers);
+    const auto commonBarriers = getBarriersIntersection(waitBarriers, updateBarriers);
     SynchronizationPointsContainer synchronizationPoints;
     size_t numUnsuitableSyncPoints = 0;
     for (const auto& commonBarrier : commonBarriers) {
@@ -123,11 +131,9 @@ SynchronizationPointsContainer findSynchronizationPoints(const RawProfilingRecor
 
 // Get a shift in time for the synchronization point. The shift is defined as a difference between the latest update
 // task and the earliest wait task
-std::vector<RawProfilingRecord::TimeType> getBarrierShiftEstimations(const SynchronizationPointsContainer& syncPoints,
-                                                                     FrequenciesSetup frequenciesSetup,
-                                                                     vpux::Logger& log, bool extraVerbosity = false) {
-    using TimeType = RawProfilingRecord::TimeType;
-
+std::vector<TimeType> getBarrierShiftEstimations(const SynchronizationPointsContainer& syncPoints,
+                                                 const FrequenciesSetup& frequenciesSetup, vpux::Logger& log,
+                                                 bool extraVerbosity = false) {
     std::vector<double> syncShiftsEstimations;
     syncShiftsEstimations.reserve(syncPoints.size());
     for (const auto& syncPoint : syncPoints) {
@@ -159,14 +165,13 @@ std::vector<RawProfilingRecord::TimeType> getBarrierShiftEstimations(const Synch
 // DMA timer
 std::optional<int64_t> vpux::profiling::getDMA2OtherTimersShift(const RawProfilingRecords& dmaTasks,
                                                                 const RawProfilingRecords& otherTasks,
-                                                                FrequenciesSetup frequenciesSetup,
+                                                                const FrequenciesSetup& frequenciesSetup,
                                                                 SynchronizationPointKind pointKind, vpux::Logger& log) {
     const auto inverseAlgorithm = pointKind == SynchronizationPointKind::DPU_TO_DMA;
     // For some reason in terms of shift estimation DPU2DMA works worse. Probably because of DMA queue starvation.In
     // case of DMA2DPU synchronization DPU tasks executes almost  immediately after barrier, while in opposite case DMA
     // queue should be filled before start
     VPUX_THROW_WHEN(inverseAlgorithm, "DPU2DMA algorithm is disabled");
-    using TimeType = RawProfilingRecord::TimeType;
 
     const auto syncPoints = findSynchronizationPoints(dmaTasks, otherTasks, pointKind);
     if (syncPoints.empty()) {

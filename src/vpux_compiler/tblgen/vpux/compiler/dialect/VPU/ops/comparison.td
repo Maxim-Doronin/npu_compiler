@@ -266,4 +266,41 @@ def VPU_NotEqualOp :
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
+
+def VPU_IsInfOp :
+        VPU_LayerOp<
+            "IsInf",
+            [
+                VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                VPU_EltwiseOp
+            ]
+        > {
+    let summary = "IsInf VPU layer";
+
+    let arguments = (ins
+        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
+    );
+
+    let results = (outs
+        AnyTypeOf<[RankedTensorOf<[Bool8]>, VPU_DistributedTensor]>:$output
+    );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
+
 #endif

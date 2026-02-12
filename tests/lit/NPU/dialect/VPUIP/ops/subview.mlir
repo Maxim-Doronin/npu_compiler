@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,10 +67,10 @@ func.func @ComposeSubView(%arg0: memref<1x3x8x4xf32>) -> memref<1x3x8x4xf32> {
 
     // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x3x16x16xf32>
 
-    // CHECK:       [[VAR1:%.*]] = VPUIP.SubView [[VAR0]] [0, 0, 8, 12] [1, 3, 8, 4] :
+    // CHECK:       [[VAR1:%.+]] = VPUIP.SubView [[VAR0]] [0, 0, 8, 12] [1, 3, 8, 4] :
     // CHECK-SAME:      memref<1x3x16x16xf32> to memref<1x3x8x4xf32, {order = #NCHW, strides = [768, 256, 16, 1]}>
 
-    // CHECK:       [[VAR2:%.*]] = VPUIP.SW.Kernel
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SW.Kernel
     // CHECK-SAME:      inputs([[VAR1]]
     // CHECK-SAME:      outputs(%arg0
     // CHECK-SAME:      -> memref<1x3x8x4xf32>
@@ -112,7 +112,7 @@ func.func @SubviewWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistr
     %1 = VPUIP.SubView %arg0 [0, 0, 47, 0] [1, 1, 49, 160] : !InputDistributed to !OutputDistributed
     return %0, %1 : !OutputDistributed, !OutputDistributed
 
-    // CHECK:        [[SUBVIEW0:%.*]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 49, 160]
+    // CHECK:        [[SUBVIEW0:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 49, 160]
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x1x96x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPUIP.DistributedBuffer<1x1x49x160xf16, {order = #NHWC, strides = [15360, 1, 160, 1]}, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
@@ -120,7 +120,7 @@ func.func @SubviewWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistr
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 26, 160], [1, 1, 25, 160]], compute_offsets = [[0, 0, 0, 0], [0, 0, 24, 0]],
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 26, 160], [1, 1, 25, 160]], memory_offsets = [[0, 0, 0, 0], [0, 0, 24, 0]]
 
-    // CHECK:        [[SUBVIEW1:%.*]] = VPUIP.SubView %arg0 [0, 0, 47, 0] [1, 1, 49, 160]
+    // CHECK:        [[SUBVIEW1:%.+]] = VPUIP.SubView %arg0 [0, 0, 47, 0] [1, 1, 49, 160]
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x1x96x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPUIP.DistributedBuffer<1x1x49x160xf16, {order = #NHWC, strides = [15360, 1, 160, 1]}, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
@@ -163,7 +163,7 @@ func.func @SubviewWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistri
      %1 = VPUIP.SubView %arg0 [0, 0, 44, 0] [1, 16, 44, 128] : !InputDistributed to !OutputDistributed
     return %0, %1 : !OutputDistributed, !OutputDistributed
 
-    // CHECK:        [[SUBVIEW0:%.*]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 16, 44, 128]
+    // CHECK:        [[SUBVIEW0:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 16, 44, 128]
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x16x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPUIP.DistributedBuffer<1x16x44x128xf16, {order = #NHWC, strides = [180224, 1, 2048, 16]}, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
@@ -171,7 +171,7 @@ func.func @SubviewWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistri
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], compute_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], memory_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
 
-    // CHECK:        [[SUBVIEW1:%.*]] = VPUIP.SubView %arg0 [0, 0, 44, 0] [1, 16, 44, 128]
+    // CHECK:        [[SUBVIEW1:%.+]] = VPUIP.SubView %arg0 [0, 0, 44, 0] [1, 16, 44, 128]
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x16x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPUIP.DistributedBuffer<1x16x44x128xf16, {order = #NHWC, strides = [180224, 1, 2048, 16]}, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
@@ -213,7 +213,7 @@ func.func @SubviewWithExplicitFullMemoryWithoutAlignDistributedTensorType(%arg0:
      %0 = VPUIP.SubView %arg0 [0, 2, 0, 0] [1, 3, 88, 128] : !InputDistributed to !OutputDistributed
     return %0 : !OutputDistributed
 
-    // CHECK:        [[SUBVIEW:%.*]] = VPUIP.SubView %arg0 [0, 2, 0, 0] [1, 3, 88, 128]
+    // CHECK:        [[SUBVIEW:%.+]] = VPUIP.SubView %arg0 [0, 2, 0, 0] [1, 3, 88, 128]
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x48x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPUIP.DistributedBuffer<1x3x88x128xf16, {order = #NHWC, strides = [540672, 1, 6144, 48]}, @CMX_NN
     // CHECK-SAME:             mode = "DUPLICATED|SEGMENTED"

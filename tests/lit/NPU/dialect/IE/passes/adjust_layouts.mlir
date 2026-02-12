@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -340,14 +340,14 @@ func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
 
 // CHECK-LABEL: NonZeroMemoryLayout
 func.func  @NonZeroMemoryLayout(%arg0: tensor<1x3x3xsi32, {order = #HWC}>) -> tensor<3x?xsi32, {bounds = #const.OpaqueI64Elements<[3, 9]> : tensor<2xsi64>, order = #NC}> {
-    // CHECK:       [[INPUT:%arg.*]]: tensor<1x3x3xsi32, {order = #HWC}>
+    // CHECK:       [[INPUT:%arg.+]]: tensor<1x3x3xsi32, {order = #HWC}>
 
     %0 = IE.NonZero(%arg0) {dstElemType = si32} : tensor<1x3x3xsi32, {order = #HWC}> -> tensor<3x?xsi32, {bounds = #const.OpaqueI64Elements<[3, 9]> : tensor<2xsi64>, order = #NC}>
     return %0 : tensor<3x?xsi32, {bounds = #const.OpaqueI64Elements<[3, 9]> : tensor<2xsi64>, order = #NC}>
 
-    // CHECK:       [[CHW_INPUT:%.*]] = IE.Reorder([[INPUT]])
+    // CHECK:       [[CHW_INPUT:%.+]] = IE.Reorder([[INPUT]])
     // CHECK-SAME:     dstOrder = #CHW
-    // CHECK:       [[NON_ZERO:%.*]] = IE.NonZero([[CHW_INPUT]])
+    // CHECK:       [[NON_ZERO:%.+]] = IE.NonZero([[CHW_INPUT]])
     // CHECK:       return [[NON_ZERO]]
 }
 
@@ -405,7 +405,7 @@ func.func @MvnWithAffineReshapeLayoutForReshapeFuse(%arg0: tensor<1x512x128x128x
 #map = affine_map<(d0, d1, d2, d3) -> (d3, d0, d1, d2)>
 
 // CHECK-LABEL:   @AdjustForGeluWNCH
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<1x512x6x235xf16, {order = #map}>)
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x512x6x235xf16, {order = #map}>)
 func.func @AdjustForGeluWNCH(%arg0: tensor<1x512x6x235xf16, {order = #map}>) -> tensor<1x512x6x235xf16, {order = #map}> {
     %0 = IE.Gelu(%arg0) : tensor<1x512x6x235xf16, {order = #map}> -> tensor<1x512x6x235xf16, {order = #map}>
     return %0 : tensor<1x512x6x235xf16, {order = #map}>

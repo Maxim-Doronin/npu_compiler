@@ -67,13 +67,13 @@ func.func @NotMoveLayoutCast(%arg0: tensor<1x120x120x40xf16>) -> tensor<1x40x120
     %0 = VPU.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x120x120x40xf16> -> tensor<1x40x120x120xf16, {order = #NHWC}>
     %1 = VPU.ShapeCast {shape = [1, 16, 120, 300]} inputs(%0 : tensor<1x40x120x120xf16, {order = #NHWC}>) -> tensor<1x16x120x300xf16, {order = #NHWC}>
     %2 = VPU.VerticalFusion (%1 as %arg1: tensor<1x16x120x300xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 3]} -> tensor<1x16x120x300xf16, {order = #NWCH}> {
-      %7 = VPU.NCE.MaxPool(%arg1) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>, strides = [1, 1]} -> tensor<1x16x120x300xf16, {order = #NWCH}> 
-      VPU.Yield %7 
+      %7 = VPU.NCE.MaxPool(%arg1) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>, strides = [1, 1]} -> tensor<1x16x120x300xf16, {order = #NWCH}>
+      VPU.Yield %7
     }
     %3 = VPU.LayoutCast(%2) {dst_order = #NHWC} : tensor<1x16x120x300xf16, {order = #NWCH}> -> tensor<1x16x120x300xf16, {order = #NHWC}>
     %4 = VPU.VerticalFusion (%3 as %arg1: tensor<1x16x120x300xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 3]} -> tensor<1x16x120x300xf16, {order = #NWCH}> {
-      %7 = VPU.NCE.MaxPool(%arg1) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>, strides = [1, 1]} -> tensor<1x16x120x300xf16, {order = #NWCH}> 
-      VPU.Yield %7 
+      %7 = VPU.NCE.MaxPool(%arg1) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>, strides = [1, 1]} -> tensor<1x16x120x300xf16, {order = #NWCH}>
+      VPU.Yield %7
     }
     %5 = VPU.PermuteCast(%4) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x16x120x300xf16, {order = #NWCH}> -> tensor<1x300x16x120xf16>
     %6 = VPU.ShapeCast {shape = [1, 40, 120, 120]} inputs(%5 : tensor<1x300x16x120xf16>) -> tensor<1x40x120x120xf16>

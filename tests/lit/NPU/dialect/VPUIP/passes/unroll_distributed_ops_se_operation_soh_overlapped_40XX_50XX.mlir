@@ -601,18 +601,18 @@ func.func @UnrollNceSoHSEPOverlappedThreeClusters() -> !Output_DDR {
     %parent_out_cmx = VPURT.DeclareBuffer <CMX_NN> <7168> -> !OutputDistributed
 
     VPURT.Task waits(%bar0, %bar1, %bar2, %bar3 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%bar4 : !VPURT.Barrier) {
-        %21 = VPUIP.NCEClusterTask {constantsFused = true, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 425 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>} 
-            input(%parent_input_cmx : !InputDistributed) 
-            input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributed) 
-            input_storage_element_table(%seTable_CMX: !InputSETableDistributed) 
-            weights(%weights : !WeightsDistributed) 
-            weights_sparsity_map(%weights_sparsity_map : !WeightsSparsityMapDistributed) 
-            weight_table(%weights_table : !WeightsTableDistributed) 
-            parent_input(%parent_input_cmx : !InputDistributed) 
-            parent_input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributed) 
-            parent_input_storage_element_table(%seTable_CMX: !InputSETableDistributed) 
-            parent_output(%parent_out_cmx : !OutputDistributed) 
-            outputs(%parent_out_cmx : !OutputDistributed) 
+        %21 = VPUIP.NCEClusterTask {constantsFused = true, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 425 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+            input(%parent_input_cmx : !InputDistributed)
+            input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributed)
+            input_storage_element_table(%seTable_CMX: !InputSETableDistributed)
+            weights(%weights : !WeightsDistributed)
+            weights_sparsity_map(%weights_sparsity_map : !WeightsSparsityMapDistributed)
+            weight_table(%weights_table : !WeightsTableDistributed)
+            parent_input(%parent_input_cmx : !InputDistributed)
+            parent_input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributed)
+            parent_input_storage_element_table(%seTable_CMX: !InputSETableDistributed)
+            parent_output(%parent_out_cmx : !OutputDistributed)
+            outputs(%parent_out_cmx : !OutputDistributed)
             -> !OutputDistributed
             variants : {
                 DPUTask {cluster_id = 0 : i64, inEnd = [5, 3, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [3, 1, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
@@ -769,18 +769,18 @@ func.func @UnrollNceSoWSEPOverlappedThreeClusters() -> !Output_DDR {
     %parent_out_cmx = VPURT.DeclareBuffer <CMX_NN> <7168> -> !OutputDistributedSOW
 
     VPURT.Task waits(%bar0, %bar1, %bar2, %bar3 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%bar4 : !VPURT.Barrier) {
-        %21 = VPUIP.NCEClusterTask {constantsFused = true, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 425 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>} 
-            input(%parent_input_cmx : !InputDistributedSOW) 
-            input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributedSOW) 
-            input_storage_element_table(%seTable_CMX: !InputSETableDistributedSOW) 
-            weights(%weights : !WeightsDistributed) 
-            weights_sparsity_map(%weights_sparsity_map : !WeightsSparsityMapDistributed) 
-            weight_table(%weights_table : !WeightsTableDistributed) 
-            parent_input(%parent_input_cmx : !InputDistributedSOW) 
-            parent_input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributedSOW) 
-            parent_input_storage_element_table(%seTable_CMX: !InputSETableDistributedSOW) 
-            parent_output(%parent_out_cmx : !OutputDistributedSOW) 
-            outputs(%parent_out_cmx : !OutputDistributedSOW) 
+        %21 = VPUIP.NCEClusterTask {constantsFused = true, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 425 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+            input(%parent_input_cmx : !InputDistributedSOW)
+            input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributedSOW)
+            input_storage_element_table(%seTable_CMX: !InputSETableDistributedSOW)
+            weights(%weights : !WeightsDistributed)
+            weights_sparsity_map(%weights_sparsity_map : !WeightsSparsityMapDistributed)
+            weight_table(%weights_table : !WeightsTableDistributed)
+            parent_input(%parent_input_cmx : !InputDistributedSOW)
+            parent_input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributedSOW)
+            parent_input_storage_element_table(%seTable_CMX: !InputSETableDistributedSOW)
+            parent_output(%parent_out_cmx : !OutputDistributedSOW)
+            outputs(%parent_out_cmx : !OutputDistributedSOW)
             -> !OutputDistributedSOW
             variants : {
                 DPUTask {cluster_id = 0 : i64, inEnd = [3, 5, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [1, 3, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}

@@ -49,7 +49,7 @@ void FixDynamicOpsLocationsPass::safeRunOnFunc() {
             return mlir::WalkResult::advance();
         }
         _log.trace("Got op '{0}' with duplicate location at '{1}'", op->getName(), loc);
-        extendOpLoc(op, StringLiteral("duplicated_{0}"), counter[strLoc]++);
+        extendOpLoc(op, "duplicated_{0}", counter[strLoc]++);
         _log.nest().trace("Extended loc '{0}'", op->getLoc());
         return mlir::WalkResult::advance();
     });

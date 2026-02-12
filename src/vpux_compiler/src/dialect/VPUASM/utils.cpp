@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,8 +12,8 @@
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/platform_resources.hpp"
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/ELF/IR/attributes.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 
 namespace vpux {
 namespace VPUASM {
@@ -109,11 +109,54 @@ void setResourceRequirement(mlir::ModuleOp moduleOp, elf::NetworkMetadata& metad
     uint32_t workspace_offset = 0;
     // E#179925 Compiler workspace is to be extended to include stacks and metadata
     if (config::getArch(moduleOp) != config::ArchKind::NPU40XX) {
-        workspace_offset = VPUX50XX_CMX_WORKSPACE_OFFSET;
+        workspace_offset = CMX_WORKSPACE_OFFSET;
     }
     metadata.mResourceRequirements.nn_slice_length_ =
             workspace_offset +
             checked_cast<uint32_t>(config::getAvailableMemory(moduleOp, vpux::VPU::MemoryKind::CMX_NN).getByteSize());
+}
+
+SmallVector<uint32_t> getCMXStackFrames(mlir::ModuleOp moduleOp) {
+    auto tileOp = config::getTileExecutor(moduleOp);
+    auto tileCount = checked_cast<uint32_t>(tileOp.getCount());
+    auto shvPerTile = checked_cast<uint32_t>(tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount());
+
+    SmallVector<uint32_t> stacksOffsets(shvPerTile);
+    // SHAVE stacks grows backwards!
+    // Set the address to the end of the allocated section so it does not override
+    // outside of its buffer
+    auto stackSize = static_cast<uint32_t>(CMX_SHAVE_STACK_SIZE.count());
+    // First two stacks reserved at the beginning of the CMX space
+    stacksOffsets[0] = stackSize;
+    stacksOffsets[1] = stacksOffsets[0] + stackSize;
+
+    const size_t defaultStacksNum = 2;
+    // Check if additional stack frames are needed
+    if (auto extraStacks = shvPerTile - defaultStacksNum; extraStacks > 0) {
+        auto shaveStacksMem = config::getShaveStacksReservedMemory(moduleOp, VPU::MemoryKind::CMX_NN);
+        VPUX_THROW_WHEN(shaveStacksMem == nullptr, "Missing reserved CMX memory for additional shave stack frames");
+        auto shaveStacksMemOffset = shaveStacksMem.getOffset();
+        VPUX_THROW_WHEN(shaveStacksMemOffset == std::nullopt,
+                        "No address allocated for additional shave stack frames in CMX");
+        auto shaveStacksMemSize = checked_cast<uint32_t>(shaveStacksMem.getByteSize());
+        VPUX_THROW_WHEN(shaveStacksMemSize < extraStacks * stackSize,
+                        "Insufficient memory allocated for additional shave stack frames in CMX");
+
+        for (auto extraStackIdx : irange(extraStacks)) {
+            // Additional stacks reserved after CMX workspace
+            stacksOffsets[defaultStacksNum + extraStackIdx] =
+                    CMX_WORKSPACE_OFFSET + shaveStacksMemOffset.value() + (extraStackIdx + 1) * stackSize;
+        }
+    }
+
+    SmallVector<uint32_t> stackFrameAddrs(tileCount * shvPerTile);
+    for (auto tileIdx : irange(tileCount)) {
+        for (auto offset : llvm::enumerate(stacksOffsets)) {
+            // Combine base address with offset to point inside reserved CMX memory
+            stackFrameAddrs[tileIdx * shvPerTile + offset.index()] = offset.value() | CMX_BASE_ADDR;
+        }
+    }
+    return stackFrameAddrs;
 }
 
 void insertBinaryDimsIntoVector(SmallVector<uint8_t>& dimsVector, vpux::NDTypeInterface ndType) {

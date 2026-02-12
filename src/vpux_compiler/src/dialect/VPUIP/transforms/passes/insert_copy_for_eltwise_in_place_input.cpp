@@ -89,9 +89,9 @@ void InsertCopyForEltwiseInPlaceInputPass::insertCopies(VPUIP::NCEClusterTaskOp 
     // To DDR
     const auto compactStrides = getCompactStrides(inputType);
     auto newDDRType = inputType.changeMemSpace(VPU::MemoryKind::DDR).changeStrides(compactStrides);
-    auto newAllocDDROp = builder.create<mlir::memref::AllocOp>(appendLoc(eltwise->getLoc(), "_elt_in_place_input_DDR"),
+    auto newAllocDDROp = builder.create<mlir::memref::AllocOp>(appendLoc(eltwise->getLoc(), "elt_in_place_input_DDR"),
                                                                mlir::cast<mlir::MemRefType>(newDDRType));
-    auto newCopyToDDR = builder.create<VPUIP::CopyOp>(appendLoc(eltwise->getLoc(), "_unique_consumer_spill"),
+    auto newCopyToDDR = builder.create<VPUIP::CopyOp>(appendLoc(eltwise->getLoc(), "unique_consumer_spill"),
                                                       overwrittenInput, newAllocDDROp);
 
     // To CMX
@@ -99,15 +99,15 @@ void InsertCopyForEltwiseInPlaceInputPass::insertCopies(VPUIP::NCEClusterTaskOp 
     if (inDistributedType != nullptr) {
         // DistributedBuffer
         auto newDistributedBuff = builder.create<VPURT::AllocDistributed>(
-                appendLoc(eltwise->getLoc(), "_elt_in_place_input_CMX"), inDistributedType, nullptr, nullptr);
+                appendLoc(eltwise->getLoc(), "elt_in_place_input_CMX"), inDistributedType, nullptr, nullptr);
         bufferResult = newDistributedBuff->getResult(0);
     } else {
         // memref
         auto newAllocCMXOp = builder.create<mlir::memref::AllocOp>(
-                appendLoc(eltwise->getLoc(), "_elt_in_place_input_CMX"), mlir::cast<mlir::MemRefType>(inputType));
+                appendLoc(eltwise->getLoc(), "elt_in_place_input_CMX"), mlir::cast<mlir::MemRefType>(inputType));
         bufferResult = newAllocCMXOp->getResult(0);
     }
-    auto newCopyToCMX = builder.create<VPUIP::CopyOp>(appendLoc(eltwise->getLoc(), "_unique_consumer_spill"),
+    auto newCopyToCMX = builder.create<VPUIP::CopyOp>(appendLoc(eltwise->getLoc(), "unique_consumer_spill"),
                                                       newCopyToDDR.getResult(), static_cast<mlir::Value>(bufferResult));
 
     overwrittenInput.replaceUsesWithIf(newCopyToCMX->getResult(0), [&](mlir::OpOperand& opOperand) {
@@ -120,7 +120,7 @@ void InsertCopyForEltwiseInPlaceInputPass::insertCopies(VPUIP::NCEClusterTaskOp 
     auto bufferResultType = mlir::cast<vpux::NDTypeInterface>(bufferResult.getType());
     auto isQuantElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputType.getElementType());
     if (isQuantElemType && outputType.getElementType() != bufferResultType.getElementType()) {
-        auto quantizeCastOp = builder.create<VPUIP::QuantizeCastOp>(appendLoc(eltwise->getLoc(), "_cast_output"),
+        auto quantizeCastOp = builder.create<VPUIP::QuantizeCastOp>(appendLoc(eltwise->getLoc(), "cast_output"),
                                                                     outputType, bufferResult);
         bufferResult = quantizeCastOp.getResult();
     }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,49 +13,6 @@ include "vpux/compiler/dialect/core/ops_interfaces.td"
 
 include "mlir/Dialect/Quant/IR/QuantBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-
-def IE_AccumulateOp :
-        IE_LayerOp<
-            "Accumulate",
-            [
-                AttrSizedOperandSegments,
-                IE_EltwiseOp
-            ]
-        > {
-    let summary = "Accumulates intermediate results of IE.MatMul";
-
-    let description = [{
-        This operation maintains the semantics of `IE.Add` except that it does not support any
-        hardware-specific features like permutations, post-ops, broadcasting.
-        ExpandActivationChannels, AdjustInputShapeForEltwise and other DPU specific passes do not
-        apply to `IE.Accumulate`.
-        The point of using `IE.Accumulate` instead of `IE.Add` is to be able to execute it as a
-        software operation in parallel to DPU tasks that perform `IE.MatMul` in group quantization case:
-        ```
-                     Input [N, G * H] -> Split
-                                        /     \
-                                  [N, H]  ...  [N, H]
-                                      |           |
-            IE.FQ [1, H, W] -> IE.MatMul ...  IE.MatMul <- IE.FQ
-                                       \          /
-                                      IE.Accumulate ([N, W], [N, W])
-        ```
-    }];
-
-    let arguments = (ins
-        RankedTensorOf<[F16, F32, F64, SI32, SI64, quant_QuantizedType]>:$lhs,
-        RankedTensorOf<[F16, F32, F64, SI32, SI64, quant_QuantizedType]>:$rhs,
-        Optional<RankedTensorOf<[F16, F32, F64]>>:$lhsScale,
-        Optional<RankedTensorOf<[F16, F32, F64]>>:$rhsScale
-    );
-
-    let results = (outs
-        RankedTensorOf<[F16, F32, F64, SI32, SI64, quant_QuantizedType]>:$output
-    );
-
-    let hasVerifier = 1;
-    let hasCanonicalizer = 1;
-}
 
 def IE_AddOp :
         IE_LayerOp<
@@ -75,7 +32,7 @@ def IE_AddOp :
         RankedTensorOf<[F16, F32, F64, SI32, SI64, UI8, UI16, UI32, UI64, quant_QuantizedType]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding
@@ -209,7 +166,7 @@ def IE_MultiplyOp :
             [
                 DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
                 DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
-                DeclareOpInterfaceMethods<StaticShapeOpInterface>,
+                DeclareOpInterfaceMethods<StaticShapeOpInterface, ["requiresStaticShape"]>,
                 Commutative,
                 IE_EltwiseOp
             ]
@@ -221,7 +178,7 @@ def IE_MultiplyOp :
         RankedTensorOf<[F16, F32, F64, SI32, SI64, UI8, UI16, UI32, UI64, quant_QuantizedType]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding
@@ -322,7 +279,7 @@ def IE_SubtractOp :
         RankedTensorOf<[F16, F32, F64, SI32, SI64, UI8, UI16, UI32, UI64, quant_QuantizedType]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding

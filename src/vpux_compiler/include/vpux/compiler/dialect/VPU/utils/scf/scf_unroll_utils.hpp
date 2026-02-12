@@ -103,7 +103,7 @@ struct BlockEncodingUtils {
         } else if (dim == vpux::Dims4D::Act::W) {
             return value & TWO_BIT_MASK;
         } else {
-            assert(false && "Unsupported dimension");
+            VPUX_THROW("Unsupported dimension");
         }
     }
 
@@ -133,5 +133,8 @@ mlir::LogicalResult mergeUnrolledOperations(mlir::scf::ForOp forOp, SmallVector<
 
 mlir::scf::ForOp fuseSiblingForLoops(mlir::scf::ForOp target, mlir::scf::ForOp source, mlir::RewriterBase& rewriter,
                                      bool residualLoops = false);
+
+unsigned getNestingDepth(mlir::Operation* op);
+void collectLoops(mlir::Operation* rootOp, SmallVector<mlir::scf::ForOp>& loops);
 
 }  // namespace vpux::VPU

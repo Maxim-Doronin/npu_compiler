@@ -25,7 +25,7 @@ void PrefetchDataOps::init() {
         // store cycle cost for ops
         _operationCycleCost[op.op_] = op.cycleEnd_ - op.cycleBegin_;
 
-        if (op.queueType.execKind == VPU::ExecutorKind::DMA_NN) {
+        if (op.queueType.execKind == config::ExecutorKind::DMA_NN) {
             if (op.isSpillWrite() || op.isSpillRead()) {
                 ++_dynamicSpillCount;
             }
@@ -55,7 +55,7 @@ size_t PrefetchDataOps::getOperationCycleCost(size_t opIdx) {
     return opCycleCostItr->second;
 }
 
-size_t PrefetchDataOps::getNextFreePipelineCycle(VPU::ExecutorKind executorKind, bool prefetchFIFO) {
+size_t PrefetchDataOps::getNextFreePipelineCycle(config::ExecutorKind executorKind, bool prefetchFIFO) {
     if (prefetchFIFO) {
         return _prefetchPipeline.empty() ? 0 : _prefetchPipeline.rbegin()->getCycleEnd();
     }
@@ -65,7 +65,7 @@ size_t PrefetchDataOps::getNextFreePipelineCycle(VPU::ExecutorKind executorKind,
 }
 
 PrefetchDataOps::CycleInfo PrefetchDataOps::scheduleOp(size_t opIdx, size_t cycleBegin, size_t cycleCost,
-                                                       VPU::ExecutorKind executorKind, bool prefetchFIFO) {
+                                                       config::ExecutorKind executorKind, bool prefetchFIFO) {
     auto cycleInfo = CycleInfo(opIdx, cycleBegin, cycleCost, executorKind);
     if (prefetchFIFO) {
         _prefetchPipeline.push_back(cycleInfo);
@@ -159,7 +159,7 @@ void PrefetchDataOps::reducePrefetchPipelineStalls(size_t targetRollback) {
 // schedule prefetch DMA operation in prefetch FIFO, can create stalls
 // stalls on prefetch FIFO are stored and can be reduced by prefetching DMAs earlier
 void PrefetchDataOps::schedulePrefetchDMA(size_t opIdx, size_t optimalCycleEnd) {
-    auto earliestScheduleCycle = getNextFreePipelineCycle(VPU::ExecutorKind::DMA_NN, true);
+    auto earliestScheduleCycle = getNextFreePipelineCycle(config::ExecutorKind::DMA_NN, true);
     const auto cycleCost = getOperationCycleCost(opIdx);
     auto cycleEnd = earliestScheduleCycle + cycleCost;
 
@@ -181,7 +181,7 @@ void PrefetchDataOps::schedulePrefetchDMA(size_t opIdx, size_t optimalCycleEnd) 
 
     // use updated cycles
     auto cycleBegin = cycleEnd - cycleCost;
-    auto cycleInfo = scheduleOp(opIdx, cycleBegin, cycleCost, VPU::ExecutorKind::DMA_NN, true);
+    auto cycleInfo = scheduleOp(opIdx, cycleBegin, cycleCost, config::ExecutorKind::DMA_NN, true);
     _log.nest().trace("Prefetch DMA '{0}' cycles '{1}'->'{2}' with optimal end '{3}'", cycleInfo.getOpIdx(),
                       cycleInfo.getCycleBegin(), cycleInfo.getCycleEnd(), optimalCycleEnd);
 }
@@ -190,14 +190,14 @@ void PrefetchDataOps::schedulePrefetchDMA(size_t opIdx, size_t optimalCycleEnd) 
 void PrefetchDataOps::scheduleDMA(size_t opIdx, size_t optimalCycleEnd) {
     // find earliest scheduling cycle for op
     auto earliestScheduleCycle =
-            std::max(getNextFreePipelineCycle(VPU::ExecutorKind::DMA_NN), getDependencyCycleEnd(opIdx));
+            std::max(getNextFreePipelineCycle(config::ExecutorKind::DMA_NN), getDependencyCycleEnd(opIdx));
     // use earliest scheduling cycle or optimal cycle end
     const auto cycleCost = getOperationCycleCost(opIdx);
     if (optimalCycleEnd >= cycleCost) {
         earliestScheduleCycle = std::max(earliestScheduleCycle, optimalCycleEnd - cycleCost);
     }
     // schedule operation
-    auto cycleInfo = scheduleOp(opIdx, earliestScheduleCycle, cycleCost, VPU::ExecutorKind::DMA_NN);
+    auto cycleInfo = scheduleOp(opIdx, earliestScheduleCycle, cycleCost, config::ExecutorKind::DMA_NN);
     _log.nest().trace("Schedule DMA '{0}' on cycles '{1}'->'{2}' with optimal end '{3}'", cycleInfo.getOpIdx(),
                       cycleInfo.getCycleBegin(), cycleInfo.getCycleEnd(), optimalCycleEnd);
 }
@@ -231,7 +231,7 @@ void PrefetchDataOps::prefetchDataOps(size_t dmaTargetEndCycle) {
 
 // schedule dependencies for compute op, distribute into prefetch FIFO and compute DMA FIFO
 // if scheduling with defined DMA order schedule all DMAs in the same FIFO
-size_t PrefetchDataOps::scheduleDependenciesForCompute(size_t opIdx, VPU::ExecutorKind executorKind) {
+size_t PrefetchDataOps::scheduleDependenciesForCompute(size_t opIdx, config::ExecutorKind executorKind) {
     // find earliest possible cycle for compute op, it will be the optimal end cycle for data ops
     auto dataOpTargetCycleEnd = getNextFreePipelineCycle(executorKind);
     for (const auto dep : _depsInfo.getOpDeps(opIdx)) {
@@ -260,16 +260,16 @@ size_t PrefetchDataOps::scheduleDependenciesForCompute(size_t opIdx, VPU::Execut
 }
 
 // schedule compute operation, before schedule dependencies for the compute operation
-void PrefetchDataOps::scheduleComputeOperation(size_t opIdx, VPU::ExecutorKind executorKind) {
+void PrefetchDataOps::scheduleComputeOperation(size_t opIdx, config::ExecutorKind executorKind) {
     _log.trace("Scheduling compute '{0}' on '{1}'", opIdx, executorKind);
     auto computeCycleBegin = scheduleDependenciesForCompute(opIdx, executorKind);
     const auto computeOpCycleCost = getOperationCycleCost(opIdx);
 
-    if (_prefetchOpsDefined && executorKind != VPU::ExecutorKind::DMA_NN) {
+    if (_prefetchOpsDefined && executorKind != config::ExecutorKind::DMA_NN) {
         prefetchDataOps(computeCycleBegin + computeOpCycleCost);
         // all prefetch ops should be during this compute executor op
         auto cycleEnd = computeCycleBegin + computeOpCycleCost;
-        cycleEnd = std::max(cycleEnd, getNextFreePipelineCycle(VPU::ExecutorKind::DMA_NN));
+        cycleEnd = std::max(cycleEnd, getNextFreePipelineCycle(config::ExecutorKind::DMA_NN));
         computeCycleBegin = cycleEnd - computeOpCycleCost;
     }
 
@@ -302,15 +302,15 @@ void PrefetchDataOps::createDataOpPipeline() {
     // create a new pipeline for data ops
     SmallVector<CycleInfo> DataOpPipeline;
 
-    auto dmaFrontRev = _executorPipelineCycles[VPU::ExecutorKind::DMA_NN].rbegin();
+    auto dmaFrontRev = _executorPipelineCycles[config::ExecutorKind::DMA_NN].rbegin();
     auto prefetchFrontRev = _prefetchPipeline.rbegin();
     size_t dmaFIFORev = std::numeric_limits<size_t>::max();
 
     _log.trace("Creating data op prefetch pipeline:");
-    while (dmaFrontRev != _executorPipelineCycles[VPU::ExecutorKind::DMA_NN].rend() ||
+    while (dmaFrontRev != _executorPipelineCycles[config::ExecutorKind::DMA_NN].rend() ||
            prefetchFrontRev != _prefetchPipeline.rend()) {
         auto dmaCycleBegin = std::numeric_limits<size_t>::min();
-        if (dmaFrontRev != _executorPipelineCycles[VPU::ExecutorKind::DMA_NN].rend()) {
+        if (dmaFrontRev != _executorPipelineCycles[config::ExecutorKind::DMA_NN].rend()) {
             if (_dataOpIdx.find(dmaFrontRev->getOpIdx()) == _dataOpIdx.end()) {
                 ++dmaFrontRev;
                 continue;
@@ -352,9 +352,9 @@ void PrefetchDataOps::createDataOpPipeline() {
     _prefetchPipeline = std::move(DataOpPipeline);
     // reset for second scheduling iteration with defined DMA order
     _operationCycles.clear();
-    _executorPipelineCycles = {{VPU::ExecutorKind::DMA_NN, {}},    {VPU::ExecutorKind::DPU, {}},
-                               {VPU::ExecutorKind::NCE, {}},       {VPU::ExecutorKind::SHAVE_NN, {}},
-                               {VPU::ExecutorKind::SHAVE_ACT, {}}, {VPU::ExecutorKind::M2I, {}}};
+    _executorPipelineCycles = {{config::ExecutorKind::DMA_NN, {}},    {config::ExecutorKind::DPU, {}},
+                               {config::ExecutorKind::NCE, {}},       {config::ExecutorKind::SHAVE_NN, {}},
+                               {config::ExecutorKind::SHAVE_ACT, {}}, {config::ExecutorKind::M2I, {}}};
 }
 
 void PrefetchDataOps::sortOps(SmallVector<CycleInfo>& toBeSorted) {
@@ -366,10 +366,10 @@ void PrefetchDataOps::sortOps(SmallVector<CycleInfo>& toBeSorted) {
 
         // DMA ops first
         if (op1.getExecutorKind() != op2.getExecutorKind()) {
-            if (op1.getExecutorKind() == VPU::ExecutorKind::DMA_NN) {
+            if (op1.getExecutorKind() == config::ExecutorKind::DMA_NN) {
                 return true;
             }
-            if (op2.getExecutorKind() == VPU::ExecutorKind::DMA_NN) {
+            if (op2.getExecutorKind() == config::ExecutorKind::DMA_NN) {
                 return false;
             }
         }

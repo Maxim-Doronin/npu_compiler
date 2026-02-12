@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -824,7 +824,7 @@ module {
                 memref<1x8x384x384xf16>
     }
 
-    //CHECK:        [[RESULT:%.*]]:2 = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 2, 0, 0>}
+    //CHECK:        [[RESULT:%.+]]:2 = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 2, 0, 0>}
     //CHECK-SAME:   inputs([[COPY_0]] as {{[^:]+}}: memref<1x8x384x384xf16>) dynamicInputShapes([[COPY_1]] : memref<4xsi32>)
     //CHECK-SAME:   outputs([[ALOC_0]] as {{[^:]+}}: memref<1x8x384x384xf16>) dynamicOutputShapes([[ALOC]] : memref<4xsi32>)
 
@@ -881,7 +881,7 @@ module {
                 memref<1x16x384x384xf16>,
                 memref<1x8x384x384xf16>
     }
-    //CHECK:        [[RESULT_0:%.*]], [[DYNAMIC_OUTPUT_SHAPES_0:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>}
+    //CHECK:        [[RESULT_0:%.+]], [[DYNAMIC_OUTPUT_SHAPES_0:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>}
     //CHECK-SAME:   inputs([[COPY_0]] as {{[^:]+}}: memref<1x8x384x384xf16>, [[COPY_2]] as {{[^:]+}}: memref<1x16x384x384xf16>) dynamicInputShapes([[COPY_1]] : memref<4xsi32>)
     //CHECK-SAME:   outputs([[ALOC]] as {{[^:]+}}: memref<1x8x384x384xf16>) dynamicOutputShapes([[ALOC_0]] : memref<4xsi32>)
 

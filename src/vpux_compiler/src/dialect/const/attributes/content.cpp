@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/attributes/stable_hash_storage.hpp"
 #include "vpux/compiler/dialect/const/constant_transformations_control.hpp"
 #include "vpux/compiler/dialect/const/utils/const_logger.hpp"
+#include "vpux/compiler/utils/stable_hash.hpp"
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
@@ -15,13 +17,14 @@
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
-#include "vpux/utils/core/format.hpp"
+#include "vpux/compiler/core/interfaces/dialect_cache.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
 #include <mlir/IR/AsmState.h>
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinDialect.h>
 #include <mlir/IR/DialectImplementation.h>
 #include <mlir/IR/DialectInterface.h>
@@ -81,12 +84,7 @@ private:
 
 template <typename Cache>
 Cache& getCache(mlir::MLIRContext* ctx) {
-    auto* dialect = ctx->getOrLoadDialect<vpux::Const::ConstDialect>();
-    assert(dialect != nullptr && "ConstDialect must be present in the context");
-
-    auto* iface = dialect->getRegisteredInterface<Cache>();
-    assert(iface != nullptr && "The requested cache must be registered in the context");
-    return *iface;
+    return vpux::getCache<Cache, vpux::Const::ConstDialect>(ctx);
 }
 
 /// @brief Caches LazyFoldingOptions inside of the MLIRContext to be able to
@@ -311,7 +309,7 @@ std::pair<mlir::ArrayRef<char>, bool> getRawDataAndSplatness(mlir::ElementsAttr 
     }
 
     auto denseResource = mlir::cast<mlir::DenseResourceElementsAttr>(baseContent);
-    return getCache<SplatnessCache>(baseContent.getContext()).getRawDataAndSplatness(denseResource);
+    return ::getCache<SplatnessCache>(baseContent.getContext()).getRawDataAndSplatness(denseResource);
 }
 
 void SplatnessCache::cacheRawDataAndSplatness(mlir::DenseResourceElementsAttr denseResource) {
@@ -382,7 +380,7 @@ mlir::DenseResourceElementsAttr Const::createExternalConstContent(mlir::ShapedTy
     // the key to change, so that there are no collisions - thus, the blob is never overwritten here
     auto res =
             mlir::DenseResourceElementsAttr::get(type, builtinDialectManager.insert(resourcePrefix, std::move(blob)));
-    getCache<SplatnessCache>(type.getContext()).cacheRawDataAndSplatness(res);
+    ::getCache<SplatnessCache>(type.getContext()).cacheRawDataAndSplatness(res);
     return res;
 }
 
@@ -409,9 +407,19 @@ mlir::DenseElementsAttr Const::detail::createConstContentWithConversion(mlir::Sh
                                                            return static_cast<vpux::type::float8_e4m3>(val);
                                                        }));
         return mlir::DenseElementsAttr::get(type, ArrayRef(arrayFloat8E4M3FN));
+    } else if (mlir::isa<mlir::Float8E8M0FNUType>(elemType)) {
+        const auto arrayFloat8E8M0FNU = to_small_vector(array | transformed([](float val) {
+                                                            return static_cast<vpux::type::float8_e8m0>(val);
+                                                        }));
+        return mlir::DenseElementsAttr::get(type, ArrayRef(arrayFloat8E8M0FNU));
+    } else if (mlir::isa<mlir::Float4E2M1FNType>(elemType)) {
+        const auto arrayFloat4E2M1FN = to_small_vector(array | transformed([](float val) {
+                                                           return static_cast<vpux::type::float4_e2m1>(val);
+                                                       }));
+        return mlir::DenseElementsAttr::get(type, ArrayRef(arrayFloat4E2M1FN));
     }
     VPUX_THROW("Unsupported element type '{0}'", elemType);
-    return nullptr;
+    return {};
 }
 
 //
@@ -496,6 +504,13 @@ mlir::Attribute vpux::Const::ContentAttr::parse(::mlir::AsmParser& parser, ::mli
 
     bool explicitSplat = false;
     if (mlir::succeeded(parser.parseOptionalKeyword("isSplat"))) {
+        if (!mlir::isa<mlir::DenseResourceElementsAttr>(baseContent)) {
+            // Note: scope 'isSplat' to dense_resource<> only - it makes *zero*
+            // sense to specify it for other types of base content.
+            std::ignore =
+                    parser.emitError(parser.getNameLoc(), "isSplat keyword can only be specified for dense_resource<>");
+            return nullptr;
+        }
         explicitSplat = true;
     }
 
@@ -605,7 +620,7 @@ void vpux::Const::detail::ContentSetupBase::addTransformation(TransformAttrInter
     auto insertionPosition = llvm::upper_bound(_transformations, newTransformation, comp);
     insertionPosition = _transformations.insert(insertionPosition, newTransformation);
 
-    const auto& options = getCache<LazyFoldingCache>(getContext()).getOptions();
+    const auto& options = ::getCache<LazyFoldingCache>(getContext()).getOptions();
     const auto optimizations = options.getFoldingSequenceOptimizations(_baseType);
 
     bool optimized = false;
@@ -628,5 +643,138 @@ void vpux::Const::detail::ContentSetupBase::addTransformation(TransformAttrInter
 }
 
 void vpux::Const::setLazyFoldingOptions(mlir::MLIRContext* ctx, const LazyFoldingOptions& options) {
-    getCache<LazyFoldingCache>(ctx).setOptions(options);
+    ::getCache<LazyFoldingCache>(ctx).setOptions(options);
 }
+
+// Transformation attributes stable hashes
+namespace vpux::Const {
+namespace details {
+template <>
+llvm::hash_code StableHashStorage<CastElemTypeAttrStorage>::calculateStableHash() const {
+    return llvm::hash_combine(CastElemTypeAttr::getMnemonic(), getStableHash(this->elemType));
+}
+
+template <>
+llvm::hash_code StableHashStorage<ConvertElemTypeAttrStorage>::calculateStableHash() const {
+    return llvm::hash_combine(ConvertElemTypeAttr::getMnemonic(), getStableHash(this->elemType));
+}
+
+template <>
+llvm::hash_code StableHashStorage<QuantizeAttrStorage>::calculateStableHash() const {
+    return llvm::hash_combine(QuantizeAttr::getMnemonic(), getStableHash(this->targetType));
+}
+
+template <>
+llvm::hash_code StableHashStorage<RescaleAttrStorage>::calculateStableHash() const {
+    if (!this->scale.isSplat()) {
+        // Note: non-splat rescale is currently not supported
+        return {};
+    }
+
+    const auto scale = this->scale.fold().getSplatValue<double>();
+    return llvm::hash_combine(RescaleAttr::getMnemonic(), llvm::APFloat(scale));
+}
+
+template <>
+llvm::hash_code StableHashStorage<AddAttrStorage>::calculateStableHash() const {
+    if (this->bias) {
+        const auto bias = this->bias.getValue();
+        return llvm::hash_combine(AddAttr::getMnemonic(), bias);
+    } else {
+        // biasArray case
+        SmallVector<llvm::APFloat> biasValues;
+        for (auto attr : this->biasArray) {
+            biasValues.push_back(mlir::cast<mlir::FloatAttr>(attr).getValue());
+        }
+        return llvm::hash_combine(AddAttr::getMnemonic(),
+                                  llvm::hash_combine_range(biasValues.begin(), biasValues.end()));
+    }
+}
+
+template <>
+llvm::hash_code StableHashStorage<ReshapeAttrStorage>::calculateStableHash() const {
+    const auto newShape = parseIntArrayAttr<int64_t>(this->shape);
+    return llvm::hash_combine(ReshapeAttr::getMnemonic(), llvm::hash_combine_range(newShape.begin(), newShape.end()));
+}
+
+template <>
+llvm::hash_code StableHashStorage<ReorderAttrStorage>::calculateStableHash() const {
+    const auto order = DimsOrder::fromAffineMap(this->order.getValue());
+    return llvm::hash_combine(ReorderAttr::getMnemonic(), order.code());
+}
+
+template <>
+llvm::hash_code StableHashStorage<ReverseAttrStorage>::calculateStableHash() const {
+    return llvm::hash_combine(ReverseAttr::getMnemonic(), this->axis.getValue());
+}
+
+template <>
+llvm::hash_code StableHashStorage<PadWithZeroAttrStorage>::calculateStableHash() const {
+    const auto padBefore = parseIntArrayAttr<int64_t>(this->padBefore);
+    const auto padAfter = parseIntArrayAttr<int64_t>(this->padAfter);
+    return llvm::hash_combine(PadWithZeroAttr::getMnemonic(),
+                              llvm::hash_combine_range(padBefore.begin(), padBefore.end()),
+                              llvm::hash_combine_range(padAfter.begin(), padAfter.end()));
+}
+
+template <>
+llvm::hash_code StableHashStorage<SubViewAttrStorage>::calculateStableHash() const {
+    const auto shape = parseIntArrayAttr<int64_t>(this->shape);
+    const auto offset = parseIntArrayAttr<int64_t>(this->offset);
+    return llvm::hash_combine(SubViewAttr::getMnemonic(), llvm::hash_combine_range(shape.begin(), shape.end()),
+                              llvm::hash_combine_range(offset.begin(), offset.end()));
+}
+
+template <>
+llvm::hash_code StableHashStorage<BroadcastAttrStorage>::calculateStableHash() const {
+    const auto axis = this->axis.getValue();
+    const auto value = this->value.getValue();
+    return llvm::hash_combine(BroadcastAttr::getMnemonic(), axis, value);
+}
+
+template <>
+llvm::hash_code StableHashStorage<TransposeAttrStorage>::calculateStableHash() const {
+    const auto order = DimsOrder::fromAffineMap(this->order.getValue());
+    return llvm::hash_combine(TransposeAttr::getMnemonic(), order.code());
+}
+
+template <>
+llvm::hash_code StableHashStorage<MemPermuteAttrStorage>::calculateStableHash() const {
+    const auto order = DimsOrder::fromAffineMap(this->dstOrder.getValue());
+    const auto perm = DimsOrder::fromAffineMap(this->memPerm.getValue());
+    return llvm::hash_combine(MemPermuteAttr::getMnemonic(), order.code(), perm.code());
+}
+
+template <>
+llvm::hash_code StableHashStorage<LayoutCastAttrStorage>::calculateStableHash() const {
+    const auto order = DimsOrder::fromAffineMap(this->dstOrder.getValue());
+    return llvm::hash_combine(LayoutCastAttr::getMnemonic(), order.code());
+}
+
+template <>
+llvm::hash_code StableHashStorage<ChangeShapeAndElemTypeAttrStorage>::calculateStableHash() const {
+    const auto shape = parseIntArrayAttr<int64_t>(this->shape);
+    return llvm::hash_combine(ChangeShapeAndElemTypeAttr::getMnemonic(),
+                              llvm::hash_combine_range(shape.begin(), shape.end()), getStableHash(this->elemType));
+}
+
+template <>
+llvm::hash_code StableHashStorage<AffineReshapeAttrStorage>::calculateStableHash() const {
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(this->dimMapping);
+    const auto dimMappingRefs = llvm::map_range(dimMapping, [](const auto& array) {
+        return ArrayRef<int64_t>(array);
+    });
+    const auto shapeValue = parseIntArrayAttr<int64_t>(this->shapeValue);
+
+    return llvm::hash_combine(AffineReshapeAttr::getMnemonic(),
+                              llvm::hash_combine_range(dimMappingRefs.begin(), dimMappingRefs.end()),
+                              llvm::hash_value(ArrayRef<int64_t>(shapeValue)));
+}
+}  // namespace details
+
+llvm::hash_code RescaleAttr::getStableHashValue() const {
+    VPUX_THROW_UNLESS(getScale().isSplat(), "RescaleAttr scale must be splat");
+    return static_cast<details::StableHashStorage<details::RescaleAttrStorage>*>(getImpl())->stableHash;
+}
+
+}  // namespace vpux::Const

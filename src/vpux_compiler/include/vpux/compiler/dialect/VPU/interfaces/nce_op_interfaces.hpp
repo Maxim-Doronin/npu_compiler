@@ -87,6 +87,21 @@ public:
     mlir::Value getWeightsOperand(mlir::Operation* op) const {
         return mlir::cast<ConcreteOp>(op).getWeights();
     }
+    mlir::Value getWeightTableDataPtrOperand(mlir::Operation* op) const {
+        return mlir::cast<ConcreteOp>(op).getWeightTableDataPtr();
+    }
+    mlir::Value getWeightTableSpPtrOperand(mlir::Operation* op) const {
+        return mlir::cast<ConcreteOp>(op).getWeightTableSpPtr();
+    }
+    mlir::Value getWeightTableScaleOperand(mlir::Operation* op) const {
+        return mlir::cast<ConcreteOp>(op).getWeightTableScale();
+    }
+    mlir::Value getWeightTableBiasOperand(mlir::Operation* op) const {
+        return mlir::cast<ConcreteOp>(op).getWeightTableBias();
+    }
+    mlir::Value getWeightZeroPointsOperand(mlir::Operation* op) const {
+        return mlir::cast<ConcreteOp>(op).getWeightZeroPoints();
+    }
     vpux::VPU::PaddingAttr getPad(mlir::Operation* op) const {
         return vpux::VPU::getPaddingAttr(mlir::cast<ConcreteOp>(op).getContext(), 0, 0, 0, 0);
     }

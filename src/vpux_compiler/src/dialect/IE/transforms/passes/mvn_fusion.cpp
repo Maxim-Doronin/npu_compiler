@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_MVNFUSION
@@ -408,15 +409,12 @@ private:
 
 void MVNFusionPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MVNFusion>(&ctx, _log);
     patterns.add<MVNFusionOvRef>(&ctx, _log);
-
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

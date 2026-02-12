@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2025 Intel Corporation
+// Copyright (C) 2020-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,14 @@ namespace test {
 
 class ConvolutionLayerTestCommon : public ConvolutionLayerTest, virtual public VpuOv2LayerTest {};
 class ConvolutionLayerTest_HostCompile : public ConvolutionLayerTest, virtual public VpuOv2LayerTest {};
+class ConvolutionLayerTest_HostCompile_Profiling : public ConvolutionLayerTest, virtual public VpuOv2LayerTest {};
+class ConvolutionLayerTest_SCFTiling : public ConvolutionLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
+    }
+};
 
 class ConvolutionLayerTest_NPU3720_SCM : public ConvolutionLayerTestCommon {};
 class ConvolutionLayerTest_NPU3720_HW : public ConvolutionLayerTestCommon {};
@@ -44,7 +52,7 @@ class ConvolutionLayerTest_MULTI_BATCH_HW : public ConvolutionLayerTestCommon {
 
 class ConvolutionLayerTest_SCF_Unroll : public ConvolutionLayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "loop-unroll-factor=1,1,2,1";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "loop-unroll-factor=1,1,10,1";
     }
 };
 
@@ -116,7 +124,19 @@ TEST_P(ConvolutionLayerTest_HostCompile, NPU4000_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ConvolutionLayerTest_HostCompile_Profiling, NPU4000_HC) {
+    rel_threshold = 0.02;
+    setSkipInferenceCallback([](std::stringstream& skip) {
+        skip << "Host Pipeline does not support inference yet: C#164943";
+    });
+
+    setHostCompileMode();
+    setPluginCompilerType();
+    enableProfiling();
     run(Platform::NPU4000);
 }
 
@@ -127,7 +147,7 @@ TEST_P(ConvolutionLayerTest_SCF_Unroll, NPU4000_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -156,7 +176,19 @@ TEST_P(ConvolutionLayerTest_HostCompile, NPU5010_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
+    run(Platform::NPU5010);
+}
+
+TEST_P(ConvolutionLayerTest_HostCompile_Profiling, NPU5010_HC) {
+    rel_threshold = 0.02;
+    setSkipInferenceCallback([](std::stringstream& skip) {
+        skip << "Host Pipeline does not support inference yet: C#164943";
+    });
+
+    setHostCompileMode();
+    setPluginCompilerType();
+    enableProfiling();
     run(Platform::NPU5010);
 }
 
@@ -167,9 +199,16 @@ TEST_P(ConvolutionLayerTest_SCF_Unroll, NPU5010_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
+
+TEST_P(ConvolutionLayerTest_SCFTiling, NPU5010_HW) {
+    rel_threshold = 0.02;
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -201,6 +240,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Convolution1D, ConvolutionLayerTest_NPU4000_SW, c
                          ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Convolution1D, ConvolutionLayerTest_NPU5010_SW, conv1D,
                          ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 1D Convolution / LargeKernel ============= */
 const auto conv1DParams_LargeKernel =
         ::testing::Combine(::testing::ValuesIn<std::vector<size_t>>({{512}}),   // kernels
@@ -223,6 +263,29 @@ INSTANTIATE_TEST_SUITE_P(smoke_Convolution1D_LargeKernel, ConvolutionLayerTest_N
 
 INSTANTIATE_TEST_SUITE_P(smoke_Convolution1D_LargeKernel, ConvolutionLayerTest_NPU4000_HW, convLargeKernel1D,
                          ConvolutionLayerTest::getTestCaseName);
+
+/* ============= 2D Convolution / LargeKernel with Large Stride ============= */
+const auto conv2DParams_LargeKernelLargeStride =
+        ::testing::Combine(::testing::ValuesIn<std::vector<size_t>>({{1, 60}}),    // kernels (60, gcd(60,6)=6)
+                           ::testing::ValuesIn<std::vector<size_t>>({{1, 6}}),     // strides (stride=6)
+                           ::testing::ValuesIn<std::vector<ptrdiff_t>>({{0, 0}}),  // padBegins
+                           ::testing::ValuesIn<std::vector<ptrdiff_t>>({{0, 0}}),  // padEnds
+                           ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),     // dilations
+                           ::testing::Values(64),                                  // numOutChannels
+                           ::testing::Values(ov::op::PadType::EXPLICIT)            // padType
+        );
+
+const auto convLargeKernelLargeStride2D = ::testing::Combine(
+        conv2DParams_LargeKernelLargeStride,
+        ::testing::Values(ov::element::f16),                                                      // netPrc
+        ::testing::ValuesIn({static_shapes_to_test_representation({ov::Shape{1, 1, 1, 1021}})}),  // inputShapes
+        ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_LargeKernelLargeStride, ConvolutionLayerTest_NPU3720_HW,
+                         convLargeKernelLargeStride2D, ConvolutionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_LargeKernelLargeStride, ConvolutionLayerTest_NPU4000_HW,
+                         convLargeKernelLargeStride2D, ConvolutionLayerTest::getTestCaseName);
 
 /* ============= 2D Convolution / AutoPadValid ============= */
 
@@ -250,6 +313,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_AutoPadValid, ConvolutionLayerTest_
                          ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_AutoPadValid, ConvolutionLayerTest_NPU5010_SW, conv2D_AutoPadValid,
                          ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 2D Convolution / CMajorCompatible ============= */
 
 const auto conv2DParams_CMajorCompatible =
@@ -275,6 +339,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_CMajorCompatible, ConvolutionLayerT
                          ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_CMajorCompatible, ConvolutionLayerTest_NPU5010_SW, conv2D_CMajorCompatible,
                          ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 3D Convolution / 3x2x2 Kernel ============= */
 
 const auto conv3DParams_3x2x2_Kernel =
@@ -417,6 +482,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Convolution2D_AsymmetricPadding, Convol
                          conv2D_AsymmetricPadding, ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Convolution2D_AsymmetricPadding, ConvolutionLayerTest_NPU5010_SW,
                          conv2D_AsymmetricPadding, ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 2D Convolution / AsymmetricKernel ============= */
 
 const auto conv2DParams_AsymmetricKernel =
@@ -442,6 +508,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_AsymmetricKernel, ConvolutionLayerT
                          ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_AsymmetricKernel, ConvolutionLayerTest_NPU5010_SW, conv2D_AsymmetricKernel,
                          ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 2D Convolution / AsymmetricStrides ============= */
 
 const auto conv2DParams_AsymmetricStrides =
@@ -548,6 +615,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_Dilated, ConvolutionLayerTest_NPU40
                          ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Convolution2D_Dilated, ConvolutionLayerTest_NPU5010_SW, conv2D_Dilated,
                          ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 2D Convolution / LargeSize ============= */
 
 const auto conv2DParams_LargeSize1 =
@@ -859,6 +927,31 @@ const auto DynamicShapesHostCompileConvParams =
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes, ConvolutionLayerTest_HostCompile, DynamicShapesHostCompileConvParams,
                          ConvolutionLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes, ConvolutionLayerTest_HostCompile_Profiling,
+                         DynamicShapesHostCompileConvParams, ConvolutionLayerTest::getTestCaseName);
+
+// Conv2D with dynamic dimensions with 2x2 stride
+const std::vector<std::vector<ov::test::InputShape>> in2DShapeForStrided = {
+        {generateTestShape(1, 3, 1080_Dyn, 1920_Dyn)}};
+
+const auto conv2DParams_2DynDims_Stride =
+        ::testing::Combine(::testing::ValuesIn<std::vector<size_t>>({{3, 3}}),     // kernels
+                           ::testing::ValuesIn<std::vector<size_t>>({{2, 2}}),     // strides
+                           ::testing::ValuesIn<std::vector<ptrdiff_t>>({{1, 1}}),  // padBegins
+                           ::testing::ValuesIn<std::vector<ptrdiff_t>>({{1, 1}}),  // padEnds
+                           ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),     // dilations
+                           ::testing::Values(32),                                  // numOutChannels
+                           ::testing::Values(ov::op::PadType::EXPLICIT)            // padType
+        );
+
+const auto DynamicShapesHostCompileConvParamsStrided =
+        ::testing::Combine(conv2DParams_2DynDims_Stride,         //
+                           ::testing::Values(ov::element::f16),  // netPrc
+                           ::testing::ValuesIn(in2DShapeForStrided), ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes_Strided, ConvolutionLayerTest_HostCompile,
+                         DynamicShapesHostCompileConvParamsStrided, ConvolutionLayerTest::getTestCaseName);
+
 // Conv 2D with dynamic dimensions for SCF Unroll test
 const std::vector<std::vector<ov::test::InputShape>> in2DShapeForUnroll = {{generateTestShape(1, 16, 1280_Dyn, 1280)}};
 
@@ -868,4 +961,23 @@ const auto DynamicShapesHostCompileConvParamsUnroll =
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes_SCF_Unroll, ConvolutionLayerTest_SCF_Unroll,
                          DynamicShapesHostCompileConvParamsUnroll, ConvolutionLayerTest::getTestCaseName);
+
+// Conv 2D with tiling
+const auto conv2DParams_Tiling = ::testing::Combine(::testing::ValuesIn<std::vector<size_t>>({{3, 3}}),     // kernels
+                                                    ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),     // strides
+                                                    ::testing::ValuesIn<std::vector<ptrdiff_t>>({{1, 1}}),  // padBegins
+                                                    ::testing::ValuesIn<std::vector<ptrdiff_t>>({{1, 1}}),  // padEnds
+                                                    ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),     // dilations
+                                                    ::testing::Values(16),                        // numOutChannels
+                                                    ::testing::Values(ov::op::PadType::EXPLICIT)  // padType
+);
+
+const auto TilingConvParams =
+        ::testing::Combine(conv2DParams_Tiling, ::testing::Values(ov::element::f16),
+                           ::testing::ValuesIn({static_shapes_to_test_representation({ov::Shape{1, 16, 1280, 1280}})}),
+                           ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(smoke_SCFTiling, ConvolutionLayerTest_SCFTiling, TilingConvParams,
+                         ConvolutionLayerTest_SCFTiling::getTestCaseName);
+
 }  // namespace

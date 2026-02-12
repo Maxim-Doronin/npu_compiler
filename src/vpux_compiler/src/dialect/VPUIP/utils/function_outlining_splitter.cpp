@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,11 +9,12 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/function_outlining_splitter.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Pass/AnalysisManager.h>
@@ -136,7 +137,7 @@ mlir::async::ExecuteOp createSpillDMAExecOp(mlir::OpBuilder& builder, mlir::Loca
 
 // Helper function to get swizzlingKeyAttr
 mlir::IntegerAttr getSwizzlingKeyAttr(mlir::Type bufferType) {
-    auto swizzlingScheme = getSwizzlingSchemeAttr(bufferType);
+    auto swizzlingScheme = VPUIP::getSwizzlingSchemeAttr(bufferType);
     if (swizzlingScheme != nullptr && swizzlingScheme.getKey().getInt() != 0) {
         return swizzlingScheme.getKey();
     }
@@ -451,10 +452,10 @@ SmallVector<size_t> AsyncRegionOutliningSplitter::findCutPoints() {
         if (_depsInfo.getConsumerOps(opIndex).empty()) {
             return false;
         }
-        if (vpux::getExecutorType(execOp) != VPU::ExecutorKind::DMA_NN) {
+        if (vpux::VPUIP::getExecutorType(execOp) != config::ExecutorKind::DMA_NN) {
             return false;
         }
-        if (auto dmaTask = vpux::getDmaTypeOp(execOp)) {
+        if (auto dmaTask = VPUIP::getDmaTypeOp(execOp)) {
             // DMA from NN_CMX to DDR
             auto ddrMemKind = VPU::MemoryKind::DDR;
             auto dstMemSpace = mlir::cast<vpux::NDTypeInterface>(dmaTask.getOutput().getType()).getMemoryKind();

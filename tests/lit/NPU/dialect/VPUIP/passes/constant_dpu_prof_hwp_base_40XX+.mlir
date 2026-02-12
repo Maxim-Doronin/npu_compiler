@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,9 +44,9 @@ func.func @main(%input: !InputType, %weights: !WeightType) -> (!OutputType, !Pro
 
   return %output, %profOutput : !OutputType, !ProfOutputType
 
-  //CHECK:    [[PROF_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1024> -> memref<4xui64, [@CMX_NN, 0]>
-  //CHECK:    [[NEW_PROF_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<4xui64, [@CMX_NN, 0]>
-  //CHECK:    [[OUT_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x64x32x32xf16, #NHWC, [@CMX_NN, 0]>
+  //CHECK:    [[PROF_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1024> -> memref<4xui64, [@CMX_NN, 0]>
+  //CHECK:    [[NEW_PROF_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<4xui64, [@CMX_NN, 0]>
+  //CHECK:    [[OUT_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x64x32x32xf16, #NHWC, [@CMX_NN, 0]>
   //CHECK:        VPUIP.NCEClusterTask
   //CHECK-SAME:   profiling_data([[NEW_PROF_BUF]] : memref<4xui64, [@CMX_NN, 0]>)
   //CHECK:        DPUTask

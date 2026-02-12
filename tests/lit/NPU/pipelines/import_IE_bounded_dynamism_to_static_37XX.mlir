@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@
 // CHECK:     DataInfo "Relu_70" friendlyName = "Result_72" tensorNames = ["Relu_70"] : tensor<1x18x3xf32>
 // CHECK:   }
 // CHECK:   func.func @main([[ARG0:[^:]+]]: tensor<1x18x3xf32>) -> tensor<1x18x3xf32> {
-// CHECK:     [[ReLU:%.*]] = IE.ReLU([[ARG0]]) : tensor<1x18x3xf32> -> tensor<1x18x3xf32>
+// CHECK:     [[ReLU:%.+]] = IE.ReLU([[ARG0]]) : tensor<1x18x3xf32> -> tensor<1x18x3xf32>
 // CHECK:     return [[ReLU]] : tensor<1x18x3xf32>
 // CHECK:   }
 // CHECK: }

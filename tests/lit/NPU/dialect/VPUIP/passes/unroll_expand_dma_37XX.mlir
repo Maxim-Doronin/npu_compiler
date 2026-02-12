@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,7 +23,7 @@ func.func @UnrollExpandDMAWithSEGMENTED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}
+        VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}>
                 inputs(%input : memref<1x3x240x320xf16, #NHWC, @DDR>)
                 outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -38,12 +38,12 @@ func.func @UnrollExpandDMAWithSEGMENTED() -> !OutputDistributed {
     //CHECK:    [[OUTPUT0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 230400 : i64, srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 230400 : i64, srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT0]] : memref<1x3x120x320xf16, #NHWC, @DDR>)
     //CHECK:                outputs([[OUTPUT0]] : memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 230400 : i64, srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 230400 : i64, srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}>
     //CHECK:                inputs([[INPUT1]] : memref<1x3x120x320xf16, #NHWC, @DDR>)
     //CHECK:                outputs([[OUTPUT1]] : memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>
 
@@ -73,7 +73,7 @@ func.func @UnrollExpandDMAWithSEGMENTEDExplicit() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !OutputDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}
+        VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}>
                 inputs(%input : memref<1x3x240x320xf16, #NHWC, @DDR>)
                 outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -92,23 +92,23 @@ func.func @UnrollExpandDMAWithSEGMENTEDExplicit() -> !OutputDistributed {
     //CHECK:    [[OUTPUT0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
+    //CHECK:        VPUIP.ExpandDMA <{
     //CHECK-SAME:       dma_descriptor = #VPUIP.DMADescriptorAttr<
     //CHECK-SAME:           numPlanes = 1 : i64, len = 230400 : i64,
     //CHECK-SAME:           srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:           dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}
+    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}>
     //CHECK-SAME:       inputs([[INPUT0]] : memref<1x3x120x320xf16, #NHWC, @DDR>)
     //CHECK-SAME:       outputs([[OUTPUT0]] : memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:       -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
+    //CHECK:        VPUIP.ExpandDMA <{
     //CHECK-SAME:       dma_descriptor = #VPUIP.DMADescriptorAttr<
     //CHECK-SAME:           numPlanes = 1 : i64, len = 230400 : i64,
     //CHECK-SAME:           srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:           dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}
+    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}>
     //CHECK-SAME:       inputs([[INPUT1]] : memref<1x3x120x320xf16, #NHWC, @DDR>)
     //CHECK-SAME:       outputs([[OUTPUT1]] : memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:       -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>
@@ -137,7 +137,7 @@ func.func @UnrollExpandDMAWithDUPLICATED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+        VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}>
                 inputs(%input : memref<1x4420x1x2xf16, #NHWC, @DDR>)
                 outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -149,7 +149,7 @@ func.func @UnrollExpandDMAWithDUPLICATED() -> !OutputDistributed {
     //CHECK:    [[RETURN:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x4432x1x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     //CHECK:    [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<1x4432x1x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 17680 : i64, srcWidth = 17680 : i64, srcStride = 17680 : i64, srcPlaneStride = 0 : i64, dstWidth = 8840 : i64, dstStride = 8864 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 17680 : i64, srcWidth = 17680 : i64, srcStride = 17680 : i64, srcPlaneStride = 0 : i64, dstWidth = 8840 : i64, dstStride = 8864 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT]] : memref<1x4420x1x2xf16, #NHWC, @DDR>)
     //CHECK:                outputs([[OUTPUT]] : !VPUIP.DistributedBuffer<1x4432x1x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK:                    -> !VPUIP.DistributedBuffer<1x4432x1x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -179,7 +179,7 @@ func.func @UnrollExpandDMAWithDUPLICATEDExplicit() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+        VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}>
                 inputs(%input : memref<1x4420x1x2xf16, #NHWC, @DDR>)
                 outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -195,12 +195,12 @@ func.func @UnrollExpandDMAWithDUPLICATEDExplicit() -> !OutputDistributed {
     //CHECK-SAME{LITERAL}:   memory_shapes = [[1, 4432, 1, 2], [1, 4432, 1, 2]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
+    //CHECK:        VPUIP.ExpandDMA <{
     //CHECK-SAME:       dma_descriptor = #VPUIP.DMADescriptorAttr<
     //CHECK-SAME:           numPlanes = 1 : i64, len = 17680 : i64,
     //CHECK-SAME:           srcWidth = 17680 : i64, srcStride = 17680 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:           dstWidth = 8840 : i64, dstStride = 8864 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}
+    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}>
     //CHECK-SAME:       inputs([[INPUT]] : memref<1x4420x1x2xf16, #NHWC, @DDR>)
     //CHECK-SAME:       outputs([[OUTPUT]] : !VPUIP.DistributedBuffer<1x4432x1x2xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                             {mode = "DUPLICATED", num_clusters = 2 : i64,
@@ -239,7 +239,7 @@ func.func @UnrollExpandDMAWithOVERLAPPED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}
+        VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}>
                 inputs(%input : memref<1x3x240x320xf16, #NHWC, @DDR>)
                 outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -254,12 +254,12 @@ func.func @UnrollExpandDMAWithOVERLAPPED() -> !OutputDistributed {
     //CHECK:    [[OUTPUT0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x121x320xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 232320 : i64, srcWidth = 232320 : i64, srcStride = 232320 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 232320 : i64, srcWidth = 232320 : i64, srcStride = 232320 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT0]] : memref<1x3x121x320xf16, #NHWC, @DDR>)
     //CHECK:                outputs([[OUTPUT0]] : memref<1x4x121x320xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x4x121x320xf16, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 230400 : i64, srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 230400 : i64, srcWidth = 230400 : i64, srcStride = 230400 : i64, srcPlaneStride = 0 : i64, dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}>
     //CHECK:                inputs([[INPUT1]] : memref<1x3x120x320xf16, #NHWC, @DDR>)
     //CHECK:                outputs([[OUTPUT1]] : memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x4x120x320xf16, #NHWC, [@CMX_NN, 1]>
 
@@ -289,7 +289,7 @@ func.func @UnrollExpandDMAWithOVERLAPPEDExplicit() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !OutputDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}
+        VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]}>
                 inputs(%input : memref<1x3x240x320xf16, #NHWC, @DDR>)
                 outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -308,23 +308,23 @@ func.func @UnrollExpandDMAWithOVERLAPPEDExplicit() -> !OutputDistributed {
     //CHECK:    [[OUTPUT0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x122x320xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x4x123x320xf16, #NHWC, [@CMX_NN, 1]>
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
+    //CHECK:        VPUIP.ExpandDMA <{
     //CHECK-SAME:       dma_descriptor = #VPUIP.DMADescriptorAttr<
     //CHECK-SAME:           numPlanes = 1 : i64, len = 234240 : i64,
     //CHECK-SAME:           srcWidth = 234240 : i64, srcStride = 234240 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:           dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}
+    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 0 : i64}>
     //CHECK-SAME:       inputs([[INPUT0]] : memref<1x3x122x320xf16, #NHWC, @DDR>)
     //CHECK-SAME:       outputs([[OUTPUT0]] : memref<1x4x122x320xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:       -> memref<1x4x122x320xf16, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
+    //CHECK:        VPUIP.ExpandDMA <{
     //CHECK-SAME:       dma_descriptor = #VPUIP.DMADescriptorAttr<
     //CHECK-SAME:           numPlanes = 1 : i64, len = 236160 : i64,
     //CHECK-SAME:           srcWidth = 236160 : i64, srcStride = 236160 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:           dstWidth = 6 : i64, dstStride = 8 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}
+    //CHECK-SAME:           pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0], port = 1 : i64}>
     //CHECK-SAME:       inputs([[INPUT1]] : memref<1x3x123x320xf16, #NHWC, @DDR>)
     //CHECK-SAME:       outputs([[OUTPUT1]] : memref<1x4x123x320xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:       -> memref<1x4x123x320xf16, #NHWC, [@CMX_NN, 1]>
@@ -348,7 +348,7 @@ func.func @UnrollExpandDMAWithInOutStridesOnExpandAxis() -> memref<1x16x40x40x!q
     %output = VPURT.DeclareBuffer <DDR> <18432000> -> memref<1x16x40x40x!qElemType, {order = #NHWC, strides = [76800, 1, 1920, 48]}, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %0 = VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]}
+        %0 = VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]}>
                 inputs(%input : memref<1x8x40x40x!qElemType, {order = #NHWC, strides = [64000, 1, 1600, 40]}, @DDR>)
                 outputs(%output : memref<1x16x40x40x!qElemType, {order = #NHWC, strides = [76800, 1, 1920, 48]}, @DDR>)
                 -> memref<1x16x40x40x!qElemType, {order = #NHWC, strides = [76800, 1, 1920, 48]}, @DDR>
@@ -361,10 +361,10 @@ func.func @UnrollExpandDMAWithInOutStridesOnExpandAxis() -> memref<1x16x40x40x!q
     //CHECK:    [[OUTPUT:%.+]] = VPURT.DeclareBuffer <DDR> <18432000> -> memref<1x16x40x40x!qElemType, {order = #NHWC, strides = [76800, 1, 1920, 48]}, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 12800 : i64,
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 12800 : i64,
     //CHECK-SAME:       srcWidth = 8 : i64, srcStride = 40 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:       dstWidth = 8 : i64, dstStride = 48 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0], port = 0 : i64}
+    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT]] : memref<1x8x40x40x!qElemType, {order = #NHWC, strides = [64000, 1, 1600, 40]}, @DDR>)
     //CHECK:                outputs([[OUTPUT]] : memref<1x16x40x40x!qElemType, {order = #NHWC, strides = [76800, 1, 1920, 48]}, @DDR>)
     //CHECK-SAME:       -> memref<1x16x40x40x!qElemType, {order = #NHWC, strides = [76800, 1, 1920, 48]}, @DDR>
@@ -385,7 +385,7 @@ func.func @UnrollExpandDMAWithLargeSizeAndDiffWithExpandAxis() -> memref<1x32x72
     %output = VPURT.DeclareBuffer <DDR> <18432000> -> memref<1x32x720x1280x!qElemType, #NWCH, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %0 = VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+        %0 = VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}>
                 inputs(%input : memref<1x20x720x1280x!qElemType, #NWCH, @DDR>)
                 outputs(%output : memref<1x32x720x1280x!qElemType, #NWCH, @DDR>)
                 -> memref<1x32x720x1280x!qElemType, #NWCH, @DDR>
@@ -401,18 +401,18 @@ func.func @UnrollExpandDMAWithLargeSizeAndDiffWithExpandAxis() -> memref<1x32x72
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <45273600> -> memref<1x32x720x1280x!qElemType, #NWCH, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 16776000 : i64,
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 16776000 : i64,
     //CHECK-SAME:       srcWidth = 16776000 : i64, srcStride = 16776000 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:       dstWidth = 14400 : i64, dstStride = 23040 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}
+    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT0]] : memref<1x20x720x1165x!qElemType, #NWCH, @DDR>)
     //CHECK:                outputs([[OUTPUT0]] : memref<1x32x720x1280x!qElemType, #NWCH, @DDR>) -> memref<1x32x720x1280x!qElemType, #NWCH, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 1656000 : i64,
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 1656000 : i64,
     //CHECK-SAME:       srcWidth = 1656000 : i64, srcStride = 1656000 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:       dstWidth = 14400 : i64, dstStride = 23040 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}
+    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}>
     //CHECK:                inputs([[INPUT1]] : memref<1x20x720x115x!qElemType, #NWCH, @DDR>)
     //CHECK:                outputs([[OUTPUT1]] : memref<1x32x720x1280x!qElemType, #NWCH, @DDR>) -> memref<1x32x720x1280x!qElemType, #NWCH, @DDR>
 
@@ -432,7 +432,7 @@ func.func @UnrollExpandDMAWithLargeSizeAndSameWithExpandAxis() -> memref<1x32x72
     %output = VPURT.DeclareBuffer <DDR> <18432000> -> memref<1x32x720x1280x!qElemType, #NCHW, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %0 = VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+        %0 = VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}>
                 inputs(%input : memref<1x20x720x1280x!qElemType, #NCHW, @DDR>)
                 outputs(%output : memref<1x32x720x1280x!qElemType, #NCHW, @DDR>)
                 -> memref<1x32x720x1280x!qElemType, #NCHW, @DDR>
@@ -448,18 +448,18 @@ func.func @UnrollExpandDMAWithLargeSizeAndSameWithExpandAxis() -> memref<1x32x72
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <35020800> -> memref<1x32x720x1280x!qElemType, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 16588800 : i64,
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 16588800 : i64,
     //CHECK-SAME:       srcWidth = 16588800 : i64, srcStride = 16588800 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:       dstWidth = 16588800 : i64, dstStride = 29491200 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 14, 0, 0], port = 0 : i64}
+    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 14, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT0]] : memref<1x18x720x1280x!qElemType, @DDR>)
     //CHECK:                outputs([[OUTPUT0]] : memref<1x32x720x1280x!qElemType, @DDR>) -> memref<1x32x720x1280x!qElemType, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 1843200 : i64,
+    //CHECK:        VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 1843200 : i64,
     //CHECK-SAME:       srcWidth = 1843200 : i64, srcStride = 1843200 : i64, srcPlaneStride = 0 : i64,
     //CHECK-SAME:       dstWidth = 1843200 : i64, dstStride = 29491200 : i64, dstPlaneStride = 0 : i64>,
-    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}
+    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}>
     //CHECK:                inputs([[INPUT1]] : memref<1x2x720x1280x!qElemType, @DDR>)
     //CHECK:                outputs([[OUTPUT1]] : memref<1x32x720x1280x!qElemType, @DDR>) -> memref<1x32x720x1280x!qElemType, @DDR>
 

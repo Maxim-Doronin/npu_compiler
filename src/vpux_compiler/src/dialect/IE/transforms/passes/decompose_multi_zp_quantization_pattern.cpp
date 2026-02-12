@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -16,13 +17,6 @@
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LogicalResult.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
-
-namespace vpux::IE {
-#define GEN_PASS_DECL_DECOMPOSEMULTIZPQUANTIZATIONPATTERN
-#define GEN_PASS_DEF_DECOMPOSEMULTIZPQUANTIZATIONPATTERN
-#include "vpux/compiler/dialect/IE/passes.hpp.inc"
-}  // namespace vpux::IE
 
 namespace vpux {
 
@@ -39,8 +33,7 @@ struct PatternOps {
 mlir::Operation* createMatMulOrFullyConnected(mlir::Operation* origOp, mlir::Value lhs, mlir::Value rhs,
                                               mlir::PatternRewriter& rewriter) {
     if (mlir::isa<IE::MatMulOp>(origOp)) {
-        return rewriter.create<IE::MatMulOp>(appendLoc(origOp->getLoc(), "matmul_decomposed"), lhs, rhs, false, true,
-                                             nullptr);
+        return rewriter.create<IE::MatMulOp>(appendLoc(origOp->getLoc(), "matmul_decomposed"), lhs, rhs, false, true);
     }
 
     if (mlir::isa<IE::FullyConnectedOp>(origOp)) {
@@ -53,8 +46,8 @@ mlir::Operation* createMatMulOrFullyConnected(mlir::Operation* origOp, mlir::Val
 template <typename ConcreteOp>
 class GroupWisePatternRewriter final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    GroupWisePatternRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<ConcreteOp>(ctx), _log(log.nest()) {
+    GroupWisePatternRewriter(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefit), _log(log.nest()) {
         this->setDebugName("GroupWisePatternRewriter");
     }
 
@@ -261,37 +254,16 @@ mlir::LogicalResult GroupWisePatternRewriter<ConcreteOp>::matchAndRewrite(Concre
     return mlir::success();
 }
 
-class DecomposeMultiZPQuantizationPatternPass final :
-        public IE::impl::DecomposeMultiZPQuantizationPatternBase<DecomposeMultiZPQuantizationPatternPass> {
-public:
-    explicit DecomposeMultiZPQuantizationPatternPass(Logger log) {
-        Base::initLogger(log, Base::getArgumentName());
-    }
-
-private:
-    void safeRunOnFunc() final;
-};
-
-void DecomposeMultiZPQuantizationPatternPass::safeRunOnFunc() {
-    auto func = getOperation();
-    auto& ctx = getContext();
-    mlir::RewritePatternSet patterns(&ctx);
-
-    IE::ConvertOp::getCanonicalizationPatterns(patterns, &ctx);  // Ensures Convert chains are folded
-    patterns.add<GroupWisePatternRewriter<IE::ConvertOp>>(&ctx, _log);
-    patterns.add<GroupWisePatternRewriter<Const::DeclareOp>>(&ctx, _log);
-
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
-}
-
 }  // namespace vpux
 
-//
-// createDecomposeMultiZPQuantizationPatternPass
-//
-
-std::unique_ptr<mlir::Pass> vpux::IE::createDecomposeMultiZPQuantizationPatternPass(Logger log) {
-    return std::make_unique<DecomposeMultiZPQuantizationPatternPass>(log);
+void vpux::IE::registerDecomposeMultiZPQuantizationRewriters(RewriterRegistry& registry,
+                                                             ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index,
+                                                             Logger log) {
+    registry.registerRewriterSet("decompose-multi-zp-quantization", [&]() {
+        vpux::IE::registerConvertOpRewriters(registry);
+        registry.registerRewriter<GroupWisePatternRewriter<IE::ConvertOp>>("group-wise-pattern-rewriter-convert-op",
+                                                                           log, benefitLevels[index]);
+        registry.registerRewriter<GroupWisePatternRewriter<Const::DeclareOp>>("group-wise-pattern-rewriter-declare-op",
+                                                                              log, benefitLevels[index]);
+    });
 }

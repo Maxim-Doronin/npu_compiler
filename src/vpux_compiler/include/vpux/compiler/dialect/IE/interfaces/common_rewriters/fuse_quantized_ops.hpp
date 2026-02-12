@@ -70,6 +70,10 @@ mlir::LogicalResult FuseWithConvBase<ConcreteOp>::matchAndRewrite(IE::QuantizeOp
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, convBaseOp, IE::TypeComparisonMode::ALLOW_DIFFERENT_QUANT)) {
+        return mlir::failure();
+    }
+
     if (!areAllUsersQuantized(convBaseOp)) {
         return mlir::failure();
     }
@@ -368,6 +372,10 @@ mlir::LogicalResult FuseWithReduce<ConcreteOp>::matchAndRewrite(IE::QuantizeOp q
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, reduceOp, IE::TypeComparisonMode::ALLOW_DIFFERENT_QUANT)) {
+        return mlir::failure();
+    }
+
     auto isNCESupported = VPU::NCEInvariant::isSupported(reduceOp.getOperation(), _log);
     if (isNCESupported.failed()) {
         return mlir::failure();
@@ -384,7 +392,7 @@ mlir::LogicalResult FuseWithReduce<ConcreteOp>::matchAndRewrite(IE::QuantizeOp q
 
     auto users = reduceOp.getResult().getUsers();
     auto userSize = std::distance(users.begin(), users.end());
-    auto newLoc = takeOpLoc(reduceOp, llvm::formatv("_{0}", userSize));
+    auto newLoc = takeOpLoc(reduceOp, "{0}", userSize);
 
     auto axes = getIntArrayAttr(this->getContext(), IE::extractAxes(reduceOp->getLoc(), reduceOp));
     rewriter.replaceOpWithNewOp<ConcreteOp>(quantizeOp, quantizeOp.getType(), inputDequantizeOp.getInput(),
@@ -455,6 +463,10 @@ mlir::LogicalResult FuseWithEltwiseConverter<ConcreteOp>::matchAndRewrite(IE::Qu
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, eltwiseOp, IE::TypeComparisonMode::STRICT_EQUAL)) {
+        return mlir::failure();
+    }
+
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(eltwiseOp.getOperation());
     if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
         if (!_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, /*isFloatInput=*/true)) {
@@ -496,7 +508,7 @@ mlir::LogicalResult FuseWithEltwiseConverter<ConcreteOp>::matchAndRewrite(IE::Qu
     }
     auto users = eltwiseOp.getResult().getUsers();
     auto userSize = std::distance(users.begin(), users.end());
-    auto newLoc = takeOpLoc(eltwiseOp, llvm::formatv("_{0}", userSize));
+    auto newLoc = takeOpLoc(eltwiseOp, "{0}", userSize);
 
     rewriter.replaceOpWithNewOp<ConcreteOp>(quantizeOp, quantizeOp.getType(), input1DequantizeOp.getInput(),
                                             input2DequantizeOp.getInput(), eltwiseOp.getAutoBroadcastAttr(),
@@ -578,6 +590,9 @@ public:
             return mlir::failure();
         }
         if (!lreluOp->hasOneUse()) {
+            return mlir::failure();
+        }
+        if (!isQuantizationSupported(quantizeOp, lreluOp, IE::TypeComparisonMode::ALLOW_DIFFERENT_QUANT)) {
             return mlir::failure();
         }
         auto deQuantOp = lreluOp->getOperand(0).getDefiningOp();

@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/compression_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
@@ -255,7 +256,7 @@ std::map<CompressSpillDmaPass::SpillDataKey, CompressSpillDmaPass::SpillDataVal>
         if (!dmaOp.getSpillId().has_value()) {
             continue;
         }
-        if (dmaOp.getCompressCandidateAttr() == nullptr) {
+        if (!dmaOp.getCompressCandidate()) {
             continue;
         }
 
@@ -279,7 +280,7 @@ std::map<CompressSpillDmaPass::SpillDataKey, CompressSpillDmaPass::SpillDataVal>
         }
 
         if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN && outType.getMemoryKind() == VPU::MemoryKind::DDR &&
-            isSupportedBufferSizeForCompression(inType)) {
+            VPUIP::isSupportedBufferSizeForCompression(inType)) {
             auto cmxIdx = inType.getMemSpace().getIndex().value_or(0);
 
             SpillDataKey spillDataKey{spillId, cmxIdx};
@@ -293,7 +294,8 @@ std::map<CompressSpillDmaPass::SpillDataKey, CompressSpillDmaPass::SpillDataVal>
             _log.trace("Spill-write op, index - '{0}', port - '{1}', cmxIdx - '{2}', spillId - '{3}'", i, portValue,
                        cmxIdx, spillId);
         } else if (inType.getMemoryKind() == VPU::MemoryKind::DDR &&
-                   outType.getMemoryKind() == VPU::MemoryKind::CMX_NN && isSupportedBufferSizeForCompression(outType)) {
+                   outType.getMemoryKind() == VPU::MemoryKind::CMX_NN &&
+                   VPUIP::isSupportedBufferSizeForCompression(outType)) {
             auto cmxIdx = outType.getMemSpace().getIndex().value_or(0);
 
             SpillDataKey spillDataKey{spillId, cmxIdx};
@@ -485,12 +487,12 @@ void createCompressDma(VPURT::TaskOp spillWriteTaskOp, mlir::Value actCompSizeBu
 
     auto outputBuf = dmaOp.getOutputBuff();
     auto outputType = outputBuf.getType();
-    outputType = vpux::setCompressionState(outputType, VPUIP::CompressionState::RuntimeCompressed);
+    outputType = VPUIP::setCompressionState(outputType, VPUIP::CompressionState::RuntimeCompressed);
     outputBuf.setType(outputType);
 
     builder.create<VPUIP::CompressDMAOp>(loc, dmaOp.getInput(), actCompSizeBuffer,
                                          /*act_compression_sparsity_map*/ nullptr, outputBuf, dmaOp.getPortAttr(),
-                                         dmaOp.getIsOutOfOrderAttr(), dmaOp.getIsCriticalAttr(),
+                                         dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(),
                                          /*dmaHwpId=*/nullptr,
                                          /*profilingMetadata=*/nullptr);
     dmaOp.erase();
@@ -509,12 +511,12 @@ void createDecompressDma(VPURT::TaskOp spillReadTaskOp, mlir::Value actCompSizeB
 
     auto inputBuf = dmaOp.getInput();
     auto inputType = inputBuf.getType();
-    inputType = vpux::setCompressionState(inputType, VPUIP::CompressionState::RuntimeCompressed);
+    inputType = VPUIP::setCompressionState(inputType, VPUIP::CompressionState::RuntimeCompressed);
     inputBuf.setType(inputType);
 
     builder.create<VPUIP::DecompressDMAOp>(loc, inputBuf, actCompSizeBuffer, /*act_compression_sparsity_map*/ nullptr,
-                                           dmaOp.getOutputBuff(), dmaOp.getPortAttr(), dmaOp.getIsOutOfOrderAttr(),
-                                           dmaOp.getIsCriticalAttr(),
+                                           dmaOp.getOutputBuff(), dmaOp.getPortAttr(), dmaOp.getIsOutOfOrder(),
+                                           dmaOp.getIsCritical(),
                                            /* dma_hwp_id= */ nullptr,
                                            /* profilingMetadata= */ nullptr);
     dmaOp.erase();
@@ -597,7 +599,7 @@ void CompressSpillDmaPass::safeRunOnModule() {
 
     _log.trace("Compressed DMAs reserved memory: offset - '{0}', size - '{1}'", _rsvdMemOffset, _rsvdMemSize);
 
-    auto dmaPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     VPUX_THROW_UNLESS(dmaPorts != nullptr, "Failed to get DMA information");
     _dmaCount = dmaPorts.getCount();
 

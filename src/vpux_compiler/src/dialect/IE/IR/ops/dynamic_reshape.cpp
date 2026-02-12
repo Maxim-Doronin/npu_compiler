@@ -82,7 +82,7 @@ SmallVector<mlir::Value> constructNewShapeInputs(mlir::PatternRewriter& rewriter
     // Extract dynamic dimensions from the previous shape
     for (int64_t i = 0; i < static_cast<int64_t>(prevOutputShapeParsed.size()); i++) {
         if (prevOutputShapeParsed[i] == mlir::ShapedType::kDynamic) {
-            auto sliceOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "_slice_dyn_prev_{0}", i), prevShape,
+            auto sliceOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_dyn_prev_{0}", i), prevShape,
                                                         rewriter.getI64ArrayAttr({i}), rewriter.getI64ArrayAttr({1}));
             dynamicDims.push_back(sliceOp.getResult());
         }
@@ -100,11 +100,11 @@ SmallVector<mlir::Value> constructNewShapeInputs(mlir::PatternRewriter& rewriter
             mlir::Value constOp;
             if (elemType.isInteger(32)) {
                 int32_t constValue = static_cast<int32_t>(origOutputShapeParsed[i]);
-                constOp = Const::createConst(rewriter, appendLoc(loc, "_dim_{0}", i), shapeType,
+                constOp = Const::createConst(rewriter, appendLoc(loc, "dim_{0}", i), shapeType,
                                              ArrayRef<int32_t>(constValue));
             } else if (elemType.isInteger(64)) {
                 int64_t constValue = origOutputShapeParsed[i];
-                constOp = Const::createConst(rewriter, appendLoc(loc, "_dim_{0}", i), shapeType,
+                constOp = Const::createConst(rewriter, appendLoc(loc, "dim_{0}", i), shapeType,
                                              ArrayRef<int64_t>(constValue));
             } else {
                 VPUX_THROW("Invalid element type {0}", elemType);
@@ -116,7 +116,7 @@ SmallVector<mlir::Value> constructNewShapeInputs(mlir::PatternRewriter& rewriter
                 j++;
             } else {
                 auto sliceOp =
-                        rewriter.create<IE::SliceOp>(appendLoc(loc, "_slice_dyn_orig_{0}", i), origShape,
+                        rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_dyn_orig_{0}", i), origShape,
                                                      rewriter.getI64ArrayAttr({i}), rewriter.getI64ArrayAttr({1}));
                 newShapeInputs.push_back(sliceOp.getResult());
             }
@@ -231,7 +231,7 @@ mlir::LogicalResult FuseDynamicReshapes::matchAndRewrite(IE::DynamicReshapeOp or
     auto newShapeInputs = constructNewShapeInputs(rewriter, origOp.getLoc(), prevOp.getShape(), origOp.getShape(),
                                                   origOutputShapeParsed, prevOutputShapeParsed);
 
-    auto newShape = rewriter.create<IE::ConcatOp>(appendLoc(origOp.getLoc(), "_fused_shape"), newShapeInputs,
+    auto newShape = rewriter.create<IE::ConcatOp>(appendLoc(origOp.getLoc(), "fused_shape"), newShapeInputs,
                                                   getIntAttr(getContext(), 0));
 
     replaceWithNewDynamicReshape(rewriter, origOp, prevOp->getOperand(0), newShape.getResult(), onlySetShape);

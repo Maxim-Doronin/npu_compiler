@@ -109,7 +109,8 @@ mlir::LogicalResult vpux::VPU::AffineReshapeOp::inferReturnTypes(
         auto origDistribution = distributedType.getDistribution();
         auto distribWithExplicitAttr = VPU::getNonOverlappedDistributedAttr(
                 outShape, origDistribution.getMode(), origDistribution.getNumTiles(), origDistribution.getNumClusters(),
-                origDistribution.getAlignment(), origDistribution.getUniformDistributedSegments(), ctx);
+                origDistribution.getAlignment(), origDistribution.getUniformDistributedSegments(),
+                distributedType.getElementType(), ctx);
 
         return distributedType.changeTypeComponentsForExplicitDistribution(components, distribWithExplicitAttr);
     };
@@ -159,7 +160,7 @@ vpux::VPU::AffineReshapeOp::inferCastedTypeAndDistribution(vpux::NDTypeInterface
 
     auto distribWithExplicitAttr = VPU::getNonOverlappedDistributedNative(
             outShape, distribution.getDistributionMode(), distribution.getNumTiles(), distribution.getNumClusters(),
-            distribution.getAlignment(), distribution.hasUniformDistributedSegments());
+            distribution.getAlignment(), distribution.hasUniformDistributedSegments(), dstElemType);
     const auto typeComponents =
             TypeComponents().setShape(outShape).setDimsOrder(dstType.getDimsOrder()).setElementType(dstElemType);
     return std::make_pair(mlir::cast<mlir::Type>(inType.changeTypeComponents(typeComponents)), distribWithExplicitAttr);

@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
+#include "vpux/compiler/init.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/func_ref.hpp"
@@ -151,6 +152,9 @@ static void BM_StableHash_IndividualAttr(benchmark::State& state, CreateAttrFunc
     mlir::MLIRContext ctx;
     ctx.loadDialect<vpux::Const::ConstDialect>();
     ctx.loadDialect<mlir::quant::QuantDialect>();
+    auto registry = vpux::createDialectRegistry(vpux::DummyOpMode::DISABLED);
+    ctx.appendDialectRegistry(registry);
+
     const auto attr = create(&ctx);
 
     for (auto _ : state) {
@@ -160,39 +164,86 @@ static void BM_StableHash_IndividualAttr(benchmark::State& state, CreateAttrFunc
     }
 }
 
+// Note: this is "same" as BM_StableHash_IndividualAttr, but it also
+// additionally creates the attribute inside of the benchmark loop. This allows
+// to estimate the cost of creation relative to the cost of stable hash
+// querying. Due to smarter approach to caching the stable hashes, the creation
+// should be "negligible".
+static void BM_StableHash_IndividualAttrWithCreation(benchmark::State& state, CreateAttrFunc create) {
+    mlir::MLIRContext ctx;
+    ctx.loadDialect<vpux::Const::ConstDialect>();
+    ctx.loadDialect<mlir::quant::QuantDialect>();
+    auto registry = vpux::createDialectRegistry(vpux::DummyOpMode::DISABLED);
+    ctx.appendDialectRegistry(registry);
+
+    for (auto _ : state) {
+        const auto attr = create(&ctx);
+        llvm::hash_code value = attr.getStableHashValue();
+        benchmark::DoNotOptimize(value);
+        benchmark::ClobberMemory();
+    }
+}
+
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Add, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::AddAttr::get(mlir::FloatAttr::get(mlir::Float32Type::get(ctx), 42));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Add, [](mlir::MLIRContext* ctx) {
     return vpux::Const::AddAttr::get(mlir::FloatAttr::get(mlir::Float32Type::get(ctx), 42));
 });
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Broadcast, [](mlir::MLIRContext* ctx) {
     return vpux::Const::BroadcastAttr::get(vpux::getIntAttr(ctx, 0), vpux::getIntAttr(ctx, 42));
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Broadcast, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::BroadcastAttr::get(vpux::getIntAttr(ctx, 0), vpux::getIntAttr(ctx, 42));
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, CastElemType, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::CastElemTypeAttr::get(mlir::Float16Type::get(ctx));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, CastElemType, [](mlir::MLIRContext* ctx) {
     return vpux::Const::CastElemTypeAttr::get(mlir::Float16Type::get(ctx));
 });
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, CastElemType_QuantPerAxis, [](mlir::MLIRContext* ctx) {
     return vpux::Const::CastElemTypeAttr::get(getSomeQuantPerAxisType(ctx));
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, CastElemType_QuantPerAxis, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::CastElemTypeAttr::get(getSomeQuantPerAxisType(ctx));
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, ConvertElemType, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::ConvertElemTypeAttr::get(mlir::Float16Type::get(ctx));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, ConvertElemType, [](mlir::MLIRContext* ctx) {
     return vpux::Const::ConvertElemTypeAttr::get(mlir::Float16Type::get(ctx));
 });
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, ConvertElemType_QuantPerAxis, [](mlir::MLIRContext* ctx) {
     return vpux::Const::ConvertElemTypeAttr::get(getSomeQuantPerAxisType(ctx));
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, ConvertElemType_QuantPerAxis, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::ConvertElemTypeAttr::get(getSomeQuantPerAxisType(ctx));
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Quantize, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::QuantizeAttr::get(ctx, mlir::cast<mlir::quant::QuantizedType>(getSomeQuantPerTensorType(ctx)));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Quantize, [](mlir::MLIRContext* ctx) {
     return vpux::Const::QuantizeAttr::get(ctx, mlir::cast<mlir::quant::QuantizedType>(getSomeQuantPerTensorType(ctx)));
 });
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Quantize_QuantPerAxis, [](mlir::MLIRContext* ctx) {
     return vpux::Const::QuantizeAttr::get(ctx, mlir::cast<mlir::quant::QuantizedType>(getSomeQuantPerAxisType(ctx)));
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Quantize_QuantPerAxis, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::QuantizeAttr::get(ctx, mlir::cast<mlir::quant::QuantizedType>(getSomeQuantPerAxisType(ctx)));
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Dequantize, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::DequantizeAttr::get(ctx);
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Dequantize, [](mlir::MLIRContext* ctx) {
     return vpux::Const::DequantizeAttr::get(ctx);
 });
 
@@ -200,8 +251,16 @@ BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, LayoutCast, [](mlir::MLIRContext
     const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
     return vpux::Const::LayoutCastAttr::get(identity);
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, LayoutCast, [](mlir::MLIRContext* ctx) {
+    const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
+    return vpux::Const::LayoutCastAttr::get(identity);
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, MemPermute, [](mlir::MLIRContext* ctx) {
+    const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
+    return vpux::Const::MemPermuteAttr::get(identity, identity);
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, MemPermute, [](mlir::MLIRContext* ctx) {
     const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
     return vpux::Const::MemPermuteAttr::get(identity, identity);
 });
@@ -212,8 +271,18 @@ BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, PadWithZero, [](mlir::MLIRContex
     return vpux::Const::PadWithZeroAttr::get(vpux::getIntArrayAttr(ctx, padBefore),
                                              vpux::getIntArrayAttr(ctx, padAfter));
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, PadWithZero, [](mlir::MLIRContext* ctx) {
+    const int64_t padBefore[] = {0, 0, 0, 0};
+    const int64_t padAfter[] = {10, 0, 0, 0};
+    return vpux::Const::PadWithZeroAttr::get(vpux::getIntArrayAttr(ctx, padBefore),
+                                             vpux::getIntArrayAttr(ctx, padAfter));
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Reorder, [](mlir::MLIRContext* ctx) {
+    const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
+    return vpux::Const::ReorderAttr::get(identity);
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Reorder, [](mlir::MLIRContext* ctx) {
     const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
     return vpux::Const::ReorderAttr::get(identity);
 });
@@ -221,8 +290,15 @@ BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Reorder, [](mlir::MLIRContext* c
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Rescale, [](mlir::MLIRContext* ctx) {
     return vpux::Const::RescaleAttr::get(mlir::FloatAttr::get(mlir::Float32Type::get(ctx), 42));
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Rescale, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::RescaleAttr::get(mlir::FloatAttr::get(mlir::Float32Type::get(ctx), 42));
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Reshape, [](mlir::MLIRContext* ctx) {
+    const int64_t shape[] = {1, 2, 3, 4};
+    return vpux::Const::ReshapeAttr::get(vpux::getIntArrayAttr(ctx, shape));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Reshape, [](mlir::MLIRContext* ctx) {
     const int64_t shape[] = {1, 2, 3, 4};
     return vpux::Const::ReshapeAttr::get(vpux::getIntArrayAttr(ctx, shape));
 });
@@ -230,8 +306,16 @@ BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Reshape, [](mlir::MLIRContext* c
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, ScalarMultInverse, [](mlir::MLIRContext* ctx) {
     return vpux::Const::ScalarMultInverseAttr::get(ctx);
 });
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, ScalarMultInverse, [](mlir::MLIRContext* ctx) {
+    return vpux::Const::ScalarMultInverseAttr::get(ctx);
+});
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, SubView, [](mlir::MLIRContext* ctx) {
+    const int64_t offset[] = {0, 0, 0, 0};
+    const int64_t shape[] = {1, 2, 3, 4};
+    return vpux::Const::SubViewAttr::get(vpux::getIntArrayAttr(ctx, offset), vpux::getIntArrayAttr(ctx, shape));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, SubView, [](mlir::MLIRContext* ctx) {
     const int64_t offset[] = {0, 0, 0, 0};
     const int64_t shape[] = {1, 2, 3, 4};
     return vpux::Const::SubViewAttr::get(vpux::getIntArrayAttr(ctx, offset), vpux::getIntArrayAttr(ctx, shape));
@@ -241,19 +325,18 @@ BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Transpose, [](mlir::MLIRContext*
     const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
     return vpux::Const::TransposeAttr::get(identity);
 });
-
-BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Sparsify_False, [](mlir::MLIRContext* ctx) {
-    return vpux::Const::SparsifyAttr::get(mlir::BoolAttr::get(ctx, false));
-});
-
-BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, Sparsify_True, [](mlir::MLIRContext* ctx) {
-    const int64_t values[] = {0, 1, 2, 3};
-    const auto numElemsAttr = vpux::Const::createConstContent(mlir::RankedTensorType::get({4}, vpux::getInt64Type(ctx)),
-                                                              mlir::ArrayRef(values));
-    return vpux::Const::SparsifyAttr::get(mlir::BoolAttr::get(ctx, true), numElemsAttr);
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, Transpose, [](mlir::MLIRContext* ctx) {
+    const auto identity = mlir::AffineMapAttr::get(mlir::AffineMap::getMinorIdentityMap(4, 4, ctx));
+    return vpux::Const::TransposeAttr::get(identity);
 });
 
 BENCHMARK_CAPTURE(BM_StableHash_IndividualAttr, AffineReshape, [](mlir::MLIRContext* ctx) {
+    const std::vector<int64_t> dimMapping[] = {{0, 1}, {2}, {2}};
+    const int64_t shape[] = {5, 2, 6};
+    return vpux::Const::AffineReshapeAttr::get(vpux::getIntArrayOfArray(ctx, dimMapping),
+                                               vpux::getIntArrayAttr(ctx, shape));
+});
+BENCHMARK_CAPTURE(BM_StableHash_IndividualAttrWithCreation, AffineReshape, [](mlir::MLIRContext* ctx) {
     const std::vector<int64_t> dimMapping[] = {{0, 1}, {2}, {2}};
     const int64_t shape[] = {5, 2, 6};
     return vpux::Const::AffineReshapeAttr::get(vpux::getIntArrayOfArray(ctx, dimMapping),

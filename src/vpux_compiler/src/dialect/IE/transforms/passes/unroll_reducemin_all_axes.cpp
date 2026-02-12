@@ -56,8 +56,8 @@ mlir::LogicalResult ReduceMinRewriter::matchAndRewrite(IE::ReduceMinOp origOp, m
         auto maxAxis = maxNonOneAxis.value_or(Dim(0)).ind();
         SmallVector<int64_t> unrolledAxes = {maxAxis};
         auto axesAttr = getIntArrayAttr(ctx, ArrayRef(unrolledAxes));
-        auto newOp = rewriter.create<IE::ReduceMinOp>(takeOpLoc(origOp, StringLiteral("dim_{0}"), idx), prevInput,
-                                                      nullptr, axesAttr, false);
+        auto newOp = rewriter.create<IE::ReduceMinOp>(takeOpLoc(origOp, "dim_{0}", idx), prevInput, nullptr, axesAttr,
+                                                      false);
         prevInput = newOp->getResult(0);
         _log.trace("[{0}] create newOp {1} with size {2}", getDebugName(), newOp,
                    parseIntArrayAttr<int64_t>(newOp.getAxesValue().value()).size());

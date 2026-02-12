@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,11 +41,11 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
     %2311 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     %2312 = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 2]>
     %2313 = VPURT.DeclareBuffer <CMX_NN> [4] <0> -> memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 4]>
-    %2315 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%320 : !VPURegMapped.Index<0:0:0>) inputs(%2304 : memref<16x32x1x1xf16, #NHWC, @DDR>) outputs(%2308, %2309, %2310 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>, memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 2]>, memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 4]>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
-    %2316 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%352 : !VPURegMapped.Index<0:1:0>) inputs(%2311 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%2305 : memref<16x32x1x1xf16, #NHWC, @DDR>) start_after(1) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
-    %2317 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%353 : !VPURegMapped.Index<0:1:1>) inputs(%2312 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 2]>) outputs(%2306 : memref<16x32x1x1xf16, #NHWC, @DDR>) previousDMA(%2316 : !VPURegMapped.Index<0:1:0>) start_after(1) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:1>
-    %2318 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%354 : !VPURegMapped.Index<0:1:2>) inputs(%2313 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 4]>) outputs(%2307 : memref<16x32x1x1xf16, #NHWC, @DDR>) previousDMA(%2317 : !VPURegMapped.Index<0:1:1>) start_after(1) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:2>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    %2315 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%320 : !VPURegMapped.Index<0:0:0>) inputs(%2304 : memref<16x32x1x1xf16, #NHWC, @DDR>) outputs(%2308, %2309, %2310 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>, memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 2]>, memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 4]>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %2316 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%352 : !VPURegMapped.Index<0:1:0>) inputs(%2311 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%2305 : memref<16x32x1x1xf16, #NHWC, @DDR>) start_after(1) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
+    %2317 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%353 : !VPURegMapped.Index<0:1:1>) inputs(%2312 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 2]>) outputs(%2306 : memref<16x32x1x1xf16, #NHWC, @DDR>) previousDMA(%2316 : !VPURegMapped.Index<0:1:0>) start_after(1) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:1>
+    %2318 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%354 : !VPURegMapped.Index<0:1:2>) inputs(%2313 : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 4]>) outputs(%2307 : memref<16x32x1x1xf16, #NHWC, @DDR>) previousDMA(%2317 : !VPURegMapped.Index<0:1:1>) start_after(1) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:2>
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }

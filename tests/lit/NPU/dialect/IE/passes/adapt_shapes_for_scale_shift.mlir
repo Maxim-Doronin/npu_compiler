@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,26 +18,26 @@ func.func @ConvertAdd(%arg0: tensor<19x80xf16>) -> tensor<19x80xf16> {
 
     return %ADD : tensor<19x80xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[ADD]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[ADD]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<19x80xf16>
 
@@ -58,26 +58,26 @@ func.func @ConvertMul(%arg0: tensor<19x80xf16>) -> tensor<19x80xf16> {
 
     return %MUL : tensor<19x80xf16>
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[MUL]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[MUL]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<19x80xf16>
 
@@ -102,33 +102,33 @@ func.func @ConvertAddWithMul(%arg0: tensor<19x80xf16>) -> tensor<19x80xf16> {
 
     return %MUL : tensor<19x80xf16>
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:  : tensor<1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[ADD]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[ADD]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[MUL]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[MUL]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<19x80xf16>
 
@@ -153,33 +153,33 @@ func.func @ConvertMulWithAdd(%arg0: tensor<19x80xf16>) -> tensor<19x80xf16> {
 
     return %ADD : tensor<19x80xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:  : tensor<1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[MUL]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[MUL]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[ADD]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[ADD]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<19x80xf16>
 
@@ -200,26 +200,26 @@ func.func @Convert3dAdd(%arg0: tensor<1x19x80xf16>) -> tensor<1x19x80xf16> {
 
     return %ADD : tensor<1x19x80xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<1x19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[ADD]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[ADD]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [1, 19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x19x80xf16>
 
@@ -240,26 +240,26 @@ func.func @Convert3dMul(%arg0: tensor<1x19x80xf16>) -> tensor<1x19x80xf16> {
 
     return %MUL : tensor<1x19x80xf16>
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<1x19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[MUL]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[MUL]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [1, 19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x19x80xf16>
 
@@ -284,33 +284,33 @@ func.func @Convert3dAddWithMul(%arg0: tensor<1x19x80xf16>) -> tensor<1x19x80xf16
 
     return %MUL : tensor<1x19x80xf16>
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<1x19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[TRANSPOSE_INPUT]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[ADD]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[ADD]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[MUL]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[MUL]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [1, 19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x19x80xf16>
 
@@ -335,33 +335,33 @@ func.func @Convert3dMulWithAdd(%arg0: tensor<1x19x80xf16>) -> tensor<1x19x80xf16
 
     return %ADD : tensor<1x19x80xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x80x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80xf16>, [#const.Reshape<[1, 80, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 1]
     // CHECK-SAME:  } : tensor<1x19x80xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[MUL]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[MUL]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x80x19x1xf16>, tensor<1x80x1x1xf16> -> tensor<1x80x19x1xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[ADD]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[ADD]]) {
     // CHECK-SAME:      order_value = #NHCW
     // CHECK-SAME:  } : tensor<1x80x19x1xf16> -> tensor<1x19x80x1xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [1, 19, 80]
     // CHECK-SAME:  } : tensor<1x19x80x1xf16> -> tensor<1x19x80xf16>
 
@@ -380,26 +380,26 @@ func.func @Convert4dMul(%arg0: tensor<1x19x80x80xf16>) -> tensor<1x19x80x80xf16>
 
     return %MUL : tensor<1x19x80x80xf16>
 
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x6400x1x1xf16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x6400x1x1xf16> = dense<2.000000e+00>
     // CHECK-SAME:  : tensor<1x1x80x80xf16>, [#const.Reshape<[1, 6400, 1, 1]>]
 
-    // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 1, 19, 6400]
     // CHECK-SAME:  } : tensor<1x19x80x80xf16> -> tensor<1x1x19x6400xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT:%.*]] = IE.Transpose([[RESHAPE_INPUT]]) {
+    // CHECK:   [[TRANSPOSE_INPUT:%.+]] = IE.Transpose([[RESHAPE_INPUT]]) {
     // CHECK-SAME:      order_value = #NWCH
     // CHECK-SAME:  } : tensor<1x1x19x6400xf16> -> tensor<1x6400x1x19xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[TRANSPOSE_INPUT]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x6400x1x19xf16>, tensor<1x6400x1x1xf16> -> tensor<1x6400x1x19xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[MUL]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[MUL]]) {
     // CHECK-SAME:      order_value = #NHWC
     // CHECK-SAME:  } : tensor<1x6400x1x19xf16> -> tensor<1x1x19x6400xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 80]
     // CHECK-SAME:  } : tensor<1x1x19x6400xf16> -> tensor<1x19x80x80xf16>
 
@@ -416,27 +416,27 @@ func.func @Convert4dMulWithTwoActivations(%arg0: tensor<1x19x80x80xf16>, %arg1: 
 
     return %MUL : tensor<1x19x80x80xf16>
 
-    // CHECK:   [[RESHAPE_INPUT1:%.*]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT1:%.+]] = IE.AffineReshape(%arg0) {
     // CHECK-SAME:      shape_value = [1, 1, 19, 6400]
     // CHECK-SAME:  } : tensor<1x19x80x80xf16> -> tensor<1x1x19x6400xf16>
 
-    // CHECK:   [[TRANSPOSE_INPUT1:%.*]] = IE.Transpose([[RESHAPE_INPUT1]]) {
+    // CHECK:   [[TRANSPOSE_INPUT1:%.+]] = IE.Transpose([[RESHAPE_INPUT1]]) {
     // CHECK-SAME:      order_value = #NWCH
     // CHECK-SAME:  } : tensor<1x1x19x6400xf16> -> tensor<1x6400x1x19xf16>
 
-    // CHECK:   [[RESHAPE_INPUT2:%.*]] = IE.AffineReshape(%arg1) {
+    // CHECK:   [[RESHAPE_INPUT2:%.+]] = IE.AffineReshape(%arg1) {
     // CHECK-SAME:      shape_value = [1, 6400, 1, 1]
     // CHECK-SAME:  } : tensor<1x1x80x80xf16> -> tensor<1x6400x1x1xf16>
 
-    // CHECK:   [[MUL:%.*]] = IE.Multiply([[TRANSPOSE_INPUT1]], [[RESHAPE_INPUT2]]) {
+    // CHECK:   [[MUL:%.+]] = IE.Multiply([[TRANSPOSE_INPUT1]], [[RESHAPE_INPUT2]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x6400x1x19xf16>, tensor<1x6400x1x1xf16> -> tensor<1x6400x1x19xf16>
 
-    // CHECK:   [[TRANSPOSE_OUT:%.*]] = IE.Transpose([[MUL]]) {
+    // CHECK:   [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[MUL]]) {
     // CHECK-SAME:      order_value = #NHWC
     // CHECK-SAME:  } : tensor<1x6400x1x19xf16> -> tensor<1x1x19x6400xf16>
 
-    // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[TRANSPOSE_OUT]]) {
     // CHECK-SAME:      shape_value = [1, 19, 80, 80]
     // CHECK-SAME:  } : tensor<1x1x19x6400xf16> -> tensor<1x19x80x80xf16>
 
@@ -452,8 +452,8 @@ func.func @DoNotConvert4dMul(%arg0: tensor<1x20x80x80xf16>) -> tensor<2x20x80x80
         auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     } : tensor<1x20x80x80xf16>, tensor<2x1x80x80xf16> -> tensor<2x20x80x80xf16>
     return %MUL : tensor<2x20x80x80xf16>
-    // CHECK-DAG:   [[MUL_WEIGHTS:%.*]] = const.Declare tensor<2x1x80x80xf16> = dense<2.000000e+00> : tensor<2x1x80x80xf16>
-    // CHECK:   [[MUL:%.*]] = IE.Multiply(%arg0, [[MUL_WEIGHTS]]) {
+    // CHECK-DAG:   [[MUL_WEIGHTS:%.+]] = const.Declare tensor<2x1x80x80xf16> = dense<2.000000e+00> : tensor<2x1x80x80xf16>
+    // CHECK:   [[MUL:%.+]] = IE.Multiply(%arg0, [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x20x80x80xf16>, tensor<2x1x80x80xf16> -> tensor<2x20x80x80xf16>
     // CHECK:   return [[MUL]] : tensor<2x20x80x80xf16>
@@ -470,8 +470,8 @@ func.func @DoNotConvertMulChannelOverVPUDimLimit(%arg0: tensor<1x1x1080x1920xf16
     } : tensor<1x1x1080x1920xf16>, tensor<1x1x1080x1920xf16> -> tensor<1x1x1080x1920xf16>
     return %MUL : tensor<1x1x1080x1920xf16>
 
-    // CHECK-DAG: [[MUL_WEIGHTS:%.*]] = const.Declare tensor<1x1x1080x1920xf16> = dense<2.000000e+00> : tensor<1x1x1080x1920xf16>
-    // CHECK:     [[MUL:%.*]] = IE.Multiply([[INPUT]], [[MUL_WEIGHTS]]) {
+    // CHECK-DAG: [[MUL_WEIGHTS:%.+]] = const.Declare tensor<1x1x1080x1920xf16> = dense<2.000000e+00> : tensor<1x1x1080x1920xf16>
+    // CHECK:     [[MUL:%.+]] = IE.Multiply([[INPUT]], [[MUL_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x1080x1920xf16>, tensor<1x1x1080x1920xf16> -> tensor<1x1x1080x1920xf16>
     // CHECK:   return [[MUL]] : tensor<1x1x1080x1920xf16>
@@ -488,8 +488,8 @@ func.func @DoNotConvert2dAdd(%arg0: tensor<512x1xf16>) -> tensor<512x1xf16> {
 
     return %ADD : tensor<512x1xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<512x1xf16> = dense<1.000000e+00> : tensor<512x1xf16>
-    // CHECK:   [[ADD:%.*]] = IE.Add(%arg0, [[ADD_WEIGHTS]]) {
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<512x1xf16> = dense<1.000000e+00> : tensor<512x1xf16>
+    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<512x1xf16>, tensor<512x1xf16> -> tensor<512x1xf16>
 
@@ -507,8 +507,8 @@ func.func @DoNotConvert3dAdd(%arg0: tensor<1x512x1xf16>) -> tensor<1x512x1xf16> 
 
     return %ADD : tensor<1x512x1xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x512x1xf16> = dense<1.000000e+00> : tensor<1x512x1xf16>
-    // CHECK:   [[ADD:%.*]] = IE.Add(%arg0, [[ADD_WEIGHTS]]) {
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x512x1xf16> = dense<1.000000e+00> : tensor<1x512x1xf16>
+    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x512x1xf16>, tensor<1x512x1xf16> -> tensor<1x512x1xf16>
 
@@ -526,8 +526,8 @@ func.func @DoNotConvertTrivialShape(%arg0: tensor<1x1x512xf16>) -> tensor<1x1x51
 
     return %ADD : tensor<1x1x512xf16>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x1x512xf16> = dense<1.000000e+00> : tensor<1x1x512xf16>
-    // CHECK:   [[ADD:%.*]] = IE.Add(%arg0, [[ADD_WEIGHTS]]) {
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x1x512xf16> = dense<1.000000e+00> : tensor<1x1x512xf16>
+    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[ADD_WEIGHTS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x512xf16>, tensor<1x1x512xf16> -> tensor<1x1x512xf16>
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,46 +70,46 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
 
     VPURT.Task wlmPage(0)
     {
-        VPUIP.FetchDMA {port = 0 : i64} inputs(%buf4 : memref<0x0x0x0xi32, @DDR>) outputs(%buf4 : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
+        VPUIP.FetchDMA <{port = 0 : i64}> inputs(%buf4 : memref<0x0x0x0xi32, @DDR>) outputs(%buf4 : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 1 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 1 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) wlmPage(1)
     {
-        VPUIP.NNDMA {port = 1 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 1 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar3 : !VPURT.Barrier) wlmPage(1) {
-        VPUIP.EnqueueDMA {port = 0 : i64} inputs(%buf4 : memref<0x0x0x0xi32, @DDR>) outputs(%buf4 : memref<0x0x0x0xi32, @DDR>) enqueue_dma_attr(<<DPU>, tile = 0 : i64, list = 0 : i64, startTask = 0 : i64, endTask = 3 : i64>) -> memref<0x0x0x0xi32, @DDR>
+        VPUIP.EnqueueDMA <{port = 0 : i64}> inputs(%buf4 : memref<0x0x0x0xi32, @DDR>) outputs(%buf4 : memref<0x0x0x0xi32, @DDR>) enqueue_dma_attr(<<DPU>, tile = 0 : i64, list = 0 : i64, startTask = 0 : i64, endTask = 3 : i64>) -> memref<0x0x0x0xi32, @DDR>
     }
 
     VPURT.Task waits(%bar3: !VPURT.Barrier) updates(%bar4: !VPURT.Barrier) wlmPage(1)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar4: !VPURT.Barrier) updates(%bar5: !VPURT.Barrier) wlmPage(2)
     {
-        VPUIP.NNDMA {port = 1 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 1 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar5: !VPURT.Barrier) updates(%bar6: !VPURT.Barrier) wlmPage(2)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar5: !VPURT.Barrier) updates(%bar6: !VPURT.Barrier) wlmPage(2)
@@ -146,23 +146,23 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     // CHECK:   [[BAR7:%.+]] = VPURT.ConfigureBarrier<3> <{isFinalBarrier, wlmPage = 3 : i64}> -> !VPURT.Barrier
 
     // CHECK:   VPURT.Task wlmPage(0) {
-    // CHECK-NEXT: VPUIP.FetchDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.FetchDMA <{port = 0 : i64}>
     // CHECK:   VPURT.Task updates([[BAR0]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
     // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 1 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
     // CHECK:   VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) wlmPage(1) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 1 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) wlmPage(1) {
-    // CHECK-NEXT: VPUIP.EnqueueDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.EnqueueDMA <{port = 0 : i64}>
     // CHECK:   VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) wlmPage(1) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
     // CHECK:   VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) wlmPage(2) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 1 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK:   VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier) wlmPage(2) {
-    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
     // CHECK:   VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier) wlmPage(2) {
     // CHECK-NEXT: VPUIP.NCEClusterTask
     // CHECK:   VPURT.Task waits([[BAR6]] : !VPURT.Barrier) updates([[BAR7]] : !VPURT.Barrier) wlmPage(3) {

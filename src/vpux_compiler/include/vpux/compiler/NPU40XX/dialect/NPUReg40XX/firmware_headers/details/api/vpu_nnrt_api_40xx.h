@@ -1,12 +1,23 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2022-2023, Intel Corporation.
+ * Copyright (c) 2022-2025, Intel Corporation.
  */
 
 // clang-format off
 
 #ifndef VPU_NNRT_API_40XX_H
 #define VPU_NNRT_API_40XX_H
+
+/**
+ * @file
+ * @brief header file containing the VpuHostParsedInference and the structs required for
+ * non workload management (non-WLM) inferences.
+ */
+
+/**
+ * @addtogroup NNRT
+ * @{
+ */
 
 #include "vpu_nce_hw_40xx.h"
 #include "vpu_dma_hw_40xx.h"
@@ -35,6 +46,14 @@
  *
  * API changelog
  * -------------
+ * 11.13:
+ *   - Accept CMX Shave stack frames from the blob
+ * 11.12:
+ *   - 1KB Shave scratch region is moved to the end of CMX,
+ *     default CMX Shave stacks increased to 7.5kB per Shave
+ * 11.11:
+ *   - Add the ManagedMappedInference directly to the VpuHostParsedInference.
+ *
  * 11.10.3:
  *   - update Field name from reserved_1 to noc_clk_en in DPU Descriptor.
  *
@@ -68,7 +87,7 @@
  */
 #define VPU_NNRT_40XX_API_VER_MAJOR 11
 #define VPU_NNRT_40XX_API_VER_MINOR 13
-#define VPU_NNRT_40XX_API_VER_PATCH 3
+#define VPU_NNRT_40XX_API_VER_PATCH 0
 #define VPU_NNRT_40XX_API_VER ((VPU_NNRT_40XX_API_VER_MAJOR << 16) | VPU_NNRT_40XX_API_VER_MINOR)
 
 /* Index in the API version table, same for all HW generations */
@@ -87,6 +106,12 @@
  * 1.10:
  *   - Support for executing shave tasks directly from DDR (expects two FIFO pushes
  *     with the full 32 bit AKI address and NW_PAGE is already correct)
+ *
+ * 1.9.2 (NPU4 only):
+ *  - Preemption handling fixes
+ *
+ * 1.9.1 (NPU4 only):
+ *  - Window 1F reset to the beginning of CMX tile
  *
  * 1.9:
  *   - Add clock gating support
@@ -132,6 +157,9 @@
 namespace nn_public {
 
 #pragma pack(push, 1)
+
+/* Do not document the legacy non-WLM API structs. */
+/** @cond */
 
 template <typename T>
 struct VPU_ALIGNED_STRUCT(8) VpuPtr {
@@ -328,11 +356,15 @@ static_assert(offsetof(VpuMappedInference, shv_rt_configs) % 8 == 0, "Alignment 
 static_assert(offsetof(VpuMappedInference, hwp_workpoint_cfg_addr) % 8 == 0, "Alignment error");
 static_assert(offsetof(VpuMappedInference, managed_inference) % 8 == 0, "Alignment error");
 
+/* structs after this point are used by workload management inferences and should be included
+   in the documentation. */
+
+/** @endcond */
 
 /**
  * @brief The struct passed to the firmware to run the inference.
  */
-struct VPU_ALIGNED_STRUCT(32) VpuHostParsedInference {
+struct VPU_ALIGNED_STRUCT(64) VpuHostParsedInference {
     uint64_t reserved_;
     VpuResourceRequirements resource_requirements_;
 
@@ -364,6 +396,11 @@ static_assert(offsetof(VpuHostParsedInference, mapped_) % 8 == 0, "Alignment err
 #pragma pack(pop)
 
 } // namespace nn_public
+
+/**
+ * close the "addtogroup NNRT" block
+ * @}
+ */
 
 #endif
 

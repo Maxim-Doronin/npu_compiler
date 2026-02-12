@@ -12,6 +12,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/factors.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTMAXPOOLINPUTSHAPE
@@ -130,14 +131,14 @@ mlir::LogicalResult ReshapeMaxPoolOutput1x1::matchAndRewrite(IE::MaxPoolOp origO
         inDimMapping.push_back({Dims4D::Act::W.ind()});
     }
 
-    auto newInput = rewriter.create<IE::AffineReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
-                                                         getIntArrayOfArray(ctx, inDimMapping), inputShapeAttr);
+    auto newInputResult = rewriter.createOrFold<IE::AffineReshapeOp>(
+            takeOpLoc(origOp, "reshape_in"), origOp.getInput(), getIntArrayOfArray(ctx, inDimMapping), inputShapeAttr);
 
     std::array<int64_t, 2> newMaxPoolKernel = {dimSize.back().first, dimSize.back().second};
     const auto newMaxPoolKernelAttr = getIntArrayAttr(ctx, ArrayRef(newMaxPoolKernel));
 
     auto newMaxPoolOp = rewriter.replaceOpWithNewOp<IE::MaxPoolOp>(
-            origOp, origOp.getOutput().getType(), newInput.getOutput(), newMaxPoolKernelAttr, origOp.getStridesAttr(),
+            origOp, origOp.getOutput().getType(), newInputResult, newMaxPoolKernelAttr, origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getRoundingType(), origOp.getPostOpAttr(),
             origOp.getClampAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
@@ -276,10 +277,10 @@ mlir::LogicalResult ReshapeMaxPoolInputWithStride::matchAndRewrite(IE::MaxPoolOp
         inDimMapping.push_back({Dims4D::Act::W.ind()});
     }
 
-    auto newInput = rewriter.create<IE::AffineReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
-                                                         getIntArrayOfArray(ctx, inDimMapping), inputShapeAttr);
+    auto newInputResult = rewriter.createOrFold<IE::AffineReshapeOp>(
+            takeOpLoc(origOp, "reshape_in"), origOp.getInput(), getIntArrayOfArray(ctx, inDimMapping), inputShapeAttr);
     mlir::IRMapping mapper;
-    mapper.map(origOp.getInput(), newInput.getOutput());
+    mapper.map(origOp.getInput(), newInputResult);
     auto newMaxPoolOp = mlir::dyn_cast<IE::MaxPoolOp>(rewriter.clone(*origOp, mapper));
 
     auto outputShape = getShape(origOp.getOutput());
@@ -336,9 +337,7 @@ void AdjustMaxPoolInputShapePass::safeRunOnFunc() {
     patterns.add<ReshapeMaxPoolOutput1x1>(&ctx, _log);
     patterns.add<ReshapeMaxPoolInputWithStride>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 }  // namespace
 

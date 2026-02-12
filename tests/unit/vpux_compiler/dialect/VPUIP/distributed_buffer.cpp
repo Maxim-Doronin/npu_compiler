@@ -43,7 +43,7 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDistributedBufferType) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -145,7 +145,7 @@ TEST_F(MLIR_NDTypeInterface, Segmented5DDistributedBufferType) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({64, 1, 64, 32, 1});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -248,7 +248,7 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedBufferType) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -342,6 +342,115 @@ TEST_F(MLIR_NDTypeInterface, SegmentedDuplicatedDistributedBufferType) {
     EXPECT_ANY_THROW(ndType.pad(vpux::ShapeRef(pads), vpux::ShapeRef(pads)));
 }
 
+TEST_F(MLIR_NDTypeInterface, SegmentedOverlappedDistributedBufferType) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPUIP::VPUIPDialect>();
+
+    const auto distributionModeAttr =
+            VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED);
+    const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 3, 1, 1}));
+    const auto numClustersAttr = getIntAttr(&ctx, 3);
+    const auto memNumTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 3, 1}));
+    const auto computeShapes = SmallVector<SmallVector<int64_t>>{
+            {1, 32, 48, 48},  // Cluster 0: channels 0-31
+            {1, 32, 48, 48},  // Cluster 1: channels 32-63
+            {1, 32, 48, 48}   // Cluster 2: channels 64-95
+    };
+    const auto computeOffsets = SmallVector<SmallVector<int64_t>>{
+            {0, 0, 0, 0},   // Cluster 0
+            {0, 32, 0, 0},  // Cluster 1
+            {0, 64, 0, 0}   // Cluster 2
+    };
+    const auto memoryShapes = SmallVector<SmallVector<int64_t>>{
+            {1, 96, 16, 48},  // Cluster 0: lines 0-15
+            {1, 96, 16, 48},  // Cluster 1: lines 16-31
+            {1, 96, 16, 48}   // Cluster 2: lines 32-47
+    };
+    const auto memoryOffsets = SmallVector<SmallVector<int64_t>>{
+            {0, 0, 0, 0},   // Cluster 0
+            {0, 0, 16, 0},  // Cluster 1
+            {0, 0, 32, 0}   // Cluster 2
+    };
+    const auto computeShapesAttr = getIntArrayOfArray(&ctx, computeShapes);
+    const auto computeOffsetsAttr = getIntArrayOfArray(&ctx, computeOffsets);
+    const auto memoryShapesAttr = getIntArrayOfArray(&ctx, memoryShapes);
+    const auto memoryOffsetsAttr = getIntArrayOfArray(&ctx, memoryOffsets);
+    const auto distributedAttr = VPU::DistributionInfoAttr::get(
+            &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
+            computeShapesAttr, computeOffsetsAttr, memoryShapesAttr, memoryOffsetsAttr, nullptr, memNumTilesAttr);
+
+    const auto shape = SmallVector<int64_t>({1, 96, 48, 48});
+    const auto elemType = mlir::Float16Type::get(&ctx);
+
+    const auto orderAttr = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(&ctx));
+    // Element strides for NHWC with shape [1, 96, 48, 48]: [C*H*W, 1, C*W, C]
+    const auto elemStrides = SmallVector<int64_t>({96 * 48 * 48, 1, 96 * 48, 96});
+    const auto stridesAttr = getIntArrayAttr(&ctx, elemStrides);
+    const auto layout = vpux::MemRefAttr::get(orderAttr, stridesAttr,
+                                              /*allocSize=*/nullptr, &ctx);
+
+    const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
+
+    const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr));
+    ASSERT_TRUE(ndType != nullptr) << "Buffer is not of vpux::NDTypeInterface type";
+
+    EXPECT_EQ(ndType.getShape(), vpux::ShapeRef({1, 96, 48, 48}));
+    EXPECT_EQ(ndType.getMemShape(), vpux::MemShape({1, 48, 48, 96}));
+
+    EXPECT_TRUE(ndType.hasRank());
+    EXPECT_EQ(ndType.getRank(), 4);
+    EXPECT_EQ(ndType.getNumElements(), 96 * 48 * 48);
+
+    EXPECT_TRUE(mlir::isa<mlir::Float16Type>(ndType.getElementType()));
+
+    EXPECT_EQ(ndType.getDimsOrder(), vpux::DimsOrder::NHWC);
+
+    EXPECT_EQ(ndType.getMemSpace().getLeafName(), CMX_NAME);
+    EXPECT_EQ(ndType.getMemoryKind(), vpux::VPU::MemoryKind::CMX_NN);
+
+    // Strides for NHWC layout with full shape [1, 96, 48, 48]
+    // [C*H*W*16, 16, C*W*16, C*16] = [96*48*48*16, 16, 96*48*16, 96*16]
+    const SmallVector<vpux::Bit> strides({3538944_Bit, 16_Bit, 73728_Bit, 1536_Bit});
+    const SmallVector<vpux::Bit> memStrides({3538944_Bit, 73728_Bit, 1536_Bit, 16_Bit});
+    EXPECT_EQ(ndType.getStrides().raw(), strides);
+    EXPECT_EQ(ndType.getMemStrides().raw(), memStrides);
+
+    EXPECT_EQ(ndType.getElemTypeSize().count(), 16);
+    // Total alloc size for memory shape per cluster: 96*16*48 elements * 2 bytes
+    EXPECT_EQ(ndType.getTotalAllocSize().count(), 2 * 96 * 16 * 48);
+    EXPECT_EQ(ndType.getCompactAllocSize().count(), 2 * 96 * 16 * 48);
+
+    const SmallVector<int64_t> newShape({1, 32, 24, 96});
+    EXPECT_ANY_THROW(ndType.changeShape(vpux::ShapeRef(newShape)));
+    EXPECT_ANY_THROW(ndType.changeTypeComponents(TypeComponents().setShape(ShapeRef(newShape))));
+
+    const auto changedElementType = ndType.changeElemType(mlir::Float32Type::get(&ctx));
+    EXPECT_TRUE(mlir::isa<mlir::Float32Type>(changedElementType.getElementType()));
+
+    EXPECT_ANY_THROW(ndType.changeShapeElemType(vpux::ShapeRef(newShape), mlir::Float32Type::get(&ctx)));
+
+    const auto changedDimsOrder = ndType.changeDimsOrder(DimsOrder::NCHW);
+    EXPECT_EQ(changedDimsOrder.getDimsOrder(), vpux::DimsOrder::NCHW);
+
+    EXPECT_ANY_THROW(ndType.changeMemSpace(vpux::IndexedSymbolAttr::get(&ctx, DDR_NAME)));
+
+    const SmallVector<Bit> newStrides({7077888_Bit, 16_Bit, 73728_Bit, 1536_Bit});
+    const auto changedStrides = ndType.changeStrides(StridesRef(newStrides));
+    EXPECT_EQ(changedStrides.getStrides().raw(), newStrides);
+
+    const SmallVector<int64_t> tileOffset({0, 0, 32, 0});
+    const SmallVector<int64_t> tileShape({1, 32, 20, 8});
+    EXPECT_ANY_THROW(ndType.extractDenseTile(ShapeRef(tileOffset), ShapeRef(tileShape)));
+
+    const SmallVector<int64_t> tileElemStrides({1, 1, 1, 1});
+    EXPECT_ANY_THROW(ndType.extractViewTile(ShapeRef(tileOffset), ShapeRef(tileShape), ShapeRef(tileElemStrides)));
+
+    EXPECT_ANY_THROW(ndType.eraseTiledInfo());
+    const SmallVector<int64_t> pads({0, 0, 2, 2});
+    EXPECT_ANY_THROW(ndType.pad(vpux::ShapeRef(pads), vpux::ShapeRef(pads)));
+}
+
 TEST_F(MLIR_NDTypeInterface, CompressedSegmentedDistributedBufferType) {
     mlir::MLIRContext ctx(registry);
     ctx.loadDialect<VPUIP::VPUIPDialect>();
@@ -351,7 +460,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedSegmentedDistributedBufferType) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({64, 16, 1, 1});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -402,7 +511,7 @@ TEST_F(MLIR_NDTypeInterface, CompressedDuplicatedDistributedBufferType) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({64, 80, 1, 1});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -457,7 +566,7 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedBufferDistribution) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     // SOH
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -538,7 +647,7 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedBufferUniformDistribution) {
     const auto uniformDistributedSegments = mlir::UnitAttr::get(&ctx);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr,
-            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr);
+            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     // SOH
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -618,7 +727,7 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedBufferDistributionStrideOnW) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     // SOH, W strided
     const auto shape = SmallVector<int64_t>({1, 64, 13, 4});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -699,7 +808,7 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedBufferUniformDistributionStrideOnW) {
     const auto uniformDistributedSegments = mlir::UnitAttr::get(&ctx);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr,
-            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr);
+            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     // SOH, W strided
     const auto shape = SmallVector<int64_t>({1, 64, 13, 4});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -781,7 +890,7 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedDuplicatedBufferDistribution) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -849,6 +958,116 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedDuplicatedBufferDistribution) {
     EXPECT_EQ(distributedBufferType.getCompactAllocSize().count(), 64 * 13 * 16 * 2);
 }
 
+TEST_F(MLIR_ClusterShapeUtils, SegmentedOverlappedBufferDistribution) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPUIP::VPUIPDialect>();
+
+    const auto distributionModeAttr =
+            VPU::DistributionModeAttr::get(&ctx, VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED);
+    const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 3, 1, 1}));
+    const auto numClustersAttr = getIntAttr(&ctx, 3);
+    const auto memNumTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 3, 1}));
+    const auto computeShapes = SmallVector<SmallVector<int64_t>>{
+            {1, 32, 48, 48},  // Cluster 0: channels 0-31
+            {1, 32, 48, 48},  // Cluster 1: channels 32-63
+            {1, 32, 48, 48}   // Cluster 2: channels 64-95
+    };
+    const auto computeOffsets = SmallVector<SmallVector<int64_t>>{
+            {0, 0, 0, 0},   // Cluster 0
+            {0, 32, 0, 0},  // Cluster 1
+            {0, 64, 0, 0}   // Cluster 2
+    };
+    const auto memoryShapes = SmallVector<SmallVector<int64_t>>{
+            {1, 96, 16, 48},  // Cluster 0: lines 0-15
+            {1, 96, 16, 48},  // Cluster 1: lines 16-31
+            {1, 96, 16, 48}   // Cluster 2: lines 32-47
+    };
+    const auto memoryOffsets = SmallVector<SmallVector<int64_t>>{
+            {0, 0, 0, 0},   // Cluster 0
+            {0, 0, 16, 0},  // Cluster 1
+            {0, 0, 32, 0}   // Cluster 2
+    };
+    const auto computeShapesAttr = getIntArrayOfArray(&ctx, computeShapes);
+    const auto computeOffsetsAttr = getIntArrayOfArray(&ctx, computeOffsets);
+    const auto memoryShapesAttr = getIntArrayOfArray(&ctx, memoryShapes);
+    const auto memoryOffsetsAttr = getIntArrayOfArray(&ctx, memoryOffsets);
+    const auto distributedAttr = VPU::DistributionInfoAttr::get(
+            &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
+            computeShapesAttr, computeOffsetsAttr, memoryShapesAttr, memoryOffsetsAttr, nullptr, memNumTilesAttr);
+
+    const auto shape = SmallVector<int64_t>({1, 96, 48, 48});
+    const auto elemType = mlir::Float16Type::get(&ctx);
+
+    const auto orderAttr = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(&ctx));
+    // Element strides for NHWC with shape [1, 96, 48, 48]: [C*H*W, 1, C*W, C]
+    const auto elemStrides = SmallVector<int64_t>({96 * 48 * 48, 1, 96 * 48, 96});
+    const auto stridesAttr = getIntArrayAttr(&ctx, elemStrides);
+    const auto layout = vpux::MemRefAttr::get(orderAttr, stridesAttr,
+                                              /*allocSize=*/nullptr, &ctx);
+
+    const auto dimsSpace = vpux::IndexedSymbolAttr::get(&ctx, CMX_NAME);
+
+    const auto distributedBufferType =
+            VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
+
+    const auto perClusterComputeShapes = distributedBufferType.getPerClusterComputeShapes();
+    // Compute shapes: each cluster gets [1, 32, 48, 48]
+    const SmallVector<Shape> expectedComputeShapes(
+            {Shape({1, 32, 48, 48}), Shape({1, 32, 48, 48}), Shape({1, 32, 48, 48})});
+    for (const auto shapePair : zip(perClusterComputeShapes, expectedComputeShapes)) {
+        EXPECT_EQ(std::get<0>(shapePair), std::get<1>(shapePair));
+    }
+    const auto perClusterComputeOffsets = distributedBufferType.getPerClusterComputeShapeOffsets();
+    // Compute offsets: segmented on C axis at [0, 32, 64]
+    const SmallVector<Shape> expectedComputeOffsets({Shape({0, 0, 0, 0}), Shape({0, 32, 0, 0}), Shape({0, 64, 0, 0})});
+    for (const auto shapePair : zip(perClusterComputeOffsets, expectedComputeOffsets)) {
+        EXPECT_EQ(std::get<0>(shapePair), std::get<1>(shapePair));
+    }
+
+    const auto perClusterMemoryShapes = distributedBufferType.getPerClusterMemoryShapes();
+    // Memory shapes: each cluster gets [1, 96, 16, 48]
+    const SmallVector<Shape> expectedMemoryShapes(numClustersAttr.getInt(), Shape({1, 96, 16, 48}));
+    for (const auto shapePair : zip(perClusterMemoryShapes, expectedMemoryShapes)) {
+        EXPECT_EQ(std::get<0>(shapePair), std::get<1>(shapePair));
+    }
+    const auto perClusterMemoryOffsets = distributedBufferType.getPerClusterMemoryShapeOffsets();
+    // Memory offsets: segmented on H axis at [0, 16, 32]
+    const SmallVector<Shape> expectedMemoryOffsets({Shape({0, 0, 0, 0}), Shape({0, 0, 16, 0}), Shape({0, 0, 32, 0})});
+    for (const auto shapePair : zip(perClusterMemoryOffsets, expectedMemoryOffsets)) {
+        EXPECT_EQ(std::get<0>(shapePair), std::get<1>(shapePair));
+    }
+
+    const auto largestComputeShape = distributedBufferType.getLargestCompactShape();
+    EXPECT_EQ(largestComputeShape, Shape({1, 32, 48, 48}));
+    const auto numClusters = distributedBufferType.getDistribution().getNumClusters().getInt();
+    for (auto clusterIdx = 0; clusterIdx < numClusters; clusterIdx++) {
+        EXPECT_EQ(expectedComputeShapes[clusterIdx], distributedBufferType.getCompactShape(clusterIdx));
+    }
+
+    // Strides for memory shape [1, 96, 16, 48] in NHWC: [C*H*W*16, 16, C*W*16, C*16]
+    // Using per-cluster memory shape: [96*16*48*16, 16, 96*48*16, 96*16]
+    const Strides expectedStrides({1179648_Bit, 16_Bit, 73728_Bit, 1536_Bit});
+    const auto perClusterStridedShapes = distributedBufferType.getPerClusterMemoryStridedShapes();
+    for (const auto& p : perClusterStridedShapes | indexed) {
+        const auto cluster = p.index();
+        const auto stridedShape = p.value();
+        EXPECT_EQ(stridedShape.shape, expectedMemoryShapes[cluster]);
+        EXPECT_EQ(stridedShape.strides, expectedStrides);
+    }
+    const auto largestStridedShape = distributedBufferType.getLargestStridedShape();
+    EXPECT_EQ(largestStridedShape.shape, expectedMemoryShapes[0]);
+    EXPECT_EQ(largestStridedShape.strides, expectedStrides);
+    for (auto clusterIdx = 0; clusterIdx < numClusters; clusterIdx++) {
+        const auto stridedShape = distributedBufferType.getStridedShape(clusterIdx);
+        EXPECT_EQ(stridedShape.shape, expectedMemoryShapes[clusterIdx]);
+        EXPECT_EQ(stridedShape.strides, expectedStrides);
+    }
+
+    // Total alloc size: 96*16*48 elements * 2 bytes
+    EXPECT_EQ(distributedBufferType.getTotalAllocSize().count(), 96 * 16 * 48 * 2);
+    EXPECT_EQ(distributedBufferType.getCompactAllocSize().count(), 96 * 16 * 48 * 2);
+}
+
 TEST_F(MLIR_ClusterShapeUtils, SegmentedDuplicatedBufferUniformDistribution) {
     mlir::MLIRContext ctx(registry);
     ctx.loadDialect<VPUIP::VPUIPDialect>();
@@ -861,7 +1080,7 @@ TEST_F(MLIR_ClusterShapeUtils, SegmentedDuplicatedBufferUniformDistribution) {
     const auto uniformDistributedSegments = mlir::UnitAttr::get(&ctx);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr,
-            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr);
+            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     const auto elemType = mlir::Float16Type::get(&ctx);
@@ -955,7 +1174,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferDistribution1x1KernelStride1) {
     const auto strides = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, nullptr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1041,7 +1260,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferDistribution3x3KernelStride1) {
     const auto strides = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, nullptr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1126,9 +1345,9 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferDistribution3x3KernelStride1Equal
                                             getIntAttr(&ctx, 1));
     const auto strides = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1}));
     const auto equalMemoryAndComputeView = mlir::UnitAttr::get(&ctx);
-    const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
-                                                                strides, numClustersAttr, nullptr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, equalMemoryAndComputeView);
+    const auto distributedAttr = VPU::DistributionInfoAttr::get(
+            &ctx, distributionModeAttr, numTilesAttr, kernel, pads, strides, numClustersAttr, nullptr, nullptr, nullptr,
+            nullptr, nullptr, nullptr, equalMemoryAndComputeView, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1210,7 +1429,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferDistribution3x3KernelStride2) {
     const auto strides = getIntArrayAttr(&ctx, SmallVector<int64_t>({2, 2}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, nullptr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1298,7 +1517,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferUniformDistribution1x1KernelStrid
     const auto uniformDistributedSegments = mlir::UnitAttr::get(&ctx);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, kernel, pads, strides, numClustersAttr, nullptr,
-            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr);
+            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1385,7 +1604,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferUniformDistribution3x3KernelStrid
     const auto uniformDistributedSegments = mlir::UnitAttr::get(&ctx);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, kernel, pads, strides, numClustersAttr, nullptr,
-            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr);
+            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1472,7 +1691,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferUniformDistribution3x3KernelStrid
     const auto uniformDistributedSegments = mlir::UnitAttr::get(&ctx);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, kernel, pads, strides, numClustersAttr, nullptr,
-            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr);
+            uniformDistributedSegments, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1567,7 +1786,7 @@ TEST_F(MLIR_ClusterShapeUtils, OverlappedBufferWithComputeShapesAndOffsets) {
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-            computeShapesAttr, computeOffsetsAttr, computeShapesAttr, computeOffsetsAttr, nullptr);
+            computeShapesAttr, computeOffsetsAttr, computeShapesAttr, computeOffsetsAttr, nullptr, nullptr);
 
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
@@ -1653,7 +1872,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedMode) {
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 9, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1716,7 +1935,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferMultiAxisSegmentedMode) {
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 9, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1778,7 +1997,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisDuplicatedMode) {
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 9, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1842,7 +2061,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedDuplicat
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 9, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1905,7 +2124,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferMultiAxisSegmentedDuplicate
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 9, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -1967,7 +2186,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedModeKTil
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2029,7 +2248,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedModeKTil
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2069,7 +2288,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedModeKTil
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2130,7 +2349,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisSegmentedDuplicat
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, alignment, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2195,7 +2414,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_AlignedBufferSingleAxisOverlappedModeHTi
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 16, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, alignment, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2263,7 +2482,7 @@ TEST_F(MLIR_ClusterShapeUtils, DISABLED_WidthAlignedBufferSingleAxisOverlappedMo
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 1, 16}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, alignment, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2333,7 +2552,7 @@ TEST_F(MLIR_ClusterShapeUtilsDeathTest, AlignedBufferDistribution) {
     const auto alignment = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 9, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, alignment, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const VPUIP::SparsityCompressionAttr sparsityCompressionAttr = nullptr;
 
     EXPECT_EQ(VPUIP::DistributedBufferType::getChecked(mlir::UnknownLoc::get(&ctx), &ctx, ArrayRef(shape), elemType,
@@ -2363,7 +2582,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferSegmentedDistributionKStride) {
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 4, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2449,7 +2668,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferOverlappedDistributionKStride) {
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 4, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, kernel, pads,
                                                                 strides, numClustersAttr, nullptr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2534,7 +2753,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferKSegmentedDuplicatedDistributionHStr
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 4, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2615,7 +2834,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferKSegmentedDistributionHStride) {
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 4, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2697,7 +2916,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferKSegmentedDistributionWeightSetStrid
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({4, 1, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2779,7 +2998,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferKSegmentedDuplicatedDistributionKStr
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 4, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2861,7 +3080,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferKSegmentedDuplicatedDistributionHAnd
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 4, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -2942,7 +3161,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferHSegmentedDistributionWAndKStride) {
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 4, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -3023,7 +3242,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferHSegmentedDistributionHStrideUnsuppo
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 1, 4, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -3090,7 +3309,7 @@ TEST_F(MLIR_ClusterShapeUtils, StridedBufferKSegmentedDistributionKStrideUnsuppo
     const auto numTilesAttr = getIntArrayAttr(&ctx, SmallVector<int64_t>({1, 4, 1, 1}));
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
     const auto distributedBufferType =
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, layout, dimsSpace, distributedAttr);
 
@@ -3144,7 +3363,7 @@ TEST_F(MLIR_NDTypeInterface, SubByteSegmentedDistributedBufferType) {
     const auto numClustersAttr = getIntAttr(&ctx, 4);
     const auto distributedAttr = VPU::DistributionInfoAttr::get(&ctx, distributionModeAttr, numTilesAttr, nullptr,
                                                                 nullptr, nullptr, numClustersAttr, nullptr, nullptr,
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     const auto shape = SmallVector<int64_t>({1, 64, 13, 16});
     // SI4 quantized type

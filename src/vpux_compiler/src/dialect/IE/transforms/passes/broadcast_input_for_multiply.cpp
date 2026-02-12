@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -55,7 +56,7 @@ mlir::Value BroadcastInputRewriter::broadcastInput(mlir::PatternRewriter& rewrit
     const auto canonicalOrder = DimsOrder::NCHW;
     const auto canonicalOrderMap = canonicalOrder.toAffineMap(ctx);
     auto canonicalPermuteCast = rewriter.createOrFold<IE::PermuteCastOp>(
-            appendLoc(broadcastInput.getLoc(), "_canonical_permute_cast"), broadcastInput, canonicalOrderMap,
+            appendLoc(broadcastInput.getLoc(), "canonical_permute_cast"), broadcastInput, canonicalOrderMap,
             mlir::AffineMap::getMultiDimIdentityMap(getShape(broadcastInput).size(), ctx));
 
     // Broadcast to target shape
@@ -65,7 +66,7 @@ mlir::Value BroadcastInputRewriter::broadcastInput(mlir::PatternRewriter& rewrit
     auto broadCast = IE::createBroadcast(rewriter, appendLoc(loc, "shape"), canonicalPermuteCast, newTargetShape);
 
     // Cast to the original dims order
-    return rewriter.createOrFold<IE::PermuteCastOp>(appendLoc(broadcastInput.getLoc(), "_broadcast_permute_cast"),
+    return rewriter.createOrFold<IE::PermuteCastOp>(appendLoc(broadcastInput.getLoc(), "broadcast_permute_cast"),
                                                     broadCast, origOrder.toAffineMap(ctx),
                                                     mlir::AffineMap::getMultiDimIdentityMap(origOrder.numDims(), ctx));
 }

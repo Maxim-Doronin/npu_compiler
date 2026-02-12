@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,7 +47,7 @@ func.func @FuseRightConcat(%arg0: tensor<1x64x250x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.*]] = VPU.Concat(%arg0, %arg1, %arg2) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2) {
     // CHECK-SAME:       static_offsets = [
     // CHECK-SAME:           [0, 0, 0, 0],
     // CHECK-SAME:           [0, 64, 0, 0],
@@ -91,7 +91,7 @@ func.func @FuseLeftConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.*]] = VPU.Concat(%arg0, %arg1, %arg2) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2) {
     // CHECK-SAME:       static_offsets = [
     // CHECK-SAME:           [0, 0, 0, 0],
     // CHECK-SAME:           [0, 0, 125, 0],
@@ -145,7 +145,7 @@ func.func @FuseTwoConcats(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.*]] = VPU.Concat(%arg0, %arg1, %arg2, %arg3) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2, %arg3) {
     // CHECK-SAME:       static_offsets = [
     // CHECK-SAME:           [0, 0, 0, 0],
     // CHECK-SAME:           [0, 0, 125, 0],
@@ -193,8 +193,8 @@ func.func @SkipConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
         tensor<1x96x250x250xf16, {order = #NHWC}>,
         tensor<1x32x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[TILING_CONCAT:%.*]] = VPU.Concat(%arg1, %arg2)
-    // CHECK:   [[MAIN_CONCAT:%.*]] = VPU.Concat(%arg0, [[TILING_CONCAT]])
+    // CHECK:   [[TILING_CONCAT:%.+]] = VPU.Concat(%arg1, %arg2)
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, [[TILING_CONCAT]])
 
     // CHECK:   return [[MAIN_CONCAT]], [[TILING_CONCAT]]
 }
@@ -237,7 +237,7 @@ func.func @FuseConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
                 tensor<1x96x250x250xf16, {order = #NHWC}>,
                 tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.*]] = VPU.Concat(%arg0, %arg1, %arg2) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2) {
     // CHECK-SAME:      static_offsets = [
     // CHECK-SAME:          [0, 0, 0, 0],
     // CHECK-SAME:          [0, 64, 0, 0],
@@ -248,7 +248,7 @@ func.func @FuseConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
     // CHECK-SAME:      tensor<1x32x125x250xf16, {order = #NHWC}>
     // CHECK-SAME:          -> tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[ANOTHER_CONCAT:%.*]] = VPU.Concat(%arg1, %arg2, %arg0) {
+    // CHECK:   [[ANOTHER_CONCAT:%.+]] = VPU.Concat(%arg1, %arg2, %arg0) {
     // CHECK-SAME:      static_offsets = [
     // CHECK-SAME:          [0, 0, 0, 0],
     // CHECK-SAME:          [0, 0, 125, 0],
@@ -333,8 +333,8 @@ func.func @FuseConstants(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[CST_PRODUCER:%.*]] = const.Declare
-    // CHECK:   [[CONCAT:%.*]] = VPU.Concat([[CST_PRODUCER]], %arg0, %arg1)
+    // CHECK:   [[CST_PRODUCER:%.+]] = const.Declare
+    // CHECK:   [[CONCAT:%.+]] = VPU.Concat([[CST_PRODUCER]], %arg0, %arg1)
 
     // CHECK:   return [[CONCAT]] : tensor<1x96x250x250xf16, {order = #NHWC}>
 }
@@ -390,7 +390,7 @@ func.func @ConcatWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistri
 
     return %concat : !OutputDistributed
 
-    // CHECK:        [[CONCAT:%.*]] = VPU.Concat(%arg0, %arg1)
+    // CHECK:        [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
     // CHECK-SAME:         !VPU.DistributedTensor<1x32x128x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
     // CHECK-SAME:             num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
@@ -461,7 +461,7 @@ func.func @ConcatWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistrib
 
     return %concat : !OutputDistributed
 
-    // CHECK:        [[CONCAT:%.*]] = VPU.Concat(%arg0, %arg1)
+    // CHECK:        [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
     // CHECK-SAME:         !VPU.DistributedTensor<1x32x128x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
     // CHECK-SAME:             num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
@@ -486,7 +486,7 @@ func.func @ConcatWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistrib
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: SkipFuseConcatWithSwOp
-// CHECK-SAME: ([[INPUT0:%.*]]: tensor<1x128x16x32xf16, {order = #NHWC}>, [[INPUT1:%.*]]: tensor<1x128x16x32xf16, {order = #NHWC}>)
+// CHECK-SAME: ([[INPUT0:%.+]]: tensor<1x128x16x32xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x128x16x32xf16, {order = #NHWC}>)
 func.func @SkipFuseConcatWithSwOp(%arg0: tensor<1x128x16x32xf16, {order = #NHWC}>, %arg1: tensor<1x128x16x32xf16, {order = #NHWC}>)
     -> (tensor<1x256x16x32xf16, {order = #NHWC}>, tensor<1x256x16x32xf16, {order = #NHWC}>) {
     %cst0 = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
@@ -506,23 +506,23 @@ func.func @SkipFuseConcatWithSwOp(%arg0: tensor<1x128x16x32xf16, {order = #NHWC}
     %gelu1 = VPU.Gelu(%slice1) : tensor<1x256x16x32xf16, {order = #NHWC}> -> tensor<1x256x16x32xf16, {order = #NHWC}>
     return %gelu0, %gelu1 : tensor<1x256x16x32xf16, {order = #NHWC}>, tensor<1x256x16x32xf16, {order = #NHWC}>
 
-    // CHECK:  [[CST0:%.*]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:  [[CST1:%.*]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
+    // CHECK:  [[CST0:%.+]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
+    // CHECK:  [[CST1:%.+]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
 
-    // CHECK:  [[GELU_INPUT:%.*]] = VPU.Gelu([[INPUT0]]) : tensor<1x128x16x32xf16, {order = #NHWC}> -> tensor<1x128x16x32xf16, {order = #NHWC}>
-    // CHECK:  [[MAIN_CONCAT:%.*]] = VPU.Concat([[GELU_INPUT]], [[INPUT1]])
+    // CHECK:  [[GELU_INPUT:%.+]] = VPU.Gelu([[INPUT0]]) : tensor<1x128x16x32xf16, {order = #NHWC}> -> tensor<1x128x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[MAIN_CONCAT:%.+]] = VPU.Concat([[GELU_INPUT]], [[INPUT1]])
     // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 32]]} : tensor<1x128x16x32xf16, {order = #NHWC}>, tensor<1x128x16x32xf16, {order = #NHWC}> -> tensor<1x128x16x64xf16, {order = #NHWC}>
 
-    // CHECK:  [[CONCAT0:%.*]] = VPU.Concat([[MAIN_CONCAT]], [[CST0]])
+    // CHECK:  [[CONCAT0:%.+]] = VPU.Concat([[MAIN_CONCAT]], [[CST0]])
     // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0]]} : tensor<1x128x16x64xf16, {order = #NHWC}>, tensor<1x128x16x64xf16, {order = #NHWC}> -> tensor<1x256x16x64xf16, {order = #NHWC}>
-    // CHECK:  [[CONCAT1:%.*]] = VPU.Concat([[MAIN_CONCAT]], [[CST1]])
+    // CHECK:  [[CONCAT1:%.+]] = VPU.Concat([[MAIN_CONCAT]], [[CST1]])
     // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0]]} : tensor<1x128x16x64xf16, {order = #NHWC}>, tensor<1x128x16x64xf16, {order = #NHWC}> -> tensor<1x256x16x64xf16, {order = #NHWC}>
 
-    // CHECK:  [[SLICE0:%.*]] = VPU.Slice [[CONCAT0]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
-    // CHECK:  [[SLICE1:%.*]] = VPU.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[SLICE0:%.+]] = VPU.Slice [[CONCAT0]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[SLICE1:%.+]] = VPU.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
 
-    // CHECK:  [[GELU0:%.*]] = VPU.Gelu([[SLICE0]]) : tensor<1x256x16x32xf16, {order = #NHWC}> -> tensor<1x256x16x32xf16, {order = #NHWC}>
-    // CHECK:  [[GELU1:%.*]] = VPU.Gelu([[SLICE1]]) : tensor<1x256x16x32xf16, {order = #NHWC}> -> tensor<1x256x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[GELU0:%.+]] = VPU.Gelu([[SLICE0]]) : tensor<1x256x16x32xf16, {order = #NHWC}> -> tensor<1x256x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[GELU1:%.+]] = VPU.Gelu([[SLICE1]]) : tensor<1x256x16x32xf16, {order = #NHWC}> -> tensor<1x256x16x32xf16, {order = #NHWC}>
     // CHECK:  return [[GELU0]], [[GELU1]] : tensor<1x256x16x32xf16, {order = #NHWC}>, tensor<1x256x16x32xf16, {order = #NHWC}>
 }
 
@@ -532,7 +532,7 @@ func.func @SkipFuseConcatWithSwOp(%arg0: tensor<1x128x16x32xf16, {order = #NHWC}
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: SkipFuseConcatWithNCEOpNoWeights
-// CHECK-SAME: ([[INPUT0:%.*]]: tensor<1x128x16x32xf16, {order = #NHWC}>, [[INPUT1:%.*]]: tensor<1x128x16x32xf16, {order = #NHWC}>)
+// CHECK-SAME: ([[INPUT0:%.+]]: tensor<1x128x16x32xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x128x16x32xf16, {order = #NHWC}>)
 func.func @SkipFuseConcatWithNCEOpNoWeights(%arg0: tensor<1x128x16x32xf16, {order = #NHWC}>, %arg1: tensor<1x128x16x32xf16, {order = #NHWC}>)
     -> (tensor<1x256x16x32xf16, {order = #NHWC}>, tensor<1x256x16x32xf16, {order = #NHWC}>) {
     %cst0 = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
@@ -571,24 +571,24 @@ func.func @SkipFuseConcatWithNCEOpNoWeights(%arg0: tensor<1x128x16x32xf16, {orde
     } -> tensor<1x256x16x32xf16, {order = #NHWC}>
     return %maxpool0, %maxpool1 : tensor<1x256x16x32xf16, {order = #NHWC}>, tensor<1x256x16x32xf16, {order = #NHWC}>
 
-    // CHECK:  [[CST:%.*]] = const.Declare tensor<256x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<256x1x1x4xsi32>
-    // CHECK:  [[CST0:%.*]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:  [[CST1:%.*]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:  [[CST2:%.*]] = const.Declare tensor<128x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<128x1x1x4xsi32>
+    // CHECK:  [[CST:%.+]] = const.Declare tensor<256x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<256x1x1x4xsi32>
+    // CHECK:  [[CST0:%.+]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
+    // CHECK:  [[CST1:%.+]] = const.Declare tensor<1x128x16x64xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x128x16x64xf16>, [#const.Reorder<#NHWC>]
+    // CHECK:  [[CST2:%.+]] = const.Declare tensor<128x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<128x1x1x4xsi32>
 
-    // CHECK:  [[MAXPOOL_IN:%.*]] = VPU.NCE.MaxPool([[INPUT0]], [[CST2]] ) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x128x16x32xf16, {order = #NHWC}>
-    // CHECK:  [[MAIN_CONCAT:%.*]] = VPU.Concat([[MAXPOOL_IN]], [[INPUT1]])
+    // CHECK:  [[MAXPOOL_IN:%.+]] = VPU.NCE.MaxPool([[INPUT0]], [[CST2]] ) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x128x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[MAIN_CONCAT:%.+]] = VPU.Concat([[MAXPOOL_IN]], [[INPUT1]])
     // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 32]]} : tensor<1x128x16x32xf16, {order = #NHWC}>, tensor<1x128x16x32xf16, {order = #NHWC}> -> tensor<1x128x16x64xf16, {order = #NHWC}>
 
-    // CHECK:  [[CONCAT0:%.*]] = VPU.Concat([[MAIN_CONCAT]], [[CST0]])
+    // CHECK:  [[CONCAT0:%.+]] = VPU.Concat([[MAIN_CONCAT]], [[CST0]])
     // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0]]} : tensor<1x128x16x64xf16, {order = #NHWC}>, tensor<1x128x16x64xf16, {order = #NHWC}> -> tensor<1x256x16x64xf16, {order = #NHWC}>
-    // CHECK:  [[CONCAT1:%.*]] = VPU.Concat([[MAIN_CONCAT]], [[CST1]])
+    // CHECK:  [[CONCAT1:%.+]] = VPU.Concat([[MAIN_CONCAT]], [[CST1]])
     // CHECK-SAME{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0]]} : tensor<1x128x16x64xf16, {order = #NHWC}>, tensor<1x128x16x64xf16, {order = #NHWC}> -> tensor<1x256x16x64xf16, {order = #NHWC}>
 
-    // CHECK:  [[SLICE0:%.*]] = VPU.Slice [[CONCAT0]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
-    // CHECK:  [[SLICE1:%.*]] = VPU.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[SLICE0:%.+]] = VPU.Slice [[CONCAT0]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
+    // CHECK:  [[SLICE1:%.+]] = VPU.Slice [[CONCAT1]] [0, 0, 0, 0] [1, 256, 16, 32] : tensor<1x256x16x64xf16, {order = #NHWC}> to tensor<1x256x16x32xf16, {order = #NHWC}>
 
-    // CHECK:  [[MAXPOOL0:%.*]] = VPU.NCE.MaxPool([[SLICE0]], [[CST]] )
-    // CHECK:  [[MAXPOOL1:%.*]] = VPU.NCE.MaxPool([[SLICE1]], [[CST]] )
+    // CHECK:  [[MAXPOOL0:%.+]] = VPU.NCE.MaxPool([[SLICE0]], [[CST]] )
+    // CHECK:  [[MAXPOOL1:%.+]] = VPU.NCE.MaxPool([[SLICE1]], [[CST]] )
     // CHECK:  return [[MAXPOOL0]], [[MAXPOOL1]] : tensor<1x256x16x32xf16, {order = #NHWC}>, tensor<1x256x16x32xf16, {order = #NHWC}>
 }

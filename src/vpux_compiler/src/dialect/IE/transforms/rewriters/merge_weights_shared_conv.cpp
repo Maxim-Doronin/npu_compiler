@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -34,11 +35,6 @@ namespace {
 //                               IE.Conv(1x16x5x1)
 //                                  |          |
 //                      IE.Slice(1x16x2x1)    IE.Slice(1x16x3x1)
-// The optimization is used for LLM GQA. Assume queries(input) is 28, value or key(filter)
-// is 4, that means each 7 queries share the same value or key(filter). Originally we have
-// 28 conv in total, after optimization, only have 4 convs. Reduce Op number will benefit to
-// runtime idle, and also for some case convolution input H increase from 1 to 7 also benefit
-// to HW efficient.
 class MergeWeightsSharedConv final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
 public:
     MergeWeightsSharedConv(mlir::MLIRContext* ctx, Logger log)
@@ -211,6 +207,25 @@ SmallVector<IE::ConvolutionOp> sortConvsIfNecessary(SmallVector<IE::ConvolutionO
     return sortConvOps;
 }
 
+// For below case, there will be an mlir error since the AffineReshape(%4) will be defined before Slice.
+// Input1(1x8320x1x1)(%0)                                  Input2(1x8320x1x1)(%5)
+//           \                                                 /
+//       IE.Softmax(1x8320x1x1)(%1)  Filter(128x8320x1x1)(%2)  IE.Softmax(1x8320x1x1)(%6)
+//              \                  /              \            /
+//             IE.Conv(1x128x1x1)(%3)           IE.Conv(1x128x1x1)(%7)
+//                  |                                 |
+//            IE.AffineReshape(1x1x1x128)(%4)   IE.AffineReshape(1x1x1x128)(%8)
+//                          \                    /
+//                         IE.Concat(1x2x1x128)(%9)
+void moveConvUserAfterSlice(IE::ConvolutionOp& convOp, IE::SliceOp& sliceOp) {
+    mlir::Operation* operation = convOp;
+    // already ensure each convOp only has one user
+    auto user = *operation->getUsers().begin();
+    if (user->isBeforeInBlock(sliceOp)) {
+        user->moveAfter(sliceOp);
+    }
+}
+
 mlir::LogicalResult MergeWeightsSharedConv::matchAndRewrite(IE::ConvolutionOp origOp,
                                                             mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Convolution layer at '{1}'", origOp->getName(), origOp->getLoc());
@@ -288,7 +303,7 @@ mlir::LogicalResult MergeWeightsSharedConv::matchAndRewrite(IE::ConvolutionOp or
     for (auto conv : convOps) {
         convInputs.push_back(conv.getInput());
     }
-    auto inputConcat = rewriter.create<IE::ConcatOp>(appendLoc(origOp->getLoc(), "_concat_input"),
+    auto inputConcat = rewriter.create<IE::ConcatOp>(appendLoc(origOp->getLoc(), "concat_input"),
                                                      mlir::ValueRange(convInputs), Dims4D::Act::H);
 
     for (auto input : convInputs) {
@@ -297,11 +312,9 @@ mlir::LogicalResult MergeWeightsSharedConv::matchAndRewrite(IE::ConvolutionOp or
         }
     }
 
-    auto newConv = rewriter.create<IE::ConvolutionOp>(
-            appendLoc(origOp->getLoc(), "_concat"), inputConcat.getOutput(), filter, origOp.getBias(),
-            origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
-            origOp.getInputPaddingAttr());
+    auto newConv = cloneConvolutionOp(rewriter, origOp, inputConcat.getOutput(), filter,
+                                      appendLoc(origOp->getLoc(), "concat"));
+
     for (auto operand : newConv->getOperands()) {
         if (operand != nullptr && !mlir::isa<mlir::BlockArgument>(operand) &&
             newConv->isBeforeInBlock(operand.getDefiningOp())) {
@@ -317,7 +330,7 @@ mlir::LogicalResult MergeWeightsSharedConv::matchAndRewrite(IE::ConvolutionOp or
         Shape offsets(outShape.size());
         offsets[Dims4D::Act::H] = offset;
         offset += outShape[Dims4D::Act::H];
-        auto slice = rewriter.create<IE::SliceOp>(appendLoc(origOp->getLoc(), "_slice_{0}", p.index()),
+        auto slice = rewriter.create<IE::SliceOp>(appendLoc(origOp->getLoc(), "slice_{0}", p.index()),
                                                   newConv.getOutput(), getIntArrayAttr(rewriter.getContext(), offsets),
                                                   getIntArrayAttr(rewriter.getContext(), outShape.raw()));
         sliceOps.push_back(slice);
@@ -328,6 +341,7 @@ mlir::LogicalResult MergeWeightsSharedConv::matchAndRewrite(IE::ConvolutionOp or
         if (sliceOps[p.index()]->isBeforeInBlock(newConv)) {
             sliceOps[p.index()]->moveAfter(newConv);
         }
+        moveConvUserAfterSlice(conv, sliceOps[p.index()]);
         rewriter.replaceOp(conv, sliceOps[p.index()].getResult());
     }
 

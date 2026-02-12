@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,7 +10,7 @@
 // -----
 
 // CHECK-LABEL: @MergeTileOnFirstDim
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<1x2x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2x16x32xf16>
 func.func @MergeTileOnFirstDim(%arg0: tensor<1x2x16x32xf16>) -> (tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [2, 1, 1, 1]} : tensor<1x2x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -21,8 +21,8 @@ func.func @MergeTileOnFirstDim(%arg0: tensor<1x2x16x32xf16>) -> (tensor<1x1x16x3
 
     return  %2, %3, %4, %5 : tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>
 
-    // CHECK:   [[SLICE0:%.*]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 32] : tensor<1x2x16x32xf16> to tensor<1x1x16x32xf16>
-    // CHECK:   [[SLICE1:%.*]] = IE.Slice [[INPUT]] [0, 1, 0, 0] [1, 1, 16, 32] : tensor<1x2x16x32xf16> to tensor<1x1x16x32xf16>
+    // CHECK:   [[SLICE0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 32] : tensor<1x2x16x32xf16> to tensor<1x1x16x32xf16>
+    // CHECK:   [[SLICE1:%.+]] = IE.Slice [[INPUT]] [0, 1, 0, 0] [1, 1, 16, 32] : tensor<1x2x16x32xf16> to tensor<1x1x16x32xf16>
     // CHECK:   return      [[SLICE0]], [[SLICE1]], [[SLICE0]], [[SLICE1]]
 }
 
@@ -30,7 +30,7 @@ func.func @MergeTileOnFirstDim(%arg0: tensor<1x2x16x32xf16>) -> (tensor<1x1x16x3
 // -----
 
 // CHECK-LABEL: @MergeTileOnSecondDim
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<2x1x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x1x16x32xf16>
 func.func @MergeTileOnSecondDim(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 2, 1, 1]} : tensor<2x1x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -41,8 +41,8 @@ func.func @MergeTileOnSecondDim(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x16x
 
     return  %2, %3, %4, %5 : tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>
 
-    // CHECK:   [[SLICE0:%.*]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 32] : tensor<2x1x16x32xf16> to tensor<1x1x16x32xf16>
-    // CHECK:   [[SLICE1:%.*]] = IE.Slice [[INPUT]] [1, 0, 0, 0] [1, 1, 16, 32] : tensor<2x1x16x32xf16> to tensor<1x1x16x32xf16>
+    // CHECK:   [[SLICE0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 32] : tensor<2x1x16x32xf16> to tensor<1x1x16x32xf16>
+    // CHECK:   [[SLICE1:%.+]] = IE.Slice [[INPUT]] [1, 0, 0, 0] [1, 1, 16, 32] : tensor<2x1x16x32xf16> to tensor<1x1x16x32xf16>
     // CHECK:   return      [[SLICE0]], [[SLICE0]], [[SLICE1]], [[SLICE1]]
 }
 
@@ -50,7 +50,7 @@ func.func @MergeTileOnSecondDim(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x16x
 // -----
 
 // CHECK-LABEL: @NotMergeTileHasMoreUser
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<2x1x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x1x16x32xf16>
 func.func @NotMergeTileHasMoreUser(%arg0: tensor<2x1x16x32xf16>) -> (tensor<2x2x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 2, 1, 1]} : tensor<2x1x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -59,10 +59,10 @@ func.func @NotMergeTileHasMoreUser(%arg0: tensor<2x1x16x32xf16>) -> (tensor<2x2x
 
     return %0, %2, %3 : tensor<2x2x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>
 
-    // CHECK:    [[TILE:%.*]] = IE.Tile([[INPUT]])
-    // CHECK:    [[RESHAPE:%.*]] = IE.Reshape([[TILE]])
-    // CHECK:    [[SLICE0:%.*]] = IE.Slice [[RESHAPE]]
-    // CHECK:    [[SLICE1:%.*]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[TILE:%.+]] = IE.Tile([[INPUT]])
+    // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[TILE]])
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE]]
     // CHECK:    return      [[TILE]], [[SLICE0]], [[SLICE1]]
 }
 
@@ -70,7 +70,7 @@ func.func @NotMergeTileHasMoreUser(%arg0: tensor<2x1x16x32xf16>) -> (tensor<2x2x
 // -----
 
 // CHECK-LABEL: @NotMergeTileOnTwoDim
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<2x1x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x1x16x32xf16>
 func.func @NotMergeTileOnTwoDim(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x32x32xf16>, tensor<1x1x32x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 2, 2, 1]} : tensor<2x1x16x32xf16> -> tensor<2x2x32x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 32, 32]} : tensor<2x2x32x32xf16> -> tensor<1x4x32x32xf16>
@@ -79,10 +79,10 @@ func.func @NotMergeTileOnTwoDim(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x32x
 
     return  %2, %3 : tensor<1x1x32x32xf16>, tensor<1x1x32x32xf16>
 
-    // CHECK:    [[TILE:%.*]] = IE.Tile([[INPUT]])
-    // CHECK:    [[RESHAPE:%.*]] = IE.Reshape([[TILE]])
-    // CHECK:    [[SLICE0:%.*]] = IE.Slice [[RESHAPE]]
-    // CHECK:    [[SLICE1:%.*]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[TILE:%.+]] = IE.Tile([[INPUT]])
+    // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[TILE]])
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE]]
     // CHECK:    return      [[SLICE0]], [[SLICE1]]
 }
 
@@ -90,7 +90,7 @@ func.func @NotMergeTileOnTwoDim(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x32x
 // -----
 
 // CHECK-LABEL: @NotMergeReshapeDimNotMeetRequirement
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<2x1x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x1x16x32xf16>
 func.func @NotMergeReshapeDimNotMeetRequirement(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x16x16xf16>, tensor<1x1x16x16xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 2, 1, 1]} : tensor<2x1x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 8, 16, 16]} : tensor<2x2x16x32xf16> -> tensor<1x8x16x16xf16>
@@ -99,17 +99,17 @@ func.func @NotMergeReshapeDimNotMeetRequirement(%arg0: tensor<2x1x16x32xf16>) ->
 
     return  %2, %3 : tensor<1x1x16x16xf16>, tensor<1x1x16x16xf16>
 
-    // CHECK:    [[TILE:%.*]] = IE.Tile([[INPUT]])
-    // CHECK:    [[RESHAPE:%.*]] = IE.Reshape([[TILE]])
-    // CHECK:    [[SLICE0:%.*]] = IE.Slice [[RESHAPE]]
-    // CHECK:    [[SLICE1:%.*]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[TILE:%.+]] = IE.Tile([[INPUT]])
+    // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[TILE]])
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE]]
     // CHECK:    return      [[SLICE0]], [[SLICE1]]
 }
 
 // -----
 
 // CHECK-LABEL: @NotMergeSliceSizeMoreThanOne
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<2x1x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x1x16x32xf16>
 func.func @NotMergeSliceSizeMoreThanOne(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x2x16x32xf16>, tensor<1x2x16x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 2, 1, 1]} : tensor<2x1x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -118,10 +118,10 @@ func.func @NotMergeSliceSizeMoreThanOne(%arg0: tensor<2x1x16x32xf16>) -> (tensor
 
     return  %2, %3 : tensor<1x2x16x32xf16>, tensor<1x2x16x32xf16>
 
-    // CHECK:    [[TILE:%.*]] = IE.Tile([[INPUT]])
-    // CHECK:    [[RESHAPE:%.*]] = IE.Reshape([[TILE]])
-    // CHECK:    [[SLICE0:%.*]] = IE.Slice [[RESHAPE]]
-    // CHECK:    [[SLICE1:%.*]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[TILE:%.+]] = IE.Tile([[INPUT]])
+    // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[TILE]])
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE]]
     // CHECK:    return      [[SLICE0]], [[SLICE1]]
 }
 
@@ -129,7 +129,7 @@ func.func @NotMergeSliceSizeMoreThanOne(%arg0: tensor<2x1x16x32xf16>) -> (tensor
 // -----
 
 // CHECK-LABEL: @NotMergeCouldNotSlice
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<2x1x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x1x16x32xf16>
 func.func @NotMergeCouldNotSlice(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x8x32xf16>, tensor<1x1x8x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 2, 1, 1]} : tensor<2x1x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -138,10 +138,10 @@ func.func @NotMergeCouldNotSlice(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x8x
 
     return  %2, %3 : tensor<1x1x8x32xf16>, tensor<1x1x8x32xf16>
 
-    // CHECK:    [[TILE:%.*]] = IE.Tile([[INPUT]])
-    // CHECK:    [[RESHAPE:%.*]] = IE.Reshape([[TILE]])
-    // CHECK:    [[SLICE0:%.*]] = IE.Slice [[RESHAPE]]
-    // CHECK:    [[SLICE1:%.*]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[TILE:%.+]] = IE.Tile([[INPUT]])
+    // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[TILE]])
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[RESHAPE]]
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[RESHAPE]]
     // CHECK:    return      [[SLICE0]], [[SLICE1]]
 }
 
@@ -149,7 +149,7 @@ func.func @NotMergeCouldNotSlice(%arg0: tensor<2x1x16x32xf16>) -> (tensor<1x1x8x
 // -----
 
 // CHECK-LABEL: @MergeTileSliceMoreThanOne
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<1x3x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x3x16x32xf16>
 func.func @MergeTileSliceMoreThanOne(%arg0: tensor<1x3x16x32xf16>) -> (tensor<1x2x16x32xf16>, tensor<1x2x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [2, 1, 1, 1]} : tensor<1x3x16x32xf16> -> tensor<2x3x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 6, 16, 32]} : tensor<2x3x16x32xf16> -> tensor<1x6x16x32xf16>
@@ -160,10 +160,10 @@ func.func @MergeTileSliceMoreThanOne(%arg0: tensor<1x3x16x32xf16>) -> (tensor<1x
 
     return  %2, %3, %4, %5 : tensor<1x2x16x32xf16>, tensor<1x2x16x32xf16>, tensor<1x1x16x32xf16>, tensor<1x1x16x32xf16>
 
-    // CHECK:   [[SLICE0:%.*]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 2, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x2x16x32xf16>
-    // CHECK:   [[SLICE1:%.*]] = IE.Slice [[INPUT]] [0, 1, 0, 0] [1, 2, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x2x16x32xf16>
-    // CHECK:   [[SLICE2:%.*]] = IE.Slice [[INPUT]] [0, 2, 0, 0] [1, 1, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x1x16x32xf16>
-    // CHECK:   [[SLICE3:%.*]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x1x16x32xf16>
+    // CHECK:   [[SLICE0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 2, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x2x16x32xf16>
+    // CHECK:   [[SLICE1:%.+]] = IE.Slice [[INPUT]] [0, 1, 0, 0] [1, 2, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x2x16x32xf16>
+    // CHECK:   [[SLICE2:%.+]] = IE.Slice [[INPUT]] [0, 2, 0, 0] [1, 1, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x1x16x32xf16>
+    // CHECK:   [[SLICE3:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 16, 32] : tensor<1x3x16x32xf16> to tensor<1x1x16x32xf16>
 
     // CHECK:   return      [[SLICE0]], [[SLICE1]], [[SLICE2]], [[SLICE3]]
 }
@@ -172,7 +172,7 @@ func.func @MergeTileSliceMoreThanOne(%arg0: tensor<1x3x16x32xf16>) -> (tensor<1x
 // -----
 
 // CHECK-LABEL: @MergeTileOnFirstDimWithTranspose
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<1x2x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2x16x32xf16>
 func.func @MergeTileOnFirstDimWithTranspose(%arg0: tensor<1x2x16x32xf16>) -> (tensor<1x1x32x16xf16>, tensor<1x1x32x16xf16>, tensor<1x1x32x16xf16>, tensor<1x1x32x16xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [2, 1, 1, 1]} : tensor<1x2x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -184,9 +184,9 @@ func.func @MergeTileOnFirstDimWithTranspose(%arg0: tensor<1x2x16x32xf16>) -> (te
 
     return  %3, %4, %5, %6 : tensor<1x1x32x16xf16>, tensor<1x1x32x16xf16>, tensor<1x1x32x16xf16>, tensor<1x1x32x16xf16>
 
-    // CHECK:   [[TRANSPOSE:%.*]] = IE.Transpose([[INPUT]]) {order_value = #NCWH} : tensor<1x2x16x32xf16> -> tensor<1x2x32x16xf16>
-    // CHECK:   [[SLICE0:%.*]] = IE.Slice [[TRANSPOSE]] [0, 0, 0, 0] [1, 1, 32, 16] : tensor<1x2x32x16xf16> to tensor<1x1x32x16xf16>
-    // CHECK:   [[SLICE1:%.*]] = IE.Slice [[TRANSPOSE]] [0, 1, 0, 0] [1, 1, 32, 16] : tensor<1x2x32x16xf16> to tensor<1x1x32x16xf16>
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[INPUT]]) {order_value = #NCWH} : tensor<1x2x16x32xf16> -> tensor<1x2x32x16xf16>
+    // CHECK:   [[SLICE0:%.+]] = IE.Slice [[TRANSPOSE]] [0, 0, 0, 0] [1, 1, 32, 16] : tensor<1x2x32x16xf16> to tensor<1x1x32x16xf16>
+    // CHECK:   [[SLICE1:%.+]] = IE.Slice [[TRANSPOSE]] [0, 1, 0, 0] [1, 1, 32, 16] : tensor<1x2x32x16xf16> to tensor<1x1x32x16xf16>
 
     // CHECK:   return      [[SLICE0]], [[SLICE1]], [[SLICE0]], [[SLICE1]]
 }
@@ -194,7 +194,7 @@ func.func @MergeTileOnFirstDimWithTranspose(%arg0: tensor<1x2x16x32xf16>) -> (te
 // -----
 
 // CHECK-LABEL: @NotMergeWithInvalidTranspose
-// CHECK-SAME:      [[INPUT:%.*]]: tensor<1x2x16x32xf16>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2x16x32xf16>
 func.func @NotMergeWithInvalidTranspose(%arg0: tensor<1x2x16x32xf16>) -> (tensor<1x32x1x16xf16>, tensor<1x32x1x16xf16>) {
     %0 = IE.Tile(%arg0) {repeats_values = [2, 1, 1, 1]} : tensor<1x2x16x32xf16> -> tensor<2x2x16x32xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 4, 16, 32]} : tensor<2x2x16x32xf16> -> tensor<1x4x16x32xf16>
@@ -205,11 +205,11 @@ func.func @NotMergeWithInvalidTranspose(%arg0: tensor<1x2x16x32xf16>) -> (tensor
 
     return  %3, %4 : tensor<1x32x1x16xf16>, tensor<1x32x1x16xf16>
 
-    // CHECK:    [[TILE:%.*]] = IE.Tile([[INPUT]])
-    // CHECK:    [[RESHAPE:%.*]] = IE.Reshape([[TILE]])
-    // CHECK:    [[TRANSPOSE:%.*]] = IE.Transpose([[RESHAPE]])
-    // CHECK:    [[SLICE0:%.*]] = IE.Slice [[TRANSPOSE]]
-    // CHECK:    [[SLICE1:%.*]] = IE.Slice [[TRANSPOSE]]
+    // CHECK:    [[TILE:%.+]] = IE.Tile([[INPUT]])
+    // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[TILE]])
+    // CHECK:    [[TRANSPOSE:%.+]] = IE.Transpose([[RESHAPE]])
+    // CHECK:    [[SLICE0:%.+]] = IE.Slice [[TRANSPOSE]]
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[TRANSPOSE]]
     // CHECK:    return      [[SLICE0]], [[SLICE1]]
 }
 

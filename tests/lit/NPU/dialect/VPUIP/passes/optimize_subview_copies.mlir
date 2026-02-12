@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -661,12 +661,12 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInWithOtherUsers(
 
     // CHECK:        [[SPILL_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[ARG0]] : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64
-    // CHECK-SAME:      outputs(%{{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
+    // CHECK-SAME:      outputs({{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:  -> memref<1x3072x1x1xf16, #NHWC, @DDR>
 
     // CHECK:        [[TILING_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[SPILL_COPY]] : memref<1x3072x1x1xf16, #NHWC, @DDR>)
-    // CHECK-SAME:      outputs(%{{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK-SAME:      outputs({{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
     // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
 
     // CHECK:       [[SUBVIEW0:%.+]] = VPUIP.SubView [[TILING_COPY]] [0, 0, 0, 0] [1, 1536, 1, 1]
@@ -815,12 +815,12 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInNotCMX2DDR(
 
     // CHECK:        [[DDR2DDR:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[ARG0]] : memref<1x3072x1x1xf16,  {order = #NHWC, strides = [6144, 1, 6144, 6144]}, @DDR>)
-    // CHECK-SAME:      outputs(%{{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
+    // CHECK-SAME:      outputs({{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:  -> memref<1x3072x1x1xf16, #NHWC, @DDR>
 
     // CHECK:        [[TILING_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[DDR2DDR]] : memref<1x3072x1x1xf16, #NHWC, @DDR>)
-    // CHECK-SAME:      outputs(%{{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK-SAME:      outputs({{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
     // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
 
     // CHECK:       [[SUBVIEW0:%.+]] = VPUIP.SubView [[TILING_COPY]] [0, 0, 0, 0] [1, 1536, 1, 1]
@@ -967,12 +967,12 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInNotDuplicatedLike(
 
     // CHECK:        [[SEGMENTED_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[ARG0]] : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1]
-    // CHECK-SAME:      outputs(%{{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
+    // CHECK-SAME:      outputs({{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:  -> memref<1x3072x1x1xf16, #NHWC, @DDR>
 
     // CHECK:        [[TILING_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[SEGMENTED_COPY]] : memref<1x3072x1x1xf16, #NHWC, @DDR>)
-    // CHECK-SAME:      outputs(%{{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK-SAME:      outputs({{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
     // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
 
     // CHECK:       [[SUBVIEW0:%.+]] = VPUIP.SubView [[TILING_COPY]] [0, 0, 0, 0] [1, 1536, 1, 1]
@@ -1115,12 +1115,12 @@ func.func @Optimize2SubviewCopyConvPatternWithKeepCopyInNotFitInCMX(
     // CHECK-SAME:      inputs([[ARG0]] : !VPUIP.DistributedBuffer<1x3072x1x1xf16,
     // CHECK-SAME:                             {order = #NHWC, strides = [50000000, 1, 50000000, 50000000]}, @CMX_NN,
     // CHECK-SAME:                                  mode = "DUPLICATED"
-    // CHECK-SAME:      outputs(%{{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
+    // CHECK-SAME:      outputs({{.+}} : memref<1x3072x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:  -> memref<1x3072x1x1xf16, #NHWC, @DDR>
 
     // CHECK:        [[TILING_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[TO_DDR_COPY]] : memref<1x3072x1x1xf16, #NHWC, @DDR>)
-    // CHECK-SAME:      outputs(%{{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
+    // CHECK-SAME:      outputs({{.+}} : !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
     // CHECK-SAME:  -> !VPUIP.DistributedBuffer<1x3072x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64
 
     // CHECK:       [[SUBVIEW0:%.+]] = VPUIP.SubView [[TILING_COPY]] [0, 0, 0, 0] [1, 1536, 1, 1]
@@ -1465,7 +1465,7 @@ func.func @NonDistributedOptimizeSubviewCopyConvPattern(
 
     // CHECK:       [[COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:      inputs([[ARG0]] : memref<1x3072x1x1xf16, #NHWC, @DDR>)
-    // CHECK-SAME:      outputs(%{{.+}} : memref<1x3072x1x1xf16, #NHWC, @CMX_NN>)
+    // CHECK-SAME:      outputs({{.+}} : memref<1x3072x1x1xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:  -> memref<1x3072x1x1xf16, #NHWC, @CMX_NN>
 
     // CHECK:       [[SUBVIEW0:%.+]] = VPUIP.SubView [[COPY]] [0, 0, 0, 0] [1, 1536, 1, 1]
@@ -2140,8 +2140,8 @@ func.func @NotOptimizeSubviewWithRMS(
     // CHECK:        [[RMS_INPUT2:%.+]] = VPUIP.Copy inputs([[ARG1]] : memref<3072xf16, @DDR>
 
     // CHECK:        [[RMS_RESULT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RMS
-    // CHECK-SAME:   inputs([[RMS_INPUT1]] as %{{.+}}: memref<1x1x3072xf16, [@CMX_NN, 0]>,
-    // CHECK-SAME:   [[RMS_INPUT2]] as %{{.+}}: memref<3072xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:   inputs([[RMS_INPUT1]] as {{.+}}: memref<1x1x3072xf16, [@CMX_NN, 0]>,
+    // CHECK-SAME:   [[RMS_INPUT2]] as {{.+}}: memref<3072xf16, [@CMX_NN, 0]>)
 
     // CHECK:        [[GENERIC_RESHAPE:%.+]] = VPUIP.GenericReshape inputs([[RMS_RESULT]] : memref<1x1x3072xf16, [@CMX_NN, 0]>)
     // CHECK:        [[PERMUTE_CAST:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs([[GENERIC_RESHAPE]] : memref<1x3072x1x1xf16, [@CMX_NN, 0]>)

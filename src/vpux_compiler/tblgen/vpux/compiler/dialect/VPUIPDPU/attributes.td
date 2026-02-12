@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,6 +41,7 @@ def VPUIPDPU_PPEFpConvertMode :
                 I32EnumAttrCase<"BF8", 3>,
                 I32EnumAttrCase<"I32", 4>,
                 I32EnumAttrCase<"HF8", 5>,
+                I32EnumAttrCase<"HF4", 6>,
             ]
         > {
     let cppNamespace = "vpux::VPUIPDPU";
@@ -345,7 +346,10 @@ def VPUIPDPU_ODUReduceDataType :
                 I32EnumAttrCase<"ODU_DTYPE_BF8",    2>,
                 I32EnumAttrCase<"ODU_DTYPE_HF8",    3>,
                 I32EnumAttrCase<"ODU_DTYPE_BF16",   4>,
-                I32EnumAttrCase<"ODU_DTYPE_FP16",   5>
+                I32EnumAttrCase<"ODU_DTYPE_FP16",   5>,
+                I32EnumAttrCase<"ODU_DTYPE_I32",    6>,
+                I32EnumAttrCase<"ODU_DTYPE_I4",     7>,
+                I32EnumAttrCase<"ODU_DTYPE_FP4",    8>
             ]
         > {
     let cppNamespace = "vpux::VPUIPDPU";
@@ -445,10 +449,27 @@ def VPUIPDPU_WtSplitMode :
             "WtSplitMode",
             "Weight table split modes",
             [
-                I32EnumAttrCase<"NO_WT_READS",          0>,
-                I32EnumAttrCase<"WEIGHTS_ONLY",         1>,
-                I32EnumAttrCase<"ZERO_POINTS_ONLY",     2>,
-                I32EnumAttrCase<"WEIGHTS_AND_ZPS",      3>
+                I32EnumAttrCase<"NO_WT_READS",                                0>,
+                I32EnumAttrCase<"WEIGHTS_ONLY",                               1>,
+                I32EnumAttrCase<"ZERO_POINTS_ONLY",                           2>,
+                I32EnumAttrCase<"WEIGHTS_AND_ZPS",                            3>
+            ]
+        > {
+    let cppNamespace = "vpux::VPUIPDPU";
+    let genSpecializedAttr = 1;
+}
+
+//
+// WtLegacyZpMode
+//
+
+def VPUIPDPU_WtLegacyZpMode :
+        I32EnumAttr<
+            "WtLegacyZpMode",
+            "Weight table legacy zero point modes",
+            [
+                I32EnumAttrCase<"WEIGHTS_PTR",                  0>,
+                I32EnumAttrCase<"WEIGHTS_PTR_AND_ZPS",          1>
             ]
         > {
     let cppNamespace = "vpux::VPUIPDPU";

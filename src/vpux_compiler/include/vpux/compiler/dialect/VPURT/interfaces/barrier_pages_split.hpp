@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/core/barrier_info.hpp"
+#include "vpux/compiler/core/execution_group_analysis.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux {
 namespace VPURT {
@@ -61,6 +61,7 @@ public:
     void initializeForLegalization();
     void initializeForEnqueue(mlir::func::FuncOp func);
     void initializeForVerification(mlir::func::FuncOp func);
+    void initializeTaskQueueTypeMap(mlir::func::FuncOp func);
 
     SmallVector<size_t> getFirstAndLastBoundaryTasksForPage(size_t pageInd);
 
@@ -81,6 +82,8 @@ public:
     void assignPagesToTasksInIr();
     void readTaskPageAssignmentFromIr();
 
+    void updateTaskPageAssignmentForShvInCaseOfNoDedicatedShvFifos();
+
     struct DummyDmaDataForPagesWithNoTasks {
         size_t pageInd;
         size_t waitBar;
@@ -93,8 +96,8 @@ public:
     void legalizeLongDependenciesForBarrierPagesSplit();
     void legalizeBoundaryTasksForBarrierPagesSplit();
 
-    bool verifyFetchDmaDependencies(mlir::func::FuncOp func, ExecutionGroupListMap& executionGroups);
     void verifyTaskBarrierPagesAreValid();
+    void verifyTaskPagesAreNeverDecreasingOnQueue();
     void verifyNoCyclicDeps();
     void verifyPhysicalBarsDependencies();
     void verifyBarProgDmaDependencies(mlir::func::FuncOp func);
@@ -158,10 +161,13 @@ public:
 
     SmallVector<EnqueueDmaData> getEnqueueDmaData(
             const ExecutionGroupAnalysis& execGroupAnalysis,
-            const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorEnqAtBootstrap);
+            const mlir::DenseSet<vpux::config::ExecutorKind>& executorEnqAtBootstrap);
     VPURT::BarrierPagesSplitHandler::EnqueueDmaData getDataForNewEnqueueDmaForTask(
             size_t taskInd, size_t taskWorkloadStartIdx, size_t taskWorkloadEndIdx, VPURT::TaskQueueType queueType,
-            SmallVector<mlir::DenseMap<VPURT::TaskQueueType, size_t>>& lastDmaOfTypePerPage);
+            SmallVector<mlir::DenseMap<VPURT::TaskQueueType, std::pair<size_t, size_t>>>& firstAndLastDmaOfTypePerPage);
+
+    // For each task retrieve enqueue barrier index
+    SmallVector<std::optional<size_t>> getAndLegalizeEnqueueBarrierData();
 
 private:
     size_t getBarrierPage(size_t barInd);
@@ -173,15 +179,24 @@ private:
 
     void readBarrierPageAssignmentFromIr();
 
+    VPURT::TaskQueueType getTaskQueueType(size_t taskInd);
+    VPURT::TaskQueueType getTaskQueueTypeWithExplicitFifo(size_t taskInd);
+
     void updateBoundaryTasksDataForTask(size_t taskInd);
     void enforceBoundaryTaskHasUpdateBarrier(size_t pageInd);
     void initializeBoundaryTasksData();
     void updateBoundaryTasksDataForPage(size_t pageInd);
     bool isTaskWithNonAdjacentPageDependency(size_t taskInd);
+
     bool isDepFromTaskAToTaskB(size_t taskA, size_t taskB);
     bool isDepFromTaskToBarrier(size_t taskInd, size_t barInd);
     bool isDepFromBarrierToTask(size_t barInd, size_t taskInd);
     bool isDepFromBarAToBarB(size_t barA, size_t barB);
+
+    std::optional<size_t> getPrevTaskOnSameQueueIfQueueOrderEnabled(size_t taskInd) const;
+    std::optional<size_t> getNextTaskOnSameQueueIfQueueOrderSupported(size_t taskInd) const;
+    // Return the closest previous task on the same queue that has a wait barrier
+    std::optional<size_t> getPrevTaskOnSameQueueWithWaitBarIfQueueOrderSupported(size_t taskInd) const;
 
     void getPageStartTasksAndBars(size_t pageInd, BarrierInfo::TaskSet& pageStartTasks,
                                   BarrierInfo::TaskSet& pageStartBars);
@@ -205,12 +220,13 @@ private:
                           std::optional<size_t> lastDmaTaskOnSameQueueInPageOpt);
 
     std::pair<vpux::BarrierInfo::TaskSet, vpux::BarrierInfo::TaskSet> getDummyDmaBars(size_t pageInd);
-    size_t getDummyDmaInsertionPoint(BarrierInfo::TaskSet& dummyDmaProposedWaitBars,
-                                     std::optional<size_t> lastDmaTaskOnSameQueueInPageOpt);
+    size_t getDummyDmaInsertionPoint(
+            size_t pageInd, VPURT::TaskQueueType dmaQueueType,
+            SmallVector<mlir::DenseMap<VPURT::TaskQueueType, std::pair<size_t, size_t>>>& firstAndLastDmaOfTypePerPage);
     BarrierInfo::TaskSet getDummyDmaUpdateBars(size_t pageInd, size_t insertionPoint,
                                                SmallVector<std::pair<size_t, size_t>>& firstAndLastBarIndPerPage);
 
-    SmallVector<mlir::DenseMap<VPURT::TaskQueueType, size_t>> getLastDmaOfTypePerPage();
+    SmallVector<mlir::DenseMap<VPURT::TaskQueueType, std::pair<size_t, size_t>>> getFirstAndLastDmaOfTypePerPage();
 
     void findShvTasksWithDpu(size_t numClusters);
 
@@ -242,6 +258,8 @@ private:
 
     size_t _pageSize;
     size_t _pageCount = 0;
+
+    bool _fifoPerShaveEngineEnabled = true;
 
     // For each queue store a vector of task indexes on this queue
     std::map<VPURT::TaskQueueType, SmallVector<uint32_t>> _taskQueueTypeMap;

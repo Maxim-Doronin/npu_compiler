@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -111,7 +111,7 @@ NDTypeInterface getConcatDistributedType(VPU::DistributedTypeInterface origType,
         }
 
         auto newDistributedAttr =
-                getConcatExplicitDistributedAttrForNewShape(distribution, shape, origType.getContext());
+                getConcatExplicitDistributedAttrForNewShape(distribution, shape, elementType, origType.getContext());
         return mlir::cast<vpux::NDTypeInterface>(
                 origType.changeTypeComponentsForExplicitDistribution(typeComponents, newDistributedAttr));
     }
@@ -745,6 +745,14 @@ bool InputConcatPattern::areDistributionTypesConsistent() {
     const auto firstDistrType =
             mlir::cast<vpux::VPU::DistributedTensorType>(distributedTypeInterfaceOutput.getDistributedTypes().front());
 
+    // TODO: E191948 CMX-concat for OVERLAPPED|SEGMENTED mode
+    if (firstDistrType.getDistribution().getMode().getValue() ==
+        (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+        _log.trace("Segmented + Overlapped distribution mode is not supported for concat inputs: `{0}`",
+                   firstDistrType);
+        return false;
+    }
+
     for (auto& part : _inputParts) {
         if (part.isBlockArgOrConsant) {
             continue;
@@ -763,6 +771,12 @@ bool InputConcatPattern::areDistributionTypesConsistent() {
         }
         const auto curType = mlir::cast<vpux::VPU::DistributedTensorType>(
                 distributedTypeInterfaceInput.getDistributedTypes().front());
+
+        if (curType.getDistribution().getMode().getValue() ==
+            (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+            _log.trace("Segmented + Overlapped distribution mode is not supported for concat inputs: `{0}`", curType);
+            return false;
+        }
 
         if (!areDistributedTypesConcatenable(firstDistrType, curType)) {
             _log.trace("Not matching distributed tensor attributes between concat inputs: `{0}` and `{1}`",

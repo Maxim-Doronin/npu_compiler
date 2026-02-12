@@ -6,11 +6,48 @@
 #pragma once
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/operation_strategies.hpp"
 
 namespace vpux::VPU {
+
+namespace CostModelConfig {
+
+std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel(mlir::MLIRContext* context);
+std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel(mlir::Operation* op);
+
+}  // namespace CostModelConfig
+
+/**
+ * Analyzes the VPUNN Layer Cost Model with a custom `isInvalidated` function.
+ * This analysis object remains preserved once constructed, until `invalidate` is called
+ * or the AnalysisManager is cleared.
+ */
+class LayerCostModelAnalysis {
+public:
+    explicit LayerCostModelAnalysis(mlir::ModuleOp moduleOp);
+    std::shared_ptr<VPUNN::VPULayerCostModel> getVPUNNLayerCostModel();
+
+    // Used by AnalysisManager to check if this analysis should be preserved.
+    // If return false, preserve this analysis. Otherwise release it.
+    bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&);
+
+    // Invalidate this analysis
+    // The resource will be destroyed after pass
+    void invalidate();
+
+    // If the input analysis is empty, create a layer cost model instance and return it.
+    // Otherwise, return the cached layer cost model instance.
+    static std::shared_ptr<VPUNN::VPULayerCostModel> getOrCreateLayerCostModel(
+            std::optional<std::reference_wrapper<LayerCostModelAnalysis>> analysis, mlir::MLIRContext* context,
+            Logger log = Logger::global().nest("layer-cost-model-analysis"));
+
+private:
+    std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel;
+
+    // Flag indicating whether the analysis is preserved. Initialized to true.
+    bool _preserved = true;
+};
 
 struct VPUNNCostParameters {
     VPUNNCostParameters(VPU::MultiClusterStrategy strategy, const OutputTiling& tiling = {},
@@ -42,6 +79,7 @@ private:
      */
     void removeTemporaryStrategy();
 
+    bool _isStrategyChanged = false;
     mlir::Operation* _operation;
     std::optional<VPU::MultiClusterStrategy> _origStrategy;
 };

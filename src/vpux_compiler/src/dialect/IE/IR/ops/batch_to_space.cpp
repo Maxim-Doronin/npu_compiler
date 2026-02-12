@@ -4,10 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -35,7 +35,7 @@ mlir::LogicalResult vpux::IE::BatchToSpace::inferReturnTypeComponents(
     SmallVector<int64_t> cropsEndVal = {0};
 
     if (bsp.getBlockShape() != nullptr || bsp.getBlockShapeValue().has_value()) {
-        auto blockShape = getConstOrArrAttrValue(bsp.getBlockShape(), bsp.getBlockShapeValueAttr());
+        auto blockShape = Const::getConstOrArrAttrValue(bsp.getBlockShape(), bsp.getBlockShapeValueAttr());
         if (mlir::failed(blockShape)) {
             return mlir::failure();
         }
@@ -43,7 +43,7 @@ mlir::LogicalResult vpux::IE::BatchToSpace::inferReturnTypeComponents(
     }
 
     if (bsp.getCropsBegin() != nullptr || bsp.getCropsBeginValue().has_value()) {
-        auto cropsBegin = getConstOrArrAttrValue(bsp.getCropsBegin(), bsp.getCropsBeginValueAttr());
+        auto cropsBegin = Const::getConstOrArrAttrValue(bsp.getCropsBegin(), bsp.getCropsBeginValueAttr());
         if (mlir::failed(cropsBegin)) {
             return mlir::failure();
         }
@@ -51,7 +51,7 @@ mlir::LogicalResult vpux::IE::BatchToSpace::inferReturnTypeComponents(
     }
 
     if (bsp.getCropsEnd() != nullptr || bsp.getCropsEndValue().has_value()) {
-        auto cropsEnd = getConstOrArrAttrValue(bsp.getCropsEnd(), bsp.getCropsEndValueAttr());
+        auto cropsEnd = Const::getConstOrArrAttrValue(bsp.getCropsEnd(), bsp.getCropsEndValueAttr());
         if (mlir::failed(cropsEnd)) {
             return mlir::failure();
         }
@@ -113,7 +113,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::BatchToSpace BatchTo
     SmallVector<int64_t> cropsEndVal = {0};
 
     if (BatchToSpace.getBlockShape() != nullptr) {
-        const auto blockShape = getConstArrValue(BatchToSpace.getBlockShape());
+        const auto blockShape = Const::getConstArrValue(BatchToSpace.getBlockShape());
         if (mlir::failed(blockShape)) {
             return mlir::failure();
         }
@@ -121,7 +121,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::BatchToSpace BatchTo
     }
 
     if (BatchToSpace.getCropsBegin() != nullptr) {
-        const auto cropsBegin = getConstArrValue(BatchToSpace.getCropsBegin());
+        const auto cropsBegin = Const::getConstArrValue(BatchToSpace.getCropsBegin());
         if (mlir::failed(cropsBegin)) {
             return mlir::failure();
         }
@@ -129,7 +129,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::BatchToSpace BatchTo
     }
 
     if (BatchToSpace.getCropsEnd() != nullptr) {
-        const auto cropsEnd = getConstArrValue(BatchToSpace.getCropsEnd());
+        const auto cropsEnd = Const::getConstArrValue(BatchToSpace.getCropsEnd());
         if (mlir::failed(cropsEnd)) {
             return mlir::failure();
         }

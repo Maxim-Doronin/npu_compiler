@@ -7,7 +7,7 @@
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
@@ -58,14 +58,7 @@ const static llvm::StringLiteral inputIRClustering = R"(
 })";
 
 TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForSOK) {
-    auto registry = vpux::createDialectRegistry();
     const auto arch = config::ArchKind::NPU40XX;
-    auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
-    interfacesRegistry->registerInterfaces(registry);
-    // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
-
-    mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIRSOK, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
 
@@ -96,9 +89,9 @@ TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForSOK) {
                                                       numDPUs, numTiles);
     const auto vpunnStrategy = VPU::getVPULayerStrategy(strategy, numDPUs, numTiles, arch, 1, true);
 
-    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
+    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(&ctx);
 
-    auto& cache = vpux::VPU::OpTilingCache::instance();
+    auto& cache = vpux::VPU::getGlobalOpTilingCache();
     cache.enableIfNecessary(false);
 
     auto dpuCostsOld = getDPUCostForNCEOp(nceOp, strategy, outputTiling, costParams, vpunnStrategy, layerCostModel,
@@ -113,14 +106,7 @@ TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForSOK) {
 }
 
 TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForClustering) {
-    auto registry = vpux::createDialectRegistry();
     const auto arch = config::ArchKind::NPU40XX;
-    auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
-    interfacesRegistry->registerInterfaces(registry);
-    // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
-
-    mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIRClustering, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
 
@@ -151,9 +137,9 @@ TEST_F(MLIR_PreSplitCostTest, SamePreSplitCostForClustering) {
                                                       numDPUs, numTiles);
     const auto vpunnStrategy = VPU::getVPULayerStrategy(strategy, numDPUs, numTiles, arch, 1, true);
 
-    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
+    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(&ctx);
 
-    auto& cache = vpux::VPU::OpTilingCache::instance();
+    auto& cache = vpux::VPU::getGlobalOpTilingCache();
     cache.enableIfNecessary(false);
 
     auto dpuCostsOld = getDPUCostForNCEOp(nceOp, strategy, outputTiling, costParams, vpunnStrategy, layerCostModel,

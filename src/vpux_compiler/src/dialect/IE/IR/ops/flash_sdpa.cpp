@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,15 +20,13 @@ mlir::LogicalResult vpux::IE::FlashSDPAOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto qShape = getShape(flashSdpa.getQuery());
-    const auto vShape = getShape(flashSdpa.getValue());
+    const auto toSTC = [](mlir::Value value) -> mlir::ShapedTypeComponents {
+        auto type = mlir::cast<mlir::RankedTensorType>(value.getType());
+        return mlir::ShapedTypeComponents(type.getShape(), type.getElementType(), type.getEncoding());
+    };
 
-    const auto vEmbedding = *std::prev(vShape.end(), 2);
-    auto outShape = to_small_vector(qShape);
-    outShape.back() = vEmbedding;
-
-    auto qType = mlir::cast<mlir::RankedTensorType>(flashSdpa.getQuery().getType());
-    inferredReturnShapes.emplace_back(outShape, qType.getElementType());
+    inferredReturnShapes.append({toSTC(flashSdpa.getInputRunningOutput()), toSTC(flashSdpa.getInputRunningMax()),
+                                 toSTC(flashSdpa.getInputRunningSum())});
 
     return mlir::success();
 }

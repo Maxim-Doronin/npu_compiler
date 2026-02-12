@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,5 +31,5 @@ module @Test {
   }
 }
 
-// CHECK: %[[VAL0:.*]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags(SHF_WRITE) {secAddrAlign = 1024 : i64, secInfo = 0 : i64, secName = ".text.KernelData"}
-// CHECK: %[[VAL1:.*]] = ELFNPU37XX.CreateLogicalSection secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".data.BuffersIO"}
+// CHECK: [[VAL0:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags(SHF_WRITE) {secAddrAlign = 1024 : i64, secInfo = 0 : i64, secName = ".text.KernelData"}
+// CHECK: [[VAL1:%.+]] = ELFNPU37XX.CreateLogicalSection secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".data.BuffersIO"}

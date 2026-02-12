@@ -180,8 +180,9 @@ ShapeInfo inferMatMulOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeI
  * @return                       The output shape info as ShapeInfo
  */
 ShapeInfo inferConvolutionOutputShapeInfo(const ShapeInfo& inShapeInfo, const ShapeInfo& filterShapeInfo,
-                                          ArrayRef<int64_t> windowStrides, ArrayRef<int64_t> dataPaddingBelow,
-                                          ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowDilations);
+                                          NDTypeInterface filterType, ArrayRef<int64_t> windowStrides,
+                                          ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove,
+                                          ArrayRef<int64_t> windowDilations);
 
 /**
  * @brief                        Infers the output shape for a GroupConvolution operation

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -707,7 +707,7 @@ func.func @ConcatOverChannelsDynamicHeight(
     %IN0: !InBoundedType,
     %IN1: !InBoundedType
 ) -> (!OutBoundedType, index) {
-    // CHECK: [[IN0:%.+]]: tensor<1x1x?x128xf16, {{.*}}>, [[IN1:%.+]]: tensor<1x1x?x128xf16, {{.*}}>
+    // CHECK: [[IN0:%.+]]: tensor<1x1x?x128xf16, {{.+}}>, [[IN1:%.+]]: tensor<1x1x?x128xf16, {{.+}}>
 
     %IDX_2 = arith.constant 2 : index
     // CHECK:   [[IDX_2:%.+]] = arith.constant 2 : index
@@ -737,7 +737,7 @@ func.func @ConcatOverChannelsDynamicHeightThreeInputs(
     %IN1: !InBoundedType,
     %IN2: !InBoundedType
 ) -> (!OutBoundedType, index) {
-    // CHECK: [[IN0:%.+]]: tensor<1x1x?x128xf16, {{.*}}>, [[IN1:%.+]]: tensor<1x1x?x128xf16, {{.*}}>, [[IN2:%.+]]: tensor<1x1x?x128xf16, {{.*}}>
+    // CHECK: [[IN0:%.+]]: tensor<1x1x?x128xf16, {{.+}}>, [[IN1:%.+]]: tensor<1x1x?x128xf16, {{.+}}>, [[IN2:%.+]]: tensor<1x1x?x128xf16, {{.+}}>
 
     %IDX_2 = arith.constant 2 : index
     // CHECK:   [[IDX_2:%.+]] = arith.constant 2 : index
@@ -766,7 +766,7 @@ func.func @ConcatOverChannelsDynamicWidth(
     %IN0: !InBoundedType,
     %IN1: !InBoundedType
 ) -> (!OutBoundedType, index) {
-    // CHECK: [[IN0:%.+]]: tensor<1x1x64x?xf16, {{.*}}>, [[IN1:%.+]]: tensor<1x1x64x?xf16, {{.*}}>
+    // CHECK: [[IN0:%.+]]: tensor<1x1x64x?xf16, {{.+}}>, [[IN1:%.+]]: tensor<1x1x64x?xf16, {{.+}}>
 
     %IDX_3 = arith.constant 3 : index
     // CHECK:   [[IDX_3:%.+]] = arith.constant 3 : index
@@ -795,7 +795,7 @@ func.func @ConcatOverChannelsDynamicHW(
     %IN0: !InBoundedType,
     %IN1: !InBoundedType
 ) -> (!OutBoundedType, index, index) {
-    // CHECK: [[IN0:%.+]]: tensor<1x1x?x?xf16, {{.*}}>, [[IN1:%.+]]: tensor<1x1x?x?xf16, {{.*}}>
+    // CHECK: [[IN0:%.+]]: tensor<1x1x?x?xf16, {{.+}}>, [[IN1:%.+]]: tensor<1x1x?x?xf16, {{.+}}>
 
     %IDX_2 = arith.constant 2 : index
     // CHECK-DAG:   [[IDX_2:%.+]] = arith.constant 2 : index
@@ -830,7 +830,7 @@ func.func @ConcatWithOffsets(
     %IN0: !InBoundedType,
     %IN1: !InBoundedType
 ) -> (!OutBoundedType, index) {
-    // CHECK: ([[IN0:%.+]]: tensor<1x1x?x128xf16, {{.*}}, [[IN1:%.+]]: tensor<1x1x?x128xf16, {{.*}}>)
+    // CHECK: ([[IN0:%.+]]: tensor<1x1x?x128xf16, {{.+}}, [[IN1:%.+]]: tensor<1x1x?x128xf16, {{.+}}>)
 
     %IDX_2 = arith.constant 2 : index
     // CHECK:   [[IDX_2:%.+]] = arith.constant 2 : index
@@ -863,7 +863,7 @@ func.func @FullyConnected_0(
     %IDX_0 = arith.constant 0 : index
     // CHECK:   [[IDX_0:%.+]] = arith.constant 0 : index
 
-    %cst = const.Declare tensor<128x128xf16> = dense<1.0> : tensor<128x128xf16> isSplat
+    %cst = const.Declare tensor<128x128xf16> = dense<1.0> : tensor<128x128xf16>
     %FC = IE.FullyConnected(%IN0, %cst) : !InBoundedType, tensor<128x128xf16> -> !OutType
     // CHECK:   [[FC:%.+]] = IE.FullyConnected([[IN0]]
 
@@ -1059,4 +1059,53 @@ func.func @ReifyMultiplyShapeOnlySecondInputDynamic(%IN1: !StaticType, %IN2: !Dy
 
     return %MUL, %DIM_2, %DIM_3 : !DynamicType, index, index
     // CHECK: return [[MUL]], [[DIM_2]], [[DIM_3]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+!InBoundedType = tensor<1x32x?x16xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 16, 16]> : tensor<4xsi64>, order = #NCHW}>
+!OutBoundedType = tensor<1x8x?x32xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 32, 32]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: @ReifyD2SShape
+func.func @ReifyD2SShape(%IN: !InBoundedType) -> (!OutBoundedType, index) {
+    // CHECK: [[IN:%.+]]: tensor<1x32x?x16xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 16, 16]> : tensor<4xsi64>, order = #NCHW}>
+    %C2 = arith.constant 2 : index
+    // CHECK-DAG: [[C2:%.+]] = arith.constant 2 : index
+
+    %D2S = IE.DepthToSpace(%IN) {
+        block_size = 2 : i64,
+        mode = #IE.depth_to_space_mode<DEPTH_FIRST>
+    } : !InBoundedType -> !OutBoundedType
+    // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[IN]])
+
+    %DIM = tensor.dim %D2S, %C2 : !OutBoundedType
+    // CHECK: [[DIM:%.+]] = tensor.dim [[IN]], [[C2]]
+    // CHECK: [[OUTPUTSHAPE:%.+]] = arith.muli [[DIM]], [[C2]]
+
+    return %D2S, %DIM : !OutBoundedType, index
+    // CHECK: return [[D2S]], [[OUTPUTSHAPE]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!InBoundedType = tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
+!OutBoundedType = tensor<1x16x32x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: @ReifyConvertShape
+func.func @ReifyConvertShape(%IN: !InBoundedType) -> (!OutBoundedType, index) {
+    // CHECK: [[IN:%.+]]: tensor<1x16x32x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 64]> : tensor<4xsi64>, order = #NCHW}>
+    %IDX_3 = arith.constant 3 : index
+    // CHECK: [[IDX_3:%.+]] = arith.constant 3 : index
+
+    %CONVERT = IE.Convert(%IN) {dstElemType = f32} : !InBoundedType -> !OutBoundedType
+    // CHECK: [[CONVERT:%.+]] = IE.Convert([[IN]])
+
+    %DIM_3 = tensor.dim %CONVERT, %IDX_3 : !OutBoundedType
+    // CHECK: [[DIM_3:%.+]] = tensor.dim [[IN]], [[IDX_3]]
+
+    return %CONVERT, %DIM_3 : !OutBoundedType, index
+    // CHECK: return [[CONVERT]], [[DIM_3]]
 }

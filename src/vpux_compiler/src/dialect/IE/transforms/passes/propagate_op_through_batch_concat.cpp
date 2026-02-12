@@ -11,9 +11,9 @@
 #include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/matmul.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -191,15 +191,15 @@ mlir::LogicalResult PropagateSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir
         mlir::Value sliceSoftmaxInput = concatInput.value();
         if (maybeAddOp != nullptr) {
             auto newAddOp = rewriter.create<IE::AddOp>(
-                    takeOpLoc(maybeAddOp, llvm::StringLiteral("slice_{0}"), concatInput.index()), concatInput.value(),
+                    takeOpLoc(maybeAddOp, "slice_{0}", concatInput.index()), concatInput.value(),
                     maybeAddOp.getInput2(), maybeAddOp.getAutoBroadcastAttr(), maybeAddOp.getPostOpAttr(),
                     maybeAddOp.getClampAttr(), maybeAddOp.getOutputPaddingAttr(), maybeAddOp.getInputPaddingAttr());
             sliceSoftmaxInput = newAddOp.getOutput();
         }
 
         auto sliceSoftmaxOp =
-                rewriter.create<IE::SoftMaxOp>(takeOpLoc(origOp, StringLiteral("slice_{0}"), concatInput.index()),
-                                               sliceSoftmaxInput, origOp.getAxisIndAttr(), origOp.getPadSizeAttr());
+                rewriter.create<IE::SoftMaxOp>(takeOpLoc(origOp, "slice_{0}", concatInput.index()), sliceSoftmaxInput,
+                                               origOp.getAxisIndAttr(), origOp.getPadSizeAttr());
         newConcatInputs.push_back(sliceSoftmaxOp.getOutput());
     }
 
@@ -269,15 +269,15 @@ mlir::LogicalResult PropagateReshape<ReshapeT>::matchAndRewrite(ReshapeT origOp,
 
     SmallVector<mlir::Value> newConcatInputs;
     for (const auto& concatInput : concatInputs) {
-        auto sliceReshape4D = rewriter.create<IE::ReshapeOp>(
-                takeOpLoc(origOp, StringLiteral("slice_{0}_reshape"), newConcatInputs.size()), concatInput, nullptr,
-                false, sliceOutShape4DAttr);
+        auto sliceReshape4D =
+                rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "slice_{0}_reshape", newConcatInputs.size()),
+                                               concatInput, nullptr, false, sliceOutShape4DAttr);
         _log.nest(2).trace("Inserted ReshapeOp: {0}", sliceReshape4D);
         newConcatInputs.push_back(sliceReshape4D.getOutput());
     }
 
-    auto newConcatOp = rewriter.create<IE::ConcatOp>(takeOpLoc(concatOp, StringLiteral("out_concat")), newConcatInputs,
-                                                     batchDim.value());
+    auto newConcatOp =
+            rewriter.create<IE::ConcatOp>(takeOpLoc(concatOp, "out_concat"), newConcatInputs, batchDim.value());
     rewriter.replaceOp(origOp, newConcatOp.getOutput());
 
     return mlir::success();
@@ -335,7 +335,7 @@ mlir::LogicalResult PropagateFakeQuantize::matchAndRewrite(IE::FakeQuantizeOp or
         auto sliceFQInput = concatInput.value();
 
         auto sliceFQOp = rewriter.create<IE::FakeQuantizeOp>(
-                takeOpLoc(origOp, StringLiteral("slice_{0}"), concatInput.index()), sliceFQInput, origOp.getInputLow(),
+                takeOpLoc(origOp, "slice_{0}", concatInput.index()), sliceFQInput, origOp.getInputLow(),
                 origOp.getInputHigh(), origOp.getOutputLow(), origOp.getOutputHigh(), origOp.getLevelsAttr(),
                 origOp.getLowFpTypeAttr(), origOp.getAutoBroadcastAttr());
         concatOp.setOperand(checked_cast<uint32_t>(concatInput.index()), sliceFQOp.getOutput());
@@ -409,17 +409,128 @@ mlir::LogicalResult PropagateMultiply::matchAndRewrite(IE::MultiplyOp origOp, ml
     SmallVector<mlir::Value> newConcatInputs;
     newConcatInputs.reserve(inputs.size());
     for (auto inVal : inputs) {
-        auto newMul = rewriter.create<IE::MultiplyOp>(
-                takeOpLoc(origOp, StringLiteral("slice_{0}"), newConcatInputs.size()), inVal, constVal,
-                origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+        auto newMul = rewriter.create<IE::MultiplyOp>(takeOpLoc(origOp, "slice_{0}", newConcatInputs.size()), inVal,
+                                                      constVal, origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
+                                                      origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+                                                      origOp.getInputPaddingAttr());
         newConcatInputs.push_back(newMul.getOutput());
     }
 
-    auto newConcat = rewriter.create<IE::ConcatOp>(takeOpLoc(concatOp, StringLiteral("prop_mul_out")), newConcatInputs,
+    auto newConcat = rewriter.create<IE::ConcatOp>(takeOpLoc(concatOp, "prop_mul_out"), newConcatInputs,
                                                    concatOp.getPerAxisAttr(), concatOp.getStaticOffsetsAttr());
     rewriter.replaceOp(origOp, newConcat.getOutput());
 
+    if (concatOp->use_empty()) {
+        rewriter.eraseOp(concatOp);
+    }
+
+    return mlir::success();
+}
+
+//
+// PropagateMatMul
+//
+class PropagateMatMul final : public mlir::OpRewritePattern<IE::MatMulOp> {
+public:
+    PropagateMatMul(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::MatMulOp>(ctx), _log(log) {
+        this->setDebugName("PropagateOpThroughBatchConcat::PropagateMatMul");
+    }
+
+private:
+    mlir::LogicalResult matchAndRewrite(IE::MatMulOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult PropagateMatMul::matchAndRewrite(IE::MatMulOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    // Check if input is a block argument
+    auto lhsInput = origOp.getInput1();
+    if (mlir::isa<mlir::BlockArgument>(lhsInput)) {
+        return matchFailed(_log, rewriter, origOp, "LHS input is block argument");
+    }
+
+    // Check if LHS is a ConcatOp
+    auto concatOp = lhsInput.getDefiningOp<IE::ConcatOp>();
+    if (concatOp == nullptr) {
+        return matchFailed(_log, rewriter, origOp, "LHS is not a ConcatOp");
+    }
+    if (!concatOp->hasOneUse()) {
+        return matchFailed(_log, rewriter, origOp, "ConcatOp has multiple uses");
+    }
+
+    // Validate input shapes
+    const auto lhsShape = getShape(lhsInput);
+    const auto rhsInput = origOp.getInput2();
+    const auto rhsShape = getShape(rhsInput);
+
+    if (lhsShape.size() != 3 && lhsShape.size() != 4) {
+        return matchFailed(_log, rewriter, origOp, "Only support 3D or 4D MatMul, got {0}D", lhsShape.size());
+    }
+    if (lhsShape.size() != rhsShape.size()) {
+        return matchFailed(_log, rewriter, origOp, "LHS and RHS have different ranks: {0} vs {1}", lhsShape.size(),
+                           rhsShape.size());
+    }
+
+    // Get concat axis and validate it's the batch axis
+    const auto concatAttrs = concatOp.getPerAxisAttr();
+    if (concatAttrs == nullptr) {
+        return matchFailed(_log, rewriter, origOp, "ConcatOp missing PerAxis attribute");
+    }
+    const auto rank = lhsShape.size();
+    const auto concatAxis = getPositiveAxisInd(concatAttrs.getAxis(), rank);
+    const int64_t batchAxisInd = rank - 3;  // Batch axis is at position rank-3 for MatMul
+
+    if (concatAxis != batchAxisInd) {
+        return matchFailed(_log, rewriter, origOp, "Concat axis {0} is not MatMul batch axis {1}", concatAxis,
+                           batchAxisInd);
+    }
+
+    const auto concatInputs = concatOp.getInputs();
+    const int64_t concatInputNum = concatInputs.size();
+
+    if (concatInputNum != lhsShape[Dim(concatAxis)] || concatInputNum != rhsShape[Dim(concatAxis)]) {
+        return matchFailed(_log, rewriter, origOp, "Matmul batch dimension does not match number of Concat inputs");
+    }
+
+    _log.nest().trace("Propagating MatMulOp before batch ConcatOp on axis {0}", concatAxis);
+
+    // Create sliced MatMul operations for each concat input
+    SmallVector<mlir::Value> newConcatInputs;
+    newConcatInputs.reserve(concatInputNum);
+    auto ctx = rewriter.getContext();
+
+    for (auto concatInput : concatInputs | indexed) {
+        auto lhs = concatInput.value();
+        const auto index = concatInput.index();
+
+        // Create slice of RHS for this batch element
+        SmallVector<int64_t> sliceOffset(rhsShape.size(), 0);
+        sliceOffset[concatAxis] = index;
+
+        SmallVector<int64_t> sliceSize(rhsShape.raw());
+        sliceSize[concatAxis] = 1;
+
+        auto rhsSlice =
+                rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "rhs_slice_{0}", index), rhsInput,
+                                             getIntArrayAttr(ctx, sliceOffset), getIntArrayAttr(ctx, sliceSize));
+
+        // Create MatMul for this slice
+        auto newMatMul = cloneMatMulOp(rewriter, origOp, lhs, rhsSlice.getOutput());
+        newMatMul->setLoc(takeOpLoc(origOp, "slice_{0}", index));
+
+        newConcatInputs.push_back(newMatMul->getResult(0));
+    }
+
+    // Create new concat with all sliced MatMul outputs
+    auto newConcat = rewriter.create<IE::ConcatOp>(takeOpLoc(concatOp, "prop_matmul_out"), newConcatInputs,
+                                                   concatOp.getPerAxisAttr(), concatOp.getStaticOffsetsAttr());
+
+    rewriter.replaceOp(origOp, newConcat.getOutput());
+
+    // Clean up original concat if no longer used
     if (concatOp->use_empty()) {
         rewriter.eraseOp(concatOp);
     }
@@ -458,6 +569,7 @@ void PropagateOpThroughBatchConcat::safeRunOnFunc() {
     patterns.add<PropagateSoftmax>(&ctx, _log);
     patterns.add<PropagateFakeQuantize>(&ctx, _log);
     patterns.add<PropagateMultiply>(&ctx, _log);
+    patterns.add<PropagateMatMul>(&ctx, _log);
 
     if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

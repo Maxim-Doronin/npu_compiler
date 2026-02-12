@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -75,11 +75,11 @@ bool isExplicitCfgBatchMethodOptionRequested(const intel_npu::Config& config, vp
     if (DebatcherOptions::isExplicitlySpecified(batchingAdapterView->get())) {
         auto debatcherOptionPtr = DebatcherOptions::create(batchingAdapterView->get());
         VPUX_THROW_WHEN(debatcherOptionPtr == nullptr, "Options must be create-able when it has been set explicitly");
-        if (debatcherOptionPtr->debatcherIntputCoeffPartitions !=
+        if (debatcherOptionPtr->debatcherInputCoeffPartitions !=
             DebatcherOptions::getDefaultDebatchInputCoeffPartitionsValue()) {
             logger.debug("Skip batch-network auto detection as \"{0}\" has been set explicitly: {1}, ",
-                         debatcherOptionPtr->debatcherIntputCoeffPartitions.getArgStr(),
-                         debatcherOptionPtr->debatcherIntputCoeffPartitions);
+                         debatcherOptionPtr->debatcherInputCoeffPartitions.getArgStr(),
+                         debatcherOptionPtr->debatcherInputCoeffPartitions);
             return true;
         }
     }
@@ -252,6 +252,16 @@ bool isModelSuitableForDebatching(const std::shared_ptr<ov::Model>& model, const
     return true;
 }
 
+std::string_view chooseAppropriateDebatchingMethod(const intel_npu::Config& config) {
+    if (config.has<intel_npu::COMPILATION_MODE>()) {
+        if (config.get<intel_npu::COMPILATION_MODE>().find("HostCompile") != std::string::npos) {
+            return "host_pipeline";
+        }
+    }
+    // TODO E#194475 Get off all debatcher magic strings
+    return "naive";
+}
+
 std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::shared_ptr<ov::Model>& model,
                                                                      const intel_npu::Config& config) {
     std::set<ov::Output<const ov::Node>> batchedInputs;
@@ -283,7 +293,8 @@ std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::
     auto enableDebatcher = [&logger, &config](const std::string& debatcherParams) {
         std::string debatchingCompileMethodParams =
                 "batch-compile-method=debatch debatcher-settings={debatcher-input-coefficients-partitions=" +
-                debatcherParams + "  debatching-inlining-method=naive}";
+                debatcherParams +
+                "  debatching-inlining-method=" + std::string(chooseAppropriateDebatchingMethod(config)) + "}";
         logger.debug("Batched network auto detection has been finished. Batch compile method \"debatch\" will be "
                      "employed with params: {0}",
                      debatchingCompileMethodParams);

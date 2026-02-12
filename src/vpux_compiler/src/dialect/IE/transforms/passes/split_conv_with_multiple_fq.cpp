@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -134,7 +134,7 @@ using Branch = std::deque<mlir::Operation*>;
 void splitBranch(Branch& branch, int64_t idx, mlir::PatternRewriter& rewriter, Logger log) {
     log.trace("Split branch:");
     mlir::Operation* producerOp = rewriter.clone(*branch.front());
-    extendOpLoc(producerOp, llvm::formatv("_branch_{0}", idx));
+    extendOpLoc(producerOp, "branch_{0}", idx);
     log.nest().trace("Got root operation: {0}", producerOp->getLoc());
     branch.pop_front();
     mlir::Operation* lastOp = branch.back();
@@ -145,12 +145,12 @@ void splitBranch(Branch& branch, int64_t idx, mlir::PatternRewriter& rewriter, L
         auto op = item.value();
         mapper.map(op->getOperand(0), producerOp->getResult(0));
         auto newOp = rewriter.clone(*op, mapper);
-        extendOpLoc(newOp, llvm::formatv("_branch_{0}_{1}", idx, item.index()));
+        extendOpLoc(newOp, "branch_{0}_{1}", idx, item.index());
         log.nest().trace("Next operation in branch: {0}", newOp->getLoc());
         producerOp = newOp;
     }
     lastOp->setOperand(0, producerOp->getResult(0));
-    extendOpLoc(lastOp, llvm::formatv("_branch_{0}", idx));
+    extendOpLoc(lastOp, "branch_{0}", idx);
     log.nest().trace("Got last operation: {0}", lastOp->getLoc());
 }
 
@@ -323,7 +323,7 @@ void SplitConvWithMultipleFQPass::safeRunOnFunc() {
 
     auto func = getOperation();
     auto config = getDefaultGreedyRewriteConfig();
-    config.useTopDownTraversal = false;
+    config.setUseTopDownTraversal(false);
     if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), config))) {
         signalPassFailure();
     }

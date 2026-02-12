@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,7 +25,7 @@ module @KeepDimsSameLayout {
     } -> tensor<1x1x28x29xf16, {order = #NHWC}>
     return %0 : tensor<1x1x28x29xf16, {order = #NHWC}>
 
-// CHECK:    IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
+// CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0xFC00 : f16
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x28x29xf16>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f16) outs([[EMPTY]] : tensor<1x28x29xf16>) -> tensor<1x28x29xf16>
@@ -36,7 +36,7 @@ module @KeepDimsSameLayout {
 // CHECK-NEXT:      } -> tensor<1x28x29xf16>
 // CHECK-NEXT:      [[RES_EMPTY:%.+]] = tensor.empty() : tensor<1x28x29x1xf16>
 // CHECK-NEXT:      [[RES:%.+]] = linalg.generic {indexing_maps = [[[map]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[REDUCE]] : tensor<1x28x29xf16>) outs([[RES_EMPTY]] : tensor<1x28x29x1xf16>) {
-// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:        linalg.yield [[IN]] : f16
 // CHECK-NEXT:      } -> tensor<1x28x29x1xf16>
 // CHECK-NEXT:      IE.CGCYield [[RES]] : tensor<1x28x29x1xf16>
@@ -66,7 +66,7 @@ module @SameLayout {
     } -> tensor<1x28x29xf16>
     return %0 : tensor<1x28x29xf16>
 
-// CHECK:    IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
+// CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x28x29xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<1x28x29xf32>) -> tensor<1x28x29xf32>
@@ -113,7 +113,7 @@ module @DifferentLayout {
     } -> tensor<1x28x29xf16, {order = #NWH}>
     return %0 : tensor<1x28x29xf16, {order = #NWH}>
 
-// CHECK:    IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
+// CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x29x28xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<1x29x28xf32>) -> tensor<1x29x28xf32>
@@ -160,7 +160,7 @@ module @KeepDimsDifferentLayout {
     } -> tensor<1x1x28x29xf16, {order = #NWCH}>
     return %0 : tensor<1x1x28x29xf16, {order = #NWCH}>
 
-// CHECK:    IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
+// CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x28x29x3xf16>) {
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x29x28xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<1x29x28xf32>) -> tensor<1x29x28xf32>
@@ -207,7 +207,7 @@ module @DifferentLayoutMultipleAxis {
     } -> tensor<2x28xf16, {order = #WH}>
     return %0 : tensor<2x28xf16, {order = #WH}>
 
-// CHECK:    IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<2x28x29x3xf16>) {
+// CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x28x29x3xf16>) {
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<28x2xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<28x2xf32>) -> tensor<28x2xf32>
@@ -254,7 +254,7 @@ module @KeepDimsDifferentLayoutMultipleAxis {
     } -> tensor<2x1x28x1xf16, {order = #CNWH}>
     return %0 : tensor<2x1x28x1xf16, {order = #CNWH}>
 
-// CHECK:    IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<2x28x29x3xf16>) {
+// CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x28x29x3xf16>) {
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x28xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<2x28xf32>) -> tensor<2x28xf32>

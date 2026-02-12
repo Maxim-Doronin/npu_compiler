@@ -170,7 +170,7 @@ void LoopOutliner::createReturnOp(mlir::OpBuilder& funcBuilder, mlir::func::Func
         }
         funcOutputFromBody.push_back(oldToNewMap[output]);
     }
-    const auto returnLoc = appendLoc(netFunc.getLoc(), "_loop_body{0}_return", targetIdx + 1);
+    const auto returnLoc = appendLoc(netFunc.getLoc(), "loop_body{0}_return", targetIdx + 1);
     funcBuilder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromBody);
 }
 
@@ -185,7 +185,7 @@ void LoopOutliner::createCallOp(mlir::func::FuncOp netFunc, OpBuilderLogger& bui
         newInputs.push_back(input);
     }
 
-    const auto callLoc = appendLoc(netFunc.getLoc(), "_loop_body{0}_call", targetIdx + 1);
+    const auto callLoc = appendLoc(netFunc.getLoc(), "loop_body{0}_call", targetIdx + 1);
     auto newCall = callbuilder.create<mlir::func::CallOp>(callLoc, funcName, outputTypes, newInputs);
     for (const auto& [idx, res] : newCall.getResults() | indexed) {
         auto index = static_cast<int64_t>(idx);

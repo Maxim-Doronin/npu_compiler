@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2022-2023, Intel Corporation.
+ * Copyright (c) 2022-2024, Intel Corporation.
  */
 
 // clang-format off
@@ -41,6 +41,7 @@ typedef struct ALIGN_MEDIA(16) {
     uint64_t RDCycleCount : 32;
 } Media_HWPDescriptor_t;
 
+// Extended header structure for setting VPU5 CSC coefficients
 typedef struct {
     uint64_t Coeff11 : 16;
     uint64_t Coeff12 : 16;

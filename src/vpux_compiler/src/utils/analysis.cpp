@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -129,4 +130,36 @@ mlir::ModuleOp vpux::getModuleOp(mlir::OpBuilder& builder) {
 
     VPUX_THROW("No insertion point is set on a builder. Can't get a ModuleOp.");
     return nullptr;
+}
+
+//
+// findReturnOp
+//
+mlir::func::ReturnOp vpux::findReturnOp(mlir::func::FuncOp funcOp) {
+    return mlir::cast<mlir::func::ReturnOp>(funcOp.getBody().front().getTerminator());
+}
+
+//
+// searchOpConsumers
+//
+mlir::FailureOr<mlir::Operation*> vpux::searchOpConsumers(
+        mlir::Operation* op, const std::function<bool(mlir::Operation*)>& isTargetOpFound) {
+    if (op == nullptr) {
+        return mlir::failure();
+    }
+
+    for (auto user : op->getUsers()) {
+        mlir::Operation* operation = user;
+        while (operation) {
+            if (isTargetOpFound(operation)) {
+                return operation;
+            } else if (IE::isPureViewOp(operation) && operation->hasOneUse()) {
+                operation = *(operation->getUsers().begin());
+                continue;
+            } else {
+                break;
+            }
+        }
+    }
+    return mlir::failure();
 }

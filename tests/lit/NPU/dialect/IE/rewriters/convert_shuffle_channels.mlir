@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,10 +13,10 @@ func.func @ConvertShuffleChannels(%arg0: tensor<1x4x3x2xf16>) -> tensor<1x4x3x2x
 
   return %prob : tensor<1x4x3x2xf16>
 
-  //CHECK:              [[VAL0:%.*]] = IE.Reshape(%arg0)
+  //CHECK:              [[VAL0:%.+]] = IE.Reshape(%arg0)
   //CHECK-SAME{LITERAL}:                  {shape_value = [2, 2, 3, 2]} : tensor<1x4x3x2xf16> -> tensor<2x2x3x2xf16>
-  //CHECK:              [[VAL1:%.*]] = IE.Transpose([[VAL0]]) {order_value = #map} : tensor<2x2x3x2xf16> -> tensor<2x2x3x2xf16>
-  //CHECK:              [[VAL2:%.*]] = IE.Reshape([[VAL1]])
+  //CHECK:              [[VAL1:%.+]] = IE.Transpose([[VAL0]]) {order_value = #map} : tensor<2x2x3x2xf16> -> tensor<2x2x3x2xf16>
+  //CHECK:              [[VAL2:%.+]] = IE.Reshape([[VAL1]])
   //CHECK-SAME{LITERAL}:                  {shape_value = [1, 4, 3, 2]} : tensor<2x2x3x2xf16> -> tensor<1x4x3x2xf16>
   //CHECK:              return [[VAL2]]
 }

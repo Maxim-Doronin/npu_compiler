@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ func.func @SingleInputSingleOutputNonBatched(%arg0: tensor<1x3x62x62xf32>) -> te
 
     // CHECK: func.func @SingleInputSingleOutputNonBatched([[ARG0:%.+]]: tensor<1x3x62x62xf32>) -> tensor<1x48x60x60xf32> {
 
-    // CHECK: [[FUNC_0:%.*]] = call @SingleInputSingleOutputNonBatched_Batch1([[ARG0]]) :
+    // CHECK: [[FUNC_0:%.+]] = call @SingleInputSingleOutputNonBatched_Batch1([[ARG0]]) :
     // CHECK-SAME:  (tensor<1x3x62x62xf32>) -> tensor<1x48x60x60xf32>
 
     // CHECK: return [[FUNC_0]] : tensor<1x48x60x60xf32>
@@ -42,9 +42,9 @@ func.func @SingleInputSingleOutputDeBatchedTo1(%arg0: tensor<3x3x62x62xf32>) -> 
     %2 = builtin.unrealized_conversion_cast %1: tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
     return %2 : tensor<3x48x60x60xf32>
 
-    // CHECK: func.func @SingleInputSingleOutputDeBatchedTo1([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32> {
+    // CHECK: func.func @SingleInputSingleOutputDeBatchedTo1([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32>
     // CHECK: [[BEGIN:%.+]] = arith.constant 0 : index
-    // CHECK: [[END:%.+]] = tensor.dim [[ARG0]], [[ANY:%.*]] : tensor<3x3x62x62xf32>
+    // CHECK: [[END:%.+]] = tensor.dim [[ARG0]], [[ANY:%.+]] : tensor<3x3x62x62xf32>
     // CHECK: [[STEP:%.+]] = arith.constant 1 : index
     // CHECK: [[OUTPUT:%.+]] = tensor.empty() : tensor<3x48x60x60xf32>
     // CHECK: [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<3x48x60x60xf32>) {
@@ -76,9 +76,9 @@ func.func @MultipleInputSingleOutputDeBatched(%arg0: tensor<3x3x62x62xf32>, %arg
     %3 = builtin.unrealized_conversion_cast %2: tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
     return %3 : tensor<3x48x60x60xf32>
 
-    // CHECK: func.func @MultipleInputSingleOutputDeBatched([[ARG0:%.+]]: tensor<3x3x62x62xf32>, [[ARG1:%.+]]: tensor<3x48x60x60xf32>) -> tensor<3x48x60x60xf32> {
+    // CHECK: func.func @MultipleInputSingleOutputDeBatched([[ARG0:%.+]]: tensor<3x3x62x62xf32>, [[ARG1:%.+]]: tensor<3x48x60x60xf32>) -> tensor<3x48x60x60xf32>
     // CHECK:   [[BEGIN:%.+]] = arith.constant 0 : index
-    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.*]] : tensor<3x3x62x62xf32>
+    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<3x3x62x62xf32>
     // CHECK:   [[STEP:%.+]] = arith.constant 1 : index
     // CHECK:   [[OUTPUT:%.+]] = tensor.empty() : tensor<3x48x60x60xf32>
     // CHECK:   [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to [[END]] step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<3x48x60x60xf32>) {
@@ -110,9 +110,9 @@ func.func @SingleInputMultipleOutputDeBatched(%arg0: tensor<3x3x62x62xf32>) -> (
     return %2, %3 : tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>
 
 
-    // CHECK: func.func @SingleInputMultipleOutputDeBatched([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> (tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>) {
+    // CHECK: func.func @SingleInputMultipleOutputDeBatched([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> (tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>)
     // CHECK:   [[BEGIN:%.+]] = arith.constant 0 : index
-    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.*]] : tensor<3x3x62x62xf32>
+    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<3x3x62x62xf32>
     // CHECK:   [[STEP:%.+]] = arith.constant 1 : index
     // CHECK:   [[OUTPUT_0:%.+]] = tensor.empty() : tensor<3x48x60x60xf32>
     // CHECK:   [[OUTPUT_1:%.+]] = tensor.empty() : tensor<3x48x60x60xf32>
@@ -141,9 +141,9 @@ func.func @SingleInputSingleOutputDeBatchedTo2(%arg0: tensor<6x3x62x62xf32>) -> 
     %2 = builtin.unrealized_conversion_cast %1: tensor<2x48x60x60xf32> to tensor<6x48x60x60xf32>
     return %2 : tensor<6x48x60x60xf32>
 
-    // CHECK: func.func @SingleInputSingleOutputDeBatchedTo2([[ARG0:%.+]]: tensor<6x3x62x62xf32>) -> tensor<6x48x60x60xf32> {
+    // CHECK: func.func @SingleInputSingleOutputDeBatchedTo2([[ARG0:%.+]]: tensor<6x3x62x62xf32>) -> tensor<6x48x60x60xf32>
     // CHECK:   [[BEGIN:%.+]] = arith.constant 0 : index
-    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.*]] : tensor<6x3x62x62xf32>
+    // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<6x3x62x62xf32>
     // CHECK:   [[STEP:%.+]] = arith.constant 2 : index
     // CHECK:   [[OUTPUT:%.+]] = tensor.empty() : tensor<6x48x60x60xf32>
     // CHECK:   [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<6x48x60x60xf32>) {

@@ -52,6 +52,8 @@ StringLiteral vpux::stringifyEnum(WorkloadManagementBarrierProgrammingMode val) 
         return "INITIAL_BARRIER_DMAS_SCHEDULED";
     case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED:
         return "ALL_BARRIER_DMAS_SCHEDULED";
+    case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K:
+        return "ALL_BARRIER_DMAS_SCHEDULED_4K";
     default:
         return "UNKNOWN";
     }
@@ -85,6 +87,8 @@ StringLiteral vpux::stringifyEnum(WorkloadManagementMode val) {
     switch (val) {
     case WorkloadManagementMode::PWLM_V0_LCA:
         return "PWLM_V0_LCA";
+    case WorkloadManagementMode::PWLM_V0_1_PAGES:
+        return "PWLM_V0_1_PAGES";
     case WorkloadManagementMode::PWLM_V1_BARRIER_FIFO:
         return "PWLM_V1_BARRIER_FIFO";
     case WorkloadManagementMode::PWLM_V2_PAGES:

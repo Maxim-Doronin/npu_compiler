@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,6 +36,8 @@ struct BuiltinsCache {
     mlir::func::FuncOp tanhLibcallF32 = nullptr;
     mlir::func::FuncOp atanIntrinsicF16 = nullptr;
     mlir::func::FuncOp atanLibcallF32 = nullptr;
+    mlir::func::FuncOp asinhLibcallF32 = nullptr;
+    mlir::func::FuncOp acoshLibcallF32 = nullptr;
 };
 
 //
@@ -204,6 +206,115 @@ private:
     BuiltinsCache& bCache;
 };
 
+class AsinhOpLowering : public mlir::OpRewritePattern<mlir::math::AsinhOp> {
+public:
+    AsinhOpLowering(mlir::MLIRContext* context, BuiltinsCache& bCache)
+            : mlir::OpRewritePattern<mlir::math::AsinhOp>(context), bCache(bCache) {
+    }
+
+    mlir::LogicalResult matchAndRewrite(mlir::math::AsinhOp op, mlir::PatternRewriter& rewriter) const final {
+        if (mlir::dyn_cast<mlir::VectorType>(op.getType()) || mlir::dyn_cast<mlir::TensorType>(op.getType())) {
+            return rewriter.notifyMatchFailure(op, "non-scalar operations are not supported");
+        }
+        auto elementType = op.getResult().getType();
+        auto swModule = op->getParentOfType<mlir::ModuleOp>();
+        if (!elementType.isF32()) {
+            return mlir::failure();
+        }
+
+        mlir::func::FuncOp funcOp = getAsinh(elementType, swModule);
+
+        if (!funcOp) {
+            return rewriter.notifyMatchFailure(op, "unsupported element type");
+        }
+        rewriter.replaceOpWithNewOp<mlir::func::CallOp>(op, funcOp, op.getOperand());
+        return mlir::success();
+    }
+
+private:
+    mlir::func::FuncOp getAsinhFunc(mlir::Type elementType, mlir::ModuleOp swModule) const {
+        constexpr StringRef f32Name = "asinhf";
+
+        mlir::OpBuilder builder(getContext());
+        builder.setInsertionPointToEnd(&swModule->getRegion(0).front());
+        StringRef funcName = f32Name;
+        mlir::FunctionType funcType = mlir::FunctionType::get(builder.getContext(), {elementType}, elementType);
+        auto funcOp = builder.create<mlir::func::FuncOp>(swModule.getLoc(), funcName, funcType,
+                                                         mlir::StringAttr::get(builder.getContext(), "private"),
+                                                         nullptr, nullptr);
+        funcOp->setAttr(ShaveCodeGen::IntrinsicAttrName, mlir::UnitAttr::get(builder.getContext()));
+        return funcOp;
+    }
+
+    mlir::func::FuncOp getAsinh(mlir::Type elementType, mlir::ModuleOp swModule) const {
+        if (elementType.isF32()) {
+            if (bCache.asinhLibcallF32 != nullptr) {
+                return bCache.asinhLibcallF32;
+            }
+            bCache.asinhLibcallF32 = getAsinhFunc(elementType, swModule);
+            return bCache.asinhLibcallF32;
+        }
+
+        return nullptr;
+    }
+
+    BuiltinsCache& bCache;
+};
+
+class AcoshOpLowering : public mlir::OpRewritePattern<mlir::math::AcoshOp> {
+public:
+    AcoshOpLowering(mlir::MLIRContext* context, BuiltinsCache& bCache)
+            : mlir::OpRewritePattern<mlir::math::AcoshOp>(context), bCache(bCache) {
+    }
+
+    mlir::LogicalResult matchAndRewrite(mlir::math::AcoshOp op, mlir::PatternRewriter& rewriter) const final {
+        if (mlir::dyn_cast<mlir::VectorType>(op.getType()) || mlir::dyn_cast<mlir::TensorType>(op.getType())) {
+            return rewriter.notifyMatchFailure(op, "non-scalar operations are not supported");
+        }
+        auto elementType = op.getResult().getType();
+        auto swModule = op->getParentOfType<mlir::ModuleOp>();
+        if (!elementType.isF32()) {
+            return mlir::failure();
+        }
+        mlir::func::FuncOp funcOp = getAcosh(elementType, swModule);
+
+        if (!funcOp) {
+            return rewriter.notifyMatchFailure(op, "unsupported element type");
+        }
+        rewriter.replaceOpWithNewOp<mlir::func::CallOp>(op, funcOp, op.getOperand());
+        return mlir::success();
+    }
+
+private:
+    mlir::func::FuncOp getAcoshFunc(mlir::Type elementType, mlir::ModuleOp swModule) const {
+        constexpr StringRef f32Name = "acoshf";
+
+        mlir::OpBuilder builder(getContext());
+        builder.setInsertionPointToEnd(&swModule->getRegion(0).front());
+        StringRef funcName = f32Name;
+        mlir::FunctionType funcType = mlir::FunctionType::get(builder.getContext(), {elementType}, elementType);
+        auto funcOp = builder.create<mlir::func::FuncOp>(swModule.getLoc(), funcName, funcType,
+                                                         mlir::StringAttr::get(builder.getContext(), "private"),
+                                                         nullptr, nullptr);
+        funcOp->setAttr(ShaveCodeGen::IntrinsicAttrName, mlir::UnitAttr::get(builder.getContext()));
+        return funcOp;
+    }
+
+    mlir::func::FuncOp getAcosh(mlir::Type elementType, mlir::ModuleOp swModule) const {
+        if (elementType.isF32()) {
+            if (bCache.acoshLibcallF32 != nullptr) {
+                return bCache.acoshLibcallF32;
+            }
+            bCache.acoshLibcallF32 = getAcoshFunc(elementType, swModule);
+            return bCache.acoshLibcallF32;
+        }
+
+        return nullptr;
+    }
+
+    BuiltinsCache& bCache;
+};
+
 void LowerMathToShaveIntrinsicsPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto _swModule = VPUIP::getVPUSWModule(moduleOp, _log);
@@ -214,6 +325,8 @@ void LowerMathToShaveIntrinsicsPass::safeRunOnModule() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<TanhOpLowering>(&ctx, bCache);
     patterns.add<AtanOpLowering>(&ctx, bCache);
+    patterns.add<AsinhOpLowering>(&ctx, bCache);
+    patterns.add<AcoshOpLowering>(&ctx, bCache);
 
     if (mlir::failed(mlir::applyPatternsGreedily(_swModule, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

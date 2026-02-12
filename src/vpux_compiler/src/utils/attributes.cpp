@@ -27,4 +27,14 @@ mlir::StringRef getResourceName(mlir::ElementsAttr attr) {
     return {};
 }
 
+int64_t getPositiveAxisInd(mlir::IntegerAttr axisIndAttr, int64_t rank) {
+    auto axis = axisIndAttr.getValue().getSExtValue();
+
+    if (axis < 0) {
+        axis += rank;
+    }
+
+    return axis;
+}
+
 }  // namespace vpux

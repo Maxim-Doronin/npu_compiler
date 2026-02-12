@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/Transforms/WalkPatternRewriteDriver.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
@@ -429,20 +431,64 @@ mlir::LogicalResult SliceConcatRewriter::matchAndRewrite(IE::SliceOp origOp, mli
         }
     }
 
-    auto newConcatResult = rewriter.createOrFold<IE::ConcatOp>(takeOpLoc(origOp, "_concat"),
+    auto newConcatResult = rewriter.createOrFold<IE::ConcatOp>(takeOpLoc(origOp, "concat"),
                                                                mlir::ValueRange(concatInput), concatAxis.value());
     auto newConcat = newConcatResult.getDefiningOp<IE::ConcatOp>();
     if (newConcat != nullptr) {
         for (auto operand : newConcat->getOperands()) {
             auto parentOp = operand.getDefiningOp();
             if (parentOp && newConcat->isBeforeInBlock(parentOp)) {
-                parentOp->moveAfter(parentOp);
+                newConcat->moveAfter(parentOp);
             }
         }
     }
 
     rewriter.replaceOp(concatOp, newConcatResult);
     _log.trace("Optimize slice and concat operations successfully");
+    return mlir::success();
+}
+
+//
+// RMSSliceRewriter
+//
+
+class RMSSliceRewriter final : public mlir::OpRewritePattern<IE::SliceOp> {
+public:
+    RMSSliceRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::SliceOp>(ctx), _log(log) {
+        setDebugName("RMSSliceRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::SliceOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult RMSSliceRewriter::matchAndRewrite(IE::SliceOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Rewrite RMS Slice operation '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    auto rmsOp = origOp.getSource().getDefiningOp<IE::RMSOp>();
+    if (rmsOp == nullptr || !rmsOp->hasOneUse()) {
+        return matchFailed(rewriter, origOp, "The parent operation is not RMSOp with one user");
+    }
+
+    const auto rmsInputShape = getShape(rmsOp.getInput());
+    const auto sliceOffsets = parseIntArrayAttr<int64_t>(origOp.getStaticOffsets());
+    const auto sliceSizes = parseIntArrayAttr<int64_t>(origOp.getStaticSizes());
+    const auto normDim = rmsInputShape.size() - 1;
+    if (sliceOffsets[normDim] != 0 || sliceSizes[normDim] != rmsInputShape[Dim(normDim)]) {
+        return matchFailed(rewriter, origOp, "Slice affects normalization dimension");
+    }
+
+    // Propagate Slice before RMS
+    auto inputSliceOp = rewriter.create<IE::SliceOp>(origOp.getLoc(), rmsOp.getInput(), origOp.getStaticOffsetsAttr(),
+                                                     origOp.getStaticSizesAttr());
+
+    auto newRMSOp =
+            rewriter.create<IE::RMSOp>(rmsOp.getLoc(), inputSliceOp.getResult(), rmsOp.getGamma(), rmsOp.getEpsAttr());
+
+    rewriter.replaceOp(origOp, newRMSOp.getResult());
+    _log.trace("Optimize RMS and Slice operations successfully");
     return mlir::success();
 }
 
@@ -467,6 +513,7 @@ void OptimizeOpSlicePass::safeRunOnFunc() {
         mlir::RewritePatternSet patterns(&ctx);
         patterns.insert<ConcatSliceRewriter>(&ctx, _log);
         patterns.insert<TileSliceRewriter>(&ctx, _log);
+        patterns.insert<RMSSliceRewriter>(&ctx, _log);
 
         collectOpsAndApplyPatterns(func, std::move(patterns));
     }

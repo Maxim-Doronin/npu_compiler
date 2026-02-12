@@ -100,23 +100,28 @@ public:
         ctx.appendDialectRegistry(registry);
         ctx.loadDialect<Const::ConstDialect, mlir::func::FuncDialect, VPU::VPUDialect, mlir::tensor::TensorDialect>();
         builder = std::make_unique<mlir::OpBuilder>(&ctx);
+        module = builder->create<mlir::ModuleOp>(builder->getUnknownLoc());
     }
 
     MLIR_VPUTypeInferenceTest(const MLIR_VPUTypeInferenceTest&) = delete;
     MLIR_VPUTypeInferenceTest& operator=(const MLIR_VPUTypeInferenceTest&) = delete;
 
     mlir::OwningOpRef<mlir::tensor::EmptyOp> createOperand(const TypeInfo& typeInfo) {
+        // Create operations inside module body
+        mlir::OpBuilder moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
+
         SmallVector<mlir::Value> dynValues;
         for (auto dim : typeInfo.shape | indexed) {
             if (dim.value() == mlir::ShapedType::kDynamic) {
-                auto dyn = builder->create<mlir::arith::ConstantOp>(builder->getUnknownLoc(), builder->getIndexType(),
-                                                                    builder->getIndexAttr(dim.index()));
+                auto dyn = moduleBuilder.create<mlir::arith::ConstantOp>(moduleBuilder.getUnknownLoc(),
+                                                                         moduleBuilder.getIndexType(),
+                                                                         moduleBuilder.getIndexAttr(dim.index()));
                 dynValues.push_back(dyn);
             }
         }
-        return builder->create<mlir::tensor::EmptyOp>(builder->getUnknownLoc(), typeInfo.shape,
-                                                      getElemType(typeInfo.elemType), dynValues,
-                                                      getTensorAttr(&ctx, typeInfo.order, nullptr));
+        return moduleBuilder.create<mlir::tensor::EmptyOp>(moduleBuilder.getUnknownLoc(), typeInfo.shape,
+                                                           getElemType(typeInfo.elemType), dynValues,
+                                                           getTensorAttr(&ctx, typeInfo.order, nullptr));
     }
 
     mlir::Type getElemType(ElemType elemType) {
@@ -142,6 +147,7 @@ public:
 public:
     mlir::MLIRContext ctx;
     std::unique_ptr<mlir::OpBuilder> builder;
+    mlir::OwningOpRef<mlir::ModuleOp> module;
 };
 
 class MLIR_VPUTypeInferenceUtilsTest : public MLIR_VPUTypeInferenceTest {};

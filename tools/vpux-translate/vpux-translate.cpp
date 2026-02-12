@@ -3,17 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/export.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
+#include "vpux/compiler/dialect/ELF/IR/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/import.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/dialect/config/constraints_initializer.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/hw_strategy_registry.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 #include "vpux/compiler/tools/options.hpp"
+#include "vpux/utils/core/range.hpp"
 
 #include "vpux/utils/core/format.hpp"
 
@@ -285,12 +286,17 @@ int main(int argc, char* argv[]) {
         // however, it would be a better option to extract arch info from module for the export
         const auto arch = vpux::parseArchKind(argc, argv);
         auto dialectRegistration = [&](mlir::DialectRegistry& registry) {
+            if (!arch.has_value()) {
+                return;
+            }
+
             registry = vpux::createDialectRegistry(vpux::DummyOpMode::ENABLED);
 
-            auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
+            auto interfacesRegistry = vpux::createInterfacesRegistry(arch.value());
             interfacesRegistry->registerInterfaces(registry);
 
-            vpux::config::registerConstraints(registry, arch);
+            vpux::config::registerConstraints(registry, arch.value());
+            vpux::IE::registerStrategies(registry, arch.value());
         };
         mlir::TranslateToMLIRRegistration("import-IE", "Translate OV IR to IE dialect", importIE, dialectRegistration);
         mlir::TranslateToMLIRRegistration("import-ELF", "Translate blob to ELF dialect", importELF,

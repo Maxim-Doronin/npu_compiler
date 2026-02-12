@@ -222,72 +222,72 @@ func.func @DmaGraphs() -> (!type_CMX, !type_CMX, !type_CMX, !type_CMX, !type_CMX
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf14 : !type_DDR) outputs(%buf0 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf14 : !type_DDR) outputs(%buf0 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf15 : !type_DDR) outputs(%buf2 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf15 : !type_DDR) outputs(%buf2 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task updates(%bar1 : !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf16 : !type_DDR) outputs(%buf4 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf16 : !type_DDR) outputs(%buf4 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf17 : !type_DDR) outputs(%buf6 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf17 : !type_DDR) outputs(%buf6 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task updates(%bar2 : !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf18 : !type_DDR) outputs(%buf8 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf18 : !type_DDR) outputs(%buf8 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf19 : !type_DDR) outputs(%buf10 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf19 : !type_DDR) outputs(%buf10 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task updates(%bar3 : !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf20 : !type_DDR) outputs(%buf12 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf20 : !type_DDR) outputs(%buf12 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf0 : !type_CMX) outputs(%buf1 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0 : !type_CMX) outputs(%buf1 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task waits(%bar1 : !VPURT.Barrier) wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf2 : !type_CMX) outputs(%buf3 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf2 : !type_CMX) outputs(%buf3 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task wlmPage(0)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf4 : !type_CMX) outputs(%buf5 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf4 : !type_CMX) outputs(%buf5 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task waits(%bar2 : !VPURT.Barrier) wlmPage(1)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf6 : !type_CMX) outputs(%buf7 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf6 : !type_CMX) outputs(%buf7 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task wlmPage(1)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf8 : !type_CMX) outputs(%buf9 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf8 : !type_CMX) outputs(%buf9 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task waits(%bar3 : !VPURT.Barrier) wlmPage(2)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf10 : !type_CMX) outputs(%buf11 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf10 : !type_CMX) outputs(%buf11 : !type_CMX) -> !type_CMX
     }
 
     VPURT.Task updates(%bar4: !VPURT.Barrier) wlmPage(2)
     {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%buf12 : !type_CMX) outputs(%buf13 : !type_CMX) -> !type_CMX
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf12 : !type_CMX) outputs(%buf13 : !type_CMX) -> !type_CMX
     }
 
     return %buf1, %buf3, %buf5, %buf7, %buf9, %buf11, %buf13 : !type_CMX, !type_CMX, !type_CMX, !type_CMX, !type_CMX, !type_CMX, !type_CMX

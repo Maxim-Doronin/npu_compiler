@@ -34,11 +34,11 @@ private:
         size_t opIdx_;
         size_t cycleBegin_;
         size_t cycleCost_;
-        VPU::ExecutorKind executorKind_;
+        config::ExecutorKind executorKind_;
 
         CycleInfo() = default;
         CycleInfo(size_t opIdx, size_t cycleBegin, size_t cycleCost,
-                  VPU::ExecutorKind executorKind = VPU::ExecutorKind::DMA_NN)
+                  config::ExecutorKind executorKind = config::ExecutorKind::DMA_NN)
                 : opIdx_(opIdx), cycleBegin_(cycleBegin), cycleCost_(cycleCost), executorKind_(executorKind) {};
 
         size_t getOpIdx() const {
@@ -57,7 +57,7 @@ private:
             return cycleBegin_ + cycleCost_;
         }
 
-        VPU::ExecutorKind getExecutorKind() const {
+        config::ExecutorKind getExecutorKind() const {
             return executorKind_;
         }
     };
@@ -74,12 +74,12 @@ private:
     // pipeline utilities
     bool prefetchPipelineStallsExist();
     void reducePrefetchPipelineStalls(size_t targetRollback);
-    size_t getNextFreePipelineCycle(VPU::ExecutorKind executorKind, bool prefetchFIFO = false);
+    size_t getNextFreePipelineCycle(config::ExecutorKind executorKind, bool prefetchFIFO = false);
     void updatePrefetchPipeline(size_t fromCycle, size_t toCycle, size_t adjustCycles);
 
     // 1) prefetch mode DMA scheduling
     // actually schedule op
-    CycleInfo scheduleOp(size_t opIdx, size_t cycleBegin, size_t cycleCost, VPU::ExecutorKind executorKind,
+    CycleInfo scheduleOp(size_t opIdx, size_t cycleBegin, size_t cycleCost, config::ExecutorKind executorKind,
                          bool prefetchFIFO = false);
     // schedule prefetch DMAs during optimal cycles in prefetch pipeline
     void schedulePrefetchDMA(size_t opIdx, size_t optimalCycleEnd);
@@ -91,9 +91,9 @@ private:
     void prefetchDataOps(size_t dmaTargetEndCycle);
 
     // schedule dependencies, free DMAs in prefetch pipeline, DMAs with dependencies in DMA pipeline
-    size_t scheduleDependenciesForCompute(size_t opIdx, VPU::ExecutorKind executorKind);
+    size_t scheduleDependenciesForCompute(size_t opIdx, config::ExecutorKind executorKind);
     // schedule dependencies for compute and the compute during earliest cycle
-    void scheduleComputeOperation(size_t opIdx, VPU::ExecutorKind executorKind);
+    void scheduleComputeOperation(size_t opIdx, config::ExecutorKind executorKind);
     // perform scheduling compute ops, also schedule dependencies
     // two modes: 1) prefetch and 2) definedDMAOrder
     void performCycleScheduling();
@@ -134,7 +134,7 @@ private:
     SmallVector<CycleInfo> _prefetchPipeline;
     SmallVector<CycleInfo> _prefetchPipelineStalls;
     mlir::DenseMap<size_t, CycleInfo> _operationCycles;
-    mlir::DenseMap<VPU::ExecutorKind, SmallVector<CycleInfo>> _executorPipelineCycles;
+    mlir::DenseMap<config::ExecutorKind, SmallVector<CycleInfo>> _executorPipelineCycles;
 };
 
 }  // namespace vpux

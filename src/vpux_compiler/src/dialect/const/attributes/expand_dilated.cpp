@@ -137,6 +137,5 @@ Const::Content vpux::Const::ExpandDilatedAttr::transform(vpux::Const::Content& i
 //
 
 llvm::hash_code vpux::Const::ExpandDilatedAttr::getStableHashValue() const {
-    const auto dilations = parseIntArrayAttr<int64_t>(getDilations());
-    return llvm::hash_combine(getMnemonic(), llvm::hash_combine_range(dilations.begin(), dilations.end()));
+    VPUX_THROW("Not implemented. It requires an equivalent representation in IE dialect.");
 }

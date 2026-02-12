@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,6 +60,9 @@ VPUNN::ISIStrategy getISIStrategyForType(TensorType type, unsigned int& outputWr
     if (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED)) {
         outputWriteTiles = numClusters;
         return VPUNN::ISIStrategy::SPLIT_OVER_K;
+    }
+    if (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+        return VPUNN::ISIStrategy::SPLIT_OVER_K_nxtHW;
     }
     return VPUNN::ISIStrategy::CLUSTERING;
 }

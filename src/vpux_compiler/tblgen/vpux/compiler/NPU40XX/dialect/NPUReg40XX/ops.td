@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,7 @@ include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.td"
 include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/types.td"
 include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/ops_interfaces.td"
 include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/attributes.td"
-include "vpux/compiler/NPU40XX/dialect/ELF/ops_interfaces.td"
+include "vpux/compiler/dialect/ELF/ops_interfaces.td"
 include "vpux/compiler/dialect/VPURegMapped/attributes.td"
 include "vpux/compiler/dialect/VPURegMapped/types.td"
 include "vpux/compiler/dialect/VPURegMapped/ops_interfaces.td"
@@ -84,6 +84,7 @@ def NPUReg40XX_NNDMAOp :
         NPUReg40XX_ExecutableTaskOpWithProperties<"NNDMA",
             [
                 DeclareOpInterfaceMethods<ELF_RelocatableOpInterface>,
+                DeclareOpInterfaceMethods<ELF_RelocatableOpWithDynamicStridesInterface>,
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 Symbol,
                 IsolatedFromAbove,
@@ -367,10 +368,10 @@ def NPUReg40XX_DPUInvariantOp :
         OptionalAttr<SymbolRefAttr>:$output,
         OptionalAttr<SymbolRefAttr>:$output_sparsity_map,
         OptionalAttr<SymbolRefAttr>:$profiling_data,
-        UnitAttr:$is_zero_offset_weights_table,
+        UnitProp:$is_zero_offset_weights_table,
 
         VPUIP_NCETaskTypeAttr:$nce_task_type,
-        UnitAttr:$is_continued
+        UnitProp:$is_continued
     );
 
     let skipDefaultBuilders = 1;
@@ -390,9 +391,9 @@ def NPUReg40XX_DPUInvariantOp :
             "mlir::SymbolRefAttr":$output,
             "mlir::SymbolRefAttr":$output_sparsity_map,
             "mlir::SymbolRefAttr":$profiling_data,
-            "mlir::UnitAttr":$is_zero_offset_weights_table,
+            "bool":$is_zero_offset_weights_table,
             "VPUIP::NCETaskTypeAttr":$nce_task_type,
-            "mlir::UnitAttr":$is_continued
+            "bool":$is_continued
         )>
     ];
 }
@@ -465,7 +466,7 @@ def NPUReg40XX_NNrtConfigOp :
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,
-        UnitAttr:$isActKernelInvocations,
+        UnitProp:$isActKernelInvocations,
         OptionalAttr<SymbolRefAttr>:$actShaveRt,
         OptionalAttr<SymbolRefArrayAttr>:$actShaveStacks,
         OptionalAttr<SymbolRefAttr>:$dmaHwpBase,
@@ -477,7 +478,7 @@ def NPUReg40XX_NNrtConfigOp :
     let builders = [
         OpBuilder<(ins
             "mlir::StringAttr":$sym_name,
-            "mlir::UnitAttr":$isActKernelInvocations,
+            "bool":$isActKernelInvocations,
             "mlir::SymbolRefAttr":$actShaveRt,
             "mlir::ArrayAttr":$actShaveStacks,
             "mlir::SymbolRefAttr":$dmaHwpBase,
@@ -485,6 +486,10 @@ def NPUReg40XX_NNrtConfigOp :
             "vpux::NPUReg40XX::Descriptors::VpuNNRTConfig&&":$descriptor
         )>
     ];
+    let assemblyFormat = [{
+        attr-dict
+        prop-dict
+    }];
 }
 
 //
@@ -574,7 +579,7 @@ def NPUReg40XX_WorkItemOp :
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 DeclareOpInterfaceMethods<VPURegMapped_NPURegDescriptorOpInterface>
             ],
-            "WorkItenDescriptorProp",
+            "WorkItemDescriptorProp",
             "vpux::NPUReg40XX::Descriptors::WorkItem"
         > {
     let summary = "A task to configure the work item";
@@ -583,7 +588,7 @@ def NPUReg40XX_WorkItemOp :
         SymbolNameAttr:$sym_name,
         VPURegMapped_TaskTypeAttr:$task_type,
         SymbolRefAttr:$first_task,
-        WorkItenDescriptorProp:$descriptor
+        WorkItemDescriptorProp:$descriptor
     );
 
     let skipDefaultBuilders = 1;

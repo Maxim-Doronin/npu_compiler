@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,8 +9,8 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 using namespace vpux;
@@ -34,7 +34,7 @@ void VPU::TopKOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsSt
                         IE::TopKSortTypeAttr sort, mlir::TypeAttr elementType,
                         VPU::MultiClusterStrategyAttr multiClusterStrategy) {
     const auto auxBuffType = getAuxiliaryBufferType(input, axis);
-    auto auxBuffer = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
+    auto auxBuffer = VPU::createEmptyAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
     build(odsBuilder, odsState, input, k, auxBuffer, kValue, axis, mode, sort, elementType, multiClusterStrategy);
 }
 
@@ -52,7 +52,7 @@ mlir::LogicalResult vpux::VPU::TopKOp::inferReturnTypes(mlir::MLIRContext* ctx, 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(topK.getInput().getType());
     const auto inputShape = inType.getShape().raw();
 
-    const auto kValue = getConstOrAttrValue(topK.getK(), topK.getKValueAttr());
+    const auto kValue = Const::getConstOrAttrValue(topK.getK(), topK.getKValueAttr());
 
     if (mlir::failed(kValue)) {
         return mlir::failure();
@@ -134,9 +134,13 @@ mlir::FailureOr<OutputTiling> vpux::VPU::TopKOp::getTilingStrategy(TilingMode ti
         return tilingInfo.isSupportedTiling(tiles.value(), tilingMode, log);
     };
 
-    while (!isSupportedTileSize(nTilesOnDim, tilingMode)) {
-        VPUX_THROW_WHEN(tileDim >= static_cast<int>(outputShape.size()), "Failed to tile {0} at '{1}'",
-                        baseOp->getName(), baseOp->getLoc());
+    bool isSupportedTiling = false;
+
+    while (tileDim < static_cast<int>(outputShape.size())) {
+        isSupportedTiling = isSupportedTileSize(nTilesOnDim, tilingMode);
+        if (isSupportedTiling) {
+            break;
+        }
 
         if (tileDim == axis) {
             ++tileDim;
@@ -147,6 +151,10 @@ mlir::FailureOr<OutputTiling> vpux::VPU::TopKOp::getTilingStrategy(TilingMode ti
                 ++nTilesOnDim[Dim(tileDim)];
             }
         }
+    }
+
+    if (!isSupportedTiling) {
+        return mlir::failure();
     }
 
     log.trace("Isolated tiling strategy: {0}", nTilesOnDim);
@@ -194,7 +202,8 @@ bool vpux::VPU::TopKOp::checkStrategyCompatibility(VPU::MultiClusterStrategy str
 vpux::VPU::DistributionInfo vpux::VPU::TopKOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -232,6 +241,6 @@ llvm::LogicalResult VPU::TopKOp::verify() {
     return VPU::compareTypes(getOperation()->getLoc(), auxBufferType, expectedType);
 }
 
-SmallVector<mlir::Value> VPU::TopKOp::getAuxiliaryBuffers() {
-    return {getLineBuffer()};
+SmallVector<mlir::OpOperand*> VPU::TopKOp::getAuxiliaryBuffers() {
+    return {&getLineBufferMutable()};
 }

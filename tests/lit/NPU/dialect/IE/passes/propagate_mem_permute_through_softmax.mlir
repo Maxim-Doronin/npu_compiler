@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,8 +17,8 @@ func.func @PropagateMemPermuteThroughSoftmaxWithAxis3(%arg0: tensor<1x4620x4x16x
     return %2 : tensor<1x16x4x4620xf16, {order = #NHWC}>
 
     // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}>
-    // CHECK:               [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x4620x4x16xf16, {order = #NHWC}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
-    // CHECK:               [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4x4620xf16, {order = #NHWC}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
+    // CHECK:               [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x4620x4x16xf16, {order = #NHWC}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
+    // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4x4620xf16, {order = #NHWC}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
     // CHECK:   [[CONV:%.+]] = IE.Convolution([[SOFTMAX]], [[CST]])
 
     // CHECK:               return [[CONV]] : tensor<1x16x4x4620xf16, {order = #NHWC}>
@@ -36,8 +36,8 @@ func.func @PropagateMemPermuteThroughSoftmaxAxis3PermutationNWCH(%arg0: tensor<1
     %1 = IE.MemPermute(%0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x8x1x448xf16, {order = #NHWC}> -> tensor<1x8x1x448xf16>
     return %1 : tensor<1x8x1x448xf16>
 
-    // CHECK:               [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x8x1x448xf16, {order = #NHWC}> -> tensor<1x8x1x448xf16>
-    // CHECK:               [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 3 : i64} : tensor<1x8x1x448xf16> -> tensor<1x8x1x448xf16>
+    // CHECK:               [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x8x1x448xf16, {order = #NHWC}> -> tensor<1x8x1x448xf16>
+    // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 3 : i64} : tensor<1x8x1x448xf16> -> tensor<1x8x1x448xf16>
 
     // CHECK:               return [[SOFTMAX]] : tensor<1x8x1x448xf16>
 }
@@ -56,8 +56,8 @@ func.func @PropagateMemPermuteThroughSoftmaxWithAxis1(%arg0: tensor<1x16x4x4620x
     return %2 : tensor<1x16x4x4620xf16, {order = #NHWC}>
 
     // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}>
-    // CHECK:               [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x16x4x4620xf16, {order = #NHCW}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
-    // CHECK:               [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4x4620xf16, {order = #NHWC}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
+    // CHECK:               [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x16x4x4620xf16, {order = #NHCW}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
+    // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4x4620xf16, {order = #NHWC}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
     // CHECK:   [[CONV:%.+]] = IE.Convolution([[SOFTMAX]], [[CST]])
 
     // CHECK:               return [[CONV]] : tensor<1x16x4x4620xf16, {order = #NHWC}>
@@ -77,8 +77,8 @@ func.func @DoNotPropagateMemPermuteThroughSoftmax(%arg0: tensor<1x16x4x4620xf16,
     return %2 : tensor<1x16x4x4620xf16, {order = #NHWC}>
 
     // CHECK-DAG:           [[CST:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}>
-    // CHECK:               [[SOFTMAX:%.*]] = IE.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<1x16x4x4620xf16, {order = #NHCW}> -> tensor<1x16x4x4620xf16, {order = #NHCW}>
-    // CHECK:               [[MEMPERMUTE:%.*]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x16x4x4620xf16, {order = #NHCW}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
+    // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<1x16x4x4620xf16, {order = #NHCW}> -> tensor<1x16x4x4620xf16, {order = #NHCW}>
+    // CHECK:               [[MEMPERMUTE:%.+]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x16x4x4620xf16, {order = #NHCW}> -> tensor<1x16x4x4620xf16, {order = #NHWC}>
     // CHECK:   [[CONV:%.+]] = IE.Convolution([[MEMPERMUTE]], [[CST]])
 
     // CHECK:               return [[CONV]] : tensor<1x16x4x4620xf16, {order = #NHWC}>
@@ -95,8 +95,8 @@ func.func @PropagateMemPermuteThroughSoftmaxWithAxis1PermutationNHWC(%arg0: tens
   %1 = IE.MemPermute(%0) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x16x4620x4xf16> -> tensor<1x4620x4x16xf16>
   return %1 : tensor<1x4620x4x16xf16>
 
-    // CHECK:        [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x16x4620x4xf16> -> tensor<1x4620x4x16xf16>
-    // CHECK:        [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 3 : i64} : tensor<1x4620x4x16xf16> -> tensor<1x4620x4x16xf16>
+    // CHECK:        [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x16x4620x4xf16> -> tensor<1x4620x4x16xf16>
+    // CHECK:        [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 3 : i64} : tensor<1x4620x4x16xf16> -> tensor<1x4620x4x16xf16>
 
     // CHECK:         return [[SOFTMAX]] : tensor<1x4620x4x16xf16>
 }
@@ -112,9 +112,9 @@ func.func @InsertMemPermuteBeforeAndAfterSoftmaxNCHW(%arg0: tensor<1x16x4620x4xf
   %0 = IE.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x16x4620x4xf16> -> tensor<1x16x4620x4xf16>
   return %0 : tensor<1x16x4620x4xf16>
 
-    // CHECK:        [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x16x4620x4xf16> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
-    // CHECK:        [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
-    // CHECK:        [[MEMPERMUTE_RESULT:%.*]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16>
+    // CHECK:        [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x16x4620x4xf16> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
+    // CHECK:        [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
+    // CHECK:        [[MEMPERMUTE_RESULT:%.+]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16>
     // CHECK:         return [[MEMPERMUTE_RESULT]] : tensor<1x16x4620x4xf16>
 }
 
@@ -130,9 +130,9 @@ func.func @InsertMemPermuteBeforeAndAfterSoftmaxNHWC(%arg0: tensor<1x16x4620x4xf
   %0 = IE.SoftMax(%arg0) {axisInd = 2 : i64} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
   return %0 : tensor<1x16x4620x4xf16, {order = #NHWC}>
 
-    // CHECK:        [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NWCH, mem_perm = #NHWC} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
-    // CHECK:        [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 2 : i64} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
-    // CHECK:        [[MEMPERMUTE_RESULT:%.*]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NHWC, mem_perm = #NWCH} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
+    // CHECK:        [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NWCH, mem_perm = #NHWC} : tensor<1x16x4620x4xf16, {order = #NHWC}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
+    // CHECK:        [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 2 : i64} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
+    // CHECK:        [[MEMPERMUTE_RESULT:%.+]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NHWC, mem_perm = #NWCH} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NHWC}>
     // CHECK:        return [[MEMPERMUTE_RESULT]] : tensor<1x16x4620x4xf16, {order = #NHWC}>
 }
 
@@ -147,9 +147,9 @@ func.func @InsertMemPermuteBeforeAndAfterSoftmaxNWCH(%arg0: tensor<1x16x4620x4xf
   %0 = IE.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
   return %0 : tensor<1x16x4620x4xf16, {order = #NWCH}>
 
-    // CHECK:        [[MEMPERMUTE:%.*]] = IE.MemPermute(%arg0) {dst_order = #NWHC, mem_perm = #NCWH} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NWHC}>
-    // CHECK:        [[SOFTMAX:%.*]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4620x4xf16, {order = #NWHC}> -> tensor<1x16x4620x4xf16, {order = #NWHC}>
-    // CHECK:        [[MEMPERMUTE_RESULT:%.*]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NWCH, mem_perm = #NCWH} : tensor<1x16x4620x4xf16, {order = #NWHC}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
+    // CHECK:        [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NWHC, mem_perm = #NCWH} : tensor<1x16x4620x4xf16, {order = #NWCH}> -> tensor<1x16x4620x4xf16, {order = #NWHC}>
+    // CHECK:        [[SOFTMAX:%.+]] = IE.SoftMax([[MEMPERMUTE]]) {axisInd = 1 : i64} : tensor<1x16x4620x4xf16, {order = #NWHC}> -> tensor<1x16x4620x4xf16, {order = #NWHC}>
+    // CHECK:        [[MEMPERMUTE_RESULT:%.+]] = IE.MemPermute([[SOFTMAX]]) {dst_order = #NWCH, mem_perm = #NCWH} : tensor<1x16x4620x4xf16, {order = #NWHC}> -> tensor<1x16x4620x4xf16, {order = #NWCH}>
     // CHECK:        return [[MEMPERMUTE_RESULT]] : tensor<1x16x4620x4xf16, {order = #NWCH}>
 }
 

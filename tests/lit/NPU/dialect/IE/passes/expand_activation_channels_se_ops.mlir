@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,7 @@ func.func @ExpandInterpolateNearestChannels(%arg0: tensor<1x20x30x30xf16>) -> te
 // CHECK-SAME:      sizes_attr = [60, 60]
 // CHECK-SAME:      -> tensor<1x32x60x60xf16>
 
-// CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
+// CHECK:       [[OUT:%.+]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
 // CHECK:       return [[OUT]]
@@ -73,7 +73,7 @@ func.func @ExpandInterpolateLinearChannels(%arg0: tensor<1x20x30x30xf16>) -> ten
 // CHECK-SAME:      sizes_attr = [60, 60]
 // CHECK-SAME:      -> tensor<1x32x60x60xf16>
 
-// CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
+// CHECK:       [[OUT:%.+]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
 // CHECK:       return [[OUT]]
@@ -110,7 +110,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesAttrInput(%arg0: tenso
 // CHECK-SAME:      sizes_attr = [1, 32, 60, 60]
 // CHECK-SAME:      -> tensor<1x32x60x60xf16>
 
-// CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
+// CHECK:       [[OUT:%.+]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
 // CHECK:       return [[OUT]]
@@ -148,7 +148,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesTensorInput(%arg0: ten
 // CHECK-SAME:      sizes_attr = [1, 32, 60, 60]
 // CHECK-SAME:      -> tensor<1x32x60x60xf16>
 
-// CHECK:       [[OUT:%.*]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
+// CHECK:       [[OUT:%.+]] = IE.Slice [[INTERP]] [0, 0, 0, 0] [1, 20, 60, 60]
 // CHECK-SAME:      to tensor<1x20x60x60xf16>
 
 // CHECK:       return [[OUT]]

@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <ov_ops/rms.hpp>
@@ -73,7 +73,7 @@ public:
 
         auto comp = std::make_shared<ov::op::v0::Convert>(mul2, ov::element::f16);
 
-        return std::make_shared<ov::Model>(ov::NodeVector{comp}, params, "RMSNormDecomposition");
+        return std::make_shared<ov::Model>(ov::OutputVector{comp}, params, "RMSNormDecomposition");
     }
     void SetUp() override {
         ov::Shape input_shapes;
@@ -106,11 +106,13 @@ TEST_P(FuseRMSTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(FuseRMSTestCommon, NPU5010_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 namespace {
 const std::vector<ov::element::Type> input_precisions = {ov::element::f32};
 

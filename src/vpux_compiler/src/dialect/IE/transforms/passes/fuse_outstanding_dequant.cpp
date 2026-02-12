@@ -1,16 +1,14 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU37XX/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -177,9 +175,7 @@ void FuseOutstandingDequantPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<DequantizeWithNCERewriter>(&ctx, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

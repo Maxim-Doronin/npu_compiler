@@ -242,3 +242,46 @@ func.func @D2SOpSameStrategy(%arg0: !inputStaticType, %arg1: !inputDynamicType) 
     return %0, %1 : !outputStaticType, !outputDynamicType
     // CHECK:       return [[D2S_STATIC]], [[D2S_DYN]]
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemTypeInput = !quant.uniform<u8:f16, 0.0019697112195632038>
+!qElemTypeWeights = !quant.uniform<u8:f16, 0.034925088695451328:128>
+!qElemTypeOutput = !quant.uniform<u8:f16, 0.030033121856988646:110>
+
+!inputStaticType = tensor<1x4x540x960x!qElemTypeInput, {order = #NHWC}>
+!inputDynamicType = tensor<1x4x?x?x!qElemTypeInput, {bounds = #const.OpaqueI64Elements<[1, 4, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+!outputStaticType = tensor<1x32x270x480x!qElemTypeOutput, {order = #NHWC}>
+!outputDynamicType = tensor<1x32x?x?x!qElemTypeOutput, {bounds = #const.OpaqueI64Elements<[1, 32, 270, 480]> : tensor<4xsi64>, order = #NHWC}>
+
+// CHECK-LABEL: @CompressConvolutionSameStrategyStaticAndDynamic
+func.func @CompressConvolutionSameStrategyStaticAndDynamic(%arg0: !inputStaticType, %arg1: !inputDynamicType) -> (!outputStaticType, !outputDynamicType) {
+    // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x4x540x960x!qElemType, {order = #NHWC}>
+    // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x4x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 4, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+    %cst = const.Declare tensor<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
+    %cst_0 = const.Declare tensor<32x1x1x32x!qElemTypeWeights, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x3x3x3xf16>, [#const.ConvertElemType<!qElemTypeWeights>, #const.Reorder<#NHWC>, #const.Reshape<[32, 1, 1, 27]>, #const.PadWithZero<[0, 0, 0, 0], [0, 0, 0, 5]>]
+
+    // CHECK-DAG:   [[CST_WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
+    // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<32x1x1x32x!qElemType2, {order = #NHWC}>
+
+    %0 = VPU.NCE.CompressConvolution(%arg0, %cst_0, %cst) {cm_sp_pattern = 7 : i64, pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [32, 3, 3, 3], strides = [2, 2]} -> !outputStaticType
+
+    // CHECK:       [[COMPRESS_CONV0:%.+]] = VPU.NCE.CompressConvolution([[ARG0]], [[CST_WEIGHTS]], [[CST_WEIGHTS_TABLE]])
+    // CHECK-SAME:  cm_sp_pattern = 7 : i64
+    // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>
+    // CHECK-SAME:  rawFilterShape = [32, 3, 3, 3]
+
+    %1 = VPU.NCE.CompressConvolution(%arg1, %cst_0, %cst) {cm_sp_pattern = 7 : i64, pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [32, 3, 3, 3], strides = [2, 2]} -> !outputDynamicType
+
+    // CHECK:       [[COMPRESS_CONV1:%.+]] = VPU.NCE.CompressConvolution([[ARG1]], [[CST_WEIGHTS]], [[CST_WEIGHTS_TABLE]])
+    // CHECK-SAME:  cm_sp_pattern = 7 : i64
+    // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
+    // CHECK-SAME:  rawFilterShape = [32, 3, 3, 3]
+
+    return %0, %1 : !outputStaticType, !outputDynamicType
+
+    // CHECK:       return [[COMPRESS_CONV0]], [[COMPRESS_CONV1]]
+}

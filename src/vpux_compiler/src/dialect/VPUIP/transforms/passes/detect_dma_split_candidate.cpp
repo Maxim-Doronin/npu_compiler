@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -190,8 +191,7 @@ void sortTasksAndCreateTaskMap(VPURT::TaskConfigVec& allTasks, QueueIDToTaskConf
     }
 }
 
-size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, config::ArchKind arch,
-                             const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     size_t static constexpr COST_MAX = std::numeric_limits<size_t>::max();
 
     const auto maybeTileDim = VPUIP::getCopyDMATilingDim(dmaOp);
@@ -202,7 +202,8 @@ size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, config::ArchKind arch,
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
     auto inElemType = inputType.getElementType();
-    if (!VPU::isVPUNNSupportedElementType(inElemType)) {
+    const auto arch = config::getArch(dmaOp);
+    if (!VPU::isVPUNNSupportedElementType(inElemType, arch)) {
         return COST_MAX;
     }
 
@@ -215,10 +216,10 @@ size_t calculateSplitDMACost(VPUIP::NNDMAOp dmaOp, config::ArchKind arch,
 
     const auto nnType = VPU::getVPUNNElementType(inElemType);
     VPUX_THROW_UNLESS(nnType.has_value(), "Unsupported data type: '{0}'", inElemType);
-
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(dmaOp);
     const auto nnTensor =
             VPUNN::VPUTensor({checked_cast<unsigned int>(Shape(splitShape).totalSize()), 1, 1, 1}, nnType.value());
-    return costModel->DMA(VPU::getVPUDeviceType(arch), {nnTensor}, {nnTensor}, getMemoryLocation(inputType),
+    return costModel->DMA(vpuDevice, {nnTensor}, {nnTensor}, getMemoryLocation(inputType),
                           getMemoryLocation(outputType));
 }
 
@@ -263,13 +264,12 @@ private:
 void DetectDMASplitCandidate::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
 
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
     CycleCostInfo cycleCostInfo(costModel, func);
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
     if (dmaPortCount != 2) {
         return;
@@ -277,19 +277,19 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
 
     VPURT::InferenceExecutionSimulator infSim(_log, func, cycleCostInfo);
     infSim.runSim();
-    auto dmaTasks = infSim.getTaskCycleConfig(VPU::ExecutorKind::DMA_NN);
+    auto dmaTasks = infSim.getTaskCycleConfig(config::ExecutorKind::DMA_NN);
 
     QueueIDToTaskConfigVecMap queueIdToTasksConfigVecMap;
     TaskToTaskConfigMap taskMap;
     sortTasksAndCreateTaskMap(dmaTasks, queueIdToTasksConfigVecMap, taskMap);
 
     func->walk([&](VPURT::TaskOp taskOp) {
-        if (taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
+        if (taskOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
             return;
         }
 
         auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp());
-        if (dmaOp == nullptr || dmaOp.getCompressCandidateAttr() != nullptr) {
+        if (dmaOp == nullptr || dmaOp.getCompressCandidate()) {
             return;
         }
 
@@ -304,8 +304,13 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
         const auto dmaPort = dmaOp.getPort().value();
         const auto channelType = dmaOp.getChannelType();
 
-        if (dmaOp.getSplitCandidateAttr() != nullptr) {
+        if (dmaOp.getSplitCandidate()) {
             _log.trace("DMA at '{0}' has been assigned with SplitCandidate attribute already", dmaOp->getLoc());
+            return;
+        }
+
+        if (dmaOp->getAttr(vpux::stridedInputAttrName) || dmaOp->getAttr(vpux::stridedOutputAttrName)) {
+            _log.trace("DMA at '{0}' is a strided IO DMA, skipping split", dmaOp->getLoc());
             return;
         }
 
@@ -364,7 +369,7 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
         auto mergedOverlappingTaskCycles = mergeTaskCyclesIntervals(overlappingTaskCycles);
 
         auto maxGap = findMaxCycleGap(mergedOverlappingTaskCycles, taskCycles);
-        auto splitNNDMACost = calculateSplitDMACost(dmaOp, arch, costModel);
+        auto splitNNDMACost = calculateSplitDMACost(dmaOp, costModel);
         if (maxGap < splitNNDMACost) {
             return;
         }

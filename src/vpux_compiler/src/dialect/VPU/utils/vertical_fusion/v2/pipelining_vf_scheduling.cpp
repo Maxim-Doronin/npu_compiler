@@ -148,18 +148,18 @@ bool PipeliningVFScheduling::isSharedWeightsSupported(VFConfig&) const {
 
 // Get the executor kind for each operation in the VF, if the operation is a view-like op, get the executor
 // for its successor
-SmallVector<VPU::ExecutorKind> PipeliningVFScheduling::getExecutorForVFOps(ArrayRef<mlir::Operation*> ops) const {
-    SmallVector<VPU::ExecutorKind> executors;
-    auto getNextComputeOp = [&](size_t opIdx) -> VPU::ExecutorKind {
+SmallVector<config::ExecutorKind> PipeliningVFScheduling::getExecutorForVFOps(ArrayRef<mlir::Operation*> ops) const {
+    SmallVector<config::ExecutorKind> executors;
+    auto getNextComputeOp = [&](size_t opIdx) -> config::ExecutorKind {
         for (auto idx = opIdx; idx < ops.size(); ++idx) {
             auto operation = ops[idx];
             if (mlir::isa<VPU::SWOpInterface>(operation)) {
-                return VPU::ExecutorKind::SHAVE_ACT;
+                return config::ExecutorKind::SHAVE_ACT;
             } else if (mlir::isa<VPU::NCEOpInterface>(operation)) {
-                return VPU::ExecutorKind::DPU;
+                return config::ExecutorKind::DPU;
             }
         }
-        return VPU::ExecutorKind::UNKNOWN;
+        return config::ExecutorKind::UNKNOWN;
     };
     for (auto opId : irange(ops.size())) {
         executors.push_back(getNextComputeOp(opId));

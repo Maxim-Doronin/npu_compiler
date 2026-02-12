@@ -34,8 +34,8 @@ void vpux::VPUMI37XX::PerformanceMetricsOp::serialize(elf::writer::BinaryDataSec
 
     // Here we must get AF from NCE res (a TileResourceOp) as the AF attribute is attached to tile op
     auto tileResources = config::getTileExecutor(mainModule);
-    const auto execKind = VPU::getKindValue<VPU::ExecutorKind>(tileResources);
-    if (VPU::ExecutorKind::NCE == execKind) {
+    const auto execKind = config::getKindValue<config::ExecutorKind>(tileResources);
+    if (config::ExecutorKind::NCE == execKind) {
         perf.activity_factor = VPU::getActivityFactor(execKind, mainModule, tileResources);
         VPUX_THROW_WHEN(perf.activity_factor == VPU::INVALID_AF, "Invalid activity factor!");
     }

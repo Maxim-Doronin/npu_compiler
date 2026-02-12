@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,7 @@ module @BroadcastMax {
 // CHECK-NOT:     IE.Maximum
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x16x16xf16>
 // CHECK-NEXT:    [[LINALG:%.+]] = linalg.generic {indexing_maps = [#[[NCHW]], #[[MAP_RHS]], #[[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]], [[ARG1:%.+]] : tensor<1x1x16x16xf16>, tensor<1x1x1x16xf16>) outs([[EMPTY]] : tensor<1x1x16x16xf16>) {
-// CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:      [[MAX:%.+]] = arith.maximumf [[LHS]], [[RHS]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      linalg.yield [[MAX]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x16x16xf16>
@@ -60,7 +60,7 @@ module @BroadcastDiv {
 // CHECK-NOT:     IE.Divide
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x16x16xf16>
 // CHECK-NEXT:    [[LINALG:%.+]] = linalg.generic {indexing_maps = [#[[NCHW]], #[[MAP_RHS]], #[[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]], [[ARG1:%.+]] : tensor<1x1x16x16xf16>, tensor<1x16xf16>) outs([[EMPTY]] : tensor<1x1x16x16xf16>) {
-// CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:      [[DIV:%.+]] = arith.divf [[LHS]], [[RHS]] fastmath<arcp> : f16
 // CHECK-NEXT:      linalg.yield [[DIV]] : f16
 // CHECK-NEXT:    } -> tensor<1x1x16x16xf16>
@@ -92,7 +92,7 @@ module @BroadcastMin {
 // CHECK-NOT:     IE.Minimum
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<10x1x16x16xf16>
 // CHECK-NEXT:    [[LINALG:%.+]] = linalg.generic {indexing_maps = [#[[MAP_LHS]], #[[MAP_RHS]], #[[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]], [[ARG1:%.+]] : tensor<1x16x16xf16>, tensor<10x1x1x16xf16>) outs([[EMPTY]] : tensor<10x1x16x16xf16>) {
-// CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:      [[MIN:%.+]] = arith.minimumf [[LHS]], [[RHS]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      linalg.yield [[MIN]] : f16
 // CHECK-NEXT:    } -> tensor<10x1x16x16xf16>

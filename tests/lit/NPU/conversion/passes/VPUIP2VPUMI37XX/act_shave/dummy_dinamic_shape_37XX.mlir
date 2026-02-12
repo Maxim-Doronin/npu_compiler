@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,10 +44,10 @@ module {
     }
     return %alloc_2, %alloc_3 : memref<1x3x10x10xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
   }
-  //CHECK:        [[IN_BOUND:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        [[IN_DYN_SHAPE:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        [[OUT_BOUND:%.*]] = VPURT.DeclareBuffer
-  //CHECK:        [[OUT_DYN_SHAPE:%.*]] = VPURT.DeclareBuffer
+  //CHECK:        [[IN_BOUND:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[IN_DYN_SHAPE:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[OUT_BOUND:%.+]] = VPURT.DeclareBuffer
+  //CHECK:        [[OUT_DYN_SHAPE:%.+]] = VPURT.DeclareBuffer
 
   //CHECK:        VPUMI37XX.KernelParams
   //CHECK-SAME:  inputs([[IN_BOUND]]

@@ -17,8 +17,9 @@ namespace IE {
 class ExpandWithLayer final : public mlir::OpRewritePattern<IE::ExpandOp> {
 public:
     ExpandWithLayer(mlir::MLIRContext* ctx,
-                    const std::function<bool(IE::ExpandOp, mlir::Operation*)>& isBeneficalToSwap, Logger log)
-            : mlir::OpRewritePattern<IE::ExpandOp>(ctx), _isBeneficalToSwap(isBeneficalToSwap), _log(log) {
+                    const std::function<bool(IE::ExpandOp, mlir::Operation*)>& isBeneficalToSwap, Logger log,
+                    mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ExpandOp>(ctx, benefit), _isBeneficalToSwap(isBeneficalToSwap), _log(log) {
         setDebugName("ExpandWithLayer");
     }
 

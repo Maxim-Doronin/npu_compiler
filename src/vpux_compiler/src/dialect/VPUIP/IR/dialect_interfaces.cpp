@@ -793,7 +793,7 @@ bool CallOPPreInliner::Dispatcher::FuncArgumentDeclareModifier::apply(mlir::Oper
             newOffset = funcArgOffsetIt->second.value();
             argsLastRelativeOffsetInCluster[argIndex] = std::make_optional<size_t>(opBytesOffset);
         }
-        _log.debug("fix the func argument by index: {1}. DDR offset old: {2}, new: {3}", op.getName(), argIndex,
+        _log.debug("fix the func: {0} argument by index: {1}. DDR offset old: {2}, new: {3}", op.getName(), argIndex,
                    opBytesOffset, newOffset);
         declareOp.setByteOffset(newOffset);
     }
@@ -862,7 +862,7 @@ void VPUIP::FuncInlinerInterface::processInlinedCallBlocks(
             // first and last op in a queue does not handle Shave tasks to full extent due to lack of explicit tasks
             // list for multiple shave engines on single NCE cluster. In such case there might be multiple first or last
             // Shave task that should be connected to a parent barrier.
-            if (taskQueueType.type != VPU::ExecutorKind::DMA_NN) {
+            if (taskQueueType.type != config::ExecutorKind::DMA_NN) {
                 if (taskOp.getWaitBarriers().empty()) {
                     taskOp.getWaitBarriersMutable().append(parentOp.getWaitBarriers());
                 }

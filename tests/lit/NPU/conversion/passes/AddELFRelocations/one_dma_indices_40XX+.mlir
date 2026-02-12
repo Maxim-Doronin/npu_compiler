@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -96,7 +96,7 @@ module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU4
       // CHECK:       ELF.Reloc
       // CHECK-SAME:    offset({{[0-9]+}})
       // CHECK-SAME:    sourceSym(@symtab.io.NetworkIndices::@elfsym.io.NetworkIndices)
-      // CHECK-SAME:    relocType(<R_VPU_32>)
+      // CHECK-SAME:    relocType(<R_VPU_64_BIT_OR_B21_B26_UNSET>)
       // CHECK-SAME:    addend({{[0-9]+}})
 
       // CHECK:       ELF.CreateRelocationSection @rela.program.mapped_inference.symtab

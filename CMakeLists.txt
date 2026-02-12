@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -117,8 +117,14 @@ if (ENABLE_SPLIT_DWARF)
 endif()
 
 if(ENABLE_DEVELOPER_BUILD OR uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
-    enable_asserts()
+    # align this to LLVM_ENABLE_ASSERTIONS
+    # if it's undefined, consider it's ON (== developer build || debug)
+    if(NOT DEFINED LLVM_ENABLE_ASSERTIONS OR LLVM_ENABLE_ASSERTIONS)
+        enable_asserts()
+    endif()
 endif()
+
+enable_color_diagnostics()
 
 #
 # Sub-directories
@@ -150,17 +156,21 @@ else()
     endif()
 endif()
 
+if (ENABLE_CLANG_TIDY_PLUGIN)
+    # to enable clang-tidy plugin for a target T call `enable_clang_tidy_plugin(T)`
+    # make sure `add_clang_tidy_plugin` has been called first just once
+    # with a path to the plugin source directory
+    include(cmake/clang_tidy_plugin.cmake)
+    add_clang_tidy_plugin("${CMAKE_CURRENT_SOURCE_DIR}/tools/clang_tidy_plugin")
+endif()
+
 add_subdirectory(thirdparty EXCLUDE_FROM_ALL)
-
-
 
 if(ENABLE_DEVELOPER_BUILD)
     add_compile_definitions(VPUX_DEVELOPER_BUILD)
 endif()
 
-if(ENABLE_MLIR_COMPILER)
-    add_subdirectory(sw_runtime_kernels/kernels)
-endif()
+add_subdirectory(sw_runtime_kernels/kernels)
 
 add_subdirectory(src)
 

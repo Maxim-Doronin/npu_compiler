@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -117,17 +117,17 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !InputDistributed) -> !InputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !InputDistributed) -> !InputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weights table
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Cluster tiling
@@ -175,37 +175,37 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
 
-    //CHECK:    [[WEIGHTS_TABLE_CST:%.*]] = const.Declare memref<16x1x1x4xsi32>
-    //CHECK:    [[WEIGHTS_CST:%.*]] = const.Declare memref<16x16x3x3xf16, #NHWC, @DDR>
+    //CHECK:    [[WEIGHTS_TABLE_CST:%.+]] = const.Declare memref<16x1x1x4xsi32>
+    //CHECK:    [[WEIGHTS_CST:%.+]] = const.Declare memref<16x16x3x3xf16, #NHWC, @DDR>
 
-    //CHECK:    [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    //CHECK:    [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    //CHECK:    [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    //CHECK:    [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
-    //CHECK:    [[IN1_DDR:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x16x12x33xf16, #NHWC, @DDR>
-    //CHECK:    [[IN2_DDR:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <10560> -> memref<1x16x13x33xf16, #NHWC, @DDR>
-    //CHECK:    [[IN3_DDR:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <22176> -> memref<1x16x12x33xf16, #NHWC, @DDR>
+    //CHECK:    [[IN1_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x16x12x33xf16, #NHWC, @DDR>
+    //CHECK:    [[IN2_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <10560> -> memref<1x16x13x33xf16, #NHWC, @DDR>
+    //CHECK:    [[IN3_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <22176> -> memref<1x16x12x33xf16, #NHWC, @DDR>
 
-    //CHECK:    [[OUT1_DDR:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x16x13x33xf16, #NHWC, @DDR>
-    //CHECK:    [[OUT2_DDR:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <12672> -> memref<1x16x11x33xf16, #NHWC, @DDR>
-    //CHECK:    [[OUT3_DDR:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <23232> -> memref<1x16x11x33xf16, #NHWC, @DDR>
+    //CHECK:    [[OUT1_DDR:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x16x13x33xf16, #NHWC, @DDR>
+    //CHECK:    [[OUT2_DDR:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <12672> -> memref<1x16x11x33xf16, #NHWC, @DDR>
+    //CHECK:    [[OUT3_DDR:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <23232> -> memref<1x16x11x33xf16, #NHWC, @DDR>
 
-    //CHECK:    [[IN1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 0]>
-    //CHECK:    [[IN2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 1]>
-    //CHECK:    [[IN3_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>
-    //CHECK:    [[IN1_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 0]>
-    //CHECK:    [[IN2_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 1]>
-    //CHECK:    [[IN3_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>
+    //CHECK:    [[IN1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:    [[IN2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 1]>
+    //CHECK:    [[IN3_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>
+    //CHECK:    [[IN1_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:    [[IN2_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 1]>
+    //CHECK:    [[IN3_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>
 
-    //CHECK:    [[OUT1_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <13728> -> memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 0]>
-    //CHECK:    [[OUT2_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <13728> -> memref<1x16x11x33xf16, #NHWC, [@CMX_NN, 1]>
-    //CHECK:    [[OUT3_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <13728> -> memref<1x16x11x33xf16, #NHWC, [@CMX_NN, 2]>
+    //CHECK:    [[OUT1_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <13728> -> memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:    [[OUT2_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <13728> -> memref<1x16x11x33xf16, #NHWC, [@CMX_NN, 1]>
+    //CHECK:    [[OUT3_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <13728> -> memref<1x16x11x33xf16, #NHWC, [@CMX_NN, 2]>
 
-    //CHECK:    [[OUT1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <13728> ->
+    //CHECK:    [[OUT1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <13728> ->
     //CHECK-SAME: !VPUIP.ITIBuffer<
     //CHECK-NEXT:   1x16x13x33xf16, {order = #NHWC}, [@CMX_NN, 0]
     //CHECK-NEXT: inwardHaloRegions = [
@@ -213,7 +213,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK-NEXT:  ]
     //CHECK-NOT:  outwardHaloRegions
 
-    //CHECK:    [[OUT2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <13728> ->
+    //CHECK:    [[OUT2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <13728> ->
     //CHECK-SAME: !VPUIP.ITIBuffer<
     //CHECK-NEXT:   1x16x11x33xf16, {order = #NHWC}, [@CMX_NN, 1]
     //CHECK-NEXT: inwardHaloRegions = [
@@ -227,7 +227,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK-NEXT:       #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 33], offset = [0, 0, 11, 0], cluster_id = 0 : i64>
     //CHECK-NEXT:   ]
 
-    //CHECK:    [[OUT3_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <13728> ->
+    //CHECK:    [[OUT3_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <13728> ->
     //CHECK-SAME: !VPUIP.ITIBuffer<
     //CHECK-NEXT:   1x16x11x33xf16, {order = #NHWC}, [@CMX_NN, 2]
     //CHECK-NOT:  inwardHaloRegions
@@ -239,24 +239,24 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK-NEXT:       #VPUIP.HaloRegionAttr<shape = [1, 16, 1, 33], offset = [0, 0, 10, 0], cluster_id = 1 : i64>
     //CHECK-NEXT:   ]
 
-    //CHECK:    [[WEIGHTS1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <26400> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>
-    //CHECK:    [[WEIGHTS2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <26400> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 1]>
-    //CHECK:    [[WEIGHTS3_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <26400> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 2]>
-    //CHECK:    [[WEIGHTS_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1, 2] <26400> -> !VPUIP.DistributedBuffer<16x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 3 : i64, uniform_distributed_segments}>
+    //CHECK:    [[WEIGHTS1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <26400> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:    [[WEIGHTS2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <26400> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 1]>
+    //CHECK:    [[WEIGHTS3_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <26400> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 2]>
+    //CHECK:    [[WEIGHTS_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1, 2] <26400> -> !VPUIP.DistributedBuffer<16x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 3 : i64, uniform_distributed_segments}>
 
-    //CHECK:    [[WEIGHTS_TABLE1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <31008> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
-    //CHECK:    [[WEIGHTS_TABLE2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <31008> -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
-    //CHECK:    [[WEIGHTS_TABLE3_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <31008> -> memref<16x1x1x4xsi32, [@CMX_NN, 2]>
-    //CHECK:    [[WEIGHTS_TABLE_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1, 2] <31008> -> !VPUIP.DistributedBuffer<16x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 3 : i64, uniform_distributed_segments}>
+    //CHECK:    [[WEIGHTS_TABLE1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <31008> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+    //CHECK:    [[WEIGHTS_TABLE2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <31008> -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
+    //CHECK:    [[WEIGHTS_TABLE3_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <31008> -> memref<16x1x1x4xsi32, [@CMX_NN, 2]>
+    //CHECK:    [[WEIGHTS_TABLE_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1, 2] <31008> -> !VPUIP.DistributedBuffer<16x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 3 : i64, uniform_distributed_segments}>
 
-    //CHECK:    [[IN_SPARSE_MAP_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <31264> -> memref<1x16x12x33xi1, #NHWC, [@CMX_NN, 0]>
-    //CHECK:    [[IN_SPARSE_MAP_2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <31264> -> memref<1x16x13x33xi1, #NHWC, [@CMX_NN, 1]>
-    //CHECK:    [[IN_SPARSE_MAP_3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <31264> -> memref<1x16x12x33xi1, #NHWC, [@CMX_NN, 2]>
-    //CHECK:    [[IN_SE_TABLE_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <33442> -> memref<1x16x12x33xi32, #NHWC, [@CMX_NN, 0]>
-    //CHECK:    [[IN_SE_TABLE_2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <33442> -> memref<1x16x13x33xi32, #NHWC, [@CMX_NN, 1]>
-    //CHECK:    [[IN_SE_TABLE_3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <33442> -> memref<1x16x12x33xi32, #NHWC, [@CMX_NN, 2]>
+    //CHECK:    [[IN_SPARSE_MAP_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <31264> -> memref<1x16x12x33xi1, #NHWC, [@CMX_NN, 0]>
+    //CHECK:    [[IN_SPARSE_MAP_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <31264> -> memref<1x16x13x33xi1, #NHWC, [@CMX_NN, 1]>
+    //CHECK:    [[IN_SPARSE_MAP_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <31264> -> memref<1x16x12x33xi1, #NHWC, [@CMX_NN, 2]>
+    //CHECK:    [[IN_SE_TABLE_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <33442> -> memref<1x16x12x33xi32, #NHWC, [@CMX_NN, 0]>
+    //CHECK:    [[IN_SE_TABLE_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <33442> -> memref<1x16x13x33xi32, #NHWC, [@CMX_NN, 1]>
+    //CHECK:    [[IN_SE_TABLE_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <33442> -> memref<1x16x12x33xi32, #NHWC, [@CMX_NN, 2]>
 
-    //CHECK:    [[OUT_SPARSE_MAP_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <103138> ->
+    //CHECK:    [[OUT_SPARSE_MAP_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <103138> ->
     //CHECK-SAME: !VPUIP.ITIBuffer<
     //CHECK-NEXT:   1x16x13x33xf16, {order = #NHWC}, [@CMX_NN, 0]
     //CHECK-NEXT: inwardHaloRegions = [
@@ -264,7 +264,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK-NEXT: ]>
     //CHECK-NOT:  outwardHaloRegions
 
-    //CHECK:    [[OUT_SPARSE_MAP_2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <103138> ->
+    //CHECK:    [[OUT_SPARSE_MAP_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <103138> ->
     //CHECK-SAME: !VPUIP.ITIBuffer<
     //CHECK-NEXT:   1x16x11x33xf16, {order = #NHWC}, [@CMX_NN, 1]
     //CHECK-NEXT: inwardHaloRegions = [
@@ -279,7 +279,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK-NEXT:       #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 33], offset = [0, 0, 11, 0], cluster_id = 0 : i64>
     //CHECK-NEXT:   ]>
 
-    //CHECK:    [[OUT_SPARSE_MAP_3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <103138> ->
+    //CHECK:    [[OUT_SPARSE_MAP_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <103138> ->
     //CHECK-SAME: !VPUIP.ITIBuffer<
     //CHECK-NEXT: 1x16x11x33xf16, {order = #NHWC}, [@CMX_NN, 2],
     //CHECK-NEXT: outwardHaloRegions = [
@@ -594,18 +594,18 @@ func.func @UnrollSpillCompressCandidates(%output: !DistBuf) -> !DistBuf {
     %18 = VPURT.DeclareBuffer <CMX_NN> <1409024> {swizzlingKey = 5 : i64} -> !DistBuf
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %47 = VPUIP.NNDMA {port = 0 : i64, compress_candidate, spillId = 0 : i64} inputs(%13 : !DistBuf) outputs(%17 : !Compact_DDR) -> !Compact_DDR
+        %47 = VPUIP.NNDMA <{port = 0 : i64, compress_candidate, spillId = 0 : i64}> inputs(%13 : !DistBuf) outputs(%17 : !Compact_DDR) -> !Compact_DDR
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) {
-        %47 = VPUIP.NNDMA {port = 0 : i64, compress_candidate, spillId = 0 : i64} inputs(%17 : !Compact_DDR) outputs(%18 : !DistBuf) -> !DistBuf
+        %47 = VPUIP.NNDMA <{port = 0 : i64, compress_candidate, spillId = 0 : i64}> inputs(%17 : !Compact_DDR) outputs(%18 : !DistBuf) -> !DistBuf
     }
     return %18 : !DistBuf
 
     // Check per cluster offset are properly set to take into account swizzling and worst case size with compress DMA
-    // CHECK: [[DDR0_0:%.*]] = VPURT.DeclareBuffer <DDR> <0> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
-    // CHECK: [[DDR0_1:%.*]] = VPURT.DeclareBuffer <DDR> <13536> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
-    // CHECK: [[DDR1_0:%.*]] = VPURT.DeclareBuffer <DDR> <0> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
-    // CHECK: [[DDR1_1:%.*]] = VPURT.DeclareBuffer <DDR> <13536> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
+    // CHECK: [[DDR0_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
+    // CHECK: [[DDR0_1:%.+]] = VPURT.DeclareBuffer <DDR> <13536> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
+    // CHECK: [[DDR1_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
+    // CHECK: [[DDR1_1:%.+]] = VPURT.DeclareBuffer <DDR> <13536> {swizzlingKey = 5 : i64} -> memref<1x16x58x112xi1, {allocSize = 13536 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @DDR>
 }
 
 // -----
@@ -637,19 +637,19 @@ func.func @AdjustSizeAlignmentkOverlapedCMXToDDR(%output: !Compact_DDR) -> !Comp
     %20 = VPURT.DeclareBuffer <DDR> <0> {swizzlingKey = 5 : i64} -> !Compact_DDR
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %47 = VPUIP.NNDMA {port = 0 : i64, spillId = 2 : i64} inputs(%18 : !DistBuf) outputs(%20 : !Compact_DDR) -> !Compact_DDR
+        %47 = VPUIP.NNDMA <{port = 0 : i64, spillId = 2 : i64}> inputs(%18 : !DistBuf) outputs(%20 : !Compact_DDR) -> !Compact_DDR
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %47 = VPUIP.NNDMA {port = 1 : i64, spillId = 2 : i64} inputs(%19 : !DistBuf) outputs(%20 : !Compact_DDR) -> !Compact_DDR
+        %47 = VPUIP.NNDMA <{port = 1 : i64, spillId = 2 : i64}> inputs(%19 : !DistBuf) outputs(%20 : !Compact_DDR) -> !Compact_DDR
     }
 
     return %20 : !Compact_DDR
 
     // Check alignment is set back to 512 for per cluster buffers
-    // CHECK: [[DDR0_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1280> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
-    // CHECK: [[DDR0_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <1280> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 1]>
-    // CHECK: [[DDR0_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <5376> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
-    // CHECK: [[DDR0_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <5376> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 1]>
+    // CHECK: [[DDR0_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1280> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
+    // CHECK: [[DDR0_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <1280> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 1]>
+    // CHECK: [[DDR0_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <5376> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
+    // CHECK: [[DDR0_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <5376> {swizzlingKey = 5 : i64} -> memref<1x48x5x8xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 1]>
 }
 
 // -----
@@ -681,15 +681,15 @@ func.func @DifferentSizeOverlapedCMXToDDR(%output: !Compact_DDR) -> !Compact_DDR
     %20 = VPURT.DeclareBuffer <DDR> <107840> {swizzlingKey = 5 : i64} -> !Compact_DDR
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %47 = VPUIP.NNDMA {port = 0 : i64, spillId = 2 : i64} inputs(%18 : !DistBuf) outputs(%20 : !Compact_DDR) -> !Compact_DDR
+        %47 = VPUIP.NNDMA <{port = 0 : i64, spillId = 2 : i64}> inputs(%18 : !DistBuf) outputs(%20 : !Compact_DDR) -> !Compact_DDR
     }
 
     return %20 : !Compact_DDR
 
-    // CHECK: [[DDR_0:%.*]] = VPURT.DeclareBuffer <DDR> <107840> {swizzlingKey = 5 : i64} -> memref<1x48x5x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
-    // CHECK: [[DDR_1:%.*]] = VPURT.DeclareBuffer <DDR> <116032> {swizzlingKey = 5 : i64} -> memref<1x48x6x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
-    // CHECK: [[DDR_2:%.*]] = VPURT.DeclareBuffer <DDR> <125248> {swizzlingKey = 5 : i64} -> memref<1x48x6x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
-    // CHECK: [[DDR_3:%.*]] = VPURT.DeclareBuffer <DDR> <134464> {swizzlingKey = 5 : i64} -> memref<1x48x5x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
+    // CHECK: [[DDR_0:%.+]] = VPURT.DeclareBuffer <DDR> <107840> {swizzlingKey = 5 : i64} -> memref<1x48x5x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
+    // CHECK: [[DDR_1:%.+]] = VPURT.DeclareBuffer <DDR> <116032> {swizzlingKey = 5 : i64} -> memref<1x48x6x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
+    // CHECK: [[DDR_2:%.+]] = VPURT.DeclareBuffer <DDR> <125248> {swizzlingKey = 5 : i64} -> memref<1x48x6x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
+    // CHECK: [[DDR_3:%.+]] = VPURT.DeclareBuffer <DDR> <134464> {swizzlingKey = 5 : i64} -> memref<1x48x5x16xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
 }
 
 // -----
@@ -755,20 +755,20 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   }
   return %OUTPUT : memref<1x784x32x6xf16, #NWCH, @DDR>
 
-  //CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-  //CHECK: [[WEIGHT0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>
-  //CHECK: [[WEIGHT1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 1]>
-  //CHECK: [[WEIGHT2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 2]>
-  //CHECK: [[WEIGHT3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>
-  //CHECK: [[IN0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>
-  //CHECK: [[IN1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 1]>
-  //CHECK: [[IN2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 2]>
-  //CHECK: [[IN3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>
-  //CHECK: [[COPY_IN0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 0]>
-  //CHECK: [[COPY_IN1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 1]>
-  //CHECK: [[COPY_IN2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 2]>
-  //CHECK: [[COPY_IN3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 3]>
-  //CHECK: [[OUT0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <576> -> !VPUIP.ITIBuffer<
+  //CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  //CHECK: [[WEIGHT0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>
+  //CHECK: [[WEIGHT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 1]>
+  //CHECK: [[WEIGHT2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 2]>
+  //CHECK: [[WEIGHT3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>
+  //CHECK: [[IN0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>
+  //CHECK: [[IN1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <151104> -> memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 1]>
+  //CHECK: [[IN2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 2]>
+  //CHECK: [[IN3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <151104> -> memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>
+  //CHECK: [[COPY_IN0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 0]>
+  //CHECK: [[COPY_IN1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 1]>
+  //CHECK: [[COPY_IN2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 2]>
+  //CHECK: [[COPY_IN3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <576> -> memref<1x784x32x3xf16, #NWCH, [@CMX_NN, 3]>
+  //CHECK: [[OUT0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <576> -> !VPUIP.ITIBuffer<
   //CHECK-NEXT:             1x784x32x3xf16, {order = #NWCH}, [@CMX_NN, 0],
   //CHECK-NEXT:              inwardHaloRegions = [
   //CHECK-NEXT:                 #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 2], cluster_id = 0 : i64>
@@ -781,7 +781,7 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK-SAME:                  inwardHaloRegions = [
   //CHECK-NEXT:                     #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 0], cluster_id = 1 : i64>
   //CHECK-NEXT:                 ]>
-  //CHECK: [[OUT1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <576> -> !VPUIP.ITIBuffer<
+  //CHECK: [[OUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <576> -> !VPUIP.ITIBuffer<
   //CHECK-NEXT:              1x784x32x3xf16, {order = #NWCH}, [@CMX_NN, 1],
   //CHECK-NEXT:              inwardHaloRegions = [
   //CHECK-NEXT:                 #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 0], cluster_id = 1 : i64>
@@ -796,7 +796,7 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK-NEXT:                  #VPUIP.OutwardHaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 2], cluster_id = 1 : i64, inwardHaloRegions = [
   //CHECK-NEXT:                   #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 0], cluster_id = 3 : i64>
   //CHECK-NEXT:             ]>
-  //CHECK: [[OUT2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <576> -> !VPUIP.ITIBuffer<
+  //CHECK: [[OUT2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <576> -> !VPUIP.ITIBuffer<
   //CHECK-NEXT:              1x784x32x3xf16, {order = #NWCH}, [@CMX_NN, 2],
   //CHECK-NEXT:              inwardHaloRegions = [
   //CHECK-NEXT:                 #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 2], offset = [0, 0, 0, 0], cluster_id = 2 : i64>
@@ -805,17 +805,17 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK-NEXT:                 #VPUIP.OutwardHaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 2], cluster_id = 2 : i64, inwardHaloRegions = [
   //CHECK-NEXT:                     #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 1], cluster_id = 3 : i64>
   //CHECK-NEXT:             ]>
-  //CHECK: [[OUT3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <576> -> !VPUIP.ITIBuffer<
+  //CHECK: [[OUT3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <576> -> !VPUIP.ITIBuffer<
   //CHECK-NEXT:             1x784x32x3xf16, {order = #NWCH}, [@CMX_NN, 3],
   //CHECK-NEXT:              inwardHaloRegions = [
   //CHECK-NEXT:                 #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 0], cluster_id = 3 : i64>,
   //CHECK-NEXT:                 #VPUIP.HaloRegionAttr<shape = [1, 784, 32, 1], offset = [0, 0, 0, 1], cluster_id = 3 : i64>
   //CHECK-NEXT:              ]>
-  //CHECK: [[DDR_OUT:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x784x32x6xf16, #NWCH, @DDR>
-  //CHECK: [[COPY_OUT0:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x784x32x3xf16, #NWCH, @DDR>
-  //CHECK: [[COPY_OUT1:%.*]] = VPURT.DeclareBuffer <DDR> <50176> -> memref<1x784x32x3xf16, #NWCH, @DDR>
-  //CHECK: [[COPY_OUT2:%.*]] = VPURT.DeclareBuffer <DDR> <100352> -> memref<1x784x32x3xf16, #NWCH, @DDR>
-  //CHECK: [[COPY_OUT3:%.*]] = VPURT.DeclareBuffer <DDR> <150528> -> memref<1x784x32x3xf16, #NWCH, @DDR>
+  //CHECK: [[DDR_OUT:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x784x32x6xf16, #NWCH, @DDR>
+  //CHECK: [[COPY_OUT0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x784x32x3xf16, #NWCH, @DDR>
+  //CHECK: [[COPY_OUT1:%.+]] = VPURT.DeclareBuffer <DDR> <50176> -> memref<1x784x32x3xf16, #NWCH, @DDR>
+  //CHECK: [[COPY_OUT2:%.+]] = VPURT.DeclareBuffer <DDR> <100352> -> memref<1x784x32x3xf16, #NWCH, @DDR>
+  //CHECK: [[COPY_OUT3:%.+]] = VPURT.DeclareBuffer <DDR> <150528> -> memref<1x784x32x3xf16, #NWCH, @DDR>
   //CHECK:              VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
   //CHECK:                  VPUIP.NCEClusterTask {is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}
   //CHECK-SAME:                 input([[IN0]] : memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>)

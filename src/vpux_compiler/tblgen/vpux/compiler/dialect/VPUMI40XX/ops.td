@@ -73,8 +73,8 @@ def VPUMI40XX_ConfigureBarrierOp :
         Optional<VPURegMapped_IndexType>:$previousSameId,
         OptionalAttr<UI8Attr>:$producer_count,
         OptionalAttr<UI8Attr>:$consumer_count,
-        UnitAttr:$isFinalBarrier,
-        UnitAttr:$isStartBarrier,
+        UnitProp:$isFinalBarrier,
+        UnitProp:$isStartBarrier,
         OptionalAttr<IntAttr>:$wlmPage
     );
 
@@ -116,6 +116,7 @@ def VPUMI40XX_ConfigureBarrierOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         (`(` $dependencies^ `:` type($dependencies) `)`)?
         `<` $id `,` $next_same_id `>`
         (`previousSameId` `(` $previousSameId^ `:` type($previousSameId) `)`)?
@@ -163,7 +164,7 @@ def VPUMI40XX_MappedInferenceOp :
         I64Attr:$barrierCount,
         OptionalAttr<I64Attr>:$workItemCount,
         OptionalAttr<I64Attr>:$bootstrapBarriersCount,
-        OptionalAttr<I64Attr>:$bootsrapWorkItemsCount,
+        OptionalAttr<I64Attr>:$bootstrapWorkItemsCount,
         OptionalAttr<I64Attr>:$finalBarrierId,
         Optional<AnyMemRef>:$barrierConfigurationTasks,
         OptionalAttr<I64Attr>:$barrierConfigurationTasksCount,
@@ -211,7 +212,7 @@ def VPUMI40XX_MappedInferenceOp :
         `barrierCount` `(` $barrierCount `)`
         (`workItemCount` `(` $workItemCount^ `)`)?
         (`bootstrapBarriersCount` `(` $bootstrapBarriersCount^ `)`)?
-        (`bootsrapWorkItemsCount` `(` $bootsrapWorkItemsCount^ `)`)?
+        (`bootstrapWorkItemsCount` `(` $bootstrapWorkItemsCount^ `)`)?
         (`finalBarrierId` `(` $finalBarrierId^ `)`)?
         (`barrierConfigurationTasksCount` `(` $barrierConfigurationTasksCount^ `)`)?
         (`mappedInferenceVersion` `(` $mappedInferenceVersion^ `:` type($mappedInferenceVersion) `)` )?
@@ -243,18 +244,18 @@ def VPUMI40XX_NNDMAOp :
         Variadic<VPURegMapped_IndexType>:$updateBarriers,
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
-        UnitAttr:$enable_msc,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
+        UnitProp:$enable_msc,
         IntAttr:$port,
         VPUIP_DMAAccModeAttr:$acceleration_mode,
         Optional<AnyMemRef>:$act_compression_size_entry,
         Optional<AnyMemRef>:$act_compression_sparsity_map,
-        OptionalAttr<VPUMI40XX_DMATransactionAttr>:$dma_transaction,
+        OptionalAttr<VPUMI40XX_DMATransactionAttrInterface>:$dma_transaction,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
-        UnitAttr:$allow_different_in_out_shapes,
+        UnitProp:$allow_different_in_out_shapes,
         Optional<AnyMemRef>:$indices,
         Optional<VPURegMapped_IndexType>:$enqueueBarrier,
         OptionalAttr<IntAttr>:$wlmPage,
@@ -269,9 +270,6 @@ def VPUMI40XX_NNDMAOp :
     );
 
     let builders = [
-        OpBuilder<
-            (ins "mlir::Value":$src, "mlir::Value":$dst)
-        >,
         OpBuilder<
             (ins "VPURegMapped::IndexType":$index,
                     "mlir::Value":$taskLocation,
@@ -322,6 +320,7 @@ def VPUMI40XX_NNDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         (`taskLocation` `(` $taskLocation^ `:` type($taskLocation) `)`)?
         `inputs` `(` $input `:` type($input) `)`
         (`outputs` `(` $output_buffs^ `:` type($output_buffs) `)`)?
@@ -527,8 +526,8 @@ def VPUMI40XX_KernelParamsOp :
         DenseI32ArrayAttr:$dynamicOutputShapesSize,
         StrAttr:$kernel_type,
         ArrayAttr:$kernel_params,
-        UnitAttr:$is_output_broadcasted,
-        UnitAttr:$isJitCompiled
+        UnitProp:$is_output_broadcasted,
+        UnitProp:$isJitCompiled
     );
 
     let results = (outs
@@ -537,6 +536,7 @@ def VPUMI40XX_KernelParamsOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $inputs `:` type($inputs) `)`
         `outputs` `(` $outputs `:` type($outputs) `)`
         (`dynamicInputShapes` `(` $dynamicInputShapes^ `:` type($dynamicInputShapes) `)`)?
@@ -673,7 +673,7 @@ def VPUMI40XX_DPUVariantOp :
         Optional<MemRefOf<[SI32]>>:$weight_table,
         Optional<MemRefOf<[SI32]>>:$weight_table_data_ptr,
         Optional<MemRefOf<[SI32]>>:$weight_table_sp_ptr,
-        Optional<MemRefOf<[F32, F8E5M2, F8E4M3FN]>>:$weight_table_scale,
+        Optional<MemRefOf<[F32, F8E5M2, F8E4M3FN, F8E8M0FNU]>>:$weight_table_scale,
         Optional<MemRefOf<[F32]>>:$weight_table_bias,
         Optional<MemRefOf<[I8, I4]>>:$weight_zero_points,
 
@@ -687,11 +687,12 @@ def VPUMI40XX_DPUVariantOp :
         DefaultValuedAttr<UI64Attr, "0">:$cluster_id,
         OptionalAttr<DPUHaloRegionArrayAttr>: $haloRegions,
         OptionalAttr<IntAttr>:$workload_id,
-        UnitAttr:$spr_lut_read,
-        UnitAttr:$pallet_lut_read,
-        UnitAttr:$force_inv_read,
+        UnitProp:$spr_lut_read,
+        UnitProp:$pallet_lut_read,
+        UnitProp:$force_inv_read,
         OptionalAttr<IntAttr>:$wlmPage,
-        OptionalAttr<I64ArrayAttr>:$variant_primitive_id // IDs for variant primitives A and B
+        OptionalAttr<I64ArrayAttr>:$variant_primitive_id, // IDs for variant primitives A and B
+        OptionalAttr<IntAttr>:$weight_table_offset
     );
 
     let extraClassDefinition = [{
@@ -712,6 +713,7 @@ def VPUMI40XX_DPUVariantOp :
         (`weight_table_bias` `(` $weight_table_bias^ `:` type($weight_table_bias) `)`)?
         (`weight_zero_points` `(` $weight_zero_points^ `:` type($weight_zero_points) `)`)?
         attr-dict
+        prop-dict
         `->` type($index)
     }];
 }
@@ -749,7 +751,7 @@ def VPUMI40XX_DPUInvariantOp :
         Optional<MemRefOf<[SI32]>>:$weight_table,
         Optional<MemRefOf<[SI32]>>:$weight_table_data_ptr,
         Optional<MemRefOf<[SI32]>>:$weight_table_sp_ptr,
-        Optional<MemRefOf<[F32, F8E5M2, F8E4M3FN]>>:$weight_table_scale,
+        Optional<MemRefOf<[F32, F8E5M2, F8E4M3FN, F8E8M0FNU]>>:$weight_table_scale,
         Optional<MemRefOf<[F32]>>:$weight_table_bias,
         Optional<MemRefOf<[I8, I4]>>:$weight_zero_points,
 
@@ -768,22 +770,22 @@ def VPUMI40XX_DPUInvariantOp :
         VPUIP_NCETaskTypeAttr:$nce_task_type,
         OptionalAttr<VPU_EltwiseTypeAttr>:$eltwise_type,
         VPU_MPEModeAttr:$mpe_frequent_mode,
-        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         OptionalAttr<I64ArrayAttr>:$kernel_size,
         OptionalAttr<I64ArrayAttr>:$kernel_strides,
         OptionalAttr<VPU_PaddingAttr>:$kernel_padding,
-        UnitAttr:$is_continued,
+        UnitProp:$is_continued,
         OptionalAttr<IntAttr>:$cm_sp_pattern,
-        UnitAttr:$input_channels_compression,
-        UnitAttr:$is_zero_offset_weights_table,
+        UnitProp:$input_channels_compression,
+        UnitProp:$is_zero_offset_weights_table,
         OptionalAttr<IntAttr>:$out_channel_offset,
-        UnitAttr:$is_superdense,
+        UnitProp:$is_superdense,
         OptionalAttr<BoolAttr>:$is_inplace,
         OptionalAttr<IntAttr>:$input_se_size,
         OptionalAttr<IntAttr>:$output_se_size,
-        UnitAttr:$is_permute_quantize,
-        UnitAttr:$is_small_kernel_optimized,
+        UnitProp:$is_permute_quantize,
+        UnitProp:$is_small_kernel_optimized,
         OptionalAttr<VPUIP_DpuProfilingMetadataAttr>:$profilingMetadata,
 
         Variadic<VPURegMapped_IndexType>:$waitBarriers,
@@ -792,6 +794,7 @@ def VPUMI40XX_DPUInvariantOp :
         UI64Attr:$clean_after,
         Optional<VPURegMapped_IndexType>:$enqueueBarrier,
         OptionalAttr<IntAttr>:$wlmPage,
+        OptionalAttr<VPUIP_SparsityConfigAttr>:$sparsity_config,
         OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
         OptionalAttr<VPUIP_LocalRegionAttr>:$local_region,
         OptionalAttr<VPUIP_S2DConfigAttr>:$s2d_config
@@ -821,6 +824,7 @@ def VPUMI40XX_DPUInvariantOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         (`taskLocation` `(` $taskLocation^ `:` type($taskLocation) `)`)?
         ( `previousTask` `(` $previousTask^ `:` type($previousTask) `)`)?
         (`input` `(` $input^ `:` type($input) `)`)?

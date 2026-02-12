@@ -224,7 +224,7 @@ mlir::Value castToStorageType(mlir::OpBuilder& builder, mlir::Location loc, mlir
     if (!info.valid()) {
         return input;
     }
-    return builder.create<IE::QuantizeCastOp>(appendLoc(loc, "_quant_cast"), input, info.storageType);
+    return builder.create<IE::QuantizeCastOp>(appendLoc(loc, "quant_cast"), input, info.storageType);
 }
 
 // Casts the resulting value "back" to its original quantized type. This is
@@ -234,7 +234,7 @@ mlir::Value castToQuantizedType(mlir::OpBuilder& builder, mlir::Location loc, ml
     if (!info.valid()) {
         return input;
     }
-    return builder.create<VPU::QuantizeCastOp>(appendLoc(loc, "_quant_cast"), input, info.quantizedType);
+    return builder.create<VPU::QuantizeCastOp>(appendLoc(loc, "quant_cast"), input, info.quantizedType);
 }
 
 /// Weights-separation specific argument cache.
@@ -505,7 +505,7 @@ IntroduceInitFunctionPass::buildInitFunction(mlir::OpBuilder& moduleBuilder, mli
                           }));
     auto initBuilder = mlir::OpBuilder::atBlockEnd(bodyBlock, moduleBuilder.getListener());
     auto returnOp =
-            initBuilder.create<mlir::func::ReturnOp>(appendLoc(initFuncOp.getLoc(), "_return"), resultValueRange);
+            initBuilder.create<mlir::func::ReturnOp>(appendLoc(initFuncOp.getLoc(), "return"), resultValueRange);
 
     auto initFuncType =
             mlir::FunctionType::get(&getContext(), bodyBlock->getArgumentTypes(), returnOp.getOperands().getTypes());

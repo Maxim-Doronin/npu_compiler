@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/mpe_engine_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
@@ -335,13 +336,21 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
             VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     origPpeAttr, outputType.getElementType());
 
-    auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(arch);
-    auto biasConverter = VPU::NCESparsity::getBiasConverterCb(arch);
+    const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, false);
+    const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(arch, isNewWeightTableFormat);
+    const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(arch, isNewWeightTableFormat);
+    const auto wtShape = VPU::NCESparsity::inferWeightsTableShape(OC, isNewWeightTableFormat);
     const auto weightsTableVec =
-            VPU::createWeightsTableData(sparseInput, adaptedOutElemType, weights, {}, OC, ppeConverter, biasConverter,
-                                        nullptr, VPU::canAutopadOutput(origOp));
-    const auto wtShape = VPU::NCESparsity::inferWeightsTableShape(OC);
-    const auto weightsTable = VPU::createWeightsTableTensor(builder, origOp->getLoc(), weightsTableVec, wtShape);
+            isNewWeightTableFormat
+                    ? std::vector<int32_t>{}
+                    : VPU::createWeightsTableData(sparseInput, adaptedOutElemType, weights, {}, OC, ppeConverter,
+                                                  biasConverter, nullptr, VPU::canAutopadOutput(origOp));
+    const auto weightsTable =
+            isNewWeightTableFormat ? nullptr
+                                   : VPU::createWeightsTableTensor(builder, origOp->getLoc(), weightsTableVec, wtShape);
+    const auto newWeightsTableTensors =
+            VPU::NewWeightsTableTensors(isNewWeightTableFormat, builder, origOp->getLoc(), sparseInput,
+                                        adaptedOutElemType, weights, nullptr, wtShape, ppeConverter, biasConverter);
 
     const auto origWeightsShape = getShape(origWeights);
     const auto rawFilterShape = getIntArrayAttr(
@@ -349,10 +358,10 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
             SmallVector<int64_t>{OC, 1, origWeightsShape[Dims4D::Filter::KY], origWeightsShape[Dims4D::Filter::KX]});
     const auto padding = VPU::getPaddingAttr(origOp.getContext(), 0, 0, 0, 0);
     auto dwConv = builder.create<VPU::NCEDepthConvolutionOp>(
-            origOp->getLoc(), outputType, sparseInput, weights, weightsTable, /*dataPointerTensor=*/nullptr,
-            /*sparsityPointerTensor=*/nullptr, /*scaleTensor=*/nullptr, /*biasTensor=*/nullptr,
-            /*zeroPointTensor=*/nullptr, origOp.getStridesAttr(), padding, origOp.getPpeAttr(), rawFilterShape,
-            origOp.getMultiClusterStrategyAttr(), nullptr, nullptr);
+            origOp->getLoc(), outputType, sparseInput, weights, weightsTable, newWeightsTableTensors.dataPointerTensor,
+            newWeightsTableTensors.sparsityPointerTensor, newWeightsTableTensors.scaleTensor,
+            newWeightsTableTensors.biasTensor, newWeightsTableTensors.zeroPointTensor, origOp.getStridesAttr(), padding,
+            origOp.getPpeAttr(), rawFilterShape, origOp.getMultiClusterStrategyAttr(), nullptr, nullptr);
 
     nestedLog.trace("Created DWConv with SEP for Interpolate.");
 
@@ -389,6 +398,18 @@ void ConvertNCEInterpolateToDWPass::safeRunOnFunc() {
         if (weightsConst == nullptr) {
             _log.trace("Cannot find weights constant.");
             return;
+        }
+
+        // Check if the output is distributed with SEGMENTED | OVERLAPPED mode
+        auto outputType = mlir::cast<vpux::NDTypeInterface>(interpOp.getOutput().getType());
+        if (auto distributedType = mlir::dyn_cast<VPU::DistributedTensorType>(outputType)) {
+            auto distribution = distributedType.getDistribution();
+            auto distributionMode = distribution.getMode().getValue();
+            // DistributionMode can be a combination of flags, use bitwise AND to check
+            if (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
+                _log.trace("NCEInterpolate has SEGMENTED | OVERLAPPED distribution mode, do not convert to DWConv.");
+                return;
+            }
         }
 
         if (!isDepthwiseConvMorePerformant(interpOp, arch, _log.nest())) {

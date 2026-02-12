@@ -307,7 +307,7 @@ NDTypeInterface VPU::SparseTensorType::changeShapeElemType(ShapeRef shape, mlir:
             if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(dist)) {
                 auto newDistribution = VPU::getNonOverlappedDistributedAttr(
                         shape, dist.getMode(), nullptr, dist.getNumClusters(), nullptr,
-                        dist.getUniformDistributedSegments(), ndData.getContext());
+                        dist.getUniformDistributedSegments(), elemType, ndData.getContext());
                 return mlir::cast<vpux::VPU::SparseTensorType>(ndData).changeShapeElemTypeForExplicitDistribution(
                         shape, elemType, newDistribution);
             }

@@ -1,16 +1,16 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
+#include "vpux/compiler/utils/error.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
@@ -42,27 +42,6 @@ mlir::Operation* vpux::Const::ConstDialect::materializeConstant(mlir::OpBuilder&
     }
 
     return builder.create<Const::DeclareOp>(loc, type, mlir::cast<Const::ContentAttr>(value));
-}
-
-//
-// ConstDialect: bufferize Const::DeclareOp
-//
-
-mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, Const::DeclareOp origOp, Const::DeclareOp::Adaptor&,
-                                      mlir::RewriterBase& rewriter) {
-    auto log = Logger::global().nest("one-shot-bufferize-ConstDeclareOp", 0);
-    log.trace("Found Constant Operation '{0}'", origOp->getLoc());
-
-    const auto newType = vpux::getBufferType(origOp.getType());
-    auto newOp = rewriter.create<Const::DeclareOp>(origOp->getLoc(), newType, origOp.getContentAttr());
-    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, newOp->getResults());
-    return mlir::success();
-}
-
-void vpux::registerConstDeclareBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
-    registry.addExtension(+[](mlir::MLIRContext* ctx, vpux::Const::ConstDialect*) {
-        Const::DeclareOp::attachInterface<VpuGenericOneShotBufferizeModel<Const::DeclareOp>>(*ctx);
-    });
 }
 
 //
@@ -163,7 +142,7 @@ mlir::LogicalResult vpux::Const::DeclareOp::verify() {
 
     // For type with swizzling skip the shape check as the content
     // might have been flattened to accomodate swizzled buffer.
-    if (!vpux::getSwizzlingSchemeAttr(opType)) {
+    if (!VPUIP::getSwizzlingSchemeAttr(opType)) {
         if (opType.getShape() != attrType.getShape()) {
             return errorAt(op, "'Const.Declare' has mismatch in value shape '{0}' and result shape '{1}'",
                            attrType.getShape(), opType.getShape());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -104,9 +104,6 @@ private:
         maybeSetValue(_initCompilerOptions->numberOfDMAPorts, getNumberOfDMAEngines(config));
         const auto dynamicQuantization = getCompilerDynamicQuantization(config);
         maybeSetValue(_initCompilerOptions->enableWeightsDynamicDequantization, dynamicQuantization);
-        if (dynamicQuantization.has_value() && dynamicQuantization.value()) {
-            _initCompilerOptions->weightsTableReuseMode = vpux::WeightsTableReuseMode::ENABLED;
-        }
 
         auto optimizationAggressiveEnabled = getQDQOptimizationAggressive(config);
         maybeSetValue(_initCompilerOptions->enableQDQOptimizationAggressive, optimizationAggressiveEnabled);
@@ -122,8 +119,10 @@ private:
 
         bool invalidConfig = numOfDPUGroups.hasValue() && numOfDMAPorts.hasValue() &&
                              numOfDMAPorts.getValue() > numOfDPUGroups.getValue();
+
         // E#182008 We can support maxDmaPorts once FWLM is enabled for NPU50XX+
         invalidConfig = invalidConfig && getArchKind(config) != config::ArchKind::NPU50XX;
+
         VPUX_THROW_WHEN(invalidConfig,
                         "Requested configuration not supported by runtime. Number of DMA ports ({0}) larger than "
                         "NCE clusters ({1})",
@@ -171,7 +170,8 @@ protected:
     static void setupOptionsImpl(ArchSpecificOptionsType& options, VPU::InitCompilerOptions& initCompilerOptions,
                                  const intel_npu::Config& config) {
         overwriteIfUnset(options.enableProfiling, config.get<intel_npu::PERF_COUNT>());
-        options.updateBatchCompileOptionsFromString(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
+        options.getBatchCompileAdapter().updateBatchCompileOptionsFromString(
+                config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
         setupOptionsCommon(options, initCompilerOptions);
     }
 
@@ -211,8 +211,6 @@ private:
         overwriteIfUnset(options.enableConvertWeightsToU8I4, false);
         // E#180631: remove option
         overwriteIfUnset(options.forceConvertGatherTo4D, true);
-        // E#182190: Enable vertical fusion outlining
-        overwriteIfUnset(options.enableVerticalFusionOutlining, false);
     }
 };
 
@@ -243,8 +241,6 @@ private:
         overwriteIfUnset(options.enableWeightsSparsity, false);
         // E#180631: remove option
         overwriteIfUnset(options.forceConvertGatherTo4D, true);
-        // E#182190: Enable vertical fusion outlining
-        overwriteIfUnset(options.enableVerticalFusionOutlining, false);
     }
 };
 }  // namespace vpux

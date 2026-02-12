@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
@@ -24,6 +25,8 @@ std::unique_ptr<mlir::Pass> createPrepareHostFuncForAsyncExecutionPass(Logger lo
 std::unique_ptr<mlir::Pass> createOptimizeMemRefCopiesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createReplaceAllocsWithSingleAllocAndViewsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSerializeNetworkMetadataPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createExtractReturnShapesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createOutlineDimOperationsPass(Logger log = Logger::global());
 
 void buildHostExecPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 

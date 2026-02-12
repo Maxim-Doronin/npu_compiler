@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/dpu_profiling.hpp"
+#include <mlir/IR/MLIRContext.h>
 #include "vpux/compiler/core/profiling.hpp"
 
 #include "vpux/compiler/utils/logging.hpp"
@@ -13,8 +14,8 @@
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/profiling_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/profiling_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
@@ -23,6 +24,7 @@
 #include "vpux/utils/profiling/common.hpp"
 
 #include <algorithm>
+#include <memory>
 #include <numeric>
 
 namespace vpux::VPUIP {
@@ -41,8 +43,7 @@ namespace {
 
 class DPUProfilingPass final : public VPUIP::impl::DPUProfilingBase<DPUProfilingPass> {
 public:
-    explicit DPUProfilingPass(VPUIP::MemKindCreateFunc memKindCb, Logger log): _memKindCb(std::move(memKindCb)) {
-        VPUX_THROW_UNLESS(_memKindCb != nullptr, "Missing memKindCb");
+    explicit DPUProfilingPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -52,9 +53,6 @@ public:
 
 private:
     void safeRunOnModule() final;
-
-private:
-    VPUIP::MemKindCreateFunc _memKindCb;
 };
 
 // DPU profiling pass
@@ -65,46 +63,39 @@ private:
 //   3. Using this information calculate needed DDR amount
 //   4. ClusterBufferScheduler will handle grouped tasks and connect results to DDR
 //   5. Concat results from different schedulers
-// BaseClusterBufferScheduler logic:
+//   ClusterBufferScheduler logic:
 //   1. Allocate buffer in CMX to store profiling results
 //   2. Fill it with results of profiling data from DPU operations
-//   3. When the buffer is fullfilled, transfer his content to DDR
+//   3. When the buffer is full, transfer his content to DDR
 //   4. Reuse buffer for the next chunk and continue with steps 2-3
 //   5. Connect all DMA to DDR operations to the ConcatOp and connect it to the new network profiling output
 void DPUProfilingPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
 
-    auto maybeMemKind = _memKindCb("");
-    if (!maybeMemKind.has_value()) {
-        _log.trace("Memory Space is not defined");
-        return;
-    }
-    auto memKind = maybeMemKind.value();
-
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
     net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
-    const auto arch = config::getArch(module);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
     unsigned profilingWorkloadSize = VPUIP::getProfWorkloadSize(module);
     auto nameUniqifier = std::make_shared<NameUniqifier>(_log);
-    std::map<unsigned, std::unique_ptr<BaseClusterBufferScheduler>> clusterSchedulers;
+    std::map<unsigned, std::unique_ptr<ClusterBufferScheduler>> clusterSchedulers;
     // Single cluster handled in another way
-    clusterSchedulers[1] = std::unique_ptr<BaseClusterBufferScheduler>(
-            new SingleClusterScheduler(profilingWorkloadSize, builder, ctx, memKind, netFunc, nameUniqifier));
+    auto memKindForClusterZero = IndexedSymbolAttr::get(ctx, stringifyEnum(vpux::VPU::MemoryKind::CMX_NN), 0);
+    clusterSchedulers[1] = std::make_unique<ClusterBufferScheduler>(1, profilingWorkloadSize, builder, ctx,
+                                                                    memKindForClusterZero, netFunc, nameUniqifier);
 
     netFunc.walk([&](VPUIP::NCEClusterTaskOp nceClusterTaskOp) {
         _log.trace("Process Operation '{0}'", nceClusterTaskOp->getLoc());
         const auto numClusters = getClustersNumber(nceClusterTaskOp);
         if (clusterSchedulers.count(numClusters) == 0) {
-            clusterSchedulers[numClusters] = std::unique_ptr<BaseClusterBufferScheduler>(new MultiClusterScheduler(
-                    numClusters, profilingWorkloadSize, builder, ctx, memKind, netFunc, nameUniqifier));
+            auto memKind = IndexedSymbolAttr::get(ctx, stringifyEnum(vpux::VPU::MemoryKind::CMX_NN));
+            clusterSchedulers[numClusters] = std::make_unique<ClusterBufferScheduler>(
+                    numClusters, profilingWorkloadSize, builder, ctx, memKind, netFunc, nameUniqifier);
         }
         clusterSchedulers[numClusters]->scheduleNceTask(nceClusterTaskOp);
-        auto workloadsIdsCb = VPUIP::setWorkloadsIdsCb(arch);
-        workloadsIdsCb(nceClusterTaskOp);
+        VPUIP::setWorkloadIds(nceClusterTaskOp);
     });
 
     unsigned totalDpuDdrProfilingOutputSize =
@@ -120,8 +111,10 @@ void DPUProfilingPass::safeRunOnModule() {
 
     SmallVector<mlir::Value> concatResults;
     unsigned currentDDROffset = 0;
+    unsigned tasksCounter = 0;  // Needed to sort tasks in ascending order. Profiling buffer (i.e. address) of task with
+                                // bigger ID goes after task with smaller
     for (auto& clusterScheduler : clusterSchedulers) {
-        clusterScheduler.second->addProfilingOps(currentDDROffset, concatResults, profilingResult);
+        clusterScheduler.second->addProfilingOps(currentDDROffset, concatResults, profilingResult, tasksCounter);
     }
 
     mlir::func::ReturnOp returnOp =
@@ -133,7 +126,7 @@ void DPUProfilingPass::safeRunOnModule() {
             mlir::NameLoc::get(mlir::StringAttr::get(ctx, "dpuDDRProfiling")), concatResults, profilingResult);
     returnOp.getOperandsMutable().append(concatview.getOutput());
 
-    BaseClusterBufferScheduler::resetBufferIdCounter();
+    ClusterBufferScheduler::resetBufferIdCounter();
 }
 
 }  // namespace
@@ -142,6 +135,6 @@ void DPUProfilingPass::safeRunOnModule() {
 // createDPUProfilingPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUIP::createDPUProfilingPass(VPUIP::MemKindCreateFunc memKindCb, Logger log) {
-    return std::make_unique<DPUProfilingPass>(std::move(memKindCb), log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::createDPUProfilingPass(Logger log) {
+    return std::make_unique<DPUProfilingPass>(log);
 }

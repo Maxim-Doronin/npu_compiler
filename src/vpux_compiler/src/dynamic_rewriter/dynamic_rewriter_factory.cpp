@@ -196,9 +196,9 @@ mlir::LogicalResult RewriterExecutorInterfaceBase::addRewritersToPatterns(mlir::
     return mlir::success();
 }
 
-mlir::LogicalResult RewriterExecutorInterfaceBase::executeRewriters(mlir::MLIRContext* ctx, Logger& log,
-                                                                    mlir::func::FuncOp funcOp,
-                                                                    RewriterRegistry* customRegistry) {
+mlir::LogicalResult RewriterExecutorInterfaceBase::executeRewriters(
+        mlir::MLIRContext* ctx, Logger& log, mlir::func::FuncOp funcOp, RewriterRegistry* customRegistry,
+        const mlir::GreedyRewriteConfig& greedyRewriteConfig) {
     mlir::RewritePatternSet patterns(ctx);
 
     auto& registry = RegistryManager::getEffectiveRegistry(customRegistry);
@@ -221,7 +221,6 @@ mlir::LogicalResult RewriterExecutorInterfaceBase::executeRewriters(mlir::MLIRCo
         }
     }
 
-    auto greedyRewriteConfig = getDefaultGreedyRewriteConfig();
     if (mlir::failed(mlir::applyPatternsGreedily(funcOp, std::move(patterns), greedyRewriteConfig))) {
         log.error("Failed to apply rewriters");
         return mlir::failure();

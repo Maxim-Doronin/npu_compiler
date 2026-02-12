@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -189,7 +190,7 @@ mlir::LogicalResult MergeFullyConnectedWithWeightsAsConstant::matchAndRewrite(IE
                 newInput.getDefiningOp()->isBeforeInBlock(newWeights.getDefiningOp()) ? newWeights : newInput;
         rewriter.setInsertionPointAfterValue(insertPoint);
         auto newMatMulOp = rewriter.create<IE::FullyConnectedOp>(
-                appendLoc(origOp.getLoc(), "_matmul_batch_{0}", batchId), newInput, newWeights, origOp.getBias());
+                appendLoc(origOp.getLoc(), "matmul_batch_{0}", batchId), newInput, newWeights, origOp.getBias());
         // Slice out expected result [1, OC] from output [batchSize, batchSize*OC]
         auto output = sliceNewMatMulOutput(newMatMulOp.getResult(), batchId, outputSliceSize, rewriter);
 
@@ -393,7 +394,7 @@ bool MergeFullyConnectedWithWeightsAsConstant::validateUnrolledMatMulBranch(
 
         auto outLowConstAttr = outLowConst.getContentAttr();
         auto outHighConstAttr = outHighConst.getContentAttr();
-        auto scalesAndZeroPoints = getScalesAndZeroPointsFromContentAttr(
+        auto scalesAndZeroPoints = IE::getScalesAndZeroPointsFromContentAttr(
                 outLowConstAttr, outHighConstAttr, fq.getAutoBroadcast(), fq.getLevels(), nullptr,
                 Const::hasNegativeValues(inLowConst.getContent()), _log);
         if (mlir::failed(scalesAndZeroPoints)) {
@@ -464,11 +465,11 @@ mlir::Value MergeFullyConnectedWithWeightsAsConstant::buildNewMatMulInput(ArrayR
     SmallVector<int64_t> sliceSizes = to_small_vector(getShape(source));
     sliceSizes[1] = batchSize * IC;
 
-    auto newSlice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "_slice_{0}", batchIdx), source,
+    auto newSlice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "slice_{0}", batchIdx), source,
                                                  getIntArrayAttr(ctx, sliceOffsets), getIntArrayAttr(ctx, sliceSizes));
 
     SmallVector<int64_t> newInputShape{checked_cast<int64_t>(batchSize), IC};
-    return rewriter.create<IE::ReshapeOp>(appendLoc(newSlice->getLoc(), "_reshape_{0}", batchIdx), newSlice, nullptr,
+    return rewriter.create<IE::ReshapeOp>(appendLoc(newSlice->getLoc(), "reshape_{0}", batchIdx), newSlice, nullptr,
                                           false, getIntArrayAttr(ctx, newInputShape));
 }
 
@@ -527,7 +528,7 @@ mlir::Value MergeFullyConnectedWithWeightsAsConstant::buildNewMatMulWeights(Arra
 
     mlir::OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointAfterValue(firstFq);
-    auto newFakeQuantizedLoc = appendLoc(firstFq.getLoc(), "_fused_{0}", batchIdx);
+    auto newFakeQuantizedLoc = appendLoc(firstFq.getLoc(), "fused_{0}", batchIdx);
     auto newFakeQuantizedOp = rewriter.create<IE::FakeQuantizeOp>(
             newFakeQuantizedLoc, newFQInput, newInLow, newInHigh, newOutLow, newOutHigh, firstFq.getLevelsAttr(),
             firstFq.getLowFpTypeAttr(), firstFq.getAutoBroadcastAttr());
@@ -540,7 +541,7 @@ SmallVector<mlir::Value> MergeFullyConnectedWithWeightsAsConstant::sliceNewMatMu
     SmallVector<mlir::Value> outputs;
     const auto sliceNum = getShape(newMatMulOutput)[Dim(0)];
     for (auto idx : irange(sliceNum)) {
-        const auto sliceLoc = appendLoc(newMatMulOutput.getLoc(), "_slice_{0}_{1}", batchIdx, idx);
+        const auto sliceLoc = appendLoc(newMatMulOutput.getLoc(), "slice_{0}_{1}", batchIdx, idx);
         SmallVector<int64_t> sliceOffsets = {idx, idx * sliceSize};
         SmallVector<int64_t> sliceSizes = {1, sliceSize};
         auto slice = rewriter.create<IE::SliceOp>(sliceLoc, newMatMulOutput, getIntArrayAttr(ctx, sliceOffsets),
@@ -559,7 +560,7 @@ mlir::Value MergeFullyConnectedWithWeightsAsConstant::reshapeOutputSlice(mlir::V
     auto shape = getShape(sliceOut);
     SmallVector<int64_t> newShape{1, 1, shape[Dim(0)], shape[Dim(1)]};
     auto ctx = rewriter.getContext();
-    const auto newLoc = appendLoc(sliceOut.getLoc(), "_reshape");
+    const auto newLoc = appendLoc(sliceOut.getLoc(), "reshape");
     return rewriter.create<IE::ReshapeOp>(newLoc, sliceOut, nullptr, false, getIntArrayAttr(ctx, newShape));
 }
 
@@ -840,14 +841,14 @@ mlir::Value MergeFullyConnectedForDQPatternWithConvert::buildNewMatMulInput(Arra
     inSliceOffsets[0] = batchOffset;
     SmallVector<int64_t> inSliceSizes = to_small_vector(getShape(source));
     inSliceSizes[0] = batchSize;
-    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "_slice_{0}", batchIdx), source,
+    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "slice_{0}", batchIdx), source,
                                               getIntArrayAttr(ctx, inSliceOffsets), getIntArrayAttr(ctx, inSliceSizes));
 
     auto sliceOutShape = to_small_vector(getShape(slice.getResult()));
     SmallVector<int64_t> newInputShape{sliceOutShape[0] * sliceOutShape[1], sliceOutShape[2]};
     const auto reshapeOutShapeAttr = getIntArrayAttr(ctx, newInputShape);
     SmallVector<SmallVector<int64_t>> inDimMapping{{0}, {0}, {1}};
-    return rewriter.createOrFold<IE::AffineReshapeOp>(appendLoc(slice.getLoc(), "_reshape"), slice,
+    return rewriter.createOrFold<IE::AffineReshapeOp>(appendLoc(slice.getLoc(), "reshape"), slice,
                                                       getIntArrayOfArray(ctx, inDimMapping), reshapeOutShapeAttr);
 }
 
@@ -864,17 +865,17 @@ mlir::Value MergeFullyConnectedForDQPatternWithConvert::buildNewMatMulWeights(Ar
     sliceOffsets[0] = batchOffset;
     SmallVector<int64_t> sliceSizes = to_small_vector(sourceShape);
     sliceSizes[0] = batchSize;
-    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "_slice_{0}", batchIdx), source,
+    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "slice_{0}", batchIdx), source,
                                               getIntArrayAttr(ctx, sliceOffsets), getIntArrayAttr(ctx, sliceSizes));
 
     auto convert =
-            rewriter.create<IE::ConvertOp>(appendLoc(slice.getLoc(), "_convert"), slice, mlir::Float16Type::get(ctx))
+            rewriter.create<IE::ConvertOp>(appendLoc(slice.getLoc(), "convert"), slice, mlir::Float16Type::get(ctx))
                     .getOutput();
 
     auto outShape = getShape(convert);
     SmallVector<int64_t> newWeightsShape{outShape[Dim(0)] * outShape[Dim(1)], outShape[Dim(2)]};
     SmallVector<SmallVector<int64_t>> inDimMapping{{0}, {0}, {1}};
-    return rewriter.createOrFold<IE::AffineReshapeOp>(appendLoc(convert.getLoc(), "_reshape"), convert,
+    return rewriter.createOrFold<IE::AffineReshapeOp>(appendLoc(convert.getLoc(), "reshape"), convert,
                                                       getIntArrayOfArray(ctx, inDimMapping),
                                                       getIntArrayAttr(ctx, newWeightsShape));
 }
@@ -884,7 +885,7 @@ mlir::Value MergeFullyConnectedForDQPatternWithConvert::reshapeOutputSlice(mlir:
     auto ctx = rewriter.getContext();
     auto shape = getShape(sliceOut);
     SmallVector<int64_t> newShape{1, shape[Dim(0)], shape[Dim(1)]};
-    const auto reshapeLoc = appendLoc(sliceOut.getLoc(), "_reshape");
+    const auto reshapeLoc = appendLoc(sliceOut.getLoc(), "reshape");
     return rewriter.create<IE::ReshapeOp>(reshapeLoc, sliceOut, nullptr, false, getIntArrayAttr(ctx, newShape));
 }
 
@@ -1269,12 +1270,12 @@ mlir::Value MergeFullyConnectedForDQPatternWithDequantize::buildNewMatMulInput(A
     inSliceOffsets[1] = checked_cast<int64_t>(batchOffset) * matMulInShape[Dim(1)];
     SmallVector<int64_t> inSliceSizes = to_small_vector(getShape(source));
     inSliceSizes[1] = checked_cast<int64_t>(batchSize) * matMulInShape[Dim(1)];
-    auto slice = rewriter.create<IE::SliceOp>(appendLoc(matMul.getLoc(), "_slice_{0}", batchIdx), source,
+    auto slice = rewriter.create<IE::SliceOp>(appendLoc(matMul.getLoc(), "slice_{0}", batchIdx), source,
                                               getIntArrayAttr(ctx, inSliceOffsets), getIntArrayAttr(ctx, inSliceSizes));
 
     SmallVector<int64_t> newInputShape{checked_cast<int64_t>(batchSize), matMulInShape[Dim(1)]};
     const auto reshapeOutShapeAttr = getIntArrayAttr(ctx, newInputShape);
-    return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(matMul.getLoc(), "_reshape"), slice, nullptr, false,
+    return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(matMul.getLoc(), "reshape"), slice, nullptr, false,
                                                 reshapeOutShapeAttr);
 }
 
@@ -1291,17 +1292,17 @@ mlir::Value MergeFullyConnectedForDQPatternWithDequantize::buildNewMatMulWeights
     sliceOffsets[0] = checked_cast<int64_t>(batchOffset);
     SmallVector<int64_t> sliceSizes = to_small_vector(sourceShape);
     sliceSizes[0] = checked_cast<int64_t>(batchSize);
-    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "_slice_{0}", batchIdx), source,
+    auto slice = rewriter.create<IE::SliceOp>(appendLoc(source.getLoc(), "slice_{0}", batchIdx), source,
                                               getIntArrayAttr(ctx, sliceOffsets), getIntArrayAttr(ctx, sliceSizes));
 
-    auto dequantizeOp = rewriter.create<IE::DequantizeOp>(appendLoc(slice.getLoc(), "_dequantize"), slice,
+    auto dequantizeOp = rewriter.create<IE::DequantizeOp>(appendLoc(slice.getLoc(), "dequantize"), slice,
                                                           mlir::Float16Type::get(ctx))
                                 .getOutput();
 
     auto outShape = getShape(dequantizeOp);
     SmallVector<int64_t> newWeightsShape{outShape[Dim(0)] * outShape[Dim(1)], outShape[Dim(2)]};
     SmallVector<SmallVector<int64_t>> inDimMapping{{0}, {0}, {1}};
-    return rewriter.createOrFold<IE::AffineReshapeOp>(appendLoc(dequantizeOp.getLoc(), "_reshape"), dequantizeOp,
+    return rewriter.createOrFold<IE::AffineReshapeOp>(appendLoc(dequantizeOp.getLoc(), "reshape"), dequantizeOp,
                                                       getIntArrayOfArray(ctx, inDimMapping),
                                                       getIntArrayAttr(ctx, newWeightsShape));
 }
@@ -1312,7 +1313,7 @@ mlir::Value MergeFullyConnectedForDQPatternWithDequantize::reshapeOutputSlice(ml
     auto ctx = rewriter.getContext();
     auto shape = getShape(sliceOut);
     SmallVector<int64_t> newShape{1, 1, shape[Dim(0)], shape[Dim(1)]};
-    const auto reshapeLoc = appendLoc(sliceOut.getLoc(), "_reshape");
+    const auto reshapeLoc = appendLoc(sliceOut.getLoc(), "reshape");
     return rewriter.create<IE::ReshapeOp>(reshapeLoc, sliceOut, nullptr, false, getIntArrayAttr(ctx, newShape));
 }
 

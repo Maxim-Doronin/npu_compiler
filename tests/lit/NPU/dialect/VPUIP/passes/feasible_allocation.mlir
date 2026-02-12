@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -97,9 +97,9 @@ func.func @main(%in: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>, %out: memref<1x1
     %3 = async.await %f2 : !async.value<memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>>
     return %out : memref<1x16x4x4xf16, #NHWC>
 
-    // CHECK-DAG:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:       [[BUF2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      outputs([[BUF0]] : memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>)
@@ -215,9 +215,9 @@ func.func @main(%in: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>, %out: memref<1x1
     %3 = async.await %f2 : !async.value<memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>>
     return %out : memref<1x16x4x4xf16, #NHWC>
 
-    // CHECK-DAG:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1024> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:       [[BUF2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1024> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      outputs([[BUF0]] : memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>)
@@ -306,8 +306,8 @@ func.func @main(%arg0: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<
     %5 = async.await %results_1 : !async.value<memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>>
     return %arg1, %arg2 : memref<1x16x4x4xf16, #NHWC>, memref<1x16x4x4xf16, #NHWC>
 
-    // CHECK-DAG:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK-DAG:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPUIP.NCEClusterTask
     // CHECK-SAME:      outputs([[BUF0]] : memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>)

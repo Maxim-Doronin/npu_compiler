@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -161,7 +161,6 @@ void ConvertScalarToTensorPass::safeRunOnFunc() {
     });
     typeConverter.addSourceMaterialization(reshape);
     typeConverter.addTargetMaterialization(reshape);
-    typeConverter.addArgumentMaterialization(reshape);
 
     mlir::ConversionTarget target(ctx);
 

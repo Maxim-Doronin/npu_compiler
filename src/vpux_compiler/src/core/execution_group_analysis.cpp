@@ -55,7 +55,7 @@ ExecutionGroupAnalysis::ExecutionGroupAnalysis()
 
 void ExecutionGroupAnalysis::createSWTaskExecutionGroups() {
     for (auto& [queueType, tileSWQueue] : _taskQueueTypeMap) {
-        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT) {
+        if (queueType.type != config::ExecutorKind::SHAVE_ACT) {
             continue;
         }
 
@@ -105,7 +105,7 @@ void ExecutionGroupAnalysis::createSWTaskExecutionGroups() {
 
 void ExecutionGroupAnalysis::createDPUTaskExecutionGroups() {
     for (auto& [queueType, tileDpuQueue] : _taskQueueTypeMap) {
-        if (queueType.type != VPU::ExecutorKind::DPU) {
+        if (queueType.type != config::ExecutorKind::DPU) {
             continue;
         }
 
@@ -190,7 +190,7 @@ std::optional<size_t> ExecutionGroupAnalysis::getGroupIndexForTask(
     };
 
     if (queueTypeOpt) {
-        if (queueTypeOpt->type == VPU::ExecutorKind::DPU) {
+        if (queueTypeOpt->type == config::ExecutorKind::DPU) {
             return searchInExecutionGroupListMap(_listOfDPUExecutionGroups);
         } else {
             return searchInExecutionGroupListMap(_listOfActShvExecutionGroups);
@@ -261,7 +261,7 @@ void ExecutionGroupAnalysis::logExecutionGroupTasks(Logger log,
 
     if (queueTypeOpt.has_value()) {
         const auto& queueType = queueTypeOpt.value();
-        const auto isDPU = queueType.type == VPU::ExecutorKind::DPU;
+        const auto isDPU = queueType.type == config::ExecutorKind::DPU;
         const auto& execGroupLists = isDPU ? getDPUExecutionGroups() : getActShvExecutionGroups();
         const auto taskTypeStr = isDPU ? "DPU" : "SW";
 

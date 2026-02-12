@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -384,9 +384,9 @@ def VPU_ReduceMeanSquareOp :
 
     let arguments = (ins
         AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$input,
-
         I64ArrayAttr:$axes_value,
         UnitAttr:$keep_dims,
+        OptionalAttr<F64Attr>:$epsilon,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -403,7 +403,8 @@ def VPU_ReduceMeanSquareOp :
         OpBuilder<(ins
             "::mlir::Value":$input,
             "::mlir::ArrayAttr":$axes_value,
-            "::mlir::UnitAttr":$keep_dims
+            "::mlir::UnitAttr":$keep_dims,
+            "::mlir::FloatAttr":$epsilon
         )>
     ];
 

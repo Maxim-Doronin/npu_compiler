@@ -65,7 +65,7 @@ def IE_AvgPoolOp :
         IE_RoundingTypeAttr:$rounding_type,
         UnitAttr:$exclude_pads,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<F32Attr>:$static_scale,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -96,7 +96,7 @@ def IE_AvgPool16Op :
         IE_RoundingTypeAttr:$rounding_type,
         UnitAttr:$exclude_pads,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<F32Attr>:$static_scale,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -127,7 +127,7 @@ def IE_MaxPoolOp :
         I64ArrayAttr:$pads_end,
         IE_RoundingTypeAttr:$rounding_type,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding

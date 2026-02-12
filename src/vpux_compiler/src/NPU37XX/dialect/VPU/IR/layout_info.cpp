@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,6 +21,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/arithmetic.hpp"
@@ -42,6 +43,8 @@
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/error.hpp"
 
 using namespace vpux;
 
@@ -319,9 +322,10 @@ public:
         }
         // to ensure that we can use odu permute on parent layer
         auto maybeInputReorder = op->getOperand(0).getDefiningOp<IE::ReorderOp>();
-        auto parentLayerWithPermute = maybeInputReorder == nullptr
-                                              ? getFusableLayerWithPermuteInterface(op)
-                                              : getFusableLayerWithPermuteInterface(maybeInputReorder.getOperation());
+        auto parentLayerWithPermute =
+                maybeInputReorder == nullptr
+                        ? IE::getFusableLayerWithPermuteInterface(op)
+                        : IE::getFusableLayerWithPermuteInterface(maybeInputReorder.getOperation());
         if ((maybeInputReorder != nullptr && !maybeInputReorder->hasOneUse()) || parentLayerWithPermute == nullptr) {
             return;
         }
@@ -343,7 +347,7 @@ public:
 
         auto moduleOp = op->getParentOfType<mlir::ModuleOp>();
         auto tileExec = config::getTileExecutor(moduleOp);
-        auto shaveActExec = tileExec.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT);
+        auto shaveActExec = tileExec.getSubExecutor(config::ExecutorKind::SHAVE_ACT);
         const auto numSplits = tileExec.getCount() * shaveActExec.getCount();
         VPUX_THROW_WHEN(numSplits <= 0, "Number of splits should be a positive integer, while it is {0}", numSplits);
 
@@ -448,6 +452,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::GreaterOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::GreaterEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::EqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::IsInfOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::FloorModOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
 
         VPU::StridedSliceOp::attachInterface<vpux::VPU::SameInOutAnyDimsOrderOpModelForSW>(*ctx);
@@ -582,7 +587,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::RoPEOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::SDPAExtendedOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
-        VPU::FlashSDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
+        VPU::FlashSDPAOp::attachInterface<vpux::VPU::FlashSDPADimsOrderOpModel>(*ctx);
         VPU::ExternalKernelOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NHWC>(*ctx);
         VPU::ReduceMeanSquareOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
     });
@@ -657,6 +662,7 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::GreaterOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::GreaterEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::EqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::IsInfOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::DynamicDequantizeOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::DequantizeOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
 
@@ -755,10 +761,10 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::UnsqueezeOp::attachInterface<vpux::VPU::SqueezeUnsqueezeDimsOrderOpModelForSW>(*ctx);
 
         IE::RegionYoloOp::attachInterface<vpux::VPU::RegionYoloDimsOrderOpModelForSW>(*ctx);
-        IE::AccumulateOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NHWC>(*ctx);
         IE::RMSOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::RoPEOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         IE::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
+        IE::FlashSDPAOp::attachInterface<vpux::VPU::FlashSDPADimsOrderOpModel>(*ctx);
         IE::ReduceMeanSquareOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
 
         IE::GeluOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NCHW_NHWC>(*ctx);

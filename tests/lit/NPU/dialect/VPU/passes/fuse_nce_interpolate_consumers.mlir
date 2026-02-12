@@ -96,7 +96,6 @@ func.func @FuseInterpolateNearestWithConv(%arg0: tensor<1x16x3x3xf16, {order = #
 // CHECK: func.func @DoNotFuseInterpolateBilinearWithConv([[INPUT_DATA:%.+]]: tensor<1x16x3x3xf16, {order = #NHWC}>) -> tensor<1x32x6x6xf16, {order = #NHWC}> {
 func.func @DoNotFuseInterpolateBilinearWithConv(%arg0: tensor<1x16x3x3xf16, {order = #NHWC}>) -> tensor<1x32x6x6xf16, {order = #NHWC}> {
     %interp_weights = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}> = dense<0.25> : tensor<16x16x2x2xf16>, [#const.Reorder<#NHWC>]
-    %interp_weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
     %interp_sparsity_map = const.Declare tensor<1x16x7x7xi1> = dense<1> : tensor<1x16x7x7xi1>
 
     %interp_storage_element = VPU.StorageElementTable {dataElemType = i32, seDepth = 1, seSize = [16], dataShape = [1, 16, 3, 3],
@@ -118,7 +117,7 @@ func.func @DoNotFuseInterpolateBilinearWithConv(%arg0: tensor<1x16x3x3xf16, {ord
                            #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>,
                                               scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 7, 7]>>
 
-    %interp_output = VPU.NCE.Interpolate(%interp_input, %interp_weights, %interp_weights_table) {
+    %interp_output = VPU.NCE.Interpolate(%interp_input, %interp_weights) {
         strides = [1, 1],
         rawFilterShape = [16, 16, 2, 2],
         mode = #VPU.nce_interpolate_mode<BILINEAR>,
@@ -139,13 +138,12 @@ func.func @DoNotFuseInterpolateBilinearWithConv(%arg0: tensor<1x16x3x3xf16, {ord
 
     // CHECK-DAG:  [[CONV_WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
     // CHECK-DAG:  [[INTERP_WEIGHTS:%.+]] = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}>
-    // CHECK-DAG:  [[INTERP_WEIGHTS_TABLE:%.+]] = const.Declare tensor<16x1x1x4xsi32>
     // CHECK-DAG:  [[INTERP_SPARSITY_MAP:%.+]] = const.Declare tensor<1x16x7x7xi1>
 
     // CHECK:      [[INTERP_SE_TABLE:%.+]] = VPU.StorageElementTable
     // CHECK:      [[INTERP_INPUT:%.+]] = VPU.GroupSparseTensor([[INPUT_DATA]], [[INTERP_SPARSITY_MAP]], [[INTERP_SE_TABLE]])
 
-    // CHECK:      [[INTERP_OUTPUT:%.+]] = VPU.NCE.Interpolate([[INTERP_INPUT]], [[INTERP_WEIGHTS]], [[INTERP_WEIGHTS_TABLE]])
+    // CHECK:      [[INTERP_OUTPUT:%.+]] = VPU.NCE.Interpolate([[INTERP_INPUT]], [[INTERP_WEIGHTS]])
 
     // CHECK:      [[CONV_OUTPUT:%.+]] = VPU.NCE.Convolution([[INTERP_OUTPUT]], [[CONV_WEIGHTS]])
     // CHECK:      return [[CONV_OUTPUT]]

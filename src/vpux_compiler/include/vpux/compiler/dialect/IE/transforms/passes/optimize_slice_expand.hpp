@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,10 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux {
@@ -33,6 +36,7 @@ mlir::LogicalResult genericOptimizeSliceImplicitShapeCastExpand(IE::ExpandOp lay
                                                                 mlir::PatternRewriter& rewriter, Logger innerLog);
 
 bool isMiddleOpLegal(IE::SliceOp sliceOp, mlir::Operation* op, IE::ExpandOp expandOp);
+bool isSimpleOpLegal(IE::SliceOp sliceOp, mlir::Operation* middleOp, IE::ExpandOp expandOp);
 bool isPReluLegal(IE::SliceOp sliceOp, IE::PReluOp preluOp, IE::ExpandOp expandOp);
 bool isConcatLegal(IE::SliceOp sliceOp, IE::ConcatOp concatOp, IE::ExpandOp expandOp);
 
@@ -75,6 +79,24 @@ public:
     OptimizeSliceLayoutCastExpand(mlir::MLIRContext* ctx, Logger log)
             : mlir::OpRewritePattern<IE::ExpandOp>(ctx), _log(log) {
         setDebugName("OptimizeSliceLayoutCastExpand");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ExpandOp layerOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// OptimizeSlicePermuteCastExpand
+//
+
+class OptimizeSlicePermuteCastExpand final : public mlir::OpRewritePattern<IE::ExpandOp> {
+public:
+    OptimizeSlicePermuteCastExpand(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ExpandOp>(ctx), _log(log) {
+        setDebugName("OptimizeSlicePermuteCastExpand");
     }
 
 public:
@@ -249,6 +271,24 @@ public:
 };
 
 //
+// OptimizeSliceConcatExpandWithViewLikeOps
+//
+
+class OptimizeSliceConcatExpandWithViewLikeOps final : public mlir::OpRewritePattern<IE::ExpandOp> {
+public:
+    OptimizeSliceConcatExpandWithViewLikeOps(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ExpandOp>(ctx), _log(log) {
+        setDebugName("OptimizeSliceConcatExpandWithViewLikeOpsRewriter");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ExpandOp expandOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
 // OptimizeSliceOpsExpand
 //
 
@@ -287,19 +327,54 @@ public:
             return mlir::failure();
         }
 
-        SmallVector<mlir::Value> inputs;
         auto outputType = origOp.getOutput().getType();
+        for (auto operand : eltwiseOp->getOperands()) {
+            auto inputOp = operand.getDefiningOp();
+            if (mlir::isa_and_nonnull<Const::DeclareOp>(inputOp)) {
+                continue;
+            }
+            if (!mlir::isa_and_nonnull<IE::SliceOp>(inputOp) || !inputOp->hasOneUse()) {
+                _log.trace("EltwiseOp's non-const input is not 'SliceOp' or SliceOp has multi-users");
+                return mlir::failure();
+            }
+            auto sliceInType = inputOp->getOperand(0).getType();
+            if (sliceInType != outputType) {
+                _log.trace("Slice input type '{0}' != output type '{1}'", sliceInType, outputType);
+                return mlir::failure();
+            }
+        }
+
+        SmallVector<mlir::Value> inputs;
         for (auto input : eltwiseOp->getOperands()) {
-            auto sliceOp = mlir::dyn_cast_or_null<IE::SliceOp>(input.getDefiningOp());
-            if (sliceOp == nullptr || !sliceOp->hasOneUse()) {
-                _log.trace("Cannot get 'Slice' before '{0} or Slice has multi uses'", eltwiseOp->getName());
-                return mlir::failure();
+            auto inputOp = input.getDefiningOp();
+            if (auto constOp = mlir::dyn_cast_or_null<Const::DeclareOp>(inputOp)) {
+                auto padsBegin = origOp.getPadsBeginAttr();
+                auto padsEnd = origOp.getPadsEndAttr();
+
+                auto contentAttr = constOp.getContentAttr();
+                auto baseContent = contentAttr.getBaseContent();
+                auto transformations = contentAttr.getTransformations();
+                SmallVector<Const::TransformAttrInterface> newTransformations;
+
+                bool padded = false;
+                auto padAttr = Const::PadWithZeroAttr::get(padsBegin, padsEnd);
+                for (auto attr : transformations) {
+                    if (!padded && mlir::isa<Const::LayoutCastAttr>(attr)) {
+                        newTransformations.push_back(padAttr);
+                        padded = true;
+                    }
+                    newTransformations.push_back(attr);
+                }
+                if (!padded) {
+                    newTransformations.push_back(padAttr);
+                }
+
+                auto newContentAttr = Const::ContentAttr::get(baseContent, newTransformations);
+                auto newConstOp = rewriter.create<Const::DeclareOp>(origOp.getLoc(), outputType, newContentAttr);
+                inputs.push_back(newConstOp.getOutput());
+            } else {
+                inputs.push_back(inputOp->getOperand(0));
             }
-            auto sliceInput = sliceOp->getOperand(0);
-            if (sliceInput.getType() != outputType) {
-                return mlir::failure();
-            }
-            inputs.push_back(sliceInput);
         }
 
         mlir::IRMapping mapper;

@@ -170,8 +170,8 @@ def VPUMI37XX_NNDMAOp :
         Variadic<VPURegMapped_IndexType>:$updateBarriers,
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         IntAttr:$port,
         VPUIP_DMAAccModeAttr:$acceleration_mode,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor
@@ -183,9 +183,6 @@ def VPUMI37XX_NNDMAOp :
 
     let builders = [
         OpBuilder<
-            (ins "mlir::Value":$src, "mlir::Value":$dst)
-        >,
-        OpBuilder<
             (ins "mlir::Type":$index, "mlir::Value":$input, "mlir::ValueRange":$output_buffs,
             "mlir::Value":$nextDMAIdx, "mlir::ValueRange":$waitBarriers, "mlir::ValueRange":$updateBarriers,
             "uint64_t":$start_after, "uint64_t":$clean_after, "bool":$is_out_of_order,
@@ -196,6 +193,7 @@ def VPUMI37XX_NNDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         (`taskLocation` `(` $taskLocation^ `:` type($taskLocation) `)`)?
         `inputs` `(` $input `:` type($input) `)`
         (`outputs` `(` $output_buffs^ `:` type($output_buffs) `)`)?
@@ -537,17 +535,17 @@ def VPUMI37XX_DPUInvariantOp :
         OptionalAttr<I64ArrayAttr>:$kernel_size,
         OptionalAttr<I64ArrayAttr>:$kernel_strides,
         OptionalAttr<VPU_PaddingAttr>:$kernel_padding,
-        UnitAttr:$is_continued,
+        UnitProp:$is_continued,
         OptionalAttr<IntAttr>:$cm_sp_pattern,
-        UnitAttr:$is_segmented,
-        UnitAttr:$input_channels_compression,
-        UnitAttr:$is_zero_offset_weights_table,
+        UnitProp:$is_segmented,
+        UnitProp:$input_channels_compression,
+        UnitProp:$is_zero_offset_weights_table,
         OptionalAttr<IntAttr>:$out_channel_offset,
-        UnitAttr:$is_superdense,
+        UnitProp:$is_superdense,
         OptionalAttr<BoolAttr>:$is_inplace,
         OptionalAttr<IntAttr>:$input_se_size,
         OptionalAttr<IntAttr>:$output_se_size,
-        UnitAttr:$is_permute_quantize,
+        UnitProp:$is_permute_quantize,
 
         Variadic<VPURegMapped_IndexType>:$waitBarriers,
         Variadic<VPURegMapped_IndexType>:$updateBarriers,
@@ -572,6 +570,7 @@ def VPUMI37XX_DPUInvariantOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         (`taskLocation` `(` $taskLocation^ `:` type($taskLocation) `)`)?
         `input` `(` $input  `:` type($input) `)`
         (`input_sparsity_map` `(` $input_sparsity_map^  `:` type($input_sparsity_map) `)`)?

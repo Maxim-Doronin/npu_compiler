@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -324,18 +324,6 @@ private:
     Logger _log;
 };
 
-class AccumulateRewrite final : public mlir::OpRewritePattern<IE::AccumulateOp> {
-public:
-    AccumulateRewrite(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::AccumulateOp>(ctx), _log(log) {
-    }
-
-public:
-    mlir::LogicalResult matchAndRewrite(IE::AccumulateOp origOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
 //
 // RandomUniformRewrite
 //
@@ -500,6 +488,40 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::FlashSDPAOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// LogSoftmaxTopKRewrite
+//
+
+class LogSoftmaxTopKRewrite final : public mlir::OpRewritePattern<IE::LogSoftmaxTopKOp> {
+public:
+    LogSoftmaxTopKRewrite(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::LogSoftmaxTopKOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::LogSoftmaxTopKOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// LogSoftmaxPeakRewrite
+//
+
+class LogSoftmaxPeakRewrite final : public mlir::OpRewritePattern<IE::LogSoftmaxPeakOp> {
+public:
+    LogSoftmaxPeakRewrite(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::LogSoftmaxPeakOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::LogSoftmaxPeakOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;

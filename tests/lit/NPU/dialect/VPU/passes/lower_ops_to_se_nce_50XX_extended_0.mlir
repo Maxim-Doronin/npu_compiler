@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -660,4 +660,30 @@ func.func @DoNotLowerReflectPadOpToNCE(%input: tensor<1x16x80x80xf16, {order = #
     // CHECK-SAME:           -> tensor<1x16x83x83xf16, {order = #NHWC}>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x16x83x83xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SkipPadOpWithNegativePads
+// CHECK-SAME: ([[INPUT_DATA:%.+]]: tensor<1x64x80x80xf16, {order = #NHWC}>) -> tensor<1x64x77x78xf16, {order = #NHWC}> {
+func.func @SkipPadOpWithNegativePads(%input: tensor<1x64x80x80xf16, {order = #NHWC}>) -> tensor<1x64x77x78xf16, {order = #NHWC}> {
+    %0 = VPU.Pad(%input) {
+            mode = #IE.pad_mode<CONSTANT>,
+            pad_value_attr = 0.000000e+00 : f64,
+            pads_begin_attr = [0, 0, -2, -1],
+            pads_end_attr = [0, 0, -1, -1]
+        } : tensor<1x64x80x80xf16, {order = #NHWC}> -> tensor<1x64x77x78xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x64x77x78xf16, {order = #NHWC}>
+
+    // VPU.Pad with negative pads is not supported by SEP, so it should remain unchanged
+    // CHECK:       [[OUTPUT:%.+]] = VPU.Pad([[INPUT_DATA]]) {
+    // CHECK-SAME:          mode = #IE.pad_mode<CONSTANT>,
+    // CHECK-SAME:          pad_value_attr = 0.000000e+00 : f64,
+    // CHECK-SAME:          pads_begin_attr = [0, 0, -2, -1],
+    // CHECK-SAME:          pads_end_attr = [0, 0, -1, -1]
+    // CHECK-SAME:      } : tensor<1x64x80x80xf16, {order = #NHWC}> -> tensor<1x64x77x78xf16, {order = #NHWC}>
+    // CHECK:       return [[OUTPUT]] : tensor<1x64x77x78xf16, {order = #NHWC}>
 }

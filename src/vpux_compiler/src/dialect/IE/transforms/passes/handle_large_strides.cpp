@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -102,19 +103,19 @@ mlir::LogicalResult generalSplitter(mlir::Operation* origOp, mlir::PatternRewrit
             // TODO: temporary FQ propagation
             if (inputFQ != nullptr) {
                 slicedInput = vpux::IE::createFQ(rewriter, slicedInput->getResult(0), inputFQ,
-                                                 takeOpLoc(inputFQ, StringLiteral("fq_in_{0}_{1}"), i, j));
+                                                 takeOpLoc(inputFQ, "fq_in_{0}_{1}", i, j));
             }
 
             const SmallVector<int64_t> newPadBegin = {padTop, padLeft};
             const SmallVector<int64_t> newPadEnd = {padBottom, padRight};
 
-            auto* newOp = makeOperation(appendLoc(loc, "_op"), slicedInput->getResult(0),
+            auto* newOp = makeOperation(appendLoc(loc, "op"), slicedInput->getResult(0),
                                         {getIntArrayAttr(ctx, newStrides), getIntArrayAttr(ctx, newPadBegin),
                                          getIntArrayAttr(ctx, newPadEnd)});
             // TODO: temporary FQ propagation
             if (outputFQ != nullptr) {
                 newOp = vpux::IE::createFQ(rewriter, newOp->getResult(0), outputFQ,
-                                           takeOpLoc(outputFQ, StringLiteral("fq_out_{0}_{1}"), i, j));
+                                           takeOpLoc(outputFQ, "fq_out_{0}_{1}", i, j));
             }
 
             wSliced.push_back(newOp->getResult(0));
@@ -125,7 +126,7 @@ mlir::LogicalResult generalSplitter(mlir::Operation* origOp, mlir::PatternRewrit
         offsets[Dims4D::Act::H] += strides[0] - padTop;
 
         if (!wSliced.empty()) {
-            auto loc = takeOpLoc(origOp, llvm::formatv("_concat_{0}", i));
+            auto loc = takeOpLoc(origOp, "concat_{0}", i);
             hSliced.push_back(wSliced.size() != 1 ? rewriter.create<IE::ConcatOp>(loc, wSliced, Dims4D::Act::W)
                                                   : wSliced.front());
         }
@@ -172,10 +173,9 @@ mlir::LogicalResult ConvGeneralRewriter::matchAndRewrite(IE::ConvolutionOp origO
             ArrayRef({filterShape[Dims4D::Filter::KX], filterShape[Dims4D::Filter::KY]}), origOp.getPadsBegin(),
             origOp.getPadsEnd(),
             [&](mlir::Location loc, mlir::Value input, OperationPart part) -> mlir::Operation* {
-                return rewriter.create<IE::ConvolutionOp>(
-                        loc, input, origOp.getFilter(), origOp.getBias(), part.strides, part.padBegin, part.padEnd,
-                        origOp.getDilations(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                        origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+                return IE::cloneConvolutionOp(rewriter, origOp, input, origOp.getFilter(), origOp.getBias(),
+                                              origOp.getScale(), part.strides, part.padBegin, part.padEnd,
+                                              origOp.getDilations(), loc);
             },
             _log.nest());
 }
@@ -441,10 +441,8 @@ mlir::LogicalResult ConvMPOptimizationRewriter::matchAndRewrite(IE::ConvolutionO
     return opWithMaxPoolOptimization(
             origOp, rewriter, origOp.getStrides(),
             [&](mlir::Location loc, mlir::Value input, mlir::ArrayAttr strides) -> mlir::Operation* {
-                return rewriter.create<IE::ConvolutionOp>(
-                        loc, input, origOp.getFilter(), origOp.getBias(), strides, origOp.getPadsBegin(),
-                        origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-                        origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+                return IE::cloneConvolutionOp(rewriter, origOp, input, origOp.getFilter(), strides,
+                                              origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), loc);
             },
             _log.nest());
 }

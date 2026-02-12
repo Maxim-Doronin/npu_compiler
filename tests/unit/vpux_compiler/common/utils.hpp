@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
@@ -36,6 +37,8 @@ public:
         // We need to register hw-specific interfaces (e.g. NCEOpInterface) for VPU NCE ops
         auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
         interfacesRegistry->registerInterfaces(registry);
+        vpux::VPU::initializeSingletonCache(registry, vpux::VPU::DeviceVersion{std::nullopt, arch});
+
         ctx.appendDialectRegistry(registry);
         ctx.loadDialect<vpux::VPU::VPUDialect>();
     }
@@ -103,6 +106,7 @@ public:
         this->builder = std::make_unique<mlir::OpBuilder>(this->ctx.get());
     }
 };
+
 template <typename HW_REG_TYPE, typename REG_MAPPED_TYPE>
 class MLIR_RegMappedNPUReg50XXUnitBase : public MLIR_RegMappedUnitBase<HW_REG_TYPE, REG_MAPPED_TYPE> {
 public:

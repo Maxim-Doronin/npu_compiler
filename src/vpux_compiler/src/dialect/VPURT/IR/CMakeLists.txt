@@ -13,6 +13,5 @@ add_npu_library(npu_compiler_dialect_vpurt
         npu_ov_utils
         npu_profiling_utils
         npu_compiler_dialect_elf_utils
-        flatbuffers
         npu_elf
         npu_costmodel)

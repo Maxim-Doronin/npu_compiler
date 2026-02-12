@@ -6,11 +6,11 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/convert_divide_to_multiply_benefit_strategy.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -243,9 +243,10 @@ mlir::LogicalResult ConstDivisorRewriter::matchAndRewrite(Const::DeclareOp origO
         // Casting is safe because newCstOp has only IE.Divide users
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
         rewriter.setInsertionPoint(divideOp);
-        rewriter.replaceOpWithNewOp<IE::MultiplyOp>(divideOp, divideOp.getInput1(), newCstOp,
-                                                    divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
-                                                    nullptr);
+        auto multiplyOp =
+                rewriter.create<IE::MultiplyOp>(appendLoc(divideOp.getLoc(), "as_mul"), divideOp.getInput1(), newCstOp,
+                                                divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
+        rewriter.replaceAllOpUsesWith(divideOp, multiplyOp);
     }
     return mlir::success();
 }
@@ -264,9 +265,7 @@ mlir::LogicalResult ConstDivisorRewriter::matchAndRewrite(Const::DeclareOp origO
 //           IE.Multiply(1x1024x1024)
 class NonConstDivisorRewriter final : public mlir::OpRewritePattern<IE::DivideOp> {
 public:
-    NonConstDivisorRewriter(mlir::MLIRContext* ctx, Logger log,
-                            std::unique_ptr<IE::IConvertDivideToMultiplyBenefitStrategy> benefitStrategy)
-            : mlir::OpRewritePattern<IE::DivideOp>(ctx), _log(log), _benefitStrategy(std::move(benefitStrategy)) {
+    NonConstDivisorRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::DivideOp>(ctx), _log(log) {
     }
 
 public:
@@ -274,12 +273,42 @@ public:
 
 private:
     Logger _log;
-    std::unique_ptr<IE::IConvertDivideToMultiplyBenefitStrategy> _benefitStrategy;
 };
+
+mlir::LogicalResult isNonConstBeneficialConversion(IE::DivideOp divideOp) {
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(divideOp.getOutput().getType());
+    const auto outputNumElements = outputType.getNumElements();
+
+    auto arch = config::getArch(divideOp);
+    if (arch <= config::ArchKind::NPU37XX) {
+        const auto divisorType = mlir::cast<vpux::NDTypeInterface>(divideOp.getInput2().getType());
+        const auto divisorNumElements = divisorType.getNumElements();
+
+        constexpr int64_t SIZE_RATIO_THRESHOLD = 1024;
+        // The transformation will create a new Divide(1, divisor)
+        // It's beneficial when the new Divide will be much smaller than the original Divide
+        if (outputNumElements / divisorNumElements < SIZE_RATIO_THRESHOLD) {
+            return mlir::failure();
+        }
+    }
+
+    constexpr int64_t THRESHOLD_FOR_BENEFICIAL_CONVERSION = 4096;
+    if (outputNumElements < THRESHOLD_FOR_BENEFICIAL_CONVERSION) {
+        return mlir::failure();
+    }
+
+    return mlir::success();
+}
 
 mlir::LogicalResult NonConstDivisorRewriter::matchAndRewrite(IE::DivideOp origOp,
                                                              mlir::PatternRewriter& rewriter) const {
     _log.trace("Got Divide op at '{0}'", origOp->getLoc());
+
+    // NOTE: Previous patterns in this pass could have replaced DivideOp with MultiplyOp.
+    // Func walk did not run DCE during execution of this pattern; Must check manually.
+    if (origOp->getUses().empty()) {
+        return mlir::failure();
+    }
 
     // Const divisor is handled in other rewriter
     if (mlir::isa_and_nonnull<Const::DeclareOp>(origOp.getInput2().getDefiningOp())) {
@@ -290,18 +319,13 @@ mlir::LogicalResult NonConstDivisorRewriter::matchAndRewrite(IE::DivideOp origOp
         return mlir::failure();
     }
 
-    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    if (!outputType.getShape().isStatic()) {
-        return mlir::failure();
-    }
-
     // InverseOp only support float type
     const auto divisorElemType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType()).getElementType();
     if (!mlir::isa<mlir::FloatType>(divisorElemType)) {
         return mlir::failure();
     }
 
-    if (_benefitStrategy->isNonConstBeneficialConversion(origOp).failed()) {
+    if (isNonConstBeneficialConversion(origOp).failed()) {
         _log.trace("Non-const Divide conversion is not beneficial");
         return mlir::failure();
     }
@@ -325,7 +349,7 @@ mlir::LogicalResult NonConstDivisorRewriter::matchAndRewrite(IE::DivideOp origOp
     }
 
     auto ctx = rewriter.getContext();
-    auto constLoc = appendLoc(origOp->getLoc(), "_inverse");
+    auto constLoc = appendLoc(origOp->getLoc(), "inverse");
     mlir::Value constOp;
     if (elemType.isF16()) {
         const auto baseType = mlir::RankedTensorType::get(divisorShape, mlir::Float16Type::get(ctx));
@@ -335,13 +359,13 @@ mlir::LogicalResult NonConstDivisorRewriter::matchAndRewrite(IE::DivideOp origOp
         const auto baseType = mlir::RankedTensorType::get(divisorShape, mlir::Float32Type::get(ctx));
         constOp = Const::createConst(rewriter, constLoc, baseType, ArrayRef(1.f));
     }
-    auto divideOp = rewriter.create<IE::DivideOp>(appendLoc(origOp->getLoc(), "_divide"), constOp, origOp.getInput2(),
-                                                  IE::AutoBroadcastType::NUMPY);
+    auto divideOpResult = rewriter.createOrFold<IE::DivideOp>(appendLoc(origOp->getLoc(), "divide"), constOp,
+                                                              origOp.getInput2(), IE::AutoBroadcastType::NUMPY);
 
-    auto multiplyOp =
-            rewriter.create<IE::MultiplyOp>(takeOpLoc(origOp, "_multiply"), origOp.getInput1(), divideOp.getOutput(),
-                                            origOp.getAutoBroadcast(), nullptr, nullptr, nullptr, nullptr);
-    rewriter.replaceOp(origOp, multiplyOp.getOutput());
+    auto multiplyOpResult =
+            rewriter.createOrFold<IE::MultiplyOp>(takeOpLoc(origOp, "multiply"), origOp.getInput1(), divideOpResult,
+                                                  origOp.getAutoBroadcast(), nullptr, nullptr, nullptr, nullptr);
+    rewriter.replaceAllOpUsesWith(origOp, multiplyOpResult);
     _log.trace("Successfully replaced divide with multiply");
 
     return mlir::success();
@@ -415,9 +439,10 @@ mlir::LogicalResult FakeQuantizeDivideRewriter::matchAndRewrite(IE::FakeQuantize
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
         // Insertion point was changed in replaceWithNewFakeQuantizeOp, we have to reset it manually here
         rewriter.setInsertionPoint(divideOp);
-        rewriter.replaceOpWithNewOp<IE::MultiplyOp>(divideOp, divideOp.getInput1(), newFqOp,
-                                                    divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
-                                                    nullptr);
+        auto multiplyOp =
+                rewriter.create<IE::MultiplyOp>(appendLoc(divideOp.getLoc(), "as_mul"), divideOp.getInput1(), newFqOp,
+                                                divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
+        rewriter.replaceAllOpUsesWith(divideOp, multiplyOp);
     }
     return mlir::success();
 }
@@ -489,9 +514,10 @@ mlir::LogicalResult DequantizeDivideRewriter::matchAndRewrite(IE::DequantizeOp o
         auto divideOp = mlir::cast<IE::DivideOp>(userOp);
         // Insertion point was changed in replaceWithNewDequantizeOp, we have to reset it manually here
         rewriter.setInsertionPoint(divideOp);
-        rewriter.replaceOpWithNewOp<IE::MultiplyOp>(divideOp, divideOp.getInput1(), newDqOp,
-                                                    divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
-                                                    nullptr);
+        auto multiplyOp =
+                rewriter.create<IE::MultiplyOp>(appendLoc(divideOp.getLoc(), "as_mul"), divideOp.getInput1(), newDqOp,
+                                                divideOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
+        rewriter.replaceAllOpUsesWith(divideOp, multiplyOp);
     }
     return mlir::success();
 }
@@ -504,17 +530,13 @@ void ConvertDivideToMultiplyPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    auto nonConstBenefitStrategy = IE::createConvertDivideToMultiplyBenefitStrategy(func);
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ConstDivisorRewriter>(&ctx, _log);
     patterns.add<FakeQuantizeDivideRewriter>(&ctx, _log);
     patterns.add<DequantizeDivideRewriter>(&ctx, _log);
-    patterns.add<NonConstDivisorRewriter>(&ctx, _log, std::move(nonConstBenefitStrategy));
+    patterns.add<NonConstDivisorRewriter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

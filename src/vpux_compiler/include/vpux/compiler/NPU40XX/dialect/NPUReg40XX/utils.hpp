@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -65,8 +65,7 @@ npu40xx::nn_public::VpuActWLType getActWLType(mlir::SymbolRefAttr taskType);
 template <typename OpType>
 void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs, mlir::Operation* op,
                     std::optional<mlir::SymbolRefAttr> getActShaveRt, std::optional<uint64_t> shaveStacksSize,
-                    bool isActShaveProfilingEnabled, bool getIsActKernelInvocations,
-                    std::optional<std::pair<uint32_t, uint32_t>> stackFrames) {
+                    bool isActShaveProfilingEnabled, bool getIsActKernelInvocations, ArrayRef<uint32_t> stackFrames) {
     shv_rt_configs.dpu_perf_mode = npu40xx::nn_public::VpuHWPStatMode::MODE3;
     if (getIsActKernelInvocations) {
         shv_rt_configs.use_schedule_embedded_rt = false;
@@ -89,13 +88,8 @@ void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs
         }
     }
 
-    if (stackFrames.has_value()) {
-        auto moduleOp = getModuleOp(op);
-        const auto tileCount = config::getTileExecutor(moduleOp).getCount();
-        for (int64_t n = 0; n < tileCount; ++n) {
-            shv_rt_configs.stack_frames[n * 2] = stackFrames->first;
-            shv_rt_configs.stack_frames[n * 2 + 1] = stackFrames->second;
-        }
+    for (auto stackFrame : enumerate(stackFrames)) {
+        shv_rt_configs.stack_frames[stackFrame.index()] = stackFrame.value();
     }
 
     shv_rt_configs.stack_size = checked_cast<uint32_t>(shaveStacksSize.value_or(0));

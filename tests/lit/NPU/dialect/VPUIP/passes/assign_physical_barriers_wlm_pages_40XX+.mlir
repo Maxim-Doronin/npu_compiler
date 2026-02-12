@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -54,20 +54,20 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
 
     VPURT.Task updates(%bar0: !VPURT.Barrier)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
 
     VPURT.Task waits(%bar0: !VPURT.Barrier)
                updates(%bar1: !VPURT.Barrier)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier)
                updates(%bar2, %bar3: !VPURT.Barrier, !VPURT.Barrier)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier)
@@ -117,18 +117,18 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     VPURT.Task waits(%bar5: !VPURT.Barrier)
                updates(%bar6: !VPURT.Barrier)
     {
-         VPUIP.NNDMA {port = 0 : i64} inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
 
 
     return %buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
 
-    // CHECK:   [[BAR0:%.+]] = VPURT.ConfigureBarrier<0> <{isStartBarrier, wlmPage = 0 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR1:%.+]] = VPURT.ConfigureBarrier<1> <{wlmPage = 0 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR2:%.+]] = VPURT.ConfigureBarrier<2> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR3:%.+]] = VPURT.ConfigureBarrier<3> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR4:%.+]] = VPURT.ConfigureBarrier<0> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR5:%.+]] = VPURT.ConfigureBarrier<1> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR0:%.+]] = VPURT.ConfigureBarrier<1> <{isStartBarrier, wlmPage = 0 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR1:%.+]] = VPURT.ConfigureBarrier<0> <{wlmPage = 0 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR2:%.+]] = VPURT.ConfigureBarrier<3> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR3:%.+]] = VPURT.ConfigureBarrier<2> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR4:%.+]] = VPURT.ConfigureBarrier<1> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR5:%.+]] = VPURT.ConfigureBarrier<0> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
     // CHECK:   [[BAR6:%.+]] = VPURT.ConfigureBarrier<2> <{isFinalBarrier, wlmPage = 3 : i64}> -> !VPURT.Barrier
 }
 }

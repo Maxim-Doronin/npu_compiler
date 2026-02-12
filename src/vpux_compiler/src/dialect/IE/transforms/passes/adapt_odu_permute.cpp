@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,7 +11,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
-#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/common_utils/layer_permute_ie.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
@@ -36,8 +37,8 @@ namespace {
 
 class AdaptODUPermuteRewriter final : public mlir::OpInterfaceRewritePattern<IE::LayerWithPermuteInterface> {
 public:
-    AdaptODUPermuteRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpInterfaceRewritePattern<IE::LayerWithPermuteInterface>(ctx), _log(log) {
+    AdaptODUPermuteRewriter(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefitLevel = 1)
+            : mlir::OpInterfaceRewritePattern<IE::LayerWithPermuteInterface>(ctx, benefitLevel), _log(log) {
         this->setDebugName("AdaptODUPermuteRewriter");
     }
 
@@ -109,7 +110,7 @@ mlir::LogicalResult AdaptODUPermuteRewriter::matchAndRewrite(IE::LayerWithPermut
             newInputShape[Dims4D::Act::W] = 1;
 
             auto newPermuteCastOp =
-                    tryToFindPermuteCastOp(origOp.getLoc(), inputValue, inOrder, newInputShape, rewriter);
+                    IE::tryToFindPermuteCastOp(origOp.getLoc(), inputValue, inOrder, newInputShape, rewriter);
             if (!newPermuteCastOp.has_value()) {
                 return matchFailed(_log.nest(), rewriter, origOp, "No input permuteCast found");
             }
@@ -178,7 +179,8 @@ mlir::LogicalResult AdaptODUPermuteRewriter::matchAndRewrite(IE::LayerWithPermut
         result.setType(newType);
     }
 
-    auto newPermuteCastOp = tryToFindPermuteCastOp(origOp.getLoc(), newOp->getResult(0), outOrder, outShape, rewriter);
+    auto newPermuteCastOp =
+            IE::tryToFindPermuteCastOp(origOp.getLoc(), newOp->getResult(0), outOrder, outShape, rewriter);
     if (!newPermuteCastOp.has_value()) {
         rewriter.cancelOpModification(newOp);
         return matchFailed(_log.nest(), rewriter, origOp, "No output permuteCast found");

@@ -1,13 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "intel_npu/icompiler.hpp"
-
 #include "vpux/compiler/version.hpp"
+#include "vpux/utils/IE/icompiler.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 
 namespace vpux {
@@ -41,7 +40,7 @@ struct BlobView final {
 // compiled network is represented via BlobView. Blob in this case is allocated by
 // compiler via provided BlobAllocator implementation.
 struct NetworkDescriptionView {
-    NetworkDescriptionView(BlobView, intel_npu::NetworkMetadata&&);
+    NetworkDescriptionView(BlobView, NetworkMetadata&&);
 
     NetworkDescriptionView(const NetworkDescriptionView&) = delete;
     NetworkDescriptionView& operator=(const NetworkDescriptionView&) = delete;
@@ -52,26 +51,25 @@ struct NetworkDescriptionView {
     ~NetworkDescriptionView() = default;
 
     BlobView compiledNetwork;
-    intel_npu::NetworkMetadata metadata;
+    NetworkMetadata metadata;
 };
 
-class CompilerImpl final : public intel_npu::ICompiler {
+class CompilerImpl final : public ICompiler {
 public:
     CompilerImpl();
 
     uint32_t getSupportedOpsetVersion() const;
 
     // Mutable model variant for direct use with deserialized model in VCL
-    intel_npu::NetworkDescription compile(const std::shared_ptr<ov::Model>& model,
-                                          const intel_npu::Config& config) const;
+    NetworkDescription compile(const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config) const;
 
-    intel_npu::NetworkDescription compile(const std::shared_ptr<const ov::Model>& model,
-                                          const intel_npu::Config& config) const final;
+    NetworkDescription compile(const std::shared_ptr<const ov::Model>& model,
+                               const intel_npu::Config& config) const final;
 
     ov::SupportedOpsMap query(const std::shared_ptr<const ov::Model>& model,
                               const intel_npu::Config& config) const final;
 
-    intel_npu::NetworkMetadata parse(const std::vector<uint8_t>& network, const intel_npu::Config&) const final;
+    NetworkMetadata parse(const std::vector<uint8_t>& network, const intel_npu::Config&) const final;
 
     std::vector<ov::ProfilingInfo> process_profiling_output(const std::vector<uint8_t>& profData,
                                                             const std::vector<uint8_t>& network,
@@ -93,12 +91,12 @@ public:
 
     /// @brief Returns Init schedules and Main in a single call. There is always exactly one Main schedule, placed at
     /// the back of the vector.
-    std::vector<std::shared_ptr<intel_npu::NetworkDescription>> compileWsOneShot(
-            const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config) const override;
+    std::vector<std::shared_ptr<NetworkDescription>> compileWsOneShot(const std::shared_ptr<ov::Model>& model,
+                                                                      const intel_npu::Config& config) const override;
 
     /// @brief Sequentially compiles Init and Main schedules. The Main schedule is always last.
-    intel_npu::NetworkDescription compileWsIterative(const std::shared_ptr<ov::Model>& model,
-                                                     const intel_npu::Config& config, size_t callIdx) const override;
+    NetworkDescription compileWsIterative(const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config,
+                                          size_t callIdx) const override;
 
     // WS VCL-specific methods
 

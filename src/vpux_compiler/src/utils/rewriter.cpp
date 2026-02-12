@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -211,7 +211,7 @@ mlir::bufferization::BufferLikeType distributedTensorToBuffer(VPU::DistributedTe
         auto shapeDistribution = VPU::DistributionInfoAttr::get(ctx, duplicatedMode, nullptr, nullptr, nullptr, nullptr,
                                                                 type.getDistribution().getNumClusters(), nullptr,
                                                                 type.getDistribution().getUniformDistributedSegments(),
-                                                                nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 
         const auto dynamicShapeMemRef =
                 VPUIP::DistributedBufferType::get(ctx, {rank}, si32, memRefLayoutAttr, dataMemSpace, shapeDistribution);
@@ -438,9 +438,9 @@ mlir::LogicalResult vpux::convertFunc(mlir::func::FuncOp funcOp, ArrayRef<mlir::
 
 mlir::GreedyRewriteConfig vpux::getDefaultGreedyRewriteConfig() {
     mlir::GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification = mlir::GreedySimplifyRegionLevel::Normal;
-    config.maxIterations = 10;
+    config.setUseTopDownTraversal(true);
+    config.setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Normal);
+    config.setMaxIterations(10);
     return config;
 }
 
@@ -491,7 +491,6 @@ vpux::BufferizeTypeConverterBase::BufferizeTypeConverterBase() {
 
 vpux::BufferizeTypeConverter::BufferizeTypeConverter() {
     addTargetMaterialization(dummyConverter<mlir::BaseMemRefType>);
-    addArgumentMaterialization(dummyConverter<mlir::BaseMemRefType>);
     addSourceMaterialization(dummyConverter<mlir::TensorType>);
 }
 
@@ -500,7 +499,6 @@ vpux::BufferizeTypeConverter::BufferizeTypeConverter() {
 //
 
 vpux::BufferizeOneShotTypeConverter::BufferizeOneShotTypeConverter() {
-    addArgumentMaterialization(materializeToTensor);
     addSourceMaterialization(materializeToTensor);
     addTargetMaterialization(materializeToMemref);
 }
@@ -524,10 +522,14 @@ mlir::bufferization::OneShotBufferizationOptions vpux::getOneShotBufferizationOp
         }
         return nullptr;
     };
-    options.opFilter
-            .allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,
-                          mlir::func::FuncDialect, VPU::VPUDialect, Const::ConstDialect, mlir::linalg::LinalgDialect,
-                          Core::CoreDialect, mlir::scf::SCFDialect, mlir::tensor::TensorDialect>();
+    options.functionArgTypeConverterFn = [](mlir::bufferization::TensorLikeType tensorLike, mlir::Attribute,
+                                            mlir::func::FuncOp, const mlir::bufferization::BufferizationOptions&) {
+        return mlir::cast<mlir::bufferization::BufferLikeType>(vpux::getBufferType(tensorLike));
+    };
+    options.opFilter.allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,
+                                  mlir::func::FuncDialect, VPU::VPUDialect, Const::ConstDialect,
+                                  mlir::linalg::LinalgDialect, Core::CoreDialect, mlir::scf::SCFDialect,
+                                  mlir::tensor::TensorDialect, mlir::arith::ArithDialect>();
 
     return options;
 }
@@ -598,46 +600,20 @@ mlir::Type vpux::reconstructTensorType(mlir::Type type) {
 }
 
 //
-// getBuffer
-//
-
-mlir::Value vpux::getBuffer(mlir::RewriterBase& rewriter, mlir::Value value) {
-    if (auto toTensorOp = value.getDefiningOp<mlir::bufferization::ToTensorOp>()) {
-        return toTensorOp.getBuffer();
-    }
-
-    const auto tensorType = value.getType();
-    const bool isAlreadyABufferType = isBufferType(tensorType);
-    if (isAlreadyABufferType) {
-        return value;
-    }
-
-    mlir::OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.setInsertionPointAfterValue(value);
-
-    auto bufferType = vpux::getBufferType(value);
-    auto origType = mlir::cast<vpux::NDTypeInterface>(value.getType());
-    VPUX_THROW_WHEN(origType.hasRank() && origType.getRank() != bufferType.getRank(),
-                    "Incompatible ranks: original rank {0}, buffer rank {1}", origType.getRank(), bufferType.getRank());
-
-    // E#109609: replace with getResult()/getMemref() once we can convert
-    //           VPUIP::{Distributed, Sparse}BufferType to mlir::BaseMemRefType
-    return rewriter.create<mlir::bufferization::ToBufferOp>(value.getLoc(), bufferType, value)->getResult(0);
-}
-
-//
 // bufferizeOperands
 //
 
-SmallVector<mlir::Value> vpux::bufferizeOperands(mlir::RewriterBase& rewriter, mlir::OperandRange operands) {
+SmallVector<mlir::Value> vpux::bufferizeOperands(mlir::RewriterBase& rewriter, mlir::OperandRange operands,
+                                                 mlir::bufferization::BufferizationState& state) {
     if (operands.size() == 0) {
         return {};
     }
     SmallVector<mlir::Value> newOperands;
     newOperands.reserve(llvm::size(operands));
     for (const auto& operand : operands) {
-        auto buffer = vpux::getBuffer(rewriter, operand);
-        newOperands.push_back(buffer);
+        auto buffer = mlir::bufferization::getBuffer(rewriter, operand, vpux::getOneShotBufferizationOptions(), state);
+        VPUX_THROW_WHEN(mlir::failed(buffer), "Bufferization process failed for operand '{0}'", operand);
+        newOperands.push_back(*buffer);
     }
     return newOperands;
 }

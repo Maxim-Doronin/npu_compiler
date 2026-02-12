@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -266,4 +266,9 @@ std::pair<SmallVector<int64_t>, SmallVector<int64_t>> VPU::getUpdatedSliceOffset
 
     seTableSizes[Dims4D::Act::C.ind()] = static_cast<int64_t>(*sizeIter) - *offsetIter + 1;
     return std::make_pair(seTableOffsets, seTableSizes);
+}
+
+bool VPU::isActSparseOp(mlir::Operation* op) {
+    return mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(op->getResult(0).getType()) ||
+           mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(op->getOperand(0).getType());
 }

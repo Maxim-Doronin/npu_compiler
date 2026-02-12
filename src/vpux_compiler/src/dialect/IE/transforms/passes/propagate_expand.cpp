@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -80,7 +80,7 @@ mlir::Value EltwiseShapeCastRewriter::getExpandedInput(mlir::PatternRewriter& re
 
         if (!otherUsers.empty()) {
             auto sliceOp = rewriter.create<IE::SliceOp>(
-                    appendLoc(loc, "_slice"), expand.getOutput(), expandOp.getPadsBegin(),
+                    appendLoc(loc, "slice"), expand.getOutput(), expandOp.getPadsBegin(),
                     getIntArrayAttr(rewriter.getContext(), getShape(permuteQuantize.getOutput()).raw()));
             for (auto user : otherUsers) {
                 user->replaceUsesOfWith(permuteQuantize.getOutput(), sliceOp.getResult());
@@ -209,12 +209,12 @@ mlir::LogicalResult EltwiseShapeCastRewriter::matchAndRewrite(IE::ExpandOp expan
         SmallVector<int64_t> padBegin(shape.size(), 0);
         SmallVector<int64_t> padEnd(shape.size(), 0);
         padEnd[Dims4D::Act::C.ind()] = EXPANDED_CHANNELS - shape[Dims4D::Act::C];
-        auto newExpandOp = rewriter.create<IE::ExpandOp>(appendLoc(expandOp->getLoc(), "_expand"), expandOp.getInput(),
+        auto newExpandOp = rewriter.create<IE::ExpandOp>(appendLoc(expandOp->getLoc(), "expand"), expandOp.getInput(),
                                                          getIntArrayAttr(getContext(), padBegin),
                                                          getIntArrayAttr(getContext(), padEnd));
         SmallVector<int64_t> staticOffsets(shape.size(), 0);
         SmallVector<int64_t> staticSizes(shape.raw());
-        auto newSliceOp = rewriter.create<IE::SliceOp>(appendLoc(expandOp->getLoc(), "_slice"), newExpandOp.getOutput(),
+        auto newSliceOp = rewriter.create<IE::SliceOp>(appendLoc(expandOp->getLoc(), "slice"), newExpandOp.getOutput(),
                                                        getIntArrayAttr(getContext(), staticOffsets),
                                                        getIntArrayAttr(getContext(), staticSizes));
         rewriter.replaceAllUsesExcept(expandOp.getInput(), newSliceOp.getOutput(), newExpandOp);
@@ -222,9 +222,9 @@ mlir::LogicalResult EltwiseShapeCastRewriter::matchAndRewrite(IE::ExpandOp expan
     }
 
     auto expandedInput1 =
-            getExpandedInput(rewriter, firstInput, expandOp, expandedShape.value(), takeOpLoc(expandOp, "_input1"));
+            getExpandedInput(rewriter, firstInput, expandOp, expandedShape.value(), takeOpLoc(expandOp, "input1"));
     auto expandedInput2 = !equalInputs ? getExpandedInput(rewriter, secondInput, expandOp, expandedShape.value(),
-                                                          takeOpLoc(expandOp, "_input2"))
+                                                          takeOpLoc(expandOp, "input2"))
                                        : expandedInput1;
     rewriter.setInsertionPoint(expandOp);
 
@@ -486,8 +486,7 @@ mlir::Value DepthToSpaceSliceRewriter::getConcatResult(mlir::PatternRewriter& re
     interlacedInputs.push_back(input);
     interlacedInputs.push_back(constTensor);
     return rewriter
-            .create<IE::ConcatOp>(appendLoc(loc, "_concat"), mlir::ValueRange(interlacedInputs), axis, offset,
-                                  blockSize)
+            .create<IE::ConcatOp>(appendLoc(loc, "concat"), mlir::ValueRange(interlacedInputs), axis, offset, blockSize)
             .getOutput();
 }
 /*
@@ -570,9 +569,8 @@ mlir::Value DepthToSpaceSliceRewriter::createConvforD2S(mlir::PatternRewriter& r
                                               return checked_cast<int64_t>(val);
                                           }));
     auto output = outputType.changeShape(ShapeRef(shapeI64)).changeDimsOrder(DimsOrder::NHWC);
-    return rewriter.create<IE::ConvolutionOp>(appendLoc(input.getLoc(), "_as_convolution"), output, input, convFilter,
-                                              nullptr, newStrides, newPadsBegin, newPadsEnd, newDilations, nullptr,
-                                              nullptr, nullptr, nullptr, nullptr);
+    return rewriter.create<IE::ConvolutionOp>(appendLoc(input.getLoc(), "as_convolution"), output, input, convFilter,
+                                              newStrides, newPadsBegin, newPadsEnd, newDilations);
 }
 //
 // SpaceToDepthSliceRewriter
@@ -648,9 +646,8 @@ mlir::Value SpaceToDepthSliceRewriter::createDPUOperation(mlir::PatternRewriter&
     const auto ndType = mlir::cast<vpux::NDTypeInterface>(s2dOp.getType());
     const auto newOutputType = ndType.pad(outPadBefore, outPadAfter);
 
-    return rewriter.create<IE::ConvolutionOp>(takeOpLoc(s2dOp, "_as_convolution"), newOutputType, input, convFilter,
-                                              nullptr, newStrides, newPadsBegin, newPadsEnd, newDilations, nullptr,
-                                              nullptr, nullptr, nullptr, nullptr);
+    return rewriter.create<IE::ConvolutionOp>(takeOpLoc(s2dOp, "as_convolution"), newOutputType, input, convFilter,
+                                              newStrides, newPadsBegin, newPadsEnd, newDilations);
 }
 
 void SpaceToDepthSliceRewriter::createPaddedConvolution(mlir::PatternRewriter& rewriter, mlir::Value input,

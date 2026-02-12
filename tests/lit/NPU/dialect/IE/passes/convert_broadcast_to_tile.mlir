@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,8 +14,8 @@ func.func @ConvertBroadcastNumpyToTile(%arg0: tensor<3x1xf16>) -> tensor<2x3x6xf
     return %0 : tensor<2x3x6xf16>
 
     // CHECK-NOT:           IE.Broadcast
-    // CHECK:               [[RESHAPE:%.*]] = IE.Reshape([[INPUT]]) {shape_value = [1, 3, 1]} : tensor<3x1xf16> -> tensor<1x3x1xf16>
-    // CHECK:               [[TILE:%.*]] = IE.Tile([[RESHAPE]]) {repeats_values = [2, 1, 6]} : tensor<1x3x1xf16> -> tensor<2x3x6xf16>
+    // CHECK:               [[RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 3, 1]} : tensor<3x1xf16> -> tensor<1x3x1xf16>
+    // CHECK:               [[TILE:%.+]] = IE.Tile([[RESHAPE]]) {repeats_values = [2, 1, 6]} : tensor<1x3x1xf16> -> tensor<2x3x6xf16>
     // CHECK:               return [[TILE]]
 }
 
@@ -27,8 +27,8 @@ func.func @ConvertBroadcastBidirectionalToTile(%arg0: tensor<4x1xf16>) -> tensor
     return %0 : tensor<2x4x4xf16>
 
     // CHECK-NOT:           IE.Broadcast
-    // CHECK:               [[RESHAPE:%.*]] = IE.Reshape([[INPUT]]) {shape_value = [1, 4, 1]} : tensor<4x1xf16> -> tensor<1x4x1xf16>
-    // CHECK:               [[TILE:%.*]] = IE.Tile(%0) {repeats_values = [2, 1, 4]} : tensor<1x4x1xf16> -> tensor<2x4x4xf16>
+    // CHECK:               [[RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 4, 1]} : tensor<4x1xf16> -> tensor<1x4x1xf16>
+    // CHECK:               [[TILE:%.+]] = IE.Tile(%0) {repeats_values = [2, 1, 4]} : tensor<1x4x1xf16> -> tensor<2x4x4xf16>
     // CHECK:               return [[TILE]]
 }
 
@@ -41,7 +41,7 @@ func.func @ConvertBroadcastExplicitToTile(%arg0: tensor<2x4xf16>) -> tensor<2x3x
     return %0 : tensor<2x3x4xf16>
 
     // CHECK-NOT:           IE.Broadcast
-    // CHECK:               [[RESHAPE:%.*]] = IE.Reshape([[INPUT]]) {shape_value = [2, 1, 4]} : tensor<2x4xf16> -> tensor<2x1x4xf16>
-    // CHECK:               [[TILE:%.*]] = IE.Tile(%0) {repeats_values = [1, 3, 1]} : tensor<2x1x4xf16> -> tensor<2x3x4xf16>
+    // CHECK:               [[RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [2, 1, 4]} : tensor<2x4xf16> -> tensor<2x1x4xf16>
+    // CHECK:               [[TILE:%.+]] = IE.Tile(%0) {repeats_values = [1, 3, 1]} : tensor<2x1x4xf16> -> tensor<2x3x4xf16>
     // CHECK:               return [[TILE]]
 }

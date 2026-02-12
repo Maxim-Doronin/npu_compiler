@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,20 +8,25 @@
 #include "intel_npu/config/options.hpp"
 #include "intel_npu/profiling.hpp"
 
+#ifdef ENABLE_PROFILING_ITT
+#include <ittnotify.h>  // __itt_release_resources
+#endif
+
 #include "vpux/compiler/NPU37XX/backend_pipeline_strategy.hpp"
 #include "vpux/compiler/NPU37XX/dialect_pipeline_strategy.hpp"
 #include "vpux/compiler/NPU40XX/backend_pipeline_strategy.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/export.hpp"
 #include "vpux/compiler/NPU40XX/dialect_pipeline_strategy.hpp"
 #include "vpux/compiler/NPU50XX/backend_pipeline_strategy.hpp"
 #include "vpux/compiler/NPU50XX/dialect_pipeline_strategy.hpp"
 #include "vpux/compiler/compilation_options.hpp"
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/ELF/IR/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 #include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
@@ -29,7 +34,6 @@
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/dialect/config/constraints_initializer.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/constant_transformations_control.hpp"
 #include "vpux/compiler/dialect/const/utils/constant_folding_in_background.hpp"
@@ -38,6 +42,7 @@
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/frontend/ov_batch_detection.hpp"
 #include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/hw_strategy_registry.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 #include "vpux/compiler/pipelines/developer_config.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
@@ -59,6 +64,7 @@
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Support/Timing.h>
 
+#include <llvm/ADT/ScopeExit.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/Support/ManagedStatic.h>  // llvm_shutdown
@@ -80,10 +86,6 @@
 #include <regex>
 
 using namespace vpux;
-
-using intel_npu::ICompiler;
-using intel_npu::NetworkDescription;
-using intel_npu::NetworkMetadata;
 
 namespace {
 
@@ -216,6 +218,8 @@ auto importNetwork(mlir::MLIRContext* ctx, const std::shared_ptr<ov::Model>& mod
     importCfg.dynamicShapeToStatic = config.get<intel_npu::DYNAMIC_SHAPE_TO_STATIC>();
     importCfg.enableWeightsSeparationPath = enableWeightsSeparationPath;
     importCfg.enableDecomposeSDPA = getEnableDecomposeSDPA(config).value_or(false);
+    importCfg.executionModeAccuracy = config.get<intel_npu::EXECUTION_MODE_HINT>() == ov::hint::ExecutionMode::ACCURACY;
+    importCfg.ioWithDynamicStrides = getIoWithDynamicStrides(config);
 
     return IE::importNetwork(ctx, model, originalParameters, originalResults, importTiming, importCfg, log.nest());
 }
@@ -617,8 +621,8 @@ struct CompilationResult {
     }
 };
 
-auto createContext(mlir::DialectRegistry& registry, const intel_npu::Config& config) {
-    auto interfacesRegistry = createInterfacesRegistry(getArchKind(config));
+auto createContext(mlir::DialectRegistry& registry, config::ArchKind arch) {
+    auto interfacesRegistry = createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
     return std::make_unique<mlir::MLIRContext>(registry, mlir::MLIRContext::Threading::DISABLED);
 }
@@ -666,8 +670,13 @@ std::unique_ptr<CompilerSetup> CompilerSetup::create(const intel_npu::Config& co
 
 CompilerSetup::CompilerSetup(const intel_npu::Config& config) {
     registry = createDialectRegistry(getDummyOpReplacement(config).value_or(DummyOpMode::DISABLED));
-    config::registerConstraints(registry, getArchKind(config));
-    ctx = createContext(registry, config);
+    auto platform = getPlatform(config);
+    auto arch = config::getArch(platform);
+    config::registerConstraints(registry, platform);
+    IE::registerStrategies(registry, arch);
+    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{platform, arch});
+
+    ctx = createContext(registry, arch);
     if ((threadPool = createThreadpool(config))) {
         ctx->setThreadPool(*threadPool);
     }
@@ -792,6 +801,11 @@ CompilerImpl::CompilerImpl() {
     // deterministic destruction order akin to calling llvm_shutdown from main as in LLVM
     // samples.
     [[maybe_unused]] static llvm::llvm_shutdown_obj shutdown;
+
+#ifdef ENABLE_PROFILING_ITT
+    // Release ITT resources on DLL unload
+    [[maybe_unused]] static auto ittResourceReleaser = llvm::make_scope_exit(__itt_release_resources);
+#endif
 }
 
 uint32_t CompilerImpl::getSupportedOpsetVersion() const {
@@ -1169,8 +1183,8 @@ std::tuple<CompiledT, intel_npu::Config> tryCompileDebatchedModel(
     return std::make_tuple(callCompilation(model, originalParameters, originalResults, config), config);
 }
 
-std::vector<std::shared_ptr<intel_npu::NetworkDescription>> CompilerImpl::compileWsOneShot(
-        const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config) const {
+std::vector<std::shared_ptr<NetworkDescription>> CompilerImpl::compileWsOneShot(const std::shared_ptr<ov::Model>& model,
+                                                                                const intel_npu::Config& config) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compileWsOneShot");
     checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
 
@@ -1192,11 +1206,11 @@ std::vector<std::shared_ptr<intel_npu::NetworkDescription>> CompilerImpl::compil
 
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compileWsOneShot",
                       "exportNetwork");
-    std::vector<std::shared_ptr<intel_npu::NetworkDescription>> networkDescrs;
+    std::vector<std::shared_ptr<NetworkDescription>> networkDescrs;
     networkDescrs.reserve(compilationResults.size());
     for (const auto& result : compilationResults) {
-        networkDescrs.emplace_back(std::make_shared<intel_npu::NetworkDescription>(
-                exportNetwork(result.moduleOp.get(), compiledConfig, log)));
+        networkDescrs.emplace_back(
+                std::make_shared<NetworkDescription>(exportNetwork(result.moduleOp.get(), compiledConfig, log)));
     }
     OV_ITT_TASK_SKIP(COMPILER_IMPLEMENTATION);
 
@@ -1239,8 +1253,8 @@ std::vector<std::shared_ptr<NetworkDescriptionView>> CompilerImpl::compileWsOneS
     return networkDescrs;
 }
 
-intel_npu::NetworkDescription CompilerImpl::compileWsIterative(const std::shared_ptr<ov::Model>& model,
-                                                               const intel_npu::Config& config, size_t callIdx) const {
+NetworkDescription CompilerImpl::compileWsIterative(const std::shared_ptr<ov::Model>& model,
+                                                    const intel_npu::Config& config, size_t callIdx) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compileWsIterative");
     checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
 
@@ -1378,16 +1392,6 @@ std::vector<ov::ProfilingInfo> CompilerImpl::process_profiling_output(const std:
     auto layerInfo = profiling::getLayerProfilingInfoHook(profData, network);
     return intel_npu::profiling::convertLayersToIeProfilingInfo(layerInfo);
 }
-
-//
-// CreateNPUCompiler
-//
-
-#ifndef OPENVINO_STATIC_LIBRARY
-OPENVINO_PLUGIN_API void CreateNPUCompiler(std::shared_ptr<ICompiler>& obj) {
-    obj = std::make_shared<CompilerImpl>();
-}
-#endif
 
 BlobView::BlobView(uint8_t* _ptr, uint64_t _size): ptr(_ptr), size(_size) {
 }

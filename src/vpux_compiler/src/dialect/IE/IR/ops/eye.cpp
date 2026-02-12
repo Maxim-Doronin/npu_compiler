@@ -4,8 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -22,19 +22,19 @@ mlir::LogicalResult vpux::IE::EyeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto numRows = getConstOrAttrValue(eye.getNumRows(), eye.getNumRowsValueAttr());
+    const auto numRows = Const::getConstOrAttrValue(eye.getNumRows(), eye.getNumRowsValueAttr());
     if (mlir::failed(numRows)) {
         return mlir::failure();
     }
 
-    const auto numColumns = getConstOrAttrValue(eye.getNumColumns(), eye.getNumColumnsValueAttr());
+    const auto numColumns = Const::getConstOrAttrValue(eye.getNumColumns(), eye.getNumColumnsValueAttr());
     if (mlir::failed(numColumns)) {
         return mlir::failure();
     }
 
     SmallVector<int64_t> batchShapeVal = {0};
     if (eye.getBatchShape() != nullptr || eye.getBatchShapeValue().has_value()) {
-        auto batchShape = getConstOrArrAttrValue(eye.getBatchShape(), eye.getBatchShapeValueAttr());
+        auto batchShape = Const::getConstOrArrAttrValue(eye.getBatchShape(), eye.getBatchShapeValueAttr());
         if (mlir::failed(batchShape)) {
             return mlir::failure();
         }
@@ -88,7 +88,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::EyeOp eyeOp, mlir::P
 
     SmallVector<int64_t> batchShapeVal = {0};
     if (eyeOp.getBatchShape() != nullptr) {
-        const auto batchShape = getConstArrValue(eyeOp.getBatchShape());
+        const auto batchShape = Const::getConstArrValue(eyeOp.getBatchShape());
         if (mlir::failed(batchShape)) {
             return mlir::failure();
         }

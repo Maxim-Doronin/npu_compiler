@@ -9,9 +9,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
-#include <mlir/IR/IRMapping.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTMINMAXTOCLAMP
@@ -105,10 +103,7 @@ void ConvertMinMaxToClampPass::safeRunOnFunc() {
     patterns.add<MinMaxConverter<IE::MinimumOp>>(&ctx, _log);
     patterns.add<MinMaxConverter<IE::MaximumOp>>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        _log.debug("Failed to replace Min or Max operation with Clamp");
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

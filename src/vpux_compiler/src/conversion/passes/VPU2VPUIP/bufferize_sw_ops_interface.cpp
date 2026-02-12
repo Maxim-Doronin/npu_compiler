@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,12 +21,13 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -112,11 +113,20 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
     // src/vpux_compiler/src/dialect/VPUIP/IR/ops.cpp
     auto swLayerOp = mlir::cast<VPUIP::SoftwareLayerOpInterface>(op);
 
+    SmallVector<mlir::OpOperand*> auxBuffers;
+    if (auto auxBuffOp = mlir::dyn_cast<VPU::AuxiliaryBufferOpInterface>(op)) {
+        auxBuffers = auxBuffOp.getAuxiliaryBuffers();
+    }
+
     SmallVector<mlir::Value> swKernelResults;
     for (auto result : op->getResults()) {
         const auto memSpace = mlir::cast<NDTypeInterface>(result.getType()).getMemSpace();
-        const auto outputBuffer = allocateBuffer(log, op->getLoc(), rewriter, result, memSpace);
+        const auto outputBuffer = VPUIP::allocateBuffer(log, op->getLoc(), rewriter, result, memSpace);
         swKernelResults.push_back(outputBuffer);
+    }
+    const auto numResultsWithoutAuxBuffers = swKernelResults.size();
+    for (auto auxBuffer : auxBuffers) {
+        swKernelResults.push_back(newOperands[auxBuffer->getOperandNumber()]);
     }
 
     VPUIP::createRuntimeKernelDefinition(module, log.nest(), config::getArch(op));
@@ -143,7 +153,7 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
             if (mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemSpace() == memSpaceCMX) {
                 cmxOperands.push_back(operand);
             } else {
-                const auto outputBuffer = allocateBuffer(log, operand.getLoc(), rewriter, operand, memSpaceCMX);
+                const auto outputBuffer = VPUIP::allocateBuffer(log, operand.getLoc(), rewriter, operand, memSpaceCMX);
                 auto copyOp = rewriter.create<VPUIP::CopyOp>(op->getLoc(), operand, outputBuffer);
                 cmxOperands.push_back(copyOp.getOutput());
             }
@@ -187,7 +197,7 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
                 !op->getResult(result.getResultNumber()).use_empty()) {
                 // Copy outputs that were mapped to CMX back to DDR
                 log.trace("Create DDR buffer for output: {0}", result.getLoc());
-                const auto outputBuffer = allocateBuffer(log, op->getLoc(), rewriter, result, nullptr);
+                const auto outputBuffer = VPUIP::allocateBuffer(log, op->getLoc(), rewriter, result, nullptr);
                 auto copyOp = rewriter.create<VPUIP::CopyOp>(op->getLoc(), result, outputBuffer);
                 newResults.push_back(copyOp.getOutput());
             } else {
@@ -197,13 +207,15 @@ mlir::LogicalResult vpux::bufferizeSWLayerOp(mlir::RewriterBase& rewriter, mlir:
         return newResults;
     };
 
-    auto finalResults = SmallVector<mlir::Value>(swKernelOp->getResults());
+    auto finalResults = SmallVector<mlir::Value>(swKernelOp->getResults().begin(),
+                                                 swKernelOp->getResults().begin() + numResultsWithoutAuxBuffers);
     if (isDMAConvertibleSwOp(mlir::dyn_cast<vpux::VPUIP::SoftwareLayerOpInterface>(op)) &&
         vpux::VPUIP::isLegalAndBeneficialConvertToDMA(swKernelOp, log)) {
         log.trace("SW Kernel will be converted to DMA Operation: {0}", swKernelOp);
         finalResults = moveSwOpToCMX();
     }
 
+    copyLoopAttributes(op, swKernelOp.getOperation());
     mlir::bufferization::replaceOpWithBufferizedValues(rewriter, op, finalResults);
     return mlir::success();
 }
@@ -220,8 +232,18 @@ mlir::LogicalResult vpux::bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewr
 
     VPUIP::createRuntimeKernelDefinition(module, log.nest(), config::getArch(op));
 
-    auto outputBuffers = allocateBuffers(log, op->getLoc(), rewriter, op->getResults(),
-                                         /*individualBuffers=*/true);
+    SmallVector<mlir::OpOperand*> auxBuffers;
+    if (auto auxBuffOp = mlir::dyn_cast<VPU::AuxiliaryBufferOpInterface>(op)) {
+        auxBuffers = auxBuffOp.getAuxiliaryBuffers();
+    }
+
+    auto outputBuffers = VPUIP::allocateBuffers(log, op->getLoc(), rewriter, op->getResults(),
+                                                /*individualBuffers=*/true);
+    const auto numResultsWithoutAuxBuffers = outputBuffers.size();
+    for (auto auxBuffer : auxBuffers) {
+        outputBuffers.push_back(newOperands[auxBuffer->getOperandNumber()]);
+    }
+
     // The actual tile index will be corrected as part of UnrollDistributedOpsPass; this index will be dropped
     const int64_t tileIndex = 0;
     auto genericSwLayerOp = mlir::dyn_cast<VPU::GenericSwLayerOp>(op);
@@ -233,7 +255,10 @@ mlir::LogicalResult vpux::bufferizeDistributedSWLayerOp(mlir::RewriterBase& rewr
                                                          getIntAttr(op->getContext(), tileIndex));
     vpux::VPUIP::initSwKernel(swKernelOp, newOperands, outputBuffers, swLayerOp.getKernelInfo().args, log.nest(),
                               /*swKernelRunOp=*/nullptr);
-    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, op, swKernelOp.getResults());
+    auto finalResults = SmallVector<mlir::Value>(swKernelOp->getResults().begin(),
+                                                 swKernelOp->getResults().begin() + numResultsWithoutAuxBuffers);
+    copyLoopAttributes(op, swKernelOp.getOperation());
+    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, op, finalResults);
     return mlir::success();
 }
 
@@ -243,12 +268,13 @@ class ConcatOpBufferizeModel : public BufferizableOpInterfaceExternalModelBase<C
 public:
     mlir::LogicalResult bufferizeImpl(VPU::ConcatOp origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      mlir::bufferization::BufferizationState& state,
                                       VPU::ConcatOp::Adaptor& adaptor) const {
         if (canBeBufferizedToCopies(origOp)) {
             return vpux::bufferizeOp(origOp->getContext(), origOp, adaptor, rewriter);
         }
         SoftwareLayerOpBufferizeModel<VPU::ConcatOp> concatOpSoftwareModel;
-        return concatOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, adaptor);
+        return concatOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, state, adaptor);
     }
 };
 
@@ -257,13 +283,14 @@ class StridedSliceOpBufferizeModel :
 public:
     mlir::LogicalResult bufferizeImpl(VPU::StridedSliceOp origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      mlir::bufferization::BufferizationState& state,
                                       VPU::StridedSliceOp::Adaptor& adaptor) const {
         if (canBeBufferizedToCopies(origOp)) {
             return vpux::bufferizeOp(origOp->getContext(), origOp, adaptor, rewriter);
         }
 
         SoftwareLayerOpBufferizeModel<VPU::StridedSliceOp> stridedSliceOpSoftwareModel;
-        return stridedSliceOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, adaptor);
+        return stridedSliceOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, state, adaptor);
     }
 };
 
@@ -272,13 +299,14 @@ class PermuteCastOpBufferizeModel :
 public:
     mlir::LogicalResult bufferizeImpl(VPU::PermuteCastOp origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      mlir::bufferization::BufferizationState& state,
                                       VPU::PermuteCastOp::Adaptor& adaptor) const {
         if (canBeBufferizedToCast(origOp)) {
             return vpux::bufferizeOp(origOp->getContext(), origOp, adaptor, rewriter);
         }
 
         SoftwareLayerOpBufferizeModel<VPU::PermuteCastOp> permuteCastOpSoftwareModel;
-        return permuteCastOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, adaptor);
+        return permuteCastOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, state, adaptor);
     }
 };
 
@@ -287,6 +315,7 @@ class ConvertOpBufferizeModel :
 public:
     mlir::LogicalResult bufferizeImpl(VPU::ConvertOp origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      mlir::bufferization::BufferizationState& state,
                                       VPU::ConvertOp::Adaptor& adaptor) const {
         // If conversion can be done on DMA, bufferize it to DMA operation.
         if (isConvertSupportedOnDMA<VPU::ConvertOp>(origOp)) {
@@ -295,7 +324,7 @@ public:
 
         // If ConvertOp can not be converted to DMA operation, bufferize it to software layer operation instead.
         SoftwareLayerOpBufferizeModel<VPU::ConvertOp> convertOpSoftwareModel;
-        return convertOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, adaptor);
+        return convertOpSoftwareModel.bufferizeImpl(origOp, rewriter, options, state, adaptor);
     }
 };
 
@@ -303,16 +332,18 @@ class FlashSDPAModel : public BufferizableOpInterfaceExternalModelBase<FlashSDPA
 public:
     mlir::LogicalResult bufferizeImpl(VPU::FlashSDPAOp origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      mlir::bufferization::BufferizationState& state,
                                       VPU::FlashSDPAOp::Adaptor& adaptor) const;
 };
 
 mlir::LogicalResult FlashSDPAModel::bufferizeImpl(VPU::FlashSDPAOp flashSdpaOp, mlir::RewriterBase& rewriter,
                                                   const mlir::bufferization::BufferizationOptions&,
+                                                  mlir::bufferization::BufferizationState& state,
                                                   VPU::FlashSDPAOp::Adaptor&) const {
     auto log = Logger::global().nest("one-shot-bufferize-FlashSDPAOp", 0);
     log.trace("Got {0} at {1}", flashSdpaOp->getName(), flashSdpaOp->getLoc());
 
-    auto bufferizedOperands = vpux::bufferizeOperands(rewriter, flashSdpaOp->getOperands());
+    auto bufferizedOperands = vpux::bufferizeOperands(rewriter, flashSdpaOp->getOperands(), state);
 
     auto module = flashSdpaOp->getParentOfType<mlir::ModuleOp>();
     if (module == nullptr) {
@@ -320,13 +351,22 @@ mlir::LogicalResult FlashSDPAModel::bufferizeImpl(VPU::FlashSDPAOp flashSdpaOp, 
     }
     VPUIP::createRuntimeKernelDefinition(module, log.nest(), config::getArch(flashSdpaOp));
 
+    SmallVector<mlir::OpOperand*> auxBuffers;
+    if (auto auxBuffOp = mlir::dyn_cast<VPU::AuxiliaryBufferOpInterface>(flashSdpaOp.getOperation())) {
+        auxBuffers = auxBuffOp.getAuxiliaryBuffers();
+    }
+
     // The last output is aliased with the first input.
     // It will re-use the input's buffer, instead of allocating a separate one
     auto tensorsToBufferize = flashSdpaOp->getResults().drop_back();
-    auto outputBuffers = allocateBuffers(log, flashSdpaOp->getLoc(), rewriter, tensorsToBufferize,
-                                         /*individualBuffers=*/true);
+    auto outputBuffers = VPUIP::allocateBuffers(log, flashSdpaOp->getLoc(), rewriter, tensorsToBufferize,
+                                                /*individualBuffers=*/true);
     auto queryBuffer = bufferizedOperands.front();
     outputBuffers.push_back(queryBuffer);
+    const auto numResultsWithoutAuxBuffers = outputBuffers.size();
+    for (auto auxBuffer : auxBuffers) {
+        outputBuffers.push_back(bufferizedOperands[auxBuffer->getOperandNumber()]);
+    }
 
     auto layerOp = mlir::cast<VPU::LayerOpInterface>(flashSdpaOp.getOperation());
     auto swLayerOp = mlir::cast<VPUIP::SoftwareLayerOpInterface>(flashSdpaOp.getOperation());
@@ -340,7 +380,9 @@ mlir::LogicalResult FlashSDPAModel::bufferizeImpl(VPU::FlashSDPAOp flashSdpaOp, 
     vpux::VPUIP::initSwKernel(swKernelOp, bufferizedOperands, outputBuffers, swLayerOp.getKernelInfo().args, log.nest(),
                               /*swKernelRunOp=*/nullptr);
 
-    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, flashSdpaOp, swKernelOp.getResults());
+    auto finalResults = SmallVector<mlir::Value>(swKernelOp->getResults().begin(),
+                                                 swKernelOp->getResults().begin() + numResultsWithoutAuxBuffers);
+    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, flashSdpaOp, finalResults);
     return mlir::success();
 }
 
@@ -361,6 +403,8 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::GridSampleOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GridSampleOp>>(*ctx);
         VPU::SoftMaxOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SoftMaxOp>>(*ctx);
         VPU::LogSoftmaxOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LogSoftmaxOp>>(*ctx);
+        VPU::LogSoftmaxTopKOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LogSoftmaxTopKOp>>(*ctx);
+        VPU::LogSoftmaxPeakOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LogSoftmaxPeakOp>>(*ctx);
         VPU::HSwishOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::HSwishOp>>(*ctx);
         VPU::MVNOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::MVNOp>>(*ctx);
         VPU::MVN1SumOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::MVN1SumOp>>(*ctx);
@@ -455,6 +499,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::ModOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ModOp>>(*ctx);
         VPU::EqualOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::EqualOp>>(*ctx);
         VPU::GreaterOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GreaterOp>>(*ctx);
+        VPU::IsInfOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::IsInfOp>>(*ctx);
         VPU::GreaterEqualOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GreaterEqualOp>>(*ctx);
         VPU::LessOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LessOp>>(*ctx);
         VPU::LessEqualOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LessEqualOp>>(*ctx);
@@ -523,7 +568,6 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::IRDFTLastAxisOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::IRDFTLastAxisOp>>(*ctx);
         VPU::ExperimentalDetectronROIFeatureExtractorOp::attachInterface<
                 SoftwareLayerOpBufferizeModel<VPU::ExperimentalDetectronROIFeatureExtractorOp>>(*ctx);
-        VPU::AccumulateOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AccumulateOp>>(*ctx);
         VPU::RangeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::RangeOp>>(*ctx);
         VPU::NonZeroOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::NonZeroOp>>(*ctx);
         VPU::DynamicReshapeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicReshapeOp>>(*ctx);

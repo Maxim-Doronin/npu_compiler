@@ -1,10 +1,7 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
-
-#include <vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp>
-#include <vpux/compiler/conversion/passes/VPU2VPUIP/bufferize_call_ops_interface.hpp>
 
 #include <vpux/compiler/dialect/core/IR/dialect.hpp>
 #include <vpux/compiler/dialect/core/IR/ops.hpp>
@@ -13,6 +10,7 @@
 #include <vpux/compiler/utils/error.hpp>
 #include <vpux/utils/core/format.hpp>
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 
@@ -52,6 +50,34 @@ mlir::LogicalResult vpux::Core::NestedCallOp::verifySymbolUses(mlir::SymbolTable
         auto log = Logger::global().nest("core-nestedCallOp-verifier", 0);
         log.trace("Callee '{0}' has 0 inputs and 0 results, skipping type checks", calleeAttr);
         return mlir::success();
+    }
+
+    // E#195062 this needs to be removed after profiling buffers are properly sliced in the host side code.
+    // For now we are just checking that the input and output buffers are present if the profiling output are present
+    // if profiling is disabled then no profiling buffer outputs will be present therefore we resume regular checks
+    auto moduleOp = getOperation()->getParentOfType<mlir::ModuleOp>();
+    auto netOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
+    if (netOps.size() > 1) {
+        return emitOpError("Too Many NetworkInfoOp found in the module");
+    }
+
+    if (!netOps.empty() && config::getCompilationMode(moduleOp) == config::CompilationMode::HostCompile) {
+        auto netOp = netOps.front();
+        if (netOp.getProfilingOutputsInfo().size()) {
+            for (size_t i = 0; i < getNumOperands() - netOp.getProfilingOutputsCount(); ++i) {
+                if (getOperand(i).getType() != funcOpType.getInput(i)) {
+                    return emitOpError(formatv("{0} operand types do not match", calleeAttr));
+                }
+            }
+
+            for (size_t i = 0; i < getNumResults() - netOp.getProfilingOutputsCount(); ++i) {
+                if (getResult(i).getType() != funcOpType.getResult(i)) {
+                    return emitOpError(formatv("{0} result types do not match", calleeAttr));
+                }
+            }
+
+            return mlir::success();
+        }
     }
 
     if (getOperandTypes() != funcOpType.getInputs()) {
@@ -97,22 +123,4 @@ mlir::OpFoldResult vpux::Core::ReinterpretCastOp::fold(FoldAdaptor) {
     }
 
     return nullptr;
-}
-
-mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, Core::ReinterpretCastOp origOp,
-                                      Core::ReinterpretCastOp::Adaptor& newArgs, mlir::RewriterBase& rewriter) {
-    auto log = Logger::global().nest("one-shot-bufferize-CoreReinterpretCastOp", 0);
-    log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
-
-    const auto newOutType = vpux::getBufferType(origOp.getResult().getType());
-    auto newOp = rewriter.create<Core::ReinterpretCastOp>(origOp->getLoc(), newOutType, newArgs.getInput());
-    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, newOp->getResults());
-    return mlir::success();
-}
-
-void vpux::registerCoreBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
-    registry.addExtension(+[](mlir::MLIRContext* ctx, vpux::Core::CoreDialect*) {
-        Core::ReinterpretCastOp::attachInterface<VpuGenericOneShotBufferizeModel<Core::ReinterpretCastOp>>(*ctx);
-        Core::NestedCallOp::attachInterface<CallOpBufferizeModel<Core::NestedCallOp>>(*ctx);
-    });
 }

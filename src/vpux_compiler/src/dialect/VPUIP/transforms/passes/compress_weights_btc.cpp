@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,13 +8,14 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/compression_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/codec_factory.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
 namespace vpux::VPUIP {
@@ -162,9 +163,9 @@ mlir::LogicalResult NNDMAOpConverter::matchAndRewrite(VPUIP::NNDMAOp origOp, mli
 
         const Shape compressedDataShape{checked_cast<int64_t>(compressedData.size()), 1, 1, 1};
         newSrcType = getMemRefType(compressedDataShape, u8Type, DimsOrder::NCHW, inputType.getMemSpace(),
-                                   /*strides=*/StridesRef(), getSwizzlingSchemeAttr(inputType));
+                                   /*strides=*/StridesRef(), VPUIP::getSwizzlingSchemeAttr(inputType));
         newSrcType = mlir::cast<mlir::MemRefType>(
-                vpux::setCompressionState(newSrcType, VPUIP::CompressionState::CompiletimeCompressed));
+                VPUIP::setCompressionState(newSrcType, VPUIP::CompressionState::CompiletimeCompressed));
         const auto newSrcStorageType = mlir::RankedTensorType::get(compressedDataShape.raw(), u8Type);
         newSrcContentAttr = Const::createConstContent(newSrcStorageType, ArrayRef(compressedData));
     } else if (compressionMode == ICodec::CompressionMode::FP16) {
@@ -176,9 +177,9 @@ mlir::LogicalResult NNDMAOpConverter::matchAndRewrite(VPUIP::NNDMAOp origOp, mli
 
         const Shape compressedDataShape{checked_cast<int64_t>(compressedData.size() / f16TypeSizeBytes), 1, 1, 1};
         newSrcType = getMemRefType(compressedDataShape, f16Type, DimsOrder::NCHW, inputType.getMemSpace(),
-                                   /*strides=*/StridesRef(), getSwizzlingSchemeAttr(inputType));
+                                   /*strides=*/StridesRef(), VPUIP::getSwizzlingSchemeAttr(inputType));
         newSrcType = mlir::cast<mlir::MemRefType>(
-                vpux::setCompressionState(newSrcType, VPUIP::CompressionState::CompiletimeCompressed));
+                VPUIP::setCompressionState(newSrcType, VPUIP::CompressionState::CompiletimeCompressed));
         const auto newSrcStorageType = mlir::RankedTensorType::get(compressedDataShape.raw(), f16Type);
         newSrcContentAttr = Const::createConstContent(
                 newSrcStorageType, ArrayRef<vpux::type::float16>(
@@ -203,8 +204,7 @@ mlir::LogicalResult NNDMAOpConverter::matchAndRewrite(VPUIP::NNDMAOp origOp, mli
     rewriter.setInsertionPoint(origOp);
     rewriter.create<VPUIP::DecompressDMAOp>(loc, newSrcConstOp.getOutput(), /*act_compression_size_entry*/ nullptr,
                                             /*act_compression_sparsity_map*/ nullptr, newDstBufferOp.getBuffer(),
-                                            origOp.getPortAttr(), origOp.getIsOutOfOrderAttr(),
-                                            origOp.getIsCriticalAttr(),
+                                            origOp.getPortAttr(), origOp.getIsOutOfOrder(), origOp.getIsCritical(),
                                             /*dmaHwpId=*/nullptr,
                                             /*profilingMetadata=*/nullptr);
     rewriter.replaceOp(origOp, {outBufferOp.getBuffer()});

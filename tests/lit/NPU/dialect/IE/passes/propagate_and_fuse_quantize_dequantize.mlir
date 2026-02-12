@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1371,8 +1371,8 @@ func.func @DoNotPropagateQuantStridedSlicePerChannel(%arg0: tensor<1x4x64x4xf16>
 }>
 
 // CHECK-LABEL-DAG: @PropagatePerAxisDequant
-// CHECK-DAG:   [[Q_TYPE_AXIS_1:!.*]] = !quant.uniform<u8<0:254>:f16:1, {
-// CHECK-DAG:   [[Q_TYPE_AXIS_3:!.*]] = !quant.uniform<u8<0:254>:f16:3, {
+// CHECK-DAG:   [[Q_TYPE_AXIS_1:!.+]] = !quant.uniform<u8<0:254>:f16:1, {
+// CHECK-DAG:   [[Q_TYPE_AXIS_3:!.+]] = !quant.uniform<u8<0:254>:f16:3, {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
@@ -1801,7 +1801,7 @@ func.func @FuseWithMultiply(%arg0: tensor<1x12x19x19x!qElemType>) -> tensor<1x12
 // CHECK-LABEL: @FuseWithDWConvPerAxisQuant
 // CHECK-SAME: [[ARG:%.+]]: tensor<1x3x19x19x!qElemType>
 func.func @FuseWithDWConvPerAxisQuant(%arg0: tensor<1x3x19x19x!qElemType>) -> tensor<1x3x19x19xf16> {
-    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32> isSplat, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
+    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
     %0 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x3x19x19x!qElemType> -> tensor<1x3x19x19xf16>
     %1 = IE.GroupConvolution(%0, %cst) {dilations = [1, 1], groups = 3 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x19x19xf16>, tensor<3x1x1x1xf16> -> tensor<1x3x19x19xf16>
 
@@ -1862,7 +1862,7 @@ func.func @FuseWithMultiplyPerAxisQuantile(%arg0: tensor<1x2x19x19x!qElemType>) 
 // CHECK-LABEL: @NotFuseWithDWConvPrecisionChange
 // CHECK-SAME: [[ARG:%.+]]: tensor<1x3x19x19x!qElemType>
 func.func @NotFuseWithDWConvPrecisionChange(%arg0: tensor<1x3x19x19x!qElemType>) -> tensor<1x3x19x19xf32> {
-    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32> isSplat, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
+    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
     %0 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x3x19x19x!qElemType> -> tensor<1x3x19x19xf16>
     %1 = IE.GroupConvolution(%0, %cst) {dilations = [1, 1], groups = 3 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x19x19xf16>, tensor<3x1x1x1xf16> -> tensor<1x3x19x19xf32>
 
@@ -1882,8 +1882,8 @@ func.func @NotFuseWithDWConvPrecisionChange(%arg0: tensor<1x3x19x19x!qElemType>)
 // CHECK-LABEL: @NotFuseWithDWConvHasBias
 // CHECK-SAME: [[ARG:%.+]]: tensor<1x3x19x19x!qElemType>
 func.func @NotFuseWithDWConvHasBias(%arg0: tensor<1x3x19x19x!qElemType>) -> tensor<1x3x19x19xf16> {
-    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32> isSplat, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
-    %cst1 = const.Declare tensor<3x1x1x1xf16> = dense<1.0> : tensor<1x1x1x1xf32> isSplat, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
+    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
+    %cst1 = const.Declare tensor<3x1x1x1xf16> = dense<1.0> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
     %0 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x3x19x19x!qElemType> -> tensor<1x3x19x19xf16>
     %1 = IE.GroupConvolution(%0, %cst, %cst1) {dilations = [1, 1], groups = 3 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x19x19xf16>, tensor<3x1x1x1xf16>, tensor<3x1x1x1xf16> -> tensor<1x3x19x19xf16>
 
@@ -1902,7 +1902,7 @@ func.func @NotFuseWithDWConvHasBias(%arg0: tensor<1x3x19x19x!qElemType>) -> tens
 // CHECK-LABEL: @NotFuseWithDWConvHasPadding
 // CHECK-SAME: [[ARG:%.+]]: tensor<1x3x19x19x!qElemType>
 func.func @NotFuseWithDWConvHasPadding(%arg0: tensor<1x3x19x19x!qElemType>) -> tensor<1x3x20x19xf16> {
-    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32> isSplat, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
+    %cst = const.Declare tensor<3x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 3 : i64>, #const.Reshape<[3, 1, 1, 1]>]
     %0 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x3x19x19x!qElemType> -> tensor<1x3x19x19xf16>
     %1 = IE.GroupConvolution(%0, %cst) {dilations = [1, 1], groups = 3 : i64, pads_begin = [1, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x19x19xf16>, tensor<3x1x1x1xf16> -> tensor<1x3x20x19xf16>
 
@@ -2310,6 +2310,5 @@ func.func @DoNotQuantizeInterpolateF16(%arg0: tensor<1x384x40x40xf16>, %arg1: te
 // CHECK-SAME:           {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <FLOOR>,
 // CHECK-SAME:           antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>,
 // CHECK-SAME:           axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>,
-// CHECK-SAME:           scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [80, 80]} 
+// CHECK-SAME:           scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [80, 80]}
 // CHECK-SAME:       : tensor<1x192x40x40xf16> -> tensor<1x192x80x80xf16>
-

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,7 @@
 // CHECK:   !qElemType1 = !quant.uniform<u8:f32, 5.000000e-01>
 
 // CHECK-LABEL: @QuantizedInterpolate
-// CHECK-SAME:      ([[INPUT:%.*]]: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32>
+// CHECK-SAME:      ([[INPUT:%.+]]: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32>
 func.func @QuantizedInterpolate(%input: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32> {
     %0 = IE.Convert(%input) {dstElemType = f32} : tensor<1x16x10x10xui8> -> tensor<1x16x10x10xf32>
 
@@ -46,16 +46,16 @@ func.func @QuantizedInterpolate(%input: tensor<1x16x10x10xui8>) -> tensor<1x16x2
 
     return %last_fq : tensor<1x16x20x20xf32>
 
-    // CHECK:     [[INPUT_QUANT:%.*]] = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} :
+    // CHECK:     [[INPUT_QUANT:%.+]] = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} :
     // CHECK-SAME:     tensor<1x16x10x10xui8> -> tensor<1x16x10x10x!qElemType>
 
-    // CHECK:     [[INTERP:%.*]] = IE.Interpolate([[INPUT_QUANT:%.*]])
+    // CHECK:     [[INTERP:%.+]] = IE.Interpolate([[INPUT_QUANT:%.+]])
     // CHECK-SAME:     tensor<1x16x10x10x!qElemType> -> tensor<1x16x20x20x!qElemType>
 
-    // CHECK:     [[OUTPUT_QUANT:%.*]] = IE.QuantizeCast([[INTERP]]) {dstElemType = !qElemType1}
+    // CHECK:     [[OUTPUT_QUANT:%.+]] = IE.QuantizeCast([[INTERP]]) {dstElemType = !qElemType1}
     // CHECK-SAME:     tensor<1x16x20x20x!qElemType> -> tensor<1x16x20x20x!qElemType1>
 
-    // CHECK:     [[OUT_DEQ:%.*]] = IE.Add([[OUTPUT_QUANT]], [[OUTPUT_QUANT]])
+    // CHECK:     [[OUT_DEQ:%.+]] = IE.Add([[OUTPUT_QUANT]], [[OUTPUT_QUANT]])
     // CHECK-SAME:     {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
     // CHECK-SAME:     tensor<1x16x20x20x!qElemType1>, tensor<1x16x20x20x!qElemType1> -> tensor<1x16x20x20xf32>
 

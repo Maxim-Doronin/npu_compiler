@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,7 +17,7 @@ func.func @UnrollExpandDMAWithLargeSizeAndDiffWithExpandAxis() -> memref<1x412x4
     %output = VPURT.DeclareBuffer <DDR> <6710886400> -> memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %0 = VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+        %0 = VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}>
                 inputs(%input : memref<1x400x4096x4096x!qElemType, #NWCH, @DDR>)
                 outputs(%output : memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>)
                 -> memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>
@@ -33,14 +33,14 @@ func.func @UnrollExpandDMAWithLargeSizeAndDiffWithExpandAxis() -> memref<1x412x4
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <11133960192> -> memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
-    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{
+    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT0]] : memref<1x400x4096x2621x!qElemType, #NWCH, @DDR>)
     //CHECK:                outputs([[OUTPUT0]] : memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>) -> memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
-    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{
+    //CHECK-SAME:   pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}>
     //CHECK:                inputs([[INPUT1]] : memref<1x400x4096x1475x!qElemType, #NWCH, @DDR>)
     //CHECK:                outputs([[OUTPUT1]] : memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>) -> memref<1x412x4096x4096x!qElemType, #NWCH, @DDR>
 
@@ -60,7 +60,7 @@ func.func @UnrollExpandDMAWithLargeSizeAndSameWithExpandAxis() -> memref<1x412x4
     %output = VPURT.DeclareBuffer <DDR> <6710886400> -> memref<1x412x4096x4096x!qElemType, #NCHW, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %0 = VPUIP.ExpandDMA {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+        %0 = VPUIP.ExpandDMA <{pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}>
                 inputs(%input : memref<1x400x4096x4096x!qElemType, #NCHW, @DDR>)
                 outputs(%output : memref<1x412x4096x4096x!qElemType, #NCHW, @DDR>)
                 -> memref<1x412x4096x4096x!qElemType, #NCHW, @DDR>
@@ -76,14 +76,14 @@ func.func @UnrollExpandDMAWithLargeSizeAndSameWithExpandAxis() -> memref<1x412x4
     //CHECK:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <10989076480> -> memref<1x412x4096x4096x!qElemType, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
-    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 157, 0, 0], port = 0 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{
+    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 157, 0, 0], port = 0 : i64}>
     //CHECK:                inputs([[INPUT0]] : memref<1x255x4096x4096x!qElemType, @DDR>)
     //CHECK:                outputs([[OUTPUT0]] : memref<1x412x4096x4096x!qElemType, @DDR>) -> memref<1x412x4096x4096x!qElemType, @DDR>
 
     //CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.ExpandDMA {
-    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}
+    //CHECK:        VPUIP.ExpandDMA <{
+    //CHECK-SAME:     pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0], port = 1 : i64}>
     //CHECK:                inputs([[INPUT1]] : memref<1x145x4096x4096x!qElemType, @DDR>)
     //CHECK:                outputs([[OUTPUT1]] : memref<1x412x4096x4096x!qElemType, @DDR>) -> memref<1x412x4096x4096x!qElemType, @DDR>
 

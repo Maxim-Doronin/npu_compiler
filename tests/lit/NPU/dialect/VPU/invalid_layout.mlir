@@ -10,6 +10,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 func.func @SameLayoutModelTests(%arg0: tensor<1x16x3x3xf16, {order = #NHWC}>) -> tensor<1x16x3x3xf16> {
+// expected-error@+2 {{VPU::verifyOpLayout() failed for VPU.LeakyRelu}}
 // expected-error@+1 {{Operation's input/output layout mismatch}}
     %0 = VPU.LeakyRelu(%arg0) {negative_slope = 1.500000e-01 : f64} : tensor<1x16x3x3xf16, {order = #NHWC}> -> tensor<1x16x3x3xf16>
 

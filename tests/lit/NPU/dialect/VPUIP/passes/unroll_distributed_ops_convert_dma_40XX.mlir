@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,26 +24,26 @@ func.func @UnrollConvertDMAWithInputSegmented(%arg: memref<1x3x28x28xf32, @DDR>)
     %bar = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !InputDistributed) -> !InputDistributed
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !InputDistributed) -> !InputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%cmx_buffer : !InputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%cmx_buffer : !InputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:    [[INPUT_DDR0:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[INPUT_DDR1:%.*]] = VPURT.DeclareBuffer <DDR> <1568> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[PARENT_OUTPUT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:    [[OUTPUT_DDR0:%.*]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[OUTPUT_DDR1:%.*]] = VPURT.DeclareBuffer <DDR> <10192> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[NNCMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x14x28xf32, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[NNCMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <512> -> memref<1x3x14x28xf32, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[INPUT_DDR0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[INPUT_DDR1:%.+]] = VPURT.DeclareBuffer <DDR> <1568> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[PARENT_OUTPUT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
+    //CHECK-DAG:    [[OUTPUT_DDR0:%.+]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[OUTPUT_DDR1:%.+]] = VPURT.DeclareBuffer <DDR> <10192> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[NNCMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x14x28xf32, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[NNCMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <512> -> memref<1x3x14x28xf32, [@CMX_NN, 1]>
 
-    //CHECK:  [[ARG:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_DDR0]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x14x28xf32, [@CMX_NN, 0]>) -> memref<1x3x14x28xf32, [@CMX_NN, 0]>
-    //CHECK:  [[ARG:%.*]] = VPUIP.NNDMA {port = 1 : i64} inputs([[INPUT_DDR1]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x14x28xf32, [@CMX_NN, 1]>) -> memref<1x3x14x28xf32, [@CMX_NN, 1]>
-    //CHECK:  [[ARG:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x14x28xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR0]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK:  [[ARG:%.*]] = VPUIP.ConvertDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x14x28xf32, [@CMX_NN, 1]>) outputs([[OUTPUT_DDR1]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[ARG:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_DDR0]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x14x28xf32, [@CMX_NN, 0]>) -> memref<1x3x14x28xf32, [@CMX_NN, 0]>
+    //CHECK:  [[ARG:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[INPUT_DDR1]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x14x28xf32, [@CMX_NN, 1]>) -> memref<1x3x14x28xf32, [@CMX_NN, 1]>
+    //CHECK:  [[ARG:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x14x28xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR0]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[ARG:%.+]] = VPUIP.ConvertDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x14x28xf32, [@CMX_NN, 1]>) outputs([[OUTPUT_DDR1]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
 
     //CHECK:    return [[PARENT_OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>
 }
@@ -66,20 +66,20 @@ func.func @UnrollConvertDMAWithInputDuplicated(%arg: memref<1x3x28x28xf32, @DDR>
     %bar = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !InputDistributed) -> !InputDistributed
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !InputDistributed) -> !InputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%cmx_buffer : !InputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%cmx_buffer : !InputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:  [[INPUT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x28x28xf32, @DDR>
-    //CHECK-DAG:  [[OUTPUT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:  [[CMX_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x28x28xf32, [@CMX_NN, 0]>
-    //CHECK-DAG:  [[DUPL_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <512> -> !VPUIP.DistributedBuffer<1x3x28x28xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK:  [[ARG:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_DDR]] : memref<1x3x28x28xf32, @DDR>) outputs([[DUPL_CMX]] : !VPUIP.DistributedBuffer<1x3x28x28xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x3x28x28xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK:  [[ARG:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[CMX_0]] : memref<1x3x28x28xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+    //CHECK-DAG:  [[INPUT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x28x28xf32, @DDR>
+    //CHECK-DAG:  [[OUTPUT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
+    //CHECK-DAG:  [[CMX_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x28x28xf32, [@CMX_NN, 0]>
+    //CHECK-DAG:  [[DUPL_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <512> -> !VPUIP.DistributedBuffer<1x3x28x28xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK:  [[ARG:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_DDR]] : memref<1x3x28x28xf32, @DDR>) outputs([[DUPL_CMX]] : !VPUIP.DistributedBuffer<1x3x28x28xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x3x28x28xf32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK:  [[ARG:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[CMX_0]] : memref<1x3x28x28xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     //CHECK:  return [[OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>
 }
 
@@ -103,26 +103,26 @@ func.func @UnrollConvertDMAWithOutputSegmented(%arg: memref<1x3x28x28xf32, @DDR>
     %bar = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !OutputDistributed) -> !OutputDistributed
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !OutputDistributed) -> !OutputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%cmx_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cmx_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:    [[INPUT_DDR0:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[INPUT_DDR1:%.*]] = VPURT.DeclareBuffer <DDR> <1568> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[PARENT_OUTPUT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:    [[OUTPUT_DDR0:%.*]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[OUTPUT_DDR1:%.*]] = VPURT.DeclareBuffer <DDR> <10192> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK-DAG:    [[NNCMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[NNCMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <512> -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[INPUT_DDR0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[INPUT_DDR1:%.+]] = VPURT.DeclareBuffer <DDR> <1568> -> memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[PARENT_OUTPUT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
+    //CHECK-DAG:    [[OUTPUT_DDR0:%.+]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[OUTPUT_DDR1:%.+]] = VPURT.DeclareBuffer <DDR> <10192> -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK-DAG:    [[NNCMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[NNCMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <512> -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
 
-    //CHECK:  [[ARG:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[INPUT_DDR0]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x14x28xf16, [@CMX_NN, 0]>) -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
-    //CHECK:  [[ARG:%.*]] = VPUIP.ConvertDMA {port = 1 : i64} inputs([[INPUT_DDR1]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x14x28xf16, [@CMX_NN, 1]>) -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
-    //CHECK:  [[ARG:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x14x28xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR0]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK:  [[ARG:%.*]] = VPUIP.NNDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x14x28xf16, [@CMX_NN, 1]>) outputs([[OUTPUT_DDR1]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[ARG:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[INPUT_DDR0]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x14x28xf16, [@CMX_NN, 0]>) -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
+    //CHECK:  [[ARG:%.+]] = VPUIP.ConvertDMA <{port = 1 : i64}> inputs([[INPUT_DDR1]] : memref<1x3x14x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x14x28xf16, [@CMX_NN, 1]>) -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
+    //CHECK:  [[ARG:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x14x28xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR0]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[ARG:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x14x28xf16, [@CMX_NN, 1]>) outputs([[OUTPUT_DDR1]] : memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x14x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
 
     //CHECK:    return [[PARENT_OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>
 }
@@ -146,20 +146,20 @@ func.func @UnrollConvertDMAWithOutputDuplicated(%arg: memref<1x3x28x28xf32, @DDR
     %bar = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !OutputDistributed) -> !OutputDistributed
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_buffer : !OutputDistributed) -> !OutputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%cmx_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cmx_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:  [[INPUT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x28x28xf32, @DDR>
-    //CHECK-DAG:  [[OUTPUT_DDR:%.*]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:  [[CMX_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x28x28xf16, [@CMX_NN, 0]>
-    //CHECK-DAG:  [[DUPL_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <512> -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK:  [[ARG:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[INPUT_DDR]] : memref<1x3x28x28xf32, @DDR>) outputs([[DUPL_CMX]] : !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK:  [[ARG:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[CMX_0]] : memref<1x3x28x28xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+    //CHECK-DAG:  [[INPUT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x3x28x28xf32, @DDR>
+    //CHECK-DAG:  [[OUTPUT_DDR:%.+]] = VPURT.DeclareBuffer <DDR> <9408> -> memref<1x3x28x28xf16, @DDR>
+    //CHECK-DAG:  [[CMX_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x3x28x28xf16, [@CMX_NN, 0]>
+    //CHECK-DAG:  [[DUPL_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <512> -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK:  [[ARG:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[INPUT_DDR]] : memref<1x3x28x28xf32, @DDR>) outputs([[DUPL_CMX]] : !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK:  [[ARG:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CMX_0]] : memref<1x3x28x28xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     //CHECK:  return [[OUTPUT_DDR]] : memref<1x3x28x28xf16, @DDR>
 }
 
@@ -192,26 +192,26 @@ func.func @UnrollConvertDMAWithInputOutputSegmented(%arg: memref<1x3x28x28xf32, 
     %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
     }
 
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
 
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x14x28xf32, [@CMX_NN, 0]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x14x28xf32, [@CMX_NN, 1]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <9408> -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <9408> -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x14x28xf32, [@CMX_NN, 0]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x14x28xf32, [@CMX_NN, 1]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <9408> -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <9408> -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
 
-    //CHECK: [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x14x28xf32, [@CMX_NN, 0]>) outputs([[ARG:%.*]] : memref<1x3x14x28xf16, [@CMX_NN, 0]>) -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
-    //CHECK: [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x14x28xf32, [@CMX_NN, 1]>) outputs([[ARG:%.*]] : memref<1x3x14x28xf16, [@CMX_NN, 1]>) -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
+    //CHECK: [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x14x28xf32, [@CMX_NN, 0]>) outputs([[ARG:%.+]] : memref<1x3x14x28xf16, [@CMX_NN, 0]>) -> memref<1x3x14x28xf16, [@CMX_NN, 0]>
+    //CHECK: [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x14x28xf32, [@CMX_NN, 1]>) outputs([[ARG:%.+]] : memref<1x3x14x28xf16, [@CMX_NN, 1]>) -> memref<1x3x14x28xf16, [@CMX_NN, 1]>
 }
 
 // -----
@@ -241,22 +241,22 @@ func.func @UnrollConvertDMAWithInputOutputDuplicated(%arg: memref<1x3x28x28xf32,
     %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
     }
 
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG:  [[INPUT_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x28x28xf32, [@CMX_NN, 0]>
-    //CHECK-DAG:  [[OUTPUT_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <9408> -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK-DAG:  [[INPUT_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x28x28xf32, [@CMX_NN, 0]>
+    //CHECK-DAG:  [[OUTPUT_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <9408> -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    //CHECK:  [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[INPUT_CMX]] : memref<1x3x28x28xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_CMX]] : !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[INPUT_CMX]] : memref<1x3x28x28xf32, [@CMX_NN, 0]>) outputs([[OUTPUT_CMX]] : !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x3x28x28xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 }
 
 // -----
@@ -294,31 +294,31 @@ func.func @UnrollConvertDMAWithInputOutputOverlapped(%arg: memref<1x3x28x28xf32,
     %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
     }
 
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
 
 
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
 
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) outputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) outputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) outputs([[ARG:%.*]] : memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) outputs([[ARG:%.*]]: memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) outputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) outputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) outputs([[ARG:%.+]] : memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) outputs([[ARG:%.+]]: memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
 }
 
 // -----
@@ -358,27 +358,27 @@ func.func @UnrollConvertDMAWithInputOutputOverlappedExplicitShapesOffsets(%arg: 
     %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%bar : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_ddr : memref<1x3x28x28xf32, @DDR>) outputs(%cmx_input_buffer : !InputDistributed) -> !InputDistributed
     }
 
     VPURT.Task waits(%bar : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.ConvertDMA {port = 0 : i64} inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
+      %4 = VPUIP.ConvertDMA <{port = 0 : i64}> inputs(%cmx_input_buffer : !InputDistributed) outputs(%cmx_output_buffer : !OutputDistributed) -> !OutputDistributed
     }
 
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
+      %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cmx_output_buffer : !OutputDistributed) outputs(%output_ddr : memref<1x3x28x28xf16, @DDR>) -> memref<1x3x28x28xf16, @DDR>
     }
 
     return %output_ddr: memref<1x3x28x28xf16, @DDR>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
-    //CHECK-DAG: [[ARG:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
+    //CHECK-DAG: [[ARG:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <9408> -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
 
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) outputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.ConvertDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) outputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) outputs([[ARG:%.*]] : memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
-    //CHECK:  [[RESULT:%.*]] = VPUIP.NNDMA {port = 1 : i64} inputs([[ARG:%.*]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) outputs([[ARG:%.*]]: memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) -> memref<1x3x15x28xf32, [@CMX_NN, 0]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) outputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) -> memref<1x3x15x28xf32, [@CMX_NN, 1]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 0]>) outputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) -> memref<1x3x15x28xf16, [@CMX_NN, 0]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.ConvertDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf32, [@CMX_NN, 1]>) outputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) -> memref<1x3x15x28xf16, [@CMX_NN, 1]>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 0]>) outputs([[ARG:%.+]] : memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
+    //CHECK:  [[RESULT:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[ARG:%.+]] : memref<1x3x15x28xf16, [@CMX_NN, 1]>) outputs([[ARG:%.+]]: memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>) -> memref<1x3x15x28xf16, {order = #NCHW, strides = [2352, 784, 28, 1]}, @DDR>
 }

@@ -232,9 +232,6 @@ VPUIP::SwKernelOp AddSwKernelInstructionPrefetch::insertDummyKernelOpBeforeFirst
             builder, mlir::ValueRange(), updateBarrier, newLoc, mlir::ValueRange(srcBuffers),
             mlir::ValueRange(dstBuffers), nullptr, kernelNameToSymbol[kernelName], kernelOp.getTileIndexAttr(),
             kernelOp.getInputStridesAttr(), kernelOp.getOutputStridesAttr());
-    // The dummy kernels here are generated after ActShaveProfilingPass,
-    // so we need to add skipProfiling as attribute to avoid capturing their metadata
-    cachePrefetchSwKernel->setAttr("skipProfiling", mlir::UnitAttr::get(firstSwTask->getContext()));
 
     auto args =
             (kernelName == "convert") ? mlir::ArrayAttr::get(moduleOp->getContext(), {}) : kernelNameToArgs[kernelName];
@@ -387,7 +384,7 @@ std::vector<VPUIP::SwKernelOp> AddSwKernelInstructionPrefetch::insertPrefetchTas
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
     const auto numClusters = getNumTiles(moduleOp);
     const auto noOfShavesPerCluster =
-            config::getTileExecutor(moduleOp).getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
+            config::getTileExecutor(moduleOp).getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount();
     _log.info("numClusters {0}, noOfShavesPerCluster: {1}", numClusters, noOfShavesPerCluster);
     std::vector<VPUIP::SwKernelOp> prefetchedKernels{};
     prefetchedKernels.reserve(numClusters * noOfShavesPerCluster);
@@ -419,9 +416,8 @@ void AddSwKernelInstructionPrefetch::safeRunOnFunc() {
 
     auto simLogger = vpux::Logger("InfSim", _log.level());
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
 
     VPURT::InferenceExecutionSimulator infSim(simLogger, funcOp, cycleCostInfo);
@@ -436,7 +432,7 @@ void AddSwKernelInstructionPrefetch::safeRunOnFunc() {
                      });
 
     auto [useDummyKernelForInstructionPrefetch, minimumShaveStartTimeForPrefetch] =
-            vpux::VPUIP::getSwKernelInstructionPrefetchConfig(arch);
+            vpux::VPUIP::getSwKernelInstructionPrefetchConfig(config::getArch(module));
     _useDummyKernelForInstructionPrefetch = useDummyKernelForInstructionPrefetch;
     _minimumFreeCyclesForPrefetch =
             _minFreeCyclesHasValue ? _minimumFreeCyclesForPrefetch : minimumShaveStartTimeForPrefetch;

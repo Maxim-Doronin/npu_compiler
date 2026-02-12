@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,7 +26,7 @@ func.func @CanonicalizeSETableSlice()
 
     return %se_table_slice : tensor<1x1x5x9xi32, {order = #NHWC}>
 
-    // CHECK:       [[SE_TABLE:%.*]] = VPU.StorageElementTable {
+    // CHECK:       [[SE_TABLE:%.+]] = VPU.StorageElementTable {
     // CHECK-SAME:    dataElemType = f16,
     // CHECK-SAME:    dataShape = [1, 32, 3, 4],
     // CHECK-SAME:    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>,

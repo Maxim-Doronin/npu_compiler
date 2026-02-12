@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,8 +17,23 @@
 
 #include <memory>
 #include <string>
+#include <type_traits>
 
 namespace vpux {
+
+//
+// BatchCompileOptionsAdapter
+//
+
+struct BatchCompileOptionsAdapter {
+    BatchCompileOptionsAdapter(mlir::detail::PassOptions& parent);
+    StrOption batchCompileMethod;
+    StrOption debatchCompileMethodSettings;
+    StrOption batchUnrollCompileMethodSettings;
+
+    void updateBatchCompileOptionsFromString(std::string_view strOptions);
+};
+
 //
 // DefaultHWOptionsBase
 // This class must be inherited by all dialect-base options
@@ -34,6 +49,22 @@ std::string getDefaultValueOfStrSubOption() {
 }
 
 struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, public virtual PublicOptions {
+private:
+    // Use composition instead of inheritance to avoid virtual inheritance complexity
+    BatchCompileOptionsAdapter _batchCompileAdapter;
+
+public:
+    DefaultHWOptionsBase(): _batchCompileAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
+    }
+
+    // Accessors for batch compile options
+    const BatchCompileOptionsAdapter& getBatchCompileAdapter() const {
+        return _batchCompileAdapter;
+    }
+    BatchCompileOptionsAdapter& getBatchCompileAdapter() {
+        return _batchCompileAdapter;
+    }
+
     BoolOption enableDPUF16ToF32Convert{*this, "enable-dpu-f16-to-f32-convert",
                                         llvm::cl::desc("Enable running F16 -> F32 converts on DPU."),
                                         llvm::cl::init(true)};
@@ -44,6 +75,12 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
     BoolOption enableMemoryUsageCollector{*this, "enable-memory-usage-collector",
                                           llvm::cl::desc("Enable peak memory usage instrumentation after each pass"),
                                           llvm::cl::init(isDeveloperBuild())};
+
+    BoolOption enableDynamicDimAlignment{
+            *this, "dynamic-dim-alignment",
+            llvm::cl::desc(
+                    "Align dynamic dimensions during tiling to make it easier to merge strided DMAs into batched DMAs"),
+            llvm::cl::init(false)};
 
     BoolOption enableFunctionStatisticsInstrumentation{
             *this, "enable-function-statistics-instrumentation",
@@ -100,10 +137,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
             llvm::cl::desc("Enable intermediate output of defined operation buffer at specified insertion place"),
             llvm::cl::init(false)};
 
-    BoolOption enableActivityFactor{*this, "enable-activity-factor",
-                                    llvm::cl::desc("Enable activity factor and inference time estimation"),
-                                    llvm::cl::init(true)};
-
     StrOption scheduleTraceFile{*this, "schedule-trace-file-name",
                                 llvm::cl::desc("Compile time schedule JSON trace file name"),
                                 llvm::cl::init("compileTimeScheduleTrace.json")};
@@ -115,6 +148,11 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
     BoolOption enablePipelining{*this, "pipelining",
                                 llvm::cl::desc("Enable vertical fusion pipelining pass and schedule pipelining"),
                                 llvm::cl::init(true)};
+
+    BoolOption enableLoopAllocation{*this, "enable-loop-allocation",
+                                    ::llvm::cl::desc("Enables loop allocation for tiling and vertical fusion regions"),
+                                    ::llvm::cl::init(false)};
+
     StrOption mcOptimizationScope{
             *this, "mc-optimization-scope", llvm::cl::desc("Determine multi-clustering optimization scope"),
             llvm::cl::desc("Multi-cluster strategy optimization scope (local, subgraph)"), llvm::cl::init("subgraph")};
@@ -151,6 +189,10 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
     BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
                                llvm::cl::init(false)};
 
+    BoolOption enableBoundedTensorsToDynamicDimsMask{*this, "bounded-tensors-to-dynamic-dims-mask",
+                                                     llvm::cl::desc("Enable BoundedTensorsToDynamicDimsMask pass"),
+                                                     llvm::cl::init(true)};
+
     BoolOption enableScfComputeOpsOutlining{*this, "scf-compute-ops-outlining",
                                             llvm::cl::desc("Outline SCF compute ops"), llvm::cl::init(false)};
 
@@ -169,11 +211,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
     BoolOption enablePrintStatistics{*this, "enable-print-statistics", ::llvm::cl::desc("Enable print statistics"),
                                      ::llvm::cl::init(vpux::isDeveloperBuild())};
 
-    BoolOption fuseScalesToAccumulate{
-            *this, "fuse-scales-to-accumulate",
-            llvm::cl::desc("Enable scales fusing to following Accumulate op from GPTQ Matmul unrolling"),
-            llvm::cl::init(false)};
-
     BoolOption allowCustomValues{*this, "allow-custom-values",
                                  ::llvm::cl::desc("[Optional] Allows keep predefined values in IR")};
 
@@ -187,9 +224,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
                            "reduce memory consumption of barrier legalization pipeline for big models. Memory usage is "
                            "roughly (control-graph-split-block-size)^2/8"),
             llvm::cl::init(CONTROL_GRAPH_SPLIT_BLOCK_SIZE)};
-
-    BoolOption enableSimpleSchedule{*this, "simple-schedule", llvm::cl::desc("Enable schedule simplification"),
-                                    llvm::cl::init(true)};
 
     BoolOption reduceParallelControlFlows{*this, "reduce-parallel-control-flows",
                                           llvm::cl::desc("Reduce parallel overlapping control flows where possible"),
@@ -215,10 +249,6 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
             llvm::cl::init(vpux::isDeveloperBuild() ? "fast" : "off")};
 
     BoolOption enableDmaOutOfOrder{*this, "dma-ooo", llvm::cl::desc("Enable out-of-order DMA"), llvm::cl::init(true)};
-
-    BoolOption enableColorBinPhysicalBarrierAssignment{
-            *this, "enable-color-bin-physical-barrier-assignment",
-            llvm::cl::desc("Enable physical barrier assignment optimization"), llvm::cl::init(false)};
 
     BoolOption enablePopulateWeightTableWithShave{*this, "enable-populate-weight-table-with-shave",
                                                   llvm::cl::desc("Enable populating weights table with Shave"),
@@ -276,10 +306,18 @@ struct DefaultHWOptionsBase : mlir::PassPipelineOptions<DefaultHWOptionsBase>, p
     BoolOption enableAdjustMemPermuteAroundOp{*this, "enable-adjust-mem-permute-around-op",
                                               llvm::cl::desc("Enable adjustment of MemPermute around operations."),
                                               llvm::cl::init(true)};
+    BoolOption enableMovePermutePostEltwise{*this, "enable-move-permute-post-eltwise",
+                                            llvm::cl::desc("Enable moving MemPermute after Eltwise operations."),
+                                            llvm::cl::init(true)};
 
     StrOption loopUnrollFactor{*this, "loop-unroll-factor",
                                llvm::cl::desc("List of unroll factors for SCF loops to unroll by."),
                                llvm::cl::init("1,1,1,1")};
+
+    BoolOption enableCascadedUnrolling{
+            *this, "enable-cascaded-unrolling",
+            llvm::cl::desc("Enable cascaded unrolling with decreasing factors (e.g., 10 -> 5 -> 2)"),
+            llvm::cl::init(true)};
 };
 
 //
@@ -349,6 +387,16 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
     BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
                                llvm::cl::init(false)};
 
+    BoolOption enableBoundedTensorsToDynamicDimsMask{*this, "bounded-tensors-to-dynamic-dims-mask",
+                                                     llvm::cl::desc("Enable BoundedTensorsToDynamicDimsMask pass"),
+                                                     llvm::cl::init(true)};
+
+    BoolOption enableDynamicDimAlignment{
+            *this, "dynamic-dim-alignment",
+            llvm::cl::desc(
+                    "Align dynamic dimensions during tiling to make it easier to merge strided DMAs into batched DMAs"),
+            llvm::cl::init(false)};
+
     BoolOption enableScfComputeOpsOutlining{*this, "scf-compute-ops-outlining",
                                             llvm::cl::desc("Outline SCF compute ops"), llvm::cl::init(false)};
 
@@ -373,11 +421,13 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
             *this, "workload-management-mode",
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
-            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
+            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
             ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
                                           "WLM with split into subgraphs (pages)"),
                                clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                           "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                               clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                                          "PWLM with split into subgraphs (pages)"),
                                clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                           "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                           "enqueue algorithm at VPUMI"))};
@@ -386,33 +436,20 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
                                llvm::cl::desc("List of unroll factors for SCF loops to unroll by."),
                                llvm::cl::init("1,1,1,1")};
 
+    BoolOption enableCascadedUnrolling{
+            *this, "enable-cascaded-unrolling",
+            llvm::cl::desc("Enable cascaded unrolling with decreasing factors (e.g., 10 -> 5 -> 2)"),
+            llvm::cl::init(true)};
+
+    BoolOption enableRunMVNNormalizeOnDPU{*this, "enable-run-mvn-normalize-on-dpu",
+                                          llvm::cl::desc("Enable RunMVNNormalizeOnDPU pass on DPU"),
+                                          llvm::cl::init(false)};
+
     MCAndTilingOptionsBase() = default;
 
     template <class OtherOptions>
     explicit MCAndTilingOptionsBase(const OtherOptions& options) {
-        enablePrefetching = options.enablePrefetching;
-        enableVerticalFusion = options.enableVerticalFusion;
-        enablePipelining = options.enablePipelining;
-        mcOptimizationScope = options.mcOptimizationScope;
-        enableVPUNNCostForTiling = options.enableVPUNNCostForTiling;
-        opTilingCacheThreshold = options.opTilingCacheThreshold;
-        vfOutliningInstanceThreshold = options.vfOutliningInstanceThreshold;
-        vfOutliningTileThreshold = options.vfOutliningTileThreshold;
-        enableVerticalFusionOutlining = options.enableVerticalFusionOutlining;
-        enableVFScheduleTrace = options.enableVFScheduleTrace;
-        enableProfiling = options.enableProfiling;
-        enableProfilingWithOutlining = options.enableProfilingWithOutlining;
-        enableOutputPipelining = options.enableOutputPipelining;
-        enableShaveDDRAccessOptimization = options.enableShaveDDRAccessOptimization;
-        enableReorderConcatBranches = options.enableReorderConcatBranches;
-        readStrategyFromJson = options.readStrategyFromJson;
-        writeStrategyToJson = options.writeStrategyToJson;
-        dumpStrategyToLog = options.dumpStrategyToLog;
-        enableExplicitDistributionInfoAttr = options.enableExplicitDistributionInfoAttr;
-        workloadManagementMode = options.workloadManagementMode;
-        enableSCFTiling = options.enableSCFTiling;
-        enableScfComputeOpsOutlining = options.enableSCFTiling;
-        loopUnrollFactor = options.loopUnrollFactor;
+        this->matchAndCopyOptionValuesFrom(options);
     }
 };
 
@@ -428,13 +465,13 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
 
     IntOption workloadManagementBarrierCountThreshold{*this, "workload-management-barrier-count-threshold",
                                                       llvm::cl::desc("Threshold for WLM optimization"),
-                                                      llvm::cl::init(VIRTUAL_BARRIER_THRESHOLD_WLM)};
+                                                      llvm::cl::init(std::numeric_limits<int>::max())};
 
     mlir::detail::PassOptions::Option<WorkloadManagementMode> workloadManagementMode{
             *this, "workload-management-mode",
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
-            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
+            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
             ::llvm::cl::values(
                     clEnumValN(WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES",
                                "Full WLM with split into pages"),
@@ -442,6 +479,8 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
                                "Partial WLM with split into pages"),
                     clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                "Partial WLM, enqueue barriers search algorithm at VPURT ENABLED"),
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                               "PWLM with split into subgraphs (pages)"),
                     clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                "Partial WLM, enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                "enqueue algorithm at VPUMI"))};
@@ -484,8 +523,10 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
                                        "INITIAL_BARRIER_DMAS_SCHEDULED",
                                        "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
-                                       "ALL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMAs to program all barriers"))};
+                                       "ALL_BARRIER_DMAS_SCHEDULED", "Compiler generates DMAs to program all barriers"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K,
+                                       "ALL_BARRIER_DMAS_SCHEDULED_4K",
+                                       "Compiler generates DMAs to program all barriers leveraging 4K barrier block"))};
 
     IntOption modelIdentifier{
             *this, "model-identifier",
@@ -498,15 +539,6 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
     Int64Option metadataAddr{*this, "cmx-metadata-addr", llvm::cl::desc("CMX metadata start address."),
                              llvm::cl::init(0)};
     Int64Option metadataSize{*this, "cmx-metadata-size", llvm::cl::desc("CMX metadata size."), llvm::cl::init(0)};
-};
-
-struct BatchCompileOptionsAdapter {
-    BatchCompileOptionsAdapter(mlir::detail::PassOptions& parent);
-    StrOption batchCompileMethod;
-    StrOption debatchCompileMethodSettings;
-    StrOption batchUnrollCompileMethodSettings;
-
-    void updateBatchCompileOptionsFromString(std::string_view strOptions);
 };
 
 struct BatchCompilerOptionsAdapterView {
@@ -522,15 +554,46 @@ private:
     std::unique_ptr<BatchCompileOptionsAdapter> optionDataPtr;
 };
 
+namespace detail {
+
+template <typename T, typename = void>
+struct has_getBatchCompileAdapter : std::false_type {};
+
+template <typename T>
+struct has_getBatchCompileAdapter<T, std::void_t<decltype(std::declval<T>().getBatchCompileAdapter())>> :
+        std::true_type {};
+
+}  // namespace detail
+
 struct DebatcherOptions : mlir::PassPipelineOptions<DebatcherOptions> {
     StrOption debatcherInliningMethod;
-    StrOption debatcherIntputCoeffPartitions;
+    StrOption debatcherInputCoeffPartitions;
     IntOption modelOpsNumberEnableThreshold;
     IntOption maxBatchNumberDisableLimit;
     DebatcherOptions();
 
     static std::unique_ptr<DebatcherOptions> create(const BatchCompileOptionsAdapter& options);
+
+    template <class Options>
+    static std::unique_ptr<DebatcherOptions> create(const Options& options) {
+        if constexpr (detail::has_getBatchCompileAdapter<Options>::value) {
+            return create(options.getBatchCompileAdapter());
+        } else {
+            return nullptr;
+        }
+    }
+
     static bool isAvailable(const BatchCompileOptionsAdapter& options);
+
+    template <class Options>
+    static bool isAvailable(const Options& options) {
+        if constexpr (detail::has_getBatchCompileAdapter<Options>::value) {
+            return isAvailable(options.getBatchCompileAdapter());
+        } else {
+            return false;
+        }
+    }
+
     static bool isExplicitlySpecified(const BatchCompileOptionsAdapter& options);
     static std::string getDefaultOptions();
     static std::string getDefaultDebatchInputCoeffPartitionsValue();
@@ -544,7 +607,27 @@ struct BatchUnrollOptions : mlir::PassPipelineOptions<BatchUnrollOptions> {
 
     static std::unique_ptr<BatchUnrollOptions> create(const BatchCompileOptionsAdapter& options,
                                                       Logger log = Logger::global());
+
+    template <class Options>
+    static std::unique_ptr<BatchUnrollOptions> create(const Options& options, Logger log = Logger::global()) {
+        if constexpr (detail::has_getBatchCompileAdapter<Options>::value) {
+            return create(options.getBatchCompileAdapter(), log);
+        } else {
+            return nullptr;
+        }
+    }
+
     static bool isAvailable(const BatchCompileOptionsAdapter& options);
+
+    template <class Options>
+    static bool isAvailable(const Options& options) {
+        if constexpr (detail::has_getBatchCompileAdapter<Options>::value) {
+            return isAvailable(options.getBatchCompileAdapter());
+        } else {
+            return false;
+        }
+    }
+
     static bool isExplicitlySpecified(const BatchCompileOptionsAdapter& options);
     static std::string getDefaultOptions();
 };
@@ -563,5 +646,4 @@ bool isOutliningEnabled(const OptionsType& options) {
                                        options.enableEntireMainContentOutlining || options.enableAsyncRegionOutlining;
     return isAnyTypeOfOutliningEnabled && canOutlineFromProfilingPerspective(options);
 }
-
 }  // namespace vpux

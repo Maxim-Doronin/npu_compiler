@@ -19,7 +19,7 @@
 
 namespace {
 
-void checkExecutorKind(mlir::Operation* op, vpux::VPU::ExecutorKind expectedKind) {
+void checkExecutorKind(mlir::Operation* op, vpux::config::ExecutorKind expectedKind) {
     auto iface = mlir::dyn_cast<vpux::VPUIP::AsyncLayerOpInterface>(op);
     ASSERT_NE(iface, nullptr);
 
@@ -27,7 +27,7 @@ void checkExecutorKind(mlir::Operation* op, vpux::VPU::ExecutorKind expectedKind
     ASSERT_TRUE(kindAttr != nullptr);
     ASSERT_TRUE(mlir::isa<mlir::SymbolRefAttr>(kindAttr));
 
-    auto kind = vpux::VPU::symbolizeEnum<vpux::VPU::ExecutorKind>(kindAttr.getLeafName());
+    auto kind = vpux::config::symbolizeEnum<vpux::config::ExecutorKind>(kindAttr.getLeafName());
     EXPECT_EQ(kind.value(), expectedKind);
 }
 
@@ -73,9 +73,9 @@ TEST_F(MLIR_VPUIP_LayerInfo, AsyncLayerOpInterface) {
 
     for (auto& op : func.getOps()) {
         if (mlir::isa<vpux::VPUIP::CopyOp>(op)) {
-            ::checkExecutorKind(&op, vpux::VPU::ExecutorKind::DMA_NN);
+            ::checkExecutorKind(&op, vpux::config::ExecutorKind::DMA_NN);
         } else if (mlir::isa<vpux::VPUIP::SwKernelOp>(op)) {
-            ::checkExecutorKind(&op, vpux::VPU::ExecutorKind::SHAVE_ACT);
+            ::checkExecutorKind(&op, vpux::config::ExecutorKind::SHAVE_ACT);
         }
     }
 }

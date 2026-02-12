@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,6 +49,7 @@ public:
     mlir::ArrayAttr strides() const;
     mlir::IntegerAttr allocSize() const;
     HwFields hwSpecificFields() const;
+    mlir::AffineMap getAffineMap() const;
 
     /// Returns a HW-specific field of the specified type from the MemRefAttr.
     template <typename AttributeType>

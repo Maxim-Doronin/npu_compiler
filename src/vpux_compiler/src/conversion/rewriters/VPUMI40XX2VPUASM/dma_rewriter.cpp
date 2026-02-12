@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/dma_rewriter.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/utils/dma_transaction_utils.hpp"
 
 namespace vpux {
@@ -21,7 +22,8 @@ VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp 
     const auto inputTotalLength = vpux::Byte(inputTotalSizeBits).count();
 
     auto [inputMemShape, inputMemStrides, inputElemSize] = getTypeInfo(inputType);
-    auto reducedDimsInput = vpux::reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize);
+    auto reducedDimsInput =
+            vpux::reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize, false);
 
     vpux::patchDimsForNPU37XX(reducedDimsInput);
 
@@ -57,7 +59,7 @@ VPUIP::DMADescriptorAttr NNDMARewriter::getDmaDescriptorAttr(VPUMI40XX::NNDMAOp 
 
         auto [outputMemShape, outputMemStrides, outputElemSize] = getTypeInfo(outputType);
         auto reducedDimsOutput =
-                vpux::reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize);
+                vpux::reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize, false);
 
         vpux::patchDimsForNPU37XX(reducedDimsOutput);
         VPUX_THROW_WHEN(reducedDimsOutput.dims.size() != reducedDimsOutput.strides.size(),
@@ -204,9 +206,6 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI40XX::NNDMAOp
     auto accelerationMode = VPUIP::DMAAccModeAttr::get(ctx, op.getAccelerationMode());
     auto startAfter = op.getStartAfterAttr();
     auto cleanAfter = op.getCleanAfterAttr();
-    auto isOutOfOrder = op.getIsOutOfOrderAttr();
-    auto isCritical = op.getIsCriticalAttr();
-    auto enableMSC = op.getEnableMscAttr();
     auto transaction = op.getDmaTransactionAttr();
     mlir::SymbolRefAttr actCompressionSizeEntryAttr =
             op.getActCompressionSizeEntry() ? findSym(op.getActCompressionSizeEntry()) : nullptr;
@@ -229,10 +228,19 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI40XX::NNDMAOp
     if (!descriptor) {
         _log.warning("Failed to lower DMA descriptor parameters");
     }
-    auto newOp = rewriter.create<VPUASM::NNDMAOp>(
-            op.getLoc(), symName, taskIdx, taskLocation, nextLink, input, outputs, waitAttr, updateAttr, startAfter,
-            cleanAfter, accelerationMode, isOutOfOrder, isCritical, enableMSC, actCompressionSizeEntryAttr,
-            sparsityMapAttr, transaction, descriptor, dmaHwpIdAttr, cmxTiles, indicesAttr, addressingModeAttr);
+    auto newOp = rewriter.create<VPUASM::NNDMAOp>(op.getLoc(), symName, taskIdx, taskLocation, nextLink, input, outputs,
+                                                  waitAttr, updateAttr, startAfter, cleanAfter, accelerationMode,
+                                                  op.getIsOutOfOrder(), op.getIsCritical(), op.getEnableMsc(),
+                                                  actCompressionSizeEntryAttr, sparsityMapAttr, transaction, descriptor,
+                                                  dmaHwpIdAttr, cmxTiles, indicesAttr, addressingModeAttr);
+
+    if (auto strided = op->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, strided);
+    }
+
+    if (auto strided = op->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, strided);
+    }
 
     mlir::SmallVector<mlir::StringAttr> refsToUpdate;
     if (nextLink && nextLink.getNestedReferences().empty()) {

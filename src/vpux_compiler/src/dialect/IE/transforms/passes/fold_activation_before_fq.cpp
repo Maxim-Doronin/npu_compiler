@@ -13,9 +13,7 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
-#include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_FOLDACTIVATIONBEFOREFQ
@@ -156,9 +154,7 @@ void FoldActivationBeforeFQPass::safeRunOnFunc() {
     patterns.add<FoldClampBeforeFQ>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

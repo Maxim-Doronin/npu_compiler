@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/native_attributes/distribution_info.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/data_movement_fwd.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/internal_fwd.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
@@ -19,15 +21,12 @@
 namespace vpux::VPU {
 enum class MultiClusterStrategy : uint64_t;
 class ClusteredOpInterface;
-class CopyOp;
 class DistributedTensorType;
 class DistributedTypeInterface;
 class NCEOpInterface;
 class SiblingOpsAnalysis;
 class SparseTensorType;
 class SWOpInterface;
-class UnrolledTypeOp;
-class GatherDMAOp;
 struct OverlapDistributionParams;
 }  // namespace vpux::VPU
 
@@ -73,6 +72,9 @@ SmallVector<int64_t> getOutputTensorNumTiles(VPU::ClusteredOpInterface clustered
                                              int64_t numClustersAvailableForCompilation,
                                              VPU::MultiClusterStrategy strategy,
                                              vpux::NDTypeInterface outputType = nullptr);
+std::optional<SmallVector<int64_t>> getOutputTensorMemoryNumTiles(VPU::ClusteredOpInterface clusteredOp,
+                                                                  VPU::MultiClusterStrategy strategy,
+                                                                  vpux::NDTypeInterface outputType = nullptr);
 std::optional<SmallVector<int64_t>> getOutputTensorAlignment(VPU::MultiClusterStrategy strategy);
 std::optional<vpux::NDTypeInterface> adjustOutputAlignmentForSOH(VPU::ClusteredOpInterface clusteredOp,
                                                                  vpux::NDTypeInterface originalDistType);
@@ -125,21 +127,20 @@ bool getUniformDistributedSegments(VPU::ClusteredOpInterface clusteredOp, ArrayR
 VPU::DistributedTensorType createExplicitDistributedTensorType(
         VPU::ClusteredOpInterface clusteredOp, vpux::NDTypeInterface inputType, DistributionMode distributionMode,
         ArrayRef<int64_t> numTiles, int64_t numClusters, ArrayRef<int64_t> alignment,
-        const bool uniformDistributedSegments, const VPU::OverlapDistributionParams& overlapParams);
+        const bool uniformDistributedSegments, const VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles);
 
-VPU::DistributedTensorType createDistributedTensorType(VPU::ClusteredOpInterface clusteredOp,
-                                                       vpux::NDTypeInterface inputType,
-                                                       DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
-                                                       int64_t numClusters, ArrayRef<int64_t> alignment,
-                                                       bool uniformDistributedSegments, bool hasExplicitDistributedAttr,
-                                                       const VPU::OverlapDistributionParams& overlapParams);
+VPU::DistributedTensorType createDistributedTensorType(
+        VPU::ClusteredOpInterface clusteredOp, vpux::NDTypeInterface inputType, DistributionMode distributionMode,
+        ArrayRef<int64_t> numTiles, int64_t numClusters, ArrayRef<int64_t> alignment, bool uniformDistributedSegments,
+        bool hasExplicitDistributedAttr, const VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles = std::nullopt);
 
-VPU::DistributedTensorType createDistributedTensorType(VPU::NCEOpInterface nceOp, vpux::NDTypeInterface inputType,
-                                                       DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
-                                                       int64_t numClusters, ArrayRef<int64_t> alignment,
-                                                       bool uniformDistributedSegments, ArrayRef<int64_t> kernel = {},
-                                                       VPU::PaddingAttr pad = nullptr, ArrayRef<int64_t> stride = {},
-                                                       bool equalComputeAndMemoryView = false);
+VPU::DistributedTensorType createDistributedTensorType(
+        VPU::NCEOpInterface nceOp, vpux::NDTypeInterface inputType, DistributionMode distributionMode,
+        ArrayRef<int64_t> numTiles, int64_t numClusters, ArrayRef<int64_t> alignment, bool uniformDistributedSegments,
+        ArrayRef<int64_t> kernel = {}, VPU::PaddingAttr pad = nullptr, ArrayRef<int64_t> stride = {},
+        bool equalComputeAndMemoryView = false, const std::optional<ArrayRef<int64_t>> memoryNumTiles = std::nullopt);
 
 VPU::SparseTensorType createSparseTensorDistributedType(
         VPU::ClusteredOpInterface clusteredOp, VPU::SparseTensorType sparseInputType, DistributionMode distributionMode,
@@ -258,14 +259,16 @@ VPU::DistributionInfo createDistributionInfo(VPU::ClusteredOpInterface clustered
                                              DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
                                              int64_t numClusters, ArrayRef<int64_t> alignment,
                                              bool uniformDistributedSegments, bool hasExplicitDistributedAttr,
-                                             const VPU::OverlapDistributionParams& overlapParams);
+                                             const VPU::OverlapDistributionParams& overlapParams,
+                                             const std::optional<ArrayRef<int64_t>> memoryNumTiles = std::nullopt);
 
 VPU::DistributionInfo createDistributionInfo(VPU::NCEOpInterface nceOp, DistributionMode distributionMode,
                                              ArrayRef<int64_t> numTiles, int64_t numClusters,
                                              ArrayRef<int64_t> alignment, bool uniformDistributedSegments,
                                              ArrayRef<int64_t> kernel = {},
                                              const std::optional<VPU::Padding>& pad = std::nullopt,
-                                             ArrayRef<int64_t> stride = {}, bool equalComputeAndMemoryView = false);
+                                             ArrayRef<int64_t> stride = {}, bool equalComputeAndMemoryView = false,
+                                             const std::optional<ArrayRef<int64_t>> memoryNumTiles = std::nullopt);
 
 VPU::DistributionInfo createDistributionInfo(mlir::Operation* viewLikeOp, DistributionMode distributionMode,
                                              ArrayRef<int64_t> numTiles, int64_t optimalNumberOfClusters,

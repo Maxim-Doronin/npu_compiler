@@ -146,7 +146,7 @@ mlir::Value buildWeightsConst(mlir::OpBuilder& builder, mlir::Location loc, mlir
         const auto scale = 1.0f;
         const auto zeroPoint = 0;
 
-        if (vpux::isFloat8Quantized(qInputElemType)) {
+        if (vpux::isLowFpTypeQuantized(qInputElemType)) {
             filterElemType = mlir::quant::UniformQuantizedType::get(
                     /*flags=*/0, /*storageType=*/qInputElemType.getStorageType(),
                     /*expressedType=*/mlir::Float16Type::get(ctx),

@@ -1,20 +1,30 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/scf/scf_analysis_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/error.hpp"
 
+#include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/IRMapping.h>
+#include <mlir/IR/Operation.h>
+#include <cstdint>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_ADJUSTBLOCKSIZEFORSCFTILING
@@ -26,6 +36,126 @@ using namespace vpux;
 using namespace VPU;
 
 namespace {
+
+/**
+ * @brief Inserts a tensor.cast operation to match the specified bounds.
+ *
+ * This function creates a tensor.cast operation that emulates extracting a slice
+ * from the input tensor with dimensions matching the target bounds.
+ * It is not possible to use the VPU.Slice operation when operands are dynamic and we want to slice their bounds.
+ * The inserted tensor.cast operation serves as a temporary placeholder for the slice operation to ensure tensor
+ * compatibility in operations like NCEEltwiseOp where both operands must have compatible bounds.
+ *
+ * @param builder MLIR OpBuilder for creating operations
+ * @param input Input tensor value to emulate slice. Must be dynamic tensor with bounded type.
+ * @param targetBounds Target bounds for the output tensor
+ * @return mlir::Operation* The tensor.cast operation that performs the bounds adjustment
+ */
+mlir::Operation* insertTensorCastToMatchBounds(mlir::OpBuilder& builder, mlir::Value input, BoundsRef targetBounds) {
+    auto inputType = mlir::cast<mlir::RankedTensorType>(input.getType());
+    auto boundedInputType = mlir::cast<Core::BoundedTensorType>(inputType);
+
+    auto inputRank = checked_cast<size_t>(inputType.getRank());
+    VPUX_THROW_UNLESS(inputRank == targetBounds.size(), "Input shape and target bounds must have same rank: {0} vs {1}",
+                      inputRank, targetBounds.size());
+
+    auto castOp = builder.create<mlir::tensor::CastOp>(appendLoc(input.getLoc(), "bounds_compatibility_cast"),
+                                                       boundedInputType.changeBounds(targetBounds), input);
+    return castOp.getOperation();
+}
+
+/**
+ * @brief Aligns the bounds of the operands of an NCEEltwiseOp.
+ *
+ * This function ensures that the input tensors of the element-wise operation
+ * have compatible bounds by inserting tensor.cast operations as needed.
+ *
+ * @param builder MLIR OpBuilder for creating operations
+ * @param eltwiseOp The NCEEltwiseOp to align operands for
+ */
+void alignEltwiseOperands(mlir::OpBuilder& builder, VPU::NCEEltwiseOp eltwiseOp) {
+    auto input1Type = eltwiseOp.getInput1().getType();
+    auto input2Type = eltwiseOp.getInput2().getType();
+
+    if (!mlir::isa<Core::BoundedTensorType>(input1Type) || !mlir::isa<Core::BoundedTensorType>(input2Type)) {
+        return;
+    }
+
+    auto bounds1 = getBounds(input1Type);
+    auto bounds2 = getBounds(input2Type);
+
+    if (bounds1 != bounds2) {
+        auto backupInsertPoint = builder.saveInsertionPoint();
+
+        auto isGreaterOrEqual = [](auto array1, auto array2) {
+            return llvm::all_of(llvm::zip(array1, array2), [](auto pair) {
+                return std::get<0>(pair) >= std::get<1>(pair);
+            });
+        };
+
+        auto setInsertionPoint = [&](mlir::Value input) {
+            auto inputDefOp = input.getDefiningOp();
+            if (inputDefOp != nullptr) {
+                builder.setInsertionPointAfter(inputDefOp);
+            } else {  // input is a block argument, set insertion point at the beginning of the block
+                auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(input);
+                VPUX_THROW_WHEN(blockArg == nullptr,
+                                "alignEltwiseOperands: Expected EltwiseOp operand to be a {0} block argument or "
+                                "defining operation",
+                                input);
+                builder.setInsertionPointToStart(blockArg.getOwner());
+            }
+        };
+
+        auto operandIndexToCast = 0;
+        auto getInputAndTargetBoundsToCast = [&]() -> std::pair<mlir::Value, BoundsRef> {
+            if (isGreaterOrEqual(bounds1, bounds2)) {
+                // Set insertion point after input1's defining operation or at function start
+                setInsertionPoint(eltwiseOp.getInput1());
+                operandIndexToCast = 0;
+                return std::make_pair(eltwiseOp->getOperand(operandIndexToCast), bounds2);
+            } else if (isGreaterOrEqual(bounds2, bounds1)) {
+                // Set insertion point after input2's defining operation or at function start
+                setInsertionPoint(eltwiseOp.getInput2());
+                operandIndexToCast = 1;
+                return std::make_pair(eltwiseOp->getOperand(operandIndexToCast), bounds1);
+            } else {
+                VPUX_THROW("Incompatible bounds for eltwise operation inputs");
+            }
+        };
+
+        auto [valueToCast, targetBounds] = getInputAndTargetBoundsToCast();
+        auto castOp = insertTensorCastToMatchBounds(builder, valueToCast, targetBounds);
+
+        eltwiseOp->setOperand(operandIndexToCast, castOp->getResult(0));
+
+        // restore the eltwiseOp inputs
+        builder.restoreInsertionPoint(backupInsertPoint);
+    }
+}
+
+using DimToBlockSizesMap = llvm::DenseMap<int64_t, llvm::DenseMap<int64_t, int64_t>>;
+struct SliceOpData {
+    SmallVector<size_t> dynamicDims;
+    std::array<mlir::Value, MAX_NUM_DIMS> blockPositionValues;
+    llvm::DenseMap<size_t, vpux::Shape> caseToShapeMap;
+
+    SliceOpData(): dynamicDims() {
+        blockPositionValues.fill(nullptr);
+    }
+
+    void setBlockPositionVar(size_t dimIdx, mlir::Value positionVar) {
+        if (dimIdx >= MAX_NUM_DIMS) {
+            VPUX_THROW("Dimension index {0} exceeds maximum supported dimensions {1}", dimIdx, MAX_NUM_DIMS);
+        }
+        blockPositionValues[dimIdx] = positionVar;
+        dynamicDims.push_back(dimIdx);
+    }
+
+    bool hasAdjustedDynDims() const {
+        return !dynamicDims.empty();
+    }
+};
 
 //
 // AdjustBlockSizeForScfTilingPass
@@ -45,18 +175,15 @@ private:
         mlir::Operation* indexDefiningOp;
     };
 
-    mlir::LogicalResult adjustOutputBlockIdxAndSize(mlir::scf::ForOp forOp,
-                                                    llvm::DenseMap<mlir::Value, AdjustedIndexInfo>& mapToAdjustedIdx);
-    mlir::LogicalResult adjustInputBlockIdxAndSize(
-            mlir::scf::ForOp forOp, llvm::DenseMap<mlir::Value, AdjustedIndexInfo>& mapToAdjustedIdx,
-            SmallVector<std::pair<vpux::Dim, mlir::Value>>& dynDimsTensorId,
-            llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int64_t, Shape>>& mapToBlockSizes);
-    void generateBlockAwareFuncOps(
-            mlir::func::CallOp callOp, const SmallVector<std::pair<vpux::Dim, mlir::Value>>& dynDimsAndTensorBlockId,
-            llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int64_t, Shape>>& mapSliceOpToBlockSizes);
-    mlir::scf::IfOp getBacktrackIndex(mlir::scf::ForOp forOp, mlir::OpBuilder builder, mlir::Value offsetVal,
-                                      mlir::Operation* insertionPoint, mlir::Value currentBlkSize,
-                                      ArrayRef<mlir::Value> staticSize, mlir::Value upperBound);
+    mlir::LogicalResult adjustOutputBlockIdxAndSize(mlir::scf::ForOp forOp);
+    mlir::LogicalResult calculateInputBlockPosAndShapeInformation(
+            mlir::scf::ForOp forOp, llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData);
+    void generateBlockAwareFuncOps(mlir::func::CallOp callOp,
+                                   llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData);
+    mlir::scf::IfOp getTensorBlockPosition(mlir::scf::ForOp forOp, mlir::OpBuilder builder, mlir::Value offsetVal,
+                                           mlir::Operation* insertionPoint, mlir::Value currentBlkSize,
+                                           mlir::Value upperBound);
+
     mlir::scf::ForOp getEnclosingForOp(mlir::Value offsetVal);
 
     std::pair<mlir::IntegerAttr, mlir::Value> createConstOpOutsideForOp(int64_t val) {
@@ -86,14 +213,18 @@ private:
 
         mlir::OpBuilder builder(_firstForOp);
         auto cstOp = builder.create<mlir::arith::ConstantIndexOp>(
-                takeOpLoc(_firstForOp, "_const_" + std::to_string(val)), val);
+                takeOpLoc(_firstForOp, "const_" + std::to_string(val)), val);
         _constIndexOpCache[val] = cstOp;
         return cstOp;
     }
 
     mlir::Value encodeIndexBitwise(mlir::OpBuilder builder, mlir::Location loc, ArrayRef<mlir::Value> values);
 
-    AffineChainUtils _affineChainUtils;
+    void buildMapOfBlockSizesForSliceOps(
+            mlir::scf::ForOp forOp,
+            llvm::DenseMap<mlir::Operation*, DimToBlockSizesMap>& mapSliceOpToPerDimensionBlockSizes);
+
+    OpChainAnalysis _opChainAnalysis;
     mlir::ModuleOp _moduleOp;
     mlir::scf::ForOp _firstForOp;
     mlir::func::FuncOp _mainFuncOp;
@@ -129,7 +260,7 @@ mlir::scf::ForOp AdjustBlockSizeForScfTilingPass::getEnclosingForOp(mlir::Value 
         return mlir::dyn_cast_or_null<mlir::scf::ForOp>(parentOp);
     }
 
-    auto opChain = _affineChainUtils.collectAffineOpsChain(offsetVal);
+    auto opChain = _opChainAnalysis.collectParentOpsChain(offsetVal);
     for (auto op : opChain) {
         for (auto operand : op->getOperands()) {
             if (auto parentOp = checkForBlockArgument(operand)) {
@@ -154,12 +285,11 @@ mlir::scf::ForOp getOutermostForOp(mlir::scf::ForOp forOp) {
 }
 
 /**
- * @brief Generates conditional logic to determine tile position and calculate backtrack index for SCF tiling
- * operations.
+ * @brief Generates conditional logic to determine tile position for SCF tiling operations.
  *
  * This function creates a conditional structure using SCF if operations to handle different scenarios
  * when processing tensor slice insertions within nested SCF for loops. It determines the appropriate tile
- * position and backtrack size based on the current offset value and loop bounds.
+ * position based on the current offset value and block sizes.
  *
  * Tensor Block Division Diagram:
  * ┌─────────────┬──────────────────────────────────┬─────────────┐
@@ -169,28 +299,18 @@ mlir::scf::ForOp getOutermostForOp(mlir::scf::ForOp forOp) {
  *   startBlkSize        middleBlkSize                 lastBlkSize
  *
  * The generated logic handles three main cases:
- * 1. When offset is zero: StartBlkSize should have at least step size elements. yields (2, 0)
- * 2. When offset + step < upper_bound: Middle tile. Yields (0, 0) - no backtracking needed
- * 3. When offset + step >= upper_bound:
- *    - If sum equals upper bound: Yields (1, 0)
- *    - Otherwise: Calculates backtrack size and yields (1, backtrack_size)
- *
- * Since the tiling algorithm tiles on the output tensor, the expected_block_size during each iteration is always the
- * same as the step_size on the output tensor. However, the input tensor might have a different shape than the output
- * tensor due to padding or alignment requirements. So the expected_block_size is different based on block position.
- * With first, middle and last blocks having different sizes, the backtrack index calculation needs to be adjusted using
- * the expected block size for the last tile position. All middle block sizes have the same shape (can be different from
- * start/end block sizes).
+ * 1. When offset is zero: StartBlkSize should have at least step size elements. yields 2
+ * 2. When offset + step < upper_bound: Middle tile. Yields 0
+ * 3. When offset + step >= upper_bound: Last tile. Yields 1
  *
  * @return mlir::scf::IfOp The root conditional operation containing the tile position logic,
  *         or nullptr if the parent SCF for operation cannot be found
  */
-mlir::scf::IfOp AdjustBlockSizeForScfTilingPass::getBacktrackIndex(mlir::scf::ForOp forOp, mlir::OpBuilder builder,
-                                                                   mlir::Value offset, mlir::Operation* insertionPoint,
-                                                                   mlir::Value currentBlkSize,
-                                                                   ArrayRef<mlir::Value> staticSizes,
-                                                                   mlir::Value upperBound) {
-    auto outerMostForOp = getOutermostForOp(forOp);
+mlir::scf::IfOp AdjustBlockSizeForScfTilingPass::getTensorBlockPosition(mlir::scf::ForOp, mlir::OpBuilder builder,
+                                                                        mlir::Value offset,
+                                                                        mlir::Operation* insertionPoint,
+                                                                        mlir::Value currentBlkSize,
+                                                                        mlir::Value upperBound) {
     builder.setInsertionPoint(insertionPoint);
     auto zeroConst = getCstIndexOp(static_cast<int64_t>(TilePosition::MIDDLE));
     auto oneConst = getCstIndexOp(static_cast<int64_t>(TilePosition::END));
@@ -198,23 +318,16 @@ mlir::scf::IfOp AdjustBlockSizeForScfTilingPass::getBacktrackIndex(mlir::scf::Fo
     auto threeConst = getCstIndexOp(static_cast<int64_t>(TilePosition::FULLBLK));
     auto indexIsZero = builder.create<mlir::arith::CmpIOp>(takeOpLoc(insertionPoint, "cmp_index_zero"),
                                                            mlir::arith::CmpIPredicate::eq, offset, zeroConst);
-    if (staticSizes.size() != 2) {
-        _log.error("Expected two static sizes for start/middle and end block positions, but got {0}",
-                   staticSizes.size());
-        return nullptr;
-    }
 
-    auto lastBlkSize = staticSizes[1];
-    auto ifIndexZero = builder.create<mlir::scf::IfOp>(
-            takeOpLoc(insertionPoint, "if_offset_zero"),
-            llvm::ArrayRef<mlir::Type>{builder.getIndexType(), builder.getIndexType()}, indexIsZero,
-            /*withElseRegion=*/true);
+    auto ifIndexZero = builder.create<mlir::scf::IfOp>(takeOpLoc(insertionPoint, "if_offset_zero"),
+                                                       llvm::ArrayRef<mlir::Type>{builder.getIndexType()}, indexIsZero,
+                                                       /*withElseRegion=*/true);
     // if index == 0 :
     //    assert if num_elements < first_blk_size
     //    if num_elements == total_elements
-    //       yield 3, index
+    //       yield 3
     //    else:
-    //       yield 2, index
+    //       yield 2
     {
         mlir::OpBuilder thenBuilder = ifIndexZero.getThenBodyBuilder();
         auto checkForFullTile = thenBuilder.create<mlir::arith::CmpIOp>(
@@ -222,80 +335,22 @@ mlir::scf::IfOp AdjustBlockSizeForScfTilingPass::getBacktrackIndex(mlir::scf::Fo
         auto selectIndex = thenBuilder.create<mlir::arith::SelectOp>(takeOpLoc(ifIndexZero, "select_full_tile"),
                                                                      checkForFullTile, threeConst, twoConst);
         thenBuilder.create<mlir::scf::YieldOp>(takeOpLoc(selectIndex, "yield"),
-                                               mlir::ValueRange{selectIndex->getResult(0), offset});
+                                               mlir::ValueRange{selectIndex->getResult(0)});
     }
     // Else block: index != 0
     // sum = index + current_block_size
     // if sum < upper_bound :
-    //    yield 0, index
+    //    yield 0
     // else:
-    //    if expected_block_size == current_block_size:
-    //        yield 1, index
-    //    else:
-    //        remainder = upper_bound % expected_block_size
-    //        backtrack_index = index + remainder - expected_block_size
-    //        yield 1, backtrack_index
+    //    yield 1
     {
         mlir::OpBuilder elseBuilder = ifIndexZero.getElseBodyBuilder();
         auto sum = elseBuilder.create<mlir::arith::AddIOp>(takeOpLoc(ifIndexZero, "else_add"), offset, currentBlkSize);
         auto sumLessThanBound = elseBuilder.create<mlir::arith::CmpIOp>(
                 takeOpLoc(ifIndexZero, "pos_check"), mlir::arith::CmpIPredicate::slt, sum, upperBound);
-        auto ifSumLess = elseBuilder.create<mlir::scf::IfOp>(
-                takeOpLoc(ifIndexZero, "last_tile_check"),
-                llvm::ArrayRef<mlir::Type>{builder.getIndexType(), builder.getIndexType()}, sumLessThanBound,
-                /*withElseRegion=*/true);
-        {
-            mlir::OpBuilder thenBuilder2 = ifSumLess.getThenBodyBuilder();
-            thenBuilder2.create<mlir::scf::YieldOp>(takeOpLoc(ifSumLess, "yield"), mlir::ValueRange{zeroConst, offset});
-        }
-        {
-            mlir::OpBuilder elseBuilder2 = ifSumLess.getElseBodyBuilder();
-            auto sumEqualsUpper = elseBuilder2.create<mlir::arith::CmpIOp>(
-                    takeOpLoc(ifSumLess, "last_tile"), mlir::arith::CmpIPredicate::eq, currentBlkSize, lastBlkSize);
-            auto ifSumEquals = elseBuilder2.create<mlir::scf::IfOp>(
-                    takeOpLoc(ifSumLess, "last_tile_check"),
-                    llvm::ArrayRef<mlir::Type>{builder.getIndexType(), builder.getIndexType()}, sumEqualsUpper,
-                    /*withElseRegion=*/true);
-            {
-                mlir::OpBuilder thenBuilder3 = ifSumEquals.getThenBodyBuilder();
-                thenBuilder3.create<mlir::scf::YieldOp>(takeOpLoc(ifSumEquals, "yield"),
-                                                        mlir::ValueRange{oneConst, offset});
-            }
-            {
-                mlir::OpBuilder elseBuilder3 = ifSumEquals.getElseBodyBuilder();
-
-                if (outerMostForOp.isDefinedOutsideOfLoop(lastBlkSize) &&
-                    outerMostForOp.isDefinedOutsideOfLoop(upperBound)) {
-                    mlir::OpBuilder localBuilder(outerMostForOp);
-                    auto remainder = localBuilder.create<mlir::arith::RemUIOp>(takeOpLoc(outerMostForOp, "remainder"),
-                                                                               upperBound, lastBlkSize);
-
-                    mlir::AffineExpr d0, d1, d2;
-                    bindDims(localBuilder.getContext(), d0, d1, d2);
-                    mlir::AffineExpr adjustedOffsetExpr = d0 + d1 - d2;
-                    auto indexMap = mlir::AffineMap::get(3, 0, {adjustedOffsetExpr}, localBuilder.getContext());
-                    auto newOffset = mlir::affine::makeComposedFoldedAffineApply(
-                            elseBuilder3, appendLoc(forOp->getLoc(), "adjusted_offset_idx"), indexMap,
-                            {offset, remainder.getResult(), lastBlkSize});
-                    auto newOffsetVal = mlir::getValueOrCreateConstantIndexOp(
-                            elseBuilder3, takeOpLoc(ifSumEquals, "backtrack"), newOffset);
-                    elseBuilder3.create<mlir::scf::YieldOp>(takeOpLoc(ifSumEquals, "yield"),
-                                                            mlir::ValueRange{oneConst, newOffsetVal});
-                } else {
-                    // backtrack_size = upper_bound - index - step_value
-                    auto remainder = elseBuilder3.create<mlir::arith::RemUIOp>(takeOpLoc(ifSumEquals, "remainder"),
-                                                                               upperBound, lastBlkSize);
-                    auto backtrackSize = elseBuilder3.create<mlir::arith::SubIOp>(
-                            takeOpLoc(remainder, "backtrack_value"), lastBlkSize, remainder);
-                    auto newOffset = elseBuilder3.create<mlir::arith::SubIOp>(takeOpLoc(backtrackSize, "adjusted_idx"),
-                                                                              offset, backtrackSize);
-                    elseBuilder3.create<mlir::scf::YieldOp>(takeOpLoc(ifSumEquals, "yield"),
-                                                            mlir::ValueRange{oneConst, newOffset});
-                }
-            }
-            elseBuilder2.create<mlir::scf::YieldOp>(takeOpLoc(ifSumLess, "yield"), ifSumEquals.getResults());
-        }
-        elseBuilder.create<mlir::scf::YieldOp>(takeOpLoc(ifIndexZero, "yield"), ifSumLess.getResults());
+        auto selectIndex = elseBuilder.create<mlir::arith::SelectOp>(takeOpLoc(ifIndexZero, "select_tile_pos"),
+                                                                     sumLessThanBound, zeroConst, oneConst);
+        elseBuilder.create<mlir::scf::YieldOp>(takeOpLoc(ifIndexZero, "yield"), selectIndex->getResult(0));
     }
     return ifIndexZero;
 }
@@ -320,17 +375,17 @@ bool checkForStaticShape(const SmallVector<mlir::OpFoldResult, 4>& mixedSizes) {
  * but only 50 elements would remain. This method adjusts the index to 150 (extracting a slice
  * from offset 150 with size 100), resulting in a static-shaped tensor <1x1x32x100xfp16>.
  */
-mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize(
-        mlir::scf::ForOp parentForOp, llvm::DenseMap<mlir::Value, AdjustedIndexInfo>& mapToAdjustedIdx) {
-    AffineChainUtils affineUtils;
+mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize(mlir::scf::ForOp parentForOp) {
+    OpChainAnalysis opChainAnalysis;
     for (auto insertSliceOp : make_early_inc_range(parentForOp.getOps<mlir::tensor::InsertSliceOp>())) {
         if (checkForStaticShape(insertSliceOp.getMixedSizes())) {
             _log.trace("Block shape on insertSliceOp is known at compile time. Continue");
             continue;
         }
 
+        applyIndexBacktracking(insertSliceOp, {});
+
         mlir::OpBuilder builder(insertSliceOp);
-        auto insertionPoint = getOffsetInsertionPosition(insertSliceOp);
         SmallVector<mlir::OpFoldResult> newOffsets = {}, newSizes = {};
         for (auto [idx, size] : llvm::enumerate(insertSliceOp.getMixedSizes())) {
             auto val = mlir::dyn_cast_or_null<mlir::Value>(size);
@@ -340,38 +395,21 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize
                 continue;
             }
 
-            auto forOp = getEnclosingForOp(val);
-            assert(forOp != nullptr && "Expected parent scf.for operation for slice size but got none");
-            auto blockSize = forOp.getStep();
-            auto upperBound = forOp.getUpperBound();
-
             auto offset = insertSliceOp.getMixedOffsets()[idx];
-            auto offsetValue = mlir::dyn_cast_or_null<mlir::Value>(offset);
-            assert(offsetValue != nullptr && "Expected a non-const offsetValue");
+            newOffsets.push_back(offset);
 
+            auto forOp = getEnclosingForOp(val);
+            VPUX_THROW_UNLESS(forOp != nullptr, "Expected parent scf.for operation for slice size but got none");
+            auto blockSize = forOp.getStep();
+            newSizes.push_back(blockSize);
+
+            // Add runtime check to ensure block size is not greater than dimension size
             mlir::tensor::DimOp dimOp;
             if (mlir::failed(getTensorDimOpFromIndex(builder, insertSliceOp.getDest(), idx, dimOp))) {
                 return mlir::failure();
             }
             addCheckForBlockSize(builder, dimOp, blockSize, _mainFuncOp,
                                  "Not enough elements to backtrack in scf.for loop for Output tensor");
-
-            auto ifIndexZero = getBacktrackIndex(parentForOp, builder, offsetValue, insertionPoint, val,
-                                                 {blockSize, blockSize}, upperBound);
-            if (ifIndexZero == nullptr) {
-                return mlir::emitError(parentForOp.getLoc(),
-                                       "Failed to create backtrack index for insert slice operation");
-            }
-
-            auto newOffset = ifIndexZero.getResult(1);
-            mapToAdjustedIdx[offsetValue] = {newOffset, ifIndexZero};
-
-            auto newIndexVal = mlir::dyn_cast<mlir::Value>(newOffset);
-            assert(newIndexVal != nullptr && "Expected adjusted index to be a Value");
-            insertionPoint = newIndexVal.getDefiningOp();
-
-            newSizes.push_back(blockSize);
-            newOffsets.push_back(newOffset);
         }
 
         // Create a new insert_slice operation with adjusted offsets and sizes
@@ -393,8 +431,8 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize
 bool getTensorBlockSizes(mlir::Value val, llvm::DenseMap<int64_t, int64_t>& mapToDimBlockSizes, Logger& log) {
     mlir::Value blockArgVal;
     mlir::BlockArgument blockArg = nullptr;
-    AffineChainUtils affineUtils;
-    auto opFoldChain = affineUtils.collectAffineOpsChain(val);
+    OpChainAnalysis opChainAnalysis;
+    auto opFoldChain = opChainAnalysis.collectParentOpsChain(val);
     for (auto op : opFoldChain) {
         for (auto operand : op->getOperands()) {
             if (operand.getDefiningOp() == nullptr) {
@@ -414,8 +452,8 @@ bool getTensorBlockSizes(mlir::Value val, llvm::DenseMap<int64_t, int64_t>& mapT
         return false;
     }
 
-    auto upperBound = affineUtils.getIntegerFromValue(forOp.getUpperBound(), true);
-    auto stepSize = affineUtils.getIntegerFromValue(forOp.getStep());
+    auto upperBound = opChainAnalysis.getIntegerFromValue(forOp.getUpperBound(), true);
+    auto stepSize = opChainAnalysis.getIntegerFromValue(forOp.getStep());
 
     if (!upperBound.has_value() || !stepSize.has_value()) {
         log.trace("Failed to get integer value for step size and upper bound");
@@ -443,15 +481,22 @@ bool getTensorBlockSizes(mlir::Value val, llvm::DenseMap<int64_t, int64_t>& mapT
         valueMap.push_back(upperBoundInt - stepInt);
     }
 
-    llvm::DenseMap<mlir::Value, SmallVector<int64_t>> mapToValues;
+    ValueRangeMap mapToValues;
     mapToValues[blockArgVal] = std::move(valueMap);
 
-    auto blockSizesVal = affineUtils.getOpFoldResultValue(val, mapToValues, AffineChainUtils::MODE::ALL_VALUES);
-    assert(blockSizesVal.has_value() && "Failed to get block sizes from affine chain");
+    auto blockSizesVal = opChainAnalysis.getOpFoldResultValue(val, mapToValues, OpChainAnalysis::MODE::ALL_VALUES);
+    assert(blockSizesVal.has_value() && "Failed to get block sizes from operation chain");
     auto blockSizes = blockSizesVal.value();
 
     for (auto [pos, blkSize] : llvm::zip(positionVec, blockSizes)) {
         mapToDimBlockSizes[static_cast<int64_t>(pos)] = blkSize;
+    }
+
+    ValueRangeMap emptyMapToValues;
+    auto newBlockSizeVals =
+            opChainAnalysis.getOpFoldResultValue(val, emptyMapToValues, OpChainAnalysis::MODE::ALL_VALUES);
+    for (auto blkSize : newBlockSizeVals.value()) {
+        log.trace("Block size value after removing block arg dependency: {0}", blkSize);
     }
 
     return true;
@@ -459,7 +504,7 @@ bool getTensorBlockSizes(mlir::Value val, llvm::DenseMap<int64_t, int64_t>& mapT
 
 void getMapForPositionAndBlockSizes(
         SmallVector<std::pair<vpux::Dim, llvm::DenseMap<int64_t, int64_t>>>& dynDimsToTilePositionAndSizeVec,
-        mlir::tensor::ExtractSliceOp sliceOp, llvm::DenseMap<int64_t, Shape>& mapPosToShape) {
+        mlir::tensor::ExtractSliceOp sliceOp, SliceOpData& sliceOpData) {
     // Number of cases: 4^N
     auto numDynDims = dynDimsToTilePositionAndSizeVec.size();
     int64_t numCases = 1LL << (NUMBITS * numDynDims);
@@ -484,27 +529,35 @@ void getMapForPositionAndBlockSizes(
         }
 
         if (supportedCase) {
-            mapPosToShape[caseValue] = newShape;
+            sliceOpData.caseToShapeMap[caseValue] = newShape;
         }
     }
 }
 
 /**
- * @brief Adjusts the block indices and sizes for an ExtractSliceOp within SCF tiling context.
+ * @brief Calculates block position information and input tensor slice shape information for SCF tiling.
  *
- * This function modifies the offsets and sizes of a tensor::ExtractSliceOp to account for
- * dynamic tiling scenarios in SCF (Structured Control Flow) loops. It performs offset
- * backtracking by creating affine operations that adjust indices based on the relationship
- * between current block sizes and static shapes.
+ * This function processes ExtractSliceOp operations within an SCF for loop to determine tile positions
+ * and compute shape information for dynamic tensor slicing. It performs the following key operations:
  *
- * The adjustment follows the formula: offset + currentSize - staticShape, which ensures
- * proper indexing when blocks have dynamic sizes that need to be reconciled with known
- * static shapes.
+ * 1. **Tile Position Detection**: For each dynamic dimension in ExtractSliceOp, generates conditional
+ *    logic to determine the tile position (START, MIDDLE, END, or FULLBLK) based on loop indices
+ * 2. **Shape Computation**: Calculates static shapes for each tile position and builds mapping from
+ *    case values to tensor shapes for function specialization
+ * 3. **Operation Replacement**: Replaces original ExtractSliceOp with adjusted versions that have
+ *    static sizes, inserting CastOp operations to maintain dynamic type compatibility
+ *
+ * @param forOp The SCF for loop containing the slice operations to process
+ * @param mapSliceOpToPerDimensionBlockSizes Input/Output map containing block size information per dimension for each
+ * slice operation
+ * @param dynDimsTensorBlockId Output vector of dynamic dimension to tensor block ID mappings for function generation
+ * @param mapSliceOpToTileSizes Output map from slice operations to their supported tile shapes indexed by case values
+ * @return mlir::success() if all slice operations were successfully processed, mlir::failure() otherwise
  */
-mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustInputBlockIdxAndSize(
-        mlir::scf::ForOp forOp, llvm::DenseMap<mlir::Value, AdjustedIndexInfo>& mapToAdjustedIdx,
-        SmallVector<std::pair<vpux::Dim, mlir::Value>>& dynDimsTensorBlockId,
-        llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int64_t, Shape>>& mapSliceOpToBlockSizes) {
+
+mlir::LogicalResult AdjustBlockSizeForScfTilingPass::calculateInputBlockPosAndShapeInformation(
+        mlir::scf::ForOp forOp, llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData) {
+    llvm::DenseMap<mlir::Value, AdjustedIndexInfo> mapToAdjustedIdx;
     auto outermostForOp = getOutermostForOp(forOp);
     for (auto sliceOp : make_early_inc_range(forOp.getOps<mlir::tensor::ExtractSliceOp>())) {
         if (checkForStaticShape(sliceOp.getMixedSizes())) {
@@ -517,7 +570,10 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustInputBlockIdxAndSize(
         llvm::DenseMap<int64_t, int64_t> mapToBlockPosAndSize;
         SmallVector<mlir::OpFoldResult> newOffsets = {}, newSizes = {};
         SmallVector<std::pair<vpux::Dim, llvm::DenseMap<int64_t, int64_t>>> dynDimsToTilePositionAndSizeVec;
+        SliceOpData sliceOpData;
+
         for (auto [idx, size] : llvm::enumerate(sliceOp.getMixedSizes())) {
+            mapToBlockPosAndSize.clear();
             auto val = mlir::dyn_cast_or_null<mlir::Value>(size);
             if (val == nullptr || mlir::isa<mlir::arith::ConstantOp>(val.getDefiningOp())) {
                 newSizes.push_back(size);
@@ -527,58 +583,49 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustInputBlockIdxAndSize(
 
             builder.setInsertionPoint(insertionPoint);
 
-            // Get the block sizes for each tile position
-            if (!getTensorBlockSizes(val, mapToBlockPosAndSize, _log)) {
-                return errorAt(sliceOp, "Failed to get block sizes for each tile position");
+            // Get block sizes for each tile position along this dynamic dimension
+            llvm::DenseMap<int64_t, int64_t> mapPosToBlockSizes;
+            if (!getTensorBlockSizes(val, mapPosToBlockSizes, _log)) {
+                return errorAt(sliceOp, "Failed to get block sizes for each tile position for dim {0}", idx);
             }
-            dynDimsToTilePositionAndSizeVec.push_back({vpux::Dim(idx), mapToBlockPosAndSize});
+            dynDimsToTilePositionAndSizeVec.push_back({vpux::Dim(idx), mapPosToBlockSizes});
 
-            SmallVector<mlir::Value> blockSizes;
-            if (mapToBlockPosAndSize.size() == 1) {
-                auto staticShape = mapToBlockPosAndSize[static_cast<int64_t>(TilePosition::FULLBLK)];
+            if (mapPosToBlockSizes.size() == 1) {
+                auto staticShape = mapPosToBlockSizes[static_cast<int64_t>(TilePosition::FULLBLK)];
                 auto [shapeAttr, blockSize] = createConstOpOutsideForOp(staticShape);
                 newSizes.push_back(shapeAttr);
-                blockSizes.push_back(blockSize);
-                blockSizes.push_back(blockSize);
             } else {
-                auto shapeForStartBlk = mapToBlockPosAndSize[static_cast<int64_t>(TilePosition::START)];
+                auto shapeForStartBlk = mapPosToBlockSizes[static_cast<int64_t>(TilePosition::START)];
                 auto [shapeAttr, blockSize] = createConstOpOutsideForOp(shapeForStartBlk);
                 newSizes.push_back(shapeAttr);
-                blockSizes.push_back(blockSize);
-
-                auto shapeForEndBlk = mapToBlockPosAndSize[static_cast<int64_t>(TilePosition::END)];
-                blockSizes.push_back(createConstOpOutsideForOp(shapeForEndBlk).second);
             }
 
             auto offset = sliceOp.getMixedOffsets()[idx];
             auto offsetValue = mlir::dyn_cast_or_null<mlir::Value>(offset);
             assert(offsetValue != nullptr && "Expected a non-const offsetValue");
 
+            auto newIndex = mapToAdjustedIdx.contains(offsetValue) ? mapToAdjustedIdx[offsetValue].index : offsetValue;
+            newOffsets.push_back(newIndex);
+
             // Check if the index is already adjusted
             if (mapToAdjustedIdx.contains(offsetValue)) {
-                newOffsets.push_back(mapToAdjustedIdx[offsetValue].index);
                 auto adjustedIdxOp = mapToAdjustedIdx[offsetValue].indexDefiningOp;
-                dynDimsTensorBlockId.push_back(std::make_pair(vpux::Dim(idx), adjustedIdxOp->getResult(0)));
+                sliceOpData.setBlockPositionVar(idx, adjustedIdxOp->getResult(0));
                 continue;
             }
 
             // Get the upperbound
             auto src = sliceOp.getSource();
             mlir::tensor::DimOp srcDimOp = createDimOp(builder, outermostForOp, src, idx);
-            addCheckForBlockSize(builder, srcDimOp, blockSizes[0], _mainFuncOp,
-                                 "Not enough elements to backtrack in scf.for loop for Input tensor");
-            auto ifIndexZero =
-                    getBacktrackIndex(forOp, builder, offsetValue, insertionPoint, val, blockSizes, srcDimOp);
+            auto ifIndexZero = getTensorBlockPosition(forOp, builder, offsetValue, insertionPoint, val, srcDimOp);
             if (ifIndexZero == nullptr) {
                 return errorAt(sliceOp,
                                "Failed to create tile position and backtrack index for insert_slice operation");
             }
 
-            auto newIndex = ifIndexZero.getResult(1);
             mapToAdjustedIdx[offsetValue] = {newIndex, ifIndexZero};
-            dynDimsTensorBlockId.push_back(std::make_pair(vpux::Dim(idx), ifIndexZero->getResult(0)));
+            sliceOpData.setBlockPositionVar(idx, ifIndexZero->getResult(0));
             insertionPoint = ifIndexZero;
-            newOffsets.push_back(newIndex);
         }
 
         // ExtractSliceOp now has static shape. However, for funcOps that have padding attributes, multiple funcOps
@@ -594,7 +641,7 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustInputBlockIdxAndSize(
         // ExtractSliceOp -> CastOp -> xxxOp require CastOp to change the input type
         // ExtractSliceOp -> xxxOp require castOp to get the dynamic shape back from static shape
         SmallVector<mlir::OpOperand*> requireCastOp;
-        for (auto& use : sliceOp->getUses()) {
+        for (auto& use : make_early_inc_range(sliceOp->getUses())) {
             if (mlir::isa<mlir::tensor::CastOp>(use.getOwner())) {
                 auto castOp = mlir::cast<mlir::tensor::CastOp>(use.getOwner());
                 auto newCastOp = builder.create<mlir::tensor::CastOp>(
@@ -613,9 +660,8 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustInputBlockIdxAndSize(
 
         sliceOp.erase();
 
-        llvm::DenseMap<int64_t, Shape> mapPosToShape;
-        getMapForPositionAndBlockSizes(dynDimsToTilePositionAndSizeVec, newSliceOp, mapPosToShape);
-        mapSliceOpToBlockSizes[newSliceOp.getOperation()] = mapPosToShape;
+        getMapForPositionAndBlockSizes(dynDimsToTilePositionAndSizeVec, newSliceOp, sliceOpData);
+        mapSliceOpToData[newSliceOp.getOperation()] = std::move(sliceOpData);
     }
 
     return mlir::success();
@@ -727,6 +773,9 @@ mlir::func::CallOp createNewFuncOp(mlir::ModuleOp moduleOp, mlir::OpBuilder& bui
         vpux::inferReturnTypes(op, vpux::InferShapedTypeMode::SHAPE);
     });
 
+    // TODO: Fix bounds compatibility for eltwise operations
+    // TRACK: E#190938
+
     // Clone the call operation with new function
     auto newCallOp = builder.create<mlir::func::CallOp>(callOp.getLoc(), newFuncName, callOp.getResultTypes(),
                                                         callOp.getOperands());
@@ -768,13 +817,15 @@ void propagateTypeInCallOp(mlir::OpBuilder builder, mlir::ModuleOp moduleOp, mli
     }
 
     funcOp.walk([&](mlir::InferTypeOpInterface op) {
+        if (auto eltwiseOp = mlir::dyn_cast<VPU::NCEEltwiseOp>(op.getOperation())) {
+            alignEltwiseOperands(builder, eltwiseOp);
+        }
         vpux::inferReturnTypes(op, vpux::InferShapedTypeMode::SHAPE);
     });
 }
 
 void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
-        mlir::func::CallOp callOp, const SmallVector<std::pair<vpux::Dim, mlir::Value>>& dynDimsAndTensorBlockId,
-        llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int64_t, Shape>>& mapSliceOpToBlockSizes) {
+        mlir::func::CallOp callOp, llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData) {
     auto getInputSliceOps = [&](mlir::func::CallOp callOp) {
         SmallVector<std::pair<int64_t, mlir::Operation*>> sliceOps;
         for (auto& operand : callOp->getOpOperands()) {
@@ -792,19 +843,25 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
         return sliceOps;
     };
 
+    auto firstInputSliceOpIt = mapSliceOpToData.begin();
+    auto& firstInputSliceOpData = firstInputSliceOpIt->second;
+
     mlir::OpBuilder builder(callOp);
     SmallVector<mlir::Value> values;
     SmallVector<vpux::Dim> dynDims;
-    for (auto& [dim, tensorBlockId] : dynDimsAndTensorBlockId) {
+    for (auto [dim, tensorBlockId] : llvm::enumerate(firstInputSliceOpData.blockPositionValues)) {
+        if (tensorBlockId == nullptr) {
+            continue;
+        }
+
         values.push_back(tensorBlockId);
-        dynDims.push_back(dim);
+        dynDims.push_back(Dim(dim));
     }
     auto encodedIdx = encodeIndexBitwise(builder, callOp.getLoc(), values);
 
     // Although the number of cases is 4^N, not all cases are supported
     // E#183027 tracks the support for missing cases
-    auto it = mapSliceOpToBlockSizes.begin();
-    auto mapOfCaseVals = it->second;
+    auto mapOfCaseVals = firstInputSliceOpData.caseToShapeMap;
     SmallVector<int64_t> validCaseValues;
     for (auto& [caseVal, shape] : mapOfCaseVals) {
         validCaseValues.push_back(caseVal);
@@ -829,6 +886,14 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
         }
     };
 
+    auto getShapeMapForSliceOp = [&](mlir::Operation* sliceOp) {
+        if (mapSliceOpToData.contains(sliceOp)) {
+            return mapSliceOpToData[sliceOp].caseToShapeMap;
+        }
+        VPUX_THROW("Failed to get position to block sizes map for sliceOp");
+        return llvm::DenseMap<size_t, Shape>{};
+    };
+
     // Each case block might require a different input slice shape. Since the funcOp requires a dynamic input
     // shape, the following pattern is used to extract static shaped tensor from input and call funcOp with dynamic
     // shape Example:
@@ -845,22 +910,24 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
         builder.create<mlir::scf::YieldOp>(newCallOp.getLoc(), newCallOp.getResults());
         builder.setInsertionPointToStart(&block);
         auto locString = defaultCase ? "_default_case" : ("_case_" + std::to_string(caseIndex));
+
         for (auto [operandIdx, sliceOp] : extractSliceOps) {
             auto extractSliceOp = mlir::cast<mlir::tensor::ExtractSliceOp>(sliceOp);
             SmallVector<mlir::OpFoldResult> newShape;
-            getShapeAttrs(mapSliceOpToBlockSizes[sliceOp][caseIndex], newShape);
+            auto shapeMap = getShapeMapForSliceOp(sliceOp);
+            getShapeAttrs(shapeMap[caseIndex], newShape);
 
             if (defaultCase) {
-                auto falseAttr = builder.create<mlir::arith::ConstantOp>(takeOpLoc(callOp, "_bool_" + locString),
+                auto falseAttr = builder.create<mlir::arith::ConstantOp>(takeOpLoc(callOp, "bool_" + locString),
                                                                          builder.getBoolAttr(false));
-                builder.create<mlir::cf::AssertOp>(takeOpLoc(callOp, "_assert_valid_shape" + locString), falseAttr,
+                builder.create<mlir::cf::AssertOp>(takeOpLoc(callOp, "assert_valid_shape" + locString), falseAttr,
                                                    builder.getStringAttr("Unsupported case"));
             }
 
             // Create new extract slice op with adjusted shape and remove bounds attribute
             // Add CastOp to convert back to dynamic shape
             auto newSliceOp = builder.create<mlir::tensor::ExtractSliceOp>(
-                    takeOpLoc(newCallOp, "_adjusted_input_slice_" + locString), extractSliceOp.getSource(),
+                    takeOpLoc(newCallOp, "adjusted_input_slice_" + locString), extractSliceOp.getSource(),
                     extractSliceOp.getMixedOffsets(), newShape, extractSliceOp.getMixedStrides());
             auto newSliceOpResultType = newSliceOp->getResult(0).getType();
             assert(mlir::isa<mlir::RankedTensorType>(newSliceOpResultType) &&
@@ -931,6 +998,15 @@ void AdjustBlockSizeForScfTilingPass::safeRunOnModule() {
         return false;
     };
 
+    auto requireBlockAwareFuncOps = [](const llvm::DenseMap<mlir::Operation*, SliceOpData>& sliceOpDataMap) {
+        for (auto& [op, data] : sliceOpDataMap) {
+            if (data.hasAdjustedDynDims()) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     auto forOps = _mainFuncOp.getOps<mlir::scf::ForOp>();
     if (forOps.empty()) {
         _log.trace("No scf.for operations found in the main function. Skipping the pass.");
@@ -938,28 +1014,25 @@ void AdjustBlockSizeForScfTilingPass::safeRunOnModule() {
     }
     _firstForOp = *forOps.begin();
 
-    llvm::DenseMap<mlir::Value, AdjustedIndexInfo> mapToAdjustedIdx;
-    SmallVector<std::pair<vpux::Dim, mlir::Value>> dynDimsAndTensorBlockId;
-    llvm::DenseMap<mlir::Operation*, llvm::DenseMap<int64_t, Shape>> dynDimToBlockIds;
     _mainFuncOp.walk([&](mlir::scf::ForOp forOp) {
-        if (mlir::failed(adjustOutputBlockIdxAndSize(forOp, mapToAdjustedIdx))) {
+        if (mlir::failed(adjustOutputBlockIdxAndSize(forOp))) {
             signalPassFailure();
             return;
         }
 
-        if (mlir::failed(
-                    adjustInputBlockIdxAndSize(forOp, mapToAdjustedIdx, dynDimsAndTensorBlockId, dynDimToBlockIds))) {
+        llvm::DenseMap<mlir::Operation*, SliceOpData> sliceOpDataMap;
+        if (mlir::failed(calculateInputBlockPosAndShapeInformation(forOp, sliceOpDataMap))) {
             signalPassFailure();
             return;
         }
 
-        if (dynDimsAndTensorBlockId.empty()) {
-            _log.trace("Skip generating block-aware function operations for scf.for loop");
+        if (sliceOpDataMap.empty() || !requireBlockAwareFuncOps(sliceOpDataMap)) {
+            _log.trace("No extract slice operations with dynamic shapes found in scf.for loop {0}", forOp);
             return;
         }
 
         for (auto callOp : make_early_inc_range(forOp.getOps<mlir::func::CallOp>())) {
-            _log.trace("Processing call operation {0} in scf.for loop {1}", callOp, forOp);
+            _log.trace("Processing call operation {0}", callOp);
 
             // check if operands of callOp are dynamic tensors
             if (!IE::hasDynamicTensors(callOp)) {
@@ -970,17 +1043,16 @@ void AdjustBlockSizeForScfTilingPass::safeRunOnModule() {
             // get the called function
             auto calledFunc = _moduleOp.lookupSymbol<mlir::func::FuncOp>(callOp.getCallee());
             if (calledFunc == nullptr) {
+                _log.trace("Called function {0} not found in module. Pass failed to adjust block sizes.",
+                           callOp.getCallee());
                 signalPassFailure();
                 return;
             }
 
             if (checkForPaddedOps(calledFunc)) {
-                generateBlockAwareFuncOps(callOp, dynDimsAndTensorBlockId, dynDimToBlockIds);
+                generateBlockAwareFuncOps(callOp, sliceOpDataMap);
             }
         }
-
-        dynDimsAndTensorBlockId.clear();
-        mapToAdjustedIdx.clear();
         return;
     });
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,9 +9,12 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_scheduler_interface.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_scheduling_factory.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_axis_increment.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/strings.hpp"
+#include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/profiling/reports/api.hpp"
 
@@ -68,7 +71,7 @@ bool isCmxOperation(mlir::Operation* operation, const bool checkTilingType) {
     return !isSpatialTiling(tiling);
 }
 
-int64_t getTilingLimit(Dim axis, VFConfig& config, bool tilingOnHW) {
+int64_t getTilingLimit(Dim axis, VFConfig& config, bool multiDimTiling) {
     SmallVector<int64_t> axisLengthsOfNonChannelAlignedOps;
     SmallVector<int64_t> axisLengthsOfChannelAlignedOps;
     auto hasChannelAxis = axis == Dims4D::Act::C;
@@ -87,11 +90,10 @@ int64_t getTilingLimit(Dim axis, VFConfig& config, bool tilingOnHW) {
 
         auto limit = getMaxNumTiles(curOp)[curAxis.ind()];
         if (curAxis.ind() >= Dims4D::Act::getSpatialDim(0).ind()) {
-            if (tilingOnHW) {
-                limit = divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING));
-            } else {
-                limit = limit / MINIMUM_LENGTH_TILING;
-            }
+            limit = multiDimTiling ? divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING))
+                                   : limit / MINIMUM_LENGTH_TILING;
+        } else if (curAxis.ind() == Dims4D::Act::C.ind() && multiDimTiling) {
+            limit = divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING));
         }
         limit = std::min(limit, VPU::NCEInvariant::VPU_DIMENSION_LIMIT / MINIMUM_LENGTH_TILING);
         if (mlir::isa<IE::AlignedChannelsOpInterface>(curOp)) {
@@ -124,13 +126,31 @@ int64_t getTilingLimit(Dim axis, VFConfig& config, bool tilingOnHW) {
     return axisIncrement->getLimitValue(axisLengthsOfChannelAlignedOps, axisLengthsOfNonChannelAlignedOps);
 }
 
+std::optional<Dim> getNonTiledDimForVFOptimization(const VFSplit& vfSplit) {
+    auto dim = llvm::find_if(vfSplit, [](const auto& kv) {
+        return !kv.second.has_value();
+    });
+
+    if (dim == vfSplit.end()) {
+        return std::nullopt;
+    }
+
+    return dim->first;
+}
+
 mlir::FailureOr<TilingStorage> calculateTilingRegions(VFConfig& config, ArrayRef<int64_t> tilingStrategy, Logger log,
                                                       const TilingOperationStorage::UPtr& opStorage) {
     auto outputOp = config.getSubgraph() != nullptr ? config.getSubgraph() : config.getOutputs().back();
     const auto outputShape = getBoundedShape(outputOp->getResult(0));
     const auto strategy = Shape(tilingStrategy);
 
-    const auto tiles = fillDividedTiles(config.getVFOperations().getArrayRef(), strategy, outputShape);
+    // returns true for output operations as only them should be aligned dynamically
+    const auto dynAlignmentFunction = [&](mlir::Operation* op) {
+        return llvm::is_contained(config.getOutputs(), op);
+    };
+
+    const auto tiles =
+            fillDividedTiles(config.getVFOperations().getArrayRef(), strategy, outputShape, dynAlignmentFunction);
     if (mlir::failed(tiles)) {
         return mlir::failure();
     }
@@ -156,31 +176,49 @@ mlir::FailureOr<SmallVector<int64_t>> getValidTilingStrategyFromRange(
     auto axisIncrement = VPU::getVFAxisIncrement(tilingAxis);
     VPUX_THROW_WHEN(axisIncrement == nullptr, "Cannot get functions to get values for axis {0}", tilingAxis);
 
-    while (notBeyondBoundary(validTilingStrategy[tilingAxis.ind()], lowerTilingStrategy[tilingAxis.ind()],
-                             upperTilingStrategy[tilingAxis.ind()], closeToUpperLimit)) {
-        auto curOpStorage = std::make_unique<TilingOperationStorage>();
-        auto tilingRegions = calculateTilingRegions(config, validTilingStrategy, log, curOpStorage);
-        if (!mlir::failed(tilingRegions)) {
-            // a valid strategy is found
-            opStorage.reset(curOpStorage.release());
-            return validTilingStrategy;
-        }
+    SmallVector<int64_t> dimValues;
+    auto dimValue = validTilingStrategy[tilingAxis.ind()];
+    const auto lowerDimLimit = lowerTilingStrategy[tilingAxis.ind()];
+    const auto upperDimLimit = upperTilingStrategy[tilingAxis.ind()];
 
-        auto currentValue = validTilingStrategy[tilingAxis.ind()];
+    while (notBeyondBoundary(dimValue, lowerDimLimit, upperDimLimit, closeToUpperLimit)) {
+        auto currentDimValue = dimValue;
+        dimValues.push_back(currentDimValue);
 
         if (closeToUpperLimit) {
-            axisIncrement->decreasedValue(validTilingStrategy[tilingAxis.ind()], lowerTilingStrategy[tilingAxis.ind()]);
+            axisIncrement->decreasedValue(dimValue, lowerDimLimit);
         } else {
-            axisIncrement->increasedValue(validTilingStrategy[tilingAxis.ind()], upperTilingStrategy[tilingAxis.ind()]);
+            axisIncrement->increasedValue(dimValue, upperDimLimit);
         }
 
-        if (currentValue == validTilingStrategy[tilingAxis.ind()]) {
-            return mlir::failure();
+        if (currentDimValue == dimValue) {
+            break;
         }
     }
 
-    // no valid strategy can be found
-    return mlir::failure();
+    auto ctx = config.getVFOperations().front()->getContext();
+    auto result = vpux::parallel_find_index(ctx, static_cast<size_t>(dimValues.size()), [&](size_t valueIdx) {
+        auto tilingStrategyCandidate = validTilingStrategy;
+        tilingStrategyCandidate[tilingAxis.ind()] = dimValues[valueIdx];
+
+        auto curOpStorage = std::make_unique<TilingOperationStorage>();
+        auto tilingRegions = calculateTilingRegions(config, tilingStrategyCandidate, log, curOpStorage);
+        return mlir::succeeded(tilingRegions);
+    });
+    if (mlir::failed(result)) {
+        // No valid strategy has been found
+        return mlir::failure();
+    }
+
+    const auto strategyIdx = result.value();
+    auto tilingStrategy = std::move(validTilingStrategy);
+    tilingStrategy[tilingAxis.ind()] = dimValues[strategyIdx];
+
+    auto curOpStorage = std::make_unique<TilingOperationStorage>();
+    auto tilingRegions = calculateTilingRegions(config, tilingStrategy, log, curOpStorage);
+    VPUX_THROW_WHEN(mlir::failed(tilingRegions), "Expected tiling strategy to be correct");
+    opStorage = std::move(curOpStorage);
+    return tilingStrategy;
 }
 
 // get a maximal valid tiling strategy for VF block between the given range of tiling strategy
@@ -308,7 +346,7 @@ std::optional<int64_t> getCbrtMaxTileCandidate(int64_t minTile, int64_t maxTile)
     return std::nullopt;
 }
 
-bool isOperandSharedWeightsForTiling(mlir::Operation* op, mlir::Value operand, ShapeRef tiledShape) {
+bool isOperandSharedWeightsForTiling(mlir::Operation* op, mlir::Value operand, const TileInfo& tileInfo) {
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
     if (nceOp == nullptr || operand != nceOp.getWeightsOperand()) {
         return false;
@@ -318,21 +356,31 @@ bool isOperandSharedWeightsForTiling(mlir::Operation* op, mlir::Value operand, S
     if (mlir::isa<VPU::SparseTensorType>(operand.getType())) {
         return false;
     }
-    return getShape(operand) == tiledShape;
+
+    if (getShape(operand) == tileInfo.shape) {
+        return true;
+    }
+    auto& tileAxis = tileInfo.axis;
+
+    // Tiling on C and spatial dims. Since VF will unroll C tiling first, the weights will be shared across tiles.
+    const auto tileOnMultiDims = llvm::count_if(tileAxis, [](auto dimSize) {
+                                     return dimSize > 1;
+                                 }) > 1;
+    return tileOnMultiDims;
 }
 
 namespace {
 vpux::profiling::TaskInfo makeTaskInfo(const vpux::VPU::TimelineInterval& interval, vpux::Logger log) {
     vpux::profiling::TaskInfo taskInfo = {};
     switch (interval._mExecutor) {
-    case vpux::VPU::ExecutorKind::DMA_NN:
+    case vpux::config::ExecutorKind::DMA_NN:
         taskInfo.exec_type = vpux::profiling::TaskInfo::ExecType::DMA;
         break;
-    case vpux::VPU::ExecutorKind::DPU:
+    case vpux::config::ExecutorKind::DPU:
         taskInfo.exec_type = vpux::profiling::TaskInfo::ExecType::DPU;
         taskInfo.isSubtask = false;
         break;
-    case vpux::VPU::ExecutorKind::SHAVE_ACT:
+    case vpux::config::ExecutorKind::SHAVE_ACT:
         taskInfo.exec_type = vpux::profiling::TaskInfo::ExecType::SW;
         taskInfo.clusterId = 0;
         break;
@@ -392,5 +440,17 @@ void printVFSchedulingTrace(mlir::func::FuncOp funcOp, const std::unique_ptr<VPU
         printProfilingAsTraceEvent(taskInfos, layers, /*dpuFreq=*/{freqInMHz, profiling::FreqStatus::SIM}, outStream,
                                    log);
     }
+}
+
+std::optional<Dim> getVFOptimizedDim(const VFSplit& vfSplit) {
+    auto dim = llvm::find_if(vfSplit, [](const auto& kv) {
+        return !kv.second.has_value();
+    });
+
+    if (dim == vfSplit.end()) {
+        return std::nullopt;
+    }
+
+    return dim->first;
 }
 }  // namespace vpux::VPU::VF::v2

@@ -1,12 +1,18 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2022-2023, Intel Corporation.
+ * Copyright (c) 2022-2025, Intel Corporation.
  */
 
 // clang-format off
 
 #ifndef VPU_NCE_HW_40XX_H
 #define VPU_NCE_HW_40XX_H
+
+#ifdef __cplusplus__
+#include <cstdint>
+#else
+#include <stdint.h>
+#endif
 
 namespace nn_public {
 
@@ -311,6 +317,7 @@ typedef struct {
             uint32_t unused_2 : 13;
         } ppe_lut_ptr_bf;
     } ppe_lut_ptr; // (VPU50XX+ only)
+
     uint32_t nvar_tag;
 
     uint32_t pallet[8];

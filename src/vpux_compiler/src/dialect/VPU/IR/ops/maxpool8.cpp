@@ -40,11 +40,52 @@ mlir::LogicalResult vpux::VPU::MaxPool8Op::inferReturnTypes(mlir::MLIRContext* c
     const auto shapeI64 = inferMaxPool8OutputShape(ShapeInfo::fromNDType(inType), windowStrides, windowDilations,
                                                    dataPaddingBelow, dataPaddingAbove, windowShape, roundingType);
 
-    const auto outType = inType.changeShape(ShapeRef(shapeI64.shape));
-    inferredReturnTypes.push_back(outType);
+    if (auto inDistributedType = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(inType)) {
+        const auto dimsOrder = inType.getDimsOrder();
+        const auto inDistribution = VPU::DistributionInfo::getClassFromAttr(inDistributedType.getDistribution());
+        auto computeOffsets = inDistribution.getComputeOffsets();
+        auto memoryOffsets = inDistribution.getMemoryOffsets();
 
-    const auto outType1 = outType.changeElemType(maxPool8.getIndexElementType());
-    inferredReturnTypes.push_back(outType1);
+        auto calcOutDistShapes = [&](const auto& inDistShapes) {
+            SmallVector<SmallVector<int64_t>> outShapes;
+            // Only SOK and SOB are supported for Maxpool8 now,
+            // so only N and C will be segmented during distribution
+            for (const auto& tile : inDistShapes) {
+                auto shape = shapeI64.shape;
+                shape[0] = tile[0];
+                shape[1] = tile[1];
+                outShapes.push_back(shape);
+            }
+            return outShapes;
+        };
+
+        auto newComputeShapes = calcOutDistShapes(inDistribution.getComputeShapes());
+        auto newMemoryShapes = calcOutDistShapes(inDistribution.getMemoryShapes());
+
+        auto outDistribution = VPU::DistributionInfo(
+                inDistribution.getDistributionMode(), inDistribution.getNumTiles(), inDistribution.getKernel(),
+                inDistribution.getStrides(), inDistribution.getPadding(), inDistribution.getNumClusters(),
+                inDistribution.getAlignment(), inDistribution.hasUniformDistributedSegments(),
+                ArrayRef(newComputeShapes), computeOffsets, ArrayRef(newMemoryShapes), memoryOffsets,
+                inDistribution.hasEqualMemoryAndComputeView(), inDistribution.getMemoryNumTiles());
+
+        auto outDistributionAttr = VPU::DistributionInfo::getAttrFromClass(ctx, outDistribution);
+        const auto dimsOrderAttr = mlir::AffineMapAttr::get(dimsOrder.toAffineMap(ctx));
+
+        const auto outType = mlir::cast<vpux::NDTypeInterface>(
+                DistributedTensorType::get(ctx, ArrayRef(shapeI64.shape), inType.getElementType(), dimsOrderAttr,
+                                           inType.getMemSpace(), outDistributionAttr));
+        const auto outType1 = mlir::cast<vpux::NDTypeInterface>(
+                DistributedTensorType::get(ctx, ArrayRef(shapeI64.shape), maxPool8.getIndexElementType(), dimsOrderAttr,
+                                           inType.getMemSpace(), outDistributionAttr));
+        inferredReturnTypes.push_back(outType);
+        inferredReturnTypes.push_back(outType1);
+    } else {
+        const auto outType = inType.changeShape(ShapeRef(shapeI64.shape));
+        inferredReturnTypes.push_back(outType);
+        const auto outType1 = outType.changeElemType(maxPool8.getIndexElementType());
+        inferredReturnTypes.push_back(outType1);
+    }
 
     return mlir::success();
 }
@@ -80,6 +121,39 @@ void vpux::VPU::MaxPool8Op::adjustAttrs(const TilingInfo& inputTiling, const Til
 
 mlir::FailureOr<OutputTiling> vpux::VPU::MaxPool8Op::getTilingStrategy(TilingMode tilingMode, Logger log) {
     return vpux::getSWLayerTilingStrategy(this->getOperation(), tilingMode, log);
+}
+
+//
+// ClusteredOpInterface
+//
+
+bool vpux::VPU::MaxPool8Op::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t /*numTiles*/) {
+    return strategy == VPU::MultiClusterStrategy::SplitOverBatch ||
+           strategy == VPU::MultiClusterStrategy::SplitOverKernel;
+}
+
+vpux::VPU::DistributionInfo vpux::VPU::MaxPool8Op::getExplicitDistributionInfoAttr(
+        vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
+        const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
+    return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
+                                              numTiles, numClusters, alignment, uniformDistributedSegments,
+                                              overlapParams);
+}
+
+bool vpux::VPU::MaxPool8Op::isOperationSplitOverKernelCompatible(ShapeRef outputShape, ShapeRef, ShapeRef) {
+    if (outputShape == ShapeRef()) {
+        outputShape = getShape(getOutput());
+    }
+    return outputShape[Dims4D::Act::C] > 1;
+}
+
+bool vpux::VPU::MaxPool8Op::isOperationSplitOverBatchCompatible(vpux::ShapeRef outputShape) {
+    if (outputShape == ShapeRef()) {
+        outputShape = getShape(getOutput());
+    }
+    return outputShape[Dims4D::Act::N] > 1;
 }
 
 //

@@ -32,12 +32,11 @@ Welcome to the OpenVINO™ Intel® NPU Compiler repository. This guide provides 
 Contents:
 
 - [Project Structure](src/vpux_compiler/docs/guides/project_structure.md) – Overview of the project and its purpose
-- [Building the Project](src/vpux_driver_compiler/docs/) – Step-by-step instructions for building the compiler from source
 - [MLIR Primer Tutorial](src/vpux_compiler/docs/guides/primer_mlir.md) and [MLIR Good Practices](src/vpux_compiler/docs/guides/mlir_good_practices.md) – Introduction to MLIR, the foundational framework used by the compiler
-- [NPU Primer Tutorial](src/vpux_compiler/docs/guides/primer_vpu.md) – Overview of the Intel® NPU and its integration with the compiler
+- [Guides](guides) – Resources for developers on building, testing, profiling, and working with various tools.
+- [Code Style](src/vpux_compiler/docs/code_style.md)
+- [Building the Project](src/vpux_driver_compiler/docs/) – Step-by-step instructions for building the compiler from source
 - [Debugging Guide](src/vpux_compiler/docs/guides/how_to_debug.md) – Tools and techniques for debugging
-- [Tools quick guide](src/vpux_driver_compiler/docs/how_to_debug.md) – Tools and techniques for compiling and measuring performance
-- [Testing Guide](src/vpux_driver_compiler/docs/how_to_test.md) – Overview of the project’s testing infrastructure and how to use it
 
 ## License
 

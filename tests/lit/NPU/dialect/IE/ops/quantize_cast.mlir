@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,7 +24,7 @@ func.func @FuseQuantizeCasts(%arg0: tensor<1x16x32x64x!qElemType>) -> tensor<1x1
 
     return %SECOND_QUANT_CAST : tensor<1x16x32x64x!qElemType2>
 
-    // CHECK:       [[QUANT_CAST:%.*]] = IE.QuantizeCast(%arg0) {
+    // CHECK:       [[QUANT_CAST:%.+]] = IE.QuantizeCast(%arg0) {
     // CHECK-SAME:      dstElemType = !qElemType1
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType> -> tensor<1x16x32x64x!qElemType1>
 
@@ -64,25 +64,25 @@ func.func @FuseQuantCastsMultipleConsumers(%arg0: tensor<1x16x32x64x!qElemType>)
 
     return %MUL : tensor<1x16x32x64x!qElemType2>
 
-    // CHECK:       [[FIRST_QUANT_CAST:%.*]] = IE.QuantizeCast(%arg0) {
+    // CHECK:       [[FIRST_QUANT_CAST:%.+]] = IE.QuantizeCast(%arg0) {
     // CHECK-SAME:      dstElemType = !qElemType2
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType> -> tensor<1x16x32x64x!qElemType2>
 
-    // CHECK:       [[ADD:%.*]] = IE.Add([[FIRST_QUANT_CAST]], [[FIRST_QUANT_CAST]]) {
+    // CHECK:       [[ADD:%.+]] = IE.Add([[FIRST_QUANT_CAST]], [[FIRST_QUANT_CAST]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType2>, tensor<1x16x32x64x!qElemType2>
     // CHECK-SAME:  -> tensor<1x16x32x64x!qElemType2>
 
-    // CHECK:       [[ADD_QUANT_CAST:%.*]] = IE.QuantizeCast([[ADD]]) {
+    // CHECK:       [[ADD_QUANT_CAST:%.+]] = IE.QuantizeCast([[ADD]]) {
     // CHECK-SAME:      dstElemType = !qElemType1
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType2> -> tensor<1x16x32x64x!qElemType1>
 
     // Note that the second IE.QuantizeCast accepts arg0, not FIRST_QUANT_CAST
-    // CHECK:       [[SECOND_QUANT_CAST:%.*]] = IE.QuantizeCast(%arg0) {
+    // CHECK:       [[SECOND_QUANT_CAST:%.+]] = IE.QuantizeCast(%arg0) {
     // CHECK-SAME:      dstElemType = !qElemType1
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType> -> tensor<1x16x32x64x!qElemType1>
 
-    // CHECK:       [[MUL:%.*]] = IE.Multiply([[SECOND_QUANT_CAST]], [[ADD_QUANT_CAST]]) {
+    // CHECK:       [[MUL:%.+]] = IE.Multiply([[SECOND_QUANT_CAST]], [[ADD_QUANT_CAST]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType1>, tensor<1x16x32x64x!qElemType1>
     // CHECK-SAME:  -> tensor<1x16x32x64x!qElemType1>

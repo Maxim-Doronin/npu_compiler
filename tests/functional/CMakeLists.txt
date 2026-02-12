@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2024-2025 Intel Corporation
+# Copyright (C) 2024-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -58,10 +58,6 @@ endif()
 set_target_properties(${TARGET_NAME} PROPERTIES
                       FOLDER ${CMAKE_CURRENT_SOURCE_DIR}
                       CXX_STANDARD 17)
-
-if(ENABLE_MLIR_COMPILER)
-    target_compile_definitions(${TARGET_NAME} PRIVATE ENABLE_MLIR_COMPILER)
-endif()
 
 if(MSVC)
     # Enforce standards conformance on MSVC

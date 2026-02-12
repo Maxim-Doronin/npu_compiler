@@ -5,12 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/utils/core/string_ref.hpp"
-
-#include <mlir/IR/BuiltinOps.h>
-#include <mlir/IR/Operation.h>
-#include <mlir/IR/Value.h>
+#include <cstdint>
 
 namespace vpux {
 

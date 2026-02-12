@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,6 +36,26 @@ public:
         double writeCost;
         double readCost;
     };
+
+    struct MultiClusterStrategyInfo {
+        double cost = COST_MAX;
+        bool fitsIntoCMX = false;
+        bool usesFullTiles = true;
+    };
+
+    // Bucket #     - Inclusion Criteria            - Evaluation Method
+    //
+    // Bucket 0     - valid VPUNN cost, fits cmx    - lowest cost
+    // Bucket 1     - valid VPUNN cost, no fits cmx - lowest cost
+    // Bucket 2     - fits cmx, uses all tiles      - prefer activation or channel split based on tensor sizes
+    // Bucket 3     - compatible                    - prefer activation or channel split based on tensor sizes
+    enum PriorityBucket {
+        COST_BASED_FITS_CMX,
+        COST_BASED_NOT_FITS_CMX,
+        HEURISTIC_FITS_CMX_FULL_TILES,
+        HEURISTIC_COMPATIBLE_ONLY
+    };
+    using StrategyInfoPair = std::pair<VPU::MultiClusterStrategy, MultiClusterStrategyInfo>;
 
     explicit LayerCostModel(mlir::func::FuncOp func, bool enablePrefetchTiling, Logger log,
                             SiblingOpsAnalysis& siblingsOpsAnalysis);
@@ -142,6 +162,12 @@ private:
     double getSpillingDMACost(vpux::NDTypeInterface srcTensorType, const TensorDistributionMap& distributions,
                               SpillingType spillingType) const;
 
+    /* Greedy strategy helpers */
+    bool preferChannelSplitting(VPU::ClusteredOpInterface clusteredOp);
+    bool isCompatible(VPU::ClusteredOpInterface clusteredOp, VPU::MultiClusterStrategy strategy);
+    bool usesFullTiles(VPU::ClusteredOpInterface clusteredOp, VPU::MultiClusterStrategy strategy);
+    bool useSOKWhenMVNSideOrFitCMX(VPU::ClusteredOpInterface clusteredOp, ArrayRef<StrategyInfoPair> bucket);
+
     /* Efficiency cost helpers */
     double computeSplitEfficiency(VPU::NCEOpInterface nceOp, VPU::MultiClusterStrategy strategy) const;
     double calculateMPEVolume(VPU::MPEMode mpeMode, Shape shape) const;
@@ -199,7 +225,7 @@ SmallVector<uint32_t> getSHAVECostForSwOpPreSplit(VPU::SWOpInterface swOp, const
                                                   int64_t numSHV, Logger log);
 
 SmallVector<uint32_t> getPerTileWeightsDMACosts(
-        VPU::NCEOpInterface nceOp, SiblingOpsAnalysis& siblingsAnalysis,
+        VPU::NCEOpInterface nceOp, VPU::MultiClusterStrategy strategy, SiblingOpsAnalysis& siblingsAnalysis,
         ArrayRef<std::vector<std::pair<NDTypeInterface, TensorDistributionMap>>> tilesTypes,
         std::function<uint32_t(NDTypeInterface, const TensorDistributionMap& distributions)> getSpillingReadCostFunc);
 
@@ -236,5 +262,7 @@ bool setSOKForRuntimeDequantConvolution(VPU::NCEOpInterface nceOp, LayerCostMode
 bool alignStrategyWithParentRuntimeDequant(VPU::ClusteredOpInterface clusteredOp, LayerCostModel& costModel);
 
 double getStrideDMACorrectionThresholdByArch([[maybe_unused]] config::ArchKind arch);
+
+std::optional<VPU::MultiClusterStrategy> getMultiClusterStrategyFromOp(mlir::Operation* op);
 }  // namespace VPU
 }  // namespace vpux

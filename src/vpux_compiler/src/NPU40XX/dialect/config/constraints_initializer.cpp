@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,13 +9,17 @@
 
 using namespace vpux;
 
-void config::ConstraintsInitializer40XX::initialize(mlir::MLIRContext* context) {
+void config::ConstraintsInitializer40XX::initialize(mlir::MLIRContext* context, PlatformOrArch) {
     NPUConstraints constraints;
 
     constraints.frequencyTable.base = arch40xx::FREQ_BASE;
     constraints.frequencyTable.step = arch40xx::FREQ_STEP;
     constraints.perfClock.defaultFreq = arch40xx::PERF_CLK_DEFAULT_VALUE_MHZ;
-    constraints.perfClock.highFreq = arch40xx::PERF_CLK_HIGHFREQ_VALUE_MHZ;
+
+    constraints.mappedInferenceFormat = NPUConstraints::MappedInferenceFormat::MappedInference;
+
+    constraints.baseElfAbiVersion = config::Version(1, 2, 2);
+    constraints.dynamicStridesMinElfAbiVersion = config::Version(1, 3, 0);
 
     setNPUConstraints(context, constraints);
 }

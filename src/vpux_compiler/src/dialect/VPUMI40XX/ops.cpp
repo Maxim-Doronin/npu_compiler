@@ -12,6 +12,7 @@ using namespace vpux;
 using namespace vpux::VPUMI40XX;
 using namespace mlir;
 
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
 //
 // Generated
 //

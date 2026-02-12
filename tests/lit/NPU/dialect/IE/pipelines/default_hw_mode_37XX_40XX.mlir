@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -86,14 +86,14 @@ module @MultiNonTrivialDimMultiplyToConv {
 
         return %MUL : tensor<1x19x80x80xf16>
 
-        // CHECK-DAG:       [[MUL_WEIGHTS:%.*]] = const.Declare tensor<6400x1x1x1xf16, {order = #NHWC}> = dense<2.000000e+00>
+        // CHECK-DAG:       [[MUL_WEIGHTS:%.+]] = const.Declare tensor<6400x1x1x1xf16, {order = #NHWC}> = dense<2.000000e+00>
         // CHECK-SAME:          : tensor<1x1x80x80xf16>, [#const.Reshape<[6400, 1, 1, 1]>, #const.Reorder<#NHWC>]
 
-        // CHECK:   [[RESHAPE_INPUT:%.*]] = IE.AffineReshape(%arg0) {
+        // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
         // CHECK-SAME:      shape_value = [1, 1, 19, 6400]
         // CHECK-SAME:  } : tensor<1x19x80x80xf16> -> tensor<1x1x19x6400xf16>
 
-        // CHECK:   [[PERMUTE_INPUT:%.*]] = IE.PermuteCast([[RESHAPE_INPUT]]) {
+        // CHECK:   [[PERMUTE_INPUT:%.+]] = IE.PermuteCast([[RESHAPE_INPUT]]) {
         // CHECK-SAME:      dst_order = #NHWC, mem_perm = #NCHW
         // CHECK-SAME:  } : tensor<1x1x19x6400xf16> -> tensor<1x6400x1x19xf16, {order = #NHWC}>
 
@@ -114,7 +114,7 @@ module @MultiNonTrivialDimMultiplyToConv {
         // CHECK-SAME:      dst_order = #NCHW, mem_perm = #NCHW
         // CHECK-SAME:  } : tensor<1x6400x1x19xf16, {order = #NHWC}> -> tensor<1x1x19x6400xf16>
 
-        // CHECK:   [[RESHAPE_OUT:%.*]] = IE.AffineReshape([[PERMUTE_OUT]]) {
+        // CHECK:   [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[PERMUTE_OUT]]) {
         // CHECK-SAME:      shape_value = [1, 19, 80, 80]
         // CHECK-SAME:  } : tensor<1x1x19x6400xf16> -> tensor<1x19x80x80xf16>
 
@@ -279,5 +279,37 @@ module @NoMultiplyFQFusion {
         // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[GROUP_CONV]], [[BIAS]])
         // CHECK-NEXT:  [[CONVERT2:%.+]] = IE.Convert([[ADD2]])
         // CHECK-NEXT:  return [[CONVERT2]]
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @RMSProcessingWith2DRMS
+module @RMSProcessingWith2DRMS {
+    net.NetworkInfo entryPoint : @main
+    inputsInfo : {
+        DataInfo "input" : tensor<1x768xf32>
+    } outputsInfo : {
+        DataInfo "output" : tensor<1x768xf32>
+    }
+
+    // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x768xf32>) -> tensor<1x768xf32> {
+    func.func @main(%arg0: tensor<1x768xf32>) -> tensor<1x768xf32> {
+
+        %weight = const.Declare tensor<1x768xf32> = dense<1.0> : tensor<1x768xf32>
+        %cst = IE.Reshape(%weight) {shape_value = [768]} : tensor<1x768xf32> -> tensor<768xf32>
+        %out = IE.RMS(%arg0, %cst) {eps = 1.0013580322265625E-5 : f64} : tensor<1x768xf32>, tensor<768xf32> -> tensor<1x768xf32>
+
+        return %out : tensor<1x768xf32>
+
+        // CHECK:       [[CST:%.+]] = const.Declare tensor<1x1x1x768xf16> = dense<1.000000e+00> : tensor<1x768xf32>, [#const.Reshape<[1, 1, 1, 768]>, #const.CastElemType<f16>]
+        // CHECK:       [[AFFINE_RESHAPE_0:%.+]] = IE.AffineReshape(%arg0)
+        // CHECK{LITERAL}:   {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 1, 768]} : tensor<1x768xf32> -> tensor<1x1x1x768xf32>
+        // CHECK:       [[CONVERT_0:%.+]] = IE.Convert([[AFFINE_RESHAPE_0]]) {dstElemType = f16} : tensor<1x1x1x768xf32> -> tensor<1x1x1x768xf16>
+        // CHECK:       [[RMS:%.+]] = IE.RMS([[CONVERT_0]], [[CST]]) {eps = 1.0013580322265625E-5 : f64} : tensor<1x1x1x768xf16>, tensor<1x1x1x768xf16> -> tensor<1x1x1x768xf16>
+        // CHECK:       [[CONVERT_1:%.+]] = IE.Convert([[RMS]]) {dstElemType = f32} : tensor<1x1x1x768xf16> -> tensor<1x1x1x768xf32>
+        // CHECK:       [[AFFINE_RESHAPE_1:%.+]] = IE.AffineReshape([[CONVERT_1]])
+        // CHECK{LITERAL}:   {dim_mapping = [[0], [0], [0], [1]], shape_value = [1, 768]} : tensor<1x1x1x768xf32> -> tensor<1x768xf32>
+        // CHECK:       return [[AFFINE_RESHAPE_1]] : tensor<1x768xf32>
     }
 }

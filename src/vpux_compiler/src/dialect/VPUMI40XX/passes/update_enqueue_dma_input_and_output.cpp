@@ -166,7 +166,7 @@ void UpdateEnqueueDMAInputAndOutput::safeRunOnFunc() {
     _dpuFIFOAddrs = config::getConstraint<llvm::SmallVector<uint32_t>>(parentModule, config::DPU_FIFO_ADDRS);
 
     _tilesCount = config::getTileExecutor(parentModule).getCount();
-    _shavesCountPerTile = config::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+    _shavesCountPerTile = config::getAvailableExecutor(parentModule, config::ExecutorKind::SHAVE_ACT).getCount();
 
     auto dmaTile0List0Head = mpi.getListHead(VPURegMapped::TaskType::DMA, 0, 0);
     if (!dmaTile0List0Head) {

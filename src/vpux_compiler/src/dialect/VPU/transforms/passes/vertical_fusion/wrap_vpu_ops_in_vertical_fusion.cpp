@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,7 +39,7 @@ public:
 private:
     void safeRunOnFunc() final;
 
-    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES;
 };
 
 mlir::LogicalResult WrapVerticalFusionRegionPass::initialize(mlir::MLIRContext* ctx) {
@@ -62,7 +62,7 @@ void WrapVerticalFusionRegionPass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
 
-    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_LCA) {
+    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_1_PAGES) {
         patterns.add<VPU::VF::v1::WrapVFRewriter>(&ctx, _log);
     } else {
         patterns.add<VPU::VF::v2::WrapVFRewriter>(&ctx, _log);

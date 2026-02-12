@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -354,7 +354,7 @@ func.func @DepthConvToDistributedOpSOHOverlapped(%arg0: tensor<1x32x112x112xf16,
     %0 = VPU.NCE.DepthConvolution(%arg0, %cst_0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, rawFilterShape = [32, 1, 3, 3], strides = [1, 1]} -> tensor<1x32x112x112xf16, {order = #NHWC}>
     return %0 : tensor<1x32x112x112xf16, {order = #NHWC}>
 
-    //CHECK:        [[WEIGHTS:%.*]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
+    //CHECK:        [[WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
     //CHECK-SAME:   = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
     //CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT]]
@@ -373,7 +373,7 @@ func.func @DepthConvToDistributedOpSOHOverlapped(%arg0: tensor<1x32x112x112xf16,
     //CHECK-SAME{LITERAL}:   memory_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 
-    //CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.DepthConvolution(
+    //CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.DepthConvolution(
     //CHECK-SAME:             [[INPUT_CMX]]
     //CHECK-SAME:             [[WEIGHTS_CMX]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x32x112x112xf16, #NHWC, @CMX_NN,
@@ -411,7 +411,7 @@ func.func @DepthConvToDistributedOpHKSwitch(%arg0: tensor<1x32x112x112xf16, {ord
             -> tensor<1x32x112x112xf16, {order = #NHWC}>
     return %0 : tensor<1x32x112x112xf16, {order = #NHWC}>
 
-    //CHECK:        [[WEIGHTS:%.*]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
+    //CHECK:        [[WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
     //CHECK-SAME:   = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
     //CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[ARG0]]
@@ -430,7 +430,7 @@ func.func @DepthConvToDistributedOpHKSwitch(%arg0: tensor<1x32x112x112xf16, {ord
     //CHECK-SAME{LITERAL}:   memory_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 
-    //CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.DepthConvolution(
+    //CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.DepthConvolution(
     //CHECK-SAME:             [[INPUT_CMX]]
     //CHECK-SAME:             [[WEIGHTS_CMX]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x32x112x112xf16, #NHWC, @CMX_NN,
@@ -462,7 +462,7 @@ func.func @DepthConvToDistributedOpSOHOverlappedNoAlign(%arg0: tensor<1x32x14x14
     %0 = VPU.NCE.DepthConvolution(%arg0, %cst_0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, rawFilterShape = [32, 1, 3, 3], strides = [1, 1]} -> tensor<1x32x14x14xf16, {order = #NHWC}>
     return %0 : tensor<1x32x14x14xf16, {order = #NHWC}>
 
-    //CHECK:      [[WEIGHTS:%.*]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
+    //CHECK:      [[WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
     //CHECK-SAME:   = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
     //CHECK:      [[INPUT_CMX:%.+]] = VPU.Copy([[ARG0]]
@@ -482,7 +482,7 @@ func.func @DepthConvToDistributedOpSOHOverlappedNoAlign(%arg0: tensor<1x32x14x14
     //CHECK-SAME{LITERAL}:  memory_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1]]
     //CHECK-SAME{LITERAL}:  memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.DepthConvolution(
+    //CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.DepthConvolution(
     //CHECK-SAME:         [[INPUT_CMX]]
     //CHECK-SAME:         [[WEIGHTS_CMX]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x14x14xf16, #NHWC, @CMX_NN,
@@ -513,7 +513,7 @@ func.func @DepthConvToDistributedOpSOK(%arg0: tensor<1x128x56x56xf16, {order = #
     %0 = VPU.NCE.DepthConvolution(%arg0, %cst_0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, rawFilterShape = [128, 1, 3, 3], strides = [1, 1]} -> tensor<1x128x56x56xf16, {order = #NHWC}>
     return %0 : tensor<1x128x56x56xf16, {order = #NHWC}>
 
-    //CHECK:        [[WEIGHTS:%.*]] = const.Declare tensor<128x16x1x1xf16, {order = #NHWC}>
+    //CHECK:        [[WEIGHTS:%.+]] = const.Declare tensor<128x16x1x1xf16, {order = #NHWC}>
     //CHECK-SAME:   = dense<1.000000e+00> : tensor<128x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
     //CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT]]
@@ -532,7 +532,7 @@ func.func @DepthConvToDistributedOpSOK(%arg0: tensor<1x128x56x56xf16, {order = #
     //CHECK-SAME{LITERAL}:   memory_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [16, 16, 1, 1], [16, 16, 1, 1], [16, 16, 1, 1], [16, 16, 1, 1]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [32, 0, 0, 0], [64, 0, 0, 0], [80, 0, 0, 0], [96, 0, 0, 0], [112, 0, 0, 0]]
 
-    //CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.DepthConvolution(
+    //CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.DepthConvolution(
     //CHECK-SAME:             [[INPUT_CMX]]
     //CHECK-SAME:             [[WEIGHTS_CMX]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x128x56x56xf16, #NHWC, @CMX_NN,
@@ -563,7 +563,7 @@ func.func @DepthConvToDistributedOpClustering(%arg0: tensor<1x32x14x14xf16, {ord
     %0 = VPU.NCE.DepthConvolution(%arg0, %cst_0) {multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>, ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, rawFilterShape = [32, 1, 3, 3], strides = [1, 1]} -> tensor<1x32x14x14xf16, {order = #NHWC}>
     return %0 : tensor<1x32x14x14xf16, {order = #NHWC}>
 
-    //CHECK:        [[WEIGHTS:%.*]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
+    //CHECK:        [[WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}>
     //CHECK-SAME:   = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
     //CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT]]
@@ -582,7 +582,7 @@ func.func @DepthConvToDistributedOpClustering(%arg0: tensor<1x32x14x14xf16, {ord
     //CHECK-SAME{LITERAL}:   memory_shapes = [[32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1], [32, 16, 1, 1]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 
-    //CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.DepthConvolution(
+    //CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.DepthConvolution(
     //CHECK-SAME:             [[INPUT_CMX]]
     //CHECK-SAME:             [[WEIGHTS_CMX]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x32x14x14xf16, #NHWC, @CMX_NN,
@@ -1323,20 +1323,20 @@ module @ReduceL1SplitOverKernel {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceL1SplitOverKernel(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
 func.func @ReduceL1SplitOverKernel(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
   %0 = VPU.ReduceL1(%arg0) {axes_value = [2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x1024x7x7xf16> -> tensor<1x1024x1x1xf16>
   return %0 : tensor<1x1024x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]], memory_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceL1(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceL1([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x1x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]], memory_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
 
-    // CHECK:   return %[[VAL_7]] : tensor<1x1024x1x1xf16>
+    // CHECK:   return [[VAL_7]] : tensor<1x1024x1x1xf16>
 }
 
 }
@@ -1351,19 +1351,19 @@ module @ReduceL2SplitOverKernel {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceL2SplitOverKernel(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
 func.func @ReduceL2SplitOverKernel(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
   %0 = VPU.ReduceL2(%arg0) {axes_value = [2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x1024x7x7xf16> -> tensor<1x1024x1x1xf16>
   return %0 : tensor<1x1024x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]], memory_shapes = {{\[\[}}1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 171, 7, 7], [1, 170, 7, 7], [1, 170, 7, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceL2(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceL2([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x1x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]], memory_shapes = {{\[\[}}1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 171, 1, 1], [1, 170, 1, 1], [1, 170, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 171, 0, 0], [0, 342, 0, 0], [0, 513, 0, 0], [0, 684, 0, 0], [0, 854, 0, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1024x1x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1024x1x1xf16>
 }
 
 }
@@ -1378,19 +1378,19 @@ module @ReduceLogicalAndClustering {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceLogicalAndClustering(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
 func.func @ReduceLogicalAndClustering(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
   %0 = VPU.ReduceLogicalAnd(%arg0) {axes_value = [1, 2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x1024x7x7xf16> -> tensor<1x1x1x1xf16>
   return %0 : tensor<1x1x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], memory_shapes = {{\[\[}}1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceLogicalAnd(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceLogicalAnd([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1x1x1xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], memory_shapes = {{\[\[}}1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x1x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x1x1xf16>
 }
 
 }
@@ -1405,19 +1405,19 @@ module @ReduceLogicalOrClustering {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceLogicalOrClustering(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
 func.func @ReduceLogicalOrClustering(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
   %0 = VPU.ReduceLogicalOr(%arg0) {axes_value = [1, 2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x1024x7x7xf16> -> tensor<1x1x1x1xf16>
   return %0 : tensor<1x1x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], memory_shapes = {{\[\[}}1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7], [1, 1024, 7, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceLogicalOr(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceLogicalOr([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1x1x1xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], memory_shapes = {{\[\[}}1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x1x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x1x1xf16>
 }
 
 }
@@ -1432,19 +1432,19 @@ module @ReduceMaxSplitOverHeight {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceMaxSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceMaxSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceMax(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceMax(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceMax([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 }
@@ -1459,19 +1459,19 @@ module @ReduceMeanSplitOverHeight {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceMeanSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceMeanSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceMean(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceMean(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceMean([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 }
@@ -1486,19 +1486,19 @@ module @ReduceProdSplitOverHeight {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceProdSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceProdSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceProd(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceProd(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceProd([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 }
@@ -1513,18 +1513,18 @@ module @ReduceSumSplitOverHeight {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: func.func @ReduceSumSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceSumSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceSum(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1024, 2, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7], [1, 1024, 1, 7]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
 
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceSum(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceSum([[VAL_1]]
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments, compute_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], compute_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]], memory_shapes = {{\[\[}}1, 1, 2, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]], memory_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0], [0, 0, 3, 0], [0, 0, 4, 0], [0, 0, 5, 0], [0, 0, 6, 0]]}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 }
@@ -2299,7 +2299,7 @@ func.func @UnrollSOKDWConvInputOutputDuplicated(%input: tensor<1x1x320x1xf16>) -
     //CHECK-SAME{LITERAL}:   memory_shapes = [[64, 16, 1, 1], [64, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [64, 0, 0, 0], [128, 0, 0, 0], [176, 0, 0, 0], [224, 0, 0, 0], [272, 0, 0, 0]]}>
 
-    //CHECK:        [[DWCONV:%.*]] = VPU.NCE.DepthConvolution([[DWCONV_INPUT_COPY_IN]],
+    //CHECK:        [[DWCONV:%.+]] = VPU.NCE.DepthConvolution([[DWCONV_INPUT_COPY_IN]],
     //CHECK-SAME:                                           [[DWCONV_WEIGHTS_COPY_IN]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x320x1x1xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:           {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
@@ -5608,20 +5608,20 @@ func.func @MultiDepthConv(%arg0: tensor<1x32x112x112xf16, {order = #NHWC}>) -> t
     %concat = VPU.Concat(%dwconv_1, %dwconv_2, %dwconv_3) {static_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0]]} : tensor<1x32x112x112xf16, {order = #NHWC}>, tensor<1x32x112x112xf16, {order = #NHWC}>, tensor<1x32x112x112xf16, {order = #NHWC}> -> tensor<1x96x112x112xf16, {order = #NHWC}>
     return %concat: tensor<1x96x112x112xf16, {order = #NHWC}>
 
-    // CHECK: [[TILING_COPY_1:%.*]] = VPU.Copy
-    // CHECK: [[TILING_COPY_2:%.*]] = VPU.Copy
-    // CHECK: [[DWCONV_1:%.*]] = VPU.NCE.DepthConvolution
-    // CHECK: [[TILING_COPY_OUT_1:%.*]] = VPU.Copy
+    // CHECK: [[TILING_COPY_1:%.+]] = VPU.Copy
+    // CHECK: [[TILING_COPY_2:%.+]] = VPU.Copy
+    // CHECK: [[DWCONV_1:%.+]] = VPU.NCE.DepthConvolution
+    // CHECK: [[TILING_COPY_OUT_1:%.+]] = VPU.Copy
 
-    // CHECK: [[TILING_COPY_4:%.*]] = VPU.Copy
-    // CHECK: [[TILING_COPY_5:%.*]] = VPU.Copy
-    // CHECK: [[DWCONV_2:%.*]] = VPU.NCE.DepthConvolution
-    // CHECK: [[TILING_COPY_OUT_2:%.*]] = VPU.Copy
+    // CHECK: [[TILING_COPY_4:%.+]] = VPU.Copy
+    // CHECK: [[TILING_COPY_5:%.+]] = VPU.Copy
+    // CHECK: [[DWCONV_2:%.+]] = VPU.NCE.DepthConvolution
+    // CHECK: [[TILING_COPY_OUT_2:%.+]] = VPU.Copy
 
-    // CHECK: [[TILING_COPY_7:%.*]] = VPU.Copy
-    // CHECK: [[TILING_COPY_8:%.*]] = VPU.Copy
-    // CHECK: [[DWCONV_3:%.*]] = VPU.NCE.DepthConvolution
-    // CHECK: [[TILING_COPY_OUT_3:%.*]] = VPU.Copy
+    // CHECK: [[TILING_COPY_7:%.+]] = VPU.Copy
+    // CHECK: [[TILING_COPY_8:%.+]] = VPU.Copy
+    // CHECK: [[DWCONV_3:%.+]] = VPU.NCE.DepthConvolution
+    // CHECK: [[TILING_COPY_OUT_3:%.+]] = VPU.Copy
 
     // CHECK: [[CONCAT:%.+]] = VPU.Concat([[TILING_COPY_OUT_1]], [[TILING_COPY_OUT_2]], [[TILING_COPY_OUT_3]])
     // CHECK:    {static_offsets = [
@@ -6168,274 +6168,6 @@ func.func @RoundSWClustering(%arg0: tensor<1x1x1x513xf16>) -> tensor<1x1x1x513xf
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: @AccumulateClustering
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateClustering(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]]
-    // CHECK-SAME:      [[COPY_RHS]]
-    // CHECK-SAME:      [[COPY_LHS_SCALES]]
-    // CHECK-SAME:      [[COPY_RHS_SCALES]]
-    // CHECK-SAME:    -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]]
-    // CHECK-SAME:  -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-}
-
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateSplitOverHeight
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateSplitOverHeight(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, {{6|3|4}}, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, {{6|3|4}}, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]]
-    // CHECK-SAME:      [[COPY_RHS]]
-    // CHECK-SAME:      [[COPY_LHS_SCALES]]
-    // CHECK-SAME:      [[COPY_RHS_SCALES]]
-    // CHECK-SAME:    -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, {{6|3|4}}, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]]
-    // CHECK-SAME:  -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateSplitOverKernel
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateSplitOverKernel(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, {{6|3|4}}, 1, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, {{6|3|4}}, 1, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, {{6|3|4}}, 1, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, {{6|3|4}}, 1, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]]
-    // CHECK-SAME:      [[COPY_RHS]]
-    // CHECK-SAME:      [[COPY_LHS_SCALES]]
-    // CHECK-SAME:      [[COPY_RHS_SCALES]]
-    // CHECK-SAME:    -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, {{6|3|4}}, 1, 1],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]]
-    // CHECK-SAME:  -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateSplitOverWidth
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x32xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x32xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateSplitOverWidth(
-    %LHS: tensor<1x64x16x32xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x32xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x32xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>
-    } : tensor<1x64x16x32xf16, {order = #NHWC}>,
-        tensor<1x64x16x32xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x32xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x32xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 1, {{6|3|4}}],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x32xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 1, {{6|3|4}}],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]]
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]]
-    // CHECK-SAME:      [[COPY_RHS]]
-    // CHECK-SAME:      [[COPY_LHS_SCALES]]
-    // CHECK-SAME:      [[COPY_RHS_SCALES]]
-    // CHECK-SAME:    -> !VPU.DistributedTensor<1x64x16x32xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 1, {{6|3|4}}],
-    // CHECK-SAME:      num_clusters = {{6|3|4}} : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]]
-    // CHECK-SAME:  -> tensor<1x64x16x32xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x32xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x32xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
 // CHECK-LABEL: @PoolingSplitOverWidth
 // CHECK-SAME: ([[DATA:%arg[0-9]]]: tensor<1x16x32x64xf16, {order = #NHWC}>)
 func.func @PoolingSplitOverWidth(
@@ -6728,10 +6460,10 @@ func.func @EltwiseInputsSameOffsets(%arg0: tensor<1x128x72x72xf16, {order = #NHW
     // CHECK:                   [[TILING_COPY_1:%.+]] = VPU.Copy
     // CHECK:                   [[TILING_CONV:%.+]] = VPU.NCE.Convolution([[TILING_COPY_0]]
     // CHECK-SAME{LITERAL}:         -> !VPU.DistributedTensor<1x64x72x72xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 64, 18, 72], [1, 64, 18, 72], [1, 64, 18, 72], [1, 64, 18, 72]], compute_offsets = [[0, 0, 0, 0], [0, 0, 18, 0], [0, 0, 36, 0], [0, 0, 54, 0]], memory_shapes = [[1, 64, 19, 72], [1, 64, 20, 72], [1, 64, 20, 72], [1, 64, 19, 72]], memory_offsets = [[0, 0, 0, 0], [0, 0, 17, 0], [0, 0, 35, 0], [0, 0, 53, 0]]}>
-    // CHECK:                   [[TILING_COPY_3:%.*]] = VPU.Copy([[TILING_CONV]]
-    // CHECK:                   [[TILING_COPY_4:%.*]] = VPU.Copy([[TILING_COPY_3]]
-    // CHECK:                   [[TILING_COPY_5:%.*]] = VPU.Copy
-    // CHECK:                   [[TILING_DWCONV:%.*]] = VPU.NCE.DepthConvolution([[TILING_COPY_4]]
+    // CHECK:                   [[TILING_COPY_3:%.+]] = VPU.Copy([[TILING_CONV]]
+    // CHECK:                   [[TILING_COPY_4:%.+]] = VPU.Copy([[TILING_COPY_3]]
+    // CHECK:                   [[TILING_COPY_5:%.+]] = VPU.Copy
+    // CHECK:                   [[TILING_DWCONV:%.+]] = VPU.NCE.DepthConvolution([[TILING_COPY_4]]
     // CHECK-SAME{LITERAL}:         -> !VPU.DistributedTensor<1x64x72x72xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 64, 18, 72], [1, 64, 18, 72], [1, 64, 18, 72], [1, 64, 18, 72]], compute_offsets = [[0, 0, 0, 0], [0, 0, 18, 0], [0, 0, 36, 0], [0, 0, 54, 0]], memory_shapes = [[1, 64, 19, 72], [1, 64, 20, 72], [1, 64, 20, 72], [1, 64, 19, 72]], memory_offsets = [[0, 0, 0, 0], [0, 0, 17, 0], [0, 0, 35, 0], [0, 0, 53, 0]]}>
     // CHECK:                   [[TILING_COPY_7:%.+]] = VPU.Copy([[TILING_DWCONV]]
     // CHECK:                   [[CONCAT:%.+]] = VPU.Concat([[TILING_COPY_3]], [[TILING_COPY_7]])
@@ -8304,4 +8036,3 @@ func.func @ReLUSWWithClustering(%arg0: tensor<1x1x1x44xf16>) -> tensor<1x1x1x44x
 }
 
 }
-

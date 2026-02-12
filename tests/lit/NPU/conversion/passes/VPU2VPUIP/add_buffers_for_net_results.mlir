@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,7 +21,7 @@ module @VPU.SW {
         attributes {VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax"}
 }
 
-// CHECK: func.func @SingleLayer([[ARG0:%.*]]: memref<1x1000xf16> loc([[LOC_ARG0:.+]]), [[ARG1:%.*]]: memref<1x1000xf16> loc([[LOC_ARG1:.+]])) -> memref<1x1000xf16> {
+// CHECK: func.func @SingleLayer([[ARG0:%.+]]: memref<1x1000xf16> loc([[LOC_ARG0:.+]]), [[ARG1:%.+]]: memref<1x1000xf16> loc([[LOC_ARG1:.+]])) -> memref<1x1000xf16> {
 func.func @SingleLayer(%arg0: memref<1x1000xf16>) -> memref<1x1000xf16> {
     %0 = memref.alloc() : memref<1x1000xf16>
     %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
@@ -34,7 +34,7 @@ func.func @SingleLayer(%arg0: memref<1x1000xf16>) -> memref<1x1000xf16> {
     }
     return %1 : memref<1x1000xf16>
 
-    // CHECK: [[OUT0:%.*]] = VPUIP.Copy inputs({{[^:]+}} : memref<1x1000xf16>) outputs([[ARG1]] : memref<1x1000xf16>) -> memref<1x1000xf16> loc([[LOC_OUTPUT:#.+]])
+    // CHECK: [[OUT0:%.+]] = VPUIP.Copy inputs({{[^:]+}} : memref<1x1000xf16>) outputs([[ARG1]] : memref<1x1000xf16>) -> memref<1x1000xf16> loc([[LOC_OUTPUT:#.+]])
     // CHECK: return [[OUT0]] : memref<1x1000xf16>
 }
 }

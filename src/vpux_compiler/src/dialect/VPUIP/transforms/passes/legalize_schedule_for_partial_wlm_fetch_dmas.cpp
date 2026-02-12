@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,11 +9,11 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPURT/utils/wlm_legalization_utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/options.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 #include <queue>
 
@@ -24,6 +24,7 @@ namespace vpux::VPUIP {
 }  // namespace vpux::VPUIP
 
 using namespace vpux;
+
 namespace {
 
 //
@@ -32,26 +33,24 @@ namespace {
 
 struct DummyDMAData {
     size_t insertionPoint;
-    SmallVector<IndexType> consumes;
-    SmallVector<IndexType> producesIn;
+    SmallVector<VPURT::IndexType> consumes;
+    SmallVector<VPURT::IndexType> producesIn;
 };
 
 class LegalizeScheduleForPartialWlmFetchDmasPass final :
         public VPUIP::impl::LegalizeScheduleForPartialWlmFetchDmasBase<LegalizeScheduleForPartialWlmFetchDmasPass> {
 public:
-    explicit LegalizeScheduleForPartialWlmFetchDmasPass(const int virtualBarrierThreshold, Logger log)
-            : _virtualBarrierThreshold(virtualBarrierThreshold) {
+    explicit LegalizeScheduleForPartialWlmFetchDmasPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
-    int _virtualBarrierThreshold;
     void safeRunOnFunc() final;
 
     bool isValidDMA(BarrierInfo& barrierInfo, size_t dmaIdx);
     VPURT::TaskOp findLastDmaBeforeExecGroup(BarrierInfo& barrierInfo, ExecutionGroup& executionGroup);
     VPURT::TaskOp findFirstDmaAfterExecGroup(BarrierInfo& barrierInfo, ExecutionGroup& executionGroup);
-    VPURT::TaskOp findDMAsThroughBarriersBFS(size_t startBarrier, BarrierInfo& barrierInfo, MinMaxOption option,
+    VPURT::TaskOp findDMAsThroughBarriersBFS(size_t startBarrier, BarrierInfo& barrierInfo, VPURT::MinMaxOption option,
                                              bool bfsDirUp);
 
     void planDummyDMAAndBarriersInsertion(DenseMap<VPURT::TaskQueueType, ExecutionGroupList>& executionGroups,
@@ -76,9 +75,10 @@ private:
 
     SmallVector<DummyDMAData> _dummyDMAsToInsert;
     SmallVector</*insertionPoint */ size_t> _newBarriersToInsert;
-    llvm::DenseMap<IndexType, std::pair<SmallVector<IndexType>, SmallVector<IndexType>>>
+    llvm::DenseMap<VPURT::IndexType, std::pair<SmallVector<VPURT::IndexType>, SmallVector<VPURT::IndexType>>>
             _barrierRemoveConsumerProducerMap;
-    llvm::DenseMap<IndexType, std::pair<SmallVector<IndexType>, SmallVector<IndexType>>> _barrierAddConsumerProducerMap;
+    llvm::DenseMap<VPURT::IndexType, std::pair<SmallVector<VPURT::IndexType>, SmallVector<VPURT::IndexType>>>
+            _barrierAddConsumerProducerMap;
 
     SmallVector<VPURT::DeclareVirtualBarrierOp> _dummyBarriers;
     SmallVector<VPURT::TaskOp> _dummyDMAs;
@@ -112,7 +112,7 @@ void finalizeBarrierInfo(BarrierInfo& barrierInfo, SmallVector<VPURT::TaskOp>& d
             continue;
         }
 
-        auto lastTaskToUpdate = findLastTaskToUpdate(waitBarriers, barrierInfo);
+        auto lastTaskToUpdate = VPURT::findLastTaskToUpdate(waitBarriers, barrierInfo);
         if (dummyDma->isBeforeInBlock(lastTaskToUpdate)) {
             dummyDma->moveAfter(lastTaskToUpdate);
         }
@@ -189,13 +189,13 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::realizePlannedInsertions(mlir::
 
 bool LegalizeScheduleForPartialWlmFetchDmasPass::isValidDMA(BarrierInfo& barrierInfo, size_t dmaIdx) {
     auto taskOp = barrierInfo.getTaskOpAtIndex(dmaIdx);
-    return taskOp.getExecutorKind() == VPU::ExecutorKind::DMA_NN && isDMAOnSupportedPortAndChannel(taskOp) &&
+    return taskOp.getExecutorKind() == config::ExecutorKind::DMA_NN && isDMAOnSupportedPortAndChannel(taskOp) &&
            dmaIdx < _numAllTaskOps;
 }
 
 VPURT::TaskOp LegalizeScheduleForPartialWlmFetchDmasPass::findDMAsThroughBarriersBFS(size_t startBarrier,
                                                                                      BarrierInfo& barrierInfo,
-                                                                                     MinMaxOption option,
+                                                                                     VPURT::MinMaxOption option,
                                                                                      bool bfsDirUp) {
     std::queue<size_t> barriersToExplore;
     barriersToExplore.push(startBarrier);
@@ -215,7 +215,7 @@ VPURT::TaskOp LegalizeScheduleForPartialWlmFetchDmasPass::findDMAsThroughBarrier
                                                   : to_small_vector(barrierInfo.getBarrierConsumers(currentBarrier));
 
         llvm::sort(currentOps, [&](const size_t& lhs, const size_t& rhs) {
-            return compareVPURTOpPosition(lhs, rhs, barrierInfo);
+            return VPURT::compareVPURTOpPosition(lhs, rhs, barrierInfo);
         });
 
         for (auto op : currentOps) {
@@ -237,7 +237,7 @@ VPURT::TaskOp LegalizeScheduleForPartialWlmFetchDmasPass::findDMAsThroughBarrier
         }
     }
 
-    return (option == MinMaxOption::Max) ? _firstDMATaskOp : _lastDMATaskOp;
+    return (option == VPURT::MinMaxOption::Max) ? _firstDMATaskOp : _lastDMATaskOp;
 }
 
 /*
@@ -285,10 +285,10 @@ VPURT::TaskOp LegalizeScheduleForPartialWlmFetchDmasPass::findFirstDmaAfterExecG
     possibleWaitingDMAs.insert(possibleWaitingDMAs.end(), filteredVector.begin(), filteredVector.end());
 
     if (!possibleWaitingDMAs.empty()) {
-        return findMinMaxPosition(possibleWaitingDMAs, barrierInfo, MinMaxOption::Min);
+        return VPURT::findMinMaxPosition(possibleWaitingDMAs, barrierInfo, VPURT::MinMaxOption::Min);
     }
 
-    return findDMAsThroughBarriersBFS(lastBarrier, barrierInfo, MinMaxOption::Min, /*bfsDirUp=*/false);
+    return findDMAsThroughBarriersBFS(lastBarrier, barrierInfo, VPURT::MinMaxOption::Min, /*bfsDirUp=*/false);
 }
 
 /*
@@ -336,7 +336,7 @@ VPURT::TaskOp LegalizeScheduleForPartialWlmFetchDmasPass::findLastDmaBeforeExecG
 
     // If valid DMAs were found, return the one with the latest position
     if (!possibleUpdatingDMAs.empty()) {
-        return findMinMaxPosition(possibleUpdatingDMAs, barrierInfo, MinMaxOption::Max);
+        return VPURT::findMinMaxPosition(possibleUpdatingDMAs, barrierInfo, VPURT::MinMaxOption::Max);
     }
 
     // Initialize variable to track the latest DMA found across all barriers
@@ -346,7 +346,7 @@ VPURT::TaskOp LegalizeScheduleForPartialWlmFetchDmasPass::findLastDmaBeforeExecG
     // Search through all barriers using BFS to find the DMA with the latest position
     for (const auto& waitBarrier : waitBarriers) {
         auto barrierIdx = barrierInfo.getIndex(waitBarrier);
-        auto dmaOp = findDMAsThroughBarriersBFS(barrierIdx, barrierInfo, MinMaxOption::Max, /*bfsDirUp=*/true);
+        auto dmaOp = findDMAsThroughBarriersBFS(barrierIdx, barrierInfo, VPURT::MinMaxOption::Max, /*bfsDirUp=*/true);
 
         // Check if a DMA was found, and track the latest position DMA across all barriers
         if (dmaOp && (!foundAnyDMA || compareVPURTOpPosition(maxDmaOp, dmaOp, barrierInfo))) {
@@ -527,8 +527,8 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
             auto barriersByParentGroup = getExclusiveBarriersUsedByGroup(parentGroup, travelingGroup, barrierInfo);
             auto dmasUpdatingBarriers = getDmasUpdatingBarriers(barriersByParentGroup, barrierInfo);
             if (!dmasUpdatingBarriers.empty()) {
-                auto lastDmaToUpdateBarrierInParentGroup =
-                        barrierInfo.getIndex(findMinMaxPosition(dmasUpdatingBarriers, barrierInfo, MinMaxOption::Max));
+                auto lastDmaToUpdateBarrierInParentGroup = barrierInfo.getIndex(
+                        VPURT::findMinMaxPosition(dmasUpdatingBarriers, barrierInfo, VPURT::MinMaxOption::Max));
                 if (lastDmaToUpdateBarrierInParentGroup > insertionIndex) {
                     legalizationRequired = false;
                 }
@@ -549,7 +549,7 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
             auto lastParentTaskWaitBarriers = barrierInfo.getWaitBarriers(lastParentTaskOpIdx);
             auto lastParentTaskUpdateBarriers = barrierInfo.getUpdateBarriers(lastParentTaskOpIdx);
 
-            if (!inSameTaskBlock(lastParentTaskOpIdx, lastGrandParentTaskIdx, blockRange)) {
+            if (!VPURT::inSameTaskBlock(lastParentTaskOpIdx, lastGrandParentTaskIdx, blockRange)) {
                 grandParentGroup = parentGroup;
                 parentGroup = travelingGroup;
 
@@ -560,10 +560,10 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                 continue;
             }
 
-            auto commonWaitBarrierOpt =
-                    getEarliestCommonBarrier(lastGrandParentTaskWaitBarriers, lastParentTaskWaitBarriers, barrierInfo);
-            auto commonUpdateBarrierOpt = getEarliestCommonBarrier(lastGrandParentTaskUpdateBarriers,
-                                                                   lastParentTaskUpdateBarriers, barrierInfo);
+            auto commonWaitBarrierOpt = VPURT::getEarliestCommonBarrier(lastGrandParentTaskWaitBarriers,
+                                                                        lastParentTaskWaitBarriers, barrierInfo);
+            auto commonUpdateBarrierOpt = VPURT::getEarliestCommonBarrier(lastGrandParentTaskUpdateBarriers,
+                                                                          lastParentTaskUpdateBarriers, barrierInfo);
             if (commonWaitBarrierOpt && commonUpdateBarrierOpt) {
                 size_t insertionBarrierIndex = commonWaitBarrierOpt.value();
                 auto insertionBarrier = barrierInfo.getBarrierOpAtIndex(insertionBarrierIndex);
@@ -577,33 +577,33 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                     auto barrOp = barrierInfo.getBarrierOpAtIndex(barrIdx);
 
                     auto& consumerToRemove =
-                            _barrierRemoveConsumerProducerMap[{barrierInfo.getIndex(barrOp), Type::Real}].first;
-                    consumerToRemove.push_back({lastParentTaskOpIdx, Type::Real});
+                            _barrierRemoveConsumerProducerMap[{barrierInfo.getIndex(barrOp), VPURT::Type::Real}].first;
+                    consumerToRemove.push_back({lastParentTaskOpIdx, VPURT::Type::Real});
 
-                    auto& consumersToAdd = _barrierAddConsumerProducerMap[{barTwoDummyIdx, Type::Dummy}].first;
-                    consumersToAdd.push_back({lastParentTaskOpIdx, Type::Real});
+                    auto& consumersToAdd = _barrierAddConsumerProducerMap[{barTwoDummyIdx, VPURT::Type::Dummy}].first;
+                    consumersToAdd.push_back({lastParentTaskOpIdx, VPURT::Type::Real});
                 }
 
                 DummyDMAData dummyDMAOneAttr;
                 dummyDMAOneAttr.insertionPoint = lastGrandParentTaskOpIdx;
-                dummyDMAOneAttr.consumes = {{barOneDummyIdx, Type::Dummy}};
-                dummyDMAOneAttr.producesIn = {{barTwoDummyIdx, Type::Dummy}};
+                dummyDMAOneAttr.consumes = {{barOneDummyIdx, VPURT::Type::Dummy}};
+                dummyDMAOneAttr.producesIn = {{barTwoDummyIdx, VPURT::Type::Dummy}};
                 _dummyDMAsToInsert.push_back(dummyDMAOneAttr);
 
                 for (auto barrIdx : lastGrandParentTaskUpdateBarriers) {
                     auto barrOp = barrierInfo.getBarrierOpAtIndex(barrIdx);
                     auto& producerToRemove =
-                            _barrierRemoveConsumerProducerMap[{barrierInfo.getIndex(barrOp), Type::Real}].second;
-                    producerToRemove.push_back({lastGrandParentTaskIdx, Type::Real});
+                            _barrierRemoveConsumerProducerMap[{barrierInfo.getIndex(barrOp), VPURT::Type::Real}].second;
+                    producerToRemove.push_back({lastGrandParentTaskIdx, VPURT::Type::Real});
 
-                    auto& producerToAdd = _barrierAddConsumerProducerMap[{barOneDummyIdx, Type::Dummy}].second;
-                    producerToAdd.push_back({lastGrandParentTaskIdx, Type::Real});
+                    auto& producerToAdd = _barrierAddConsumerProducerMap[{barOneDummyIdx, VPURT::Type::Dummy}].second;
+                    producerToAdd.push_back({lastGrandParentTaskIdx, VPURT::Type::Real});
                 }
 
                 DummyDMAData dummyDMATwoAttr;
                 dummyDMATwoAttr.insertionPoint = lastGrandParentTaskOpIdx;
-                dummyDMATwoAttr.consumes = {{barOneDummyIdx, Type::Dummy}};
-                dummyDMATwoAttr.producesIn = {{barTwoDummyIdx, Type::Dummy}};
+                dummyDMATwoAttr.consumes = {{barOneDummyIdx, VPURT::Type::Dummy}};
+                dummyDMATwoAttr.producesIn = {{barTwoDummyIdx, VPURT::Type::Dummy}};
                 _dummyDMAsToInsert.push_back(dummyDMATwoAttr);
 
                 /*
@@ -635,12 +635,12 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                     const auto kind = taskOp.getExecutorKind();
 
                     // Only allow same executor kind as GrandParent or DMA_NN
-                    if (kind != queueType.type && kind != VPU::ExecutorKind::DMA_NN) {
+                    if (kind != queueType.type && kind != config::ExecutorKind::DMA_NN) {
                         return false;
                     }
 
                     // For non-DMA tasks, queue ID must match
-                    if (kind != VPU::ExecutorKind::DMA_NN &&
+                    if (kind != config::ExecutorKind::DMA_NN &&
                         VPURT::getTaskQueueType(taskOp, false).id != static_cast<int64_t>(queueType.id)) {
                         return false;
                     }
@@ -652,34 +652,35 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                 auto filteredVector = to_small_vector(filteredRange);
                 for (auto consumer : filteredVector) {
                     auto& consumerToRemove =
-                            _barrierRemoveConsumerProducerMap[{insertionBarrierIndex, Type::Real}].first;
-                    consumerToRemove.push_back({consumer, Type::Real});
+                            _barrierRemoveConsumerProducerMap[{insertionBarrierIndex, VPURT::Type::Real}].first;
+                    consumerToRemove.push_back({consumer, VPURT::Type::Real});
 
-                    auto& consumerToAdd = _barrierAddConsumerProducerMap[{barTwoDummyIdx, Type::Dummy}].first;
-                    consumerToAdd.push_back({consumer, Type::Real});
+                    auto& consumerToAdd = _barrierAddConsumerProducerMap[{barTwoDummyIdx, VPURT::Type::Dummy}].first;
+                    consumerToAdd.push_back({consumer, VPURT::Type::Real});
                 }
 
-            } else if (auto commonBarrOpt = getEarliestCommonBarrier(lastGrandParentTaskUpdateBarriers,
-                                                                     lastParentTaskWaitBarriers, barrierInfo)) {
+            } else if (auto commonBarrOpt = VPURT::getEarliestCommonBarrier(lastGrandParentTaskUpdateBarriers,
+                                                                            lastParentTaskWaitBarriers, barrierInfo)) {
                 auto commonBarrierIndex = commonBarrOpt.value();
                 size_t barOneDummyIdx = _newBarrierIndex++;
 
                 DummyDMAData dummyDMAOneAttr;
                 dummyDMAOneAttr.insertionPoint = lastGrandParentTaskOpIdx;
-                dummyDMAOneAttr.consumes.push_back({barOneDummyIdx, Type::Dummy});
-                dummyDMAOneAttr.producesIn.push_back({commonBarrierIndex, Type::Real});
+                dummyDMAOneAttr.consumes.push_back({barOneDummyIdx, VPURT::Type::Dummy});
+                dummyDMAOneAttr.producesIn.push_back({commonBarrierIndex, VPURT::Type::Real});
                 _dummyDMAsToInsert.push_back(dummyDMAOneAttr);
 
                 _newBarriersToInsert.push_back(commonBarrierIndex);
-                auto& producerToRemove = _barrierRemoveConsumerProducerMap[{commonBarrierIndex, Type::Real}].second;
-                producerToRemove.push_back({lastGrandParentTaskIdx, Type::Real});
-                auto& producerToAdd = _barrierAddConsumerProducerMap[{barOneDummyIdx, Type::Dummy}].second;
-                producerToAdd.push_back({lastGrandParentTaskIdx, Type::Real});
+                auto& producerToRemove =
+                        _barrierRemoveConsumerProducerMap[{commonBarrierIndex, VPURT::Type::Real}].second;
+                producerToRemove.push_back({lastGrandParentTaskIdx, VPURT::Type::Real});
+                auto& producerToAdd = _barrierAddConsumerProducerMap[{barOneDummyIdx, VPURT::Type::Dummy}].second;
+                producerToAdd.push_back({lastGrandParentTaskIdx, VPURT::Type::Real});
 
                 DummyDMAData dummyDMATwoAttr;
                 dummyDMATwoAttr.insertionPoint = lastGrandParentTaskOpIdx;
-                dummyDMATwoAttr.consumes.push_back({barOneDummyIdx, Type::Dummy});
-                dummyDMATwoAttr.producesIn.push_back({commonBarrierIndex, Type::Real});
+                dummyDMATwoAttr.consumes.push_back({barOneDummyIdx, VPURT::Type::Dummy});
+                dummyDMATwoAttr.producesIn.push_back({commonBarrierIndex, VPURT::Type::Real});
                 _dummyDMAsToInsert.push_back(dummyDMATwoAttr);
 
             } else {
@@ -718,7 +719,7 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                     C,D[--Last of PG--]E
 
                 */
-                Type type = Type::Real;
+                VPURT::Type type = VPURT::Type::Real;
                 auto lastParentWaitBarriersIdx = to_small_vector(barrierInfo.getWaitBarriers(lastParentTaskOpIdx));
                 auto lastGrandParentUpdateBarriersIdx =
                         to_small_vector(barrierInfo.getUpdateBarriers(lastGrandParentTaskIdx));
@@ -727,7 +728,7 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                     auto taskOp = barrierInfo.getTaskOpAtIndex(taskIdx);
                     // We must update all DMAs
                     if (VPURT::getTaskQueueType(taskOp, false).id == static_cast<int64_t>(queueType.id) ||
-                        taskOp.getExecutorKind() == VPU::ExecutorKind::DMA_NN) {
+                        taskOp.getExecutorKind() == config::ExecutorKind::DMA_NN) {
                         return true;
                     }
                     return false;
@@ -750,20 +751,20 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
 
                 // If no barriers were available for use, create a new barrier
                 if (barrierIndexesToUpdateByDummyDma.empty()) {
-                    type = Type::Dummy;
+                    type = VPURT::Type::Dummy;
                     // Need to create new barrier for dummyDma -> lastParentTask dependency
                     size_t barOneDummyIdx = _newBarrierIndex++;
                     _newBarriersToInsert.push_back(lastParentWaitBarriersIdx[0]);
 
-                    auto& consumerToAdd = _barrierAddConsumerProducerMap[{barOneDummyIdx, Type::Dummy}].first;
-                    consumerToAdd.push_back({lastParentTaskOpIdx, Type::Real});
+                    auto& consumerToAdd = _barrierAddConsumerProducerMap[{barOneDummyIdx, VPURT::Type::Dummy}].first;
+                    consumerToAdd.push_back({lastParentTaskOpIdx, VPURT::Type::Real});
                     barrierIndexesToUpdateByDummyDma.push_back(barOneDummyIdx);
                 }
 
                 DummyDMAData dummyDMAOneAttr;
                 dummyDMAOneAttr.insertionPoint = lastGrandParentTaskOpIdx;
                 for (size_t barIdx : lastGrandParentUpdateBarriersIdx) {
-                    dummyDMAOneAttr.consumes.push_back({barIdx, Type::Real});
+                    dummyDMAOneAttr.consumes.push_back({barIdx, VPURT::Type::Real});
                 }
                 for (size_t barrIdx : barrierIndexesToUpdateByDummyDma) {
                     dummyDMAOneAttr.producesIn.push_back({barrIdx, type});
@@ -773,7 +774,7 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
                 DummyDMAData dummyDMATwoAttr;
                 dummyDMATwoAttr.insertionPoint = lastGrandParentTaskOpIdx;
                 for (size_t barrIdx : lastGrandParentUpdateBarriersIdx) {
-                    dummyDMATwoAttr.consumes.push_back({barrIdx, Type::Real});
+                    dummyDMATwoAttr.consumes.push_back({barrIdx, VPURT::Type::Real});
                 }
                 for (size_t barrIdx : barrierIndexesToUpdateByDummyDma) {
                     dummyDMATwoAttr.producesIn.push_back({barrIdx, type});
@@ -794,15 +795,6 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::planDummyDMAAndBarriersInsertio
 
 void LegalizeScheduleForPartialWlmFetchDmasPass::safeRunOnFunc() {
     auto netFunc = getOperation();
-    auto module = netFunc->getParentOfType<mlir::ModuleOp>();
-    auto barriersOps = netFunc.getOps<VPURT::DeclareVirtualBarrierOp>();
-    auto numVirtualBarriers = static_cast<int64_t>(std::distance(barriersOps.begin(), barriersOps.end()));
-    if (numVirtualBarriers > _virtualBarrierThreshold) {
-        _log.info("Skip schedule legalization due to high number of barriers: {0}", numVirtualBarriers);
-        config::setWorkloadManagementStatus(module, WorkloadManagementStatus::FAILED);
-        return;
-    }
-
     mlir::OpBuilder builder(netFunc);
 
     // Reuse the same Decl Buffer for all Dummy DMAs
@@ -845,15 +837,13 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::safeRunOnFunc() {
     VPURT::orderExecutionTasksAndBarriers(netFunc, barrierInfo, _log, true);
 
     // Build task queue type map for all queues in order to test paths between tasks on different FIFOs.
-    barrierInfo.initializeTaskQueueTypeMap(
-            {VPU::ExecutorKind::DMA_NN, VPU::ExecutorKind::DPU, VPU::ExecutorKind::SHAVE_ACT});
     barrierInfo.buildTaskQueueTypeMap();
 
     // Will have a map for each cluster along with task index of the task
     auto taskQueues = VPURT::getTaskOpQueues(netFunc, barrierInfo);
 
     VPURT::TaskQueueType queueType;
-    queueType.type = VPU::ExecutorKind::DMA_NN;
+    queueType.type = config::ExecutorKind::DMA_NN;
     queueType.id = getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR);
 
     auto dQueue = taskQueues[queueType];
@@ -880,7 +870,6 @@ void LegalizeScheduleForPartialWlmFetchDmasPass::safeRunOnFunc() {
 // createLegalizeScheduleForPartialWlmFetchDmasPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUIP::createLegalizeScheduleForPartialWlmFetchDmasPass(
-        const int virtualBarrierThreshold, Logger log) {
-    return std::make_unique<LegalizeScheduleForPartialWlmFetchDmasPass>(virtualBarrierThreshold, log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::createLegalizeScheduleForPartialWlmFetchDmasPass(Logger log) {
+    return std::make_unique<LegalizeScheduleForPartialWlmFetchDmasPass>(log);
 }

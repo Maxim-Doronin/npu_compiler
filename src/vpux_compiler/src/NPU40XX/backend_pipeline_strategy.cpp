@@ -35,20 +35,23 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::OpPassManager& pm, cons
                       "build ELF pipeline failed to parse BACKEND_COMPILATION_PARAMS: {0}",
                       config.get<intel_npu::BACKEND_COMPILATION_PARAMS>());
 
-    if (compilationMode == config::CompilationMode::DefaultHW) {
+    if (compilationMode == config::CompilationMode::DefaultHW ||
+        compilationMode == config::CompilationMode::HostCompile) {
         auto options = parseCompilationModeParams<DefaultHWOptions40XX>(
                 config.get<intel_npu::COMPILATION_MODE_PARAMS>(), getArchKind(config));
         VPUX_THROW_UNLESS(options != nullptr, "build ELF pipeline failed to parse COMPILATION_MODE_PARAMS: {0}",
                           config.get<intel_npu::COMPILATION_MODE_PARAMS>());
+        options->enableProfiling = config.get<intel_npu::PERF_COUNT>();
         if (config.get<intel_npu::TURBO>()) {
             overwriteIfUnset(options->optimizationLevel, 3);
         }
         setupParamsAccordingToOptimizationLevel(options->optimizationLevel, *options, useWlm);
         setupPWLMParams(*options, getLogLevel(config));
+        VPUIP::arch40xx::buildVPUIPFinalizePipeline(pm, *options, log.nest());
+
         dpuDryRunMode = VPU::getDPUDryRunMode(options->dpuDryRun);
-        auto enableProfiling = config.get<intel_npu::PERF_COUNT>();
         backendCompilationOptions->enableDMAProfiling =
-                enableProfiling ? options->enableDMAProfiling.getValue() : "false";
+                options->enableProfiling ? options->enableDMAProfiling.getValue() : "false";
         backendCompilationOptions->enableShaveDDRAccessOptimization = options->enableShaveDDRAccessOptimization;
         backendCompilationOptions->enableDumpStatisticsOfWlmOps = options->enableDumpTaskStats;
         backendCompilationOptions->workloadManagementBarrierCountThreshold =

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,7 +38,7 @@ func.func @SliceWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistrib
     %1 = VPU.Slice %arg0 [0, 0, 47, 0] [1, 1, 49, 160] : !InputDistributed to !OutputDistributed
     return %0, %1 : !OutputDistributed, !OutputDistributed
 
-    // CHECK:        [[SLICE0:%.*]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 1, 49, 160]
+    // CHECK:        [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 1, 49, 160]
     // CHECK-SAME:         !VPU.DistributedTensor<1x1x96x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x1x49x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
@@ -46,7 +46,7 @@ func.func @SliceWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistrib
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 26, 160], [1, 1, 25, 160]], compute_offsets = [[0, 0, 0, 0], [0, 0, 24, 0]],
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 26, 160], [1, 1, 25, 160]], memory_offsets = [[0, 0, 0, 0], [0, 0, 24, 0]]
 
-    // CHECK:        [[SLICE1:%.*]] = VPU.Slice %arg0 [0, 0, 47, 0] [1, 1, 49, 160]
+    // CHECK:        [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 47, 0] [1, 1, 49, 160]
     // CHECK-SAME:         !VPU.DistributedTensor<1x1x96x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x1x49x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
@@ -89,7 +89,7 @@ func.func @SliceWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistribu
     %1 = VPU.Slice %arg0 [0, 0, 44, 0] [1, 16, 44, 128] : !InputDistributed to !OutputDistributed
     return %0, %1 : !OutputDistributed, !OutputDistributed
 
-    // CHECK:        [[SLICE0:%.*]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 44, 128]
+    // CHECK:        [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 44, 128]
     // CHECK-SAME:         !VPU.DistributedTensor<1x16x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x16x44x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
@@ -97,7 +97,7 @@ func.func @SliceWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistribu
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], compute_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], memory_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
 
-    // CHECK:        [[SLICE1:%.*]] = VPU.Slice %arg0 [0, 0, 44, 0] [1, 16, 44, 128]
+    // CHECK:        [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 44, 0] [1, 16, 44, 128]
     // CHECK-SAME:         !VPU.DistributedTensor<1x16x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x16x44x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
@@ -150,8 +150,8 @@ func.func @SliceWithDynamicHWTensorType(%arg0: !InputDistributed)
 
     %0 = VPU.Slice %arg0 [0, 0, 0, 0] [1, 12, -9223372036854775808, -9223372036854775808] : !InputDistributed to !OutputDistributed
     return %0 : !OutputDistributed
-	
-    // CHECK:        [[SLICE:%.*]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 12, -9223372036854775808, -9223372036854775808] : tensor<1x16x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x12x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK:        [[SLICE:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 12, -9223372036854775808, -9223372036854775808] : tensor<1x16x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x12x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:        return [[SLICE]] : tensor<1x12x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 800, 1280]> : tensor<4xsi64>, order = #NCHW}>
 
 }
@@ -171,8 +171,8 @@ func.func @SliceWithDynamicWTensorType(%arg0: !InputDistributed)
 
     %0 = VPU.Slice %arg0 [0, 0, 0, 0] [1, 12, 400, -9223372036854775808] : !InputDistributed to !OutputDistributed
     return %0 : !OutputDistributed
-	
-    // CHECK:        [[SLICE:%.*]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 12, 400, -9223372036854775808] : tensor<1x16x800x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x12x400x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 400, 1280]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK:        [[SLICE:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 12, 400, -9223372036854775808] : tensor<1x16x800x?xf32, {bounds = #const.OpaqueI64Elements<[1, 16, 800, 1280]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x12x400x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 400, 1280]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:        return [[SLICE]] : tensor<1x12x400x?xf32, {bounds = #const.OpaqueI64Elements<[1, 12, 400, 1280]> : tensor<4xsi64>, order = #NCHW}>
 
 }

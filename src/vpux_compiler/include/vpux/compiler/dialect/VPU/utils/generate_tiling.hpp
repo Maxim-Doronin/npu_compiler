@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
@@ -20,17 +21,19 @@ namespace VPU {
 
 constexpr float INPUT_OVERLAP_THRESHOLD = 2.0;
 
-TilingMode getTilingSupportedMode(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling, Logger log);
+// Experimental number to compare isolate and pipelining cost to increase tolerance.
+// Other limitations are also used in choosing the pipelining tiling mode.
+constexpr float PIPELINING_AVAILABLE_RATIO = 0.95f;
 
 // Returns a TilingMode which should be applied to operation and whether it can be prefetched. Caller is
 // supposed to check if prefetching condition is satisfied as this function aims to be thread safe
 // and avoids inspecting parent's strategy.
-std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bool enablePrefetchTiling, Logger log);
+std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bool enablePrefetchTiling,
+                                                         const std::unique_ptr<VPU::LayerVPUNNCost>& layerCost,
+                                                         Logger log);
 
 mlir::FailureOr<OutputTiling> getLayerTilingStrategy(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling,
                                                      TilingMode& mode, Logger log);
-mlir::FailureOr<OutputTiling> getLayerTilingStrategy(VPU::TilingBuilderOpInterface origOp, bool enablePrefetchTiling,
-                                                     Logger log);
 
 mlir::LogicalResult checkAndAlignActInputTiling(vpux::VPU::NCEOpInterface nceOp, InputTiling& inputTiling,
                                                 vpux::Logger log);
@@ -40,6 +43,8 @@ mlir::LogicalResult applyTileStrategy(VPU::TilingBuilderOpInterface origOp, cons
                                       mlir::RewriterBase& rewriter, Logger log);
 mlir::Operation* getParentComputeOp(mlir::Operation* op);
 bool prefetchTilingConditionSatisfied(mlir::Operation* op, Logger log);
+bool pipeliningTilingOfSWConditionSatisfied(mlir::Operation* op, const std::unique_ptr<VPU::LayerVPUNNCost>& layerCost,
+                                            Logger log);
 bool largeConstPipelineConditionSatisfied(mlir::Operation* op, Logger log);
 bool hasMultiBranches(mlir::Operation* op);
 
@@ -162,6 +167,30 @@ TileInfo getBiasTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTile,
     biasTableTile.shape[Dim(0)] =
             weightsOutputChannels.has_value() ? weightsOutputChannels.value() : outputTile.shape[Dims4D::Act::C];
     return biasTableTile;
+}
+
+// Returns a ZeroPointTable tile required to produce the specific output tile
+template <typename ConcreteOp>
+TileInfo getZeroPointTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTile,
+                               std::optional<int64_t> weightsOutputChannels = std::nullopt) {
+    const auto origZeroPointTable = origOp->getWeightZeroPoints();
+    VPUX_THROW_UNLESS(origZeroPointTable != nullptr, "The operation {0} doesn't have a ZeroPointTable", *origOp);
+
+    const auto origZeroPointTableShape = getShape(origZeroPointTable);
+    VPUX_THROW_UNLESS(
+            (weightsOutputChannels.has_value() ||
+             origZeroPointTableShape[Dim(0)] == getShape(origOp->getOutput())[Dims4D::Act::C]) &&
+                    origZeroPointTableShape[Dim(1)] == 1 && origZeroPointTableShape[Dim(2)] == 1 &&
+                    origZeroPointTableShape[Dim(3)] == VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC,
+            "Unexpected ZeroPointTable shape notation or order: {0} with output shape of {1}"
+            "\nProbably, we need to update this logic",
+            origZeroPointTableShape, getShape(origOp->getOutput()));
+
+    TileInfo zeroPointTableTile(origZeroPointTableShape);
+    zeroPointTableTile.offsets[Dim(0)] = outputTile.offsets[Dims4D::Act::C];
+    zeroPointTableTile.shape[Dim(0)] =
+            weightsOutputChannels.has_value() ? weightsOutputChannels.value() : outputTile.shape[Dims4D::Act::C];
+    return zeroPointTableTile;
 }
 
 // Adjust paddings attributes for tiled input

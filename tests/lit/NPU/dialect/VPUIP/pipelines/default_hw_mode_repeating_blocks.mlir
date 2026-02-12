@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,15 +43,15 @@ module @ChainCalls {
         // CHECK-NEXT: [[FOO_CALL1_ALLOC0:%.+]] = VPURT.DeclareBuffer <DDR> <[[ADDR0]]> -> memref<1x3x62x62xf16, @DDR>
         // CHECK-NEXT: [[FOO_CALL1_ALLOC1:%.+]] = VPURT.DeclareBuffer <DDR> <[[ADDR1]]> -> memref<1x3x62x62xf16, @DDR>
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[NET_IN]] {{.*}} outputs([[MAIN_ALLOC0]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[NET_IN]] {{.+}} outputs([[MAIN_ALLOC0]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[FOO_CALL0_ALLOC0]] {{.*}} outputs([[FOO_CALL0_ALLOC1]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[FOO_CALL0_ALLOC0]] {{.+}} outputs([[FOO_CALL0_ALLOC1]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[MAIN_ALLOC1]] {{.*}} outputs([[MAIN_ALLOC0]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_ALLOC1]] {{.+}} outputs([[MAIN_ALLOC0]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[FOO_CALL1_ALLOC0]] {{.*}} outputs([[FOO_CALL1_ALLOC1]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[FOO_CALL1_ALLOC0]] {{.+}} outputs([[FOO_CALL1_ALLOC1]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[MAIN_ALLOC1]] {{.*}} outputs([[NET_OUT]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_ALLOC1]] {{.+}} outputs([[NET_OUT]]
 
         // CHECK: return [[OUT]]
     }
@@ -126,17 +126,17 @@ module @SwKernelsChainCalls {
         // CHECK-NEXT: [[FOO_CALL1_OUT_SLICE1:%.+]] = VPURT.DeclareBuffer <DDR> <{{[0-9]+}}>
         // CHECK-SAME: -> memref<1x1x1x64xf16, {order = #NCHW, strides = [128, 128, 64, 1]}, @DDR>
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[NET_IN]] {{.*}} outputs([[DDR_IN]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[NET_IN]] {{.+}} outputs([[DDR_IN]]
 
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE0]] {{.*}} outputs([[FOO_CALL0_OUT_SLICE0]]
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE1]] {{.*}} outputs([[FOO_CALL0_OUT_SLICE1]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE0]] {{.+}} outputs([[FOO_CALL0_OUT_SLICE0]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE1]] {{.+}} outputs([[FOO_CALL0_OUT_SLICE1]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[MAIN_OUT]] {{.*}} outputs([[MAIN_IN]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[MAIN_IN]]
 
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE0]] {{.*}} outputs([[FOO_CALL1_OUT_SLICE0]]
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE1]] {{.*}} outputs([[FOO_CALL1_OUT_SLICE1]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE0]] {{.+}} outputs([[FOO_CALL1_OUT_SLICE0]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE1]] {{.+}} outputs([[FOO_CALL1_OUT_SLICE1]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[MAIN_OUT]] {{.*}} outputs([[DDR_OUT]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[DDR_OUT]]
 
         // CHECK: return [[OUT]]
     }
@@ -210,17 +210,17 @@ module @SwKernelsIndependentCalls {
         // CHECK-NEXT: [[FOO_CALL1_OUT_SLICE1:%.+]] = VPURT.DeclareBuffer <DDR> <{{[0-9]+}}>
         // CHECK-SAME: -> memref<1x1x1x64xf16, {order = #NCHW, strides = [128, 128, 64, 1]}, @DDR>
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[NET_IN]] {{.*}} outputs([[MAIN_IN]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[NET_IN]] {{.+}} outputs([[MAIN_IN]]
 
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE0]] {{.*}} outputs([[FOO_CALL0_OUT_SLICE0]]
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE1]] {{.*}} outputs([[FOO_CALL0_OUT_SLICE1]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE0]] {{.+}} outputs([[FOO_CALL0_OUT_SLICE0]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE1]] {{.+}} outputs([[FOO_CALL0_OUT_SLICE1]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[MAIN_OUT]] {{.*}} outputs([[DDR_OUT1]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[DDR_OUT1]]
 
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE0]] {{.*}} outputs([[FOO_CALL1_OUT_SLICE0]]
-        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE1]] {{.*}} outputs([[FOO_CALL1_OUT_SLICE1]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE0]] {{.+}} outputs([[FOO_CALL1_OUT_SLICE0]]
+        // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE1]] {{.+}} outputs([[FOO_CALL1_OUT_SLICE1]]
 
-        // CHECK: VPUIP.NNDMA {{.*}} inputs([[MAIN_OUT]] {{.*}} outputs([[DDR_OUT0]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[DDR_OUT0]]
 
         // CHECK: return [[OUT0]], [[OUT1]]
     }

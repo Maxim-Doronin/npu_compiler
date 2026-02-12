@@ -286,8 +286,17 @@ TilingInfo vpux::VPU::NCEInterpolateOp::backInferTileInfo(const vpux::TileInfo& 
     inputTiling.tiles[1].shape = getShape(getWeights()).toValues();
     inputTiling.tiles[1].shape[Dims4D::Filter::OC] = outputTile.shape[Dims4D::Act::C];
 
-    inputTiling.tiles.push_back(
-            VPU::getWeightsTableTile(this, outputTile, VPU::getWeightsChannelsAutopad(getOperation())));
+    auto nceOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
+    if (nceOp.getWeightsTable()) {
+        inputTiling.tiles.push_back(
+                VPU::getWeightsTableTile(this, outputTile, VPU::getWeightsChannelsAutopad(getOperation())));
+    }
+    if (nceOp.getWeightTableScale()) {
+        inputTiling.tiles.push_back(VPU::getScaleTableTile(this, outputTile));
+    }
+    if (nceOp.getWeightTableBias()) {
+        inputTiling.tiles.push_back(VPU::getBiasTableTile(this, outputTile));
+    }
 
     return inputTiling;
 }
@@ -314,10 +323,11 @@ bool vpux::VPU::NCEInterpolateOp::checkStrategyCompatibility(vpux::VPU::MultiClu
 vpux::VPU::DistributionInfo vpux::VPU::NCEInterpolateOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles) {
     return VPU::getNCEExplicitDistributionInfo(mlir::dyn_cast<VPU::NCEOpInterface>(getOperation()), shape,
                                                distributionMode, numTiles, numClusters, alignment,
-                                               uniformDistributedSegments, overlapParams);
+                                               uniformDistributedSegments, overlapParams, memoryNumTiles);
 }
 
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOH
@@ -336,7 +346,7 @@ bool VPU::NCEInterpolateOp::isOperationSplitOverHeightCompatible(const vpux::Til
         return false;
     }
 
-    auto nceOp = mlir::cast<NCEInterpolateOp>(getOperation());
+    auto nceOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
     Shape inputShape = getShape(nceOp.getInput()).toValues();
     auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
     // If has custom output shape, infer the input shape
@@ -367,8 +377,8 @@ bool VPU::NCEInterpolateOp::isOperationSplitOverKernelCompatible(ShapeRef output
 
 bool VPU::NCEInterpolateOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strategy,
                                                 SiblingOpsAnalysis& siblingsAnalysis, Byte reservedMem) {
-    auto nceOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
-    auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
+    const auto op = getOperation();
+    auto nceOp = mlir::cast<VPU::NCEInterpolateOp>(op);
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     auto numClusters = VPU::getOptimalNumClusters(nceOp, outputType.getShape(), strategy);
     auto output = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
@@ -388,20 +398,25 @@ bool VPU::NCEInterpolateOp::doesLayerFitIntoCMX(VPU::MultiClusterStrategy strate
     if (getWeights() != nullptr) {
         buffers.push_back(VPU::getTotalAllocSizeWithDistribution(
                 getWeights().getType(),
-                getFilterDistributionAttrFromOp(nceOpInterface, getWeights().getType(), numClusters, strategy)));
+                getFilterDistributionAttrFromOp(mlir::dyn_cast<VPU::NCEOpInterface>(op), getWeights().getType(),
+                                                numClusters, strategy)));
     }
 
-    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
-                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+    if (mlir::failed(NCEInvariant::getWeightTableBuffers(op, buffers, OC))) {
+        VPUX_THROW("getWeightTableBuffers function failed");
+    }
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
-                   reservedMem.count() <=
+    auto totalAvailableCMXSize = reservedMem.count() == 0 ? VPU::getTotalCMXSize(op).count()
+                                                          : VPU::getTotalCMXFragmentationAwareSize(op).count();
+
+    auto arch = config::getArch(op);
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffers).count() + reservedMem.count() <=
            totalAvailableCMXSize;
 }
 
 bool VPU::NCEInterpolateOp::doesLayerChangeOutputAlignmentFitIntoCMX(
         VPU::MultiClusterStrategy strategy, VPU::DistributedTypeInterface newDistributedTensorType) {
-    auto nceOp = mlir::cast<NCEInterpolateOp>(getOperation());
+    auto nceOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
     auto nceOpInterface = mlir::cast<VPU::NCEOpInterface>(getOperation());
     auto numClusters = VPU::getOptimalNumClusters(
             nceOp, mlir::cast<vpux::NDTypeInterface>(nceOp.getOutput().getType()).getShape(), strategy);
@@ -417,7 +432,7 @@ bool VPU::NCEInterpolateOp::doesLayerChangeOutputAlignmentFitIntoCMX(
 vpux::NDTypeInterface vpux::VPU::NCEInterpolateOp::getDistributedTypeForOpOperand(
         mlir::OpOperand& operand, bool hasExplicitDistributedAttr, SiblingOpsAnalysis& siblingsAnalysis) {
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
-    auto origOp = mlir::cast<NCEInterpolateOp>(getOperation());
+    auto origOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
     auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
@@ -448,7 +463,8 @@ vpux::NDTypeInterface vpux::VPU::NCEInterpolateOp::getDistributedTypeForOpOperan
         return getDistributedTypeFromInput(clusteredOp, origOp.getWeights(), weightsTensorDistributionMode,
                                            weightsTensorNumTiles, weightAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
-    } else if (operand.get() == origOp.getWeightsTable()) {
+    } else if (operand.get() == origOp.getWeightsTable() || operand.get() == origOp.getWeightTableScale() ||
+               operand.get() == origOp.getWeightTableBias()) {
         auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
 
         const auto weightsTableTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
@@ -459,7 +475,7 @@ vpux::NDTypeInterface vpux::VPU::NCEInterpolateOp::getDistributedTypeForOpOperan
         if (weightAlignment.has_value()) {
             weightAlignmentAttr = getIntArrayAttr(ctx, weightAlignment.value());
         }
-        return getDistributedTypeFromInput(clusteredOp, origOp.getWeightsTable(), weightsTableTensorDistributionMode,
+        return getDistributedTypeFromInput(clusteredOp, operand.get(), weightsTableTensorDistributionMode,
                                            weightsTableTensorNumTiles, weightAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     }
@@ -478,17 +494,18 @@ bool vpux::VPU::NCEInterpolateOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::
 
 bool vpux::VPU::NCEInterpolateOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTypeInterface filter,
                                              vpux::NDTypeInterface output, Byte reservedMem) {
+    SmallVector<Byte> buffers = {input.getTotalAllocSize(), filter.getTotalAllocSize(), output.getTotalAllocSize()};
     const auto OC = output.getShape()[Dims4D::Act::C];
-    SmallVector<Byte> buffers = {input.getTotalAllocSize(), filter.getTotalAllocSize(), output.getTotalAllocSize(),
-                                 NCEInvariant::getWeightsTableSize(OC)};
+    const auto op = getOperation();
+    if (mlir::failed(NCEInvariant::getWeightTableBuffers(op, buffers, OC))) {
+        VPUX_THROW("getWeightTableBuffers function failed");
+    }
     auto ppeAttr = getPpe();
     addSprLutBufferIfPresent(ppeAttr, buffers);
-
-    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
-                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
-
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
-                   reservedMem.count() <=
+    auto totalAvailableCMXSize =
+            reservedMem.count() == 0 ? getTotalCMXSize(op).count() : getTotalCMXFragmentationAwareSize(op).count();
+    auto arch = config::getArch(op);
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffers).count() + reservedMem.count() <=
            totalAvailableCMXSize;
 }
 

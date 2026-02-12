@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -108,9 +108,9 @@ private:
             if (!VPU::NCEInvariant::isParentOptimalForAlignment(interpolateOp.getInput().getDefiningOp())) {
                 return false;
             }
-            // Only interpolation over H & W with output H & W <= 400 is aligned
+            // Only interpolation over H & W with output H & W <= 350 is aligned
             // It also verifies that we don't increase channels too much, otherwise it causes regressions
-            constexpr int experimentalHWThreshold = 400;
+            constexpr int experimentalHWThreshold = 350;
             constexpr double experimentalChannelIncreaseRatio = 1.6;
 
             const auto inputShape = mlir::cast<vpux::NDTypeInterface>(interpolateOp.getInput().getType()).getShape();

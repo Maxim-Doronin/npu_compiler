@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,40 +10,6 @@ include "vpux/compiler/dialect/VPU/ops/base.td"
 include "vpux/compiler/dialect/VPU/attributes.td"
 include "vpux/compiler/dialect/VPU/ops_interfaces.td"
 include "vpux/compiler/dialect/VPU/types.td"
-
-
-
-def VPU_AccumulateOp :
-        VPU_LayerOp<
-            "Accumulate",
-            [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
-                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
-                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
-            ]
-        > {
-    let summary = "Accumulate VPU layer";
-
-    let arguments = (ins
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$lhs,
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$rhs,
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$lhsScale,
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$rhsScale,
-        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
-    );
-
-    let results = (outs
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$output
-    );
-
-    let extraClassDeclaration = [{
-        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
-        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
-    }] # baseExtraClassDeclaration;
-
-    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
-}
-
 
 def VPU_AddOp :
         VPU_LayerOp<
@@ -64,7 +30,7 @@ def VPU_AddOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, UI8, UI16, UI32]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -280,7 +246,7 @@ def VPU_MultiplyOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, UI8, UI16, UI32]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -413,7 +379,7 @@ def VPU_SubtractOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, UI8, UI16, UI32]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 

@@ -60,10 +60,6 @@ std::shared_ptr<VPUNN::VPULayerCostModel> CostModelFactory::createLayerCostModel
     return layerCostModel;
 }
 
-std::unique_ptr<IShaveCostModelUtils> CostModelFactory::createShaveCostModelUtil() const {
-    return std::make_unique<arch40xx::CostModelShaveUtil>(_isShave2ApiUsedInVPUNN);
-};
-
 }  // namespace arch40xx
 }  // namespace VPU
 }  // namespace vpux

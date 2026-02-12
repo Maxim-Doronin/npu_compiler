@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,13 +44,13 @@ func.func @OptimizeCopyAndFuseLastCopy(%arg0: memref<1x16x112x112xf16, #NHWC, @C
     // CHECK-NOT:   memref.alloc() : memref<1x16x112x112xf16, #NHWC>
     // CHECK:       [[VAR0:%.+]] = VPUIP.SubView [[OUTPUT]] [0, 0, 0, 0] [1, 16, 112, 112] :
     // CHECK-SAME:      memref<1x32x112x112xf16, #NHWC> to memref<1x16x112x112xf16, {order = #NHWC, strides = [401408, 1, 3584, 32]}>
-    // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs({{.*}} : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
+    // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs({{.+}} : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:      outputs([[VAR0]] : memref<1x16x112x112xf16, {order = #NHWC, strides = [401408, 1, 3584, 32]}>)
 
     // CHECK-NOT:   memref.alloc() : memref<1x16x112x112xf16, #NHWC>
     // CHECK:       [[VAR2:%.+]] = VPUIP.SubView [[OUTPUT]] [0, 16, 0, 0] [1, 16, 112, 112] :
     // CHECK-SAME:      memref<1x32x112x112xf16, #NHWC> to memref<1x16x112x112xf16, {order = #NHWC, strides = [401408, 1, 3584, 32]}>
-    // CHECK:       [[VAR3:%.+]] = VPUIP.Copy inputs({{.*}} : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
+    // CHECK:       [[VAR3:%.+]] = VPUIP.Copy inputs({{.+}} : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:      outputs([[VAR2]] : memref<1x16x112x112xf16, {order = #NHWC, strides = [401408, 1, 3584, 32]}>)
 
     // CHECK:       [[VAR4:%.+]] = VPUIP.ConcatView inputs([[VAR1]], [[VAR3]] :

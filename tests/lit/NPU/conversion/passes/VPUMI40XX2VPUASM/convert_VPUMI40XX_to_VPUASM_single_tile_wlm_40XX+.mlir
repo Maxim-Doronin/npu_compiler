@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,11 +14,11 @@ net.NetworkInfo entryPoint : @twoDma inputsInfo : {
   DataInfo "output_1" : tensor<1x16x16x16xf16>
 }
 func.func @twoDma() {
-  %11 = VPUMI40XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
-  %12 = VPUMI40XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
+  %11 = VPUMI40XX.ConfigureBarrier <{consumer_count = 2 : ui8, producer_count = 2 : ui8}> <0, -1> -> !VPURegMapped.Index<0:0:0>
+  %12 = VPUMI40XX.ConfigureBarrier <{consumer_count = 2 : ui8, producer_count = 2 : ui8}> <1, -1> -> !VPURegMapped.Index<0:0:1>
   %19 = VPUMI40XX.Bootstrap inputs(%11 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
   %20 = VPUMI40XX.Bootstrap inputs(%12 : <0:0:1>) -> !VPURegMapped.Index<0:0:1>
-  ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+  ELF.ABIVersion {sym_name = "LoaderABIVersion"}
   VPUMI40XX.OpRanges
 }
 
@@ -61,7 +61,7 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
     %2 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
     %3 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
     %28 = VPURegMapped.ViewTaskRange(%2 -> %3 : <0:0:0> -> <0:0:1>) -> memref<2x352xui8, [@CMX_NN, 0]>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }
@@ -118,29 +118,34 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
     %15 = VPURT.DeclareBuffer <CMX_NN> [0] <8704> -> memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>
     %16 = VPURT.DeclareBuffer <CMX_NN> [0] <16896> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
     %17 = VPURT.DeclareBuffer <CMX_NN> [0] <17152> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>
-    %18 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <4, -1> -> !VPURegMapped.Index<0:0:0>
-    %19 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}(%18 : !VPURegMapped.Index<0:0:0>) <0, -1> -> !VPURegMapped.Index<0:0:1>
-    %20 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8}(%19 : !VPURegMapped.Index<0:0:1>) <1, -1> -> !VPURegMapped.Index<0:0:2>
-    %21 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}(%20 : !VPURegMapped.Index<0:0:2>) <2, -1> -> !VPURegMapped.Index<0:0:3>
-    %22 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8}(%21 : !VPURegMapped.Index<0:0:3>) <3, -1> -> !VPURegMapped.Index<0:0:4>
-    %23 = VPUMI40XX.DPUInvariant {clean_after = 2 : ui64, is_permute_quantize, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, start_after = 3 : ui64} taskLocation(%2 : !VPURegMapped.Index<0:0:0>) input(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) outputs(%11 : memref<1x16x16x16xf16, #NWCH, [@CMX_NN, 0]>) waits(%19 : !VPURegMapped.Index<0:0:1>) updates(%20 : !VPURegMapped.Index<0:0:2>) -> <0:0:0> PPE : {
+    %18 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <4, -1> -> !VPURegMapped.Index<0:0:0>
+    %19 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}>(%18 : !VPURegMapped.Index<0:0:0>) <0, -1> -> !VPURegMapped.Index<0:0:1>
+    %20 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 2 : ui8}>(%19 : !VPURegMapped.Index<0:0:1>) <1, -1> -> !VPURegMapped.Index<0:0:2>
+    %21 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}>(%20 : !VPURegMapped.Index<0:0:2>) <2, -1> -> !VPURegMapped.Index<0:0:3>
+    %22 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8}>(%21 : !VPURegMapped.Index<0:0:3>) <3, -1> -> !VPURegMapped.Index<0:0:4>
+    %23 = VPUMI40XX.DPUInvariant <{clean_after = 2 : ui64, is_permute_quantize, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, start_after = 3 : ui64}>
+     taskLocation(%2 : !VPURegMapped.Index<0:0:0>) input(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) outputs(%11 : memref<1x16x16x16xf16, #NWCH, [@CMX_NN, 0]>)
+      waits(%19 : !VPURegMapped.Index<0:0:1>) updates(%20 : !VPURegMapped.Index<0:0:2>) -> <0:0:0> PPE : {
       VPUMI40XX.PPETask {ppe = #VPU.PPEStub<>}
     }
-    %24 = VPUMI40XX.DPUInvariant {clean_after = 3 : ui64, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, start_after = 4 : ui64} taskLocation(%3 : !VPURegMapped.Index<0:0:1>) previousTask(%23 : !VPURegMapped.Index<0:0:0>) input(%15 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) waits(%20 : !VPURegMapped.Index<0:0:2>) updates(%21 : !VPURegMapped.Index<0:0:3>) -> <0:0:1> PPE : {
+    %24 = VPUMI40XX.DPUInvariant <{clean_after = 3 : ui64, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3],
+    kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, start_after = 4 : ui64}> taskLocation(%3 : !VPURegMapped.Index<0:0:1>)
+     previousTask(%23 : !VPURegMapped.Index<0:0:0>) input(%15 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
+     outputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) waits(%20 : !VPURegMapped.Index<0:0:2>) updates(%21 : !VPURegMapped.Index<0:0:3>) -> <0:0:1> PPE : {
       VPUMI40XX.PPETask {ppe = #VPU.PPEStub<>}
     }
-    %25 = VPUMI40XX.DPUVariant taskLocation(%4 : !VPURegMapped.Index<0:0:0>) calls(%23 : <0:0:0>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) {end = [15, 15, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]} -> <0:0:0>
-    %26 = VPUMI40XX.DPUVariant taskLocation(%5 : !VPURegMapped.Index<0:0:1>) previousTask(%25 : !VPURegMapped.Index<0:0:0>) calls(%24 : <0:0:1>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) {end = [13, 13, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]} -> <0:0:1>
+    %25 = VPUMI40XX.DPUVariant taskLocation(%4 : !VPURegMapped.Index<0:0:0>) calls(%23 : <0:0:0>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) <{end = [15, 15, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]}> -> <0:0:0>
+    %26 = VPUMI40XX.DPUVariant taskLocation(%5 : !VPURegMapped.Index<0:0:1>) previousTask(%25 : !VPURegMapped.Index<0:0:0>) calls(%24 : <0:0:1>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) <{end = [13, 13, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]}> -> <0:0:1>
     %27 = VPURegMapped.ViewTaskRange(%23 -> %24 : <0:0:0> -> <0:0:1>) -> memref<2x352xui8>
     %28 = VPURegMapped.ViewTaskRange(%2 -> %3 : <0:0:0> -> <0:0:1>) -> memref<2x352xui8, [@CMX_NN, 0]>
     %29 = VPURegMapped.ViewTaskRange(%25 -> %26 : <0:0:0> -> <0:0:1>) -> memref<2x224xui8>
     %30 = VPURegMapped.ViewTaskRange(%4 -> %5 : <0:0:0> -> <0:0:1>) -> memref<2x224xui8, [@CMX_NN, 0]>
-    %31 = VPUMI40XX.NNDMA {is_critical, is_out_of_order, port = 0 : i64} inputs(%27 : memref<2x352xui8>) outputs(%28 : memref<2x352xui8, [@CMX_NN, 0]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
-    %32 = VPUMI40XX.NNDMA {is_critical, is_out_of_order, port = 0 : i64} inputs(%29 : memref<2x224xui8>) outputs(%30 : memref<2x224xui8, [@CMX_NN, 0]>) previousDMA(%31 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
-    %33 = VPUMI40XX.NNDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 0 : i32, len = 0 : i32, srcWidth = 0 : i32, srcStride = 0 : i32, srcPlaneStride = 0 : i32, dstWidth = 0 : i32, dstStride = 0 : i32, dstPlaneStride = 0 : i32>, port = 0 : i64} inputs(%8 : memref<1x1x1x1xi32, @DDR>) outputs(%9 : memref<1x1x1x1xi32, @DDR>) previousDMA(%32 : !VPURegMapped.Index<0:0:1>) updates(%18 : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
-    %34 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%6 : memref<1x16x16x16xf16, @DDR>) outputs(%10 : memref<1x16x16x16xf16, [@CMX_NN, 0]>) previousDMA(%33 : !VPURegMapped.Index<0:0:2>) waits(%18 : !VPURegMapped.Index<0:0:0>) updates(%19 : !VPURegMapped.Index<0:0:1>) start_after(2) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
-    %35 = VPUMI40XX.NNDMA {is_out_of_order, port = 0 : i64} inputs(%cst : memref<1x1x1x4864xui8>) outputs(%13 : memref<1x1x1x4864xui8, [@CMX_NN, 0]>) previousDMA(%34 : !VPURegMapped.Index<0:0:3>) updates(%20 : !VPURegMapped.Index<0:0:2>) start_after(3) clean_after(2) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
-    %36 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) outputs(%7 : memref<1x16x14x14xf16, @DDR>) waits(%21 : !VPURegMapped.Index<0:0:3>) updates(%22 : !VPURegMapped.Index<0:0:4>) start_after(5) clean_after(4) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
+    %31 = VPUMI40XX.NNDMA <{is_critical, is_out_of_order, port = 0 : i64}> inputs(%27 : memref<2x352xui8>) outputs(%28 : memref<2x352xui8, [@CMX_NN, 0]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %32 = VPUMI40XX.NNDMA <{is_critical, is_out_of_order, port = 0 : i64}> inputs(%29 : memref<2x224xui8>) outputs(%30 : memref<2x224xui8, [@CMX_NN, 0]>) previousDMA(%31 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+    %33 = VPUMI40XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 0 : i32, len = 0 : i32, srcWidth = 0 : i32, srcStride = 0 : i32, srcPlaneStride = 0 : i32, dstWidth = 0 : i32, dstStride = 0 : i32, dstPlaneStride = 0 : i32>, port = 0 : i64}> inputs(%8 : memref<1x1x1x1xi32, @DDR>) outputs(%9 : memref<1x1x1x1xi32, @DDR>) previousDMA(%32 : !VPURegMapped.Index<0:0:1>) updates(%18 : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
+    %34 = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%6 : memref<1x16x16x16xf16, @DDR>) outputs(%10 : memref<1x16x16x16xf16, [@CMX_NN, 0]>) previousDMA(%33 : !VPURegMapped.Index<0:0:2>) waits(%18 : !VPURegMapped.Index<0:0:0>) updates(%19 : !VPURegMapped.Index<0:0:1>) start_after(2) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
+    %35 = VPUMI40XX.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%cst : memref<1x1x1x4864xui8>) outputs(%13 : memref<1x1x1x4864xui8, [@CMX_NN, 0]>) previousDMA(%34 : !VPURegMapped.Index<0:0:3>) updates(%20 : !VPURegMapped.Index<0:0:2>) start_after(3) clean_after(2) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
+    %36 = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) outputs(%7 : memref<1x16x14x14xf16, @DDR>) waits(%21 : !VPURegMapped.Index<0:0:3>) updates(%22 : !VPURegMapped.Index<0:0:4>) start_after(5) clean_after(4) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
     %37 = VPURegMapped.Enqueue at(%18 : !VPURegMapped.Index<0:0:0>) (%25 -> %25 : <0:0:0> -> <0:0:0>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<DPUVariant>}
     %38 = VPURegMapped.Enqueue previousTaskIdx(%37 : !VPURegMapped.Index<0:0:0>) at(%18 : !VPURegMapped.Index<0:0:0>) previousTaskIdxOnSameBarrier(%37 : !VPURegMapped.Index<0:0:0>) (%26 -> %26 : <0:0:1> -> <0:0:1>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<DPUVariant>}
     %39 = VPUMI40XX.Bootstrap inputs(%18 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
@@ -151,7 +156,7 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
     %44 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%39 : !VPURegMapped.Index<0:0:0>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapBarriersCount(5) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }
@@ -162,8 +167,8 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
 //CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_2 idx(!VPURegMapped.Index<0:0:2>)
 //CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_3 idx(!VPURegMapped.Index<0:0:3>)
 //CHECK: VPUASM.ManagedBarrier @ConfigureBarrier_0_0_4 idx(!VPURegMapped.Index<0:0:4>)
-//CHECK: VPUASM.WorkItem @[[Enqueue0:.*]] idx(!VPURegMapped.Index<0:0:0>) real_task_index(!VPURegMapped.Index<0:0:0>) next_workitem_idx(!VPURegMapped.Index<0:0:1>) task_type(<DPUVariant>) first_task(@program.metadata.cmx::@DeclareTaskBuffer_DPUVariant_0_0_0) task_count(1)
-//CHECK: VPUASM.WorkItem @[[Enqueue1:.*]] idx(!VPURegMapped.Index<0:0:1>) real_task_index(!VPURegMapped.Index<0:0:1>) task_type(<DPUVariant>) first_task(@program.metadata.cmx::@DeclareTaskBuffer_DPUVariant_0_0_1) task_count(1)
+//CHECK: VPUASM.WorkItem @[[Enqueue0:.+]] idx(!VPURegMapped.Index<0:0:0>) real_task_index(!VPURegMapped.Index<0:0:0>) next_workitem_idx(!VPURegMapped.Index<0:0:1>) task_type(<DPUVariant>) first_task(@program.metadata.cmx::@DeclareTaskBuffer_DPUVariant_0_0_0) task_count(1)
+//CHECK: VPUASM.WorkItem @[[Enqueue1:.+]] idx(!VPURegMapped.Index<0:0:1>) real_task_index(!VPURegMapped.Index<0:0:1>) task_type(<DPUVariant>) first_task(@program.metadata.cmx::@DeclareTaskBuffer_DPUVariant_0_0_1) task_count(1)
 
 //CHECK: VPUASM.Bootstrap @Bootstrap_0_0_0 {barrier_id = 0 : ui32}
 //CHECK: VPUASM.Bootstrap @Bootstrap_0_0_1 {barrier_id = 1 : ui32}
@@ -184,7 +189,7 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
 //CHECK-SAME: media_used = 0
 //CHECK-SAME: workItemsCount = 2
 
-//CHECK: VPUASM.nnrtConfig {isActKernelInvocations} @MappedInference_nnrtConfigManaged
+//CHECK: VPUASM.nnrtConfig <{isActKernelInvocations}> @MappedInference_nnrtConfigManaged
 
 // -----
 
@@ -245,29 +250,35 @@ module @BarrierProgramming attributes {config.compilationMode = #config.compilat
     %15 = VPURT.DeclareBuffer <CMX_NN> [0] <8704> -> memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>
     %16 = VPURT.DeclareBuffer <CMX_NN> [0] <16896> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
     %17 = VPURT.DeclareBuffer <CMX_NN> [0] <17152> -> memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>
-    %18 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <4, -1> -> !VPURegMapped.Index<0:0:0>
-    %19 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}(%18 : !VPURegMapped.Index<0:0:0>) <0, -1> -> !VPURegMapped.Index<0:0:1>
-    %20 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8}(%19 : !VPURegMapped.Index<0:0:1>) <1, -1> -> !VPURegMapped.Index<0:0:2>
-    %21 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}(%20 : !VPURegMapped.Index<0:0:2>) <2, -1> -> !VPURegMapped.Index<0:0:3>
-    %22 = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8}(%21 : !VPURegMapped.Index<0:0:3>) <3, -1> -> !VPURegMapped.Index<0:0:4>
-    %23 = VPUMI40XX.DPUInvariant {clean_after = 2 : ui64, is_permute_quantize, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, start_after = 3 : ui64} taskLocation(%2 : !VPURegMapped.Index<0:0:0>) input(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) outputs(%11 : memref<1x16x16x16xf16, #NWCH, [@CMX_NN, 0]>) waits(%19 : !VPURegMapped.Index<0:0:1>) updates(%20 : !VPURegMapped.Index<0:0:2>) -> <0:0:0> PPE : {
+    %18 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <4, -1> -> !VPURegMapped.Index<0:0:0>
+    %19 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}>(%18 : !VPURegMapped.Index<0:0:0>) <0, -1> -> !VPURegMapped.Index<0:0:1>
+    %20 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 2 : ui8}>(%19 : !VPURegMapped.Index<0:0:1>) <1, -1> -> !VPURegMapped.Index<0:0:2>
+    %21 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}>(%20 : !VPURegMapped.Index<0:0:2>) <2, -1> -> !VPURegMapped.Index<0:0:3>
+    %22 = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8}>(%21 : !VPURegMapped.Index<0:0:3>) <3, -1> -> !VPURegMapped.Index<0:0:4>
+    %23 = VPUMI40XX.DPUInvariant <{clean_after = 2 : ui64, is_permute_quantize, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, start_after = 3 : ui64}>
+     taskLocation(%2 : !VPURegMapped.Index<0:0:0>) input(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) outputs(%11 : memref<1x16x16x16xf16, #NWCH, [@CMX_NN, 0]>)
+     waits(%19 : !VPURegMapped.Index<0:0:1>) updates(%20 : !VPURegMapped.Index<0:0:2>) -> <0:0:0> PPE : {
       VPUMI40XX.PPETask {ppe = #VPU.PPEStub<>}
     }
-    %24 = VPUMI40XX.DPUInvariant {clean_after = 3 : ui64, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, start_after = 4 : ui64} taskLocation(%3 : !VPURegMapped.Index<0:0:1>) previousTask(%23 : !VPURegMapped.Index<0:0:0>) input(%15 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) waits(%20 : !VPURegMapped.Index<0:0:2>) updates(%21 : !VPURegMapped.Index<0:0:3>) -> <0:0:1> PPE : {
+    %24 = VPUMI40XX.DPUInvariant <{clean_after = 3 : ui64, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3],
+    kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, start_after = 4 : ui64}>
+    taskLocation(%3 : !VPURegMapped.Index<0:0:1>) previousTask(%23 : !VPURegMapped.Index<0:0:0>) input(%15 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+    weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>)
+    waits(%20 : !VPURegMapped.Index<0:0:2>) updates(%21 : !VPURegMapped.Index<0:0:3>) -> <0:0:1> PPE : {
       VPUMI40XX.PPETask {ppe = #VPU.PPEStub<>}
     }
-    %25 = VPUMI40XX.DPUVariant taskLocation(%4 : !VPURegMapped.Index<0:0:0>) calls(%23 : <0:0:0>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) {end = [15, 15, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]} -> <0:0:0>
-    %26 = VPUMI40XX.DPUVariant taskLocation(%5 : !VPURegMapped.Index<0:0:1>) previousTask(%25 : !VPURegMapped.Index<0:0:0>) calls(%24 : <0:0:1>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) {end = [13, 13, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]} -> <0:0:1>
+    %25 = VPUMI40XX.DPUVariant taskLocation(%4 : !VPURegMapped.Index<0:0:0>) calls(%23 : <0:0:0>) weights(%14 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) <{end = [15, 15, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]}> -> <0:0:0>
+    %26 = VPUMI40XX.DPUVariant taskLocation(%5 : !VPURegMapped.Index<0:0:1>) previousTask(%25 : !VPURegMapped.Index<0:0:0>) calls(%24 : <0:0:1>) weights(%17 : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%16 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) <{end = [13, 13, 15], inEnd = [15, 15, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, nce_task_type = #VPUIP.nce_task_type<CONV>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]}> -> <0:0:1>
     %27 = VPURegMapped.ViewTaskRange(%23 -> %24 : <0:0:0> -> <0:0:1>) -> memref<2x352xui8>
     %28 = VPURegMapped.ViewTaskRange(%2 -> %3 : <0:0:0> -> <0:0:1>) -> memref<2x352xui8, [@CMX_NN, 0]>
     %29 = VPURegMapped.ViewTaskRange(%25 -> %26 : <0:0:0> -> <0:0:1>) -> memref<2x224xui8>
     %30 = VPURegMapped.ViewTaskRange(%4 -> %5 : <0:0:0> -> <0:0:1>) -> memref<2x224xui8, [@CMX_NN, 0]>
-    %31 = VPUMI40XX.NNDMA {is_critical, is_out_of_order, port = 0 : i64} inputs(%27 : memref<2x352xui8>) outputs(%28 : memref<2x352xui8, [@CMX_NN, 0]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
-    %32 = VPUMI40XX.NNDMA {is_critical, is_out_of_order, port = 0 : i64} inputs(%29 : memref<2x224xui8>) outputs(%30 : memref<2x224xui8, [@CMX_NN, 0]>) previousDMA(%31 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
-    %33 = VPUMI40XX.NNDMA {dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 0 : i32, len = 0 : i32, srcWidth = 0 : i32, srcStride = 0 : i32, srcPlaneStride = 0 : i32, dstWidth = 0 : i32, dstStride = 0 : i32, dstPlaneStride = 0 : i32>, port = 0 : i64} inputs(%8 : memref<1x1x1x1xi32, @DDR>) outputs(%9 : memref<1x1x1x1xi32, @DDR>) previousDMA(%32 : !VPURegMapped.Index<0:0:1>) updates(%18 : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
-    %34 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%6 : memref<1x16x16x16xf16, @DDR>) outputs(%10 : memref<1x16x16x16xf16, [@CMX_NN, 0]>) previousDMA(%33 : !VPURegMapped.Index<0:0:2>) waits(%18 : !VPURegMapped.Index<0:0:0>) updates(%19 : !VPURegMapped.Index<0:0:1>) start_after(2) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
-    %35 = VPUMI40XX.NNDMA {is_out_of_order, port = 0 : i64} inputs(%cst : memref<1x1x1x4864xui8>) outputs(%13 : memref<1x1x1x4864xui8, [@CMX_NN, 0]>) previousDMA(%34 : !VPURegMapped.Index<0:0:3>) updates(%20 : !VPURegMapped.Index<0:0:2>) start_after(3) clean_after(2) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
-    %36 = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) outputs(%7 : memref<1x16x14x14xf16, @DDR>) waits(%21 : !VPURegMapped.Index<0:0:3>) updates(%22 : !VPURegMapped.Index<0:0:4>) start_after(5) clean_after(4) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
+    %31 = VPUMI40XX.NNDMA <{is_critical, is_out_of_order, port = 0 : i64}> inputs(%27 : memref<2x352xui8>) outputs(%28 : memref<2x352xui8, [@CMX_NN, 0]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %32 = VPUMI40XX.NNDMA <{is_critical, is_out_of_order, port = 0 : i64}> inputs(%29 : memref<2x224xui8>) outputs(%30 : memref<2x224xui8, [@CMX_NN, 0]>) previousDMA(%31 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+    %33 = VPUMI40XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 0 : i32, len = 0 : i32, srcWidth = 0 : i32, srcStride = 0 : i32, srcPlaneStride = 0 : i32, dstWidth = 0 : i32, dstStride = 0 : i32, dstPlaneStride = 0 : i32>, port = 0 : i64}> inputs(%8 : memref<1x1x1x1xi32, @DDR>) outputs(%9 : memref<1x1x1x1xi32, @DDR>) previousDMA(%32 : !VPURegMapped.Index<0:0:1>) updates(%18 : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
+    %34 = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%6 : memref<1x16x16x16xf16, @DDR>) outputs(%10 : memref<1x16x16x16xf16, [@CMX_NN, 0]>) previousDMA(%33 : !VPURegMapped.Index<0:0:2>) waits(%18 : !VPURegMapped.Index<0:0:0>) updates(%19 : !VPURegMapped.Index<0:0:1>) start_after(2) clean_after(1) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
+    %35 = VPUMI40XX.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%cst : memref<1x1x1x4864xui8>) outputs(%13 : memref<1x1x1x4864xui8, [@CMX_NN, 0]>) previousDMA(%34 : !VPURegMapped.Index<0:0:3>) updates(%20 : !VPURegMapped.Index<0:0:2>) start_after(3) clean_after(2) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
+    %36 = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%12 : memref<1x16x14x14xf16, [@CMX_NN, 0]>) outputs(%7 : memref<1x16x14x14xf16, @DDR>) waits(%21 : !VPURegMapped.Index<0:0:3>) updates(%22 : !VPURegMapped.Index<0:0:4>) start_after(5) clean_after(4) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
     %37 = VPURegMapped.Enqueue at(%18 : !VPURegMapped.Index<0:0:0>) (%25 -> %25 : <0:0:0> -> <0:0:0>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<DPUVariant>}
     %38 = VPURegMapped.Enqueue previousTaskIdx(%37 : !VPURegMapped.Index<0:0:0>) at(%18 : !VPURegMapped.Index<0:0:0>) (%26 -> %26 : <0:0:1> -> <0:0:1>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<DPUVariant>}
     %39 = VPUMI40XX.Bootstrap inputs(%18 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
@@ -281,7 +292,7 @@ module @BarrierProgramming attributes {config.compilationMode = #config.compilat
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
     %173 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%39 : !VPURegMapped.Index<0:0:0>) barrierConfigurationTasks(%barDescs : memref<1xui8>) numOfBarrierReprogrammings(%barStrides : memref<16xui32>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapBarriersCount(5) barrierConfigurationTasksCount(128) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }

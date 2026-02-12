@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,6 @@
 #include "vpux/utils/core/small_vector.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
-
-namespace vpux::VPU {
-enum class ExecutorKind : uint64_t;
-}
 
 namespace vpux {
 namespace config {
@@ -120,6 +116,22 @@ memory_resource_if<Enum> getDummySwKernelsForInstructionPrefetchReservedMemory(m
 }
 
 //
+// Shave stacks reserved memory
+//
+static constexpr StringLiteral shaveStacksResMemModuleName = "ShaveStacksReservedMemory";
+
+config::MemoryResourceOp setShaveStacksReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace,
+                                                      int64_t size, size_t alignment);
+
+config::MemoryResourceOp getShaveStacksReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace);
+
+template <typename Enum>
+memory_resource_if<Enum> getShaveStacksReservedMemory(mlir::ModuleOp mainModule, Enum kind) {
+    return getShaveStacksReservedMemory(mainModule,
+                                        mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(kind)));
+}
+
+//
 // ExecutorResourceOp
 //
 
@@ -137,8 +149,10 @@ exec_resource_if<Enum> getAvailableExecutor(mlir::ModuleOp mainModule, Enum kind
 // EngineResources
 //
 
-int64_t getTotalNumOfEngines(mlir::ModuleOp moduleOp, VPU::ExecutorKind execKind);
-int64_t getTotalNumOfEngines(mlir::Operation* op, VPU::ExecutorKind execKind);
+int64_t getNumOfEnginesOnTile(mlir::ModuleOp moduleOp, config::ExecutorKind execKind);
+int64_t getNumOfEnginesOnTile(mlir::Operation* op, config::ExecutorKind execKind);
+int64_t getTotalNumOfEngines(mlir::ModuleOp moduleOp, config::ExecutorKind execKind);
+int64_t getTotalNumOfEngines(mlir::Operation* op, config::ExecutorKind execKind);
 
 config::ResourcesOp addTileExecutor(mlir::ModuleOp mainModule, size_t count);
 

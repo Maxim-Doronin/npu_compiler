@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -842,7 +842,7 @@ module @EnableWeightDeqauntEnsuranceBeforeStrategy {
     %1 = VPU.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 128, 64, 4]} : tensor<1x128x256x1xf16, {order = #NHWC}> -> tensor<1x128x64x4xf16, {order = #NHWC}>
     %2 = VPU.NCE.Convolution(%1, %0, %cst_0) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>, rawFilterShape = [10240, 128, 1, 1], strides = [1, 1]} : tensor<1x128x64x4xf16, {order = #NHWC}>, tensor<10240x128x1x1xf16, {order = #NHWC}>, tensor<10240x1x1x4xsi32> -> tensor<1x10240x64x4xf16, {order = #NHWC}>
    return %2 : tensor<1x10240x64x4xf16, {order = #NHWC}>
-    
+
 
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1280x1x1x4xsi32> = dense<10> : tensor<10240x1x1x4xsi32>, [#const.SubView<[3840, 0, 0, 0], [1280, 1, 1, 4]>]
     // CHECK-DAG:   [[CST0:%.+]] = const.Declare tensor<1280x1x1x4xsi32> = dense<10> : tensor<10240x1x1x4xsi32>, [#const.SubView<[2560, 0, 0, 0], [1280, 1, 1, 4]>]
@@ -854,12 +854,12 @@ module @EnableWeightDeqauntEnsuranceBeforeStrategy {
     // CHECK-DAG:   [[CST6:%.+]] = const.Declare tensor<1280x1x1x4xsi32> = dense<10> : tensor<10240x1x1x4xsi32>, [#const.SubView<[5120, 0, 0, 0], [1280, 1, 1, 4]>]
     // CHECK-DAG:   [[CST7:%.+]] = const.Declare tensor<5120x128x1x1x!qElemType, {order = #NHWC}> = dense<10> : tensor<128x10240xui8>, [#const.SubView<[0, 5120], [128, 5120]>, #const.Reshape<[1, 1, 128, 5120]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>
     // CHECK-DAG:   [[CST8:%.+]] = const.Declare tensor<5120x128x1x1x!qElemType, {order = #NHWC}> = dense<10> : tensor<128x10240xui8>, [#const.SubView<[0, 0], [128, 5120]>, #const.Reshape<[1, 1, 128, 5120]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>
-    
+
     // CHECK: [[COPY0:%.+]] = VPU.Copy([[CST8]]) {out_mem_space = @CMX_NN}
-    // CHECK: [[DEQ0:%.+]] = VPU.Dequantize([[COPY0]]) {dstElemType = f16}
+    // CHECK: [[DEQ0:%.+]] = VPU.Dequantize([[COPY0]]) {dstElemType = f16, tiling_loop_index = 0 : i64}
     // CHECK: [[COPY1:%.+]] = VPU.Copy([[DEQ0]])
     // CHECK: [[COPY2:%.+]] = VPU.Copy([[CST7]]) {out_mem_space = @CMX_NN}
-    // CHECK: [[DEQ1:%.+]] = VPU.Dequantize([[COPY2]]) {dstElemType = f16}
+    // CHECK: [[DEQ1:%.+]] = VPU.Dequantize([[COPY2]]) {dstElemType = f16, tiling_loop_index = 0 : i64}
     // CHECK: [[COPY3:%.+]] = VPU.Copy([[DEQ1]])
 
     // CHECK: [[RESHAPE:%.+]] = VPU.AffineReshape(%arg0)

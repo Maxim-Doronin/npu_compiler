@@ -38,8 +38,8 @@ mlir::LogicalResult isQuantizeCastValid(mlir::Location loc, mlir::Type srcType, 
         return errorAt(loc, "Src type bit size: {0} is not a power of two", srcBitSize);
     }
 
-    if ((isFloat8(srcType) && srcType != mlir::cast<mlir::quant::QuantizedType>(dstType).getStorageType()) ||
-        (isFloat8(dstType) && dstType != mlir::cast<mlir::quant::QuantizedType>(srcType).getStorageType())) {
+    if ((isLowFpType(srcType) && srcType != mlir::cast<mlir::quant::QuantizedType>(dstType).getStorageType()) ||
+        (isLowFpType(dstType) && dstType != mlir::cast<mlir::quant::QuantizedType>(srcType).getStorageType())) {
         return errorAt(loc, "Low precision float types can only be casted to types of the same bit format");
     }
 

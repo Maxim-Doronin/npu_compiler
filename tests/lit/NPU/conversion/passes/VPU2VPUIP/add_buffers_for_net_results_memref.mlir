@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ module @Network {
             attributes {VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax"}
     }
 
-    // CHECK: func.func @SingleLayer([[ARG0:%.*]]: memref<1x1000xf16>, [[ARG1:%.*]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
+    // CHECK: func.func @SingleLayer([[ARG0:%.+]]: memref<1x1000xf16>, [[ARG1:%.+]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
     func.func @SingleLayer(%arg0: memref<1x1000xf16>) -> memref<1x1000xf16> {
         %0 = memref.alloc() : memref<1x1000xf16>
         %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
@@ -129,7 +129,7 @@ module @NestedFunction {
         } outputsInfo : {
             DataInfo "output" : tensor<1x1000xf16> loc(fused<{name = "output", type = "Result"}>["output"])
         }
-        // CHECK: func.func [[FUNC_NAME:@.+]]([[ARG0:%.*]]: memref<1x1000xf16>, [[ARG1:%.*]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
+        // CHECK: func.func [[FUNC_NAME:@.+]]([[ARG0:%.+]]: memref<1x1000xf16>, [[ARG1:%.+]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
         func.func @SingleLayer(%arg0: memref<1x1000xf16>) -> memref<1x1000xf16> {
             return %arg0 : memref<1x1000xf16>
 
@@ -138,7 +138,7 @@ module @NestedFunction {
         }
     }
 
-    // CHECK: func.func @main([[ARG0:%.*]]: memref<1x1000xf16>, [[ARG1:%.*]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
+    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x1000xf16>, [[ARG1:%.+]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
     func.func @main(%arg0: memref<1x1000xf16>) -> memref<1x1000xf16> {
         %0 = Core.NestedCall @Module1::@SingleLayer(%arg0) : (memref<1x1000xf16>) -> memref<1x1000xf16>
         return %0 : memref<1x1000xf16>

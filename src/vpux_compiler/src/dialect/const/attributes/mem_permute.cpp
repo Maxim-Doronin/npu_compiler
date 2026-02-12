@@ -121,13 +121,3 @@ Const::Content vpux::Const::MemPermuteAttr::transform(vpux::Const::Content& inpu
 
     return Const::details::memPermuteTransformation(input, outType, memPerm);
 }
-
-//
-// MemPermuteAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::MemPermuteAttr::getStableHashValue() const {
-    const auto order = DimsOrder::fromAffineMap(getDstOrder().getValue());
-    const auto perm = DimsOrder::fromAffineMap(getMemPerm().getValue());
-    return llvm::hash_combine(getMnemonic(), order.code(), perm.code());
-}

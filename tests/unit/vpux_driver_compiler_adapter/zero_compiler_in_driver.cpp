@@ -27,7 +27,7 @@ public:
     std::shared_ptr<ov::Model> createModel(std::vector<NodeDescriptor> inputNodeDescriptors,
                                            std::vector<NodeDescriptor> outputNodeDescriptors) {
         ov::ParameterVector parameterVector;
-        ov::NodeVector constantVector;
+        ov::OutputVector constantVector;
 
         for (const NodeDescriptor& nodeDescriptor : inputNodeDescriptors) {
             std::shared_ptr<ov::op::v0::Parameter> parameter =

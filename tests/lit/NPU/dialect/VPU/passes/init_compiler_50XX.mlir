@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch% compilation-mode=ReferenceSW" %s | FileCheck %s --strict-whitespace
 // REQUIRES: arch-NPU50XX
 
-// CHECK: module @test attributes {config.arch = #config.arch_kind<NPU50XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @test attributes {config.arch = #config.arch_kind<NPU50XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.elf_version = #config.version<2 : 0 : 0>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @test {
 
 // CHECK-DAG:    {{  }}config.PipelineOptions @Options {

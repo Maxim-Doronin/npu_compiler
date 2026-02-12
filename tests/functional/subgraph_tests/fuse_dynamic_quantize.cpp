@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <ov_ops/dynamic_quantize.hpp>
@@ -149,6 +149,7 @@ TEST_P(FuseDQTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(FuseDQTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);

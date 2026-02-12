@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUASM/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 
 #include "vpux/utils/core/mem_size.hpp"
 
@@ -86,24 +87,30 @@ std::vector<ELF::RelocationInfo> NPUReg50XX::NNDMAOp::getRelocationInfo(ELF::Sym
 
     // Input reloc
     // Temporary, until SymRef lookup & interpretation is fixed
-    auto inputRelocType = VPUASM::getBufferLocation(symRefMap, getInput()) == VPURT::BufferSection::CMX_NN
-                                  ? ELF::RelocationType::R_VPU_64_BIT_OR_B21_B26_UNSET
-                                  : ELF::RelocationType::R_VPU_64;
+    // Skip input reloc for strided inputs as it is covered by a different relocation
+    if (!getOperation()->hasAttr(vpux::stridedInputAttrName)) {
+        auto inputRelocType = VPUASM::getBufferLocation(symRefMap, getInput()) == VPURT::BufferSection::CMX_NN
+                                      ? ELF::RelocationType::R_VPU_64_BIT_OR_B21_B26_UNSET
+                                      : ELF::RelocationType::R_VPU_64;
 
-    relocs.emplace_back(getInput(), targetSection, getSymRefOffsetForReloc(thisDma, getInput()), inputRelocType,
-                        ELF::getOffsetOfSymRef(symRefMap, getInput()), "Input for NNDMA reloc");
+        relocs.emplace_back(getInput(), targetSection, getSymRefOffsetForReloc(thisDma, getInput()), inputRelocType,
+                            ELF::getOffsetOfSymRef(symRefMap, getInput()), "Input for NNDMA reloc");
+    }
 
     // Output reloc
-    auto firstOutputBuff = mlir::cast<mlir::SymbolRefAttr>(getOutputBuffs()[0]);
-    auto outputRelocType = VPUASM::getBufferLocation(symRefMap, firstOutputBuff) == VPURT::BufferSection::CMX_NN
-                                   ? ELF::RelocationType::R_VPU_64_BIT_OR_B21_B26_UNSET
-                                   : ELF::RelocationType::R_VPU_64;
+    // Skip output reloc for strided outputs as it is covered by a different relocation
+    if (!getOperation()->hasAttr(vpux::stridedOutputAttrName)) {
+        auto firstOutputBuff = mlir::cast<mlir::SymbolRefAttr>(getOutputBuffs()[0]);
+        auto outputRelocType = VPUASM::getBufferLocation(symRefMap, firstOutputBuff) == VPURT::BufferSection::CMX_NN
+                                       ? ELF::RelocationType::R_VPU_64_BIT_OR_B21_B26_UNSET
+                                       : ELF::RelocationType::R_VPU_64;
 
-    // Don't add relocations for Register type buffers as we use absolute HW address
-    if (VPUASM::getBufferLocation(symRefMap, firstOutputBuff) != VPURT::BufferSection::Register) {
-        relocs.push_back(ELF::RelocationInfo(
-                firstOutputBuff, targetSection, getSymRefOffsetForReloc(thisDma, firstOutputBuff), outputRelocType,
-                ELF::getOffsetOfSymRef(symRefMap, firstOutputBuff), "Output (firstOutputBuff) in NNDMA reloc"));
+        // Don't add relocations for Register type buffers as we use absolute HW address
+        if (VPUASM::getBufferLocation(symRefMap, firstOutputBuff) != VPURT::BufferSection::Register) {
+            relocs.push_back(ELF::RelocationInfo(
+                    firstOutputBuff, targetSection, getSymRefOffsetForReloc(thisDma, firstOutputBuff), outputRelocType,
+                    ELF::getOffsetOfSymRef(symRefMap, firstOutputBuff), "Output (firstOutputBuff) in NNDMA reloc"));
+        }
     }
 
     // Link Address reloc
@@ -126,9 +133,11 @@ std::vector<ELF::RelocationInfo> NPUReg50XX::NNDMAOp::getRelocationInfo(ELF::Sym
 
     // Indices reloc
     if (auto indices = getIndices().value_or(nullptr)) {
+        VPUX_THROW_UNLESS(VPUASM::getBufferLocation(symRefMap, indices) == VPURT::BufferSection::CMX_NN,
+                          "Indices must be in CMX");
         relocs.emplace_back(indices, targetSection, getSymRefOffsetForReloc(thisDma, indices),
-                            ELF::RelocationType::R_VPU_32, ELF::getOffsetOfSymRef(symRefMap, indices),
-                            "indices for NNDMA reloc");
+                            ELF::RelocationType::R_VPU_64_BIT_OR_B21_B26_UNSET,
+                            ELF::getOffsetOfSymRef(symRefMap, indices), "indices for NNDMA reloc");
     }
 
     // sparsity map reloc
@@ -140,6 +149,93 @@ std::vector<ELF::RelocationInfo> NPUReg50XX::NNDMAOp::getRelocationInfo(ELF::Sym
     }
 
     return relocs;
+}
+
+mlir::SymbolRefAttr NPUReg50XX::NNDMAOp::getInputSymbol() {
+    return getInput();
+}
+
+mlir::SymbolRefAttr NPUReg50XX::NNDMAOp::getOutputSymbol() {
+    return mlir::cast<mlir::SymbolRefAttr>(getOutputBuffs()[0]);
+}
+
+vpux::Byte NPUReg50XX::NNDMAOp::getStrideValue(size_t strideIdx, bool isInput) {
+    auto descriptor = getProperties().getDescriptor();
+    uint32_t strideValue = 0;
+    switch (strideIdx) {
+    case 0: {
+        strideValue =
+                isInput ? descriptor.read<Fields::dma_stride_src_1>() : descriptor.read<Fields::dma_stride_dst_1>();
+        break;
+    }
+    case 1: {
+        strideValue =
+                isInput ? descriptor.read<Fields::dma_stride_src_2>() : descriptor.read<Fields::dma_stride_dst_2>();
+        break;
+    }
+    case 2: {
+        strideValue =
+                isInput ? descriptor.read<Fields::dma_stride_src_3>() : descriptor.read<Fields::dma_stride_dst_3>();
+        break;
+    }
+    case 3: {
+        strideValue =
+                isInput ? descriptor.read<Fields::dma_stride_src_4>() : descriptor.read<Fields::dma_stride_dst_4>();
+        break;
+    }
+    case 4: {
+        strideValue =
+                isInput ? descriptor.read<Fields::dma_stride_src_5>() : descriptor.read<Fields::dma_stride_dst_5>();
+        break;
+    }
+    default:
+        VPUX_THROW("stride index {0} out of bounds", strideIdx);
+        break;
+    }
+
+    return vpux::Byte(strideValue);
+}
+
+uint32_t NPUReg50XX::NNDMAOp::getShapeValue(size_t shapeIdx, bool isInput) {
+    auto descriptor = getProperties().getDescriptor();
+    uint32_t shapeValue = 0;
+    switch (shapeIdx) {
+    case 0: {
+        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_1>() + 1
+                             : descriptor.read<Fields::dma_dim_size_dst_1>() + 1;
+        break;
+    }
+    case 1: {
+        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_2>() + 1
+                             : descriptor.read<Fields::dma_dim_size_dst_2>() + 1;
+        break;
+    }
+    case 2: {
+        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_3>() + 1
+                             : descriptor.read<Fields::dma_dim_size_dst_3>() + 1;
+        break;
+    }
+    case 3: {
+        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_4>() + 1
+                             : descriptor.read<Fields::dma_dim_size_dst_4>() + 1;
+        break;
+    }
+    case 4: {
+        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_5>() + 1
+                             : descriptor.read<Fields::dma_dim_size_dst_5>() + 1;
+        break;
+    }
+    default:
+        VPUX_THROW("stride index {0} out of bounds", shapeIdx);
+        break;
+    }
+
+    return shapeValue;
+}
+
+int64_t NPUReg50XX::NNDMAOp::getWidthValue(bool isInput) {
+    auto descriptor = getProperties().getDescriptor();
+    return isInput ? descriptor.read<Fields::dma_width_src>() : descriptor.read<Fields::dma_width_dst>();
 }
 
 void NPUReg50XX::NNDMAOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,

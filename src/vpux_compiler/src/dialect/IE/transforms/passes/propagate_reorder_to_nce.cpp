@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -135,7 +136,7 @@ mlir::LogicalResult ActShaveRewriter::matchAndRewrite(IE::ReorderOp origOp, mlir
     auto newProducer = rewriter.clone(*producer, mapper);
     vpux::inferReturnTypes(newProducer, vpux::InferShapedTypeMode::ALL);
 
-    rewriter.replaceOp(producer, newProducer->getResult(0));
+    rewriter.replaceOp(origOp, newProducer->getResult(0));
 
     return mlir::success();
 }
@@ -163,8 +164,12 @@ void PropagateReorderToNCE::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ActShaveRewriter>(&ctx, _log);
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
+    mlir::RewritePatternSet canonPatterns(&ctx);
+    IE::ReorderOp::getCanonicalizationPatterns(canonPatterns, &ctx);
+    mlir::GreedyRewriteConfig config;
+    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(canonPatterns), config))) {
         signalPassFailure();
     }
 }

@@ -279,7 +279,7 @@ def VPU_FakeQuantizeOp :
     let description = [{
         The operation works in two modes:
          * integral quantization: specified by the 'levels' attribute
-         * floating-point quantization: specified by the 'low_fp_type' attribute, [f8E4M3FN | f8E5M2]
+         * floating-point quantization: specified by the 'low_fp_type' attribute, [f8E4M3FN | f8E5M2 | f4E2M1FN]
 
         Only one of these attributes should be provided.
     }];

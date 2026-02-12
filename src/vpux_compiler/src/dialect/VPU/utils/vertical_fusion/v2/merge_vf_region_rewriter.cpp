@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_utils.hpp"
@@ -14,6 +15,7 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/loop.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <llvm/ADT/SetOperations.h>
@@ -65,11 +67,31 @@ bool hasSpill(mlir::Operation* parentOp, mlir::Operation* currentOp, mlir::Value
            inputTileAxisIsSameAsMultiClusterStrategy(currentOp, currentOpOperand);
 }
 
+bool isSpatialDim(Dim dim) {
+    return dim.ind() >= static_cast<int32_t>(Dims4D::Act::numSpatialDims);
+};
+
 bool tileOnSameDims(const VFSplit& curVFSplit, const VFSplit& preVFSplit, const int64_t linkNumber,
-                    VFConfig& currentConfig, std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap) {
+                    VFConfig& currentConfig, VFConfig& prevConfig,
+                    std::unordered_map<mlir::Operation*, vpux::Dim>& opDimMap) {
     if (curVFSplit.size() != preVFSplit.size()) {
         return false;
     }
+
+    if (curVFSplit.size() == 1 && !isSpatialDim(curVFSplit.begin()->first)) {
+        // if both VFs are only tiled on C dim and any of them is NCE with weights,
+        // try to search for 2D tiling to compare
+        const auto isNCEWithWeights = [](mlir::Operation* op) {
+            auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
+            return nceOp != nullptr && nceOp.getWeightsOperand() != nullptr;
+        };
+
+        if (llvm::any_of(currentConfig.getOperationsForTiling(), isNCEWithWeights) ||
+            llvm::any_of(prevConfig.getOperationsForTiling(), isNCEWithWeights)) {
+            return false;
+        }
+    }
+
     for (const auto& item : curVFSplit) {
         auto curTilingDim = item.first;
         auto curInputAxesResult = VPU::backInferVFTilingDim(currentConfig, curTilingDim, opDimMap);
@@ -91,14 +113,14 @@ SmallVector<VFSplit> getSplitFromDimArr(DimArrRef dimsToCheck, DimArrRef allowed
         VFSplit singleSplit = {{dim, std::nullopt}};
         splits.emplace_back(singleSplit);
 
-        if (dim.ind() <= Dims4D::Act::C.ind()) {
-            // Only enable 2D tiling for H and W
-            continue;
-        }
         for (auto otherDim : allowedDims) {
-            if (dim.ind() > otherDim.ind() && otherDim.ind() > Dims4D::Act::C.ind()) {
-                VFSplit doubleSplit = {{otherDim, getTilingLimit(otherDim, vfConfig, true)}, {dim, std::nullopt}};
-                splits.emplace_back(doubleSplit);
+            if (dim.ind() > otherDim.ind()) {
+                const auto isSpatialTilingForOther = isSpatialDim(otherDim);
+                auto outerDimLimit = getTilingLimit(otherDim, vfConfig, true);
+                if (outerDimLimit > 1 || isSpatialTilingForOther) {
+                    VFSplit doubleSplit = {{otherDim, outerDimLimit}, {dim, std::nullopt}};
+                    splits.emplace_back(doubleSplit);
+                }
             }
         }
     }
@@ -108,6 +130,7 @@ SmallVector<VFSplit> getSplitFromDimArr(DimArrRef dimsToCheck, DimArrRef allowed
 StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
     auto vfOp = vfConfig.getSubgraph();
     auto tilingDims = parseIntArrayAttr<int64_t>(vfOp.getTilingStrategyAttr());
+    auto vfSplit = getVFTilingSplit(tilingDims);
 
     const auto dim = getVFTilingDim(tilingDims);
     auto operations = vfConfig.getOperationsForTiling();
@@ -170,7 +193,7 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
                            hasSpill(vfConfig.getSubgraph(), use->getOwner(),
                                     use->getOwner()->getOperand(use->getOperandNumber()));
                 });
-
+        auto multiDimTilingWithChannelTiling = vfSplit.size() > 1 && vfSplit.find(Dims4D::Act::C) != vfSplit.end();
         auto spillReadWriteCanBeOverlapped = [&]() {
             if (operations.size() != 1 || costParameters._tiling.size() <= 1) {
                 return false;
@@ -180,6 +203,10 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
             if (!VPU::spillingCopyOpsCanBeOverlapped(arch)) {
                 return false;
             }
+            if (multiDimTilingWithChannelTiling) {
+                return true;
+            }
+
             if (auto tilingOpInterface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(operation)) {
                 return tilingOpInterface.isSupportedTiling(tiles, TilingMode::PIPELINING, _log);
             }
@@ -236,16 +263,20 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
             }
         }
         if (spillReadWriteCanBeOverlapped) {
-            for (auto tileInd : irange(perTileSpillReadCost.size())) {
-                if (tileInd == 0) {
-                    cost += perTileSpillReadCost[tileInd];
-                } else {
-                    cost += std::max(perTileSpillReadCost[tileInd], perTileSpillWriteCost[tileInd - 1]);
+            if (multiDimTilingWithChannelTiling) {
+                cost += perTileSpillReadCost.front() + perTileSpillWriteCost.back();
+            } else {
+                for (auto tileInd : irange(perTileSpillReadCost.size())) {
+                    if (tileInd == 0) {
+                        cost += perTileSpillReadCost[tileInd];
+                    } else {
+                        cost += std::max(perTileSpillReadCost[tileInd], perTileSpillWriteCost[tileInd - 1]);
+                    }
                 }
-            }
-            // Add the spilling write cost for the last tile's output
-            if (!perTileSpillWriteCost.empty()) {
-                cost += perTileSpillWriteCost.back();
+                // Add the spilling write cost for the last tile's output
+                if (!perTileSpillWriteCost.empty()) {
+                    cost += perTileSpillWriteCost.back();
+                }
             }
         }
 
@@ -352,7 +383,6 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
         return cost;
     }
 
-    auto vfSplit = getVFTilingSplit(tilingDims);
     auto vfCase = VFCase(vfConfig, vfSplit);
 
     auto scenario = detectScenario(vfConfig);
@@ -419,7 +449,8 @@ bool MergeVFRegionRewriter::cmxSizeExceedForEltwiseOpWithSwOpUser(VFConfig& curr
         auto usedSize = getRequiredCMX(operation, TileInfo(getShape(operation->getResult(0))), log);
         return usedSize;
     };
-    auto types = getTileTypes(eltwiseOp, TileInfo(getShape(eltwiseOp->getResult(0))));
+    auto strategy = getMultiClusterStrategyFromOp(eltwiseOp);
+    auto types = getTileTypes(eltwiseOp, TileInfo(getShape(eltwiseOp->getResult(0))), strategy);
     auto sharedInputSize = types.front().getTotalAllocSize();
     auto totalAvailableCMXSize = getTotalCMXVFPipelineFragmentationAwareSize(currentVFOp);
     // Caclulate the required size for the eltwise op and swOp user
@@ -552,23 +583,33 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
     auto vfSchedulingChecks = getSchedulingScenarios(vfConfig, _log);
     const auto linkNumber = getLinkNumber(currentOp, prevOp);
 
-    const auto getMinimalNumber = [&](auto dim, const VFSplit& split) -> int64_t {
-        if (split.size() == 1) {
-            // 1D tiling
-            auto curInputAxes = backInferVFTilingDim(currentConfig, dim, opDimMap);
-            return std::max(currentTiling[dim.ind()], prevTiling[curInputAxes.value()[linkNumber].ind()]);
-        } else {
-            // 2D tiling
+    const auto getMinimumNumber = [&](auto dim, const VFSplit& split) -> int64_t {
+        auto isSpatialDimTiling = llvm::all_of(split, [](const auto& item) {
+            return isSpatialDim(item.first);
+        });
+        auto hasChannelTiling = llvm::any_of(split, [](const auto& item) {
+            return item.first == Dims4D::Act::C;
+        });
+
+        if (split.size() > 1 && (isSpatialDimTiling || hasChannelTiling)) {
             return MINIMUM_LENGTH_TILING;
         }
+        std::unordered_map<mlir::Operation*, vpux::Dim> curOpDimMap;
+        auto curInputAxes = backInferVFTilingDim(currentConfig, dim, curOpDimMap);
+        return std::max(currentTiling[dim.ind()], prevTiling[curInputAxes.value()[linkNumber].ind()]);
     };
 
     const auto getMaximalNumber = [&](auto dim, const VFSplit& split) -> int64_t {
         auto maxTiles = getTilingLimit(dim, vfConfig);
         if (split.size() > 1) {
             // 2D tiling
-            auto otherDimSum = getVFTilesLen(split);
-            maxTiles = divUp(maxTiles, otherDimSum);
+            if (isSpatialDim(dim)) {
+                auto otherDimSum = getVFTilesLen(split);
+                maxTiles = divUp(maxTiles, otherDimSum);
+            } else {
+                // This will happen when try to re-adjust the channel tile size to avoid over-tiling on channel dim
+                maxTiles = getTilingLimit(dim, vfConfig, true);
+            }
         }
         return maxTiles;
     };
@@ -579,9 +620,8 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
     if (allowedDims.empty()) {
         return std::nullopt;
     }
-
     DimArr dimsToCheck;
-    if (tileOnSameDims(curVFSplit, preVFSplit, linkNumber, currentConfig, opDimMap)) {
+    if (tileOnSameDims(curVFSplit, preVFSplit, linkNumber, currentConfig, prevConfig, opDimMap)) {
         // If the current and previous VF splits are on the same dimensions, we can try to check the common dimensions
         // first
         for (auto& item : curVFSplit) {
@@ -593,40 +633,70 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
     }
 
     auto getVFCaseFromSplits = [&](ArrayRef<VFSplit> splits) -> std::optional<VFCase> {
-        StrategyCost bestCost = std::numeric_limits<StrategyCost>::max();
-        std::optional<VFCase> mergedCase = std::nullopt;
-        for (auto split : splits) {
-            auto dim = split.rbegin()->first;
-            if (mlir::failed(backInferVFTilingDim(currentConfig, dim, opDimMap))) {
-                continue;
+        if (splits.empty()) {
+            return std::nullopt;
+        }
+        std::vector<std::optional<VFCase>> vfCases(splits.size(), std::nullopt);
+        std::vector<StrategyCost> vfCosts(splits.size(), std::numeric_limits<StrategyCost>::max());
+        loop_1d(LoopExecPolicy::Parallel, mergedOp.getContext(), splits.size(), [&](auto splitIndex) {
+            auto dimOpt = getVFOptimizedDim(splits[splitIndex]);
+            if (!dimOpt.has_value()) {
+                return;
+            }
+            auto dim = dimOpt.value();
+            std::unordered_map<mlir::Operation*, vpux::Dim> curOpDimMap;
+
+            if (mlir::failed(backInferVFTilingDim(currentConfig, dim, curOpDimMap))) {
+                return;
             }
 
             // Skip current merge if a better (pipelined) merge with the next VF block is possible.
-            if (checkIfNextMergeBetter && isNextMergeCanBePipelined(opDimMap)) {
-                continue;
+            if (checkIfNextMergeBetter && isNextMergeCanBePipelined(curOpDimMap)) {
+                return;
             }
 
-            if (isRegionRestrictedDim(opDimMap)) {
-                continue;
+            if (isRegionRestrictedDim(curOpDimMap)) {
+                return;
             }
 
-            auto currentVFCase = VPU::VF::v2::getVFCaseWithTiling(vfConfig, dim, split, getMinimalNumber,
-                                                                  getMaximalNumber, _log, vfSchedulingChecks);
-
-            // calculate optimal number of tiles for that dim
-            if (!currentVFCase.isInitialized()) {
-                continue;
+            auto vfCase = VPU::VF::v2::getVFCaseWithTiling(vfConfig, dim, splits[splitIndex], getMinimumNumber,
+                                                           getMaximalNumber, _log, vfSchedulingChecks);
+            if (!vfCase.isInitialized()) {
+                return;
             }
 
-            // get vpunncost
-            StrategyCost cost = currentVFCase.getCost(_vpunnCostFunction, _log.nest());
-            // compare cost, choose best strategy
-            if (cost < bestCost) {
-                bestCost = cost;
-                mergedCase = std::move(currentVFCase);
+            // If the split contains channel and one spatial dim, try to adjust the channel tile size to fit the CMX to
+            // avoid over-tiling on channel dim. This is because we firstly tiling maximally on channel dim, then tile
+            // on spatial dim to make the tiled op fit into CMX. When spatial dim tiling is fixed, there is chance to
+            // reduce the tiling size on channel
+            if (splits[splitIndex].size() == 2) {
+                auto iter = llvm::find_if(splits[splitIndex], [&](const std::pair<Dim, std::optional<int64_t>>& item) {
+                    return item.first != dim;
+                });
+                VPUX_THROW_WHEN(iter == splits[splitIndex].end(), "Cannot find the other dim in split");
+                auto otherDim = iter->first;
+                if (!isSpatialDim(otherDim)) {
+                    // Try to re-adjust the channel tile size
+                    auto newSplit = splits[splitIndex];
+                    newSplit[dim] = parseIntArrayAttr<int64_t>(vfCase.getTiling())[dim.ind()];
+                    newSplit[otherDim] = std::nullopt;
+                    vfCase = VPU::VF::v2::getVFCaseWithTiling(vfConfig, otherDim, newSplit, getMinimumNumber,
+                                                              getMaximalNumber, _log, vfSchedulingChecks);
+                    if (!vfCase.isInitialized()) {
+                        return;
+                    }
+                }
             }
+
+            vfCosts[splitIndex] = vfCase.getCost(_vpunnCostFunction, _log.nest());
+            vfCases[splitIndex] = std::move(vfCase);
+        });
+
+        auto bestCostIter = std::min_element(vfCosts.begin(), vfCosts.end());
+        if (*bestCostIter == std::numeric_limits<StrategyCost>::max()) {
+            return std::nullopt;
         }
-        return mergedCase;
+        return vfCases[std::distance(vfCosts.begin(), bestCostIter)];
     };
 
     auto splits = getSplitFromDimArr(dimsToCheck, allowedDims, vfConfig);
@@ -651,6 +721,10 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
 mlir::LogicalResult MergeVFRegionRewriter::matchAndRewrite(VPU::VerticalFusionOp vfOp,
                                                            mlir::PatternRewriter& rewriter) const {
     _log.trace("Starting vertical fusion for region with VerticalFusionOp {0} at location {1}", vfOp, vfOp->getLoc());
+    if (vfOp.getIsManualConfigured()) {
+        _log.trace("Skipping vertical fusion for manually configured VerticalFusionOp at location {0}", vfOp->getLoc());
+        return mlir::failure();
+    }
 
     VPU::VerticalFusionOp vfBlock = nullptr;
     VPU::VerticalFusionOp parentVFOp = nullptr;
@@ -658,7 +732,7 @@ mlir::LogicalResult MergeVFRegionRewriter::matchAndRewrite(VPU::VerticalFusionOp
         parentVFOp = operand.getDefiningOp<VPU::VerticalFusionOp>();
         vfBlock = nullptr;
 
-        if (parentVFOp == nullptr) {
+        if (parentVFOp == nullptr || parentVFOp.getIsManualConfigured()) {
             continue;
         }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,36 +21,10 @@ namespace vpux::VPUIP {
 
 using namespace vpux;
 
-constexpr StringLiteral vpuTaskTypeAttrName{"VPU.task_type"};
 constexpr StringLiteral cacheFlushFuncName{"cache_flush"};
 constexpr StringLiteral cacheFlushInvalidateFuncName{"cache_flush_invalidate"};
 
 namespace {
-
-mlir::SymbolRefAttr createCacheHandlingFunction(mlir::MLIRContext* ctx, OpBuilderLogger& builderLog, Logger log,
-                                                VPUIP::SwKernelOp origOp, mlir::StringRef functionName,
-                                                VPU::ActShaveTaskType type) {
-    auto origOpModule = origOp->getParentOfType<mlir::ModuleOp>();
-    auto vpuswModule = vpux::VPUIP::getVPUSWModule(origOpModule, log);
-    auto functionNameSymbol = mlir::SymbolRefAttr::get(ctx, functionName);
-    auto functionSymbol = mlir::SymbolRefAttr::get(ctx, vpuswModule.getName().value(), {functionNameSymbol});
-
-    // check if this functionSymbol was already created
-    auto prebuiltFunction = vpuswModule.lookupSymbol<mlir::func::FuncOp>(functionName);
-    if (prebuiltFunction == nullptr) {
-        const auto funcType = mlir::FunctionType::get(ctx, {}, {});
-        auto innerModuleBuilder = mlir::OpBuilder::atBlockBegin(vpuswModule.getBody(), &builderLog);
-        auto newFuncOp =
-                innerModuleBuilder.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(ctx), functionName, funcType);
-
-        // modify attributes
-        newFuncOp.setSymVisibilityAttr(mlir::StringAttr::get(ctx, "private"));
-        newFuncOp->setAttr(vpuTaskTypeAttrName, mlir::SymbolRefAttr::get(ctx, VPU::stringifyActShaveTaskType(type)));
-    }
-
-    return functionSymbol;
-}
-
 mlir::async::ExecuteOp createCacheHandlingSwKernel(mlir::OpBuilder builder, OpBuilderLogger& builderLog, Logger log,
                                                    mlir::Location loc, VPUIP::SwKernelOp origOp,
                                                    mlir::StringRef functionName, VPU::ActShaveTaskType type,
@@ -73,7 +47,7 @@ mlir::async::ExecuteOp createCacheHandlingSwKernel(mlir::OpBuilder builder, OpBu
 
     auto execOp = builder.create<mlir::async::ExecuteOp>(loc, std::nullopt, dependencies, std::nullopt, bodyBuilder);
     VPUIP::VPUIPDialect::setExecutor(execOp,
-                                     vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::ExecutorKind::SHAVE_ACT)));
+                                     vpux::IndexedSymbolAttr::get(ctx, stringifyEnum(config::ExecutorKind::SHAVE_ACT)));
     return execOp;
 }
 
@@ -94,7 +68,7 @@ bool isCacheInvalidateNeeded(mlir::OperandRange dependencies) {
     for (auto dependency : dependencies) {
         if (auto depExecOp = dependency.getDefiningOp<mlir::async::ExecuteOp>()) {
             auto depExecutor = vpux::VPUIP::VPUIPDialect::getExecutorKind(depExecOp);
-            if (depExecutor == VPU::ExecutorKind::SHAVE_ACT) {
+            if (depExecutor == config::ExecutorKind::SHAVE_ACT) {
                 continue;
             }
 
@@ -115,7 +89,7 @@ bool isCacheFlushNeeded(ArrayRef<mlir::Operation*> users) {
     for (auto user : users) {
         if (auto userExecOp = mlir::dyn_cast<mlir::async::ExecuteOp>(user)) {
             auto userExecutor = vpux::VPUIP::VPUIPDialect::getExecutorKind(userExecOp);
-            if (userExecutor != VPU::ExecutorKind::SHAVE_ACT) {
+            if (userExecutor != config::ExecutorKind::SHAVE_ACT) {
                 return true;
             }
         }
@@ -171,7 +145,7 @@ void AddSwKernelCacheHandlingOpsPass::safeRunOnFunc() {
         auto origExecOpResultsUsers = origExecOp.getResults().getUsers();
         auto origExecOpResultsUsersVector = to_small_vector(origExecOpResultsUsers);
 
-        const auto newLoc = appendLoc(loc, "_cache_handling_op");
+        const auto newLoc = appendLoc(loc, "cache_handling_op");
 
         bool hasConstInputBuffs = hasAnyConstBuffer(inputBuffs);
         bool hasConstOutputBuffs = hasAnyConstBuffer(outputBuffs);

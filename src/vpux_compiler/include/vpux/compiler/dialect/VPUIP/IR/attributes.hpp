@@ -12,9 +12,9 @@
 
 #include <mlir/IR/BuiltinAttributes.h>
 
-namespace vpux::VPU {
+namespace vpux::config {
 class ExecutorKindAttr;
-}  // namespace vpux::VPU
+}  // namespace vpux::config
 
 //
 // Generated

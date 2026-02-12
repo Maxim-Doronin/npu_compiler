@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --weights-dequantize-to-fake-quantize %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="rewriter=weights-dequantize-to-fq" %s | FileCheck %s
 // REQUIRES: arch-NPU50XX
 
 // CHECK-LABEL: @WeightsMultToFakeQuantizeF8E4M3

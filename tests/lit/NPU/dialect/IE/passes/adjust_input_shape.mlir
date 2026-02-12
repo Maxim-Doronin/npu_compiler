@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -915,6 +915,43 @@ func.func @PropagateShapeCastBeforeEltwise(
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @PropagateShapeCastBeforeEltwiseTwoConsumers
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x16x256x192xf16, {order = #NHWC}>,
+// CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x16x256x192xf16, {order = #NHWC}>
+func.func @PropagateShapeCastBeforeEltwiseTwoConsumers(
+        %input_0: tensor<1x16x256x192xf16, {order = #NHWC}>,
+        %input_1: tensor<1x16x256x192xf16, {order = #NHWC}>)
+            -> (tensor<1x48x512x32xf16, {order = #NHWC}>, tensor<1x48x512x32xf16, {order = #NHWC}>) {
+    %weights_1 = const.Declare tensor<48x48x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<48x48x3x3xf16>, [#const.Reorder<#NHWC>]
+    %weights_2 = const.Declare tensor<48x48x3x3xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<48x48x3x3xf16>, [#const.Reorder<#NHWC>]
+    %eltwise = IE.Add(%input_0, %input_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+        tensor<1x16x256x192xf16, {order = #NHWC}>,
+        tensor<1x16x256x192xf16, {order = #NHWC}> -> tensor<1x16x256x192xf16, {order = #NHWC}>
+    %shapecast = IE.ShapeCast {shape = [1, 48, 512, 32]}
+        inputs(%eltwise : tensor<1x16x256x192xf16, {order = #NHWC}>) -> tensor<1x48x512x32xf16, {order = #NHWC}>
+    %conv_1 = IE.Convolution(%shapecast, %weights_1) {
+        dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} :
+        tensor<1x48x512x32xf16, {order = #NHWC}>, tensor<48x48x3x3xf16, {order = #NHWC}>
+            -> tensor<1x48x512x32xf16, {order = #NHWC}>
+    %conv_2 = IE.Convolution(%shapecast, %weights_2) {
+        dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} :
+        tensor<1x48x512x32xf16, {order = #NHWC}>, tensor<48x48x3x3xf16, {order = #NHWC}>
+            -> tensor<1x48x512x32xf16, {order = #NHWC}>
+
+    return %conv_1, %conv_2 : tensor<1x48x512x32xf16, {order = #NHWC}>, tensor<1x48x512x32xf16, {order = #NHWC}>
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<48x48x3x3xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPE_CAST_1:%.+]] = IE.ShapeCast {shape = [1, 48, 512, 32]}
+    // CHECK-SAME:      inputs([[INPUT1]] : tensor<1x16x256x192xf16, {order = #NHWC}>) -> tensor<1x48x512x32xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPE_CAST_2:%.+]] = IE.ShapeCast {shape = [1, 48, 512, 32]}
+    // CHECK-SAME:      inputs([[INPUT2]] : tensor<1x16x256x192xf16, {order = #NHWC}>) -> tensor<1x48x512x32xf16, {order = #NHWC}>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[SHAPE_CAST_1]], [[SHAPE_CAST_2]])
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[ADD]], [[WEIGHTS]])
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @PropagateShapeCastAfterEltwise
 // CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x48x512x32xf16, {order = #NHWC}>
 func.func @PropagateShapeCastAfterEltwise(%input: tensor<1x48x512x32xf16, {order = #NHWC}>)
@@ -983,13 +1020,13 @@ func.func @ExpandPoolingOpWithSingleChannel(%input_0: tensor<1x1x48x4040xf16, {o
     %slice = IE.Slice %pool [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x16x6x4040xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
     return %slice : tensor<1x1x6x4040xf16, {order = #NHWC}>
 
-    // CHECK:       [[SHAPECAST0:%.*]] = IE.ShapeCast {shape = [1, 4040, 48, 1]} inputs([[INPUT0]] : tensor<1x1x48x4040xf16, {order = #NHWC}>) -> tensor<1x4040x48x1xf16, {order = #NHWC}>
-    // CHECK:       [[EXPAND0:%.*]] = IE.Expand([[SHAPECAST0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]} : tensor<1x4040x48x1xf16, {order = #NHWC}> -> tensor<1x4048x48x1xf16, {order = #NHWC}>
-    // CHECK:       [[POOL:%.*]] = IE.AvgPool([[EXPAND0]]) {exclude_pads, kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x4048x48x1xf16, {order = #NHWC}> -> tensor<1x4048x6x1xf16, {order = #NHWC}>
-    // CHECK:       [[SHAPECAST1:%.*]] = IE.ShapeCast {shape = [1, 1, 6, 4048]} inputs([[POOL]] : tensor<1x4048x6x1xf16, {order = #NHWC}>) -> tensor<1x1x6x4048xf16, {order = #NHWC}>
-    // CHECK:       [[SLICE0:%.*]] = IE.Slice [[SHAPECAST1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x1x6x4048xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
-    // CHECK:       [[EXPAND1:%.*]] = IE.Expand([[SLICE0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x6x4040xf16, {order = #NHWC}> -> tensor<1x16x6x4040xf16, {order = #NHWC}>
-    // CHECK:       [[SLICE1:%.*]] = IE.Slice [[EXPAND1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x16x6x4040xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST0:%.+]] = IE.ShapeCast {shape = [1, 4040, 48, 1]} inputs([[INPUT0]] : tensor<1x1x48x4040xf16, {order = #NHWC}>) -> tensor<1x4040x48x1xf16, {order = #NHWC}>
+    // CHECK:       [[EXPAND0:%.+]] = IE.Expand([[SHAPECAST0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]} : tensor<1x4040x48x1xf16, {order = #NHWC}> -> tensor<1x4048x48x1xf16, {order = #NHWC}>
+    // CHECK:       [[POOL:%.+]] = IE.AvgPool([[EXPAND0]]) {exclude_pads, kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x4048x48x1xf16, {order = #NHWC}> -> tensor<1x4048x6x1xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST1:%.+]] = IE.ShapeCast {shape = [1, 1, 6, 4048]} inputs([[POOL]] : tensor<1x4048x6x1xf16, {order = #NHWC}>) -> tensor<1x1x6x4048xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[SHAPECAST1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x1x6x4048xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[EXPAND1:%.+]] = IE.Expand([[SLICE0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x6x4040xf16, {order = #NHWC}> -> tensor<1x16x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[EXPAND1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x16x6x4040xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
 
     // CHECK:       return [[SLICE1]] : tensor<1x1x6x4040xf16, {order = #NHWC}>
 }
@@ -1007,16 +1044,16 @@ func.func @ExpandTwoPoolingOpsWithSingleChannel(%input_0: tensor<1x1x48x4040xf16
     %slice = IE.Slice %pool1 [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x16x6x4040xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
     return %slice : tensor<1x1x6x4040xf16, {order = #NHWC}>
 
-    // CHECK:       [[SHAPECAST0:%.*]] = IE.ShapeCast {shape = [1, 4040, 48, 1]} inputs([[INPUT0]] : tensor<1x1x48x4040xf16, {order = #NHWC}>) -> tensor<1x4040x48x1xf16, {order = #NHWC}>
-    // CHECK:       [[EXPAND0:%.*]] = IE.Expand([[SHAPECAST0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]} : tensor<1x4040x48x1xf16, {order = #NHWC}> -> tensor<1x4048x48x1xf16, {order = #NHWC}>
-    // CHECK:       [[POOL0:%.*]] = IE.AvgPool([[EXPAND0]]) {exclude_pads, kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x4048x48x1xf16, {order = #NHWC}> -> tensor<1x4048x6x1xf16, {order = #NHWC}>
-    // CHECK:       [[SHAPECAST1:%.*]] = IE.ShapeCast {shape = [1, 1, 6, 4048]} inputs([[POOL0]] : tensor<1x4048x6x1xf16, {order = #NHWC}>) -> tensor<1x1x6x4048xf16, {order = #NHWC}>
-    // CHECK:       [[SLICE0:%.*]] = IE.Slice [[SHAPECAST1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x1x6x4048xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
-    // CHECK:       [[SHAPECAST2:%.*]] = IE.ShapeCast {shape = [1, 16, 101, 15]} inputs(%4 : tensor<1x1x6x4040xf16, {order = #NHWC}>) -> tensor<1x16x101x15xf16, {order = #NHWC}>
-    // CHECK:       [[POOL1:%.*]] = IE.AvgPool([[SHAPECAST2]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x101x15xf16, {order = #NHWC}> -> tensor<1x16x101x15xf16, {order = #NHWC}>
-    // CHECK:       [[SHAPECAST3:%.*]] = IE.ShapeCast {shape = [1, 1, 6, 4040]} inputs([[POOL1]] : tensor<1x16x101x15xf16, {order = #NHWC}>) -> tensor<1x1x6x4040xf16, {order = #NHWC}>
-    // CHECK:       [[EXPAND1:%.*]] = IE.Expand([[SHAPECAST3]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x6x4040xf16, {order = #NHWC}> -> tensor<1x16x6x4040xf16, {order = #NHWC}>
-    // CHECK:       [[SLICE1:%.*]] = IE.Slice [[EXPAND1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x16x6x4040xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST0:%.+]] = IE.ShapeCast {shape = [1, 4040, 48, 1]} inputs([[INPUT0]] : tensor<1x1x48x4040xf16, {order = #NHWC}>) -> tensor<1x4040x48x1xf16, {order = #NHWC}>
+    // CHECK:       [[EXPAND0:%.+]] = IE.Expand([[SHAPECAST0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]} : tensor<1x4040x48x1xf16, {order = #NHWC}> -> tensor<1x4048x48x1xf16, {order = #NHWC}>
+    // CHECK:       [[POOL0:%.+]] = IE.AvgPool([[EXPAND0]]) {exclude_pads, kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x4048x48x1xf16, {order = #NHWC}> -> tensor<1x4048x6x1xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST1:%.+]] = IE.ShapeCast {shape = [1, 1, 6, 4048]} inputs([[POOL0]] : tensor<1x4048x6x1xf16, {order = #NHWC}>) -> tensor<1x1x6x4048xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[SHAPECAST1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x1x6x4048xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST2:%.+]] = IE.ShapeCast {shape = [1, 16, 101, 15]} inputs(%4 : tensor<1x1x6x4040xf16, {order = #NHWC}>) -> tensor<1x16x101x15xf16, {order = #NHWC}>
+    // CHECK:       [[POOL1:%.+]] = IE.AvgPool([[SHAPECAST2]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x101x15xf16, {order = #NHWC}> -> tensor<1x16x101x15xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST3:%.+]] = IE.ShapeCast {shape = [1, 1, 6, 4040]} inputs([[POOL1]] : tensor<1x16x101x15xf16, {order = #NHWC}>) -> tensor<1x1x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[EXPAND1:%.+]] = IE.Expand([[SHAPECAST3]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x6x4040xf16, {order = #NHWC}> -> tensor<1x16x6x4040xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[EXPAND1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x16x6x4040xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
     // CHECK:       return [[SLICE1]] : tensor<1x1x6x4040xf16, {order = #NHWC}>
 }
 
@@ -1032,9 +1069,9 @@ func.func @DoNotChangeExpandPoolingOpWithSingleChannel(%input_0: tensor<1x1x48x6
     %slice = IE.Slice %pool [0, 0, 0, 0] [1, 1, 6, 32] : tensor<1x16x6x32xf16, {order = #NHWC}> to tensor<1x1x6x32xf16, {order = #NHWC}>
     return %slice : tensor<1x1x6x32xf16, {order = #NHWC}>
 
-    // CHECK:       [[EXPAND:%.*]] = IE.Expand([[INPUT0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x48x64xf16, {order = #NHWC}> -> tensor<1x16x48x64xf16, {order = #NHWC}>
-    // CHECK:       [[POOL:%.*]] = IE.AvgPool([[EXPAND]]) {exclude_pads, kernel_size = [8, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 2]} : tensor<1x16x48x64xf16, {order = #NHWC}> -> tensor<1x16x6x32xf16, {order = #NHWC}>
-    // CHECK:       [[SLICE:%.*]] = IE.Slice [[POOL]] [0, 0, 0, 0] [1, 1, 6, 32] : tensor<1x16x6x32xf16, {order = #NHWC}> to tensor<1x1x6x32xf16, {order = #NHWC}>
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[INPUT0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x48x64xf16, {order = #NHWC}> -> tensor<1x16x48x64xf16, {order = #NHWC}>
+    // CHECK:       [[POOL:%.+]] = IE.AvgPool([[EXPAND]]) {exclude_pads, kernel_size = [8, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 2]} : tensor<1x16x48x64xf16, {order = #NHWC}> -> tensor<1x16x6x32xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE:%.+]] = IE.Slice [[POOL]] [0, 0, 0, 0] [1, 1, 6, 32] : tensor<1x16x6x32xf16, {order = #NHWC}> to tensor<1x1x6x32xf16, {order = #NHWC}>
     // CHECK:       return [[SLICE]] : tensor<1x1x6x32xf16, {order = #NHWC}>
 }
 

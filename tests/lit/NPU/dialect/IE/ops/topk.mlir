@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @ConvertConstToAttrForTopK(%arg0: tensor<1x151x513x513xf32>) -> tensor
 
     return %target_shape : tensor<1x1x513x513xsi32>
 
-    // CHECK: [[VAL0:%.*]], [[VAL1:%.*]] = IE.TopK(%arg0)
+    // CHECK: [[VAL0:%.+]], [[VAL1:%.+]] = IE.TopK(%arg0)
     // CHECK-SAME{LITERAL}: {axis = 1 : i64, element_type = si32, k_value = 1 : i64, mode = #IE.topk_mode<MAX>, sort = #IE.topk_sort_type<SORT_INDICES>} :
     // CHECK-SAME{LITERAL}: tensor<1x151x513x513xf32> -> tensor<1x1x513x513xf32>, tensor<1x1x513x513xsi32>
     // CHECK: return [[VAL1]] : tensor<1x1x513x513xsi32>

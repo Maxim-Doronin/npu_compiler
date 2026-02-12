@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -144,9 +144,9 @@ func.func @AddWithReLUTest() -> tensor<1x16x4x4xf16> {
 
     return %relu : tensor<1x16x4x4xf16>
 
-    // CHECK-DAG:       %[[RIGHT:.*]] = const.Declare tensor<1x16x4x4xf16> = dense<-7.000000e+00> : tensor<1x16x4x4xf16>
-    // CHECK-DAG:       %[[LEFT:.*]] = const.Declare tensor<1x16x4x4xf16> = dense<6.000000e+00> : tensor<1x16x4x4xf16>
-    // CHECK:       %[[SUM:.*]] = IE.Add(%[[LEFT]], %[[RIGHT]])
+    // CHECK-DAG:       [[RIGHT:%.+]] = const.Declare tensor<1x16x4x4xf16> = dense<-7.000000e+00> : tensor<1x16x4x4xf16>
+    // CHECK-DAG:       [[LEFT:%.+]] = const.Declare tensor<1x16x4x4xf16> = dense<6.000000e+00> : tensor<1x16x4x4xf16>
+    // CHECK:       [[SUM:%.+]] = IE.Add([[LEFT]], [[RIGHT]])
     // CHECK-SAME:     auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:     post_op = #IE.Relu<>
     // CHECK-NOT:   IE.ReLU
@@ -165,9 +165,9 @@ func.func @AddWithLeakyReluTest() -> tensor<1x16x4x4xf16> {
 
     return %leakyRelu : tensor<1x16x4x4xf16>
 
-    // CHECK-DAG:       %[[RIGHT:.*]] = const.Declare tensor<1x16x4x4xf16> = dense<-7.000000e+00> : tensor<1x16x4x4xf16>
-    // CHECK-DAG:       %[[LEFT:.*]] = const.Declare tensor<1x16x4x4xf16> = dense<6.000000e+00> : tensor<1x16x4x4xf16>
-    // CHECK:       %[[SUM:.*]] = IE.Add(%[[LEFT]], %[[RIGHT]])
+    // CHECK-DAG:       [[RIGHT:%.+]] = const.Declare tensor<1x16x4x4xf16> = dense<-7.000000e+00> : tensor<1x16x4x4xf16>
+    // CHECK-DAG:       [[LEFT:%.+]] = const.Declare tensor<1x16x4x4xf16> = dense<6.000000e+00> : tensor<1x16x4x4xf16>
+    // CHECK:       [[SUM:%.+]] = IE.Add([[LEFT]], [[RIGHT]])
     // CHECK:   IE.LeakyRelu
 }
 

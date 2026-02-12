@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
@@ -13,12 +14,6 @@
 namespace vpux::VPU {
 class SWOpInterface;
 }  // namespace vpux::VPU
-namespace vpux::VPUIP {
-class DPUTaskOp;
-class NCEClusterTaskOp;
-class SwKernelOp;
-class SwKernelRun;
-}  // namespace vpux::VPUIP
 namespace VPUNN {
 class VPUCostModel;
 struct SWOperation;
@@ -32,6 +27,7 @@ enum class Swizzling;
 enum class ActivationFunction;
 class SEPModeInfo;
 enum class ISIStrategy;
+enum class VPUDevice;
 }  // namespace VPUNN
 
 namespace vpux {
@@ -41,7 +37,7 @@ constexpr StringLiteral cycleCostAttrName = "cycleCost";
 constexpr StringLiteral cycleBegin = "cycleBegin";
 constexpr StringLiteral cycleEnd = "cycleEnd";
 
-size_t getDMACost(mlir::Value input, mlir::Value output, config::ArchKind archKind,
+size_t getDMACost(mlir::Value input, mlir::Value output, config::ArchKind archKind, VPUNN::VPUDevice vpuDevice,
                   const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts = 1);
 size_t getDMACost(vpux::NDTypeInterface inTensorType, vpux::NDTypeInterface outTensorType, VPUNN::VPUDevice vpuDevice,
                   const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts);
@@ -50,11 +46,10 @@ size_t getDMACost(vpux::NDTypeInterface tensorType, VPUNN::VPUDevice vpuDevice,
 size_t getDPUCost(mlir::Operation* op);
 size_t getAsyncExecuteCycleBegin(mlir::async::ExecuteOp op);
 size_t getAsyncExecuteCycleEnd(mlir::async::ExecuteOp op);
-VPUNN::DPUWorkload getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, config::ArchKind arch);
-size_t calculateCopyCycles(mlir::Operation* innerOp, config::ArchKind archKind,
+VPUNN::DPUWorkload getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, [[maybe_unused]] config::ArchKind arch);
+size_t calculateCopyCycles(mlir::Operation* innerOp, VPUNN::VPUDevice vpuDevice,
                            const std::shared_ptr<VPUNN::VPUCostModel>& costModel);
-size_t calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
-                               config::ArchKind arch);
+size_t calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel);
 std::vector<std::pair<int64_t, size_t>> calculateNceVariantCycles(VPUIP::NCEClusterTaskOp nceOp,
                                                                   const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
                                                                   config::ArchKind arch, vpux::Logger log);

@@ -6,6 +6,7 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -13,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
@@ -144,6 +146,93 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
 }
 
 //
+// FuseTileConvertRewrite
+//
+// Pattern: Convert -> Tile -> Convert
+//
+// Benefits:
+// 1. Reduces data size for Tile DMA
+// 2. Convert operates on smaller tensor before Tile expansion
+//
+
+class FuseTileConvertRewrite final : public mlir::OpRewritePattern<IE::ConvertOp> {
+public:
+    FuseTileConvertRewrite(mlir::MLIRContext* ctx, const Logger& log)
+            : mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
+        setDebugName("FuseTileConvertRewrite");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ConvertOp convertOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    const Logger& _log;
+};
+
+mlir::LogicalResult FuseTileConvertRewrite::matchAndRewrite(IE::ConvertOp convertOp,
+                                                            mlir::PatternRewriter& rewriter) const {
+    _log.trace("FuseTileConvertRewrite: Got '{0}' at '{1}'", convertOp->getName(), convertOp->getLoc());
+    auto nestedLogger = _log.nest();
+
+    // Check if input is from TileOp
+    auto tileOp = convertOp.getInput().getDefiningOp<IE::TileOp>();
+    if (tileOp == nullptr) {
+        nestedLogger.trace("ConvertOp does not have TileOp input");
+        return mlir::failure();
+    }
+
+    if (!tileOp.getResult().hasOneUse()) {
+        nestedLogger.trace("TileOp has multiple users");
+        return mlir::failure();
+    }
+
+    // Check if TileOp's input is from another ConvertOp
+    auto prevConvertOp = tileOp.getInput().getDefiningOp<IE::ConvertOp>();
+    if (prevConvertOp == nullptr) {
+        nestedLogger.trace("TileOp does not have ConvertOp input");
+        return mlir::failure();
+    }
+
+    if (!prevConvertOp.getResult().hasOneUse()) {
+        nestedLogger.trace("Previous ConvertOp has multiple users");
+        return mlir::failure();
+    }
+
+    // Get the final destination element type from the second ConvertOp
+    const auto finalDstElemType = convertOp.getDstElemType();
+
+    // Check if the optimization reduces data size for Tile operation
+    // Original: Convert(A->B) -> Tile(B) -> Convert(B->C)
+    // Optimized: Convert(A->C) -> Tile(C)
+    // Only beneficial when sizeof(C) <= sizeof(B), i.e., Tile operates on smaller or equal data
+    const auto tileInputType = mlir::cast<vpux::NDTypeInterface>(tileOp.getInput().getType());
+    const auto intermediateElemBitWidth = tileInputType.getElemTypeSize().count();
+    const auto finalElemBitWidth = vpux::getElemTypeSize(finalDstElemType).count();
+
+    if (finalElemBitWidth > intermediateElemBitWidth) {
+        nestedLogger.trace("Optimization would increase Tile data size: intermediate {0} bits -> final {1} bits",
+                           intermediateElemBitWidth, finalElemBitWidth);
+        return mlir::failure();
+    }
+
+    // Get the original input to the first ConvertOp
+    auto originalInput = prevConvertOp.getInput();
+
+    auto newConvertOp = rewriter.create<IE::ConvertOp>(prevConvertOp.getLoc(), originalInput,
+                                                       mlir::TypeAttr::get(finalDstElemType));
+
+    auto tileOutType = mlir::cast<vpux::NDTypeInterface>(tileOp.getOutput().getType());
+    auto newTileOutType = mlir::cast<mlir::RankedTensorType>(tileOutType.changeElemType(finalDstElemType));
+    auto newTileOp = rewriter.create<IE::TileOp>(tileOp.getLoc(), newTileOutType, newConvertOp.getOutput(), nullptr,
+                                                 tileOp.getRepeatsValuesAttr());
+
+    rewriter.replaceOp(convertOp, newTileOp.getOutput());
+
+    nestedLogger.trace("Successfully fused Convert -> Tile -> Convert pattern");
+    return mlir::success();
+}
+
+//
 // OptimizeTileOpPass
 //
 
@@ -166,11 +255,10 @@ void OptimizeTileOpPass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FoldTileOpRewriter>(&ctx, _log);
+    patterns.add<FuseTileConvertRewrite>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

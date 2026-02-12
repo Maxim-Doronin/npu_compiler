@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 
 using namespace vpux;
@@ -76,8 +77,8 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::LayoutC
     const auto memPerm = getPermutationFromOrders(srcOrder, dstOrder, ctx);
 
     auto castedOutputDistribution =
-            applyPermutationOnDistributionInfo(inType, distribution, memPerm, srcType.getDimsOrder(),
-                                               dstType.getDimsOrder(), srcType.getShape(), dstType.getShape());
+            VPU::applyPermutationOnDistributionInfo(inType, distribution, memPerm, srcType.getDimsOrder(),
+                                                    dstType.getDimsOrder(), srcType.getShape(), dstType.getShape());
     if (mlir::failed(castedOutputDistribution)) {
         return mlir::failure();
     }

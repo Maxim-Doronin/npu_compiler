@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/core/attributes/stride_reqs.hpp"
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/const/attributes/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 
@@ -57,7 +60,7 @@ mlir::LogicalResult vpux::VPUIP::PermuteCastOp::verify() {
     if (distributedInType && distributedOutType) {
         auto outputDistribution = distributedOutType.getDistribution();
 
-        auto expectedOutputDistribution = applyPermutationOnDistributionInfoAttr(
+        auto expectedOutputDistribution = VPU::applyPermutationOnDistributionInfoAttr(
                 distributedInType, getMemPerm(), distributedInType.getDimsOrder(), distributedOutType.getDimsOrder(),
                 distributedInType.getShape(), distributedOutType.getShape());
         if (mlir::failed(expectedOutputDistribution)) {
@@ -90,6 +93,16 @@ mlir::LogicalResult vpux::VPUIP::PermuteCastOp::verify() {
     if (inRank != getMemPerm().getNumDims()) {
         return errorAt(op, "PermuteCast input rank {0} does not match 'dst_order' {1}", inRank,
                        getMemPerm().getNumDims());
+    }
+
+    const auto inReqs = StrideReqs::compact(inType.getRank());
+    const auto outReqs = StrideReqs::compact(outType.getRank());
+
+    // TODO: To call isInAndOutStridesCompatible like GenericReshape.
+    // Due to current LayoutCast conversion to PermuteCast, may make errors when check in details
+    if (inReqs.checkStrides(inType) && !outReqs.checkStrides(outType)) {
+        // strides input may infer non-strides output while non-strides input cannot infer strides output
+        return errorAt(op, "Non-strides input {0} and strides output {1} are inconsistent", inType, outType);
     }
 
     return mlir::success();

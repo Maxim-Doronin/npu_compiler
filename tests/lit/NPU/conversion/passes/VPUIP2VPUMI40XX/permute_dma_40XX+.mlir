@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,28 +27,28 @@ module @permuteDMA {
     %3 = VPURT.DeclareBuffer <CMX_NN> [0] <4352> -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
 
     VPURT.Task {
-      %4 = VPUIP.PermuteDMA {
+      %4 = VPUIP.PermuteDMA <{
               internalDataFlow = #VPUIP.InternalDataFlowAttr<
                   inputType = memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>,
                   outputType = memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>,
                   mappingOrder = #NCHW, loopOrder = #NHWC
               >,
               port = 0 : i64
-          } 
+          }>
           inputs(%0 : memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>)
           outputs(%2 : memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>)
           -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
     }
 
     VPURT.Task {
-      %4 = VPUIP.PermuteDMA {
+      %4 = VPUIP.PermuteDMA <{
               internalDataFlow = #VPUIP.InternalDataFlowAttr<
                   inputType = memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>,
                   outputType = memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>,
                   mappingOrder = #NCHW, loopOrder = #NHWC
               >,
               port = 1 : i64
-          }
+          }>
           inputs(%1 : memref<1x8x8x16xf16, {order = #NHWC, strides = [2048, 1, 128, 8]}, [@CMX_NN, 0]>)
           outputs(%3 : memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>)
           -> memref<1x8x8x16xf16, {order = #NCHW, strides = [2048, 256, 16, 1]}, [@CMX_NN, 0]>
@@ -121,7 +121,7 @@ module @permuteDMA {
     %3 = VPURT.DeclareBuffer <CMX_NN> [0] <4128> -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
 
     VPURT.Task {
-      %4 = VPUIP.PermuteDMA {
+      %4 = VPUIP.PermuteDMA <{
               internalDataFlow = #VPUIP.InternalDataFlowAttr<
                   inputType = memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>,
                   outputType = memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>,
@@ -129,14 +129,14 @@ module @permuteDMA {
                   loopOrder = #NHWC
               >,
               port = 0 : i64
-          }
+          }>
           inputs(%0 : memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>)
           outputs(%2 : memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>)
           -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
     }
 
     VPURT.Task {
-      %4 = VPUIP.PermuteDMA {
+      %4 = VPUIP.PermuteDMA <{
               internalDataFlow = #VPUIP.InternalDataFlowAttr<
                   inputType = memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>,
                   outputType = memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>,
@@ -144,7 +144,7 @@ module @permuteDMA {
                   loopOrder = #NHWC
               >,
               port = 1 : i64
-          }
+          }>
           inputs(%1 : memref<1x8x1x16xf16, {order = #NHWC, strides = [256, 1, 256, 8]}, [@CMX_NN, 0]>)
           outputs(%3 : memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>)
           -> memref<1x16x1x8xf16, {order = #NHWC, strides = [256, 1, 256, 32]}, [@CMX_NN, 0]>
@@ -216,20 +216,20 @@ func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memre
     %3 = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2032> -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     VPURT.Task {
-      %4 = VPUIP.PermuteDMA {
+      %4 = VPUIP.PermuteDMA <{
               internalDataFlow = #VPUIP.InternalDataFlowAttr<
                   inputType = memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>,
                   outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
                   mappingOrder = #NCHW, loopOrder = #NHWC
               >,
               port = 0 : i64
-          }
+          }>
           inputs(%0 : memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>)
           outputs(%2 : !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
           -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     }
     VPURT.Task {
-      %4 = VPUIP.PermuteDMA {
+      %4 = VPUIP.PermuteDMA <{
               internalDataFlow = #VPUIP.InternalDataFlowAttr<
                       inputType = memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>,
                       outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
@@ -237,7 +237,7 @@ func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memre
                       loopOrder = #NHWC
                   >,
               port = 1 : i64
-          }
+          }>
           inputs(%1 : memref<1x4x4x8x!qElemType, {order = #NHWC, strides = [256, 1, 32, 4]}, [@CMX_NN, 0]>)
           outputs(%3 : !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
           -> !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -266,7 +266,7 @@ func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memre
 
     // PermuteDMATransaction type does not get updated here
     // CHECK-SAME:              outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    
+
     // CHECK-SAME:              mappingOrder = #NCHW
     // CHECK-SAME:              loopOrder = #NHWC
     // CHECK-SAME:  -> !VPURegMapped.Index<0:1:0>
@@ -286,7 +286,7 @@ func.func @main(%arg0: memref<1xf16, @DDR>, %arg1: memref<1xf16, @DDR>) -> memre
     // CHECK-SAME:      dma_transaction
     // CHECK-SAME:          #VPUMI40XX.PermuteDMATransaction
     // CHECK-SAME:              inputType = [[INPUT_TYPE_1]]
-    
+
     // PermuteDMATransaction type does not get updated here
     // CHECK-SAME:              outputType = !VPUIP.DistributedBuffer<1x4x4x8x!qElemType, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 

@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -277,8 +278,8 @@ mlir::LogicalResult LoopRewriter::matchAndRewrite(IE::LoopOp origOp, mlir::Patte
             if (elemType.isF32()) {
                 mapper.map(bodyInputs[currentIterIndex], constIter);
             } else {
-                auto constIterConvert = rewriter.create<IE::ConvertOp>(
-                        takeOpLoc(origOp, StringLiteral("convert_{0}"), currentIter), constIter, elemType);
+                auto constIterConvert = rewriter.create<IE::ConvertOp>(takeOpLoc(origOp, "convert_{0}", currentIter),
+                                                                       constIter, elemType);
                 mapper.map(bodyInputs[currentIterIndex], constIterConvert);
             }
         }
@@ -339,18 +340,11 @@ void UnrollTensorIterator::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    mlir::ConversionTarget target(ctx);
-    target.addIllegalOp<IE::TensorIteratorOp>();
-    target.addIllegalOp<IE::LoopOp>();
-    target.addIllegalOp<IE::LoopTerminatorOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<TensorIteratorRewriter>(&ctx, _log);
     patterns.insert<LoopRewriter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 void sliceInputsForIterations(SmallVector<IE::SliceInputPortMapAttr>& sliceInputDescAttrVector,
@@ -473,7 +467,7 @@ void recursivelyMapOpsInLoopRegion(mlir::Region& bodyModule, mlir::PatternRewrit
             rewriter.eraseOp(newOp);
             continue;
         }
-        extendOpLoc(newOp, StringLiteral("iteration_{0}"), currentIter);
+        extendOpLoc(newOp, "iteration_{0}", currentIter);
         for (const auto& [result, newResult] : zip(op.getResults(), newOp->getResults())) {
             mapper.map(result, newResult);
         }
@@ -533,10 +527,9 @@ void createConcatOutput(SmallVector<IE::ConcatOutputPortMapAttr>& concatOutputDe
             inputList.push_back(stride > 0 ? concatOutputListMap[exId][idx]
                                            : concatOutputListMap[exId][numIterations - 1 - idx]);
         }
-        auto newConcat =
-                rewriter.create<IE::ConcatOp>(appendLoc(loc, "concat_{0}", exId), inputList, axis, nullptr, nullptr);
+        auto concatedValue = rewriter.createOrFold<IE::ConcatOp>(appendLoc(loc, "concat_{0}", exId), inputList, axis,
+                                                                 nullptr, nullptr);
 
-        mlir::Value concatedValue = newConcat.getOutput();
         concatedOutputValueMap.insert({exId, concatedValue});
     }
 }

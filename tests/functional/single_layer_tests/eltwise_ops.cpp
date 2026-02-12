@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -79,10 +79,12 @@ TEST_F(EltwiseMultiplyLayerTest, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_F(EltwiseMultiplyLayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 typedef Eltwise2InputLayerTest<ov::op::v1::Add> EltwiseAddLayerTest;
 class EltwiseAddLayerTest_HostCompile : public EltwiseLayerTest, virtual public VpuOv2LayerTest {};
 
@@ -102,7 +104,7 @@ TEST_P(EltwiseAddLayerTest_HostCompile, NPU4000_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -124,7 +126,7 @@ TEST_P(EltwiseAddLayerTest_HostCompile, NPU5010_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
 
@@ -145,8 +147,13 @@ const auto dynamicAddParams =
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes, EltwiseAddLayerTest_HostCompile, dynamicAddParams,
                          EltwiseAddLayerTest_HostCompile::getTestCaseName);
 
-const std::vector<std::vector<ov::test::InputShape>> staticShapes = {{generateTestShape(1, 16, 1280, 1280)},
-                                                                     {generateTestShape(1, 3, 1280, 1280)}};
+const std::vector<std::vector<ov::test::InputShape>> staticShapes = {{generateTestShape(1, 16, 1280, 1280)}};
+// E#192467
+// skipping shape generateTestShape(1, 3, 1280, 1280) as it will be interpreted as NHWC and later inside tiling pass it
+// will have shape:
+//  tensor<1x1280x960x4xf16, {order = #NHWC}> and tiling tilingStrategy = [1, 5, 1, 1]
+// which will be treated as tiling along C dimension. Also this configuration requires channel alignment to 16, which
+// contradicts with tiling along C.
 const auto staticAddParams =
         ::testing::Combine(::testing::ValuesIn(staticShapes), ::testing::ValuesIn({utils::EltwiseTypes::ADD}),
                            ::testing::ValuesIn({utils::InputLayerType::PARAMETER}),

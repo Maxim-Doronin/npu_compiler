@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,11 +7,12 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/batch.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include <unordered_set>
 
@@ -228,7 +229,7 @@ struct DynamicReshapeAttrOpConverter : public OpConverter {
             // Having only dynamic N debatched, we will get the operation with completely static shapes.
             // Dynamic operation with static shapes will not pass verification
             // Let's substitute DynamicReshapeOp with ReshapeOp and debatch the latter op
-            mlir::Location loc = appendLoc(op->getLoc(), "_dynReshape_substitution");
+            mlir::Location loc = appendLoc(op->getLoc(), "dynReshape_substitution");
             auto currResultshapeValue =
                     Shape(consumeArrayAttrAsIntegerArray<int64_t>(dynamicReshapeOp, getShapeValueAttrName()));
             mlir::Operation* reshapeSubstitutionOp =
@@ -521,7 +522,7 @@ struct AttributedConstOpConverter : public OpConverter {
 
         // For type with swizzling skip the shape check as the content
         // might have been flattened to accomodate swizzled buffer.
-        if (!vpux::getSwizzlingSchemeAttr(opType)) {
+        if (!VPUIP::getSwizzlingSchemeAttr(opType)) {
             if (opType.getShape() != attrType.getShape()) {
                 /* We need to debatch Constant here, canonize it (so that all unrealized_cast will be put at the block
                  * beginning) and use it as a function arguments in the similar way as debatched `main` arguments are
@@ -532,7 +533,7 @@ struct AttributedConstOpConverter : public OpConverter {
                 mlir::OpBuilder builder(constDeclareOp);
                 auto operand = op->getResults()[0];
                 builder.setInsertionPointAfterValue(operand);
-                const auto debatchedArgLoc = appendLoc(operand.getLoc(), "_debatched_const");
+                const auto debatchedArgLoc = appendLoc(operand.getLoc(), "debatched_const");
                 auto unrealized_cast =
                         builder.create<mlir::UnrealizedConversionCastOp>(debatchedArgLoc, opType, operand);
                 operand.replaceUsesWithIf(unrealized_cast.getResult(0), [&](mlir::OpOperand& opOperand) {
@@ -787,7 +788,7 @@ mlir::LogicalResult DebatcherPass::initializeOptions(
     if (mlir::failed(Base::initializeOptions(options, errorHandler))) {
         return mlir::failure();
     }
-    _log.debug("{0}: {1}", debatcherIntputCoeffPartitions.getArgStr(), debatcherIntputCoeffPartitions.getValue());
+    _log.debug("{0}: {1}", debatcherInputCoeffPartitions.getArgStr(), debatcherInputCoeffPartitions.getValue());
     _log.trace("initializing of {0} succeeded", getName());
     return mlir::success();
 }
@@ -850,9 +851,9 @@ void DebatcherPass::safeRunOnFunc() {
     //  3. remembers the result rule as DebatchCoefficient per the result in `opResultsToDebatch`;
     //  4. pumps these rules from `opResultsToDebatch` into `debatchedOperandStorage` when done
     // to avoid them being downcasted further at 1 step
-    _log.debug("Use an option value \"{0}\": {1}", debatcherIntputCoeffPartitions.getArgStr(),
-               debatcherIntputCoeffPartitions.getValue());
-    auto debatchingCoefficients = DebatchCoefficients::create(debatcherIntputCoeffPartitions.getValue());
+    _log.debug("Use an option value \"{0}\": {1}", debatcherInputCoeffPartitions.getArgStr(),
+               debatcherInputCoeffPartitions.getValue());
+    auto debatchingCoefficients = DebatchCoefficients::create(debatcherInputCoeffPartitions.getValue());
     if (debatchingCoefficients.has_value()) {
         for (size_t i = 0; i < debatchingCoefficients->size(); ++i) {
             auto coeffValues = debatchingCoefficients ? debatchingCoefficients->getCoefficient(i) : std::nullopt;
@@ -901,7 +902,7 @@ void DebatcherPass::safeRunOnFunc() {
         }
         needDebatch = true;
         builder.setInsertionPointAfterValue(arg);
-        const auto debatchedArgLoc = appendLoc(arg.getLoc(), "_debatched_arg");
+        const auto debatchedArgLoc = appendLoc(arg.getLoc(), "debatched_arg");
         auto unrealized_cast =
                 builder.create<mlir::UnrealizedConversionCastOp>(debatchedArgLoc, descr.downcastedType, arg);
         _log.trace("apply unrealized_cast");
@@ -919,7 +920,7 @@ void DebatcherPass::safeRunOnFunc() {
         _log.debug("Debatching is not required");
         return;
     }
-    setCompileMethodDebatch(module);
+    config::setCompileMethodDebatch(module);
     _log.trace("Walk through `main` region and debatch all operations");
     detail::OpCastVisitor transformation(_log);
 
@@ -992,8 +993,9 @@ void DebatcherPass::safeRunOnFunc() {
                 r.setType(descr.downcastedType);
                 if (!debatchedOperandStorage.contains(r)) {
                     debatchedOperandStorage[r] = {descr.originalShape, opResultsToDebatch[r]};
-                    _log.nest().trace("remember debatched result from: {1}, to: {2}", op->getName().getStringRef(),
-                                      debatchedOperandStorage[r].from, debatchedOperandStorage[r].coeff.to_string());
+                    _log.nest().trace("remember debatched result for: {0} from: {1}, to: {2}",
+                                      op->getName().getStringRef(), debatchedOperandStorage[r].from,
+                                      debatchedOperandStorage[r].coeff.to_string());
                 }
             });
         }
@@ -1011,7 +1013,7 @@ void DebatcherPass::safeRunOnFunc() {
                 continue;
             }
             castedType.changeShape(mlir::cast<vpux::NDTypeInterface>(originalOpType).getShape());
-            const auto debatchedResLoc = appendLoc(operand.getLoc(), "_debatched_arg");
+            const auto debatchedResLoc = appendLoc(operand.getLoc(), "debatched_arg");
             auto unrealizedCast =
                     builder.create<mlir::UnrealizedConversionCastOp>(debatchedResLoc, originalOpType, operand);
             operand.replaceUsesWithIf(unrealizedCast.getResult(0), [&](mlir::OpOperand& opOperand) {

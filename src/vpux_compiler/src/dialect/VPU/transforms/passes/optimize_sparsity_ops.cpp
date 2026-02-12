@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
 

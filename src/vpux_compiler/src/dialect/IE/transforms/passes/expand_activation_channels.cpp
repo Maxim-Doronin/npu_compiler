@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,7 +11,9 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/matmul.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -19,8 +21,6 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
-
-#include "vpux/compiler/dialect/IE/transforms/factories/expand_activation_channels_strategy_getter.hpp"
 
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/utils/core/range.hpp"
@@ -153,7 +153,7 @@ mlir::LogicalResult IE::ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp o
                 biasPadsEnd[Dims4D::Act::C] = checked_cast<uint32_t>(outChanPadEnd);
 
                 paddedBiases = rewriter.createOrFold<IE::ExpandOp>(
-                        appendLoc(origOp->getLoc(), "_bias"), origOp.getBias(), std::nullopt, ShapeRef(biasPadsEnd));
+                        appendLoc(origOp->getLoc(), "bias"), origOp.getBias(), std::nullopt, ShapeRef(biasPadsEnd));
             }
         }
 
@@ -167,10 +167,11 @@ mlir::LogicalResult IE::ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp o
         auto [inputPaddingAttr, outputPaddingAttr] =
                 getPaddingAttributes(origOp, expandedInput, inChanPadEnd, outPadAfter);
 
-        return rewriter.create<IE::ConvolutionOp>(
-                origOp.getLoc(), newOutputType, expandedInput, paddedFilter, paddedBiases, origOp.getStrides(),
-                origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(),
-                origOp.getClampAttr(), origOp.getStaticScaleAttr(), outputPaddingAttr, inputPaddingAttr);
+        return rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), newOutputType, expandedInput, paddedFilter,
+                                                  paddedBiases, origOp.getScale(), origOp.getStrides(),
+                                                  origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(),
+                                                  origOp.getPostOpAttr(), origOp.getClampAttr(),
+                                                  origOp.getStaticScaleAttr(), outputPaddingAttr, inputPaddingAttr);
     };
 
     const auto calcOutputSliceOffset = [&](mlir::Operation*, ShapeRef outPadsEnd) -> SmallVector<int64_t> {
@@ -228,7 +229,7 @@ mlir::LogicalResult IE::MatMulRewriter::matchAndRewrite(IE::MatMulOp origOp, mli
             concatInputs.push_back(dataToExpand);
             concatInputs.push_back(generateZeroConst(origOp.getLoc(), dataType, ShapeRef(padsEnd), rewriter));
 
-            return rewriter.createOrFold<IE::ConcatOp>(appendLoc(dataToExpand.getLoc(), "_concat"), concatInputs,
+            return rewriter.createOrFold<IE::ConcatOp>(appendLoc(dataToExpand.getLoc(), "concat"), concatInputs,
                                                        dimToExpand);
         } else {
             if (!mlir::isa<mlir::FloatType>(dataType.getElementType())) {
@@ -239,10 +240,10 @@ mlir::LogicalResult IE::MatMulRewriter::matchAndRewrite(IE::MatMulOp origOp, mli
             Shape padsEnd(rank, 0);
             padsEnd[dimToExpand] = pad;
 
-            return rewriter.createOrFold<IE::ExpandOp>(
-                    appendLoc(dataToExpand.getLoc(), llvm::formatv("{0}_{1}", padsBegin, padsEnd).str()), dataToExpand,
-                    getIntArrayAttr(rewriter, ArrayRef(padsBegin.raw())),
-                    getIntArrayAttr(rewriter, ArrayRef(padsEnd.raw())));
+            return rewriter.createOrFold<IE::ExpandOp>(appendLoc(dataToExpand.getLoc(), "{0}_{1}", padsBegin, padsEnd),
+                                                       dataToExpand,
+                                                       getIntArrayAttr(rewriter, ArrayRef(padsBegin.raw())),
+                                                       getIntArrayAttr(rewriter, ArrayRef(padsEnd.raw())));
         }
     };
 
@@ -299,9 +300,8 @@ mlir::LogicalResult IE::MatMulRewriter::matchAndRewrite(IE::MatMulOp origOp, mli
     auto [expandedInput1, expandedInput2] = expandInputs(inputChannelPad, outputChannelPad);
     auto newOutputType = inferOutputType(outputChannelPad);
 
-    auto newOp = rewriter.create<IE::MatMulOp>(appendLoc(origOp.getLoc(), "_matmul"), newOutputType, expandedInput1,
-                                               expandedInput2, origOp.getTransposeA(), origOp.getTransposeB(),
-                                               origOp.getPostOpAttr());
+    auto newOp = cloneMatMulOp(rewriter, origOp, newOutputType, expandedInput1, expandedInput2);
+    newOp->setLoc(appendLoc(origOp.getLoc(), "expanded"));
 
     sliceOutput(newOp);
 
@@ -496,7 +496,8 @@ mlir::LogicalResult IE::PadRewriter::matchAndRewrite(IE::PadOp origOp, mlir::Pat
         return rewriter.create<IE::PadOp>(origOp.getLoc(), newOutputType, expandedInput, origOp.getPadsBegin(),
                                           origOp.getPadsEnd(), origOp.getPadValue(), origOp.getPadsBeginAttrAttr(),
                                           origOp.getPadsEndAttrAttr(), origOp.getPadValueAttrAttr(),
-                                          origOp.getModeAttr(), outputPaddingAttr, inputPaddingAttr);
+                                          origOp.getModeAttr(), outputPaddingAttr, inputPaddingAttr,
+                                          origOp.getOutputShapeAttr(), origOp.getOutputBoundsAttr());
     };
 
     const auto calcOutputSliceOffset = [&](mlir::Operation*, ShapeRef outPadsEnd) -> SmallVector<int64_t> {
@@ -559,8 +560,7 @@ mlir::LogicalResult IE::SoftMaxRewriter::matchAndRewrite(IE::SoftMaxOp origOp, m
 mlir::LogicalResult IE::SDPAExtendedRewriter::matchAndRewrite(IE::SDPAExtendedOp origOp,
                                                               mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got SDPAExtendedRewriter layer at '{1}'", getDebugName(), origOp->getLoc());
-
-    auto expandDimensions = [origOp, &rewriter](auto dataToExpand, auto dimsToExpand, auto pad, auto rank,
+    auto expandDimensions = [origOp, &rewriter](auto dataToExpand, auto dimsToExpand, ArrayRef<int64_t> pad, auto rank,
                                                 const std::string& suffix) mutable {
         auto newLoc = appendLoc(origOp.getLoc(), suffix);
         const Shape padsBegin(rank, 0);
@@ -585,46 +585,42 @@ mlir::LogicalResult IE::SDPAExtendedRewriter::matchAndRewrite(IE::SDPAExtendedOp
     const auto inKShape = inKType.getShape().toValues();
     const auto inVShape = inVType.getShape().toValues();
 
-    auto inQRank = checked_cast<size_t>(inQType.getRank());
-    auto inKRank = checked_cast<size_t>(inKType.getRank());
-    auto inVRank = checked_cast<size_t>(inVType.getRank());
+    auto inQRank = checked_cast<int64_t>(inQType.getRank());
+    auto inKRank = checked_cast<int64_t>(inKType.getRank());
+    auto inVRank = checked_cast<int64_t>(inVType.getRank());
 
-    size_t inEDim = inQShape[Dim(inQRank - 1)];
-    size_t inSDim = inKShape[Dim(inKRank - 2)];
-    size_t inEvDim = inVShape[Dim(inVRank - 2)];
+    auto inEDim = inQShape[Dim(inQRank - 1)];
+    auto inSDim = inKShape[Dim(inKRank - 2)];
+    auto inEvDim = inVShape[Dim(inVRank - 2)];
 
-    size_t inputChannelAlignment = 16;
+    int64_t inputChannelAlignment = 16;
     auto inEPad = alignValUp(inEDim, inputChannelAlignment) - inEDim;
     auto inSPad = alignValUp(inSDim, inputChannelAlignment) - inSDim;
 
-    size_t inputChannelAlignmentEv = 16;
+    int64_t inputChannelAlignmentEv = 16;
     auto inEvPad = alignValUp(inEvDim, inputChannelAlignmentEv) - inEvDim;
 
     mlir::Value expandedInQ = origOp->getOperand(0);
     mlir::Value expandedInK = origOp->getOperand(1);
     mlir::Value expandedInV = origOp->getOperand(2);
-    expandedInQ = expandDimensions(expandedInQ, std::vector<size_t>{inQRank - 1}, std::vector<size_t>{inEPad}, inQRank,
-                                   "_expandedInQ");
-    expandedInK = expandDimensions(expandedInK, std::vector<size_t>{inKRank - 1}, std::vector<size_t>{inEPad}, inKRank,
-                                   "_expandedInK");
-    expandedInV = expandDimensions(expandedInV, std::vector<size_t>{inVRank - 1, inVRank - 2},
-                                   std::vector<size_t>{inSPad, inEvPad}, inVRank, "_expandedInV");
+    expandedInQ = expandDimensions(expandedInQ, SmallVector<int64_t>{inQRank - 1}, SmallVector<int64_t>{inEPad},
+                                   inQRank, "_expandedInQ");
+    expandedInK = expandDimensions(expandedInK, SmallVector<int64_t>{inKRank - 1}, SmallVector<int64_t>{inEPad},
+                                   inKRank, "_expandedInK");
+    expandedInV = expandDimensions(expandedInV, SmallVector<int64_t>{inVRank - 1, inVRank - 2},
+                                   SmallVector<int64_t>{inSPad, inEvPad}, inVRank, "_expandedInV");
 
-    auto sdpaExpanded = rewriter.create<IE::SDPAExtendedOp>(origOp.getLoc(), expandedInQ, expandedInK, expandedInV,
-                                                            origOp.getInputMask(), origOp.getInputScale(),
-                                                            getIntAttr(rewriter.getContext(), inSPad));
+    auto sdpaExpanded = rewriter.create<IE::SDPAExtendedOp>(
+            origOp.getLoc(), expandedInQ, expandedInK, expandedInV, origOp.getInputMask(), origOp.getInputScale(),
+            origOp.getInputBias(), getIntAttr(rewriter.getContext(), inSPad));
 
     if (inEvPad) {
         _log.trace("Slice SDPAExtended output with padding {0}", inEvPad);
         const auto outShape = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape();
         auto offsets = SmallVector<int64_t>(outShape.size(), 0);
-        offsets[Dims4D::Act::N.ind()] = 0;
-        offsets[Dims4D::Act::C.ind()] = 0;
-        offsets[Dims4D::Act::H.ind()] = 0;
-        offsets[Dims4D::Act::W.ind()] = 0;
 
         auto sliceOp = rewriter.createOrFold<IE::SliceOp>(
-                appendLoc(origOp.getLoc(), "_sliced"), origOp->getResult(0).getType(), sdpaExpanded.getOutput(),
+                appendLoc(origOp.getLoc(), "sliced"), origOp->getResult(0).getType(), sdpaExpanded.getOutput(),
                 getIntArrayAttr(rewriter, offsets), getIntArrayAttr(rewriter, outShape));
         rewriter.replaceOp(origOp, sliceOp);
     } else {
@@ -661,6 +657,7 @@ mlir::LogicalResult vpux::IE::FlashSDPARewriter::matchAndRewrite(IE::FlashSDPAOp
     auto queryPadEnd = Shape{0, 0, 0, qkEmbeddingPad};
     auto keyPadEnd = Shape{0, 0, sourceSeqLenPad, qkEmbeddingPad};
     auto valuePadEnd = Shape{0, 0, vEmbeddingPad, sourceSeqLenPad};
+    auto runningOutputPadEnd = Shape{0, 0, 0, vEmbeddingPad};
 
     auto expand = [&rewriter](mlir::Value value, ShapeRef padsEnd) -> mlir::Value {
         // pads_end must contain at most one non-zero value.
@@ -685,6 +682,7 @@ mlir::LogicalResult vpux::IE::FlashSDPARewriter::matchAndRewrite(IE::FlashSDPAOp
     auto paddedQuery = expand(origOp.getQuery(), queryPadEnd);
     auto paddedKey = expand(origOp.getKey(), keyPadEnd);
     auto paddedValue = expand(origOp.getValue(), valuePadEnd);
+    auto paddedRunningOutput = expand(origOp.getInputRunningOutput(), runningOutputPadEnd);
 
     auto paddedAttentionMask = mlir::Value{origOp.getAttentionMask()};
     if (paddedAttentionMask != nullptr) {
@@ -692,9 +690,10 @@ mlir::LogicalResult vpux::IE::FlashSDPARewriter::matchAndRewrite(IE::FlashSDPAOp
         paddedAttentionMask = expand(origOp.getAttentionMask(), attentionMaskPadsEnd);
     }
 
-    auto newOp =
-            rewriter.create<IE::FlashSDPAOp>(origOp.getLoc(), paddedQuery, paddedKey, paddedValue, paddedAttentionMask,
-                                             origOp.getScale(), getIntAttr(rewriter, sourceSeqLenPad));
+    auto newOp = rewriter.create<IE::FlashSDPAOp>(
+            origOp.getLoc(), paddedQuery, paddedKey, paddedValue, paddedRunningOutput, origOp.getInputRunningMax(),
+            origOp.getInputRunningSum(), paddedAttentionMask, origOp.getIsHeadAttr(), origOp.getIsTailAttr(),
+            getIntAttr(rewriter, sourceSeqLenPad));
 
     if (vEmbeddingPad == 0) {
         _log.trace("Output channels are already aligned");
@@ -702,14 +701,15 @@ mlir::LogicalResult vpux::IE::FlashSDPARewriter::matchAndRewrite(IE::FlashSDPAOp
     } else {
         _log.trace("Extract meaningful part from extended output");
 
-        const auto outShape = getShape(origOp.getOutput());
-        auto offsets = SmallVector<int64_t>(outShape.size());
+        const auto outputShape = getShape(origOp.getResultRunningOutput());
+        auto offsets = SmallVector<int64_t>(outputShape.size());
 
         auto sliceOp = rewriter.createOrFold<IE::SliceOp>(
-                appendLoc(origOp.getLoc(), "sliced"), origOp.getOutput().getType(), newOp.getOutput(),
-                getIntArrayAttr(rewriter, offsets), getIntArrayAttr(rewriter, outShape));
+                appendLoc(origOp.getLoc(), "sliced"), origOp.getResultRunningOutput().getType(),
+                newOp.getResultRunningOutput(), getIntArrayAttr(rewriter, offsets),
+                getIntArrayAttr(rewriter, outputShape));
 
-        rewriter.replaceOp(origOp, sliceOp);
+        rewriter.replaceOp(origOp, mlir::ValueRange{sliceOp, newOp.getResultRunningMax(), newOp.getResultRunningSum()});
     }
 
     return mlir::success();
@@ -750,7 +750,8 @@ mlir::LogicalResult ExpandActivationChannelsPass::initialize(mlir::MLIRContext* 
 void ExpandActivationChannelsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
-    auto strategy = IE::createExpandActivationChannelsStrategy(func, _seOpsEnabled, _log);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getExpandActivationChannelsStrategy(_seOpsEnabled, _log);
 
     mlir::ConversionTarget target(ctx);
     strategy->addTargets(target);

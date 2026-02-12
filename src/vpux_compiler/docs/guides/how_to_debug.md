@@ -1,6 +1,6 @@
 # How to debug
 
-The compiler offers a number of debug capabilities. In order to benefit from all of them, it is recommended to use a Debug build with the `DEVELOPER_BUILD` flag enabled (the `-DENABLE_DEVELOPER_BUILD=ON` CMake option).
+The compiler offers a number of debug capabilities. In order to benefit from all of them, it is recommended to use a Debug or RelWithDebInfo build with the `DEVELOPER_BUILD` flag enabled (the `-DENABLE_DEVELOPER_BUILD=ON` CMake option). The developer presets presented in the [how_to_build.md](../../../../guides/how_to_build.md) enable these features by default.
 
 ## Logs
 
@@ -60,13 +60,18 @@ One of the most useful debug features of MLIR is by printing the Intermediate Re
         - `export IE_NPU_IR_PRINTING_FILTER="InitResources|ConvertLayers.*"`
     - by default, it will print to stdout the IRs after the specified passes
 
+- `IE_NPU_IR_PRINT_TO_FILE_TREE`: enable IR prints to file tree
+    - `export IE_NPU_IR_PRINT_TO_FILE_TREE=0` (default) - don't print IR to file tree. IR will be printed to stdout or to a single file.
+    - `export IE_NPU_IR_PRINT_TO_FILE_TREE=1` - each pass matched by printing filter will be printed to a separate file.
+
 - `IE_NPU_IR_PRINTING_ORDER`: controls whether to print the IRs before or after the passes (case-insensitive)
     - `export IE_NPU_IR_PRINTING_ORDER=before` - print IRs before the selected passes
     - `export IE_NPU_IR_PRINTING_ORDER=before_after` - print IRs before and after the selected passes
     - `export IE_NPU_IR_PRINTING_ORDER=after` (default) - print IRs after the selected passes
 
-- `IE_NPU_IR_PRINTING_FILE`: prints the IRs in the file specified in this variable, instead of stdout
-    - example: `export IE_NPU_IR_PRINTING_FILE=dump.mlir`
+- `IE_NPU_IR_PRINTING_LOCATION`: when in file tree mode - name of the root directory for a file tree, when in normal mode - name of the file to which IR should be printed instead of stdout
+    - example(normal mode): `export IE_NPU_IR_PRINTING_LOCATION=dump.mlir`
+    - example(file tree mode): `export IE_NPU_IR_PRINTING_LOCATION=file_tree_root`
 
 - `IE_NPU_PRINT_FULL_IR`: controls the scope of printing
     - `export IE_NPU_PRINT_FULL_IR=0` (default) - only the affected scope will be printed (e.g. only the main Function of the IR, without the parent Module)
@@ -333,7 +338,7 @@ The strategies will be read from a file called `strategy_in.json`, but the name 
 
 ## Compiler schedule trace
 
-At the end of compilation, there is a way to dump the final schedule to a JSON trace file and print additional performance metrics. For more details refer to [how-to-get-schedule-trace-and-analysis.md](../../../../guides/how-to-get-schedule-trace-and-analysis.md) guide.
+At the end of compilation, there is a way to dump the final schedule to a JSON trace file and print additional performance metrics. For more details refer to [how_to_get_schedule_trace_and_analysis.md](../../../../guides/how_to_get_schedule_trace_and_analysis.md) guide.
 
 ## Memory scheduler statistics
 
@@ -351,7 +356,7 @@ The resulting `scheduleTrace.json` file will contain an entry for each task of t
 
 ## Profiling inference performance
 
-Please refer to [how-to-use-profiling.md](../../../../guides/how-to-use-profiling.md) guide.
+Please refer to [how_to_use_profiling.md](../../../../guides/how_to_use_profiling.md) guide.
 
 ## VSCode
 

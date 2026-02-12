@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/NPU50XX/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/arithmetic.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/normalization.hpp"
@@ -43,6 +44,10 @@ void vpux::VPU::arch50xx::registerSWTilingInfoOpInterface(mlir::DialectRegistry&
         VPU::RoPEOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::RoPEOp>>(*ctx);
         VPU::CumSumOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::CumSumOp>>(*ctx);
         VPU::MultiplyOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::MultiplyOp>>(*ctx);
+        VPU::SoftMaxOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::SoftMaxOp>>(*ctx);
+        VPU::MaxPool8Op::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::MaxPool8Op>>(*ctx);
+        VPU::RMSOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::RMSOp>>(*ctx);
+        VPU::SwishOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::SwishOp>>(*ctx);
     });
     // Register common interface if the op is tiling-supported but doesn't have TilingInfoOpInterface yet
     vpux::VPU::registerSWTilingInfoOpInterfaceCommon(registry);

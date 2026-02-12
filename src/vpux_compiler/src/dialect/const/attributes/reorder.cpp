@@ -88,12 +88,3 @@ Const::Content vpux::Const::ReorderAttr::transform(vpux::Const::Content& input) 
     const auto memPerm = getPermutationFromOrders(inOrder, outOrder, getContext());
     return Const::details::memPermuteTransformation(input, outType, memPerm);
 }
-
-//
-// ReorderAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::ReorderAttr::getStableHashValue() const {
-    const auto order = DimsOrder::fromAffineMap(getOrder().getValue());
-    return llvm::hash_combine(getMnemonic(), order.code());
-}

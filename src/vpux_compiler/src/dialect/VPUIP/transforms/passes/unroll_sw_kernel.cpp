@@ -142,11 +142,13 @@ VPURT::TaskOp SwKernelRewriter::createNewTaskOp(VPUIP::SwKernelOp swKernelOp, VP
     auto isDynamic = VPUIP::hasBoundedBuffers(swKernelOp) || VPUIP::hasUngroupedBoundedBuffers(swKernelOp);
 
     auto outerOperand = getOuterMostMappingOperand(swKernelRun, isDynamic);
+    // Find the first outer operand which corresponds the output buffers
+    // To be noted that some output buffers can be used as input buffers as well, such as for auxiliary buffers
     auto iter = llvm::find_if(outerOperand, [&](auto operand) {
-        return isOperandFromList(swKernelOp.getOutputBuffs(), operand);
+        return isOperandFromList(swKernelOp.getOutputBuffs(), operand) &&
+               !isOperandFromList(swKernelOp.getInputs(), operand);
     });
     VPUX_THROW_WHEN(iter == outerOperand.end(), "Cannot find operand for output buffer at '{0}'", opLoc);
-
     auto outBufferStartIndex = std::distance(outerOperand.begin(), iter);
 
     SmallVector<mlir::Value> swKernelInputDynamicShapes, swKernelOutputDynamicShapes;

@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 
 using namespace vpux;
 
@@ -16,8 +17,7 @@ mlir::LogicalResult vpux::IE::DynamicFakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!mlir::isa<mlir::Float8E4M3FNType>(lowFpType.value()) &&
-            !mlir::isa<mlir::Float8E5M2Type>(lowFpType.value())) {
+        if (!isLowFpType(lowFpType.value())) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {

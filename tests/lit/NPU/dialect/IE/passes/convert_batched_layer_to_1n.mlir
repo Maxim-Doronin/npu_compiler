@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -209,7 +209,7 @@ func.func @ConvertIdentityMaxPool(%arg0: tensor<16x16x1x3xf16>) -> tensor<16x16x
 
 // -----
 
-// CHECK: [[MAP:#.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
+// CHECK: [[MAP:#.+]] = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
 // CHECK: func.func @ConvertMaxPool([[ARG0:%.+]]: tensor<16x16x1x6xf16>)
 func.func @ConvertMaxPool(%arg0: tensor<16x16x1x6xf16>) -> tensor<16x16x1x5xf16> {

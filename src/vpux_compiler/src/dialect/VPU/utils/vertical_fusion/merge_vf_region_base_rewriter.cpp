@@ -9,11 +9,13 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_case.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_case.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 #include <llvm/ADT/SetOperations.h>
 #include <llvm/ADT/SmallSet.h>
 #include <mlir/IR/IRMapping.h>
+#include <cstddef>
 
 namespace vpux {
 namespace VPU {
@@ -269,7 +271,7 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
         return false;
     };
     bool outputTrueOverlapped = hasTrueOverlappedParams(prevOutDistType);
-    bool isSWLayer = mlir::isa<VPU::SWOpInterface>(prevOutputOp);
+    auto prevOutputOpSw = mlir::dyn_cast_or_null<VPU::SWOpInterface>(prevOutputOp);
 
     // Here we need to ensure either all current input ops and previous output op have no mc strategy,
     // or all have mc stratgy with compatible distributed tensor types
@@ -298,8 +300,9 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
             }
 
             // TODO E#92130 extend Shave operations with OVERLAPPED param propagation
-            if ((outputTrueOverlapped && mlir::isa<VPU::SWOpInterface>(currInputOp)) ||
-                (isSWLayer && inputTrueOverlapped)) {
+            auto currInputOpSw = mlir::dyn_cast_or_null<VPU::SWOpInterface>(currInputOp);
+            if ((currInputOpSw != nullptr && !currInputOpSw.supportLoweringAsDMA() && outputTrueOverlapped) ||
+                (prevOutputOpSw != nullptr && !prevOutputOpSw.supportLoweringAsDMA() && inputTrueOverlapped)) {
                 return false;
             }
 
@@ -347,12 +350,8 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::checkVFCostFunction(VPU::VerticalFus
         // calculate correct cost
         // the IR will change back when the setter is destroyed
         VPU::VFSubgraphUserSetter setter(currentOp, mergedCase.getConfig().getSubgraph());
-        mergedCase.getConfig().invalidatePointers();
-        prevOpConfig.invalidatePointers();
-        currentOpConfig.invalidatePointers();
         mergedVFCost = mergedCase.getCost(_vpunnCostFunction, _log);
     }
-    mergedCase.getConfig().invalidatePointers();
 
     if (mergedVFCost > VPUNN::Cycles::cost_adder(prevCost, currentCost)) {
         _log.trace("Failed to merge VerticalFusionOp due to higher cost: mergedVFCost ({0}) > prevCost ({1}) + "

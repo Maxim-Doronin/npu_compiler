@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -65,10 +65,10 @@ module @LegalizeWithMultiTile attributes {config.compilationMode = #config.compi
     %25 = VPURT.DeclareBuffer <CMX_NN> <154560> -> !VPUIP.DistributedBuffer<1x16x224x224x!qElemType2, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64}>
     %26 = VPURT.DeclareBuffer <CMX_NN> [0] <154560> -> memref<1x16x114x224x!qElemType2, #NHWC, [@CMX_NN, 0]>
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%6 : memref<1x3x114x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%9 : memref<1x3x114x224xf16, [@CMX_NN, 0]>) -> memref<1x3x114x224xf16, [@CMX_NN, 0]>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%6 : memref<1x3x114x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%9 : memref<1x3x114x224xf16, [@CMX_NN, 0]>) -> memref<1x3x114x224xf16, [@CMX_NN, 0]>
     }
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%7 : memref<1x3x115x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%10 : memref<1x3x115x224xf16, [@CMX_NN, 1]>) -> memref<1x3x115x224xf16, [@CMX_NN, 1]>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%7 : memref<1x3x115x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%10 : memref<1x3x115x224xf16, [@CMX_NN, 1]>) -> memref<1x3x115x224xf16, [@CMX_NN, 1]>
     }
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
       %27 = VPUIP.NCEClusterTask {is_permute_quantize, is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%23 : memref<1x224x3x114xf16, #NHWC, [@CMX_NN, 0]>) weights(%22 : memref<1x224x3x114xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%21 : !VPUIP.DistributedBuffer<1x224x3x224xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64}>) parent_output(%11 : !VPUIP.DistributedBuffer<1x224x4x224x!qElemType, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64, equal_memory_and_compute_view}>) outputs(%12 : memref<1x224x4x114x!qElemType, #NWCH, [@CMX_NN, 0]>) -> memref<1x224x4x114x!qElemType, #NWCH, [@CMX_NN, 0]> variants : {
@@ -133,7 +133,7 @@ module @LegalizeWithMultiTile attributes {config.compilationMode = #config.compi
       }
     }
     VPURT.Task waits(%4 : !VPURT.Barrier) updates(%5 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%20 : memref<1x64x28x56xf16, [@CMX_NN, 0]>) outputs(%8 : memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>) -> memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%20 : memref<1x64x28x56xf16, [@CMX_NN, 0]>) outputs(%8 : memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>) -> memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>
     }
     return %arg1 : memref<1x64x56x56xf16, @DDR>
   }
@@ -152,28 +152,28 @@ module @LegalizeWithMultiTile attributes {config.compilationMode = #config.compi
   // CHECK: [[BUF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 0 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 1 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 1 : i64>)
@@ -185,14 +185,14 @@ module @LegalizeWithMultiTile attributes {config.compilationMode = #config.compi
   // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]], [[BAR3]] : !VPURT.Barrier, !VPURT.Barrier)
 
   // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 2 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 2 : i64>)
@@ -275,10 +275,10 @@ module @LegalizeMultiTileAsymmetry attributes {config.compilationMode = #config.
     %25 = VPURT.DeclareBuffer <CMX_NN> <154560> -> !VPUIP.DistributedBuffer<1x16x224x224x!qElemType2, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64}>
     %26 = VPURT.DeclareBuffer <CMX_NN> [0] <154560> -> memref<1x16x114x224x!qElemType2, #NHWC, [@CMX_NN, 0]>
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%6 : memref<1x3x114x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%9 : memref<1x3x114x224xf16, [@CMX_NN, 0]>) -> memref<1x3x114x224xf16, [@CMX_NN, 0]>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%6 : memref<1x3x114x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%9 : memref<1x3x114x224xf16, [@CMX_NN, 0]>) -> memref<1x3x114x224xf16, [@CMX_NN, 0]>
     }
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%7 : memref<1x3x115x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%10 : memref<1x3x115x224xf16, [@CMX_NN, 1]>) -> memref<1x3x115x224xf16, [@CMX_NN, 1]>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%7 : memref<1x3x115x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%10 : memref<1x3x115x224xf16, [@CMX_NN, 1]>) -> memref<1x3x115x224xf16, [@CMX_NN, 1]>
     }
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
       %27 = VPUIP.NCEClusterTask {is_permute_quantize, is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%23 : memref<1x224x3x114xf16, #NHWC, [@CMX_NN, 0]>) weights(%22 : memref<1x224x3x114xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%21 : !VPUIP.DistributedBuffer<1x224x3x224xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64}>) parent_output(%11 : !VPUIP.DistributedBuffer<1x224x4x224x!qElemType, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64, equal_memory_and_compute_view}>) outputs(%12 : memref<1x224x4x114x!qElemType, #NWCH, [@CMX_NN, 0]>) -> memref<1x224x4x114x!qElemType, #NWCH, [@CMX_NN, 0]> variants : {
@@ -343,7 +343,7 @@ module @LegalizeMultiTileAsymmetry attributes {config.compilationMode = #config.
       }
     }
     VPURT.Task waits(%4 : !VPURT.Barrier) updates(%5 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%20 : memref<1x64x28x56xf16, [@CMX_NN, 0]>) outputs(%8 : memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>) -> memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%20 : memref<1x64x28x56xf16, [@CMX_NN, 0]>) outputs(%8 : memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>) -> memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>
     }
     return %arg1 : memref<1x64x56x56xf16, @DDR>
   }
@@ -363,28 +363,28 @@ module @LegalizeMultiTileAsymmetry attributes {config.compilationMode = #config.
   // CHECK: [[BUF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 0 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 1 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 1 : i64>)
@@ -396,14 +396,14 @@ module @LegalizeMultiTileAsymmetry attributes {config.compilationMode = #config.
   // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR3]], [[BAR4]] : !VPURT.Barrier, !VPURT.Barrier)
 
   // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 2 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier) {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 2 : i64>)
@@ -544,7 +544,7 @@ module @PlaceholderForFetchWithMultipleBocks {
   // CHECK: [[BUF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>)
@@ -554,14 +554,14 @@ module @PlaceholderForFetchWithMultipleBocks {
   // CHECK: VPURT.Task updates([[BAR0]], [[BAR1]] : !VPURT.Barrier, !VPURT.Barrier)
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 1 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 2 : i64>)
@@ -570,7 +570,7 @@ module @PlaceholderForFetchWithMultipleBocks {
   // CHECK: VPURT.Task waits([[BAR0]], [[BAR2]] : !VPURT.Barrier, !VPURT.Barrier) updates([[BAR3]], [[BAR4]] : !VPURT.Barrier, !VPURT.Barrier) attributes {"sync-task"}
 
   // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier) {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 3 : i64>)
@@ -580,7 +580,7 @@ module @PlaceholderForFetchWithMultipleBocks {
   // CHECK: VPURT.Task waits([[BAR3]], [[BAR5]] : !VPURT.Barrier, !VPURT.Barrier) updates([[BAR6]], [[BAR7]] : !VPURT.Barrier, !VPURT.Barrier)
 
   // CHECK: VPURT.Task waits([[BAR7]] : !VPURT.Barrier) updates([[BAR8]] : !VPURT.Barrier)  {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 4 : i64>)
@@ -590,7 +590,7 @@ module @PlaceholderForFetchWithMultipleBocks {
   // CHECK: VPURT.Task waits([[BAR6]], [[BAR3]], [[BAR8]] : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates([[BAR9]], [[BAR10]] : !VPURT.Barrier, !VPURT.Barrier) attributes {"sync-task"}
 
   // CHECK: VPURT.Task waits([[BAR10]] : !VPURT.Barrier) updates([[BAR11]] : !VPURT.Barrier)  {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 5 : i64>)
@@ -660,10 +660,10 @@ module @LegalizeWithMultiTileParent attributes {config.compilationMode = #config
     %25 = VPURT.DeclareBuffer <CMX_NN> <154560> -> !VPUIP.DistributedBuffer<1x16x224x224x!qElemType2, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64}>
     %26 = VPURT.DeclareBuffer <CMX_NN> [0] <154560> -> memref<1x16x114x224x!qElemType2, #NHWC, [@CMX_NN, 0]>
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%6 : memref<1x3x114x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%9 : memref<1x3x114x224xf16, [@CMX_NN, 0]>) -> memref<1x3x114x224xf16, [@CMX_NN, 0]>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%6 : memref<1x3x114x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%9 : memref<1x3x114x224xf16, [@CMX_NN, 0]>) -> memref<1x3x114x224xf16, [@CMX_NN, 0]>
     }
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%7 : memref<1x3x115x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%10 : memref<1x3x115x224xf16, [@CMX_NN, 1]>) -> memref<1x3x115x224xf16, [@CMX_NN, 1]>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%7 : memref<1x3x115x224xf16, {order = #NCHW, strides = [150528, 50176, 224, 1]}, @DDR>) outputs(%10 : memref<1x3x115x224xf16, [@CMX_NN, 1]>) -> memref<1x3x115x224xf16, [@CMX_NN, 1]>
     }
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
       %27 = VPUIP.NCEClusterTask {is_permute_quantize, is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%23 : memref<1x224x3x114xf16, #NHWC, [@CMX_NN, 0]>) weights(%22 : memref<1x224x3x114xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%21 : !VPUIP.DistributedBuffer<1x224x3x224xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64}>) parent_output(%11 : !VPUIP.DistributedBuffer<1x224x4x224x!qElemType, #NWCH, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 2], kernel = [7, 7], pads = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, strides = [2, 2], num_clusters = 2 : i64, equal_memory_and_compute_view}>) outputs(%12 : memref<1x224x4x114x!qElemType, #NWCH, [@CMX_NN, 0]>) -> memref<1x224x4x114x!qElemType, #NWCH, [@CMX_NN, 0]> variants : {
@@ -750,7 +750,7 @@ module @LegalizeWithMultiTileParent attributes {config.compilationMode = #config
       }
     }
     VPURT.Task waits(%52 : !VPURT.Barrier) updates(%5 : !VPURT.Barrier) {
-      %27 = VPUIP.NNDMA {port = 0 : i64} inputs(%20 : memref<1x64x28x56xf16, [@CMX_NN, 0]>) outputs(%8 : memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>) -> memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>
+      %27 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%20 : memref<1x64x28x56xf16, [@CMX_NN, 0]>) outputs(%8 : memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>) -> memref<1x64x28x56xf16, {order = #NCHW, strides = [200704, 3136, 56, 1]}, @DDR>
     }
     return %arg1 : memref<1x64x56x56xf16, @DDR>
   }
@@ -771,28 +771,28 @@ module @LegalizeWithMultiTileParent attributes {config.compilationMode = #config
   // CHECK: [[BUF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 0 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 1 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 1 : i64>)
@@ -810,14 +810,14 @@ module @LegalizeWithMultiTileParent attributes {config.compilationMode = #config
   // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]], [[BAR5]] : !VPURT.Barrier, !VPURT.Barrier)
 
   // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier)
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 0 : i64, list = 0 : i64, group = 2 : i64>)
   // CHECK: }
 
   // CHECK: VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR7]] : !VPURT.Barrier) {
-  // CHECK: VPUIP.FetchDMA {port = 0 : i64}
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
   // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
   // CHECK-SAME: fetch_dma(<<DPU>, tile = 1 : i64, list = 0 : i64, group = 2 : i64>)
@@ -829,4 +829,193 @@ module @LegalizeWithMultiTileParent attributes {config.compilationMode = #config
 
   // End DMA
   // CHECK: VPURT.Task waits([[BAR9]] : !VPURT.Barrier) updates([[BAR10]] : !VPURT.Barrier)
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+module @DmaAndShvGraphFetchReuseBars attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  config.PipelineOptions @Options {
+    config.Option @config.UseDedicatedFifoPerShaveEngine : true
+    config.Option @config.MetadataMaxVariantCount : 8
+    config.Option @config.MetadataMaxInvariantCount : 4
+    config.Option @config.MetadataMaxKernelInvocationCount : 4
+    config.Option @config.MetadataMaxKernelRangeCount : 4
+  }
+
+  module @VPU.SW {
+  func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>) attributes {
+      VPU.kernel_code = "activation_relu.cpp", VPU.kernel_entry = "activation_relu", VPU.task_type = @COMPUTE
+      }
+  }
+
+  func.func @main() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
+    %bar0 = VPURT.DeclareVirtualBarrier <{isStartBarrier}> -> !VPURT.Barrier
+    %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar4 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar5 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar6 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar7 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar8 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar9 = VPURT.DeclareVirtualBarrier <{isFinalBarrier}> -> !VPURT.Barrier
+
+    // dummy buffer
+    %cst0 = const.Declare memref<16x16x1x1xf16, #NHWC> =
+        dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>]
+    %buf0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+    %buf1 = VPURT.DeclareBuffer <CMX_NN> [0] <32768> -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+    %buf2 = VPURT.DeclareBuffer <CMX_NN> [0] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+    %buf3 = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+
+    VPURT.Task updates(%bar0: !VPURT.Barrier)
+    {
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier)
+    {
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier)
+    {
+          VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+              inputs(%buf0 as %input: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
+              outputs(%buf0 as %output: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 list 0 -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]> {
+              VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+          }
+    }
+
+    VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier)
+    {
+          VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+              inputs(%buf0 as %input: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
+              outputs(%buf0 as %output: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 list 0 -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]> {
+              VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+          }
+    }
+
+    VPURT.Task waits(%bar3: !VPURT.Barrier) updates(%bar4: !VPURT.Barrier)
+    {
+          VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+              inputs(%buf0 as %input: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
+              outputs(%buf0 as %output: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]> {
+              VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+          }
+    }
+
+    VPURT.Task waits(%bar4: !VPURT.Barrier) updates(%bar5: !VPURT.Barrier)
+    {
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    VPURT.Task waits(%bar5: !VPURT.Barrier) updates(%bar6: !VPURT.Barrier)
+    {
+          VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+              inputs(%buf0 as %input: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
+              outputs(%buf0 as %output: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]> {
+              VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+          }
+    }
+
+    VPURT.Task waits(%bar6: !VPURT.Barrier) updates(%bar7: !VPURT.Barrier)
+    {
+          VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+              inputs(%buf0 as %input: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
+              outputs(%buf0 as %output: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]> {
+              VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+          }
+    }
+
+    VPURT.Task waits(%bar7: !VPURT.Barrier) updates(%bar8: !VPURT.Barrier)
+    {
+          VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
+              inputs(%buf0 as %input: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
+              outputs(%buf0 as %output: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]> {
+              VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]} (%input, %output) : memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+          }
+    }
+
+    VPURT.Task waits(%bar8: !VPURT.Barrier) updates(%bar9: !VPURT.Barrier)
+    {
+         VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst0: memref<16x16x1x1xf16, #NHWC>) outputs(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
+    }
+
+    return %buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
+  }
+
+  // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier <{isStartBarrier}> -> !VPURT.Barrier
+  // CHECK: [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR5:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR6:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR7:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR8:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+  // CHECK: [[BAR9:%.+]] = VPURT.DeclareVirtualBarrier <{isFinalBarrier}> -> !VPURT.Barrier
+
+  // CHECK: [[BUF0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+  // CHECK: [[BUF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+
+  // CHECK: VPURT.Task
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
+  // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
+  // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
+  // CHECK-SAME: fetch_dma(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>)
+  // CHECK: }
+
+  // CHECK: VPURT.Task
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
+  // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
+  // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
+  // CHECK-SAME: fetch_dma(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, group = 1 : i64>)
+  // CHECK: }
+
+  // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
+
+  // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
+
+  // Group 0 first task
+  // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.SW.Kernel
+
+  // Group 0 last task
+  // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.SW.Kernel
+
+  // Group 1 first task
+  // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.SW.Kernel
+
+  // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier)
+  // CHECK: VPUIP.FetchDMA <{port = 0 : i64}>
+  // CHECK-SAME: inputs([[BUF0]] : memref<0x0x0x0xi32, @DDR>)
+  // CHECK-SAME: outputs([[BUF1]] : memref<0x0x0x0xi32, @DDR>)
+  // CHECK-SAME: fetch_dma(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, group = 2 : i64>)
+  // CHECK: }
+
+  // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
+
+  // Group 1 last task
+  // CHECK: VPURT.Task waits([[BAR5]] : !VPURT.Barrier) updates([[BAR6]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.SW.Kernel
+
+  // Group 2 first task
+  // CHECK: VPURT.Task waits([[BAR6]] : !VPURT.Barrier) updates([[BAR7]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.SW.Kernel
+
+  // Group 2 last task
+  // CHECK: VPURT.Task waits([[BAR7]] : !VPURT.Barrier) updates([[BAR8]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.SW.Kernel
+
+  // End DMA
+  // CHECK: VPURT.Task waits([[BAR8]] : !VPURT.Barrier) updates([[BAR9]] : !VPURT.Barrier)
+  // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
 }

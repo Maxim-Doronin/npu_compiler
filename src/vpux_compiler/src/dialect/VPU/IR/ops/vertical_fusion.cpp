@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -132,6 +132,32 @@ void vpux::VPU::VerticalFusionOp::build(mlir::OpBuilder& builder, mlir::Operatio
     result.addOperands(operands);
     result.addTypes(resultTypes);
     result.addAttribute("tilingStrategy", tilingInfo);
+
+    // Add a body region with block arguments
+    auto* bodyRegion = result.addRegion();
+    auto& bodyBlock = bodyRegion->emplaceBlock();
+    for (auto operand : operands) {
+        auto type = operand.getType();
+        bodyBlock.addArgument(type, operand.getLoc());
+    }
+
+    mlir::OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&bodyBlock);
+
+    VPUX_THROW_UNLESS(bodyBuilder, "Got empty body builder.");
+    bodyBuilder(builder, result.location, bodyBlock.getArguments());
+}
+
+void vpux::VPU::VerticalFusionOp::build(mlir::OpBuilder& builder, mlir::OperationState& result,
+                                        mlir::TypeRange resultTypes, mlir::ValueRange operands,
+                                        BodyBuilderFn bodyBuilder, mlir::ArrayAttr tilingInfo,
+                                        mlir::UnitAttr isManualConfigured) {
+    result.addOperands(operands);
+    result.addTypes(resultTypes);
+    result.addAttribute("tilingStrategy", tilingInfo);
+    if (isManualConfigured != nullptr) {
+        result.addAttribute("isManualConfigured", isManualConfigured);
+    }
 
     // Add a body region with block arguments
     auto* bodyRegion = result.addRegion();

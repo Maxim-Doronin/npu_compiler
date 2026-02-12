@@ -53,7 +53,7 @@ protected:
         std::tie(inType, inShape, axis, td) = this->GetParam();
         targetDevice = td;
         configuration["NPU_DYNAMIC_SHAPE_TO_STATIC"] = "YES";
-        configuration["NPU_COMPILER_TYPE"] = "MLIR";
+        configuration["NPU_COMPILER_TYPE"] = "PLUGIN";
 
         if (inType == ov::element::Type_t::f16) {
             abs_threshold = 0.005;

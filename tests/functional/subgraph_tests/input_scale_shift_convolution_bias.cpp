@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -95,7 +95,7 @@ public:
     }
 
     void SetUp() override {
-        configuration["NPU_COMPILER_TYPE"] = "MLIR";
+        configuration["NPU_COMPILER_TYPE"] = "PLUGIN";
         auto scalesMode = GetParam();
         // TODO: #151977 the threshold is quite big, which looks suspicious.
         // Moreover the test fails if the FuseInputScaleShift pass is disabled
@@ -201,10 +201,12 @@ TEST_P(FuseInputScaleShiftCommon, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(FuseInputScaleShiftCommon, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 const std::vector<ScalesMode> scalesModes = {ScalesMode::DIFFERENT, ScalesMode::SPLAT, ScalesMode::NO_SCALES};
 
 INSTANTIATE_TEST_SUITE_P(FuseInputScaleShift, FuseInputScaleShiftCommon, ::testing::ValuesIn(scalesModes),

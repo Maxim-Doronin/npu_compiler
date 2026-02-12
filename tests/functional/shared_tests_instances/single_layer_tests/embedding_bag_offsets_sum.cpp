@@ -1,5 +1,5 @@
 
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -23,11 +23,13 @@ TEST_P(EmbeddingBagOffsetsSumLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(EmbeddingBagOffsetsSumLayerTestCommon, NPU5010_HW) {
     abs_threshold = 0.06;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

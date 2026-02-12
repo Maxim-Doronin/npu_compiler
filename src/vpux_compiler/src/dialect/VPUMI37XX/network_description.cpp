@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,9 +27,6 @@
 #include <algorithm>
 
 using namespace vpux;
-
-using intel_npu::IODescriptor;
-using intel_npu::NetworkMetadata;
 
 namespace {
 
@@ -125,7 +122,7 @@ std::vector<IODescriptor> convertIODescriptors(const std::vector<elf::TensorRef>
     for (auto descriptorIndex : irange(descriptorsFromCompilerCount)) {
         IODescriptor convertedIODescriptor;
 
-        // From the "elf::TensorRef" structure we may build the following "intel_npu::IODescriptor" fields:
+        // From the "elf::TensorRef" structure we may build the following "IODescriptor" fields:
         //  * nameFromCompiler
         //  * precision
         //  * shapeFromCompiler
@@ -175,7 +172,7 @@ std::vector<IODescriptor> convertIODescriptors(const std::vector<elf::TensorRef>
                                     convertedIODescriptor.isMainInputWeights,
                             "The inputs/outputs found in the IR model cannot be states, shape tensors or weights");
 
-            // From the "elf::OVNode" structure we may build the following "intel_npu::IODescriptor" fields:
+            // From the "elf::OVNode" structure we may build the following "IODescriptor" fields:
             //  * nodeFriendlyName
             //  * outputTensorNames
             const elf::OVNode& descriptorFromIRModel = descriptorsFromIRModel->at(descriptorIndex);
@@ -265,9 +262,8 @@ NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(mlir::ArrayRef<uint8_t> blob
     return network;
 }
 
-intel_npu::NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(uint8_t* serializedMetadata,
-                                                               size_t serializedMetadataSize) {
-    intel_npu::NetworkMetadata network;
+NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(uint8_t* serializedMetadata, size_t serializedMetadataSize) {
+    NetworkMetadata network;
 
     VPUX_THROW_UNLESS(serializedMetadata, "Got NULL pointer");
 
@@ -277,8 +273,8 @@ intel_npu::NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(uint8_t* serializ
     return network;
 }
 
-intel_npu::NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(mlir::ModuleOp module) {
-    intel_npu::NetworkMetadata network;
+NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(mlir::ModuleOp module) {
+    NetworkMetadata network;
     std::shared_ptr<elf::NetworkMetadata> metadata;
 
     auto name = mlir::StringRef(HOST_EXEC_NETWORK_METADATA_NAME);

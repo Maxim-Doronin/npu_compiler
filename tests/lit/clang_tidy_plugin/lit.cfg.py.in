@@ -1,0 +1,33 @@
+#
+# Copyright (C) 2025 Intel Corporation.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+import os
+import pathlib
+import sys
+
+import lit.formats
+
+config.name = 'Clang-Tidy Plugin'
+config.test_format = lit.formats.ShTest(execute_external=True)
+
+config.suffixes = ['.cpp']
+
+# can't take this path from CMake's configure_file
+# CMake doesn't know it at configure stage
+config.test_source_root = os.path.dirname(__file__)
+
+# override test_exec_root to avoid polluting source tree
+# with tests execution artifacts
+config.test_exec_root = '@CMAKE_CURRENT_BINARY_DIR@'
+
+check_plugin_path = pathlib.Path('@CLANG_TIDY_PLUGIN_PATH@')
+if not check_plugin_path.is_file():
+    print('Error: {} does not exist'.format(check_plugin_path))
+    sys.exit(-1)
+
+# here we rely on check_clang_tidy.py to be placed in the same location as this file
+# can't easily take it from CMake's configure_file as it doesn't know the path at configure stage
+config.substitutions.append(('%check_clang_tidy', 'python {}/check_clang_tidy.py'.format(config.test_source_root)))
+config.substitutions.append(('%load_plugin', '--load={}'.format(check_plugin_path)))

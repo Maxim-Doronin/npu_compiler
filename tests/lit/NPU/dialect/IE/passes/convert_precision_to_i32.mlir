@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,8 +14,8 @@ func.func @GatherConvertIndices(%arg0: tensor<100xf16>) -> tensor<10xf16> {
 
   return %prob : tensor<10xf16>
 
-  //CHECK: [[VAL0:%.*]] = const.Declare tensor<10xsi32> = dense<1> : tensor<10xsi64>, [#const.CastElemType<si32>]
-  //CHECK: [[VAL1:%.*]] = IE.Gather(%arg0, [[VAL0]]) {axis_value = 0 : i64, batch_dims = 0 : i64} : tensor<100xf16>, tensor<10xsi32> -> tensor<10xf16>
+  //CHECK: [[VAL0:%.+]] = const.Declare tensor<10xsi32> = dense<1> : tensor<10xsi64>, [#const.CastElemType<si32>]
+  //CHECK: [[VAL1:%.+]] = IE.Gather(%arg0, [[VAL0]]) {axis_value = 0 : i64, batch_dims = 0 : i64} : tensor<100xf16>, tensor<10xsi32> -> tensor<10xf16>
   //CHECK: return [[VAL1]]
 }
 
@@ -25,17 +25,17 @@ func.func @EqualConvert(%arg0: tensor<1x10x1xsi64>) -> tensor<1x10x1xi8> {
   %1 = IE.Equal(%arg0, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x1xsi64>, tensor<1x1x1xsi64> -> tensor<1x10x1xi8>
   return %1 : tensor<1x10x1xi8>
 
-  //CHECK: [[CST:%.*]] = const.Declare tensor<1x1x1xsi32> = dense<0> : tensor<1x1x1xsi64>, [#const.CastElemType<si32>]
-  //CHECK: [[VAL0:%.*]] = IE.Equal({{[^:]+}}, [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x1xsi32>, tensor<1x1x1xsi32> -> tensor<1x10x1xi8>
+  //CHECK: [[CST:%.+]] = const.Declare tensor<1x1x1xsi32> = dense<0> : tensor<1x1x1xsi64>, [#const.CastElemType<si32>]
+  //CHECK: [[VAL0:%.+]] = IE.Equal({{[^:]+}}, [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x10x1xsi32>, tensor<1x1x1xsi32> -> tensor<1x10x1xi8>
   //CHECK: return [[VAL0]]
 }
 
 // CHECK-LABEL: @OneHotConvert
 func.func @OneHotConvert(%arg0: tensor<1x100xsi64>) -> tensor<1x30x100xsi64> {
-  %1 = IE.OneHot(%arg0) {axis_attr = 1 : i64, depth_attr = 30 : i64, off_value_attr = 0.000000e+00 : f64, on_value_attr = 1.000000e+00 : f64, operandSegmentSizes = array<i32: 1, 0, 0, 0>, outputType = si64} : tensor<1x100xsi64> -> tensor<1x30x100xsi64>
+  %1 = IE.OneHot(%arg0) {axis_attr = 1 : i64, depth_attr = 30 : i64, mode = #IE.one_hot_mode<IGNORE_NEGATIVE>, off_value_attr = 0.000000e+00 : f64, on_value_attr = 1.000000e+00 : f64, operandSegmentSizes = array<i32: 1, 0, 0, 0>, outputType = si64} : tensor<1x100xsi64> -> tensor<1x30x100xsi64>
   return %1 : tensor<1x30x100xsi64>
 
-  //CHECK: [[VAL0:%.*]] = IE.OneHot(%arg0) {axis_attr = 1 : i64, depth_attr = 30 : i64, off_value_attr = 0.000000e+00 : f64, on_value_attr = 1.000000e+00 : f64, operandSegmentSizes = array<i32: 1, 0, 0, 0>, outputType = si32} : tensor<1x100xsi32> -> tensor<1x30x100xsi32>
+  //CHECK: [[VAL0:%.+]] = IE.OneHot(%arg0) {axis_attr = 1 : i64, depth_attr = 30 : i64, mode = #IE.one_hot_mode<IGNORE_NEGATIVE>, off_value_attr = 0.000000e+00 : f64, on_value_attr = 1.000000e+00 : f64, operandSegmentSizes = array<i32: 1, 0, 0, 0>, outputType = si32} : tensor<1x100xsi32> -> tensor<1x30x100xsi32>
   //CHECK: return [[VAL0]]
 }
 
@@ -49,7 +49,7 @@ func.func @ShapeOf(%arg0: tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements
         dstElemType = si32
     } : tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 384, 384]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi32>
 
-    // CHECK: [[SHAPE_OF:%.*]] = IE.ShapeOf(%arg0) {
+    // CHECK: [[SHAPE_OF:%.+]] = IE.ShapeOf(%arg0) {
     // CHECK-SAME:      dstElemType = si32
     // CHECK-SAME:  } : tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 384, 384]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK-SAME:      -> tensor<4xsi32>
@@ -66,7 +66,7 @@ func.func @AddOp(%arg0: tensor<1x5x16x32xui64>, %arg1: tensor<1x5x16x32xui64>) -
     %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x16x32xui64>, tensor<1x5x16x32xui64> -> tensor<1x5x16x32xui64>
     return %0 : tensor<1x5x16x32xui64>
 
-    // CHECK: [[ADD:%.*]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x16x32xui32>, tensor<1x5x16x32xui32> -> tensor<1x5x16x32xui32>
+    // CHECK: [[ADD:%.+]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x16x32xui32>, tensor<1x5x16x32xui32> -> tensor<1x5x16x32xui32>
     // CHECK: return [[ADD]] : tensor<1x5x16x32xui32>
 }
 

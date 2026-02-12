@@ -69,8 +69,8 @@ mlir::FailureOr<SymbolizationResult> KernelParamsRewriter::symbolize(VPUMI40XX::
     auto newOp = rewriter.create<VPUASM::KernelParamsOp>(
             op.getLoc(), symName, inputsAttr, outputsAttr, inputsShapeAttr, outputsShapeAttr, op.getKernelTypeAttr(),
             std::move(kernelParams), std::move(inputDimsBinaryVector), std::move(inputStridesBinaryVector),
-            std::move(outputDimsBinaryVector), std::move(outputStridesBinaryVector), op.getIsOutputBroadcastedAttr(),
-            op.getIsJitCompiledAttr());
+            std::move(outputDimsBinaryVector), std::move(outputStridesBinaryVector), op.getIsOutputBroadcasted(),
+            op.getIsJitCompiled());
     rewriter.eraseOp(op);
 
     return SymbolizationResult(newOp);

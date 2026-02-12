@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -80,10 +80,12 @@ TEST_P(AvgPoolWithConvTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(AvgPoolWithConvTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 const std::vector<ov::Shape> testShapes = {
         {1, 3, 640, 640},
 

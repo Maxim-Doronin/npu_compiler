@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,7 +70,7 @@ InputTiling DetectionOutputSortOpInputTilingOnShave(VPUIP::SwKernelOp swKernelOp
                                                     int tileId, int tileCount, Logger /*log*/) {
     auto module = swKernelOp.getOperation()->getParentOfType<mlir::ModuleOp>();
     auto numClusters = config::getTileExecutor(module).getCount();
-    auto numTotalShaves = config::getTotalNumOfEngines(module, VPU::ExecutorKind::SHAVE_ACT);
+    auto numTotalShaves = config::getTotalNumOfEngines(module, config::ExecutorKind::SHAVE_ACT);
 
     VPUX_THROW_WHEN(numClusters <= 0, "Unsupported number of clusters: {0}", numClusters);
 
@@ -108,6 +108,40 @@ OutputTiling GRUSequenceOutputTiling(const vpux::TileInfo& firstOutputTile) {
     auto stateOutputTile = vpux::TileInfo(outStateShape, outStateOffsets, outStateAxis);
 
     return {firstOutputTile, std::move(stateOutputTile)};
+}
+
+OutputTiling logSoftmaxTopKOutputTiling(const vpux::TileInfo& firstOutputTile) {
+    const auto rank = firstOutputTile.shape.size();
+
+    auto secondShape = firstOutputTile.shape;
+    auto secondOffsets = firstOutputTile.offsets;
+    auto secondAxis = firstOutputTile.axis;
+
+    // The innermost dimension will always be 1 for the second output (due to fusing TopK with K=1)
+    secondShape[Dim(rank - 1)] = 1;
+    secondOffsets[Dim(rank - 1)] = 0;
+    secondAxis[Dim(rank - 1)] = 1;
+
+    auto secondOutputTile = vpux::TileInfo(secondShape, secondOffsets, secondAxis);
+
+    return {firstOutputTile, std::move(secondOutputTile)};
+}
+
+OutputTiling logSoftmaxPeakOutputTiling(const vpux::TileInfo& firstOutputTile) {
+    const auto rank = firstOutputTile.shape.size();
+
+    auto correctedShape = firstOutputTile.shape;
+    auto correctedOffsets = firstOutputTile.offsets;
+    auto correctedAxis = firstOutputTile.axis;
+
+    // The innermost dimension will always be 1 for the second output (due to fusing TopK with K=1)
+    correctedShape[Dim(rank - 1)] = 1;
+    correctedOffsets[Dim(rank - 1)] = 0;
+    correctedAxis[Dim(rank - 1)] = 1;
+
+    auto correctedOutputTile = vpux::TileInfo(correctedShape, correctedOffsets, correctedAxis);
+
+    return {correctedOutputTile, correctedOutputTile};
 }
 
 OutputTiling DynamicQuantizeOutputTiling(const vpux::TileInfo& firstOutputTile) {
@@ -177,7 +211,7 @@ OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile, int6
 }
 
 InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeRef keyShape,
-                                   std::optional<ShapeRef> attentionMaskShape, std::optional<ShapeRef> scaleShape,
+                                   std::optional<ShapeRef> attentionMaskShape, ShapeRef auxBufferShape,
                                    ShapeRef dpuDescriptorBufferShape, ShapeRef weightsTable0Shape,
                                    ShapeRef weightsTable1Shape) {
     const auto targetSeqLen = firstOutputTile.shape[Dims4D::Act::H];
@@ -187,8 +221,7 @@ InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeR
     const auto heads = keyShape[Dims4D::Act::C];
 
     const auto queryShape = Shape{1, heads, targetSeqLen, qkEmbedding};
-    const auto valueShape = Shape{1, heads, vEmbedding, sourceSeqLen};
-    const auto auxBufferShape = Shape{1, heads, targetSeqLen, sourceSeqLen};
+    const auto valueShape = Shape{1, heads, sourceSeqLen, vEmbedding};
     const auto runningOutShape = Shape{1, heads, targetSeqLen, vEmbedding};
     const auto runningMaxShape = Shape{1, heads, targetSeqLen, 1};
     const auto& runningSumShape = runningMaxShape;
@@ -220,7 +253,6 @@ InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeR
 
     syncTilesDim(firstOutputTile, Dims4D::Act::C, valueTile, Dims4D::Act::C);
 
-    syncTilesDim(firstOutputTile, Dims4D::Act::C, auxBufferTile, Dims4D::Act::C);
     syncTilesDim(firstOutputTile, Dims4D::Act::H, auxBufferTile, Dims4D::Act::H);
 
     syncTilesDim(firstOutputTile, Dims4D::Act::C, runningOutTile, Dims4D::Act::C);
@@ -253,11 +285,6 @@ InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeR
         syncTilesDim(firstOutputTile, Dims4D::Act::H, attentionMaskTile, Dims4D::Act::H);
 
         inputsTiles.push_back(attentionMaskTile);
-    }
-
-    // Scale is just one value and couldn't be tiled.
-    if (scaleShape.has_value()) {
-        inputsTiles.push_back(TileInfo(scaleShape.value()));
     }
 
     return InputTiling{inputsTiles};

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -137,7 +137,8 @@ SmallVector<Shape> getInputOffsetsPerCluster(NCEOpInterface nceOp, Logger log) {
 
     auto clusterHasFullTensor = [](VPU::DistributionMode mode) {
         return VPU::bitEnumContainsAny(mode, VPU::DistributionMode::DUPLICATED) ||
-               VPU::bitEnumContainsAny(mode, VPU::DistributionMode::MULTICASTED);
+               VPU::bitEnumContainsAny(mode, VPU::DistributionMode::MULTICASTED) ||
+               (mode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED));
     };
 
     const auto hasFullInput = clusterHasFullTensor(modeInput);

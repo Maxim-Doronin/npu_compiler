@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
@@ -252,7 +253,7 @@ void splitOntoWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp, VP
             costParams.outputShape = outputSubTensorShapes[clusterId];
             costParams.numTiles = distributionAttr.getNumClusters().getInt();
             // #E129156 once with the update of VPUNN to provide MPE mode explicitly
-
+            // avoid using below logic for NPU5 onwards
             if (costParams.arch != config::ArchKind::NPU40XX &&
                 mlir::isa<VPU::NCEConvolutionOp, VPU::NCECompressConvolutionOp, VPU::NCEInterpolateOp>(origOp)) {
                 mpeMode = origOp.getMpeMode(nullptr, nullptr, outputSubTensorShapes[clusterId]);

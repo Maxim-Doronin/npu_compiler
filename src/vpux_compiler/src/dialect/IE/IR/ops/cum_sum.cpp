@@ -79,9 +79,15 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::CumSumOp cumsumOp, m
     }
 
     const auto axisContent = axisConst.getContent();
+    auto axisValue = axisContent.getSplatValue<int64_t>();
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(cumsumOp.getInput().getType());
+    if (axisValue < 0) {
+        axisValue += inputType.getRank();
+    }
+
     rewriter.replaceOpWithNewOp<IE::CumSumOp>(cumsumOp, cumsumOp.getType(), cumsumOp.getInput(), nullptr,
-                                              rewriter.getI64IntegerAttr(axisContent.getSplatValue<int64_t>()),
-                                              cumsumOp.getExclusiveAttr(), cumsumOp.getReverseAttr());
+                                              rewriter.getI64IntegerAttr(axisValue), cumsumOp.getExclusiveAttr(),
+                                              cumsumOp.getReverseAttr());
     return mlir::success();
 }
 

@@ -20,6 +20,8 @@ func.func @ConvertReverseToGroupConvolutionWithAxesOfHW(%arg0: tensor<512x512x3x
 
     // CHECK-NOT:    IE.Reverse
 
+    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[INPUT]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
+
     // CHECK-DAG:    [[WEIGHTS_1:%.+]] = const.Declare tensor<512x1x3x3xf16>
     // CHECK-DAG:    [[WEIGHTS_2:%.+]] = const.Declare tensor<512x1x3x3xf16>
     // CHECK-DAG:    [[WEIGHTS_3:%.+]] = const.Declare tensor<512x1x3x3xf16>
@@ -30,17 +32,15 @@ func.func @ConvertReverseToGroupConvolutionWithAxesOfHW(%arg0: tensor<512x512x3x
     // CHECK-DAG:    [[WEIGHTS_8:%.+]] = const.Declare tensor<512x1x3x3xf16>
     // CHECK-DAG:    [[WEIGHTS_9:%.+]] = const.Declare tensor<512x1x3x3xf16>
 
-    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[INPUT]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
-
-    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_9]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_2:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_8]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_7]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_4:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_6]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_5:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_5]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_6:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_4]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_7:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_8:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_2]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_9:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_2:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_2]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_4:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_4]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_5:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_5]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_6:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_6]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_7:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_7]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_8:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_8]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK-DAG:        [[GROUP_CONV_9:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_9]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
 
     // CHECK:        [[CONCAT:%.+]] = IE.Concat([[GROUP_CONV_1]], [[GROUP_CONV_2]], [[GROUP_CONV_3]], [[GROUP_CONV_4]], [[GROUP_CONV_5]], [[GROUP_CONV_6]], [[GROUP_CONV_7]], [[GROUP_CONV_8]], [[GROUP_CONV_9]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16> -> tensor<9x512x512x1xf16>
     // CHECK:        [[TRANSPOSE:%.+]] = IE.Transpose([[CONCAT]]) {order_value = #map} : tensor<9x512x512x1xf16> -> tensor<1x512x512x9xf16>
@@ -67,6 +67,10 @@ func.func @ConvertReverseToGroupConvolutionWithAxesOfNonHW(%arg0: tensor<512x3x3
 
     // CHECK-NOT:    IE.Reverse
 
+    // CHECK:        [[TRANSPOSE_IN:%.+]] = IE.Transpose([[INPUT]]) {order_value = #NWCH} : tensor<512x3x3x512xf16> -> tensor<512x512x3x3xf16>
+
+    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[TRANSPOSE_IN]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
+
     // CHECK-DAG:    [[WEIGHTS_1:%.+]] = const.Declare tensor<512x1x3x3xf16>
     // CHECK-DAG:    [[WEIGHTS_2:%.+]] = const.Declare tensor<512x1x3x3xf16>
     // CHECK-DAG:    [[WEIGHTS_3:%.+]] = const.Declare tensor<512x1x3x3xf16>
@@ -77,19 +81,15 @@ func.func @ConvertReverseToGroupConvolutionWithAxesOfNonHW(%arg0: tensor<512x3x3
     // CHECK-DAG:    [[WEIGHTS_8:%.+]] = const.Declare tensor<512x1x3x3xf16>
     // CHECK-DAG:    [[WEIGHTS_9:%.+]] = const.Declare tensor<512x1x3x3xf16>
 
-    // CHECK:        [[TRANSPOSE_IN:%.+]] = IE.Transpose([[INPUT]]) {order_value = #NWCH} : tensor<512x3x3x512xf16> -> tensor<512x512x3x3xf16>
-
-    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[TRANSPOSE_IN]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
-
-    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_9]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_2:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_8]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_7]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_4:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_6]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_2:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_2]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_4:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_4]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
     // CHECK:        [[GROUP_CONV_5:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_5]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_6:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_4]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_7:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_8:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_2]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
-    // CHECK:        [[GROUP_CONV_9:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_6:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_6]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_7:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_7]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_8:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_8]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
+    // CHECK:        [[GROUP_CONV_9:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_9]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [3, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x3x3xf16> -> tensor<1x512x512x1xf16>
 
     // CHECK:        [[CONCAT:%.+]] = IE.Concat([[GROUP_CONV_1]], [[GROUP_CONV_2]], [[GROUP_CONV_3]], [[GROUP_CONV_4]], [[GROUP_CONV_5]], [[GROUP_CONV_6]], [[GROUP_CONV_7]], [[GROUP_CONV_8]], [[GROUP_CONV_9]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16>, tensor<1x512x512x1xf16> -> tensor<9x512x512x1xf16>
     // CHECK:        [[TRANSPOSE:%.+]] = IE.Transpose([[CONCAT]]) {order_value = #map} : tensor<9x512x512x1xf16> -> tensor<1x512x512x9xf16>
@@ -149,15 +149,15 @@ func.func @ConvertReverseToGroupConvolutionWithAxisOfW(%arg0: tensor<512x512x3x3
 
     // CHECK-NOT:    IE.Reverse
 
+    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[INPUT]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
+
     // CHECK-DAG:    [[WEIGHTS_1:%.+]] = const.Declare tensor<512x1x1x3xf16>
     // CHECK-DAG:    [[WEIGHTS_2:%.+]] = const.Declare tensor<512x1x1x3xf16>
     // CHECK-DAG:    [[WEIGHTS_3:%.+]] = const.Declare tensor<512x1x1x3xf16>
 
-    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[INPUT]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
-
-    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
+    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
     // CHECK:        [[GROUP_CONV_2:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_2]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
-    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
+    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
 
     // CHECK:        [[CONCAT:%.+]] = IE.Concat([[GROUP_CONV_1]], [[GROUP_CONV_2]], [[GROUP_CONV_3]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x512x1536x1xf16>, tensor<1x512x1536x1xf16>, tensor<1x512x1536x1xf16> -> tensor<3x512x1536x1xf16>
     // CHECK:        [[TRANSPOSE:%.+]] = IE.Transpose([[CONCAT]]) {order_value = #map} : tensor<3x512x1536x1xf16> -> tensor<1x512x1536x3xf16>
@@ -183,17 +183,17 @@ func.func @ConvertReverseToGroupConvolutionWithAxisOfNonW(%arg0: tensor<512x512x
 
     // CHECK-NOT:    IE.Reverse
 
-    // CHECK-DAG:    [[WEIGHTS_1:%.+]] = const.Declare tensor<512x1x1x3xf16>
-    // CHECK-DAG:    [[WEIGHTS_2:%.+]] = const.Declare tensor<512x1x1x3xf16>
-    // CHECK-DAG:    [[WEIGHTS_3:%.+]] = const.Declare tensor<512x1x1x3xf16>
-
     // CHECK:        [[TRANSPOSE_IN:%.+]] = IE.Transpose([[INPUT]]) {order_value = #NCWH} : tensor<512x512x3x3xf16> -> tensor<512x512x3x3xf16>
 
     // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 512, 1536, 3]} inputs([[TRANSPOSE_IN]] : tensor<512x512x3x3xf16>) -> tensor<1x512x1536x3xf16>
 
-    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
+    // CHECK-DAG:    [[WEIGHTS_1:%.+]] = const.Declare tensor<512x1x1x3xf16>
+    // CHECK-DAG:    [[WEIGHTS_2:%.+]] = const.Declare tensor<512x1x1x3xf16>
+    // CHECK-DAG:    [[WEIGHTS_3:%.+]] = const.Declare tensor<512x1x1x3xf16>
+
+    // CHECK:        [[GROUP_CONV_1:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
     // CHECK:        [[GROUP_CONV_2:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_2]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
-    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_1]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
+    // CHECK:        [[GROUP_CONV_3:%.+]] = IE.GroupConvolution([[SHAPECAST_IN]], [[WEIGHTS_3]]) {dilations = [1, 1], groups = 512 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x512x1536x3xf16>, tensor<512x1x1x3xf16> -> tensor<1x512x1536x1xf16>
 
     // CHECK:        [[CONCAT:%.+]] = IE.Concat([[GROUP_CONV_1]], [[GROUP_CONV_2]], [[GROUP_CONV_3]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x512x1536x1xf16>, tensor<1x512x1536x1xf16>, tensor<1x512x1536x1xf16> -> tensor<3x512x1536x1xf16>
     // CHECK:        [[TRANSPOSE:%.+]] = IE.Transpose([[CONCAT]]) {order_value = #map} : tensor<3x512x1536x1xf16> -> tensor<1x512x1536x3xf16>

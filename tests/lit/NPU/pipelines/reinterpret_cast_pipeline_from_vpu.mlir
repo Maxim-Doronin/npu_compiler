@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,7 +30,7 @@ module @InMain {
     // CHECK-DAG:   [[BLOB:%.+]] = VPURT.DeclareBuffer <NetworkInput> [1] <0> -> memref<{{.+}}x512x3x3xf16, #NHWC, @DDR>
     // CHECK-DAG:   [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<{{.+}}x512x3x3xf16, #NHWC, @DDR>
 
-    // CHECK:       VPUIP.NNDMA {{.*}} inputs([[BLOB]]
+    // CHECK:       VPUIP.NNDMA <{{.+}}> inputs([[BLOB]]
     // CHECK-SAME:      outputs([[OUT]]
 }
 
@@ -61,6 +61,6 @@ module @InMainWithSlice {
     // CHECK-DAG:   [[BLOB:%.+]] = VPURT.DeclareBuffer <NetworkInput> [1] <48662016> -> memref<{{.+}}x512x3x3xf16, #NHWC, @DDR>
     // CHECK-DAG:   [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<{{.+}}x512x3x3xf16, #NHWC, @DDR>
 
-    // CHECK:       VPUIP.NNDMA {{.*}} inputs([[BLOB]]
+    // CHECK:       VPUIP.NNDMA <{{.+}}> inputs([[BLOB]]
     // CHECK-SAME:      outputs([[OUT]]
 }

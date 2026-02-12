@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,7 +32,7 @@ size_t VPURT::getMaxEntry(const BarrierInfo::TaskSet& entries) {
     FIFO-1 | 1, 3, 5, 6
 */
 VPURT::TaskOpQueues VPURT::getTaskOpQueues(mlir::func::FuncOp funcOp, BarrierInfo& barrierInfo,
-                                           std::optional<VPU::ExecutorKind> targetExecutorKind) {
+                                           std::optional<config::ExecutorKind> targetExecutorKind) {
     VPURT::TaskOpQueues taskOpQueues;
     for (auto taskOp : funcOp.getOps<VPURT::TaskOp>()) {
         const auto taskQueueType = VPURT::getTaskQueueType(taskOp, false);
@@ -61,7 +61,7 @@ bool VPURT::allQueuesReachedEnd(const TaskOpQueueIterator& frontTasks, const Tas
         const auto& type = entry.first;
         const auto& queueIter = entry.second;
         VPUX_THROW_UNLESS(taskOpQueues.find(type) != taskOpQueues.end(), "Task op queue doesn't contain queue type {0}",
-                          VPU::stringifyExecutorKind(type.type));
+                          config::stringifyExecutorKind(type.type));
         return queueIter == taskOpQueues.at(type).end();
     });
 }
@@ -73,7 +73,7 @@ bool VPURT::allQueuesWaiting(const TaskOpQueueIterator& frontTasks, const TaskOp
         const auto& type = entry.first;
         const auto& queueIter = entry.second;
         VPUX_THROW_UNLESS(taskOpQueues.find(type) != taskOpQueues.end(), "Task op queue doesn't contain queue type {0}",
-                          VPU::stringifyExecutorKind(type.type));
+                          config::stringifyExecutorKind(type.type));
         return queueIter != taskOpQueues.at(type).end() && barrierInfo.getWaitBarriers(*queueIter).empty();
     });
 }
@@ -97,7 +97,7 @@ SmallVector<size_t> VPURT::findReadyOpsFromTaskOpQueues(TaskOpQueueIterator& fro
         for (auto& entry : frontTasks) {
             VPUX_THROW_UNLESS(taskOpQueues.find(entry.first) != taskOpQueues.end(),
                               "Task op queue doesn't contain queue type {0}",
-                              VPU::stringifyExecutorKind(entry.first.type));
+                              config::stringifyExecutorKind(entry.first.type));
             if (entry.second != taskOpQueues.at(entry.first).end() &&
                 barrierInfo.getWaitBarriers(*entry.second).empty()) {
                 readyOps.push_back(*entry.second);
@@ -145,11 +145,12 @@ bool VPURT::verifyBarrierSlots(mlir::func::FuncOp func, Logger log) {
 size_t VPURT::countIndependentTaskExecutors(mlir::func::FuncOp func) {
     const auto module = func->getParentOfType<mlir::ModuleOp>();
     auto numTiles = config::getTileExecutor(module).getCount();
-    const auto dmaPortNum = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
     auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(config::getArch(module)).size();
     auto tileOp = config::getTileExecutor(module);
-    auto numShaveExecutorsPerTile = static_cast<size_t>(tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount());
-    auto numDpuExecutorsPerTile = tileOp.getSubExecutor(VPU::ExecutorKind::DPU).getCount();
+    auto numShaveExecutorsPerTile =
+            static_cast<size_t>(tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount());
+    auto numDpuExecutorsPerTile = tileOp.getSubExecutor(config::ExecutorKind::DPU).getCount();
     return dmaPortNum * dmaChannels + numTiles * (numDpuExecutorsPerTile + numShaveExecutorsPerTile);
 }
 
@@ -227,7 +228,7 @@ void VPURT::orderExecutionTasksAndBarriers(mlir::func::FuncOp funcOp, BarrierInf
                 log.error("Dump queues state:");
                 for (auto [taskQueueType, nextTaskOpIt] : frontTasks) {
                     log.nest().error(
-                            "Queue '{0}:{1}' next task: {2}", VPU::stringifyExecutorKind(taskQueueType.type),
+                            "Queue '{0}:{1}' next task: {2}", config::stringifyExecutorKind(taskQueueType.type),
                             taskQueueType.id,
                             (nextTaskOpIt != taskOpQueues.at(taskQueueType).end() ? std::to_string(*nextTaskOpIt)
                                                                                   : "<end of queue>"));
@@ -439,7 +440,9 @@ bool VPURT::isShareWaitAndUpdateBarriersNeeded(std::optional<WorkloadManagementM
     // For PWLM_V0_LCA mode enable shared barriers in order to avoid performance regressions
     // For PWLM_V0_LCA/PWLM_V1_BARRIER_FIFO mode use shareWaitAndUpdateBarriers to avoid issues in case of
     // rollback to nonWLM and lack of legalization of DMA descriptor fetch and potential issues in enqueue
-    if (workloadManagementMode.has_value() && workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES) {
+    if (workloadManagementMode.has_value() &&
+        (workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES ||
+         workloadManagementMode.value() == WorkloadManagementMode::PWLM_V0_1_PAGES)) {
         return false;
     }
     // enable shared wait and update barriers

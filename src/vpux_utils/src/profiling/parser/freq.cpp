@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,46 +18,58 @@ using namespace vpux::profiling;
 
 namespace {
 
-template <bool SHARED_DMA_SW_CNT, bool SHARED_DMA_DPU_CNT>
-constexpr FrequenciesSetup getFreqSetupHelper(const double vpuFreq, const double dpuFreq, double profClk,
-                                              FreqStatus freqStatus) {
-    return FrequenciesSetup{vpuFreq, dpuFreq, profClk, SHARED_DMA_SW_CNT, SHARED_DMA_DPU_CNT, freqStatus};
-}
+FrequenciesSetup getFreqSetupForDevice(TargetDevice device, uint16_t pllMult, FreqStatus freqStatus,
+                                       bool highFreqPerfClk, vpux::Logger& log) {
+    uint16_t pllMultMin = 1;
+    uint16_t pllMultMax = 0;
+    uint16_t pllMultDefault = 0;
+    double perfClk = vpux::arch40xx::PERF_CLK_DEFAULT_VALUE_MHZ;
+    double perfClkFast = vpux::arch40xx::PERF_CLK_HIGHFREQ_VALUE_MHZ;
+    bool hasSharedDmaDpuCounter = true;
 
-constexpr auto getFreqSetup37XXHelper = getFreqSetupHelper<true, false>;
-constexpr auto getFreqSetup40XXHelper = getFreqSetupHelper<true, true>;
-
-FrequenciesSetup get37XXSetup(uint16_t pllMult, FreqStatus freqStatus, vpux::Logger& log) {
-    if (pllMult < 10 || pllMult > 48) {
-        log.warning("PLL multiplier '{0}' is out of [10; 42] range. MAX freq. setup will be used.", pllMult);
-        freqStatus = FreqStatus::INVALID;
-        pllMult = 39;  // 975 / 1300 MHz
+    switch (device) {
+    case TargetDevice::TargetDevice_VPUX37XX:
+        pllMultMin = 10;
+        pllMultMax = 48;
+        pllMultDefault = 39;  // 975 / 1300 MHz
+        perfClk = vpux::arch37xx::PERF_CLK_DEFAULT_VALUE_MHZ;
+        perfClkFast = 0.0;  // not supported
+        hasSharedDmaDpuCounter = false;
+        break;
+    case TargetDevice::TargetDevice_VPUX40XX:
+    case TargetDevice::TargetDevice_VPUX50XX:
+        pllMultMin = 8;
+        pllMultMax = 78;
+        pllMultDefault = 74;  // 1057 / 1850 MHz
+        break;
+    default:
+        VPUX_THROW("TargetDevice {0} is not supported ", EnumNameTargetDevice(device));
     }
-    const double base = 50.0 * pllMult;
-    const double vpuFreq = base / 2.0;
-    const double dpuFreq = base / 1.5;
-    return getFreqSetup37XXHelper(vpuFreq, dpuFreq, vpux::arch37xx::PERF_CLK_DEFAULT_VALUE_MHZ, freqStatus);
-}
 
-FrequenciesSetup get40XXSetup(uint16_t pllMult, FreqStatus freqStatus, bool highFreqPerfClk, vpux::Logger& log) {
-    if (pllMult < 8 || pllMult > 78) {
-        log.warning("PLL multiplier '{0}' is out of [8; 78] range. MAX freq. setup will be used.", pllMult);
+    if (pllMult < pllMultMin || pllMult > pllMultMax) {
+        log.warning("PLL multiplier '{0}' is out of range. Default frequency will be used.", pllMult);
         freqStatus = FreqStatus::INVALID;
-        pllMult = 74;  // 1057 / 1850 MHz
+        pllMult = pllMultDefault;
     }
-    const double base = 50.0 * pllMult;
-    const double vpuFreq = base / 3.5;
-    const double dpuFreq = base / 2.0;
-    return getFreqSetup40XXHelper(
-            vpuFreq, dpuFreq,
-            highFreqPerfClk ? vpux::arch40xx::PERF_CLK_HIGHFREQ_VALUE_MHZ : vpux::arch40xx::PERF_CLK_DEFAULT_VALUE_MHZ,
-            freqStatus);
+    VPUX_THROW_WHEN(highFreqPerfClk && perfClkFast == 0.0,
+                    "High frequency perf clock is not supported on this device.");
+
+    double base = 50.0 * pllMult;
+    double vpuFreq = 0.0;
+    double dpuFreq = 0.0;
+    if (device == TargetDevice::TargetDevice_VPUX37XX) {
+        vpuFreq = base / 2.0;
+        dpuFreq = base / 1.5;
+    } else {
+        vpuFreq = base / 3.5;
+        dpuFreq = base / 2.0;
+    }
+
+    return FrequenciesSetup{vpuFreq, dpuFreq, highFreqPerfClk ? perfClkFast : perfClk, hasSharedDmaDpuCounter,
+                            freqStatus};
 }
 
 FrequenciesSetup getFpgaFreqSetup(TargetDevice device) {
-    if (device >= TargetDevice::TargetDevice_VPUX40XX) {
-        return getFreqSetup40XXHelper(2.86, 5.0, 1.176, FreqStatus::UNKNOWN);
-    }
     VPUX_THROW("TargetDevice {0} is not supported ", EnumNameTargetDevice(device));
 }
 
@@ -82,14 +94,7 @@ FrequenciesSetup getFreqSetupFromPll(TargetDevice device, const WorkpointRecords
         }
     }
 
-    if (device == TargetDevice::TargetDevice_VPUX37XX) {
-        VPUX_THROW_WHEN(highFreqPerfClk, "Requested perf_clk high frequency value is not supported on this device.");
-        return get37XXSetup(pllMult, freqStatus, log);
-    }
-    if (device >= TargetDevice::TargetDevice_VPUX40XX) {
-        return get40XXSetup(pllMult, freqStatus, highFreqPerfClk, log);
-    }
-    VPUX_THROW("TargetDevice {0} is not supported ", EnumNameTargetDevice(device));
+    return getFreqSetupForDevice(device, pllMult, freqStatus, highFreqPerfClk, log);
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -97,7 +97,7 @@ func.func @ConvertPerAxisToOffsets(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2
     %0 = IE.Concat(%arg0, %arg1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x4x3x4xf32>
     return %0: tensor<1x4x3x4xf32>
 
-    // CHECK:     [[VAL_0:%.*]] = IE.Concat(%arg0, %arg1)
+    // CHECK:     [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1)
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0]]}
     // CHECK-SAME:     tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x4x3x4xf32>
     // CHECK:     return [[VAL_0]] : tensor<1x4x3x4xf32>
@@ -119,8 +119,8 @@ func.func @FuseConcatWithOffsetsAndOtherOp(%arg0: tensor<1x2x3x4xf32>, %arg1: te
     } : tensor<1x4x3x4xf32>, tensor<1x4x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     return %3: tensor<1x10x3x4xf32>
 
-    // CHECK-DAG:     [[RES_0:%.*]] = IE.Reshape(%arg4) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
-    // CHECK:     [[VAL_0:%.*]] = IE.Concat(%arg0, %arg1, %arg2, %arg3, [[RES_0]])
+    // CHECK-DAG:     [[RES_0:%.+]] = IE.Reshape(%arg4) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
+    // CHECK:     [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1, %arg2, %arg3, [[RES_0]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0], [0, 8, 0, 0]]}
     // CHECK-SAME:     tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     // CHECK:     return [[VAL_0]] : tensor<1x10x3x4xf32>
@@ -140,8 +140,8 @@ func.func @FuseConcatWithPerAxis(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3
     %3 = IE.Concat(%0, %1, %2) {per_axis = #IE.Concat<axis = 1>} : tensor<1x4x3x4xf32>, tensor<1x4x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     return %3 : tensor<1x10x3x4xf32>
 
-    // CHECK-DAG:     [[RES_0:%.*]] = IE.Reshape(%arg4) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
-    // CHECK:     [[VAL_0:%.*]] = IE.Concat(%arg0, %arg1, %arg2, %arg3, [[RES_0]])
+    // CHECK-DAG:     [[RES_0:%.+]] = IE.Reshape(%arg4) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
+    // CHECK:     [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1, %arg2, %arg3, [[RES_0]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0], [0, 8, 0, 0]]}
     // CHECK-SAME:     tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     // CHECK:     return [[VAL_0]] : tensor<1x10x3x4xf32>
@@ -506,9 +506,9 @@ func.func @NotfoldSliceConcatWhenDifferentAxis(%arg0 : tensor<1x128x96x64xf16>) 
 
     return %ret : tensor<1x64x96x128xf16>
 
-    // CHECK:               [[SLICE_0:%.*]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
-    // CHECK:               [[SLICE_1:%.*]] = IE.Slice [[INPUT]] [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
-    // CHECK:               [[CONCAT:%.*]] = IE.Concat([[SLICE_0]], [[SLICE_1]])
+    // CHECK:               [[SLICE_0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
+    // CHECK:               [[SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
+    // CHECK:               [[CONCAT:%.+]] = IE.Concat([[SLICE_0]], [[SLICE_1]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 64]]} : tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16> -> tensor<1x64x96x128xf16>
     // CHECK:               return [[CONCAT]] : tensor<1x64x96x128xf16>
 }
@@ -526,9 +526,9 @@ func.func @foldSliceConcatWhenDifferentAxis(%arg0 : tensor<1x128x96x64xf16>, %ar
 
     return %ret : tensor<1x64x96x256xf16>
 
-    // CHECK:               [[SLICE_0:%.*]] = IE.Slice [[INPUT_0]] [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
-    // CHECK:               [[SLICE_1:%.*]] = IE.Slice [[INPUT_0]] [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
-    // CHECK:               [[CONCAT:%.*]] = IE.Concat([[SLICE_0]], [[SLICE_1]], [[INPUT_1]])
+    // CHECK:               [[SLICE_0:%.+]] = IE.Slice [[INPUT_0]] [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
+    // CHECK:               [[SLICE_1:%.+]] = IE.Slice [[INPUT_0]] [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
+    // CHECK:               [[CONCAT:%.+]] = IE.Concat([[SLICE_0]], [[SLICE_1]], [[INPUT_1]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 64], [0, 0, 0, 128]]} : tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x128xf16> -> tensor<1x64x96x256xf16>
     // CHECK:               return [[CONCAT]] : tensor<1x64x96x256xf16>
 }
@@ -542,8 +542,8 @@ func.func @foldSliceConcatWhenDifferentAxis(%arg0 : tensor<1x128x96x64xf16>, %ar
 func.func @ConcatDifferentBounds(%arg0: tensor<?x4xf32, {bounds = #const.OpaqueI64Elements<[200, 4]> : tensor<2xsi64>, order = #NC}>, %arg1: tensor<?x1xf32, {bounds = #const.OpaqueI64Elements<[200, 1]> : tensor<2xsi64>, order = #NC}>) -> tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}> {
     %0 = IE.Concat(%arg0, %arg1) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<?x4xf32, {bounds = #const.OpaqueI64Elements<[200, 4]> : tensor<2xsi64>, order = #NC}>, tensor<?x1xf32, {bounds = #const.OpaqueI64Elements<[200, 1]> : tensor<2xsi64>, order = #NC}> -> tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}>
     return %0 : tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}>
-    
-    // CHECK:               [[CONCAT:%.*]] = IE.Concat([[INPUT_0]], [[INPUT_1]])
+
+    // CHECK:               [[CONCAT:%.+]] = IE.Concat([[INPUT_0]], [[INPUT_1]])
     // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0], [0, 4]]}
     // CHECK-SAME:          tensor<?x4xf32, {bounds = #const.OpaqueI64Elements<[200, 4]> : tensor<2xsi64>, order = #NC}>, tensor<?x1xf32, {bounds = #const.OpaqueI64Elements<[200, 1]> : tensor<2xsi64>, order = #NC}> -> tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}>
     // CHECK:               return [[CONCAT]] : tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}>

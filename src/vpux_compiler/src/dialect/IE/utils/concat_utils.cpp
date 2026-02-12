@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
@@ -184,6 +185,58 @@ std::optional<vpux::Dim> getConcatAxis(IE::ConcatOp concatOp) {
     }
 
     return concatAxis;
+}
+
+mlir::FailureOr<SmallVector<Dim>> getConcatDimWithShape1(IE::ConcatOp concatOp, bool supportAdjacentDims) {
+    const auto concatStaticOffsets = concatOp.getStaticOffsets().value();
+    if (concatStaticOffsets.size() != concatOp.getInputs().size()) {
+        return mlir::failure();
+    }
+
+    const auto concatInputType = mlir::cast<vpux::NDTypeInterface>(concatOp.getInputs()[0].getType());
+    const auto concatOutputType = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType());
+    const auto concatInShape = concatInputType.getShape();
+    const auto concatOutShape = concatOutputType.getShape();
+    if (concatInShape.size() != concatOutShape.size()) {
+        return mlir::failure();
+    }
+
+    SmallVector<Dim> concatDims;
+    for (const auto& idx : irange(concatInShape.size())) {
+        if (concatInShape[Dim(idx)] != concatOutShape[Dim(idx)]) {
+            concatDims.push_back(Dim(idx));
+        }
+    }
+
+    if (concatDims.empty() || concatDims.size() > 1) {
+        return mlir::failure();
+    }
+
+    for (const auto& input : concatOp.getInputs()) {
+        const auto inputShape = getShape(input);
+        if (supportAdjacentDims) {
+            SmallVector<Dim> adjustDims;
+            if (concatDims[0].ind() - 1 > 0) {
+                adjustDims.push_back(Dim(concatDims[0].ind() - 1));
+            }
+            if (concatDims[0].ind() + 1 < checked_cast<int32_t>(concatInShape.size())) {
+                adjustDims.push_back(Dim(concatDims[0].ind() + 1));
+            }
+
+            for (auto dim : adjustDims) {
+                if (inputShape[dim] == 1) {
+                    concatDims[0] = dim;
+                    break;
+                }
+            }
+
+            if (inputShape[concatDims[0]] != 1) {
+                return mlir::failure();
+            }
+        }
+    }
+
+    return concatDims;
 }
 
 }  // namespace IE

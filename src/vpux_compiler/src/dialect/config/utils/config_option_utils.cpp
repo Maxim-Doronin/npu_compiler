@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,15 @@
 #include "vpux/compiler/dialect/VPU/utils/function_outlining_splitter.hpp"
 
 using namespace vpux;
+
+mlir::func::FuncOp config::getOwningFuncOp(mlir::Operation* operation) {
+    if (auto func = mlir::dyn_cast<mlir::func::FuncOp>(operation)) {
+        return func;
+    }
+    auto func = operation->getParentOfType<mlir::func::FuncOp>();
+    VPUX_THROW_WHEN(func == nullptr, "Failed to find parent function for operation '{0}'", operation->getName());
+    return func;
+}
 
 // Adaptive Stripping
 bool config::hasEnableAdaptiveStripping(mlir::ModuleOp module) {
@@ -134,6 +143,11 @@ bool config::hasVPUNNPreSplit(mlir::Operation* op) {
     return config::getConstraint<bool>(op, VPUNN_PRE_SPLIT);
 }
 
+// ODU Configurations
+bool config::hasODULocalRegion(mlir::Operation* op) {
+    return config::getConstraint<bool>(op, ODU_LOCAL_REGION);
+}
+
 // Profiling Configurations
 bool config::isProfilingEnabled(mlir::ModuleOp module) {
     return config::tryGetBoolPassOption(module, ENABLE_PROFILING).value_or(false);
@@ -145,13 +159,7 @@ WeightsTableReuseMode config::getWeightsTableReuseMode(mlir::Operation* op) {
 }
 
 bool config::isWeightsTableReuseEnabled(mlir::Operation* op) {
-    mlir::func::FuncOp func;
-    if (auto funcOp = mlir::dyn_cast<mlir::func::FuncOp>(op)) {
-        func = funcOp;
-    } else {
-        func = op->getParentOfType<mlir::func::FuncOp>();
-    }
-    VPUX_THROW_WHEN(func == nullptr, "Cannot find parent function for operation '{0}'", op->getName());
+    mlir::func::FuncOp func = getOwningFuncOp(op);
     const auto weightsTableReuseMode = getWeightsTableReuseMode(func);
     return weightsTableReuseMode == WeightsTableReuseMode::ENABLED ||
            (weightsTableReuseMode == WeightsTableReuseMode::VF_ENABLED &&

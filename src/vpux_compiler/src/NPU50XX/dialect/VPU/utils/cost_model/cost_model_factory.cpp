@@ -26,26 +26,30 @@ namespace {
  * @param isFastModel Whether to use the fast model
  * @return ArrayRef<char>
  */
-ArrayRef<char> getCostModelData([[maybe_unused]] bool isFastModel) {
+ArrayRef<char> getCostModelData([[maybe_unused]] bool isFastModel,
+                                [[maybe_unused]] std::optional<config::Platform> platform) {
     return ArrayRef(VPU::COST_MODEL_5_1, VPU::COST_MODEL_5_1_SIZE);
 }
 
-ArrayRef<char> getCostModelCacheData() {
+ArrayRef<char> getCostModelCacheData([[maybe_unused]] std::optional<config::Platform> platform) {
     return ArrayRef(VPU::COST_MODEL_CACHE_5_1, VPU::COST_MODEL_CACHE_5_1_SIZE);
 }
 
 }  // namespace
 
 std::shared_ptr<VPUNN::VPUCostModel> CostModelFactory::createCostModel() const {
+    std::lock_guard<std::mutex> lock(_mutex);
     ensureBundledCostModels();
     return _costModel;
 }
 
 std::shared_ptr<VPUNN::VPULayerCostModel> CostModelFactory::createLayerCostModel() const {
+    std::lock_guard<std::mutex> lock(_mutex);
     ensureBundledCostModels();
     return _layerCostModel;
 }
 
+// Note: This method is not inherently thread-safe and assumes _mutex is already held by the caller
 void vpux::VPU::arch50xx::CostModelFactory::ensureBundledCostModels() const {
     if (_costModel != nullptr && _layerCostModel != nullptr) {
         // Check if already created models are also bundled
@@ -54,12 +58,10 @@ void vpux::VPU::arch50xx::CostModelFactory::ensureBundledCostModels() const {
         }
     }
 
-    std::lock_guard<std::mutex> lock(_mutex);
-
     // If both are missing or just layer exists, create paired instances
     bool isFastModel = false;  // no fast model for npu50xx
-    const auto costModelData = getCostModelData(isFastModel);
-    const auto costModelCacheData = getCostModelCacheData();
+    const auto costModelData = getCostModelData(isFastModel, _platformOpt);
+    const auto costModelCacheData = getCostModelCacheData(_platformOpt);
     _costModel = std::make_shared<VPUNN::VPUCostModel>(
             costModelData.data(), costModelData.size(), /*copy_model_data*/ false, /*profile*/ false, VPUNN_CACHE_SIZE,
             /*batch_size*/ 1, costModelCacheData.data(), costModelCacheData.size());
@@ -68,10 +70,6 @@ void vpux::VPU::arch50xx::CostModelFactory::ensureBundledCostModels() const {
     VPUX_THROW_UNLESS(_costModel != nullptr && _layerCostModel != nullptr,
                       "Failed to create bundled cost models for NPU50 architecture");
 }
-
-std::unique_ptr<IShaveCostModelUtils> CostModelFactory::createShaveCostModelUtil() const {
-    return std::make_unique<arch50xx::CostModelShaveUtil>(_isShave2ApiUsedInVPUNN);
-};
 
 }  // namespace arch50xx
 }  // namespace VPU

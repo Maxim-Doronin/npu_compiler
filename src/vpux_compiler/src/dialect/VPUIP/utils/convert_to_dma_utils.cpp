@@ -47,10 +47,12 @@ SmallVector<unsigned> correctPermutation(ArrayRef<unsigned> revPerm) {
 // 2. Data type must be 16-bits
 // 3. case blockSize = 4: Only support 128 / 16 input channels; case blockSize = 2: support 16 aligned input channals
 // 4. DepthToSpace mode should be DEPTH_FIRST
-bool isBeneficialForUsingSWDepthToSpace(vpux::NDTypeInterface inType, vpux::IE::DepthToSpaceMode mode,
-                                        int64_t blockSize) {
+bool isBeneficialForUsingSWDepthToSpace(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType,
+                                        vpux::IE::DepthToSpaceMode mode, int64_t blockSize) {
     const auto inC = inType.getShape()[Dims4D::Act::C];
     const auto inW = inType.getShape()[Dims4D::Act::W];
+    const auto outC = outType.getShape()[Dims4D::Act::C];
+    const auto normOutC = inC / (blockSize * blockSize);
 
     const bool isNHWC = (inType.getDimsOrder() == DimsOrder::NHWC);
     const bool is16bit = (inType.getElementType().isF16() || inType.getElementType().isInteger(16));
@@ -60,9 +62,17 @@ bool isBeneficialForUsingSWDepthToSpace(vpux::NDTypeInterface inType, vpux::IE::
     const bool isBS2 = (blockSize == 2);
     const bool isDepthFirst = (mode == IE::DepthToSpaceMode::DEPTH_FIRST);
 
-    if ((inType.getElemTypeSize().count() == 8) && (mode == IE::DepthToSpaceMode::BLOCKS_FIRST) && (inC == 16) &&
-        (blockSize == 2) && (inW >= 256) && isNHWC) {
-        return true;
+    if ((mode == IE::DepthToSpaceMode::BLOCKS_FIRST) && (inC == 16) && (blockSize == 2) && isNHWC) {
+        if ((inType.getElemTypeSize().count() == 8) && (inW >= 256)) {
+            return true;
+        }
+        if (inType.getElementType().isF16() && outType.getElementType().isF32()) {
+            return true;
+        }
+    }
+
+    if (outC > normOutC) {
+        return true;  // padded output channels case
     }
 
     return isNHWC && is16bit && ((isBS4 && isC16C128) || (isBS2 && isC16Align)) && isDepthFirst;
@@ -72,11 +82,12 @@ bool isBeneficialForUsingSWDepthToSpace(VPUIP::SwKernelOp swKernelOp, config::Ar
     VPUX_THROW_UNLESS(VPUIP::isDepthToSpaceSwKernel(swKernelOp), "SwKernelOp {0} is not DepthToSpace",
                       swKernelOp->getLoc());
     const auto inType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOutputs()[0].getType());
     const auto d2sAttr = VPUIP::getDepthToSpaceSwKernelAttr(swKernelOp);
     const auto mode = std::get<0>(d2sAttr.value()).getValue();
     const auto blockSize = std::get<1>(d2sAttr.value()).getInt();
 
-    return isBeneficialForUsingSWDepthToSpace(inType, mode, blockSize);
+    return isBeneficialForUsingSWDepthToSpace(inType, outType, mode, blockSize);
 }
 
 SmallVector<Shape> computeDMASubShape(config::ArchKind arch, ShapeRef shape, Dim numPlaneDim, int64_t dmaPortCount) {
@@ -200,10 +211,11 @@ bool vpux::VPUIP::isBeneficialForUsingPermuteDMA(config::ArchKind arch, NDTypeIn
 
 bool vpux::VPUIP::isBeneficialForUsingSWDepthToSpace(VPU::DepthToSpaceOp d2sOp) {
     const auto inType = mlir::cast<vpux::NDTypeInterface>(d2sOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(d2sOp.getOutput().getType());
     const auto mode = d2sOp.getMode();
     const auto blockSize = d2sOp.getBlockSize();
 
-    return ::isBeneficialForUsingSWDepthToSpace(inType, mode, blockSize);
+    return ::isBeneficialForUsingSWDepthToSpace(inType, outType, mode, blockSize);
 }
 
 // In order to simplify the difference cases about input layout and mem perm, the merged input shape need to be
@@ -606,7 +618,7 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                 }
 
                 auto module = op->getParentOfType<mlir::ModuleOp>();
-                const auto dmaPortNum = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+                const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
                 if (!VPUIP::getPermuteDMASubInputShapes(arch, inputType, outputType, memPerm, dmaPortNum, log)
                              .has_value()) {
@@ -670,7 +682,8 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getOperand(0).getType());
                     const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getResult(0).getType());
                     auto module = swKernelOp->getParentOfType<mlir::ModuleOp>();
-                    const auto dmaPortNum = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+                    const auto dmaPortNum =
+                            config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
                     if (!VPUIP::getPermuteDMASubInputShapes(config::getArch(op), inputType, outputType, memPerm.value(),
                                                             dmaPortNum, log)
@@ -763,7 +776,7 @@ bool vpux::VPUIP::isLegalAndBeneficialConvertToDMA(mlir::Operation* op, vpux::Lo
     }
     const auto arch = config::getArch(op);
     auto module = op->getParentOfType<mlir::ModuleOp>();
-    const auto dmaPortNum = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
     VPUX_THROW_WHEN(dmaPortNum <= 0, "Number of ports should be a positive integer, while it is {0}", dmaPortNum);
     if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
         if (VPUIP::isDepthToSpaceSwKernel(swKernelOp)) {

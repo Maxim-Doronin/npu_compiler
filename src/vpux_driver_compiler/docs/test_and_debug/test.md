@@ -31,7 +31,7 @@ General command:
 
 To get the blob file, use compilerTest or [compile_tool](https://github.com/openvinotoolkit/npu_compiler/tree/master/tools/compile_tool) of the [NPU-Plugin Project].
 
-To get the profiling-0.bin and more profiling details, please see [how to use profiling.md](../../../../guides/how-to-use-profiling.md) in the [NPU-Plugin Project].
+To get the profiling-0.bin and more profiling details, please see [how_to_use_profiling.md](../../../../guides/how_to_use_profiling.md) in the [NPU-Plugin Project].
 
 
 ## loaderTest

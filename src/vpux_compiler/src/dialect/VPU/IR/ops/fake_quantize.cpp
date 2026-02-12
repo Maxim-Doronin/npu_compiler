@@ -22,7 +22,7 @@ mlir::LogicalResult vpux::VPU::FakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!mlir::isa<mlir::Float8E4M3FNType>(*lowFpType) && !mlir::isa<mlir::Float8E5M2Type>(*lowFpType)) {
+        if (!isLowFpType(*lowFpType)) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {
@@ -108,7 +108,8 @@ bool vpux::VPU::FakeQuantizeOp::checkStrategyCompatibility(VPU::MultiClusterStra
 vpux::VPU::DistributionInfo vpux::VPU::FakeQuantizeOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);

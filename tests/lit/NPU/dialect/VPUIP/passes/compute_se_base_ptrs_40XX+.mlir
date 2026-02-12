@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -98,12 +98,12 @@ func.func @SEPaddingWithLargePadSize(%input_data: !Input_DDR, %input_sm: !InputS
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights = VPUIP.Copy
         inputs(%weights_sparse : !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)

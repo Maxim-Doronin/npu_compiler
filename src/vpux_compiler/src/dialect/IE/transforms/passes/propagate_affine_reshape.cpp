@@ -303,12 +303,12 @@ mlir::LogicalResult MoveAffineReshapePermuteCastThroughConcat::matchAndRewrite(I
     SmallVector<int64_t> newShape1 = {concatOutputShape[Dims4D::Act::C], reshape1OutputShape[Dims4D::Act::C],
                                       reshape1OutputShape[Dims4D::Act::H], 1};
     auto newAffineReshapeOp = rewriter.create<IE::AffineReshapeOp>(
-            appendLoc(origOp.getLoc(), "_reshape_1"), newConcat.getOutput(), firstAffineReshapeOp.getDimMappingAttr(),
+            appendLoc(origOp.getLoc(), "reshape_1"), newConcat.getOutput(), firstAffineReshapeOp.getDimMappingAttr(),
             getIntArrayAttr(ctx, newShape1));
 
     auto dstOrder = mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx));
     const auto memPerm = mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx));
-    auto newPermuteCastOp = rewriter.create<IE::PermuteCastOp>(appendLoc(origOp.getLoc(), "_permute_output"),
+    auto newPermuteCastOp = rewriter.create<IE::PermuteCastOp>(appendLoc(origOp.getLoc(), "permute_output"),
                                                                newAffineReshapeOp.getOutput(), dstOrder, memPerm);
 
     SmallVector<SmallVector<int64_t>> outDimMapping{{Dims4D::Act::N.ind(), Dims4D::Act::C.ind()},
@@ -499,6 +499,12 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
 
     if (modifiedAxises.empty()) {
         return mlir::failure();
+    }
+
+    for (auto userOp : origConcatOp->getUsers()) {
+        if (mlir::isa<IE::ConcatOp>(userOp)) {
+            return mlir::failure();
+        }
     }
 
     ShapeRef shapeBeforeAffineReshape;
@@ -1428,20 +1434,12 @@ void PropagateAffineReshape::safeRunOnFunc() {
     patterns.add<MoveThroughAdd>(&ctx, _log);
     patterns.add<MoveThroughOneInputEltwise>(&ctx, _log);
     patterns.add<MoveThroughConvert>(&ctx, _log);
+    patterns.add<ConcatReshapeConcat>(&ctx, _log);
     IE::ReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
     IE::AffineReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
     IE::ShapeCastOp::getCanonicalizationPatterns(patterns, &ctx);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
-
-    // ConcatReshapeConcat pattern is doing the opposite propagation comparing to MoveThroughConcat.
-    // So we need a seperated pattern set, otherwise we might result in infinite loop between
-    // ConcatReshapeConcat and MoveThroughConcat
-    mlir::RewritePatternSet patternsBackward(&ctx);
-    patternsBackward.add<ConcatReshapeConcat>(&ctx, _log);
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patternsBackward), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
 }

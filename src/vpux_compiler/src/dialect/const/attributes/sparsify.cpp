@@ -215,12 +215,5 @@ Const::details::PositionRequirement Const::SparsifyAttr::getPositionRequirement(
 //
 
 llvm::hash_code vpux::Const::SparsifyAttr::getStableHashValue() const {
-    const bool returnCompressed = getCompressOutputType().getValue();
-    if (!returnCompressed) {
-        return llvm::hash_combine(getMnemonic(), returnCompressed);
-    }
-    VPUX_THROW_WHEN(getNumActualElements() == nullptr, "Missing number of actual elements");
-    const auto numElems = getNumActualElements().getValues<int64_t>();
-    return llvm::hash_combine(getMnemonic(), returnCompressed,
-                              llvm::hash_combine_range(numElems.begin(), numElems.end()));
+    VPUX_THROW("Not implemented. It requires an equivalent representation in IE dialect.");
 }

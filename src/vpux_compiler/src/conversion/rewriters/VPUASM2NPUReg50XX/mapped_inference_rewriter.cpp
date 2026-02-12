@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,11 +7,12 @@
 
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/utils.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
-#include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/utils.hpp"
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPUASM/utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
+#include "vpux/compiler/utils/platform_resources.hpp"
 
 #include <npu_40xx_nnrt.hpp>
 
@@ -92,15 +93,15 @@ mlir::LogicalResult MappedInferenceRewriter::matchAndRewrite(VPUASM::MappedInfer
     }
 
     std::optional<uint64_t> stackSize;
-    std::optional<std::pair<uint32_t, uint32_t>> stackFrames;
+    SmallVector<uint32_t> stackFrames;
     if (origOp.getActShaveStacks().has_value()) {
         auto stackRef =
                 _symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*origOp.getActShaveStacks()->begin()));
         auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
         stackSize = stackOp.getStackSize();
     } else {
-        stackFrames = std::make_pair(NPUReg50XX::STACK_FRAME1, NPUReg50XX::STACK_FRAME2);
-        stackSize = NPUReg50XX::STACK_FRAME2 - NPUReg50XX::STACK_FRAME1;
+        stackSize = CMX_SHAVE_STACK_SIZE.count();
+        stackFrames = VPUASM::getCMXStackFrames(moduleOp);
     }
 
     auto isActKernelInvocations = origOp.getActKernelInvocationsCount().size() > 0;

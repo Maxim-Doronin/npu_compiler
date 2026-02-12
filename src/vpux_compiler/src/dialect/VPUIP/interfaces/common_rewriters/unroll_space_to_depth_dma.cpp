@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -76,8 +76,8 @@ mlir::LogicalResult SingleClusterSpaceToDepthDMARewriter::unroll(VPUIP::SpaceToD
         VPURT::wrapIntoTaskOp<VPUIP::SpaceToDepthDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), vpurtTask.getLoc(), inputBuffer,
                 outputBuffer, vpux::getIntAttr(rewriter, dmaPort), spaceToDepthDMAOp.getBlockSizeAttr(),
-                spaceToDepthDMAOp.getModeAttr(), nullptr, spaceToDepthDMAOp.getIsOutOfOrderAttr(),
-                spaceToDepthDMAOp.getIsCriticalAttr(), spaceToDepthDMAOp.getDmaHwpIdAttr(),
+                spaceToDepthDMAOp.getModeAttr(), nullptr, spaceToDepthDMAOp.getIsOutOfOrder(),
+                spaceToDepthDMAOp.getIsCritical(), spaceToDepthDMAOp.getDmaHwpIdAttr(),
                 spaceToDepthDMAOp.getProfilingMetadataAttr(), internalDataFlowAttr);
     };
 
@@ -239,15 +239,14 @@ mlir::LogicalResult MultiClusterSpaceToDepthDMARewriter::unroll(VPUIP::SpaceToDe
         outputInsertionPoint = outBuffer.getDefiningOp();
         _log.trace("Insert new output buffer declaration: '{0}'", outBuffer);
 
-        const auto newLoc = appendLoc(loc, "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         const auto dmaPort = clusterId % _dmaPortCount;
         auto newSpaceToDepthDMAOp = VPURT::wrapIntoTaskOp<VPUIP::SpaceToDepthDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffer, outBuffer,
                 vpux::getIntAttr(rewriter, dmaPort), spaceToDepthDMAOp.getBlockSizeAttr(),
                 spaceToDepthDMAOp.getModeAttr(),
-                /*dma_descriptor*/ nullptr, spaceToDepthDMAOp.getIsOutOfOrderAttr(),
-                spaceToDepthDMAOp.getIsCriticalAttr(), spaceToDepthDMAOp.getDmaHwpIdAttr(),
-                spaceToDepthDMAOp.getProfilingMetadataAttr(),
+                /*dma_descriptor*/ nullptr, spaceToDepthDMAOp.getIsOutOfOrder(), spaceToDepthDMAOp.getIsCritical(),
+                spaceToDepthDMAOp.getDmaHwpIdAttr(), spaceToDepthDMAOp.getProfilingMetadataAttr(),
                 /*InternalDataFlowAttr*/ nullptr);
 
         _log.trace("Insert new SpaceToDepthDMA: '{0}'", newSpaceToDepthDMAOp);

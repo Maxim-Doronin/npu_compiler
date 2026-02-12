@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -76,7 +76,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastSubChain(%arg0: tensor<1x409
 
     return %5 : tensor<1x4096x4096x1xf16, {order = #NHWC}>
 
-    // CHECK: [[VAL0:%.*]] = IE.AffineReshape(%arg0)
+    // CHECK: [[VAL0:%.+]] = IE.AffineReshape(%arg0)
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 4096, 4096, 1]} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x4096x1xf16, {order = #NHWC}>
     // CHECK: return [[VAL0]] : tensor<1x4096x4096x1xf16, {order = #NHWC}>
 }

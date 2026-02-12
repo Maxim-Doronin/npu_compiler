@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,9 +25,9 @@ func.func @TopK_SI64toFP16(%arg0: tensor<1x77xsi64>) -> (tensor<1x1xsi64>, tenso
     %output_values, %target_shape = IE.TopK(%arg0, %cst_K) {axis = 1 : i64, element_type = si32, mode = #IE.topk_mode<MAX>, sort = #IE.topk_sort_type<NONE>} : tensor<1x77xsi64>, tensor<si64> -> tensor<1x1xsi64>, tensor<1x1xsi32>
     return %output_values, %target_shape : tensor<1x1xsi64>, tensor<1x1xsi32>
 
-    // CHECK: [[INPUT_CVT:%.*]] = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x77xsi64> -> tensor<1x77xf16>
-    // CHECK: [[VALUES:%.*]], [[SHAPE:%.*]] = IE.TopK([[INPUT_CVT]]
-    // CHECK: [[OUT_CVT:%.*]] = IE.Convert([[VALUES]]) {dstElemType = si64} : tensor<1x1xf16> -> tensor<1x1xsi64>
+    // CHECK: [[INPUT_CVT:%.+]] = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x77xsi64> -> tensor<1x77xf16>
+    // CHECK: [[VALUES:%.+]], [[SHAPE:%.+]] = IE.TopK([[INPUT_CVT]]
+    // CHECK: [[OUT_CVT:%.+]] = IE.Convert([[VALUES]]) {dstElemType = si64} : tensor<1x1xf16> -> tensor<1x1xsi64>
     // CHECK: return [[OUT_CVT]], [[SHAPE]] : tensor<1x1xsi64>, tensor<1x1xsi32>
 }
 
@@ -61,7 +61,7 @@ func.func @DequantizeStaticScaleToFP16(%arg0: tensor<28x512x128xi4>) -> tensor<2
     %0 = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} : tensor<28x512x128xi4> -> tensor<28x512x128x!qElemType>
     %1 = IE.Dequantize(%0) {dstElemType = f32} : tensor<28x512x128x!qElemType> -> tensor<28x512x128xf32>
     return %1 : tensor<28x512x128xf32>
-    
+
     // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[INPUT0]]) {dstElemType = !qElemType} : tensor<28x512x128xi4> -> tensor<28x512x128x!qElemType>
     // CHECK-NEXT:  [[DEQUANT:%.+]] = IE.Dequantize([[QUANTIZE_CAST]]) {dstElemType = f16} : tensor<28x512x128x!qElemType> -> tensor<28x512x128xf16>
     // CHECK-NEXT:  [[CONVERT_OUT:%.+]] = IE.Convert([[DEQUANT]]) {dstElemType = f32} : tensor<28x512x128xf16> -> tensor<28x512x128xf32>

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -18,7 +18,7 @@ endif()
 vpux_add_flatc_target(npu_profiling_schema
     SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema"
     DST_DIR "${PROJECT_BINARY_DIR}/profiling/generated"
-    ARGS "--gen-object-api" "--reflect-names")
+    ARGS "--scoped-enums" "--gen-object-api" "--reflect-names")
 set_target_properties(npu_profiling_schema PROPERTIES FOLDER "src")
 
 #
@@ -30,6 +30,7 @@ set(TARGET_NAME npu_profiling_utils)
 list(APPEND SOURCES
                 common.cpp
                 metadata.cpp
+                taskinfo.cpp
                 tasknames.cpp
                 utils.cpp
                 parser/debug.cpp
@@ -60,8 +61,10 @@ target_include_directories(${TARGET_NAME}
 
 ov_link_system_libraries(${TARGET_NAME}
     PRIVATE
-        flatbuffers
         npu_elf
+        LLVMSupport
+    PUBLIC
+        flatbuffers
         npu_profiling_schema
 )
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -132,9 +132,8 @@ mlir::LogicalResult ConvertMatMulToConvPass::MatMulOpConverter::matchAndRewrite(
     auto padsBegin = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     auto padsEnd = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
-    auto convOp = rewriter.create<IE::ConvolutionOp>(takeOpLoc(matmulOp, "as_convolution"), convInput, weight, nullptr,
-                                                     strides, padsBegin, padsEnd, dilations, nullptr, nullptr, nullptr,
-                                                     nullptr, nullptr)
+    auto convOp = rewriter.create<IE::ConvolutionOp>(takeOpLoc(matmulOp, "as_convolution"), convInput, weight, strides,
+                                                     padsBegin, padsEnd, dilations)
                           .getOutput();
 
     _log.trace("Insert ConvolutionOp {0} ", convOp);

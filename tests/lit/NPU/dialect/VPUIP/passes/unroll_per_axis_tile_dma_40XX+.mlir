@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,7 +22,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterDUPLICATED() -> !OutputDistributed {
     %1 = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      VPUIP.PerAxisTileDMA {axis = 1 : i64, tiles = 512 : i64}
+      VPUIP.PerAxisTileDMA <{axis = 1 : i64, tiles = 512 : i64}>
             inputs(%0 : memref<1x1x1x1xf16, #NHWC, @DDR>)
             outputs(%1 : !OutputDistributed) -> !OutputDistributed
     }
@@ -71,7 +71,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterDUPLICATEDExplicitDistribution() -> 
     %1 = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      VPUIP.PerAxisTileDMA {axis = 1 : i64, tiles = 512 : i64}
+      VPUIP.PerAxisTileDMA <{axis = 1 : i64, tiles = 512 : i64}>
             inputs(%0 : memref<1x1x1x1xf16, #NHWC, @DDR>)
             outputs(%1 : !OutputDistributed) -> !OutputDistributed
     }
@@ -119,7 +119,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterSEGMENTED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      VPUIP.PerAxisTileDMA {axis = 1 : i64, port = 0 : i64, tiles = 8 : i64}
+      VPUIP.PerAxisTileDMA <{axis = 1 : i64, port = 0 : i64, tiles = 8 : i64}>
             inputs(%input : memref<1x2x35x16xf16, #NHWC, @DDR>)
             outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -138,7 +138,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterSEGMENTED() -> !OutputDistributed {
     //CHECK:    [[OUTPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[OUTPUT_TYPE_1:.+]]
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 1
     //CHECK-SAME:       port = 0
     //CHECK-SAME:       tiles = 8
@@ -147,7 +147,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterSEGMENTED() -> !OutputDistributed {
     //CHECK:    }
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 1
     //CHECK-SAME:       port = 1
     //CHECK-SAME:       tiles = 8
@@ -183,7 +183,7 @@ func.func @UnrollPerAxisTileDMAExplicitSEGMENTED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      VPUIP.PerAxisTileDMA {axis = 1 : i64, port = 0 : i64, tiles = 8 : i64}
+      VPUIP.PerAxisTileDMA <{axis = 1 : i64, port = 0 : i64, tiles = 8 : i64}>
             inputs(%input : memref<1x2x35x16xf16, #NHWC, @DDR>)
             outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -202,7 +202,7 @@ func.func @UnrollPerAxisTileDMAExplicitSEGMENTED() -> !OutputDistributed {
     //CHECK:    [[OUTPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[OUTPUT_TYPE_1:.+]]
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 1
     //CHECK-SAME:       port = 0
     //CHECK-SAME:       tiles = 8
@@ -211,7 +211,7 @@ func.func @UnrollPerAxisTileDMAExplicitSEGMENTED() -> !OutputDistributed {
     //CHECK:    }
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 1
     //CHECK-SAME:       port = 1
     //CHECK-SAME:       tiles = 8
@@ -245,7 +245,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterOVERLAPPED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      VPUIP.PerAxisTileDMA {axis = 3 : i64, port = 0 : i64, tiles = 2 : i64}
+      VPUIP.PerAxisTileDMA <{axis = 3 : i64, port = 0 : i64, tiles = 2 : i64}>
             inputs(%input : memref<1x3x240x120xf16, #NHWC, @DDR>)
             outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -264,7 +264,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterOVERLAPPED() -> !OutputDistributed {
     //CHECK:    [[OUTPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[OUTPUT_TYPE_1:.+]]
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 3
     //CHECK-SAME:       port = 0
     //CHECK-SAME:       tiles = 2
@@ -273,7 +273,7 @@ func.func @UnrollPerAxisTileDMAWrapInClusterOVERLAPPED() -> !OutputDistributed {
     //CHECK:    }
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 3
     //CHECK-SAME:       port = 1
     //CHECK-SAME:       tiles = 2
@@ -308,7 +308,7 @@ func.func @UnrollPerAxisTileDMAExplicitOVERLAPPED() -> !OutputDistributed {
     %output = VPURT.DeclareBuffer <CMX_NN> <0> -> !OutputDistributed
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      VPUIP.PerAxisTileDMA {axis = 3 : i64, port = 0 : i64, tiles = 2 : i64}
+      VPUIP.PerAxisTileDMA <{axis = 3 : i64, port = 0 : i64, tiles = 2 : i64}>
             inputs(%input : memref<1x3x240x120xf16, #NHWC, @DDR>)
             outputs(%output : !OutputDistributed) -> !OutputDistributed
     }
@@ -327,7 +327,7 @@ func.func @UnrollPerAxisTileDMAExplicitOVERLAPPED() -> !OutputDistributed {
     //CHECK:    [[OUTPUT_BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[OUTPUT_TYPE_1:.+]]
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 3
     //CHECK-SAME:       port = 0
     //CHECK-SAME:       tiles = 2
@@ -336,7 +336,7 @@ func.func @UnrollPerAxisTileDMAExplicitOVERLAPPED() -> !OutputDistributed {
     //CHECK:    }
 
     //CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.PerAxisTileDMA {
+    //CHECK:        VPUIP.PerAxisTileDMA <{
     //CHECK-SAME:       axis = 3
     //CHECK-SAME:       port = 1
     //CHECK-SAME:       tiles = 2

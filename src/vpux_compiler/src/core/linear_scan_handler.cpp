@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,6 +47,10 @@ void LinearScanHandler::removeDynamicSpill(mlir::Value val) {
 
 bool LinearScanHandler::isAlive(mlir::Value val) const {
     return _aliveValues.contains(val);
+}
+
+bool LinearScanHandler::isAllocated(mlir::Value val) const {
+    return _valOffsets.count(val) > 0;
 }
 
 bool LinearScanHandler::isDynamicSpill(mlir::Value val) const {

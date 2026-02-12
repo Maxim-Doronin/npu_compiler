@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,50 +25,53 @@ module @EltwiseNHWCDynamic {
       return %0 : tensor<1x16x?x1000xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 2560, 1000]> : tensor<4xsi64>, order = #NHWC}>
     }
 
+    // CHECK: func.func @output_shape([[ARG0:%.+]]: memref<1x16x?x1000xf16, #NHWC>, [[ARG1:%.+]]: memref<1x16x?x1000xf16, #NHWC>, [[ARG2:%.+]]: memref<4xi64>) -> memref<4xi64> attributes {config.pureHostCompileFunc} {
+    // CHECK:    [[CST_3:%.+]] = arith.constant 3 : index
+    // CHECK:    [[CST_1:%.+]] = arith.constant 1 : index
+    // CHECK:    [[CST_0:%.+]] = arith.constant 0 : index
+    // CHECK:    [[CST_1000_i64:%.+]] = arith.constant 1000 : i64
+    // CHECK:    [[CST_2:%.+]] = arith.constant 2 : index
+    // CHECK:    [[CST_16_i64:%.+]] = arith.constant 16 : i64
+    // CHECK:    [[CST_1_i64:%.+]] = arith.constant 1 : i64
+    // CHECK:    [[DIM:%.+]] = memref.dim [[ARG0]], [[CST_2]] : memref<1x16x?x1000xf16, #NHWC>
+    // CHECK:    [[IDX_CAST:%.+]] = arith.index_cast [[DIM]] : index to i64
+    // CHECK:    memref.store [[CST_1_i64]], [[ARG2]][[[CST_0]]] : memref<4xi64>
+    // CHECK:    memref.store [[CST_16_i64]], [[ARG2]][[[CST_1]]] : memref<4xi64>
+    // CHECK:    memref.store [[IDX_CAST]], [[ARG2]][[[CST_2]]] : memref<4xi64>
+    // CHECK:    memref.store [[CST_1000_i64]], [[ARG2]][[[CST_3]]] : memref<4xi64>
+    // CHECK:    return [[ARG2]] : memref<4xi64>
+    // }
+
     // CHECK: func.func @main_func0_static([[func0_ARG0:%.+]]: memref<1x[[STEP:.+]]x1000x16xf16>, [[func0_ARG1:%.+]]: memref<1x[[STEP]]x1000x16xf16>, [[func0_ARG2:%.+]]: memref<1x[[STEP]]x1000x16xf16>) -> memref<1x[[STEP]]x1000x16xf16> {
 
     // CHECK-NPU40XX-COUNT-6: VPUIP.NCEClusterTask
     // CHECK-NPU50XX-COUNT-3: VPUIP.NCEClusterTask
     // CHECK-NOT: IE.Add
 
-    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x?x1000x16xf16>, [[ARG1:%.+]]: memref<1x?x1000x16xf16>, [[ARG2:%.+]]: memref<1x?x1000x16xf16>) -> memref<1x?x1000x16xf16> {
+    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x?x1000x16xf16>, [[ARG1:%.+]]: memref<1x?x1000x16xf16>, [[ARG2:%.+]]: memref<1x?x1000x16xf16>) -> memref<1x?x1000x16xf16> attributes {config.pureHostCompileFunc} {
     // CHECK: [[STEP_VAR:%.+]] = arith.constant [[STEP]] : index
     // CHECK: [[C0:%.+]] = arith.constant 0 : index
     // CHECK: [[C1:%.+]] = arith.constant 1 : index
     // CHECK: [[DIM:%.+]] = memref.dim [[ARG0]], [[C1]] : memref<1x?x1000x16xf16>
     // CHECK: [[CMP_SGE_OUTER:%.+]] = arith.cmpi sge, [[DIM]], [[STEP_VAR]] : index
     // CHECK: cf.assert [[CMP_SGE_OUTER]], "Not enough elements to backtrack in scf.for loop for Output tensor"
-    // CHECK: [[REM:%.+]] = arith.remui [[DIM]], [[STEP_VAR]] : index
     // CHECK: [[SUB:%.+]] = arith.subi [[DIM]], [[C0]] : index
     // CHECK: [[DIV:%.+]] = arith.divsi [[SUB]], [[STEP_VAR]] : index
     // CHECK: [[GROUP:%.+]] = async.create_group [[DIV]] : !async.group
-    // CHECK: scf.for [[IF:%.+]] = [[C0]] to [[DIM]] step [[STEP_VAR]] {
-    // CHECK:   [[MIN:%.+]] = affine.min #{{.+}}([[IF]]){{\[}}[[DIM]]{{\]}}
-    // CHECK:   [[CMP_EQ:%.+]] = arith.cmpi eq, [[IF]], [[C0]] : index
-    // CHECK:   [[IF_RESULT:%.+]] = scf.if [[CMP_EQ]] -> (index) {
-    // CHECK:     scf.yield [[IF]] : index
+    // CHECK: scf.for [[ARG3:%.+]] = [[C0]] to [[DIM]] step [[STEP_VAR]] {
+    // CHECK:   [[ADJ_OFFSET:%.+]] = arith.addi
+    // CHECK:   [[CMP_EQ:%.+]] = arith.cmpi sgt, [[ADJ_OFFSET]], [[DIM]] : index
+    // CHECK:   [[OFFSET:%.+]] = scf.if [[CMP_EQ]] -> (index) {
+    // CHECK:     [[APPLY12:%.+]] = affine.apply #map()[[[DIM]]]
+    // CHECK:     scf.yield [[APPLY12]] : index
     // CHECK:   } else {
-    // CHECK:     [[ADDI:%.+]] = arith.addi [[IF]], [[MIN]] : index
-    // CHECK:     [[CMP_SLT:%.+]] = arith.cmpi slt, [[ADDI]], [[DIM]] : index
-    // CHECK:     [[IF_RESULT_2:%.+]] = scf.if [[CMP_SLT]] -> (index) {
-    // CHECK:       scf.yield [[IF]] : index
-    // CHECK:     } else {
-    // CHECK:       [[CMP_EQ_2:%.+]] = arith.cmpi eq, [[MIN]], [[STEP_VAR]] : index
-    // CHECK:       [[IF_RESULT_3:%.+]] = scf.if [[CMP_EQ_2]] -> (index) {
-    // CHECK:         scf.yield [[IF]] : index
-    // CHECK:       } else {
-    // CHECK:         [[APPLY:%.+]] = affine.apply #{{.+}}([[IF]]){{\[}}{{%.+}}{{\]}}
-    // CHECK:         scf.yield [[APPLY]] : index
-    // CHECK:       }
-    // CHECK:       scf.yield [[IF_RESULT_3]] : index
-    // CHECK:     }
-    // CHECK:     scf.yield [[IF_RESULT_2]] : index
+    // CHECK:     scf.yield [[ARG3]] : index
     // CHECK:   }
-    // CHECK:   [[SUBVIEW0:%.+]] = memref.subview [[ARG0]][0, [[IF_RESULT]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
-    // CHECK:   [[SUBVIEW1:%.+]] = memref.subview [[ARG1]][0, [[IF_RESULT]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
+    // CHECK:   [[SUBVIEW0:%.+]] = memref.subview [[ARG0]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
+    // CHECK:   [[SUBVIEW1:%.+]] = memref.subview [[ARG1]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
     // CHECK:   [[CAST0:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW0]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>
     // CHECK:   [[CAST1:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW1]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>
-    // CHECK:   [[SUBVIEW2:%.+]] = memref.subview [[ARG2]][0, [[IF_RESULT]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
+    // CHECK:   [[SUBVIEW2:%.+]] = memref.subview [[ARG2]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
     // CHECK:   [[CAST2:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW2]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>
     // CHECK:   [[TOKEN:%.+]], [[BODY_RESULTS:%.+]] = async.execute -> !async.value<memref<1x[[STEP]]x1000x16xf16>> {
     // CHECK:     [[NESTED_CALL:%.+]] = Core.NestedCall @Module0::@main_func0_static([[CAST0]], [[CAST1]], [[CAST2]]) : (memref<1x[[STEP]]x1000x16xf16>, memref<1x[[STEP]]x1000x16xf16>, memref<1x[[STEP]]x1000x16xf16>) -> memref<1x[[STEP]]x1000x16xf16>

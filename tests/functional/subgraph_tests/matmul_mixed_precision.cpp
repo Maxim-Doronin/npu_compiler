@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -100,6 +100,7 @@ TEST_P(MatMulMixedPrecisionTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MatMulMixedPrecisionTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
@@ -205,6 +206,7 @@ TEST_P(MatMulMixedPrecisionTestOutputQuantized, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MatMulMixedPrecisionTestOutputQuantized, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);

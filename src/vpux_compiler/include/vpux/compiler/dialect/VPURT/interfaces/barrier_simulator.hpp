@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -155,7 +155,7 @@ public:
     mlir::LogicalResult checkProducerAndConsumerCount(Logger log) const;
     mlir::LogicalResult simulateBarriers(Logger log, std::optional<int64_t> numBarriers = std::nullopt,
                                          std::optional<bool> barrierLegalization = std::nullopt);
-    mlir::LogicalResult simulateBarriersForWlmPageApproach(Logger log, int64_t numBarriers);
+    mlir::LogicalResult simulateBarriersForWlmPageApproach(Logger log, int64_t numBarriers, bool partialWlmEnabled);
     mlir::LogicalResult generateBarrierOrderWithSimulation(Logger log, int64_t numBarriers,
                                                            SmallVector<size_t>& virtualToPhysicalBarrierMapping);
 

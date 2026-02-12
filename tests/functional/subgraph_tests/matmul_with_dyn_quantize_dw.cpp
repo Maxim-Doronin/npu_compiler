@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -173,10 +173,12 @@ TEST_P(MatMulWithDynQDWTestCommon, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MatMulWithDynQDWTestCommon, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 const std::vector<DynQuantShapes> shapes = {
         /*case1=*/{
                 /*_arg0=*/{1, 1, 3072},

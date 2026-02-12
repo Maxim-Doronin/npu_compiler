@@ -36,7 +36,7 @@ func.func @PatchSWKernelSingleCluster(%arg0: memref<1x1x2048xf32, @DDR>, %scale:
     %token, %bodyResults = async.execute -> !async.value<memref<1x1x1x2048xf32, [@CMX_NN, 0]>>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 819 : i64, cycleEnd = 819 : i64} {
       %21 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x2048xf32, @DDR>) -> memref<1x1x1x2048xf32, @DDR>
-      %22 = VPUIP.NNDMA {port = 0 : i64} inputs(%21 : memref<1x1x1x2048xf32, @DDR>) outputs(%0 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>) -> memref<1x1x1x2048xf32, [@CMX_NN, 0]>
+      %22 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%21 : memref<1x1x1x2048xf32, @DDR>) outputs(%0 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>) -> memref<1x1x1x2048xf32, [@CMX_NN, 0]>
       async.yield %22 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>
     }
     %token_4, %bodyResults_5 = async.execute [%token] (%bodyResults as %arg2: !async.value<memref<1x1x1x2048xf32, [@CMX_NN, 0]>>) -> !async.value<memref<1x1x1x2048xf16, [@CMX_NN, 0]>>
@@ -49,7 +49,7 @@ func.func @PatchSWKernelSingleCluster(%arg0: memref<1x1x2048xf32, @DDR>, %scale:
     }
     %token_6, %bodyResults_7 = async.execute [%token] -> !async.value<memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64, cycleBegin = 819 : i64, cycleCost = 164704 : i64, cycleEnd = 165522 : i64} {
-      %21 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst : memref<416x2048x1x1x!qElemType, #NHWC>) outputs(%3 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
+      %21 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst : memref<416x2048x1x1x!qElemType, #NHWC>) outputs(%3 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
         -> memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>
       async.yield %21 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>
     }
@@ -155,7 +155,7 @@ func.func @PatchSWKernelSingleClusterWithDMASpill(%arg0: memref<1x1x2048xf32, @D
     %token, %bodyResults = async.execute -> !async.value<memref<1x1x1x2048xf32, [@CMX_NN, 0]>>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 819 : i64, cycleEnd = 819 : i64} {
       %21 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x2048xf32, @DDR>) -> memref<1x1x1x2048xf32, @DDR>
-      %22 = VPUIP.NNDMA {port = 0 : i64} inputs(%21 :  memref<1x1x1x2048xf32, @DDR>) outputs(%0 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>) -> memref<1x1x1x2048xf32, [@CMX_NN, 0]>
+      %22 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%21 :  memref<1x1x1x2048xf32, @DDR>) outputs(%0 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>) -> memref<1x1x1x2048xf32, [@CMX_NN, 0]>
       async.yield %22 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>
     }
     %token_4, %bodyResults_5 = async.execute [%token] (%bodyResults as %arg2: !async.value<memref<1x1x1x2048xf32, [@CMX_NN, 0]>>) -> !async.value<memref<1x1x1x2048xf16, [@CMX_NN, 0]>>
@@ -168,7 +168,7 @@ func.func @PatchSWKernelSingleClusterWithDMASpill(%arg0: memref<1x1x2048xf32, @D
     }
     %token_6, %bodyResults_7 = async.execute [%token] -> !async.value<memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64, cycleBegin = 819 : i64, cycleCost = 164704 : i64, cycleEnd = 165522 : i64} {
-      %21 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst : memref<416x2048x1x1x!qElemType, #NHWC>) outputs(%3 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
+      %21 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst : memref<416x2048x1x1x!qElemType, #NHWC>) outputs(%3 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
         -> memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>
       async.yield %21 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>
     }
@@ -190,9 +190,9 @@ func.func @PatchSWKernelSingleClusterWithDMASpill(%arg0: memref<1x1x2048xf32, @D
         -> (!async.value<memref<208x1x1x4xsi32, @DDR>>, !async.value<memref<208x1x1x4xsi32, @DDR>>)
         attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64,
           cycleBegin = 967 : i64, cycleCost = 57946 : i64, cycleEnd = 58914 : i64} {
-      %54 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg1 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%5 : memref<208x1x1x4xsi32, @DDR>)
+      %54 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg1 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%5 : memref<208x1x1x4xsi32, @DDR>)
       -> memref<208x1x1x4xsi32, @DDR>
-      %55 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg2 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%6 : memref<208x1x1x4xsi32, @DDR>)
+      %55 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg2 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>) outputs(%6 : memref<208x1x1x4xsi32, @DDR>)
       -> memref<208x1x1x4xsi32, @DDR>
       async.yield %54, %55 : memref<208x1x1x4xsi32, @DDR>, memref<208x1x1x4xsi32, @DDR>
     }
@@ -202,9 +202,9 @@ func.func @PatchSWKernelSingleClusterWithDMASpill(%arg0: memref<1x1x2048xf32, @D
         -> (!async.value<memref<208x1x1x4xsi32, [@CMX_NN, 0]>>, !async.value<memref<208x1x1x4xsi32, [@CMX_NN, 0]>>)
         attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 3 : i64,
           cycleBegin = 967 : i64, cycleCost = 57946 : i64, cycleEnd = 58914 : i64} {
-      %54 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg1 : memref<208x1x1x4xsi32, @DDR>) outputs(%7 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
+      %54 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg1 : memref<208x1x1x4xsi32, @DDR>) outputs(%7 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
       -> memref<208x1x1x4xsi32, [@CMX_NN, 0]>
-      %55 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg2 : memref<208x1x1x4xsi32, @DDR>) outputs(%8 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
+      %55 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg2 : memref<208x1x1x4xsi32, @DDR>) outputs(%8 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
       -> memref<208x1x1x4xsi32, [@CMX_NN, 0]>
       async.yield %54, %55 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>
     }
@@ -352,7 +352,7 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
                                 attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 1 : i64,
                                 cycleBegin = 0 : i64, cycleCost = 2072 : i64, cycleEnd = 2072 : i64} {
       %18 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x4096xf32, @DDR>) -> memref<1x1x1x4096xf32, @DDR>
-      %19 = VPUIP.NNDMA {port = 0 : i64} inputs(%18 : memref<1x1x1x4096xf32, @DDR>)
+      %19 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%18 : memref<1x1x1x4096xf32, @DDR>)
             outputs(%0 : !InputDistributed)
             -> !InputDistributed
       async.yield %19 : !InputDistributed
@@ -372,7 +372,7 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
     %token_9, %bodyResults_10 = async.execute -> !async.value<!WeightsDistributed>
                   attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0, 1], "async-deps-index" = 4 : i64,
                   cycleBegin = 2072 : i64, cycleCost = 458697 : i64, cycleEnd = 460769 : i64} {
-      %18 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_2 : memref<1024x4096x1x1x!qElemType, #NHWC>) outputs(%2 : !WeightsDistributed)
+      %18 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_2 : memref<1024x4096x1x1x!qElemType, #NHWC>) outputs(%2 : !WeightsDistributed)
             -> !WeightsDistributed
       async.yield %18 : !WeightsDistributed
     }
@@ -485,7 +485,7 @@ func.func @DoNotPatchSWKernelWhenZeroOffset(%arg0: memref<1x1x2048xf32, @DDR>, %
     %token, %bodyResults = async.execute -> !async.value<memref<1x1x1x2048xf32, [@CMX_NN, 0]>>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 819 : i64, cycleEnd = 819 : i64} {
       %21 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x2048xf32, @DDR>) -> memref<1x1x1x2048xf32, @DDR>
-      %22 = VPUIP.NNDMA {port = 0 : i64} inputs(%21 : memref<1x1x1x2048xf32, @DDR>) outputs(%0 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>) -> memref<1x1x1x2048xf32, [@CMX_NN, 0]>
+      %22 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%21 : memref<1x1x1x2048xf32, @DDR>) outputs(%0 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>) -> memref<1x1x1x2048xf32, [@CMX_NN, 0]>
       async.yield %22 : memref<1x1x1x2048xf32, [@CMX_NN, 0]>
     }
     %token_4, %bodyResults_5 = async.execute [%token] (%bodyResults as %arg2: !async.value<memref<1x1x1x2048xf32, [@CMX_NN, 0]>>) -> !async.value<memref<1x1x1x2048xf16, [@CMX_NN, 0]>>
@@ -498,7 +498,7 @@ func.func @DoNotPatchSWKernelWhenZeroOffset(%arg0: memref<1x1x2048xf32, @DDR>, %
     }
     %token_6, %bodyResults_7 = async.execute [%token] -> !async.value<memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>>
             attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64, cycleBegin = 819 : i64, cycleCost = 164704 : i64, cycleEnd = 165522 : i64} {
-      %21 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst : memref<416x2048x1x1x!qElemType, #NHWC>) outputs(%3 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
+      %21 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst : memref<416x2048x1x1x!qElemType, #NHWC>) outputs(%3 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
         -> memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>
       async.yield %21 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>
     }

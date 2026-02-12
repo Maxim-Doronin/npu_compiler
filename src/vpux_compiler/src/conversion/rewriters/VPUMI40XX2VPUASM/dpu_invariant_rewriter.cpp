@@ -154,12 +154,12 @@ mlir::FailureOr<SymbolizationResult> DPUInvariantRewriter::symbolize(VPUMI40XX::
             outputSparsityMapSym, profilingDataSym, dynamicSequenceLengthSym, maxPerXYSym, minPerXYSym,
             minMaxPerTensorAttr, outTypeContAttr, waitAttr, updateAttr, op.getNceTaskTypeAttr(),
             op.getEltwiseTypeAttr(), op.getMpeFrequentModeAttr(), op.getMpeEngineAttr(), op.getKernelSizeAttr(),
-            op.getKernelStridesAttr(), op.getKernelPaddingAttr(), op.getIsContinuedAttr(), op.getCmSpPatternAttr(),
-            op.getInputChannelsCompressionAttr(), op.getIsZeroOffsetWeightsTableAttr(), op.getOutChannelOffsetAttr(),
-            op.getIsSuperdenseAttr(), op.getIsInplaceAttr(), op.getInputSeSizeAttr(), op.getOutputSeSizeAttr(),
-            op.getIsPermuteQuantizeAttr(), op.getIsSmallKernelOptimizedAttr(), op.getDynamicScaleConfigAttr(),
-            op.getLocalRegionAttr(), op.getS2dConfigAttr(), op.getStartAfterAttr(), op.getCleanAfterAttr(),
-            variantsInGroupAttr, firstVariantAttr, lastVariantAttr);
+            op.getKernelStridesAttr(), op.getKernelPaddingAttr(), op.getIsContinued(), op.getCmSpPatternAttr(),
+            op.getInputChannelsCompression(), op.getIsZeroOffsetWeightsTable(), op.getOutChannelOffsetAttr(),
+            op.getIsSuperdense(), op.getIsInplaceAttr(), op.getInputSeSizeAttr(), op.getOutputSeSizeAttr(),
+            op.getIsPermuteQuantize(), op.getIsSmallKernelOptimized(), op.getSparsityConfigAttr(),
+            op.getDynamicScaleConfigAttr(), op.getLocalRegionAttr(), op.getS2dConfigAttr(), op.getStartAfterAttr(),
+            op.getCleanAfterAttr(), variantsInGroupAttr, firstVariantAttr, lastVariantAttr);
     {
         auto& ppeRegion = invariant.getPpe();
         ppeRegion.emplaceBlock();

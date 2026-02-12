@@ -75,10 +75,10 @@ mlir::LogicalResult ComputeTaskStrippingPass::initializeOptions(
 
 bool ComputeTaskStrippingPass::isLegalExecutorType(VPURT::TaskOp taskOp) {
     auto opExecutorKind = taskOp.getExecutorKind();
-    if (opExecutorKind == VPU::ExecutorKind::DPU && _dpuDryRun == VPU::DPUDryRunMode::STRIP) {
+    if (opExecutorKind == config::ExecutorKind::DPU && _dpuDryRun == VPU::DPUDryRunMode::STRIP) {
         return false;
     }
-    if (opExecutorKind == VPU::ExecutorKind::SHAVE_ACT && _shaveDryRun == true) {
+    if (opExecutorKind == config::ExecutorKind::SHAVE_ACT && _shaveDryRun == true) {
         return false;
     }
     return true;

@@ -1,62 +1,41 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/attributes/stable_hash_storage.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/convert_utils.hpp"
 #include "vpux/compiler/utils/stable_hash.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
-#include <llvm/ADT/Hashing.h>
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
 
 using namespace vpux;
 
 namespace {
-Const::Content convertQuantizedToQuantizedWithSingleZeroPoint(Const::Content& input, mlir::quant::QuantizedType inType,
-                                                              mlir::quant::QuantizedType outType,
-                                                              NDTypeInterface resultType) {
+Const::Content convertQuantizedToQuantizedWithZeroPoint(Const::Content& input, mlir::quant::QuantizedType inType,
+                                                        mlir::quant::QuantizedType outType,
+                                                        NDTypeInterface resultType) {
     const auto offset = Const::details::getValueRangeOffset(inType, outType);
-    const auto valueShifter = Const::AddAttr::get(getFPAttr(inType.getContext(), static_cast<double>(offset)));
+    const auto valueShifter = offset.size() == 1 ? Const::AddAttr::get(getFPAttr(inType.getContext(), offset[0]))
+                                                 : Const::AddAttr::get(getFPArrayAttr(inType.getContext(), offset));
+
     return Const::Content::moveBuffer(resultType, valueShifter.transform(input));
 }
 }  // namespace
 
 mlir::LogicalResult vpux::Const::ConvertElemTypeAttr::verify(FuncRef<mlir::InFlightDiagnostic()> emitError,
-                                                             mlir::Type elemType, llvm::hash_code) {
+                                                             mlir::Type elemType) {
     if (elemType == nullptr) {
         return printTo(emitError(), "Got NULL 'elemType' in 'ConvertElemTypeAttr'");
     }
 
     return mlir::success();
-}
-
-void vpux::Const::ConvertElemTypeAttr::print(mlir::AsmPrinter& printer) const {
-    printer << "<";
-    printer.printStrippedAttrOrType(getElemType());
-    printer << ">";
-}
-
-mlir::Attribute vpux::Const::ConvertElemTypeAttr::parse(mlir::AsmParser& parser, mlir::Type) {
-    if (mlir::failed(parser.parseLess())) {
-        return nullptr;
-    }
-
-    mlir::Type elemType;
-    if (mlir::failed(parser.parseType(elemType))) {
-        return nullptr;
-    }
-
-    if (mlir::failed(parser.parseGreater())) {
-        return nullptr;
-    }
-
-    return Const::ConvertElemTypeAttr::get(elemType);
 }
 
 vpux::NDTypeInterface vpux::Const::ConvertElemTypeAttr::inferOutputType(vpux::NDTypeInterface input) const {
@@ -67,6 +46,67 @@ bool vpux::Const::ConvertElemTypeAttr::inferOutputSplat(bool inputIsSplat, vpux:
     return inputIsSplat;
 }
 
+template <typename DataType>
+void unpackSubByteData(MutableArrayRef<DataType> targetData, ArrayRef<DataType> sourceData, bool isSplat,
+                       size_t bitWidth, size_t elemPerByte) {
+    static_assert(sizeof(DataType) == sizeof(uint8_t), "This code assumes 8-bit inputs / outputs");
+
+    const size_t rShift = CHAR_BIT - bitWidth;
+    if (isSplat) {
+        // when splat, all sub-byte elements must be identical - so take any, in
+        // this case, leftmost
+        auto unpacked = sourceData.front() >> rShift;
+        std::fill_n(targetData.data(), targetData.size(), unpacked);
+        return;
+    }
+
+    const auto numBytes = sourceData.size();
+    for (size_t byteIdx = 0; byteIdx < numBytes; byteIdx++) {
+        for (size_t elemIdxPerByte = 0; elemIdxPerByte < elemPerByte; elemIdxPerByte++) {
+            const size_t lShift = rShift - (elemIdxPerByte * bitWidth);
+            // convert to *unsigned* type to perform well-defined left shift
+            auto unsignedVal = llvm::bit_cast<uint8_t>(sourceData[byteIdx]);
+            unsignedVal <<= lShift;
+            // convert back to (potentially signed) data type to perform right
+            // shift (with sign extension when signed)
+            const auto val = llvm::bit_cast<DataType>(unsignedVal);
+            targetData[byteIdx * elemPerByte + elemIdxPerByte] = (val >> rShift);
+        }
+    }
+}
+
+// Unpack subbyte constants.
+// Consider this configuration for a bit width of 4:
+// 0x89, 0x88
+// Will end like:
+// 0x9, 0x8, 0x8, 0x8
+vpux::Const::Content subByteConversion(vpux::Const::Content& input, vpux::NDTypeInterface outputType,
+                                       bool outputIsSplat, size_t bitWidth) {
+    const auto elementType = outputType.getElementType();
+    auto output = Const::Content::allocTempBuffer(outputType, elementType, outputIsSplat);
+
+    const auto elemPerByte = CHAR_BIT / bitWidth;
+    VPUX_THROW_UNLESS(vpux::isPowerOfTwo(elemPerByte), "Invalid number of elements per byte '{0}'", elemPerByte);
+
+    // When bitWidth is 1, we treat it as unsigned numbers
+    if (elementType.isUnsignedInteger() || elementType.isSignlessIntOrIndex() || bitWidth == 1) {
+        const auto sourceData = input.getStorageBuf<uint8_t>();
+        auto targetData = output.getTempBuf<uint8_t>();
+        unpackSubByteData(targetData, sourceData, input.isSplat(), bitWidth, elemPerByte);
+        return output;
+    } else if (elementType.isSignedInteger()) {
+        // For signed integer, we need maintain the sign bit when unpacking
+        const auto sourceData = input.getStorageBuf<int8_t>();
+        auto targetData = output.getTempBuf<int8_t>();
+        unpackSubByteData(targetData, sourceData, input.isSplat(), bitWidth, elemPerByte);
+        return output;
+    } else {
+        VPUX_THROW("Unsupported subByte conversion type '{0}'", elementType);
+    }
+
+    return output;
+}
+
 Const::Content vpux::Const::ConvertElemTypeAttr::transform(vpux::Const::Content& input) const {
     auto inType = input.getType();
     auto outNDType = inferOutputType(inType);
@@ -74,11 +114,10 @@ Const::Content vpux::Const::ConvertElemTypeAttr::transform(vpux::Const::Content&
     auto inElementType = inType.getElementType();
     auto outElementType = outNDType.getElementType();
 
-    // quant -> quant conversion
     if (auto qTypeIn = mlir::dyn_cast<mlir::quant::QuantizedType>(inElementType),
         qTypeOut = mlir::dyn_cast<mlir::quant::QuantizedType>(outElementType);
         qTypeIn != nullptr && qTypeOut != nullptr) {
-        return convertQuantizedToQuantizedWithSingleZeroPoint(input, qTypeIn, qTypeOut, outNDType);
+        return convertQuantizedToQuantizedWithZeroPoint(input, qTypeIn, qTypeOut, outNDType);
     }
 
     if (mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileFloatType>(inElementType)) {
@@ -100,12 +139,4 @@ Const::Content vpux::Const::ConvertElemTypeAttr::transform(vpux::Const::Content&
 
     // TODO: Support generic transformation
     VPUX_THROW("Unsupported conversion: {0} -> {1}", inElementType, outElementType);
-}
-
-//
-// ConvertElemTypeAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::stableHashForConvertElemType(mlir::Type type) {
-    return llvm::hash_combine(Const::ConvertElemTypeAttr::getMnemonic(), getStableHash(type));
 }

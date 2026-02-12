@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,5 +19,5 @@
 // CHECK:    DataInfo "convert_fp32_to_fp16_Range-4" friendlyName = "Result_27662" : tensor<?xsi64, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}
 // CHECK: }
 
-// CHECK: IE.Range{{.*}}tensor<1xsi64>, tensor<si64>, tensor<si32> -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}>
-// CHECK: IE.Convert{{.*}}tensor<?xf32, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}> -> tensor<?xsi64, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}>
+// CHECK: IE.Range{{.+}}tensor<1xsi64>, tensor<si64>, tensor<si32> -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}>
+// CHECK: IE.Convert{{.+}}tensor<?xf32, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}> -> tensor<?xsi64, {bounds = #const.OpaqueI64Elements<[1024]> : tensor<1xsi64>, order = #C}>

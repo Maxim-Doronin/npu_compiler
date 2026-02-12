@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,10 +7,13 @@
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Types.h>
-#include "vpux/compiler/dialect/VPU/IR/types.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+
 #include "vpux/compiler/utils/hw_settings.hpp"
 #include "vpux/utils/core/mem_size.hpp"
+
+namespace vpux::config {
+enum class ArchKind : uint64_t;
+}  // namespace vpux::config
 
 namespace vpux {
 
@@ -35,9 +38,6 @@ int64_t getSizeAlignmentForSwizzling(config::ArchKind arch);
 /// @return alignment [bytes]
 int64_t getAddressAlignmentForSwizzling(int64_t swizzlingKey, config::ArchKind archKind);
 
-VPUIP::SwizzlingSchemeAttr createSwizzlingSchemeAttr(mlir::MLIRContext* ctx, config::ArchKind archKind,
-                                                     int64_t swizzlingKey);
-
 // For swizzling buffer size needs to be aligned to 512/1024 as dictated by arch
 int64_t alignSizeForSwizzling(int64_t size, int64_t sizeAlignment);
 
@@ -54,19 +54,5 @@ int64_t alignSizeForSwizzling(int64_t size, int64_t sizeAlignment);
 Byte calculateAlignedBuffersMemoryRequirement(mlir::SmallVector<Byte>& bufferSizes,
                                               const Byte offsetAlignment = Byte(vpux::DEFAULT_CMX_ALIGNMENT),
                                               const Byte sizeAlignment = Byte(0));
-
-VPUIP::SwizzlingSchemeAttr getSwizzlingSchemeAttr(mlir::Type type);
-
-// Retrieve swizzling key setting embedded in layout with buffer types
-int64_t getSwizzlingKey(mlir::Type type);
-
-mlir::Type setSwizzlingKey(mlir::Type type, mlir::IntegerAttr swizzlingKeyAttr, config::ArchKind archKind);
-
-mlir::Type setSwizzlingKey(mlir::Type type, int64_t swizzlingKey, config::ArchKind archKind);
-
-SmallVector<int64_t> getPerClusterBytesAddedForSwizzling(VPUIP::DistributedBufferType distributedBuffer);
-
-vpux::NDTypeInterface updateSwizzlingSchemeBasedOnDistributedType(VPUIP::DistributedBufferType inputType,
-                                                                  vpux::NDTypeInterface newType);
 
 }  // namespace vpux

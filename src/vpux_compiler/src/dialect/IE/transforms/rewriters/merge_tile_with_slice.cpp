@@ -21,24 +21,6 @@ namespace {
 // MergeTileWithReshapeSlice
 //
 
-//                                Input(2x1x10x80)
-//                                        |
-//                                IE.Tile(2x2x10x80)
-//                                        |
-//                                IE.Reshape(1x4x10x80)
-//                                        |
-//             -----------------------------------------------------------
-//             |                   |                   |                 |
-//        IE.Slice(1x1x10x80) IE.Slice(1x1x10x80) IE.Slice(1x1x10x80) IE.Slice(1x1x10x80)
-
-// To:
-
-//                                Input(2x1x10x80)
-//                                        |
-//             -----------------------------------------------------------
-//             |                   |                   |                 |
-//        IE.Slice(1x1x10x80) IE.Slice(1x1x10x80) IE.Slice(1x1x10x80) IE.Slice(1x1x10x80)
-
 class MergeTileWithReshapeSlice final : public mlir::OpRewritePattern<IE::TileOp> {
 public:
     MergeTileWithReshapeSlice(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::TileOp>(ctx), _log(log) {

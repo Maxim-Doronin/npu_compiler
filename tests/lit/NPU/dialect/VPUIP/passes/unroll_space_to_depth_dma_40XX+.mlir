@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ func.func @UnrollSpaceToDepthDMABlockFirstHWCWithSplit(%arg0: memref<16x2x12xf16
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
                 inputs(%2 : memref<16x2x12xf16, #HWC, [@CMX_NN, 0]>)
                 outputs(%3 : memref<16x4x6xf16, #HWC, [@CMX_NN, 0]>) -> memref<16x4x6xf16, #HWC, [@CMX_NN, 0]>
     }
@@ -114,7 +114,7 @@ func.func @UnrollSpaceToDepthDMABlockFirstNHWCWithSplit(%arg0: memref<1x4x6x12xf
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
                 inputs(%2 : memref<1x4x6x12xf16, #NHWC, [@CMX_NN, 0]>)
                 outputs(%3 : memref<1x16x3x6xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x3x6xf16, #NHWC, [@CMX_NN, 0]>
     }
@@ -208,7 +208,7 @@ func.func @UnrollSpaceToDepthDMABlockFirstNHWCNoSplit(%arg0: memref<1x4x2x12xf16
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
                 inputs(%2 : memref<1x4x2x12xf16, #NHWC, [@CMX_NN, 0]>)
                 outputs(%3 : memref<1x16x1x6xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x1x6xf16, #NHWC, [@CMX_NN, 0]>
     }
@@ -282,7 +282,7 @@ func.func @UnrollSpaceToDepthDMABlockFirstNHWC(%arg0: memref<1x2x4x6xf16, #NHWC>
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
                 inputs(%2 : memref<1x2x4x6xf16, #NHWC, [@CMX_NN, 0]>)
                 outputs(%4 : memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>
     }
@@ -376,7 +376,7 @@ func.func @UnrollSpaceToDepthDMABlockFirstNCHW(%arg0: memref<1x2x4x6xf16>, %arg1
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
                 inputs(%2 : memref<1x2x4x6xf16, [@CMX_NN, 0]>)
                 outputs(%4 : memref<1x8x2x3xf16, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, [@CMX_NN, 0]>
     }
@@ -469,7 +469,7 @@ func.func @UnrollSpaceToDepthDMADepthFirstNHWC(%arg0: memref<1x2x4x6xf16, #NHWC>
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>}>
                 inputs(%2 : memref<1x2x4x6xf16, #NHWC, [@CMX_NN, 0]>)
                 outputs(%4 : memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>
     }
@@ -563,7 +563,7 @@ func.func @UnrollSpaceToDepthDMADepthFirstNCHW(%arg0: memref<1x2x4x6xf16>, %arg1
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>}>
                 inputs(%2 : memref<1x2x4x6xf16, [@CMX_NN, 0]>)
                 outputs(%4 : memref<1x8x2x3xf16, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, [@CMX_NN, 0]>
     }
@@ -656,7 +656,7 @@ func.func @UnrollSpaceToDepthDMABlockFirstNCHWToNHWC(%arg0: memref<1x2x4x6xf16>,
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
                 inputs(%2 : memref<1x2x4x6xf16, [@CMX_NN, 0]>)
                 outputs(%4 : memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>
     }
@@ -750,7 +750,7 @@ func.func @UnrollSpaceToDepthDMADepthFirstNCHWToNHWC(%arg0: memref<1x2x4x6xf16>,
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1: !VPURT.Barrier) {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>, output_channel = 2 : i64, output_width = 6 : i64}
+        VPUIP.SpaceToDepthDMA {output_channel = 2 : i64, output_width = 6 : i64} <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>}>
                 inputs(%2 : memref<1x2x4x6xf16, [@CMX_NN, 0]>)
                 outputs(%4 : memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>
     }
@@ -844,12 +844,12 @@ func.func @UnrollSpaceToDepthDMADepthFirstNCHWToNHWC(%arg0: memref<1x2x4x6xf16>,
 func.func @UnrollSegmentedClusterSpaceToDepthDMA() -> !OutputDistributed {
     %0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    
+
     %2 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x4x6x!qElemType, #NHWC, [@CMX_NN, 0]>
     %3 = VPURT.DeclareBuffer <CMX_NN> <1024> -> !OutputDistributed
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}
+        VPUIP.SpaceToDepthDMA <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
               inputs(%2 : memref<1x3x4x6x!qElemType, #NHWC, [@CMX_NN, 0]>)
               outputs(%3 : !OutputDistributed) -> !OutputDistributed
     }
@@ -929,7 +929,7 @@ func.func @UnrollOverlappedClusterSpaceToDepthDMA() -> !OutputDistributed {
     %3 = VPURT.DeclareBuffer <CMX_NN> <65536> -> !OutputDistributed
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}
+        VPUIP.SpaceToDepthDMA <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
               inputs(%2 : memref<1x4x48x48x!qElemType, #NHWC, [@CMX_NN, 0]>)
               outputs(%3 : !OutputDistributed) -> !OutputDistributed
     }
@@ -1045,7 +1045,7 @@ func.func @UnrollOverlappedClusterSpaceToDepthDMA() -> !OutputDistributed {
     %3 = VPURT.DeclareBuffer <CMX_NN> <65536> -> !OutputDistributed
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        VPUIP.SpaceToDepthDMA {block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}
+        VPUIP.SpaceToDepthDMA <{block_size = 2 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>}>
               inputs(%2 : memref<1x4x48x48x!qElemType, #NHWC, [@CMX_NN, 0]>)
               outputs(%3 : !OutputDistributed) -> !OutputDistributed
     }

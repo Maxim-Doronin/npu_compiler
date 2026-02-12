@@ -154,6 +154,11 @@ def AddEnqueueOps : PassBase<"add-enqueue-ops", "vpux::FunctionPass"> {
             "enablePredefinedEnqueueOpt", "enable-predefined-enqueue",
             "bool", "false",
             "Enable usage of predefined enqueue targets from VPURT"
+        >,
+        Option<
+            "enableWorkItemLinksOpt", "enable-work-item-links",
+            "bool", "false",
+            "Enable usage of WorkItem task links"
         >
     ];
 
@@ -179,6 +184,7 @@ def LinkEnqueueTargets : PassBase<"link-enqueue-targets", "vpux::FunctionPass"> 
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
@@ -265,6 +271,7 @@ def AddBootstrapWorkItems : PassBase<"add-bootstrap-work-items", "vpux::Function
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
@@ -332,11 +339,11 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             "Initial barriers reprogramming" refer to programming BARRIER_FIFO_DEPTH usages of each physical barriers
 
             Take following barriers used in network as example compiling on single cluster(nPhysBarr = 16)
-            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} pid0
-            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8} pid1
-            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} pid2
-            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} pid3
-            VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8} pid4
+            VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> pid0
+            VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 2 : ui8}> pid1
+            VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> pid2
+            VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> pid3
+            VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, isFinalBarrier, producer_count = 1 : ui8}> pid4
 
             For each barrier usage, DMA writes 32bits in total where each 8 bits represents the following
 
@@ -383,6 +390,9 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             This mechanism allows the firmware to send periodic heartbeat refresh to the host, indicating that the inference is still running. To reduce interrupt overhead,
             the consumer interrupt is typically set only on the first barrier within each page, though less frequent signaling may still be sufficient depending on system requirements.
 
+        WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K
+            This mode does everything what ALL_BARRIER_DMAS_SCHEDULED but instead of utilizing the barrier FIFO it utilizes the 4K Barrier block
+
     }];
 
     let options = [
@@ -398,7 +408,9 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED, "INITIAL_BARRIER_DMAS_SCHEDULED",
                 "Compiler creates DMA to program initial barrier and constant to aid runtime in barrier programming"),
             clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED, "ALL_BARRIER_DMAS_SCHEDULED",
-                "Compiler creates DMAs to program all barriers")
+                "Compiler creates DMAs to program all barriers"),
+            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K, "ALL_BARRIER_DMAS_SCHEDULED_4K",
+                "Compiler creates DMAs to program all barriers leveraging 4K barrier block")
           )}]
         >
     ];

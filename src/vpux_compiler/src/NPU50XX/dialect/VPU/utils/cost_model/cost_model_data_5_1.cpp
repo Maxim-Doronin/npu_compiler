@@ -9,7 +9,9 @@ namespace vpux {
 namespace VPU {
 
 #include <vpux/compiler/dialect/VPU/generated/cost_model_cache_data_5_1.hpp.inc>
+#include <vpux/compiler/dialect/VPU/generated/cost_model_cache_data_5_2.hpp.inc>
 #include <vpux/compiler/dialect/VPU/generated/cost_model_data_5_1.hpp.inc>
+#include <vpux/compiler/dialect/VPU/generated/cost_model_data_5_2.hpp.inc>
 
 }  // namespace VPU
 }  // namespace vpux

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
@@ -515,6 +516,52 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
     return builder;
 }
 
+PpeFactory::AttrBuilder PpeFactory::retrievePermuteQuantizePPEAttribute(mlir::Operation* operation) const {
+    VPUX_THROW_WHEN(!mlir::isa<IE::PermuteQuantizeOp>(operation), "Expected PermuteQuantizeOp but got: {0}",
+                    operation->getName());
+
+    auto inputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType()).getElementType();
+    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+
+    auto builder = PpeFactory::AttrBuilder(retrieveNonEltwisePPEAttribute(operation));
+    // In this case NCEPermuteOp only perform permutation and will get converted to an AddOp,
+    // so it's scale should be halved
+    if (builder.scale.has_value()) {
+        *builder.scale /= 2.0;
+    }
+
+    if (!mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
+        return builder;
+    }
+
+    VPUX_THROW_WHEN(inputElemType != outputElemType,
+                    "Input and output quantized types must be the same for PermuteQuantizeOp");
+
+    const auto input1QuantScale = 1.0;
+    const auto input2QuantScale = 1.0;
+    const auto outputQuantScale = 2.0;
+
+    const auto storageElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(inputElemType).getStorageType();
+    if (mlir::isa<mlir::FloatType>(storageElemType)) {
+        // Float Quantization (fp8)
+        builder.scale = outputQuantScale;
+        builder.in1Mult = SmallVector<double>{input1QuantScale};
+        builder.in2Mult = SmallVector<double>{input2QuantScale};
+
+    } else {
+        // Integer Quantization (i8, i4 etc.)
+        const auto eltwiseType = vpux::VPU::decodeNceEltwiseType(operation);
+        const auto allScaleApproximation = VPU::EltwiseQuantizationApproximation(input1QuantScale, input2QuantScale,
+                                                                                 outputQuantScale, eltwiseType);
+        builder.scale = static_cast<double>(allScaleApproximation.output().mult()) /
+                        pow(2, allScaleApproximation.output().shift());
+        builder.in1Mult = SmallVector{static_cast<double>(allScaleApproximation.input1().mult())};
+        builder.in2Mult = SmallVector{static_cast<double>(allScaleApproximation.input2().mult())};
+    }
+
+    return builder;
+}
+
 PpeFactory::AttrBuilder PpeFactory::retrieveEltwisePPEAttribute(mlir::Operation* operation) const {
     if (!mlir::isa<IE::AddOp, IE::SubtractOp, IE::MultiplyOp>(operation)) {
         // Supported ops: AddOp, SubtractOp, MultiplyOp
@@ -558,7 +605,7 @@ PpeFactory::AttrBuilder PpeFactory::retrieveEltwisePPEAttribute(mlir::Operation*
         // Integer Quantization (i8, i4 etc.)
         const auto eltwiseType = vpux::VPU::decodeNceEltwiseType(operation);
         const auto allScaleApproximation =
-                vpux::EltwiseQuantizationApproximation(input1Scale, input2Scale, outputScale, eltwiseType);
+                VPU::EltwiseQuantizationApproximation(input1Scale, input2Scale, outputScale, eltwiseType);
         builder.scale = static_cast<double>(allScaleApproximation.output().mult()) /
                         pow(2, allScaleApproximation.output().shift());
         builder.in1Mult = SmallVector{static_cast<double>(allScaleApproximation.input1().mult())};
@@ -569,8 +616,15 @@ PpeFactory::AttrBuilder PpeFactory::retrieveEltwisePPEAttribute(mlir::Operation*
 }
 
 PPEAttr PpeFactory::retrievePPEAttribute(mlir::Operation* operation) const {
-    const auto builder = operation->hasTrait<IE::EltwiseOp>() ? retrieveEltwisePPEAttribute(operation)
-                                                              : retrieveNonEltwisePPEAttribute(operation);
+    AttrBuilder builder = operation->getContext();
+    if (mlir::isa<IE::PermuteQuantizeOp>(operation)) {
+        builder = retrievePermuteQuantizePPEAttribute(operation);
+    } else if (operation->hasTrait<IE::EltwiseOp>()) {
+        builder = retrieveEltwisePPEAttribute(operation);
+    } else {
+        builder = retrieveNonEltwisePPEAttribute(operation);
+    }
+
     return builder.getAttr();
 }
 

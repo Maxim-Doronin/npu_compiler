@@ -13,6 +13,7 @@
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONSOLIDATENF4WEIGHTSPATTERN
@@ -70,7 +71,7 @@ public:
         if (!patternOps->postConvertOp.has_value()) {
             auto dstElemType =
                     mlir::dyn_cast<NDTypeInterface>(patternOps->gatherOp.getOutput().getType()).getElementType();
-            auto convertOp = rewriter.create<IE::ConvertOp>(appendLoc(quantCastOp.getLoc(), "_post_convert"),
+            auto convertOp = rewriter.create<IE::ConvertOp>(appendLoc(quantCastOp.getLoc(), "post_convert"),
                                                             quantCastOp.getOutput(), dstElemType);
             rewriter.replaceAllUsesWith(patternOps->gatherOp.getOutput(), convertOp.getOutput());
         }
@@ -168,9 +169,7 @@ void ConsolidateNF4WeightsPatternPass::safeRunOnFunc() {
     patterns.add<ConvertToQuantCast>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

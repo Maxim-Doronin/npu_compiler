@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -116,7 +116,7 @@ void dumpProfilingMetadata(const uint8_t* blobData, size_t blobSize, std::ostrea
 
     const auto prettyProfilingMeta =
             flatbuffers::FlatBufferToString(sectionData, ProfilingFB::ProfilingMetaTypeTable(), /*multi_line*/ true,
-                                            /*vector_delimited*/ false);
+                                            /*vector_delimited*/ false, /*indent*/ "  ", /*quotes*/ true);
     output << prettyProfilingMeta << std::endl;
 }
 

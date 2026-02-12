@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -709,9 +709,9 @@ mlir::LogicalResult ConvertToDMAPass::ExpandConverter::matchAndRewrite(VPUIP::Ex
     _log.trace("Got Expand '{0}' at '{1}'", expandOp->getName(), expandOp->getLoc());
 
     const auto inputType = mlir::cast<NDTypeInterface>(expandOp.getInput().getType());
-    VPUX_THROW_WHEN(mlir::isa<mlir::FloatType>(inputType.getElementType()) ||
-                            vpux::isFloat8Quantized(inputType.getElementType()),
-                    "Only integral type ExpandOp can be converted to DMA, but got '{0}'", inputType.getElementType());
+    VPUX_THROW_WHEN(
+            mlir::isa<mlir::FloatType>(inputType.getElementType()) || isLowFpTypeQuantized(inputType.getElementType()),
+            "Only integral type ExpandOp can be converted to DMA, but got '{0}'", inputType.getElementType());
 
     const auto outputType = mlir::cast<NDTypeInterface>(expandOp.getOutput().getType());
     _log.nest().trace("inType: '{0}', outType: '{1}', padBegin: '{2}', padEnd: '{3}'", inputType, outputType,
@@ -954,7 +954,7 @@ mlir::LogicalResult ConvertToDMAPass::UpsamplingOpConverter::matchAndRewrite(VPU
             rewriter.create<VPUIP::UpsamplingDMAOp>(origOp.getLoc(), origOp.getInput(), copyZeroOp.getOutput(),
                                                     getIntArrayAttr(ctx, newFactors), /*dma_descriptor*/ nullptr,
                                                     /*expand*/ nullptr, getIntAttr(ctx, 0),
-                                                    /*is_out_of_order=*/nullptr, /*is_critical*/ nullptr,
+                                                    /*is_out_of_order=*/false, /*is_critical*/ false,
                                                     /*dma_hwp_id*/ nullptr, /*profilingMetadata=*/nullptr)
                     .getOutput();
 

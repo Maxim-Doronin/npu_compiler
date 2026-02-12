@@ -1,15 +1,21 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <limits>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/checked_cast.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSDPATOFLASHSDPA
@@ -37,27 +43,76 @@ private:
 mlir::LogicalResult SDPARewrite::matchAndRewrite(IE::SDPAOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
-    auto valueRank = origOp.getInputV().getType().getRank();
+    auto ctx = getContext();
+
+    auto valueShape = getShape(origOp.getInputV());
+    auto valueRank = valueShape.size();
     if (valueRank < 2) {
         return errorAt(origOp, "Invalid Value tensor rank '{0}'", valueRank);
     }
 
-    // Transpose Value tensor to match required tensor shape for the second DPU MatMul and get this configuration:
-    // Attention scores [1, Heads, TargetSeqLen, SourceSeqLen]
-    // Value            [1, Heads, VEmbedding,   SourceSeqLen]
-    SmallVector<unsigned> perm(valueRank, 0);
-    std::iota(perm.begin(), perm.end(), 0);
-    std::iter_swap(perm.end() - 1, perm.end() - 2);
-    auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(perm, getContext()));
+    auto queryShape = getShape(origOp.getInputQ());
+    auto targetSeqLen = *(queryShape.end() - 2);
 
-    auto transposedValue = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transposed"),
-                                                            origOp.getInputV(), nullptr, orderAttr);
+    auto vEmbedding = *(valueShape.end() - 1);
 
-    auto flashSdpa = rewriter.create<IE::FlashSDPAOp>(
-            appendLoc(origOp->getLoc(), "FlashAttention"), origOp.getInputQ(), origOp.getInputK(),
-            transposedValue.getOutput(), origOp.getInputMask(), origOp.getInputScale(), getIntAttr(rewriter, 0));
+    // If scale input is not present, Query is scaled by a constant instead
+    auto scale = mlir::Value{origOp.getInputScale()};
+    if (scale == nullptr) {
+        auto queryShape = getShape(origOp.getInputQ());
+        auto qkEmbedding = queryShape.back();
+        auto scaleValue = 1.0f / sqrtf(checked_cast<float>(qkEmbedding));
 
-    rewriter.replaceOp(origOp, flashSdpa.getOutput());
+        auto scaleType = mlir::RankedTensorType::get({1}, getFp16Type(getContext()));
+        auto scaleData = SmallVector<float>{scaleValue};
+        auto scaleConstant =
+                Const::createConst(rewriter, appendLoc(origOp.getLoc(), "scale_const"), scaleType, ArrayRef(scaleData));
+
+        scale = scaleConstant;
+    }
+
+    auto scaledQuery = rewriter.create<IE::MultiplyOp>(appendLoc(origOp.getInputQ().getLoc(), "query_scaled"),
+                                                       origOp.getInputQ(), scale, IE::AutoBroadcastType::NUMPY,
+                                                       /*postOp=*/nullptr, /*clamp=*/nullptr,
+                                                       /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
+
+    auto queryBatches = Shape(queryShape.begin(), queryShape.end() - 2);
+
+    auto runningOutputShape = queryBatches;
+    runningOutputShape.push_back(targetSeqLen);
+    runningOutputShape.push_back(vEmbedding);
+    auto runningOutputType = mlir::RankedTensorType::get(runningOutputShape.raw(), mlir::Float16Type::get(ctx));
+    auto initRunningOutput = vpux::Const::createDenseConst(rewriter, appendLoc(origOp->getLoc(), "running_output"),
+                                                           runningOutputType, 0.0f);
+
+    auto runningMaxAndSumShape = std::move(queryBatches);
+    runningMaxAndSumShape.push_back(targetSeqLen);
+    auto runningMaxType = mlir::RankedTensorType::get(runningMaxAndSumShape.raw(), mlir::Float16Type::get(ctx));
+    auto initRunningMax = vpux::Const::createDenseConst(rewriter, appendLoc(origOp->getLoc(), "running_max"),
+                                                        runningMaxType, -std::numeric_limits<float>::infinity());
+
+    auto runningSumType = mlir::RankedTensorType::get(runningMaxAndSumShape.raw(), mlir::Float32Type::get(ctx));
+    auto initRunningSum =
+            vpux::Const::createDenseConst(rewriter, appendLoc(origOp->getLoc(), "running_sum"), runningSumType, 0.0f);
+
+    auto trueAttr = mlir::BoolAttr::get(ctx, true);
+    auto flashSdpa = rewriter.create<IE::FlashSDPAOp>(appendLoc(origOp->getLoc(), "FlashAttention"), scaledQuery,
+                                                      origOp.getInputK(), origOp.getInputV(), initRunningOutput,
+                                                      initRunningMax, initRunningSum, origOp.getInputMask(),
+                                                      /*isHead*/ trueAttr, /*isTail*/ trueAttr,
+                                                      /*sourceSeqLenPadSize*/ getIntAttr(ctx, 0));
+
+    // Output type depends on the initial running output tensor which is initialized with a fp16 constant
+    // Original IE::SDPA operation might have fp32 output type so we need to add a Convert operation
+    auto newResult = flashSdpa.getResultRunningOutput();
+    if (newResult.getType().getElementType() != origOp.getType().getElementType()) {
+        auto convertToTarget = rewriter.create<IE::ConvertOp>(appendLoc(newResult.getLoc(), "convert"), newResult,
+                                                              origOp.getType().getElementType());
+
+        newResult = convertToTarget;
+    }
+
+    rewriter.replaceOp(origOp, newResult);
 
     return mlir::success();
 }
@@ -93,7 +148,8 @@ void ConvertSDPAToFlashSDPA::safeRunOnFunc() {
 
     target.addDynamicallyLegalOp<IE::SDPAOp>(isLegal);
     target.addLegalOp<IE::FlashSDPAOp>();
-    target.addLegalOp<IE::TransposeOp>();
+    target.addLegalOp<IE::MultiplyOp>();
+    target.addLegalOp<IE::ConvertOp>();
     target.addLegalOp<Const::DeclareOp>();
 
     mlir::RewritePatternSet patterns(&ctx);

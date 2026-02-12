@@ -1,6 +1,6 @@
 
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -217,3 +217,41 @@ func.func @dontMoveReflectPadToCmxNotTheSameCopySource(%arg0: tensor<1x1x1x24xf1
     // CHECK:   VPU.Concat
     // CHECK-NOT:    tensor<1x1x1x24xf16, {mem_space = [@CMX_NN, 0]}>, tensor<1x1x1x24xf16, {mem_space = [@CMX_NN, 0]}> -> tensor<1x1x2x24xf16, {mem_space = [@CMX_NN, 0]}>
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+!qElemType = !quant.uniform<u8:f16, 0.0076813534194347909>
+
+// CHECK-LABEL: @MoveReflectPadToCmxHShapeCast
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x32x12x8x!qElemType, {order = #NHWC}>
+func.func @MoveReflectPadToCmxHShapeCast(%arg0: tensor<1x32x12x8x!qElemType, {order = #NHWC}>) -> tensor<1x32x5x32x!qElemType, {order = #NHWC}> {
+  %copy_0 = VPU.Copy(%arg0) {out_mem_space = @CMX_NN} : tensor<1x32x12x8x!qElemType, {order = #NHWC}> -> tensor<1x32x12x8x!qElemType, {mem_space = @CMX_NN, order = #NHWC}>
+  %input_copy_to_ddr = VPU.Copy(%copy_0) : tensor<1x32x12x8x!qElemType, {mem_space = @CMX_NN, order = #NHWC}> -> tensor<1x32x12x8x!qElemType, {order = #NHWC}>
+  
+  %shape_cast = VPU.ShapeCast {shape = [1, 32, 3, 32]} inputs(%input_copy_to_ddr : tensor<1x32x12x8x!qElemType, {order = #NHWC}>) -> tensor<1x32x3x32x!qElemType, {order = #NHWC}>
+  
+  %slice_0 = VPU.Slice %shape_cast [0, 0, 1, 0] [1, 32, 1, 32] : tensor<1x32x3x32x!qElemType, {order = #NHWC}> to tensor<1x32x1x32x!qElemType, {order = #NHWC}>
+  
+  %slice_1 = VPU.Slice %shape_cast [0, 0, 2, 0] [1, 32, 1, 32] : tensor<1x32x3x32x!qElemType, {order = #NHWC}> to tensor<1x32x1x32x!qElemType, {order = #NHWC}>
+  
+  %concat = VPU.Concat (%slice_0, %shape_cast, %slice_1)
+  {static_offsets = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 4, 0]]
+  } :  tensor<1x32x1x32x!qElemType, {order = #NHWC}>, tensor<1x32x3x32x!qElemType, {order = #NHWC}>, tensor<1x32x1x32x!qElemType, {order = #NHWC}> -> tensor<1x32x5x32x!qElemType, {order = #NHWC}>
+  
+  return %concat : tensor<1x32x5x32x!qElemType, {order = #NHWC}>
+
+// CHECK:       [[ARG_COPY:%.+]] = VPU.Copy([[INPUT]]) {out_mem_space = @CMX_NN} : tensor<1x32x12x8x!qElemType, {order = #NHWC}> -> tensor<1x32x12x8x!qElemType, {mem_space = @CMX_NN, order = #NHWC}>
+// CHECK:       [[CMX_TO_DDR_COPY:%.+]] = VPU.Copy([[ARG_COPY]]) : tensor<1x32x12x8x!qElemType, {mem_space = @CMX_NN, order = #NHWC}> -> tensor<1x32x12x8x!qElemType, {order = #NHWC}>
+// CHECK:       [[SHAPE_CAST:%.+]] = VPU.ShapeCast {shape = [1, 32, 3, 32]} inputs([[CMX_TO_DDR_COPY]] : tensor<1x32x12x8x!qElemType, {order = #NHWC}>) -> tensor<1x32x3x32x!qElemType, {order = #NHWC}>
+// CHECK:       [[DDR_TO_CMX_COPY:%.+]] = VPU.Copy([[SHAPE_CAST]]) {out_mem_space = [@CMX_NN, 0]} : tensor<1x32x3x32x!qElemType, {order = #NHWC}> -> tensor<1x32x3x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+// CHECK:       [[INPUT_SLICE_0:%.+]] = VPU.Slice [[DDR_TO_CMX_COPY]] [0, 0, 1, 0] [1, 32, 1, 32] : tensor<1x32x3x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}> to tensor<1x32x1x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+// CHECK:       [[INPUT_SLICE_1:%.+]] = VPU.Slice [[DDR_TO_CMX_COPY]] [0, 0, 2, 0] [1, 32, 1, 32] : tensor<1x32x3x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}> to tensor<1x32x1x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+// CHECK: [[CONCAT:%.+]] = VPU.Concat([[INPUT_SLICE_0]], [[DDR_TO_CMX_COPY]], [[INPUT_SLICE_1]])
+// CHECK-SAME(LITERAL): {static_offsets = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 4, 0]]}
+// CHECK-SAME: : tensor<1x32x1x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>, tensor<1x32x3x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>, tensor<1x32x1x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}> -> tensor<1x32x5x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+// CHECK:       [[CONCAT_OUT_COPY:%.+]] = VPU.Copy([[CONCAT]]) : tensor<1x32x5x32x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}> -> tensor<1x32x5x32x!qElemType, {order = #NHWC}>
+// CHECK:       return [[CONCAT_OUT_COPY]] : tensor<1x32x5x32x!qElemType, {order = #NHWC}>
+}
+

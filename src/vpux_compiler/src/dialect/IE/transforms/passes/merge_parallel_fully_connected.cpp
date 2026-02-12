@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
@@ -92,7 +93,7 @@ IE::ConcatOp concatConst(SmallVector<Const::DeclareOp>& constOps, mlir::PatternR
     }
     const auto constShape = getShape(constOps.front().getOutput());
     const auto concatDim = constShape.size() - 1;
-    auto concat = rewriter.create<IE::ConcatOp>(appendLoc(constOps.front()->getLoc(), "_concat_"),
+    auto concat = rewriter.create<IE::ConcatOp>(appendLoc(constOps.front()->getLoc(), "concat_"),
                                                 mlir::ValueRange(concats), Dim(concatDim));
     return concat;
 }
@@ -301,7 +302,7 @@ bool doesFQHaveSameZeroPoint(SmallVector<IE::FakeQuantizeOp> fakeQuantizeOps) {
             return false;
         }
 
-        auto outputScalesAndZeroPoints = getScalesAndZeroPointsFromContentAttr(
+        auto outputScalesAndZeroPoints = IE::getScalesAndZeroPointsFromContentAttr(
                 lowConstantOp.getContentAttr(), highConstantOp.getContentAttr(), fqOp.getAutoBroadcast(),
                 fqOp.getLevels(), fqOp.getLowFpType(), /*isSigned=*/false);
         if (mlir::failed(outputScalesAndZeroPoints)) {
@@ -415,7 +416,7 @@ IE::FakeQuantizeOp createFakeQuantize(SmallVector<IE::FakeQuantizeOp>& fakeQuant
     auto concatOutHighConst = concatConst(fqConstInputs.outHighs, rewriter);
 
     auto refOp = fakeQuantizeOps.front();
-    auto newFq = rewriter.create<IE::FakeQuantizeOp>(appendLoc(refOp->getLoc(), "_concat_"), concatInConst.getOutput(),
+    auto newFq = rewriter.create<IE::FakeQuantizeOp>(appendLoc(refOp->getLoc(), "concat_"), concatInConst.getOutput(),
                                                      refOp.getInputLow(), refOp.getInputHigh(),
                                                      concatOutLowConst.getOutput(), concatOutHighConst.getOutput(),
                                                      refOp.getLevelsAttr(), nullptr, refOp.getAutoBroadcastAttr());
@@ -450,14 +451,14 @@ mlir::FailureOr<IE::FullyConnectedOp> mergeFCForReshapeTransposeOrder(ArrayRef<I
                                     newFakeQuantizeOutShape.raw().back()};
     const auto reshapeOutAttr = getIntArrayAttr(origOp->getContext(), reshapeOut);
     auto newAffineReshape = rewriter.create<IE::AffineReshapeOp>(
-            appendLoc(affineReshapeOps.front()->getLoc(), "_concat_"), newFakeQuantize.getOutput(),
+            appendLoc(affineReshapeOps.front()->getLoc(), "concat_"), newFakeQuantize.getOutput(),
             affineReshapeOps.front().getDimMapping(), reshapeOutAttr);
 
-    auto newTranspose = rewriter.create<IE::TransposeOp>(appendLoc(transposeOps.front()->getLoc(), "_concat_"),
+    auto newTranspose = rewriter.create<IE::TransposeOp>(appendLoc(transposeOps.front()->getLoc(), "concat_"),
                                                          newAffineReshape.getOutput(), nullptr,
                                                          transposeOps.front().getOrderValueAttr());
     auto newFullyConnected = rewriter.create<IE::FullyConnectedOp>(
-            appendLoc(origOp->getLoc(), "_concat_"), origOp.getInput(), newTranspose.getOutput(), origOp.getBias());
+            appendLoc(origOp->getLoc(), "concat_"), origOp.getInput(), newTranspose.getOutput(), origOp.getBias());
 
     return newFullyConnected;
 }
@@ -484,7 +485,7 @@ mlir::FailureOr<IE::FullyConnectedOp> mergeFCForTransposeReshapeOrder(ArrayRef<I
 
     auto newFakeQuantize = createFakeQuantize(fakeQuantizeOps, rewriter);
 
-    auto newTranspose = rewriter.create<IE::TransposeOp>(appendLoc(transposeOps.front()->getLoc(), "_concat_"),
+    auto newTranspose = rewriter.create<IE::TransposeOp>(appendLoc(transposeOps.front()->getLoc(), "concat_"),
                                                          newFakeQuantize.getOutput(), nullptr,
                                                          transposeOps.front().getOrderValueAttr());
 
@@ -493,11 +494,11 @@ mlir::FailureOr<IE::FullyConnectedOp> mergeFCForTransposeReshapeOrder(ArrayRef<I
                                     getShape(affineReshapeOps.front().getOutput()).raw().back()};
     const auto reshapeOutAttr = getIntArrayAttr(origOp->getContext(), reshapeOut);
     auto newAffineReshape = rewriter.create<IE::AffineReshapeOp>(
-            appendLoc(affineReshapeOps.front()->getLoc(), "_concat_"), newTranspose.getOutput(),
+            appendLoc(affineReshapeOps.front()->getLoc(), "concat_"), newTranspose.getOutput(),
             affineReshapeOps.front().getDimMapping(), reshapeOutAttr);
 
     auto newFullyConnected = rewriter.create<IE::FullyConnectedOp>(
-            appendLoc(origOp->getLoc(), "_concat_"), origOp.getInput(), newAffineReshape.getOutput(), origOp.getBias());
+            appendLoc(origOp->getLoc(), "concat_"), origOp.getInput(), newAffineReshape.getOutput(), origOp.getBias());
 
     return newFullyConnected;
 }
@@ -506,6 +507,10 @@ mlir::LogicalResult MergeParallelFullyConnected::matchAndRewrite(IE::FullyConnec
                                                                  mlir::PatternRewriter& rewriter) const {
     _log.debug("[{0}] Got FullyConnected layer at '{1}'", fullyConnectedOp->getName(), fullyConnectedOp->getLoc());
     auto nestedLog = _log.nest();
+
+    if (fullyConnectedOp->getUses().empty()) {
+        return mlir::failure();  // operation is already handled
+    }
 
     auto validFullyConnectedOps = getFullyConnectedOpWithSameAttr(fullyConnectedOp.getInput());
     if (!validFullyConnectedOps.has_value()) {
@@ -556,7 +561,7 @@ mlir::LogicalResult MergeParallelFullyConnected::matchAndRewrite(IE::FullyConnec
 
         nestedLog.trace("Slice output of FullyConnected ops, idx = {0}, offsets = {1}", p.index(), offsets);
         auto slice = rewriter.create<IE::SliceOp>(
-                appendLoc(fullyConnected->getLoc(), "_slice_{0}", p.index()), mergedFC.value().getOutput(),
+                appendLoc(fullyConnected->getLoc(), "slice_{0}", p.index()), mergedFC.value().getOutput(),
                 getIntArrayAttr(rewriter.getContext(), offsets), getIntArrayAttr(rewriter.getContext(), shape.raw()));
 
         slices.push_back(slice);
@@ -568,7 +573,7 @@ mlir::LogicalResult MergeParallelFullyConnected::matchAndRewrite(IE::FullyConnec
         auto slice = slices[p.index()];
 
         nestedLog.trace("Replace FC = {0}, with Slice output {1}", fullyConnected, slice);
-        rewriter.replaceOp(fullyConnected, slice->getResult(0));
+        rewriter.replaceAllOpUsesWith(fullyConnected, slice->getResult(0));
     }
 
     _log.debug("Merge parallel fully connected operation successful");
@@ -596,12 +601,16 @@ private:
 
 void MergeParallelFullyConnectedPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
+
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MergeParallelFullyConnected>(&ctx, _log);
-    IE::ConcatOp::getCanonicalizationPatterns(patterns, &ctx);
 
-    auto func = getOperation();
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
+    collectOpsAndApplyPatterns(func, std::move(patterns));
+
+    mlir::RewritePatternSet concatPatterns(&ctx);
+    IE::ConcatOp::getCanonicalizationPatterns(concatPatterns, &ctx);
+    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(concatPatterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,9 +29,9 @@ module @TestFuseQuantParamsIntoReduceOp {
     %5 = IE.Dequantize(%4) {dstElemType = f16} : tensor<1x1x30x30x!qElemType1> -> tensor<1x1x30x30xf16>
     return %5 : tensor<1x1x30x30xf16>
 
-  // CHECK: [[VAL0:%.*]] = IE.Quantize([[INPUT]]) {dstElemType = !qElemType} : tensor<1x16x30x30xf16> -> tensor<1x16x30x30x!qElemType>
-  // CHECK: [[VAL1:%.*]] = IE.ReduceMean([[VAL0]]) {axes_value = [1], keep_dims} : tensor<1x16x30x30x!qElemType> -> tensor<1x1x30x30x!qElemType1>
-  // CHECK: [[VAL2:%.*]] = IE.Dequantize([[VAL1]]) {dstElemType = f16} : tensor<1x1x30x30x!qElemType1> -> tensor<1x1x30x30xf16>
+  // CHECK: [[VAL0:%.+]] = IE.Quantize([[INPUT]]) {dstElemType = !qElemType} : tensor<1x16x30x30xf16> -> tensor<1x16x30x30x!qElemType>
+  // CHECK: [[VAL1:%.+]] = IE.ReduceMean([[VAL0]]) {axes_value = [1], keep_dims} : tensor<1x16x30x30x!qElemType> -> tensor<1x1x30x30x!qElemType1>
+  // CHECK: [[VAL2:%.+]] = IE.Dequantize([[VAL1]]) {dstElemType = f16} : tensor<1x1x30x30x!qElemType1> -> tensor<1x1x30x30xf16>
   // CHECK: return [[VAL2]]
   }
 
@@ -70,10 +70,10 @@ func.func @FuseQuantParamsIntoEltwiseSubtract(%arg0: tensor<1x3x16x16xf16>, %arg
 
   return %7 : tensor<1x3x16x16xf16>
 
-  //CHECK: [[VAL0:%.*]] = IE.Quantize([[INPUT0]]) {dstElemType = !qElemType} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType>
-  //CHECK: [[VAL1:%.*]] = IE.Quantize([[INPUT1]]) {dstElemType = !qElemType1} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType1>
-  //CHECK: [[VAL2:%.*]] = IE.Subtract([[VAL0]], [[VAL1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x16x16x!qElemType>, tensor<1x3x16x16x!qElemType1> -> tensor<1x3x16x16x!qElemType>
-  //CHECK: [[VAL3:%.*]] = IE.Dequantize([[VAL2]]) {dstElemType = f16} : tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xf16>
+  //CHECK: [[VAL0:%.+]] = IE.Quantize([[INPUT0]]) {dstElemType = !qElemType} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType>
+  //CHECK: [[VAL1:%.+]] = IE.Quantize([[INPUT1]]) {dstElemType = !qElemType1} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType1>
+  //CHECK: [[VAL2:%.+]] = IE.Subtract([[VAL0]], [[VAL1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x16x16x!qElemType>, tensor<1x3x16x16x!qElemType1> -> tensor<1x3x16x16x!qElemType>
+  //CHECK: [[VAL3:%.+]] = IE.Dequantize([[VAL2]]) {dstElemType = f16} : tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xf16>
   //CHECK: return [[VAL3]]
 }
 

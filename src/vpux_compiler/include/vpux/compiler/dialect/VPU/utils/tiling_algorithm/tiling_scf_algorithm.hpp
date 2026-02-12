@@ -17,9 +17,8 @@ class TilingSCFAlgorithm : public ITilingAlgorithm {
 public:
     mlir::LogicalResult applyTiling(mlir::Operation* operation, mlir::RewriterBase& builder, Logger log) override;
 
-    mlir::FailureOr<SmallVector<mlir::Operation*>> applyVerticalFusion(mlir::Operation* operation,
-                                                                       mlir::RewriterBase& builder,
-                                                                       Logger log) override;
+    SmallVector<mlir::Operation*> applySCFTilingAndFusion(mlir::Operation* operation, mlir::RewriterBase& builder,
+                                                          Logger log) override;
 };
 }  // namespace VPU
 }  // namespace vpux

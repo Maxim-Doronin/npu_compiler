@@ -11,6 +11,8 @@
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
+#include <mlir/Transforms/DialectConversion.h>
+
 using namespace vpux;
 
 namespace {
@@ -218,12 +220,13 @@ std::optional<mlir::ArrayAttr> getOutputPadAttr(mlir::Operation* op) {
 }
 
 using EmitBodyCallback = std::function<mlir::Value(mlir::Operation*, mlir::ValueRange, llvm::ArrayRef<mlir::Type>,
-                                                   mlir::PatternRewriter&)>;
+                                                   mlir::ConversionPatternRewriter&)>;
 
-static mlir::LogicalResult emitLinalgReduceHelper(mlir::Operation* op, EmitBodyCallback callback,
-                                                  EmitBodyCallback normalizeCallback, bool accumNeedsF32Precision,
-                                                  bool keepDims, SmallVector<int64_t>& axes,
-                                                  mlir::PatternRewriter& rewriter) {
+static mlir::LogicalResult emitLinalgReduceHelper(mlir::Operation* op, mlir::Value convertedInput,
+                                                  EmitBodyCallback callback, EmitBodyCallback normalizeCallback,
+                                                  bool accumNeedsF32Precision, bool keepDims,
+                                                  SmallVector<int64_t>& axes,
+                                                  mlir::ConversionPatternRewriter& rewriter) {
     // The reduce operation contains three stages:
     // 1. Producing an initial value for the output tensor filled with the neutral element
     //    for the reduce operation. This neutral element is dependent on the performed
@@ -314,7 +317,8 @@ static mlir::LogicalResult emitLinalgReduceHelper(mlir::Operation* op, EmitBodyC
                                 .result();
 
     // Phase 2, emit the linalg reduce operation.
-    auto linalgOperands = SmallVector<mlir::Value>(1, ShaveCodeGen::convertToLinalgValue(input, rewriter, inputPad));
+    auto linalgOperands =
+            SmallVector<mlir::Value>(1, ShaveCodeGen::removePadding(input, convertedInput, rewriter, inputPad));
 
     // Compute the affine map for the linalg output operand.
     // This is a composition of the output memory order permutation, the operations
@@ -413,16 +417,11 @@ static mlir::LogicalResult emitLinalgReduceHelper(mlir::Operation* op, EmitBodyC
 
         auto insertSliceOp = rewriter.create<mlir::tensor::InsertSliceOp>(op->getLoc(), linalgOp->getResult(0), padded,
                                                                           zeros, sizes, ones);
-
-        rewriter.replaceOp(op, ShaveCodeGen::convertFromLinalgValue(insertSliceOp->getResult(0),
-                                                                    op->getResult(0).getType(), rewriter)
-                                       .getDefiningOp());
+        rewriter.replaceOp(op, insertSliceOp);
         return mlir::success();
     }
 
-    rewriter.replaceOp(
-            op, ShaveCodeGen::convertFromLinalgValue(linalgOp->getResult(0), op->getResult(0).getType(), rewriter)
-                        .getDefiningOp());
+    rewriter.replaceOp(op, linalgOp);
     return mlir::success();
 }
 
@@ -471,18 +470,21 @@ constexpr bool reduceRequiresF32Accumulator() {
 }
 
 template <typename SrcOp>
-class IEReduceToLinalg : public mlir::OpRewritePattern<SrcOp> {
+class IEReduceToLinalg : public mlir::OpConversionPattern<SrcOp> {
 public:
-    using mlir::OpRewritePattern<SrcOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<SrcOp>::OpConversionPattern;
+    using OpAdaptor = typename mlir::OpConversionPattern<SrcOp>::OpAdaptor;
 
-    mlir::LogicalResult matchAndRewrite(SrcOp op, mlir::PatternRewriter& rewriter) const final {
+    mlir::LogicalResult matchAndRewrite(SrcOp op, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const final {
         auto emitBody = [](mlir::Operation* op, mlir::ValueRange args, llvm::ArrayRef<mlir::Type> types,
-                           mlir::PatternRewriter& rewriter) {
+                           mlir::ConversionPatternRewriter& rewriter) {
             return emitLinalgRegion<SrcOp>(mlir::cast<SrcOp>(op), args, types, rewriter);
         };
         bool keepDims = op.getKeepDims();
         SmallVector<int64_t> axes = parseIntArrayAttr<int64_t>(op.getAxesValue().value());
-        return emitLinalgReduceHelper(op, emitBody, getNormalizationCallback<SrcOp>(),
+        mlir::Value convertedInput = adaptor.getOperands()[0];
+        return emitLinalgReduceHelper(op, convertedInput, emitBody, getNormalizationCallback<SrcOp>(),
                                       /*accumNeedsF32Precision=*/reduceRequiresF32Accumulator<SrcOp>(), keepDims, axes,
                                       rewriter);
     }
@@ -490,9 +492,10 @@ public:
 
 }  // namespace
 
-void ShaveCodeGen::populateIEReduceToLinalgPatterns(mlir::RewritePatternSet& patternSet) {
+void ShaveCodeGen::populateIEReduceToLinalgPatterns(mlir::RewritePatternSet& patternSet,
+                                                    mlir::TypeConverter& typeConverter) {
     auto& ctx = *patternSet.getContext();
-    patternSet.add<IEReduceToLinalg<IE::ReduceMaxOp>, IEReduceToLinalg<IE::ReduceMinOp>,
-                   IEReduceToLinalg<IE::ReduceL2Op>>(&ctx);
-    patternSet.add<IEReduceToLinalg<IE::ReduceSumOp>, IEReduceToLinalg<IE::ReduceL1Op>>(&ctx);
+    patternSet
+            .add<IEReduceToLinalg<IE::ReduceMaxOp>, IEReduceToLinalg<IE::ReduceMinOp>, IEReduceToLinalg<IE::ReduceL2Op>,
+                 IEReduceToLinalg<IE::ReduceSumOp>, IEReduceToLinalg<IE::ReduceL1Op>>(typeConverter, &ctx);
 }

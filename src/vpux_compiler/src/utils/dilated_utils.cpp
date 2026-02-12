@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/dilated_utils.hpp"
 #include "vpux/compiler/core/layers.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 using namespace vpux;
@@ -34,16 +33,4 @@ NDTypeInterface vpux::getDilatedType(vpux::NDTypeInterface type, vpux::ShapeRef 
     VPUX_THROW_UNLESS(vpux::validateQuantElemType(loc, newType).succeeded(), "Got invalid ShapedType '{0}'", newType);
 
     return newType;
-}
-
-bool vpux::isSEPDWConv(mlir::Operation* op) {
-    if (!mlir::isa_and_nonnull<VPU::NCEDepthConvolutionOp>(op)) {
-        return false;
-    }
-    const auto sparseInputTensor = mlir::dyn_cast<VPU::SparseTensorType>(op->getOperand(0).getType());
-    if (sparseInputTensor == nullptr) {
-        return false;
-    }
-    auto seAttr = sparseInputTensor.getSeAttr();
-    return seAttr != nullptr;
 }

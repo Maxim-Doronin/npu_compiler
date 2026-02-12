@@ -40,9 +40,6 @@ private:
     void safeRunOnFunc() final;
 };
 
-//
-// safeRunOnFunc
-//
 bool isMatMulAsFC(mlir::Value output, mlir::Value& input1, mlir::Value& input2) {
     auto reshapeOutOp = output.getDefiningOp<IE::ReshapeOp>();
     if (!reshapeOutOp) {
@@ -65,16 +62,17 @@ bool isMatMulAsFC(mlir::Value output, mlir::Value& input1, mlir::Value& input2) 
     return true;
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ MM-SM-MM ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 void createMatMulSoftmaxMatMul(mlir::Operation* op, mlir::Value inputQ, mlir::Value inputK, mlir::Value inputV) {
     auto builder = mlir::OpBuilder(op);
-
-    auto sdpaOp = builder.create<IE::SDPAExtendedOp>(appendLoc(op->getLoc(), "_sdpa_extended"), inputQ, inputK, inputV,
-                                                     nullptr, nullptr, nullptr);
-
+    auto sdpaOp = builder.create<IE::SDPAExtendedOp>(appendLoc(op->getLoc(), "sdpa_extended"), inputQ, inputK, inputV,
+                                                     nullptr, nullptr, nullptr, nullptr);
     op->replaceAllUsesWith(sdpaOp);
 }
 
-bool isLegalSDPAExtended(mlir::Value inputQ, mlir::Value inputK, mlir::Value inputV) {
+bool isLegalFusibleMmSmMm(mlir::Value inputQ, mlir::Value inputK, mlir::Value inputV) {
     auto tensorTypeQ = mlir::cast<NDTypeInterface>(inputQ.getType());
     auto tensorTypeK = mlir::cast<NDTypeInterface>(inputK.getType());
     auto tensorTypeV = mlir::cast<NDTypeInterface>(inputV.getType());
@@ -105,8 +103,52 @@ bool isLegalSDPAExtended(mlir::Value inputQ, mlir::Value inputK, mlir::Value inp
     return true;
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ SDPA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+void createSDPA(mlir::Operation* op, mlir::Value inputQ, mlir::Value inputK, mlir::Value inputV, mlir::Value mask,
+                mlir::Value scale, mlir::Value bias, IE::TransposeOp transposeK = nullptr) {
+    auto builder = mlir::OpBuilder(op);
+    mlir::Value sdpaKInput = inputK;
+    if (transposeK) {
+        auto transposedKOp = builder.create<IE::TransposeOp>(appendLoc(op->getLoc(), "transposed_k"), inputK, nullptr,
+                                                             transposeK.getOrderValueAttr());
+        sdpaKInput = transposedKOp.getOutput();
+    }
+    if (scale == nullptr) {
+        // Get eDim from inputQ type (assuming inputQ is a ranked tensor)
+        auto inputQType = mlir::cast<NDTypeInterface>(inputQ.getType());
+        VPUX_THROW_UNLESS(inputQType != nullptr, "inputQ must be a RankedTensorType");
+        auto eDim = inputQType.getShape().back();
+        float scaleValue = 1.0f / std::sqrt(static_cast<float>(eDim));
+        const auto scaleTensorType = mlir::RankedTensorType::get({1, 1, 1, 1}, builder.getF32Type());
+        const auto loc = appendLoc(op->getLoc(), "scale");
+        scale = Const::createConst(builder, loc, scaleTensorType, llvm::ArrayRef<float>{scaleValue});
+    }
+
+    auto sdpaOp = builder.create<IE::SDPAExtendedOp>(appendLoc(op->getLoc(), "sdpa_extended_full"), inputQ, sdpaKInput,
+                                                     inputV, mask, scale, bias, nullptr);
+    op->replaceAllUsesWith(sdpaOp);
+}
+
+bool isLegalSDPA(mlir::Value inputQ) {
+    auto tensorType = mlir::cast<NDTypeInterface>(inputQ.getType());
+    const auto rank = tensorType.getRank();
+    if (rank < 2 || rank > 4) {
+        return false;
+    }
+    return true;
+}
+
+//
+// safeRunOnFunc
+//
 void FuseSDPAExtendedPass::safeRunOnFunc() {
     auto func = getOperation();
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ MM-SM-MM ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Detect MatMul - (Reshapes (+ ReLU)) - Softmax - (Reshapes (+ ReLU)) - MatMul
     func->walk([&](IE::MatMulOp matMul2Op) {
         auto skipOptionalOpsIfPresent = [](mlir::Operation* op) -> mlir::Operation* {
@@ -146,7 +188,7 @@ void FuseSDPAExtendedPass::safeRunOnFunc() {
         mlir::Value inputQ = matMul1Op->getOperand(0);
         mlir::Value inputK = matMul1Op->getOperand(1);
         mlir::Value inputV = matMul2Op.getOperand(1);
-        if ((!isLegalSDPAExtended(inputQ, inputK, inputV))) {
+        if ((!isLegalFusibleMmSmMm(inputQ, inputK, inputV))) {
             return;
         }
         createMatMulSoftmaxMatMul(matMul2Op, inputQ, inputK, inputV);
@@ -177,10 +219,45 @@ void FuseSDPAExtendedPass::safeRunOnFunc() {
             return;
         }
 
-        if ((!isLegalSDPAExtended(inputQ, inputK, inputV))) {
+        if ((!isLegalFusibleMmSmMm(inputQ, inputK, inputV))) {
             return;
         }
         createMatMulSoftmaxMatMul(reshape0Op, inputQ, inputK, inputV);
+    });
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ SDPA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Real SDPA op convert to SDPAExtended
+    func->walk([&](IE::SDPAOp sdpaOp) {
+        auto inputKType = mlir::cast<NDTypeInterface>(sdpaOp.getInputK().getType());
+        auto inputVType = mlir::cast<NDTypeInterface>(sdpaOp.getInputV().getType());
+        const auto rank = inputKType.getRank();
+
+        const auto inputKShape = inputKType.getShape().raw();
+        const auto inputVShape = inputVType.getShape().raw();
+        auto inputV = sdpaOp.getInputV();
+        if (inputKShape[rank - 2] != inputVShape[rank - 2]) {
+            return;
+        }
+        auto builder = mlir::OpBuilder(sdpaOp);
+        SmallVector<uint32_t> permuteNdOrder = {};
+        for (int i = 0; i < rank - 2; i++) {
+            permuteNdOrder.push_back(i);
+        }
+        permuteNdOrder.push_back(rank - 1);
+        permuteNdOrder.push_back(rank - 2);
+        const auto orderAttr =
+                mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permuteNdOrder, builder.getContext()));
+        auto transposedVOp =
+                builder.create<IE::TransposeOp>(appendLoc(sdpaOp->getLoc(), "transpose_v"), inputV, nullptr, orderAttr);
+
+        if (!isLegalSDPA(sdpaOp.getInputQ())) {
+            return;
+        }
+
+        createSDPA(sdpaOp, sdpaOp.getInputQ(), sdpaOp.getInputK(), transposedVOp.getOutput(), sdpaOp.getInputMask(),
+                   sdpaOp.getInputScale(), nullptr, nullptr);
     });
 }
 

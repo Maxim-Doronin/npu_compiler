@@ -66,8 +66,8 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUIPDPU::DPUInvariant
             origOp.getTaskLocationAttr(), origOp.getInputAttr(), origOp.getInputSparsityMapAttr(),
             origOp.getInputStorageElementTableAttr(), origOp.getWeightsAttr(), origOp.getWeightsSparsityMapAttr(),
             origOp.getWeightTableAttr(), origOp.getSprLookupTableAttr(), origOp.getOutputAttr(),
-            origOp.getOutputSparsityMapAttr(), origOp.getProfilingDataAttr(), origOp.getIsZeroOffsetWeightsTableAttr(),
-            origOp.getNceTaskTypeAttr(), origOp.getIsContinuedAttr());
+            origOp.getOutputSparsityMapAttr(), origOp.getProfilingDataAttr(), origOp.getIsZeroOffsetWeightsTable(),
+            origOp.getNceTaskTypeAttr(), origOp.getIsContinued());
 
     rewriter.eraseOp(origOp);
 
@@ -159,9 +159,6 @@ void DPUInvariantRewriter::fillPPECfg(mlir::Region& DPURegion, DpuInvariantRegis
             if (auto op = mlir::dyn_cast_or_null<VPUIPDPU::PPEFpBiasAddOp>(&PPEOp)) {
                 VPUIPDPU::arch40xx::lowerToRegPPEFpBiasAddOp<vpux::VPUIPDPU::arch50xx::FieldsPPEFpBiasAddOp>(
                         op, descriptor);
-            } else if (auto op = mlir::dyn_cast_or_null<VPUIPDPU::PPEFpScalePreluMultOp>(&PPEOp)) {
-                VPUIPDPU::arch40xx::lowerToRegPPEFpScalePreluMultOp<
-                        vpux::VPUIPDPU::arch50xx::FieldsPPEFpScalePreluMultOp>(op, descriptor);
             } else if (auto op = mlir::dyn_cast_or_null<VPUIPDPU::PPEFpAddMultBypassOp>(&PPEOp)) {
                 VPUIPDPU::arch40xx::lowerToRegPPEFpAddMultBypassOp<Fields::ppe_fp_bypass>(op, descriptor);
             } else if (auto op = mlir::dyn_cast_or_null<VPUIPDPU::PPEFpConvertOp>(&PPEOp)) {

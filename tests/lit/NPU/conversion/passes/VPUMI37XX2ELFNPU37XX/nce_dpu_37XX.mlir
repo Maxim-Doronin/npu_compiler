@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,10 +25,19 @@ module @mainModule {
     %12 = VPURT.DeclareBuffer <CMX_NN> [1] <69632> -> memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 1]>
     %13 = VPURT.DeclareBuffer <CMX_NN> [0] <102400> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
     %14 = VPURT.DeclareBuffer <CMX_NN> [1] <102400> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>
-    %24 = VPUMI37XX.DPUInvariant {clean_after = 0 : ui64, is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<CONV>} input(%11 : memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%13 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) parent_input(%10 : !VPUIP.DistributedBuffer<1x32x32x32xf16, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 1, 1]}>) parent_output(%7 : !VPUIP.DistributedBuffer<1x64x32x32xf16, {order = #NHWC, strides = [65536, 1, 2048, 64]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%8 : memref<1x64x16x32xf16, #NHWC, [@CMX_NN, 0]>) -> <0:0:0> PPE : {
+    %24 = VPUMI37XX.DPUInvariant <{clean_after = 0 : ui64, is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
+    mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<CONV>}> input(%11 : memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>)
+    weight_table(%13 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) parent_input(%10 : !VPUIP.DistributedBuffer<1x32x32x32xf16, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1],
+    num_clusters = 2 : i64, alignment = [1, 1, 1, 1]}>) parent_output(%7 : !VPUIP.DistributedBuffer<1x64x32x32xf16, {order = #NHWC, strides = [65536, 1, 2048, 64]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+    outputs(%8 : memref<1x64x16x32xf16, #NHWC, [@CMX_NN, 0]>) -> <0:0:0> PPE : {
     }
     %25 = "VPUMI37XX.DPUVariant"(%24) {end = [31, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 0]} : (!VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    %26 = VPUMI37XX.DPUInvariant {clean_after = 0 : ui64, is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<CONV>} input(%12 : memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 1]>) weights(%6 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 1]>) weight_table(%14 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>) parent_input(%10 : !VPUIP.DistributedBuffer<1x32x32x32xf16, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 1, 1]}>) parent_output(%7 : !VPUIP.DistributedBuffer<1x64x32x32xf16, {order = #NHWC, strides = [65536, 1, 2048, 64]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%9 : memref<1x64x16x32xf16, #NHWC, [@CMX_NN, 1]>) -> <0:0:1> PPE : {
+    %26 = VPUMI37XX.DPUInvariant <{clean_after = 0 : ui64, is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    kernel_size = [1, 1], kernel_strides = [1, 1], mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, nce_task_type = #VPUIP.nce_task_type<CONV>}>
+    input(%12 : memref<1x32x16x32xf16, #NHWC, [@CMX_NN, 1]>) weights(%6 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 1]>) weight_table(%14 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>)
+    parent_input(%10 : !VPUIP.DistributedBuffer<1x32x32x32xf16, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 1, 1]}>)
+    parent_output(%7 : !VPUIP.DistributedBuffer<1x64x32x32xf16, {order = #NHWC, strides = [65536, 1, 2048, 64]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+    outputs(%9 : memref<1x64x16x32xf16, #NHWC, [@CMX_NN, 1]>) -> <0:0:1> PPE : {
     }
     %27 = "VPUMI37XX.DPUVariant"(%26) {end = [31, 31, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 16, 0]} : (!VPURegMapped.Index<0:0:1>) -> !VPURegMapped.Index<0:0:1>
     %32 = VPUMI37XX.MappedInference invariants(%24 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) dmaCount([0, 0]) invariantCount(2) variantCount(2) actKernelRangesCount(0) actKernelInvocationsCount(0) barrierCount(0) -> !VPURegMapped.Index<0:0:0>
@@ -38,36 +47,36 @@ module @mainModule {
 }
 
 //CHECK-LABEL: @multiple_clusters_dpu_soh_f16_f16_f16
-//CHECK: %[[VAL10:.*]] = VPUMI37XX.DPUInvariant
-//CHECK: %[[VAL11:.*]] = "VPUMI37XX.DPUVariant"
-//CHECK: %[[VAL12:.*]] = VPUMI37XX.DPUInvariant
-//CHECK: %[[VAL13:.*]] = "VPUMI37XX.DPUVariant"
+//CHECK: [[VAL10:%.+]] = VPUMI37XX.DPUInvariant
+//CHECK: [[VAL11:%.+]] = "VPUMI37XX.DPUVariant"
+//CHECK: [[VAL12:%.+]] = VPUMI37XX.DPUInvariant
+//CHECK: [[VAL13:%.+]] = "VPUMI37XX.DPUVariant"
 
-//CHECK: %[[INVSEC:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.DPUInvariants"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL10]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL12]] : !VPURegMapped.Index<0:0:1>
+//CHECK: [[INVSEC:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.DPUInvariants"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL10]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL12]] : !VPURegMapped.Index<0:0:1>
 
-//CHECK: %[[VARSEC:.*]] = ELFNPU37XX.CreateSection {{.*}} secName = ".text.DPUVariants"
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL11]] : !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: ELFNPU37XX.PutOpInSection %[[VAL13]] : !VPURegMapped.Index<0:0:1>
+//CHECK: [[VARSEC:%.+]] = ELFNPU37XX.CreateSection {{.+}} secName = ".text.DPUVariants"
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL11]] : !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL13]] : !VPURegMapped.Index<0:0:1>
 
-//CHECK: %[[BUILTIN_SYMTABSEC:.*]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
-//CHECK: %[[SYMTABSEC:.*]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.tasks")
+//CHECK: [[BUILTIN_SYMTABSEC:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
+//CHECK: [[SYMTABSEC:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.tasks")
 
-//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.DPUInvariants") sourceSymbolTableSection(%[[BUILTIN_SYMTABSEC]])
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_64_LSHIFT>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_64_LSHIFT>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32_MULTICAST_BASE>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32_MULTICAST_BASE>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_64_LSHIFT>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_64_LSHIFT>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32_MULTICAST_BASE>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32_MULTICAST_BASE>
-//CHECK: ELFNPU37XX.Reloc baseOp(%[[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.*}} <R_VPU_32>
+//CHECK: ELFNPU37XX.CreateRelocationSection secName(".rlt.text.DPUInvariants") sourceSymbolTableSection([[BUILTIN_SYMTABSEC]])
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_64_LSHIFT>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_64_LSHIFT>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32_MULTICAST_BASE>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32_MULTICAST_BASE>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL10]] : !VPURegMapped.Index<0:0:0>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_64_LSHIFT>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_64_LSHIFT>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32_MULTICAST_BASE>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32_MULTICAST_BASE>
+//CHECK: ELFNPU37XX.Reloc baseOp([[VAL12]] : !VPURegMapped.Index<0:0:1>) {{.+}} <R_VPU_32>

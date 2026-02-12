@@ -63,7 +63,7 @@ bool isIdentityPooling(ConcreteOp poolingOp) {
     return poolingOp.getPostOpAttr() == nullptr && poolingOp.getClampAttr() == nullptr;
 }
 
-mlir::Operation* createIdentityAvgPool(mlir::Value input, mlir::Type outType, mlir::PatternRewriter& rewriter,
+mlir::Operation* createIdentityAvgPool(mlir::Value input, mlir::Type outType, mlir::OpBuilder& builder,
                                        mlir::Location loc);
 mlir::Operation* createIdentityMaxPool(mlir::Value input, mlir::Type outType, mlir::PatternRewriter& rewriter);
 

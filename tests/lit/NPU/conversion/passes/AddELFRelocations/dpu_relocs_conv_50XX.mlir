@@ -32,11 +32,11 @@ module @DPURelocWeightTableReuseTest {
           }
           ELF.CreateSection @task.dpu.invariant.0.0 aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_DMA") secLocation(<DDR>) {
               VPUIPDPU.DPUInvariant @DPUInvariant_0_2
-                  {input = @buffer.CMX_NN.0::@DeclareBuffer396, is_zero_offset_weights_table, nce_task_type = #VPUIP.nce_task_type<CONV>,
+                  <{input = @buffer.CMX_NN.0::@DeclareBuffer396, is_zero_offset_weights_table, nce_task_type = #VPUIP.nce_task_type<CONV>,
                   output = @buffer.CMX_NN.0::@DeclareBuffer444, task_index = !VPURegMapped.Index<0:0:2>,
                   task_location = @program.metadata.cmx::@DeclareTaskBuffer_DPUInvariant_0_0_22,
                   weight_table = @buffer.CMX_NN.0::@DeclareBuffer125,
-                  weights = @buffer.CMX_NN.0::@DeclareBuffer117}
+                  weights = @buffer.CMX_NN.0::@DeclareBuffer117}>
               DPUCfg :
               {^bb0(%arg0: memref<1x1280x4x1xf16, #NHWC, [@CMX_NN, 0]>,
                   %arg1: memref<160x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>,
@@ -51,7 +51,6 @@ module @DPURelocWeightTableReuseTest {
               }
               VPUIPDPU.PPECfg {
                   VPUIPDPU.PPEFpBiasAdd %arg1 : memref<160x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
-                  VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<160x1x1x4xsi32, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
                   VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF)
                   VPUIPDPU.PPEFpConvert convert_mode(FP16) clamp_mode(ON)
                   VPUIPDPU.PPEIntBiasAdd bias_static(0)

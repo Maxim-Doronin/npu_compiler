@@ -21,6 +21,7 @@ namespace vpux::VPU {
 class NCEOpInterface;
 class SWOpInterface;
 }  // namespace vpux::VPU
+
 namespace VPUNN {
 class VPUCostModel;
 class VPULayerCostModel;
@@ -33,36 +34,12 @@ float getWeightsSparsityRatio(vpux::NDTypeInterface weightsType, int64_t compres
 
 namespace VPU {
 
-/**
- * Analyzes the VPUNN Layer Cost Model with a custom `isInvalidated` function.
- * This analysis object remains preserved once constructed, until `invalidate` is called
- * or the AnalysisManager is cleared.
- */
-class LayerCostModelAnalysis {
-public:
-    explicit LayerCostModelAnalysis(mlir::ModuleOp moduleOp);
-    std::shared_ptr<VPUNN::VPULayerCostModel> getVPUNNLayerCostModel();
+namespace CostModelConfig {
 
-    // Used by AnalysisManager to check if this analysis should be preserved.
-    // If return false, preserve this analysis. Otherwise release it.
-    bool isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&);
+std::shared_ptr<VPUNN::VPUCostModel> createCostModel(mlir::MLIRContext* context);
+std::shared_ptr<VPUNN::VPUCostModel> createCostModel(mlir::Operation* op);
 
-    // Invalidate this analysis
-    // The resource will be destroyed after pass
-    void invalidate();
-
-    // If the input analysis is empty, create a layer cost model instance and return it.
-    // Otherwise, return the cached layer cost model instance.
-    static std::shared_ptr<VPUNN::VPULayerCostModel> getOrCreateLayerCostModel(
-            std::optional<std::reference_wrapper<LayerCostModelAnalysis>> analysis, config::ArchKind arch,
-            Logger log = Logger::global().nest("layer-cost-model-analysis"));
-
-private:
-    std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel;
-
-    // Flag indicating whether the analysis is preserved. Initialized to true.
-    bool _preserved = true;
-};
+}  // namespace CostModelConfig
 
 /**
  * Analyzes the VPUNN L1 Cost Model with a custom `isInvalidated` function.
@@ -85,7 +62,7 @@ public:
     // If the input analysis is empty, create a cost model instance and return it.
     // Otherwise, return the cached cost model instance.
     static std::shared_ptr<VPUNN::VPUCostModel> getOrCreateCostModel(
-            std::optional<std::reference_wrapper<CostModelAnalysis>> analysis, config::ArchKind arch,
+            std::optional<std::reference_wrapper<CostModelAnalysis>> analysis, mlir::MLIRContext* ctx,
             Logger log = Logger::global().nest("cost-model-analysis"));
 
 private:
@@ -110,10 +87,14 @@ void printVPUNNWorkloadConfig(const VPUNN::DPUWorkload& wl, LogCb logCb = global
 void printVPUNNWorkloadConfig(const VPUNN::SHAVEWorkload& wl, LogCb logCb = globalLogCb);
 void printLayerSplitInfo(const VPUNN::LayerSplitInfo& info, const Logger& log);
 VPU::MPEMode getMPEMode(VPUNN::ExecutionMode executionMode);
+VPUNN::MPEEngine getVPUNNMPEEngine(std::optional<VPU::MPEEngineAttr> mpeEngine);
 
 float getWeightsSparsityRatio(mlir::Value weights);
+VPUNN::VPUDevice getVPUDeviceType(config::Platform platform);
 VPUNN::VPUDevice getVPUDeviceType(config::ArchKind archKind);
-bool isVPUNNSupportedElementType(mlir::Type type);
+VPUNN::VPUDevice getVPUDeviceType(mlir::Operation* op);
+
+bool isVPUNNSupportedElementType(mlir::Type type, config::ArchKind arch);
 std::optional<VPUNN::DataType> getVPUNNElementType(mlir::Type type);
 VPUNN::Layout getVPUNNLayout(vpux::DimsOrder vpuxLayout);
 VPUNN::VPUTensor getVPUTensor(ShapeRef shape, mlir::Type elemType, vpux::DimsOrder layout = vpux::DimsOrder::NHWC);
@@ -130,11 +111,12 @@ std::vector<VPUNN::SHAVEWorkload> getPerClusterShaveWorkloads(VPU::SWOpInterface
                                                               bool isShave2ApiUsed);
 VPUNN::DPUWorkload getDPUWorkload(const VPUIP::WorkloadCostParams& tileParams, const VPUIP::WorkloadTile& wl);
 VPUIP::WorkloadCostParams getWorkloadCostParam(VPU::NCEOpInterface nceOp, config::ArchKind arch, int64_t numDPU,
-                                               int64_t numTiles = 1);
+                                               int64_t numTiles = 1,
+                                               std::optional<VPU::MultiClusterStrategy> mcStrategy = std::nullopt);
 VPUIP::ShaveWorkloadCostParams getShaveWorkloadCostParam(VPU::SWOpInterface swOp, config::ArchKind arch, int64_t numSHV,
                                                          int64_t numTiles = 1);
 
-vpux::VPU::ICostModelUtilsInterface* getICostModelUtilsInterface(mlir::MLIRContext* ctx);
+vpux::VPU::ICostModelUtilsInterface& getICostModelUtilsInterface(mlir::MLIRContext* ctx);
 
 }  // namespace VPU
 }  // namespace vpux

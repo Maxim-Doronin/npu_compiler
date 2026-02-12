@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/utils/concat_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -128,8 +129,32 @@ mlir::LogicalResult MovetoDMAGather::matchAndRewrite(VPU::GatherOp origOp, mlir:
 
     // HW requirement: each list entry must be 64 bits
     auto requiredType64 = mlir::IntegerType::get(origOp.getContext(), 64);
-    auto convertIndicesOp = rewriter.createOrFold<VPU::ConvertOp>(origOp->getLoc(), reshapeIndicesOp,
-                                                                  mlir::TypeAttr::get(requiredType64));
+
+    // Convert non-4D shape to 4D for better hardware utilization
+    // Only do this if the operation will benefit from multi-shave execution
+    const auto reshapeIndicesType = mlir::cast<NDTypeInterface>(reshapeIndicesOp.getType());
+    const auto reshapeIndicesShape = reshapeIndicesType.getShape();
+
+    const bool shouldConvertTo4D =
+            (reshapeIndicesShape.size() != 4) && VPU::shouldConvertUseMultiShaves(reshapeIndicesType);
+
+    mlir::Value convertIndicesOp = [&]() -> mlir::Value {
+        if (shouldConvertTo4D) {
+            // Reshape to 4D: [1, totalSize, 1, 1] for non-4D inputs
+            const auto totalSize = reshapeIndicesShape.totalSize();
+            const Shape shape4D = {1, totalSize, 1, 1};
+            const auto reshapeTo4DOp = reshapeOperand(reshapeIndicesOp, shape4D, takeOpLoc(origOp, "reshape_to_4d"));
+
+            const auto convertOp = rewriter.createOrFold<VPU::ConvertOp>(origOp->getLoc(), reshapeTo4DOp,
+                                                                         mlir::TypeAttr::get(requiredType64));
+
+            // Reshape back to original shape
+            return reshapeOperand(convertOp, reshapeIndicesShape, takeOpLoc(origOp, "reshape_from_4d"));
+        } else {
+            return rewriter.createOrFold<VPU::ConvertOp>(origOp->getLoc(), reshapeIndicesOp,
+                                                         mlir::TypeAttr::get(requiredType64));
+        }
+    }();
 
     auto gatherDMAOp = rewriter.create<VPU::GatherDMAOp>(
             origOp.getLoc(), origOp.getInput(), convertIndicesOp, origOp.getAxis(), origOp.getAxisValueAttr(),

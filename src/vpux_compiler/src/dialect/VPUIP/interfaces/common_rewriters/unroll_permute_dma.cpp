@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -259,7 +259,7 @@ mlir::LogicalResult SingleClusterPermuteDMARewriter::unroll(VPUIP::PermuteDMAOp 
             if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(distributionAttr)) {
                 distributionAttr = VPU::getNonOverlappedDistributedAttr(
                         newShape, distributionAttr.getMode(), nullptr, distributionAttr.getNumClusters(), nullptr,
-                        distributionAttr.getUniformDistributedSegments(), ctx);
+                        distributionAttr.getUniformDistributedSegments(), newElementType, ctx);
             }
 
             const auto layout = mlir::AffineMapAttr::get(origType.getDimsOrder().toAffineMap(ctx));
@@ -319,7 +319,7 @@ mlir::LogicalResult SingleClusterPermuteDMARewriter::unroll(VPUIP::PermuteDMAOp 
         auto internalDataFlowAttr = VPUIP::InternalDataFlowAttr::get(ctx, newInType, newOutType,
                                                                      mlir::AffineMapAttr::get(mappingOrder), loopOrder);
 
-        const auto newLoc = appendLoc(origTaskOp->getLoc(), "_unrolled_permuteDMA");
+        const auto newLoc = appendLoc(origTaskOp->getLoc(), "unrolled_permuteDMA");
 
         // Override port if no splitting can be done and port was already assigned by cluster unrolling
         if (hasPortAssigned && newTaskCount == 1) {
@@ -328,8 +328,8 @@ mlir::LogicalResult SingleClusterPermuteDMARewriter::unroll(VPUIP::PermuteDMAOp 
 
         VPURT::wrapIntoTaskOp<VPUIP::PermuteDMAOp>(
                 rewriter, origTaskOp.getWaitBarriers(), origTaskOp.getUpdateBarriers(), newLoc, newInBuffer,
-                newOutBuffer, getIntAttr(rewriter, newPort), permuteDMAOp.getIsOutOfOrderAttr(),
-                permuteDMAOp.getIsCriticalAttr(),
+                newOutBuffer, getIntAttr(rewriter, newPort), permuteDMAOp.getIsOutOfOrder(),
+                permuteDMAOp.getIsCritical(),
                 /*mem_perm*/ nullptr, /* dma_descriptor */ nullptr, permuteDMAOp.getDmaHwpIdAttr(),
                 permuteDMAOp.getProfilingMetadataAttr(), internalDataFlowAttr);
     }
@@ -539,12 +539,12 @@ mlir::LogicalResult MultiClusterPermuteDMARewriter::unrollSegmentedOrOverlappedO
         outputInsertionPoint = outBuffer.getDefiningOp();
         _log.trace("Insert new output buffer declaration: '{0}'", outBuffer);
 
-        const auto newLoc = appendLoc(loc, "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         auto newPermuteDMAOp = VPURT::wrapIntoTaskOp<VPUIP::PermuteDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffer, outBuffer,
-                vpux::getIntAttr(rewriter, dmaPort), permuteDMAOp.getIsOutOfOrderAttr(),
-                permuteDMAOp.getIsCriticalAttr(), permuteDMAOp.getMemPermAttr(), subDmaDescriptors[clusterId],
-                permuteDMAOp.getDmaHwpIdAttr(), permuteDMAOp.getProfilingMetadataAttr(), /*internalDataFlow=*/nullptr);
+                vpux::getIntAttr(rewriter, dmaPort), permuteDMAOp.getIsOutOfOrder(), permuteDMAOp.getIsCritical(),
+                permuteDMAOp.getMemPermAttr(), subDmaDescriptors[clusterId], permuteDMAOp.getDmaHwpIdAttr(),
+                permuteDMAOp.getProfilingMetadataAttr(), /*internalDataFlow=*/nullptr);
 
         dmaPort = (dmaPort + 1) % _dmaPortCount;
 
@@ -625,7 +625,7 @@ mlir::LogicalResult MultiClusterPermuteDMARewriter::unrollDuplicatedOutput(VPUIP
                             "DistributedBuffer has mode different from DUPLICATED after unrolling");
             auto newDistribution = VPU::getNonOverlappedDistributedAttr(
                     shape, distribution.getMode(), nullptr, distribution.getNumClusters(), nullptr,
-                    distribution.getUniformDistributedSegments(), buff.getContext());
+                    distribution.getUniformDistributedSegments(), elemType, buff.getContext());
             return buff.changeShapeElemTypeForExplicitDistribution(shape, elemType, newDistribution);
         }
 
@@ -642,7 +642,7 @@ mlir::LogicalResult MultiClusterPermuteDMARewriter::unrollDuplicatedOutput(VPUIP
 
     auto newPermuteDMAOp = VPURT::wrapIntoTaskOp<VPUIP::PermuteDMAOp>(
             rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), loc, inputBuffer, outBuffer,
-            vpux::getIntAttr(rewriter, 0), permuteDMAOp.getIsOutOfOrderAttr(), permuteDMAOp.getIsCriticalAttr(),
+            vpux::getIntAttr(rewriter, 0), permuteDMAOp.getIsOutOfOrder(), permuteDMAOp.getIsCritical(),
             permuteDMAOp.getMemPermAttr(), subDmaDescriptor, permuteDMAOp.getDmaHwpIdAttr(),
             permuteDMAOp.getProfilingMetadataAttr(), /*internalDataFlow=*/nullptr);
 
@@ -715,7 +715,7 @@ mlir::LogicalResult MultiClusterPermuteDMARewriter::unrollDuplicatedInputAndOutp
 
     auto newPermuteDMAOp = VPURT::wrapIntoTaskOp<VPUIP::PermuteDMAOp>(
             rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), loc, inputBuffer, outBuffer,
-            vpux::getIntAttr(rewriter, 0), permuteDMAOp.getIsOutOfOrderAttr(), permuteDMAOp.getIsCriticalAttr(),
+            vpux::getIntAttr(rewriter, 0), permuteDMAOp.getIsOutOfOrder(), permuteDMAOp.getIsCritical(),
             permuteDMAOp.getMemPermAttr(), subDmaDescriptor, permuteDMAOp.getDmaHwpIdAttr(),
             permuteDMAOp.getProfilingMetadataAttr(), /*internalDataFlow=*/nullptr);
 
@@ -772,7 +772,7 @@ mlir::LogicalResult MultiClusterPermuteDMARewriter::unrollDuplicatedInput(VPUIP:
 
     auto newPermuteDMAOp = VPURT::wrapIntoTaskOp<VPUIP::PermuteDMAOp>(
             rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), loc, inputBuffer, outDeclBuff,
-            vpux::getIntAttr(rewriter, 0), permuteDMAOp.getIsOutOfOrderAttr(), permuteDMAOp.getIsCriticalAttr(),
+            vpux::getIntAttr(rewriter, 0), permuteDMAOp.getIsOutOfOrder(), permuteDMAOp.getIsCritical(),
             permuteDMAOp.getMemPermAttr(), subDmaDescriptor, permuteDMAOp.getDmaHwpIdAttr(),
             permuteDMAOp.getProfilingMetadataAttr(), /*internalDataFlow=*/nullptr);
 
