@@ -3,7 +3,7 @@ description: 'Compile models for NPU'
 
 inputs:
   compiler-type:
-    description: 'MLIR|DRIVER'
+    description: 'PLUGIN|DRIVER'
     type: string
     required: true
   npu-platform:
@@ -46,7 +46,7 @@ runs:
         python3 -m pip install --require-hashes -r ${{ github.action_path }}/requirements.txt
 
     - name: Prepare OpenVINO environment
-      if: ${{ inputs.compiler-type == 'MLIR' }}
+      if: ${{ inputs.compiler-type == 'PLUGIN' }}
       shell: bash
       run: |
         cat <<'EOF' > prepare_env.sh

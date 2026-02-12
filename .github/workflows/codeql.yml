@@ -56,6 +56,6 @@ jobs:
     with:
       os: ubuntu_24_04
       build-runner: ubuntu-latest-32-cores
-      build-mlir: true
+      build-plugin: true
       build-driver: false
       with-codeql: true

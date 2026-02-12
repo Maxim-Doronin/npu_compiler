@@ -26,8 +26,8 @@ on:
         description: 'A string of options passed to NPU Driver CMake'
         type: string
         required: false
-      build-mlir:
-        description: 'Whether to build MLIR NPU Compiler'
+      build-plugin:
+        description: 'Whether to build Plugin NPU Compiler'
         type: boolean
         required: false
         default: true
@@ -85,10 +85,10 @@ env:
   OPENVINO_INSTALL_DIR: ./openvino_install
 
 jobs:
-  BuildMLIR:
-    name: MLIR / Build
-    if: ${{ inputs.build-mlir }}
-    uses: ./.github/workflows/job_build_mlir_linux.yml
+  BuildPlugin:
+    name: Plugin / Build
+    if: ${{ inputs.build-plugin }}
+    uses: ./.github/workflows/job_build_plugin_linux.yml
     permissions:
       actions: read
       contents: read
@@ -134,27 +134,27 @@ jobs:
       build-cache: ${{ inputs.build-cache }}
       build-cache-key-suffix: ${{ inputs.build-cache-key-suffix }}
 
-  MLIRUnitTests:
-    name: MLIR / Unit Tests
-    needs: BuildMLIR
+  PluginUnitTests:
+    name: Plugin / Unit Tests
+    needs: BuildPlugin
     if: ${{ inputs.run-unit-tests || inputs.run-lit-tests }}
-    uses: ./.github/workflows/job_tests_unit_mlir_linux.yml
+    uses: ./.github/workflows/job_tests_unit_plugin_linux.yml
     with:
       test-runner: ${{ inputs.test-runner }}
-      install-package: ${{ needs.BuildMLIR.outputs.build-package }}
+      install-package: ${{ needs.BuildPlugin.outputs.build-package }}
       run-unit-tests: ${{ inputs.run-unit-tests }}
       run-lit-tests: ${{ inputs.run-lit-tests }}
 
-  MLIRCompilationTests:
-    name: MLIR / Compilation Tests
-    needs: BuildMLIR
+  PluginCompilationTests:
+    name: Plugin / Compilation Tests
+    needs: BuildPlugin
     if: ${{ inputs.run-compilation-tests }}
     uses: ./.github/workflows/job_tests_compilation_linux.yml
     with:
       os: ${{ inputs.os }}
       test-runner: ${{ inputs.test-runner }}
-      install-package: ${{ needs.BuildMLIR.outputs.build-package }}
-      compiler-type: MLIR
+      install-package: ${{ needs.BuildPlugin.outputs.build-package }}
+      compiler-type: PLUGIN
 
   DriverCompilationTests:
     name: Driver / Compilation Tests

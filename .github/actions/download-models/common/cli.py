@@ -13,8 +13,8 @@ def parse_arguments():
         "--compiler-type",
         type=str,
         required=True,
-        choices=["MLIR", "DRIVER"],
-        help="MLIR|DRIVER",
+        choices=["PLUGIN", "DRIVER"],
+        help="PLUGIN|DRIVER",
     )
     parser.add_argument(
         "--models-config",

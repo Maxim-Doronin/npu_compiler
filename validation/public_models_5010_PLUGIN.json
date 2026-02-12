@@ -1,14 +1,14 @@
 {
   "models": [
     {
-      "name": "resnet50-onnx_FP32_LATENCY_MLIR",
+      "name": "resnet50-onnx_FP32_LATENCY_PLUGIN",
       "repository": "Qdrant/resnet50-onnx",
       "repository_type": "huggingface",
       "repository_path": "model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -24,14 +24,14 @@
       }
     },
     {
-      "name": "resnet50-onnx_FP32_THROUGHPUT_MLIR",
+      "name": "resnet50-onnx_FP32_THROUGHPUT_PLUGIN",
       "repository": "Qdrant/resnet50-onnx",
       "repository_type": "huggingface",
       "repository_path": "model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "THROUGHPUT"
@@ -47,15 +47,15 @@
       }
     },
     {
-      "name": "resnet50-v1-12_FP32_LATENCY_MLIR",
+      "name": "resnet50-v1-12_FP32_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/classification/resnet/model/resnet50-v1-12.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -70,15 +70,15 @@
       }
     },
     {
-      "name": "resnet50-v1-12-qdq_FP32-INT8_LATENCY_MLIR",
+      "name": "resnet50-v1-12-qdq_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/classification/resnet/model/resnet50-v1-12-qdq.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -93,15 +93,15 @@
       }
     },
     {
-      "name": "resnet-50-pytorch_FP32-INT8_LATENCY_MLIR",
+      "name": "resnet-50-pytorch_FP32-INT8_LATENCY_PLUGIN",
       "repository": "microsoft/resnet-50",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "resnet",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -125,14 +125,14 @@
       }
     },
     {
-      "name": "mobilenet_v2_1.0_224_FP32_LATENCY_MLIR",
+      "name": "mobilenet_v2_1.0_224_FP32_LATENCY_PLUGIN",
       "repository": "onnx-community/mobilenet_v2_1.0_224",
       "repository_type": "huggingface",
       "repository_path": "onnx/model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -147,14 +147,14 @@
       }
     },
     {
-      "name": "mobilenet_v2_1.0_224_FP16_LATENCY_MLIR",
+      "name": "mobilenet_v2_1.0_224_FP16_LATENCY_PLUGIN",
       "repository": "onnx-community/mobilenet_v2_1.0_224",
       "repository_type": "huggingface",
       "repository_path": "onnx/model_fp16.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -169,14 +169,14 @@
       }
     },
     {
-      "name": "mobilenet_v2_1.0_224_FP32-INT8_LATENCY_MLIR",
+      "name": "mobilenet_v2_1.0_224_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx-community/mobilenet_v2_1.0_224",
       "repository_type": "huggingface",
       "repository_path": "onnx/model_quantized.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -191,15 +191,15 @@
       }
     },
     {
-      "name": "mobilenetv2_140_Opset18_timm_FP32_LATENCY_MLIR",
+      "name": "mobilenetv2_140_Opset18_timm_FP32_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "Computer_Vision/mobilenetv2_140_Opset18_timm/mobilenetv2_140_Opset18.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -214,15 +214,15 @@
       }
     },
     {
-      "name": "mobilenetv2-12-qdq_FP32-INT8_LATENCY_MLIR",
+      "name": "mobilenetv2-12-qdq_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/classification/mobilenet/model/mobilenetv2-12-qdq.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -237,15 +237,15 @@
       }
     },
     {
-      "name": "yolov4_FP32_LATENCY_MLIR",
+      "name": "yolov4_FP32_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/object_detection_segmentation/yolov4/model/yolov4.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -258,15 +258,15 @@
       }
     },
     {
-      "name": "yolov4_FP32-INT8_LATENCY_MLIR",
+      "name": "yolov4_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/object_detection_segmentation/yolov4/model/yolov4.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -282,14 +282,14 @@
       }
     },
     {
-      "name": "bert-base-uncased_FP32_LATENCY_MLIR",
+      "name": "bert-base-uncased_FP32_LATENCY_PLUGIN",
       "repository": "google-bert/bert-base-uncased",
       "repository_type": "huggingface",
       "repository_path": "model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -301,15 +301,15 @@
       }
     },
     {
-      "name": "bert-base-multilingual-cased_FP32_LATENCY_MLIR",
+      "name": "bert-base-multilingual-cased_FP32_LATENCY_PLUGIN",
       "repository": "google-bert/bert-base-multilingual-cased",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "transformer",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU5010",
         "DEVICE_ID": "5010",
         "PERFORMANCE_HINT": "LATENCY"
@@ -332,15 +332,15 @@
       }
     },
     {
-      "name": "bert-base-uncased-mrpc_FP32_LATENCY_MLIR",
+      "name": "bert-base-uncased-mrpc_FP32_LATENCY_PLUGIN",
       "repository": "Intel/bert-base-uncased-mrpc",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "transformer",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -364,15 +364,15 @@
       }
     },
     {
-      "name": "clip-vit-base-patch16_FP32_LATENCY_MLIR",
+      "name": "clip-vit-base-patch16_FP32_LATENCY_PLUGIN",
       "repository": "openai/clip-vit-base-patch16",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "clip",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -399,15 +399,15 @@
       }
     },
     {
-      "name": "clip-vit-base-patch32_FP32_LATENCY_MLIR",
+      "name": "clip-vit-base-patch32_FP32_LATENCY_PLUGIN",
       "repository": "openai/clip-vit-base-patch32",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "clip",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -434,15 +434,15 @@
       }
     },
     {
-      "name": "CLIP-ViT-B-32-laion2B-s34B-b79K_FP32_LATENCY_MLIR",
+      "name": "CLIP-ViT-B-32-laion2B-s34B-b79K_FP32_LATENCY_PLUGIN",
       "repository": "laion/CLIP-ViT-B-32-laion2B-s34B-b79K",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "clip",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -469,16 +469,16 @@
       }
     },
     {
-      "name": "sam-vit-base_image_encoder_FP32_LATENCY_MLIR",
+      "name": "sam-vit-base_image_encoder_FP32_LATENCY_PLUGIN",
       "disabled": true,
       "repository": "facebook/sam-vit-base",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "sam_image_encoder",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -499,15 +499,15 @@
       }
     },
     {
-      "name": "sam-vit-base_prompt_encoder_FP32_LATENCY_MLIR",
+      "name": "sam-vit-base_prompt_encoder_FP32_LATENCY_PLUGIN",
       "repository": "facebook/sam-vit-base",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "sam_prompt_encoder",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -533,15 +533,15 @@
       }
     },
     {
-      "name": "sam-vit-base_mask_decoder_FP32_LATENCY_MLIR",
+      "name": "sam-vit-base_mask_decoder_FP32_LATENCY_PLUGIN",
       "repository": "facebook/sam-vit-base",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "sam_mask_decoder",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"
@@ -568,15 +568,15 @@
       }
     },
     {
-      "name": "vit-base-patch16-224_FP32_LATENCY_MLIR",
+      "name": "vit-base-patch16-224_FP32_LATENCY_PLUGIN",
       "repository": "google/vit-base-patch16-224",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "vision_transformer",
-      "category": "MLIR/VPU5010/SILICON",
+      "category": "PLUGIN/VPU5010/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU5010",
           "DEVICE_ID": "5010",
           "PERFORMANCE_HINT": "LATENCY"

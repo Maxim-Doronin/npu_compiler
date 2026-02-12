@@ -3,7 +3,7 @@ description: 'Download models from different sources'
 
 inputs:
   compiler-type:
-    description: 'MLIR|DRIVER'
+    description: 'PLUGIN|DRIVER'
     type: string
     required: true
   models-config:

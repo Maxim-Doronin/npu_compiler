@@ -27,11 +27,17 @@ outputs:
     description: 'NPU Linux Driver commit SHA'
     value: ${{ steps.read-linux-npu-driver-sha.outputs.drv-sha }}
   omz-repository:
-    description: 'Open Model Zoo Repository full name: for/open_model_zoo'
+    description: 'Open Model Zoo Repository full name: fork/open_model_zoo'
     value: ${{ steps.read-omz-sha.outputs.omz-repository }}
   omz-sha:
     description: 'Open Model Zoo commit SHA'
     value: ${{ steps.read-omz-sha.outputs.omz-sha }}
+  opencv-repository:
+    description: 'OpenCV Repository full name: fork/opencv'
+    value: ${{ steps.read-ocv-sha.outputs.ocv-repository }}
+  opencv-sha:
+    description: 'OpenCV commit SHA'
+    value: ${{ steps.read-ocv-sha.outputs.ocv-sha }}
 
 runs:
   using: 'composite'
@@ -156,3 +162,20 @@ runs:
         echo "Open Model Zoo commit sha = $OMZ_SHA"
         echo "omz-repository=$OMZ_ORG/open_model_zoo" >> $GITHUB_OUTPUT
         echo "omz-sha=$OMZ_SHA" >> $GITHUB_OUTPUT
+
+    - name: Fetch and parse OpenCV config from OpenVINO
+      id: read-ocv-sha
+      shell: bash
+      run: |
+        OV_REPO=${{ steps.read-openvino-sha.outputs.openvino-repository }}
+        OV_SHA=${{ steps.read-openvino-sha.outputs.openvino-sha }}
+        JSON=$(curl -sS --fail --retry 5 --retry-delay 2 \
+          -H "Accept: application/vnd.github.v3.raw" \
+          https://api.github.com/repos/${OV_REPO}/contents/src/plugins/intel_npu/tools/opencv_version.json?ref=${OV_SHA} \
+        )
+        OCV_ORG=$(echo "$JSON" | jq -r 'to_entries[0].key')
+        OCV_SHA=$(echo "$JSON" | jq -r 'to_entries[0].value')
+        echo "OpenCV orgranization = $OCV_ORG"
+        echo "OpenCV commit sha = $OCV_SHA"
+        echo "ocv-repository=$OCV_ORG/opencv" >> $GITHUB_OUTPUT
+        echo "ocv-sha=$OCV_SHA" >> $GITHUB_OUTPUT

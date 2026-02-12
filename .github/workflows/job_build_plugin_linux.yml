@@ -1,4 +1,4 @@
-name: Linux MLIR Build
+name: Linux Plugin Build
 on:
   workflow_call:
     inputs:

@@ -1,14 +1,14 @@
 {
   "models": [
     {
-      "name": "resnet50-onnx_FP32_LATENCY_MLIR",
+      "name": "resnet50-onnx_FP32_LATENCY_PLUGIN",
       "repository": "Qdrant/resnet50-onnx",
       "repository_type": "huggingface",
       "repository_path": "model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -24,14 +24,14 @@
       }
     },
     {
-      "name": "resnet50-onnx_FP32_THROUGHPUT_MLIR",
+      "name": "resnet50-onnx_FP32_THROUGHPUT_PLUGIN",
       "repository": "Qdrant/resnet50-onnx",
       "repository_type": "huggingface",
       "repository_path": "model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "THROUGHPUT"
@@ -47,15 +47,15 @@
       }
     },
     {
-      "name": "resnet50-v1-12_FP32_LATENCY_MLIR",
+      "name": "resnet50-v1-12_FP32_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/classification/resnet/model/resnet50-v1-12.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -70,15 +70,15 @@
       }
     },
     {
-      "name": "resnet50-v1-12-qdq_FP32-INT8_LATENCY_MLIR",
+      "name": "resnet50-v1-12-qdq_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/classification/resnet/model/resnet50-v1-12-qdq.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -93,15 +93,15 @@
       }
     },
     {
-      "name": "resnet-50-pytorch_FP32-INT8_LATENCY_MLIR",
+      "name": "resnet-50-pytorch_FP32-INT8_LATENCY_PLUGIN",
       "repository": "microsoft/resnet-50",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
       "framework": "pytorch",
       "model_type": "resnet",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-          "NPU_COMPILER_TYPE": "MLIR",
+          "NPU_COMPILER_TYPE": "PLUGIN",
           "NPU_PLATFORM": "VPU3720",
           "DEVICE_ID": "3720",
           "PERFORMANCE_HINT": "LATENCY"
@@ -125,14 +125,14 @@
       }
     },
     {
-      "name": "mobilenet_v2_1.0_224_FP32_LATENCY_MLIR",
+      "name": "mobilenet_v2_1.0_224_FP32_LATENCY_PLUGIN",
       "repository": "onnx-community/mobilenet_v2_1.0_224",
       "repository_type": "huggingface",
       "repository_path": "onnx/model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -147,14 +147,14 @@
       }
     },
     {
-      "name": "mobilenet_v2_1.0_224_FP16_LATENCY_MLIR",
+      "name": "mobilenet_v2_1.0_224_FP16_LATENCY_PLUGIN",
       "repository": "onnx-community/mobilenet_v2_1.0_224",
       "repository_type": "huggingface",
       "repository_path": "onnx/model_fp16.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -169,14 +169,14 @@
       }
     },
     {
-      "name": "mobilenet_v2_1.0_224_FP32-INT8_LATENCY_MLIR",
+      "name": "mobilenet_v2_1.0_224_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx-community/mobilenet_v2_1.0_224",
       "repository_type": "huggingface",
       "repository_path": "onnx/model_quantized.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -191,15 +191,15 @@
       }
     },
     {
-      "name": "mobilenetv2_140_Opset18_timm_FP32_LATENCY_MLIR",
+      "name": "mobilenetv2_140_Opset18_timm_FP32_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "Computer_Vision/mobilenetv2_140_Opset18_timm/mobilenetv2_140_Opset18.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -214,15 +214,15 @@
       }
     },
     {
-      "name": "mobilenetv2-12-qdq_FP32-INT8_LATENCY_MLIR",
+      "name": "mobilenetv2-12-qdq_FP32-INT8_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/classification/mobilenet/model/mobilenetv2-12-qdq.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -237,15 +237,15 @@
       }
     },
     {
-      "name": "yolov4_FP32_LATENCY_MLIR",
+      "name": "yolov4_FP32_LATENCY_PLUGIN",
       "repository": "onnx/models",
       "repository_type": "github",
       "repository_branch": "main",
       "repository_path": "validated/vision/object_detection_segmentation/yolov4/model/yolov4.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
@@ -258,14 +258,14 @@
       }
     },
     {
-      "name": "bert-base-uncased_FP32_LATENCY_MLIR",
+      "name": "bert-base-uncased_FP32_LATENCY_PLUGIN",
       "repository": "google-bert/bert-base-uncased",
       "repository_type": "huggingface",
       "repository_path": "model.onnx",
       "framework": "onnx",
-      "category": "MLIR/VPU3720/SILICON",
+      "category": "PLUGIN/VPU3720/SILICON",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR",
+        "NPU_COMPILER_TYPE": "PLUGIN",
         "NPU_PLATFORM": "VPU3720",
         "DEVICE_ID": "3720",
         "PERFORMANCE_HINT": "LATENCY"
