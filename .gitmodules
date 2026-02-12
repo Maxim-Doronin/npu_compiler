@@ -3,7 +3,7 @@
 	url = https://github.com/openvinotoolkit/npu_plugin_elf.git
 [submodule "thirdparty/llvm-project"]
 	path = thirdparty/llvm-project
-	url = https://github.com/intel/npu-plugin-llvm.git
+	url = https://github.com/intel-staging/npu-compiler-llvm.git
 [submodule "thirdparty/vpucostmodel"]
 	path = thirdparty/vpucostmodel
 	url = https://github.com/intel/npu-nn-cost-model.git
