@@ -261,11 +261,11 @@ VPUXCompilerL0::VPUXCompilerL0(vcl_compiler_desc_t* compilerDesc, vcl_device_des
         _options->add<intel_npu::ENABLE_STRIDES_FOR>();
     }
 
-#ifdef VPUX_DEVELOPER_BUILD
-    // E#103359: WS is only available in developer builds
     _options->add<intel_npu::WEIGHTLESS_BLOB>();
     _options->add<intel_npu::SEPARATE_WEIGHTS_VERSION>();
     _options->add<intel_npu::WS_COMPILE_CALL_NUMBER>();
+
+#ifdef VPUX_DEVELOPER_BUILD
     _options->add<intel_npu::CACHE_MODE>();
 #endif  // VPUX_DEVELOPER_BUILD
 
