@@ -29,7 +29,7 @@ auto dummyDistributionInfoAttr(mlir::MLIRContext* ctx) {
     const auto numClustersAttr = vpux::getIntAttr(ctx, 1);
     return vpux::VPU::DistributionInfoAttr::get(ctx, distributionModeAttr, nullptr, nullptr, nullptr, nullptr,
                                                 numClustersAttr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                                nullptr);
+                                                nullptr, nullptr);
 }
 }  // namespace
 
@@ -64,26 +64,6 @@ TEST_P(MLIR_BufferizeTest, getBufferType) {
     const auto tensorNdType = mlir::cast<vpux::NDTypeInterface>(tensorValue.getType());
 
     const auto memref = vpux::getBufferType(tensorValue);
-
-    ASSERT_EQ(memref.getShape(), tensorNdType.getShape());
-    ASSERT_EQ(memref.getElementType(), tensorNdType.getElementType());
-    ASSERT_EQ(memref.hasRank(), tensorNdType.hasRank());
-    const bool isRankedTensor = mlir::isa<mlir::RankedTensorType>(tensorNdType);
-    if (isRankedTensor) {
-        ASSERT_EQ(memref.getRank(), tensorNdType.getRank());
-        ASSERT_EQ(memref.getMemSpace(), tensorNdType.getMemSpace());
-        ASSERT_EQ(memref.getDimsOrder(), tensorNdType.getDimsOrder());
-    }
-}
-
-TEST_P(MLIR_BufferizeTest, getBuffer) {
-    const auto options = vpux::getOneShotBufferizationOptions();
-    const auto tensorValue = getTensorValue();
-    const auto tensorNdType = mlir::cast<vpux::NDTypeInterface>(tensorValue.getType());
-
-    mlir::IRRewriter rewriter(&ctx);
-    const auto memrefValue = vpux::getBuffer(rewriter, tensorValue);
-    const auto memref = mlir::cast<vpux::NDTypeInterface>(memrefValue.getType());
 
     ASSERT_EQ(memref.getShape(), tensorNdType.getShape());
     ASSERT_EQ(memref.getElementType(), tensorNdType.getElementType());

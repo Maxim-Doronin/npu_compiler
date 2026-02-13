@@ -202,6 +202,7 @@ def VPU_DepthToSpaceOp :
         IntAttr:$block_size,
         IE_DepthToSpaceModeAttr:$mode,
         OptionalAttr<IE_ChannelPaddingAttr>:$padded_channels,
+        OptionalAttr<TypeAttr>:$dstElemType,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -211,9 +212,7 @@ def VPU_DepthToSpaceOp :
 
     let extraClassDeclaration = [{
         bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
-
         bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
-
         bool isVFSupported();
     }] # baseExtraClassDeclaration;
 
@@ -222,7 +221,8 @@ def VPU_DepthToSpaceOp :
             "::mlir::Value":$input,
             "::mlir::IntegerAttr":$block_size,
             "vpux::IE::DepthToSpaceModeAttr":$mode,
-            "vpux::IE::ChannelPaddingAttr":$padded_channels
+            "vpux::IE::ChannelPaddingAttr":$padded_channels,
+            "::mlir::TypeAttr":$dstElemType
         )>
     ];
 
@@ -318,12 +318,6 @@ def VPU_ExpandOp :
     let results = (outs
         AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor]>:$output
     );
-
-    let builders = [
-        OpBuilder<
-            (ins "mlir::Value":$input, "std::optional<vpux::ShapeRef>":$pads_begin, "std::optional<vpux::ShapeRef>":$pads_end)
-        >
-    ];
 
     let hasFolder = 1;
 
@@ -614,7 +608,8 @@ def VPU_PadOp :
                 AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
-                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                VPU_BoundsRepresentationInterface
             ]
         > {
     let summary = "Pad VPU layer";
@@ -632,7 +627,12 @@ def VPU_PadOp :
         IE_PadModeAttr:$mode,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
-        OptionalAttr<I64ArrayAttr>:$input_padding
+        OptionalAttr<I64ArrayAttr>:$input_padding,
+
+        OptionalAttr<I64ArrayAttr>:$output_shape,
+        OptionalAttr<I64ArrayAttr>:$output_bounds,
+
+        DefaultValuedAttr<VPU_BoundsRepresentationAttr, "vpux::VPU::BoundsRepresentation::BOUNDS">:$bounds_representation
     );
 
     let results = (outs
@@ -659,7 +659,10 @@ def VPU_PadOp :
             "::mlir::FloatAttr":$pad_value_attr,
             "vpux::IE::PadModeAttr":$mode,
             "::mlir::ArrayAttr":$output_padding,
-            "::mlir::ArrayAttr":$input_padding
+            "::mlir::ArrayAttr":$input_padding,
+            "::mlir::ArrayAttr":$output_shape,
+            "::mlir::ArrayAttr":$output_bounds,
+            "vpux::VPU::BoundsRepresentationAttr": $bounds_representation
         )>,
         OpBuilder<(ins
             "vpux::NDTypeInterface&":$input_type,
@@ -672,7 +675,9 @@ def VPU_PadOp :
             "::mlir::FloatAttr":$pad_value_attr,
             "vpux::IE::PadMode":$mode,
             "::mlir::ArrayAttr":$output_padding,
-            "::mlir::ArrayAttr":$input_padding
+            "::mlir::ArrayAttr":$input_padding,
+            "::mlir::ArrayAttr":$output_shape,
+            "::mlir::ArrayAttr":$output_bounds
         )>
     ];
 
@@ -827,22 +832,46 @@ def VPU_RollOp :
 
 def VPU_ScatterElementsUpdateOp :
         VPU_LayerOp<
-            "ScatterElementsUpdate"
+            "ScatterElementsUpdate",
+            [
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
+            ]
         > {
     let summary = "ScatterElementsUpdate VPU layer";
 
     let arguments = (ins
-        AnyRankedTensor:$input,
-        RankedTensorOf<[AnyInteger]>:$indices,
-        AnyRankedTensor:$updates,
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$input,
+        AnyTypeOf<[RankedTensorOf<[AnyInteger]>, VPU_DistributedTensor]>:$indices,
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$updates,
         IntAttr:$axis,
         IE_ScatterElementsUpdateReductionTypeAttr:$reduction,
-        BoolAttr:$use_init_val
+        BoolAttr:$use_init_val,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
     let results = (outs
-        AnyRankedTensor:$output
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$output
     );
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::Value":$indices,
+            "::mlir::Value":$updates,
+            "::mlir::IntegerAttr":$axis,
+            "vpux::IE::ScatterElementsUpdateReductionTypeAttr":$reduction,
+            "::mlir::BoolAttr":$use_init_val
+        )>
+    ];
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
 

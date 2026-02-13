@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -152,9 +152,11 @@ void setGatherMode(VPUASM::NNDMAOp dmaOp, DMARegister& initValues, const mlir::M
                       dmaOp);
     mlir::MemRefType indicesType;
 
+    uint32_t indiceTileMask = 0;
     if (mlir::isa<VPUASM::DeclareBufferOp>(indicesBufferRep)) {
         auto indicesBuffer = mlir::cast<VPUASM::DeclareBufferOp>(indicesBufferRep);
         indicesType = indicesBuffer.getBufferType().getMemref();
+        indiceTileMask = VPUASM::getTileSelectMaskForBuffer(indicesBuffer);
     } else {
         VPUX_THROW("Could not find symbol name entry for {0}", dmaOp.getInput());
     }
@@ -180,6 +182,7 @@ void setGatherMode(VPUASM::NNDMAOp dmaOp, DMARegister& initValues, const mlir::M
     initValues.write<Fields::dma_stride_dst_1>(dmaElementSize);
     initValues.write<Fields::dma_width_src>(dmaElementSize);
     initValues.write<Fields::dma_dim_size_dst_1>(0);
+    initValues.write<Fields::dma_dim_size_src_2>(indiceTileMask);
 }
 
 }  // namespace
@@ -312,7 +315,7 @@ DMARegister compose(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap) 
     descriptor.write<Registers::dma_barriers_sched, Fields::clean_after_>(origOp.getCleanAfter());
 
     // Enable Memory Side Cache
-    if (auto enableMemorySideCaching = origOp.getEnableMscAttr()) {
+    if (origOp.getEnableMsc()) {
         setEnableMemorySideCaching(descriptor);
     }
 

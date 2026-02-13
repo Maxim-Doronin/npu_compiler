@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -282,7 +282,7 @@ void vpux::VPURT::BarrierSimulator::parseTasks(mlir::Operation* parentOp) {
         const auto virtualDep = _vdt.add(taskOp);
 
         switch (taskOp.getExecutorKind()) {
-        case VPU::ExecutorKind::DMA_NN: {
+        case config::ExecutorKind::DMA_NN: {
             auto dmaTask = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(wrappedTaskOp);
             VPUX_THROW_WHEN(dmaTask == nullptr, "Not a DMA task");
 
@@ -313,7 +313,7 @@ void vpux::VPURT::BarrierSimulator::parseTasks(mlir::Operation* parentOp) {
             break;
         }
 
-        case VPU::ExecutorKind::DPU: {
+        case config::ExecutorKind::DPU: {
             auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(wrappedTaskOp);
             VPUX_THROW_UNLESS(nceOp != nullptr, "Could not cast to NCE task");
 
@@ -323,13 +323,13 @@ void vpux::VPURT::BarrierSimulator::parseTasks(mlir::Operation* parentOp) {
             break;
         }
 
-        case VPU::ExecutorKind::SHAVE_ACT: {
+        case config::ExecutorKind::SHAVE_ACT: {
             _actTasks.emplace_back(virtualDep);
             updateBarrierConfigs(taskOp);
             break;
         }
 
-        case VPU::ExecutorKind::M2I: {
+        case config::ExecutorKind::M2I: {
             _m2iTasks.emplace_back(virtualDep);
             updateBarrierConfigs(taskOp);
             break;
@@ -337,7 +337,7 @@ void vpux::VPURT::BarrierSimulator::parseTasks(mlir::Operation* parentOp) {
 
         // TODO: Analyze and define executor type for funcOp - E#117624
         // Using DMA is a temporary change
-        case VPU::ExecutorKind::UNKNOWN: {
+        case config::ExecutorKind::UNKNOWN: {
             _dmaTasks[0].emplace_back(virtualDep);
             updateBarrierConfigs(taskOp);
             break;
@@ -788,7 +788,8 @@ mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriers(Logger log, 
     return mlir::success();
 }
 
-mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriersForWlmPageApproach(Logger log, int64_t numBarriers) {
+mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriersForWlmPageApproach(Logger log, int64_t numBarriers,
+                                                                                      bool partialWlmEnabled) {
     VPUX_THROW_UNLESS(_isDynamicBarriers,
                       "Unexpected dynamic barrier type for barrier simulation with WLM page approach");
     VPUX_THROW_UNLESS(_wlmPageApproach, "Barrier simulator not initialized for WLM page approach");
@@ -811,12 +812,31 @@ mlir::LogicalResult vpux::VPURT::BarrierSimulator::simulateBarriersForWlmPageApp
 
         for (size_t i = 0; i < barVidVec.size(); i++) {
             // For each page use following barriers assignment
-            // Page0 PIDs : [0 - (numBarriers/2 - 1)]
-            // Page1 PIDs : [(numBarriers/2) - (numBarriers - 1)]
-            // Page2 PIDs : same as Page0
-            // Page3 PIDs : same as Page1
-            // ...
-            auto pid = pidOffset + i;
+            // For FullWLM:
+            //   Page0 PIDs : [0 - (numBarriers/2 - 1)]
+            //   Page1 PIDs : [(numBarriers/2) - (numBarriers - 1)]
+            //   Page2 PIDs : same as Page0
+            //   Page3 PIDs : same as Page1
+            //   ...
+            // For PartialWLM:
+            //   Page0 PIDs : [(numBarriers/2 - 1) - 0]
+            //   Page1 PIDs : [(numBarriers - 1) - (numBarriers/2)]
+            //   Page2 PIDs : same as Page0
+            //   Page3 PIDs : same as Page1
+            //   ...
+            //   Handle PWLM differently because earliest (lowest VID index) barriers in pages are
+            //   used for enqueuing and in case multiple barrier interrupts happen together
+            //   with this enqueue barrier it needs to have largest PID index so that it is
+            //   processed by runtime in barrier callback as the last one - runtime handles
+            //   barrier interrupts from smallest to largest PID. When it is processed as last
+            //   all other barriers from the page would have been already processed and programmed
+            //   for next usage
+            size_t pid;
+            if (partialWlmEnabled) {
+                pid = pidOffset + barVidVec.size() - 1 - i;
+            } else {
+                pid = pidOffset + i;
+            }
             auto vid = barVidVec[i];
             _barriers[vid].realId = pid;
             _barrierPidToVidInstancesQueueMap[pid].push(vid);

@@ -311,9 +311,9 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
 
     const auto tileCount = static_cast<size_t>(config::getTileExecutor(moduleOp).getCount());
     const auto dmaTileCount =
-            static_cast<size_t>(config::getAvailableExecutor(moduleOp, VPU::ExecutorKind::DMA_NN).getCount());
+            static_cast<size_t>(config::getAvailableExecutor(moduleOp, config::ExecutorKind::DMA_NN).getCount());
     const auto shavesPerTileCount =
-            static_cast<size_t>(config::getAvailableExecutor(moduleOp, VPU::ExecutorKind::SHAVE_ACT).getCount());
+            static_cast<size_t>(config::getAvailableExecutor(moduleOp, config::ExecutorKind::SHAVE_ACT).getCount());
 
     mlir::SmallVector<mlir::SmallVector<mlir::Value>> dmaTasks(dmaTileCount);
     mlir::SmallVector<mlir::ValueRange> dmaTasksArg(dmaTileCount);

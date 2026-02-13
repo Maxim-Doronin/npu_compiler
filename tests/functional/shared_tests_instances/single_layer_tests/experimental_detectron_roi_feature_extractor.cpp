@@ -1,4 +1,4 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,6 +60,7 @@ TEST_P(ExperimentalDetectronROIFeatureExtractorLayerTestCommon, DISABLED_NPU5010
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

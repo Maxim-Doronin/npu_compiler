@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -54,25 +54,25 @@ func.func @UnrollDistributedOpsWithProfilingData(%arg0: !DummyT) -> !DummyT {
 
     return %arg0 : !DummyT
 
-    // CHECK:       [[BAR:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:       [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
-    // CHECK:       [[CMX_0_IN:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 0]>
-    // CHECK:       [[CMX_1_IN:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 1]>
-    // CHECK:       [[CMX_2_IN:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 2]>
-    // CHECK:       [[CMX_3_IN:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 3]>
-    // CHECK:       [[CMX_4_IN:%.*]] = VPURT.DeclareBuffer <CMX_NN> [4] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 4]>
+    // CHECK:       [[CMX_0_IN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 0]>
+    // CHECK:       [[CMX_1_IN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 1]>
+    // CHECK:       [[CMX_2_IN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 2]>
+    // CHECK:       [[CMX_3_IN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 3]>
+    // CHECK:       [[CMX_4_IN:%.+]] = VPURT.DeclareBuffer <CMX_NN> [4] <524544> -> memref<1x1x262144x1xf16, [@CMX_NN, 4]>
 
-    // CHECK:       [[CMX_0_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 0]>
-    // CHECK:       [[CMX_1_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 1]>
-    // CHECK:       [[CMX_2_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 2]>
-    // CHECK:       [[CMX_3_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 3]>
-    // CHECK:       [[CMX_4_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [4] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 4]>
+    // CHECK:       [[CMX_0_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 0]>
+    // CHECK:       [[CMX_1_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 1]>
+    // CHECK:       [[CMX_2_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 2]>
+    // CHECK:       [[CMX_3_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 3]>
+    // CHECK:       [[CMX_4_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [4] <256> -> memref<1x1x262144x1xf16, [@CMX_NN, 4]>
 
-    // CHECK:       [[PROF_BUF_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <160> -> memref<8xui32, [@CMX_NN, 0]>
-    // CHECK:       [[PROF_BUF_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <160> -> memref<8xui32, [@CMX_NN, 1]>
-    // CHECK:       [[PROF_BUF_2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <160> -> memref<8xui32, [@CMX_NN, 2]>
-    // CHECK:       [[PROF_BUF_3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <160> -> memref<8xui32, [@CMX_NN, 3]>
-    // CHECK:       [[PROF_BUF_4:%.*]] = VPURT.DeclareBuffer <CMX_NN> [4] <160> -> memref<8xui32, [@CMX_NN, 4]>
+    // CHECK:       [[PROF_BUF_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <160> -> memref<8xui32, [@CMX_NN, 0]>
+    // CHECK:       [[PROF_BUF_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <160> -> memref<8xui32, [@CMX_NN, 1]>
+    // CHECK:       [[PROF_BUF_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <160> -> memref<8xui32, [@CMX_NN, 2]>
+    // CHECK:       [[PROF_BUF_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <160> -> memref<8xui32, [@CMX_NN, 3]>
+    // CHECK:       [[PROF_BUF_4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [4] <160> -> memref<8xui32, [@CMX_NN, 4]>
 
     // CHECK:       VPURT.Task updates([[BAR]] : !VPURT.Barrier) {
     // CHECK:           %results, %profiling_output = VPUIP.SW.Kernel {

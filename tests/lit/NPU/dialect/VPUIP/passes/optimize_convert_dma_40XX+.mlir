@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,7 +23,7 @@ func.func @ConvertDMACopySequence(
 
     return %2 : memref<1x16x112x112xf16, #NHWC, @CMX>
 
-    //CHECK: [[CONVERTDMA:%.*]] = VPUIP.ConvertDMA inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX>)
+    //CHECK: [[CONVERTDMA:%.+]] = VPUIP.ConvertDMA inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX>)
     //CHECK-NOT: VPUIP.Copy
 }
 
@@ -45,8 +45,8 @@ func.func @ConvertDMAClusterCopySequence(%arg0: memref<1x16x112x112xf32, #NHWC, 
 
     return %3 : !SpilledOutput_DDR
 
-    // CHECK:   [[BUF_0:%.*]] = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @DDR>
-    // CHECK:    [[ConvertDMA:%.*]] = VPUIP.ConvertDMA
+    // CHECK:   [[BUF_0:%.+]] = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @DDR>
+    // CHECK:    [[ConvertDMA:%.+]] = VPUIP.ConvertDMA
     // CHECK-SAME:     inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
     // CHECK-SAME:     outputs([[BUF_0]] : memref<1x16x112x112xf16, #NHWC, @DDR>) ->  memref<1x16x112x112xf16, #NHWC, @DDR>
     // CHECK-NOT:   VPUIP.ConvertDMA
@@ -359,8 +359,8 @@ func.func @ClusterConvertDMAClusterCopySequence(%arg0: !Input_CMX) -> !Output_CM
 
     return %3 : !Output_CMX
 
-    // CHECK:   [[BUF_0:%.*]] = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @DDR>
-    // CHECK:   [[ConvertDMA:%.*]] = VPUIP.ConvertDMA
+    // CHECK:   [[BUF_0:%.+]] = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @DDR>
+    // CHECK:   [[ConvertDMA:%.+]] = VPUIP.ConvertDMA
     // CHECK-SAME:     inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
     // CHECK-SAME:     outputs([[BUF_0]] : memref<1x16x112x112xf16, #NHWC, @DDR>) ->  memref<1x16x112x112xf16, #NHWC, @DDR>
     // CHECK-NOT:   VPUIP.ConvertDMA
@@ -392,9 +392,9 @@ func.func @ClusterConvertDMACopySequence() -> !InputStub_CMX {
 
   return %4 : !InputStub_CMX
 
-  // CHECK:   [[BUF_0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
-  // CHECK:   [[BUF_1:%.*]] = memref.alloc() : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
-  // CHECK:   [[COPY_0:%.*]] = VPUIP.ConvertDMA inputs(%0 : !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) outputs(%alloc : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
+  // CHECK:   [[BUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:   [[BUF_1:%.+]] = memref.alloc() : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
+  // CHECK:   [[COPY_0:%.+]] = VPUIP.ConvertDMA inputs(%0 : !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) outputs(%alloc : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
   // CHECK:   return [[COPY_0]] : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
 }
 
@@ -433,13 +433,13 @@ func.func @DoNotFuseIncompatibleDistributedCopy() -> !OutputDistributedType {
 
   return %4 : !OutputDistributedType
 
-  // CHECK:   [[BUF_0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x4x512x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
-  // CHECK:   [[BUF_1:%.*]] = memref.alloc() : memref<1x4x512x1xf16, @DDR>
-  // CHECK:    [[CONVERT_0:%.*]] = VPUIP.ConvertDMA
+  // CHECK:   [[BUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x4x512x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:   [[BUF_1:%.+]] = memref.alloc() : memref<1x4x512x1xf16, @DDR>
+  // CHECK:    [[CONVERT_0:%.+]] = VPUIP.ConvertDMA
   // CHECK-SAME:     inputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x4x512x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)
   // CHECK-SAME:     outputs([[BUF_1]] : memref<1x4x512x1xf16, @DDR>) ->  memref<1x4x512x1xf16, @DDR>
-  // CHECK:   [[BUF_2:%.*]] =  VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x4x512x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
-  // CHECK:    [[COPY_0:%.*]] = VPUIP.Copy
+  // CHECK:   [[BUF_2:%.+]] =  VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x4x512x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:    [[COPY_0:%.+]] = VPUIP.Copy
   // CHECK-SAME:     inputs([[CONVERT_0]] : memref<1x4x512x1xf16, @DDR>)
   // CHECK-SAME:     outputs([[BUF_2]] : !VPUIP.DistributedBuffer<1x4x512x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>)  ->  !VPUIP.DistributedBuffer<1x4x512x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
   // CHECK:   return [[COPY_0]] : !VPUIP.DistributedBuffer<1x4x512x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
@@ -471,7 +471,7 @@ func.func @CopyClusterConvertDMASequence(%arg0: !Input_DDR) -> !OutputDistribute
       outputs(%2 : !OutputDistributedType) ->  !OutputDistributedType
   return %3 : !OutputDistributedType
 
-  // CHECK:   [[BUF_0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:   [[BUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
   // CHECK:   [[ConvertDMA:%.+]] = VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32, #NHWC, @DDR>) outputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
   // CHECK-NOT:   VPUIP.ConvertDMA
 }
@@ -513,8 +513,8 @@ func.func @ClusterCopyClusterConvertDMASequence(%arg0: !Input_DDR) -> !OutputDis
 
   return %3 : !OutputDistributedType
 
-  // CHECK:   [[BUF_0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
-  // CHECK:   [[ConvertDMA:%.*]] = VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32, #NHWC, @DDR>) outputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:   [[BUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
+  // CHECK:   [[ConvertDMA:%.+]] = VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32, #NHWC, @DDR>) outputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) -> !VPUIP.DistributedBuffer<1x3x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
   // CHECK-NOT:   VPUIP.ConvertDMA
 }
 
@@ -544,8 +544,8 @@ func.func @ClusterCopyConvertDMASequence(%arg0: !Input_DDR) -> !Output_CMX {
 
   return %3 : !Output_CMX
 
-  // CHECK:   [[BUF_0:%.*]] = memref.alloc() : memref<1x3x224x224xf16, #NHWC, @CMX_NN>
-  // CHECK:   [[ConvertDMA:%.*]] = VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32,  #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x3x224x224xf16, #NHWC, @CMX_NN>) -> memref<1x3x224x224xf16, #NHWC, @CMX_NN>
+  // CHECK:   [[BUF_0:%.+]] = memref.alloc() : memref<1x3x224x224xf16, #NHWC, @CMX_NN>
+  // CHECK:   [[ConvertDMA:%.+]] = VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32,  #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x3x224x224xf16, #NHWC, @CMX_NN>) -> memref<1x3x224x224xf16, #NHWC, @CMX_NN>
   // CHECK:   }
   // CHECK-NOT:   VPUIP.ConvertDMA
 }
@@ -567,8 +567,8 @@ func.func @CopyConvertDMASequence(%arg0: !Input_DDR) -> !Output_CMX {
 
   return %3 : !Output_CMX
 
-  // CHECK:   [[BUF_0:%.*]] = memref.alloc() : memref<1x3x224x224xf16, @CMX_NN>
-  // CHECK:   [[ConvertDMA:%.*]] =  VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32, @DDR>) outputs([[BUF_0]] : memref<1x3x224x224xf16, @CMX_NN>) -> memref<1x3x224x224xf16, @CMX_NN>
+  // CHECK:   [[BUF_0:%.+]] = memref.alloc() : memref<1x3x224x224xf16, @CMX_NN>
+  // CHECK:   [[ConvertDMA:%.+]] =  VPUIP.ConvertDMA inputs([[ARG0]] : memref<1x3x224x224xf32, @DDR>) outputs([[BUF_0]] : memref<1x3x224x224xf16, @CMX_NN>) -> memref<1x3x224x224xf16, @CMX_NN>
   // CHECK:   }
   // CHECK-NOT:   VPUIP.ConvertDMA
 }

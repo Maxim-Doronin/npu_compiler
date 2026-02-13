@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,10 +17,10 @@ func.func @OptimizeQuantDequantSequence(%arg0 : tensor<1x40x1x1xf16>, %arg1 : te
   %5 = IE.Transpose(%4) {order_value = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x1x8x64xf16> -> tensor<1x64x1x8xf16>
   return %5 : tensor<1x64x1x8xf16>
 
-  // CHECK:  [[VAL1:%.*]] = IE.Convolution(%arg0, %arg1)
-  // CHECK:  [[VAL2:%.*]] = IE.FakeQuantize([[VAL1]]
+  // CHECK:  [[VAL1:%.+]] = IE.Convolution(%arg0, %arg1)
+  // CHECK:  [[VAL2:%.+]] = IE.FakeQuantize([[VAL1]]
   // CHECK-SAME: -> tensor<1x512x1x1xf16>
-  // CHECK:  [[VAL3:%.*]] = IE.AffineReshape([[VAL2]])
+  // CHECK:  [[VAL3:%.+]] = IE.AffineReshape([[VAL2]])
   // CHECK:  IE.AffineReshape([[VAL3]])
 }
 
@@ -32,8 +32,8 @@ func.func @NoOptimizeQuantDequantSequence(%arg0 : tensor<1xf16>) -> tensor<1x1x1
   %2 = IE.FakeQuantize(%1, %cst_0, %cst_1, %cst_0, %cst_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x1x1x1xf16>, tensor<f16>, tensor<f16>, tensor<f16>, tensor<f16> -> tensor<1x1x1x1xf16>
   return %2 : tensor<1x1x1x1xf16>
 
-  // CHECK:  [[VAL1:%.*]] = IE.AffineReshape(%arg0)
+  // CHECK:  [[VAL1:%.+]] = IE.AffineReshape(%arg0)
   // CHECK-SAME: tensor<1xf16> -> tensor<1x1x1x1xf16>
-  // CHECK:  [[VAL2:%.*]] = IE.FakeQuantize([[VAL1]]
+  // CHECK:  [[VAL2:%.+]] = IE.FakeQuantize([[VAL1]]
   // CHECK-SAME: -> tensor<1x1x1x1xf16>
 }

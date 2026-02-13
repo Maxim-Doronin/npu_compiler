@@ -1,10 +1,14 @@
-// Copyright (C) 2020-2025 Intel Corporation
+// Copyright (C) 2020-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/pooling.hpp"
 
 #include <common_test_utils/ov_tensor_utils.hpp>
+#include <openvino/opsets/opset3_decl.hpp>
+#include <openvino/opsets/opset8_decl.hpp>
+#include <shared_test_classes/base/ov_subgraph.hpp>
+#include "openvino/op/max_pool.hpp"
 #include "pretty_test_arguments.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -223,6 +227,7 @@ TEST_P(PoolingLayerTest_NPU4000_SOB, HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 class PoolingLayerTest_NPU5010 : public PoolingLayerTest, virtual public VpuOv2LayerTest {};
 class PoolingLayerTest_NPU5010_SOB : public PoolingLayerTestWithUnrollBatchingCompileMethod {};
 
@@ -247,6 +252,7 @@ TEST_P(PoolingLayerTest_NPU5010_SOB, HW) {
 }
 
 class MaxPoolingV8LayerTestCommon : public MaxPoolingV8LayerTest, virtual public VpuOv2LayerTest {};
+class MaxPoolingV8LayerTestCommonHW : public MaxPoolingV8LayerTest, virtual public VpuOv2LayerTest {};
 
 TEST_P(MaxPoolingV8LayerTestCommon, NPU3720_SW) {
     setSkipCompilationCallback([this](std::stringstream& skip) {
@@ -269,6 +275,19 @@ TEST_P(MaxPoolingV8LayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(MaxPoolingV8LayerTestCommonHW, NPU4000_HW) {
+    setSkipCompilationCallback([this](std::stringstream& skip) {
+        const auto netPrecision = std::get<1>(GetParam());
+        if (netPrecision == ov::element::i8 || netPrecision == ov::element::u8) {
+            skip << "MaxPool8 SingleLayerTest is not enabled with precision: " << netPrecision;
+        }
+    });
+    // Test on SOK
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(MaxPoolingV8LayerTestCommon, NPU5010_SW) {
     setSkipCompilationCallback([this](std::stringstream& skip) {
         const auto netPrecision = std::get<1>(GetParam());
@@ -314,6 +333,7 @@ TEST_P(AvgPoolingV16LayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
 class PoolingLayerTest_HostCompile : public PoolingLayerTest, virtual public VpuOv2LayerTest {};
 
 TEST_P(PoolingLayerTest_HostCompile, NPU4000_HC) {
@@ -322,7 +342,7 @@ TEST_P(PoolingLayerTest_HostCompile, NPU4000_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -332,7 +352,20 @@ TEST_P(PoolingLayerTest_HostCompile, NPU5010_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
+    run(Platform::NPU5010);
+}
+
+class PoolingLayerTest_SCFTiling : public PoolingLayerTest, virtual public VpuOv2LayerTest {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
+    }
+};
+
+TEST_P(PoolingLayerTest_SCFTiling, NPU5010_HW) {
+    setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
 
@@ -858,21 +891,27 @@ auto generateSOBParamsFromInputShape = [](const std::vector<ov::Shape>& inputSha
 
 const std::vector<std::vector<size_t>> kernels = {{3, 5}, {2, 2}, {3, 3}};
 const std::vector<std::vector<size_t>> kernel_3d = {{2, 2, 2}, {3, 3, 3}};
+const std::vector<std::vector<size_t>> kernels_2d_tiling = {{2, 2}, {3, 3}};
 
 const std::vector<ov::Strides> strides = {{2, 1}};
 const std::vector<ov::Strides> strides_3d = {{1, 1, 1}};
+const std::vector<ov::Strides> strides_2d_tiling = {{2, 2}, {3, 3}};
 
 const std::vector<ov::Strides> dilation = {{2, 2}};
 const std::vector<ov::Strides> dilation_3d = {{1, 1, 1}};
+const std::vector<ov::Strides> dilation_2d_tiling = {{1, 1}};
 
 const std::vector<std::vector<size_t>> pad_begins = {{0, 2}};
 const std::vector<std::vector<size_t>> pad_begins_3d = {{0, 0, 0}};
+const std::vector<std::vector<size_t>> pad_begins_2d_tiling = {{0, 0}};
 
 const std::vector<std::vector<size_t>> pad_ends = {{0, 2}};
 const std::vector<std::vector<size_t>> pad_ends_3d = {{0, 0, 0}};
+const std::vector<std::vector<size_t>> pad_ends_2d_tiling = {{0, 0}};
 
 const std::vector<std::vector<ov::Shape>> inputShape = {{{1, 3, 30, 30}}};
 const std::vector<std::vector<ov::Shape>> inputShape_5d = {{{1, 4, 16, 8, 12}}};
+const std::vector<std::vector<ov::Shape>> inputShape_4d_tiling = {{{1, 8, 667, 667}}};
 const std::vector<std::vector<ov::Shape>> inputShape_5d_tiling = {{{1, 128, 20, 14, 14}}};
 
 /* ========== Explicit Pad Floor Rounding ========== */
@@ -971,6 +1010,16 @@ const auto maxPool8_SameLowerPad_CeilRounding_5Dinput_tiling_Axis2_Params =
                            ::testing::Values(ov::element::f16),
                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShape_5d_tiling)),
                            ::testing::Values(test_utils::TARGET_DEVICE));
+
+const auto maxPool8_ValidPad_FloorRounding_4Dinput_tiling_Axis0_Params = ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(kernels_2d_tiling), ::testing::ValuesIn(strides_2d_tiling),
+                           ::testing::ValuesIn(dilation_2d_tiling), ::testing::ValuesIn(pad_begins_2d_tiling),
+                           ::testing::ValuesIn(pad_ends_2d_tiling), ::testing::Values(ov::element::i64),
+                           ::testing::Values(0), ::testing::Values(ov::op::RoundingType::FLOOR),
+                           ::testing::Values(ov::op::PadType::VALID)),
+        ::testing::Values(ov::element::f16),
+        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShape_4d_tiling)),
+        ::testing::Values(test_utils::TARGET_DEVICE));
 
 /* ========== AvgPool16 ========== */
 
@@ -1284,6 +1333,11 @@ INSTANTIATE_TEST_SUITE_P(smoke_MaxPool8_SameLowerPad_CeilRounding5D_tiling_axis0
 INSTANTIATE_TEST_SUITE_P(smoke_MaxPool8_SameLowerPad_CeilRounding5D_tiling_axis2, MaxPoolingV8LayerTestCommon,
                          maxPool8_SameLowerPad_CeilRounding_5Dinput_tiling_Axis2_Params,
                          MaxPoolingV8LayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_MaxPool8_ValidPad_FloorRounding4D_tiling_axis0, MaxPoolingV8LayerTestCommonHW,
+                         maxPool8_ValidPad_FloorRounding_4Dinput_tiling_Axis0_Params,
+                         MaxPoolingV8LayerTest::getTestCaseName);
+
 /* ============= AvgPool16 ============= */
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_AvgPool16_ExplicitPad_FloorRounding, AvgPoolingV16LayerTestCommon,
@@ -1306,6 +1360,27 @@ INSTANTIATE_TEST_SUITE_P(smoke_AvgPool16_SameUpperPad_CeilRounding5D, AvgPooling
 
 INSTANTIATE_TEST_SUITE_P(smoke_AvgPool16_SameLowerPad_CeilRounding5D, AvgPoolingV16LayerTestCommon,
                          avgPool16_SameLowerPad_CeilRounding_5Dinput_Params, AvgPoolingV16LayerTest::getTestCaseName);
+
+/* ============= SCFTiling ============= */
+
+const std::vector<std::vector<ov::test::InputShape>> inTilingShapes = {{
+        generateTestShape(1, 16, 1280, 1280),
+}};
+
+const auto SCFTiling_Params =
+        ::testing::Combine(::testing::Combine(::testing::Values(PoolingTypes::MAX),                //
+                                              ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),  // kernels
+                                              ::testing::ValuesIn<ov::Strides>({{1, 1}}),          // strides
+                                              ::testing::ValuesIn<std::vector<size_t>>({{0, 0}}),  // padBegins
+                                              ::testing::ValuesIn<std::vector<size_t>>({{0, 0}}),  // padEnds
+                                              ::testing::Values(ov::op::RoundingType::FLOOR),      //
+                                              ::testing::Values(ov::op::PadType::VALID),           //
+                                              ::testing::Values(false)),                           // excludePad
+                           ::testing::Values(ov::element::f16),                                    // netPrc
+                           ::testing::ValuesIn(inTilingShapes), ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(smoke_SCFTiling, PoolingLayerTest_SCFTiling, SCFTiling_Params,
+                         PoolingLayerTest_SCFTiling::getTestCaseName);
 
 /* ============= HostCompile ============= */
 

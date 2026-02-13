@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -25,7 +26,6 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE::arch50xx {
 #define GEN_PASS_DECL_CONSOLIDATEACTIVATIONFP8QUANTIZATION
@@ -43,8 +43,8 @@ private:
     Logger _log;
 
 public:
-    FakeConvertRewriter(mlir::MLIRContext* ctx, const Logger& log)
-            : mlir::OpRewritePattern<IE::FakeConvertOp>(ctx), _log(log) {
+    FakeConvertRewriter(mlir::MLIRContext* ctx, const Logger& log, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::FakeConvertOp>(ctx, benefit), _log(log) {
         setDebugName("FakeConvertRewriter");
     }
 
@@ -88,17 +88,17 @@ public:
         newFakeConvertInputShape.insert(newFakeConvertInputShape.begin(), targetRank - fakeConvertInputShape.size(), 1);
 
         auto activationReshapeOp =
-                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "_act_reshape"), fakeConvertInput, nullptr, false,
+                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "act_reshape"), fakeConvertInput, nullptr, false,
                                                getIntArrayAttr(ctx, newFakeConvertInputShape));
 
         auto newFakeConvertScaleShape = SmallVector<size_t>{1, 1, 1, 1};
         auto filterReshapeOp =
-                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "_scale_reshape"), origOp.getScale(), nullptr, false,
+                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "scale_reshape"), origOp.getScale(), nullptr, false,
                                                getIntArrayAttr(ctx, newFakeConvertScaleShape));
 
         // Broadcast filter
         auto targetShape = Shape{newFakeConvertInputShape[Dims4D::Filter::IC.ind()], 1, 1, 1};
-        auto broadCastOp = IE::createBroadcast(rewriter, appendLoc(loc, "_filter_broadcast"),
+        auto broadCastOp = IE::createBroadcast(rewriter, appendLoc(loc, "filter_broadcast"),
                                                filterReshapeOp.getOutput(), targetShape);
 
         const SmallVector<int32_t> strides = {1, 1};
@@ -113,19 +113,19 @@ public:
         auto groupAttr = getIntAttr(origOp.getContext(), newFakeConvertInputShape[Dims4D::Act::C.ind()]);
 
         auto depthWiseConv = rewriter.create<IE::GroupConvolutionOp>(
-                appendLoc(loc, "_conv"), activationReshapeOp, broadCastOp,
+                appendLoc(loc, "conv"), activationReshapeOp, broadCastOp,
                 /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
                 /*postOp=*/nullptr, /*clamp=*/nullptr,
                 /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 
         auto convOutReshape =
-                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "_conv_reshape"), depthWiseConv.getOutput(), nullptr,
+                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "conv_reshape"), depthWiseConv.getOutput(), nullptr,
                                                false, getIntArrayAttr(ctx, getShape(origOp.getOutput())));
 
         // Create a pair of dummy Quantize->Dequantize operations to ensure the data actually gets converted
         const auto dequantType = mlir::cast<NDTypeInterface>(origOp.getOutput().getType()).getElementType();
-        const auto minMax = vpux::getFp8Range(origOp.getDstType());
-        VPUX_THROW_WHEN(mlir::failed(minMax), "Unexpected data type {0}", origOp.getDstType());
+        VPUX_THROW_UNLESS(vpux::isFloat8(origOp.getDstType()), "Unexpected data type {0}", origOp.getDstType());
+        const auto minMax = vpux::getLowFpRange(origOp.getDstType());
 
         const auto qMin = std::get<0>(*minMax), qMax = std::get<1>(*minMax);
         auto quantType =
@@ -133,15 +133,15 @@ public:
                                                        dequantType, /*scales=*/1.0, /*zeroPoints=*/0, qMin, qMax);
 
         auto quantizeOp =
-                rewriter.create<IE::QuantizeOp>(appendLoc(loc, "_quantize"), convOutReshape.getOutput(), quantType);
+                rewriter.create<IE::QuantizeOp>(appendLoc(loc, "quantize"), convOutReshape.getOutput(), quantType);
         auto dequantizeOp =
-                rewriter.create<IE::DequantizeOp>(appendLoc(loc, "_dequantize"), quantizeOp.getOutput(), dequantType);
+                rewriter.create<IE::DequantizeOp>(appendLoc(loc, "dequantize"), quantizeOp.getOutput(), dequantType);
 
         rewriter.replaceOp(origOp, dequantizeOp.getOutput());
 
         // Create Divide
         rewriter.setInsertionPointAfter(dequantizeOp);
-        auto divideOp = rewriter.create<IE::DivideOp>(appendLoc(loc, "_divide"), dequantizeOp.getOutput(), scale,
+        auto divideOp = rewriter.create<IE::DivideOp>(appendLoc(loc, "divide"), dequantizeOp.getOutput(), scale,
                                                       IE::AutoBroadcastType::NUMPY);
         rewriter.replaceAllUsesExcept(dequantizeOp.getOutput(), divideOp.getOutput(), {divideOp});
 
@@ -162,7 +162,8 @@ private:
     Logger _log;
 
 public:
-    MoveDividePost(mlir::MLIRContext* ctx, const Logger& log): mlir::OpRewritePattern<IE::DivideOp>(ctx), _log(log) {
+    MoveDividePost(mlir::MLIRContext* ctx, const Logger& log, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::DivideOp>(ctx, benefit), _log(log) {
         setDebugName("MoveDividePost");
     }
 
@@ -243,42 +244,22 @@ mlir::LogicalResult MoveDividePost<ConcreteOp>::matchAndRewrite(IE::DivideOp ori
 
     // Insert new Divide
     rewriter.setInsertionPointAfter(layerOp);
-    auto newDivide = rewriter.create<IE::DivideOp>(appendLoc(origOp->getLoc(), "_post_fc"), layerOp->getResult(0),
-                                                   scale, IE::AutoBroadcastType::NUMPY);
+    auto newDivide = rewriter.create<IE::DivideOp>(appendLoc(origOp->getLoc(), "post_fc"), layerOp->getResult(0), scale,
+                                                   IE::AutoBroadcastType::NUMPY);
     rewriter.replaceAllUsesExcept(layerOp->getResult(0), newDivide.getOutput(), {newDivide});
 
     return mlir::success();
 }
 
-class ConsolidateActivationFP8QuantizationPass final :
-        public IE::arch50xx::impl::ConsolidateActivationFP8QuantizationBase<ConsolidateActivationFP8QuantizationPass> {
-public:
-    explicit ConsolidateActivationFP8QuantizationPass(const Logger& log) {
-        Base::initLogger(log, Base::getArgumentName());
-    }
-
-private:
-    void safeRunOnFunc() final;
-};
-
-void ConsolidateActivationFP8QuantizationPass::safeRunOnFunc() {
-    auto func = getOperation();
-    auto& ctx = getContext();
-    mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<FakeConvertRewriter>(&ctx, _log);
-    patterns.add<MoveDividePost<IE::FullyConnectedOp>>(&ctx, _log);
-    patterns.add<MoveDividePost<IE::MatMulOp>>(&ctx, _log);
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns)))) {
-        signalPassFailure();
-    }
-}
-
 }  // namespace vpux
 
-//
-// createConsolidateActivationFP8QuantizationPass
-//
-
-std::unique_ptr<mlir::Pass> vpux::IE::arch50xx::createConsolidateActivationFP8QuantizationPass(const Logger& log) {
-    return std::make_unique<ConsolidateActivationFP8QuantizationPass>(log);
+void vpux::IE::registerConsolidateActivationFP8QuantizationRewriters(RewriterRegistry& registry,
+                                                                     ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                                                     size_t index, Logger log) {
+    registry.registerRewriterSet("consolidate-activation-fp8-quantization", [&]() {
+        registry.registerRewriter<FakeConvertRewriter>("fake-convert", log, benefitLevels[index]);
+        registry.registerRewriter<MoveDividePost<IE::FullyConnectedOp>>("move-divide-post-fully-connected", log,
+                                                                        benefitLevels[index]);
+        registry.registerRewriter<MoveDividePost<IE::MatMulOp>>("move-divide-post-mat-mul", log, benefitLevels[index]);
+    });
 }

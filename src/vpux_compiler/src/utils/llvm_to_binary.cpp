@@ -1,19 +1,17 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/llvm_to_binary.hpp"
 #include "shave_ld.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/utils/core/small_string.hpp"
 
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
-#include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
-#include <mlir/Target/LLVMIR/Export.h>
+#include <mlir/Target/LLVMIR/ModuleTranslation.h>
 
-#include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SetVector.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Program.h>
@@ -98,6 +96,27 @@ static void addDenormalFlags(llvm::Module& module) {
     }
 }
 
+static void stripIncompatibleAttributes(llvm::Module& module) {
+    // Remove attributes which movicompile can't yet handle.
+    // TODO: E#197224 remove these workarounds when movicompile reaches llvm 20.x
+    for (auto& func : module) {
+        // The captures attribute was introduced in llvm 20.x.
+        func.removeRetAttr(llvm::Attribute::Captures);
+        for (auto& arg : func.args()) {
+            arg.removeAttr(llvm::Attribute::Captures);
+        }
+
+        for (auto& basicBlock : func) {
+            for (auto& inst : basicBlock) {
+                if (auto* gep = llvm::dyn_cast<llvm::GetElementPtrInst>(&inst)) {
+                    // GEP no wrap flags were introduced in llvm 19.x.
+                    gep->setNoWrapFlags(llvm::GEPNoWrapFlags::none());
+                }
+            }
+        }
+    }
+}
+
 std::unique_ptr<llvm::Module> vpux::translateToLLVMIR(mlir::ModuleOp moduleOp, mlir::SymbolRefAttr swKernelSymbol,
                                                       llvm::LLVMContext& llvmContext) {
     auto llvmFuncOp = moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(swKernelSymbol);
@@ -125,6 +144,7 @@ std::unique_ptr<llvm::Module> vpux::translateToLLVMIR(mlir::ModuleOp moduleOp, m
         VPUX_THROW("Failed to emit LLVM IR\n");
     }
     addDenormalFlags(*llvmModule);
+    stripIncompatibleAttributes(*llvmModule);
     tmpModuleOp.erase();
     return llvmModule;
 }
@@ -142,7 +162,7 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, std::unique_ptr<llvm::Modu
     VPUX_THROW_UNLESS(arch != config::ArchKind::UNKNOWN, "Could not identify arch");
 
     auto llvmFuncOpNameStr = llvmFuncOp.getName().str();
-    ShaveBinaryResources& sbr = ShaveBinaryResourcesCache::getCache(moduleOp->getContext());
+    auto& sbr = getShaveBinaryResources(moduleOp->getContext());
 
     auto archArgument = sbr.getSwKernelArchString(arch);
 
@@ -176,8 +196,11 @@ void vpux::lowerLLVMToBinary(mlir::ModuleOp moduleOp, std::unique_ptr<llvm::Modu
 
     const auto prgMCStr = std::string(mvToolsPathCompleteStr) + "/linux64/bin/moviCompile";
     const auto prgMC = StringRef(prgMCStr);
-    const auto mcpuStr = vpux::SmallString("-mcpu=") + archArgument;
-    const auto mcpu = mcpuStr.str();
+    // concatenation ("+") below of two SmallString objects generates a Twine
+    // Twines should not be stored into variable on the stack as they are destroyed immediately after the expression
+    // see Twine's documentation
+    // hence use concatenation result (via .str()) immediately
+    const auto mcpu = (vpux::SmallString("-mcpu=") + archArgument).str();
 
     llvm::SmallVector<llvm::StringRef> runArgsMC = {prgMC,         // Movicompile tool
                                                     mcpu,          // CPU

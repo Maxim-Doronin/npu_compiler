@@ -23,11 +23,12 @@ public:
 
 protected:
     void correctOutputSpillCost(StrategyCost& spillCost, VFConfig& config,
-                                const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, const int64_t index,
+                                const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost,
+                                SmallVector<StrategyCost>& prefetchCostList, const int64_t index,
                                 const int64_t tilesNumber) const override;
 
     void correctInputPrefetchingCost(StrategyCost& prefetchCost, mlir::Operation* operation, VFConfig& config,
                                      const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost,
-                                     const size_t index) const override;
+                                     SmallVector<StrategyCost>& prefetchCostList, const size_t index) const override;
 };
 }  // namespace vpux::VPU::VF::v2

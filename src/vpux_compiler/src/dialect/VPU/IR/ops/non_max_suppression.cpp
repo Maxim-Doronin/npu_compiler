@@ -5,6 +5,8 @@
 
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auxiliary_buffers.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
 
@@ -13,7 +15,11 @@ mlir::Type getAuxiliaryBufferType(mlir::Value inBoxCoords, mlir::FloatAttr softN
     auto elemType = inBoxCoordsType.getElementType();
     size_t elemTypeSize = Byte(vpux::getElemTypeSize(elemType)).count();
     const auto inputShape = inBoxCoordsType.getShape();
-    const auto numBoxes = inputShape[Dim(1)];
+    const auto shapeInfo = ShapeInfo::fromNDType(inBoxCoordsType);
+    auto numBoxes = inputShape[Dim(1)];
+    if (shapeInfo.isDynamic()) {
+        numBoxes = shapeInfo.bounds[Dim(1).ind()];
+    }
     const auto softNmsSigma = softNmsSigmaValueAttr != nullptr ? softNmsSigmaValueAttr.getValueAsDouble() : 0.0;
 
     size_t offset = 0;
@@ -46,7 +52,7 @@ void VPU::NonMaxSuppressionOp::build(mlir::OpBuilder& odsBuilder, mlir::Operatio
                                      mlir::IntegerAttr maxOutputBoxesPerClassValue, mlir::FloatAttr iouThresholdValue,
                                      mlir::FloatAttr scoreThresholdValue, mlir::FloatAttr softNmsSigmaValue) {
     const auto auxBuffType = getAuxiliaryBufferType(inBoxCoords, softNmsSigmaValue);
-    auto auxBuffer = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
+    auto auxBuffer = VPU::createEmptyAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
     build(odsBuilder, odsState, inBoxCoords, inBoxScores, auxBuffer, boxEncoding, sortResultDescending,
           maxOutputBoxesPerClassValue, iouThresholdValue, scoreThresholdValue, softNmsSigmaValue);
 }
@@ -64,24 +70,33 @@ mlir::LogicalResult VPU::NonMaxSuppressionOp::inferReturnTypes(mlir::MLIRContext
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(nms.getInBoxScores().getType());
-    const auto sInt32Type = inType.changeElemType(mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed));
+    const int64_t maxOutputBoxesPerClass = nms.getMaxOutputBoxesPerClassValueAttr().getValue().getSExtValue();
+    const auto inScoresType = mlir::cast<vpux::NDTypeInterface>(nms.getInBoxScores().getType());
+    const auto inScoresShapeInfo = ShapeInfo::fromNDType(inScoresType);
+    const auto numBatches = inScoresShapeInfo.shape[0];
+    const auto numClasses = inScoresShapeInfo.shape[1];
+    const auto numBoxes = std::min(inScoresShapeInfo.shape[2], maxOutputBoxesPerClass);
+    SmallVector<int64_t> outShape{numBatches * numClasses * numBoxes, 3};
+    TensorAttr outTensorAttr = nullptr;
 
-    int64_t maxOutputBoxesPerClass = nms.getMaxOutputBoxesPerClassValueAttr().getValue().getSExtValue();
-    const auto inShape = inType.getShape().raw();  // nbatch*nclasses*nboxes
-    const auto numBatches = inShape[0];
-    const auto numClasses = inShape[1];
-    const auto numBoxes = inShape[2];
-    const auto minBoxes = std::min(numBoxes, maxOutputBoxesPerClass);
-    const SmallVector<int64_t> outShape{minBoxes * numBatches * numClasses, 3};
-    const SmallVector<int64_t> validOutputsShape{1};
+    if (inScoresShapeInfo.isDynamic()) {
+        // Handle dynamic shape case
+        const auto numBatches = inScoresShapeInfo.bounds[0];
+        const auto numClasses = inScoresShapeInfo.bounds[1];
+        const auto numBoxes = std::min(inScoresShapeInfo.bounds[2], maxOutputBoxesPerClass);
+        const Bounds bounds{numBatches * numClasses * numBoxes, 3};
+        outTensorAttr = vpux::getTensorAttr(ctx, vpux::DimsOrder::NC, nullptr, bounds);
+        outShape = SmallVector<int64_t>{mlir::ShapedType::kDynamic, 3};
+    }
 
-    const auto outFloatType = inType.changeShape(ShapeRef(outShape));
-    const auto outIntType = sInt32Type.changeShape(ShapeRef(outShape));
-    const auto validOutputsType = sInt32Type.changeShape(ShapeRef(validOutputsShape));
-    inferredReturnTypes.push_back(outIntType);
-    inferredReturnTypes.push_back(outFloatType);
-    inferredReturnTypes.push_back(validOutputsType);
+    const auto sInt32Type = mlir::IntegerType::get(ctx, 32, mlir::IntegerType::Signed);
+    const auto outType0 = mlir::RankedTensorType::get(outShape, sInt32Type, outTensorAttr);
+    const auto outType1 = mlir::RankedTensorType::get(outShape, inScoresType.getElementType(), outTensorAttr);
+    const auto outType2 = mlir::RankedTensorType::get({1}, sInt32Type);
+
+    inferredReturnTypes.push_back(outType0);
+    inferredReturnTypes.push_back(outType1);
+    inferredReturnTypes.push_back(outType2);
     return mlir::success();
 }
 
@@ -92,6 +107,6 @@ llvm::LogicalResult VPU::NonMaxSuppressionOp::verify() {
     return VPU::compareTypes(getOperation()->getLoc(), auxBufferType, expectedType);
 }
 
-SmallVector<mlir::Value> VPU::NonMaxSuppressionOp::getAuxiliaryBuffers() {
-    return {getDataBuffer()};
+SmallVector<mlir::OpOperand*> VPU::NonMaxSuppressionOp::getAuxiliaryBuffers() {
+    return {&getDataBufferMutable()};
 }

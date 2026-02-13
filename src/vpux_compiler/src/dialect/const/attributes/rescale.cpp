@@ -136,13 +136,3 @@ Const::Content vpux::Const::RescaleAttr::transform(vpux::Const::Content& input) 
     }
     return output;
 }
-
-//
-// RescaleAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::RescaleAttr::getStableHashValue() const {
-    VPUX_THROW_UNLESS(getScale().isSplat(), "RescaleAttr scale must be splat");
-    const auto scale = getScale().fold().getSplatValue<double>();
-    return llvm::hash_combine(getMnemonic(), llvm::APFloat(scale));
-}

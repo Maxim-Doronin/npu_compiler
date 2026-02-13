@@ -26,7 +26,7 @@ void GraphTransformations_UnitTests::SetUp() {
     const auto axesConst = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {2, 3});
     const auto mvn = std::make_shared<ov::opset6::MVN>(data, axesConst, false, 1e-5, ov::op::MVNEpsMode::OUTSIDE_SQRT);
 
-    opset6mvn = std::make_shared<ov::Model>(ov::NodeVector{mvn}, ov::ParameterVector{data});
+    opset6mvn = std::make_shared<ov::Model>(ov::OutputVector{mvn}, ov::ParameterVector{data});
 }
 
 //------------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,7 @@ module @NoTransformations {
     }
 
     // CHECK: @main() -> tensor<4x1xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1>
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1>
     // CHECK:   return [[CST]]
 }
 
@@ -57,7 +57,7 @@ module @Reshape {
     }
 
     // CHECK: @main() -> tensor<2x2xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Reshape<[2, 2]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.Reshape<[2, 2]>]
     // CHECK:   return [[CST]]
 }
 
@@ -88,7 +88,7 @@ module @ReshapeNonIdentityOrder {
     }
 
     // CHECK: @main() -> tensor<2x2xf32, {order = [[CN]]}>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Reshape<[2, 2]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.Reshape<[2, 2]>]
     // CHECK:   return [[CST]]
 }
 
@@ -116,7 +116,7 @@ module @SubView {
     }
 
     // CHECK: @main() -> tensor<2x1xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.SubView<[0, 0], [2, 1]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.SubView<[0, 0], [2, 1]>]
     // CHECK:   return [[CST]]
 }
 
@@ -147,7 +147,7 @@ module @LayoutCast {
     }
 
     // CHECK: @main() -> tensor<4x1xf32, {order = [[CN]]}>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.LayoutCast<[[CN]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.LayoutCast<[[CN]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -180,7 +180,7 @@ module @TrivialMemPermute {
     }
 
     // CHECK: @main() -> tensor<4x1xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.MemPermute<[[NC]], [[CN]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.MemPermute<[[NC]], [[CN]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -212,7 +212,7 @@ module @TrivialTranspose {
     }
 
     // CHECK: @main() -> tensor<1x4xf32>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Transpose<[[swap]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.Transpose<[[swap]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -243,7 +243,7 @@ module @TrivialReorder {
     }
 
     // CHECK: @main() -> tensor<4x1xf32, {order = [[CN]]}>
-    // CHECK:   [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1> {{.*}} [#const.Reorder<[[CN]]>]
+    // CHECK:   [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1> {{.+}} [#const.Reorder<[[CN]]>]
     // CHECK:   return [[CST]]
 }
 
@@ -273,7 +273,7 @@ module @AffineReshape {
     }
 
     // CHECK:           func.func @main() -> tensor<1x1x3x3xf32, {order = #NCWH}>
-    // CHECK:               [[CST:%.+]] = const.Declare {{.*}} dense_resource<vpux_ow_1>
+    // CHECK:               [[CST:%.+]] = const.Declare {{.+}} dense_resource<vpux_ow_1>
     // CHECK{LITERAL}:           [#const.AffineReshape<[[0], [1], [3], [2]], [1, 1, 3, 3]>]
     // CHECK:           return [[CST]]
 }

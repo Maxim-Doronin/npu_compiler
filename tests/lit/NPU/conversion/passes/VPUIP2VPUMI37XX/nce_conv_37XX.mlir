@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -50,37 +50,37 @@ func.func private @multiple_clusters_dpu_soh_f16_f16_f16(%arg0: memref<1x32x32x3
 }
 
 //CHECK-LABEL: @multiple_clusters_dpu_soh_f16_f16_f16
-//CHECK: %[[VAL2:.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> [[TYPE2:.*]]
-//CHECK-NEXT: %[[VAL3:.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <32768> -> [[TYPE3:.*]]
-//CHECK-NEXT: %[[VAL4:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<64x32x1x1xf16, {order = #NHWC, strides = [32, 1, 32, 32]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-//CHECK-NEXT: %[[VAL5:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE5:.*]]
-//CHECK-NEXT: %[[VAL6:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[TYPE6:.*]]
-//CHECK-NEXT: %[[VAL7:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <4096> -> [[TYPE7:.*]]
-//CHECK-NEXT: %[[VAL8:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <4096> -> [[TYPE8:.*]]
-//CHECK-NEXT: %[[VAL9:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <4096> -> [[TYPE9:.*]]
-//CHECK-NEXT: %[[VAL10:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <69632> -> [[TYPE10:.*]]
-//CHECK-NEXT: %[[VAL11:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <69632> -> [[TYPE11:.*]]
-//CHECK-NEXT: %[[VAL12:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <69632> -> [[TYPE12:.*]]
-//CHECK-NEXT: %[[VAL13:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <102400> -> [[TYPE13:.*]]
-//CHECK-NEXT: %[[VAL14:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <102400> -> [[TYPE14:.*]]
-//CHECK-NEXT: %[[VAL15:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <102400> -> [[TYPE15:.*]]
+//CHECK: [[VAL2:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> [[TYPE2:.+]]
+//CHECK-NEXT: [[VAL3:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <32768> -> [[TYPE3:.+]]
+//CHECK-NEXT: [[VAL4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<64x32x1x1xf16, {order = #NHWC, strides = [32, 1, 32, 32]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+//CHECK-NEXT: [[VAL5:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE5:.+]]
+//CHECK-NEXT: [[VAL6:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[TYPE6:.+]]
+//CHECK-NEXT: [[VAL7:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <4096> -> [[TYPE7:.+]]
+//CHECK-NEXT: [[VAL8:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <4096> -> [[TYPE8:.+]]
+//CHECK-NEXT: [[VAL9:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <4096> -> [[TYPE9:.+]]
+//CHECK-NEXT: [[VAL10:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <69632> -> [[TYPE10:.+]]
+//CHECK-NEXT: [[VAL11:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <69632> -> [[TYPE11:.+]]
+//CHECK-NEXT: [[VAL12:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <69632> -> [[TYPE12:.+]]
+//CHECK-NEXT: [[VAL13:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <102400> -> [[TYPE13:.+]]
+//CHECK-NEXT: [[VAL14:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <102400> -> [[TYPE14:.+]]
+//CHECK-NEXT: [[VAL15:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <102400> -> [[TYPE15:.+]]
 //CHECK-NOT: VPURT.Task
-//CHECK-NEXT: VPUMI37XX.DPUInvariant {{.*}} is_segmented
-                //CHECK-DAG: input(%[[VAL11]] : [[TYPE11]])
-                //CHECK-DAG: weights(%[[VAL5]] : [[TYPE5]])
-                //CHECK-DAG: weight_table(%[[VAL13]] : [[TYPE13]])
-                //CHECK-DAG: parent_input(%[[VAL10]] : [[TYPE10]])
-                //CHECK-DAG: parent_output(%[[VAL7]] : [[TYPE7]])
-                //CHECK-DAG: outputs(%[[VAL8]] : [[TYPE8]])
+//CHECK-NEXT: VPUMI37XX.DPUInvariant {{.+}} is_segmented
+                //CHECK-DAG: input([[VAL11]] : [[TYPE11]])
+                //CHECK-DAG: weights([[VAL5]] : [[TYPE5]])
+                //CHECK-DAG: weight_table([[VAL13]] : [[TYPE13]])
+                //CHECK-DAG: parent_input([[VAL10]] : [[TYPE10]])
+                //CHECK-DAG: parent_output([[VAL7]] : [[TYPE7]])
+                //CHECK-DAG: outputs([[VAL8]] : [[TYPE8]])
 //CHECK-NOT: DPUTask
 //CHECK: VPUMI37XX.DPUVariant
-//CHECK-NEXT: VPUMI37XX.DPUInvariant {{.*}} is_segmented
-                //CHECK-DAG: input(%[[VAL12]] : [[TYPE12]])
-                //CHECK-DAG: weights(%[[VAL6]] : [[TYPE6]])
-                //CHECK-DAG: weight_table(%[[VAL14]] : [[TYPE14]])
-                //CHECK-DAG: parent_input(%[[VAL10]] : [[TYPE10]])
-                //CHECK-DAG: parent_output(%[[VAL7]] : [[TYPE7]])
-                //CHECK-DAG: outputs(%[[VAL9]] : [[TYPE9]])
+//CHECK-NEXT: VPUMI37XX.DPUInvariant {{.+}} is_segmented
+                //CHECK-DAG: input([[VAL12]] : [[TYPE12]])
+                //CHECK-DAG: weights([[VAL6]] : [[TYPE6]])
+                //CHECK-DAG: weight_table([[VAL14]] : [[TYPE14]])
+                //CHECK-DAG: parent_input([[VAL10]] : [[TYPE10]])
+                //CHECK-DAG: parent_output([[VAL7]] : [[TYPE7]])
+                //CHECK-DAG: outputs([[VAL9]] : [[TYPE9]])
 //CHECK-NOT: DPUTask
 //CHECK: VPUMI37XX.DPUVariant
 
@@ -128,43 +128,43 @@ module @mainModule {
 
 //CHECK-LABEL: @multiple_clusters_dpu_sok_f16_f16_f16
 
-//CHECK: %[[VAL1:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> [[TYPE1:.*]]
-//CHECK-NEXT: %[[VAL2:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE2:.*]]
-//CHECK-NEXT: %[[VAL3:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[TYPE3:.*]]
-//CHECK-NEXT: %[[VAL4:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2048> -> [[TYPE4:.*]]
-//CHECK-NEXT: %[[VAL5:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2048> -> [[TYPE5:.*]]
-//CHECK-NEXT: %[[VAL6:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2048> -> [[TYPE6:.*]]
-//CHECK-NEXT: %[[VAL7:.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <34816> -> [[TYPE7:.*]]
-//CHECK-NEXT: %[[VAL8:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <34816> -> [[TYPE8:.*]]
-//CHECK-NEXT: %[[VAL9:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <34816> -> [[TYPE9:.*]]
-//CHECK-NEXT: %[[VAL10:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <51200> -> [[TYPE10:.*]]
-//CHECK-NEXT: %[[VAL11:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <51200> -> [[TYPE11:.*]]
-//CHECK-NEXT: %[[VAL12:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[TYPE12:.*]]
-//CHECK-NEXT: %[[VAL13:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> [[TYPE13:.*]]
-//CHECK-NEXT: %[[VAL14:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[TYPE14:.*]]
-//CHECK-NEXT: %[[VAL15:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> [[TYPE15:.*]]
+//CHECK: [[VAL1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> [[TYPE1:.+]]
+//CHECK-NEXT: [[VAL2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> [[TYPE2:.+]]
+//CHECK-NEXT: [[VAL3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> [[TYPE3:.+]]
+//CHECK-NEXT: [[VAL4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2048> -> [[TYPE4:.+]]
+//CHECK-NEXT: [[VAL5:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2048> -> [[TYPE5:.+]]
+//CHECK-NEXT: [[VAL6:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <2048> -> [[TYPE6:.+]]
+//CHECK-NEXT: [[VAL7:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <34816> -> [[TYPE7:.+]]
+//CHECK-NEXT: [[VAL8:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <34816> -> [[TYPE8:.+]]
+//CHECK-NEXT: [[VAL9:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <34816> -> [[TYPE9:.+]]
+//CHECK-NEXT: [[VAL10:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <51200> -> [[TYPE10:.+]]
+//CHECK-NEXT: [[VAL11:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <51200> -> [[TYPE11:.+]]
+//CHECK-NEXT: [[VAL12:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[TYPE12:.+]]
+//CHECK-NEXT: [[VAL13:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> [[TYPE13:.+]]
+//CHECK-NEXT: [[VAL14:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[TYPE14:.+]]
+//CHECK-NEXT: [[VAL15:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> [[TYPE15:.+]]
 
 //CHECK-NOT: VPURT.Task
 //CHECK: VPUMI37XX.DPUInvariant
-                //CHECK-DAG: input(%[[VAL8]] : [[TYPE8]])
-                //CHECK-DAG: weights(%[[VAL2]] : [[TYPE2]])
-                //CHECK-DAG: weight_table(%[[VAL10]] : [[TYPE10]])
-                //CHECK-DAG: parent_input(%[[VAL7]] : [[TYPE7]])
-                //CHECK-DAG: parent_output(%[[VAL4]] : [[TYPE4]])
-                //CHECK-DAG: outputs(%[[VAL14]], %[[VAL15]] : [[TYPE14]], [[TYPE15]])
+                //CHECK-DAG: input([[VAL8]] : [[TYPE8]])
+                //CHECK-DAG: weights([[VAL2]] : [[TYPE2]])
+                //CHECK-DAG: weight_table([[VAL10]] : [[TYPE10]])
+                //CHECK-DAG: parent_input([[VAL7]] : [[TYPE7]])
+                //CHECK-DAG: parent_output([[VAL4]] : [[TYPE4]])
+                //CHECK-DAG: outputs([[VAL14]], [[VAL15]] : [[TYPE14]], [[TYPE15]])
 //CHECK-NOT: DPUTask
 //CHECK: VPUMI37XX.DPUVariant
 
-//CHECK-NEXT: %[[VAL26:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[TYPE26:.*]]
-//CHECK-NEXT: %[[VAL27:.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> [[TYPE27:.*]]
+//CHECK-NEXT: [[VAL26:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> [[TYPE26:.+]]
+//CHECK-NEXT: [[VAL27:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <2048> -> [[TYPE27:.+]]
 //CHECK-NOT: VPURT.Task
 //CHECK-NEXT: VPUMI37XX.DPUInvariant
-                //CHECK-DAG: input(%[[VAL9]] : [[TYPE9]])
-                //CHECK-DAG: weights(%[[VAL3]] : [[TYPE3]])
-                //CHECK-DAG: weight_table(%[[VAL11]] : [[TYPE11]])
-                //CHECK-DAG: parent_input(%[[VAL7]] : [[TYPE7]])
-                //CHECK-DAG: parent_output(%[[VAL4]] : [[TYPE4]])
-                //CHECK-DAG: outputs(%[[VAL26]], %[[VAL27]] : [[TYPE26]], [[TYPE27]])
+                //CHECK-DAG: input([[VAL9]] : [[TYPE9]])
+                //CHECK-DAG: weights([[VAL3]] : [[TYPE3]])
+                //CHECK-DAG: weight_table([[VAL11]] : [[TYPE11]])
+                //CHECK-DAG: parent_input([[VAL7]] : [[TYPE7]])
+                //CHECK-DAG: parent_output([[VAL4]] : [[TYPE4]])
+                //CHECK-DAG: outputs([[VAL26]], [[VAL27]] : [[TYPE26]], [[TYPE27]])
 //CHECK-NOT: DPUTask
 //CHECK: VPUMI37XX.DPUVariant
 
@@ -195,9 +195,9 @@ module @mainModule {
 }
 
 //CHECK-LABEL: @sparse_conv
-//CHECK: %[[VALSPS:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <335872> -> memref<32x1x1x128xi1, [@CMX_NN, 0]>
+//CHECK: [[VALSPS:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <335872> -> memref<32x1x1x128xi1, [@CMX_NN, 0]>
 //CHECK: VPUMI37XX.DPUInvariant
-//CHECK-SAME: weights_sparsity_map(%[[VALSPS]] : memref<32x1x1x128xi1, [@CMX_NN, 0]>)
+//CHECK-SAME: weights_sparsity_map([[VALSPS]] : memref<32x1x1x128xi1, [@CMX_NN, 0]>)
 
 // -----
 
@@ -228,11 +228,11 @@ module @mainModule {
 }
 
 //CHECK-LABEL: @se_table_dpu_f16_f16_f16
-//CHECK: %[[VALSMP:.*]] = VPURT.DeclareBuffer <CMX_NN> {{.*}} -> memref<1x32x16x16xi1
-//CHECK: %[[VALSET:.*]] = VPURT.DeclareBuffer <CMX_NN> {{.*}} -> memref<1x1x16x16xi32
+//CHECK: [[VALSMP:%.+]] = VPURT.DeclareBuffer <CMX_NN> {{.+}} -> memref<1x32x16x16xi1
+//CHECK: [[VALSET:%.+]] = VPURT.DeclareBuffer <CMX_NN> {{.+}} -> memref<1x1x16x16xi32
 //CHECK: VPUMI37XX.DPUInvariant
-//CHECK-SAME: input_sparsity_map(%[[VALSMP]] : memref<1x32x16x16xi1
-//CHECK-SAME: input_storage_element_table(%[[VALSET]] : memref<1x1x16x16xi32
+//CHECK-SAME: input_sparsity_map([[VALSMP]] : memref<1x32x16x16xi1
+//CHECK-SAME: input_storage_element_table([[VALSET]] : memref<1x1x16x16xi32
 
 // -----
 
@@ -264,8 +264,8 @@ module @mainModule {
   }
 }
 
-//CHECK: %[[VALSMP:.*]] = VPURT.DeclareBuffer <CMX_NN> {{.*}} -> memref<16x16x1x1xf16
-//CHECK: %[[VALSET:.*]] = VPURT.DeclareBuffer <CMX_NN> {{.*}} -> memref<16x1x1x4xsi32
+//CHECK: [[VALSMP:%.+]] = VPURT.DeclareBuffer <CMX_NN> {{.+}} -> memref<16x16x1x1xf16
+//CHECK: [[VALSET:%.+]] = VPURT.DeclareBuffer <CMX_NN> {{.+}} -> memref<16x1x1x4xsi32
 //CHECK: VPUMI37XX.DPUInvariant
 //CHECK-SAME: input_se_size = 16 : i64
 //CHECK-SAME: is_superdense

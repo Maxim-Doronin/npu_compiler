@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "common/utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_manager.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
@@ -22,6 +22,9 @@ TEST_F(MLIR_VPU_ClusteringStrategyNoThrow, SWLayer_ClusteringStrategy) {
     constexpr llvm::StringLiteral inputIR = R"(
 #loc0 = loc(unknown)
     module @main attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+        config.PipelineOptions @Options {
+            config.Option @config.EnableODULocalRegion : false
+        }
         config.Resources 6 of @NCE at 1.700000e+03 MHz {
             config.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
             config.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
@@ -100,12 +103,8 @@ TEST_F(MLIR_VPU_ClusteringStrategyNoThrow, SWLayer_ClusteringStrategy) {
     VPUX_THROW_UNLESS(tileOp.getCount() > 1, "Cannot assign multi-cluster strategy to single-cluster module ops");
     bool enablePrefetchTiling = true;
 
-    // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
-
     auto siblingsOpsAnalysis = vpux::VPU::SiblingOpsAnalysis(func);
-    const auto arch = config::getArch(module.get());
-    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
+    auto layerCostModel = VPU::CostModelConfig::createLayerCostModel(&ctx);
     vpux::VPU::StrategyManager strategyManager(func, tileOp.getCount(), enablePrefetchTiling,
                                                VPU::MCOptimizationScope::SUBGRAPH, siblingsOpsAnalysis, layerCostModel,
                                                vpux::Logger::global());

@@ -1,15 +1,12 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/core/tiling.hpp"
-
-namespace vpux::VPUIP {
-class SwKernelOp;
-}
+#include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
 
 namespace vpux::VPU {
 
@@ -19,13 +16,15 @@ InputTiling DetectionOutputSortOpInputTilingOnShave(VPUIP::SwKernelOp swKernelOp
                                                     int tileId, int tileCount, Logger log);
 
 OutputTiling GRUSequenceOutputTiling(const vpux::TileInfo& firstOutputTile);
+OutputTiling logSoftmaxTopKOutputTiling(const vpux::TileInfo& firstOutputTile);
+OutputTiling logSoftmaxPeakOutputTiling(const vpux::TileInfo& firstOutputTile);
 OutputTiling lstmSequenceOutputTiling(const vpux::TileInfo& firstOutputTile);
 OutputTiling lstmDpuOutputTiling(const vpux::TileInfo& firstOutputTile);
 OutputTiling DynamicQuantizeOutputTiling(const vpux::TileInfo& firstOutputTile);
 
 OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile, int64_t qkEmbedding);
 InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeRef keyShape,
-                                   std::optional<ShapeRef> attentionMaskShape, std::optional<ShapeRef> scaleShape,
+                                   std::optional<ShapeRef> attentionMaskShape, ShapeRef auxBufferShape,
                                    ShapeRef dpuDescriptorBufferShape, ShapeRef weightsTable0Shape,
                                    ShapeRef weightsTable1Shape);
 }  // namespace vpux::VPU

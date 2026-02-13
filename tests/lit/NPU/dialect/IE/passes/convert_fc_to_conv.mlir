@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,16 +15,16 @@ func.func @ConvertFullyConnectedToConvolution(%arg0: tensor<1x16xf32>) -> tensor
     return %0 : tensor<1x64xf32>
 
     // CHECK-NOT:   IE.FullyConnected
-    // CHECK-DAG:       %[[WEIGHTS:.*]] = const.Declare tensor<64x16xf32> = dense<1.000000e+00> : tensor<64x16xf32>
-    // CHECK-DAG:       %[[BIAS:.*]] = const.Declare tensor<1x64xf32> = dense<1.000000e+00> : tensor<1x64xf32>
-    // CHECK:       %[[VAL0:.*]] = IE.Reshape(%arg0) {shape_value = [1, 16, 1, 1]} : tensor<1x16xf32> -> tensor<1x16x1x1xf32>
-    // CHECK:       %[[VAL1:.*]] = IE.Reshape(%[[WEIGHTS]]) {shape_value = [64, 16, 1, 1]} : tensor<64x16xf32> -> tensor<64x16x1x1xf32>
-    // CHECK:       %[[VAL2:.*]] = IE.Reshape(%[[BIAS]]) {shape_value = [1, 64, 1, 1]} : tensor<1x64xf32> -> tensor<1x64x1x1xf32>
-    // CHECK:       %[[CONV:.*]] = IE.Convolution(%[[VAL0]], %[[VAL1]], %[[VAL2]])
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16xf32> = dense<1.000000e+00> : tensor<64x16xf32>
+    // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x64xf32> = dense<1.000000e+00> : tensor<1x64xf32>
+    // CHECK:       [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 1, 1]} : tensor<1x16xf32> -> tensor<1x16x1x1xf32>
+    // CHECK:       [[VAL1:%.+]] = IE.Reshape([[WEIGHTS]]) {shape_value = [64, 16, 1, 1]} : tensor<64x16xf32> -> tensor<64x16x1x1xf32>
+    // CHECK:       [[VAL2:%.+]] = IE.Reshape([[BIAS]]) {shape_value = [1, 64, 1, 1]} : tensor<1x64xf32> -> tensor<1x64x1x1xf32>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[VAL0]], [[VAL1]], [[VAL2]])
     // CHECK-SAME:      dilations = [1, 1]
     // CHECK-SAME:      pads_begin = [0, 0]
     // CHECK-SAME:      pads_end = [0, 0]
     // CHECK-SAME:      strides = [1, 1]
-    // CHECK:       %[[VAL3:.*]] = IE.Reshape(%[[CONV]]) {shape_value = [1, 64]} : tensor<1x64x1x1xf32> -> tensor<1x64xf32>
-    // CHECK:       return %[[VAL3]]
+    // CHECK:       [[VAL3:%.+]] = IE.Reshape([[CONV]]) {shape_value = [1, 64]} : tensor<1x64x1x1xf32> -> tensor<1x64xf32>
+    // CHECK:       return [[VAL3]]
 }

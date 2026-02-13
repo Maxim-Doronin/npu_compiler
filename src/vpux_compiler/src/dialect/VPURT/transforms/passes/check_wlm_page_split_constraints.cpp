@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,12 +9,12 @@
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_pages_split.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPURT/utils/wlm_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/options.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux::VPURT {
 #define GEN_PASS_DECL_CHECKWLMPAGESPLITCONSTRAINTS
@@ -43,7 +43,8 @@ void CheckWlmPageSplitConstraintsPass::safeRunOnFunc() {
     auto func = getOperation();
 
     VPUX_THROW_UNLESS(_workloadManagementMode.has_value() &&
-                              _workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES,
+                              (_workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES ||
+                               _workloadManagementMode.value() == WorkloadManagementMode::PWLM_V0_1_PAGES),
                       "Unsupported WLM mode");
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
@@ -57,28 +58,32 @@ void CheckWlmPageSplitConstraintsPass::safeRunOnFunc() {
             numBarriersOpt.hasValue() ? numBarriersOpt.getValue() : VPUIP::getNumAvailableBarriers(func);
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
+    barrierInfo.buildTaskQueueTypeMap();
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
 
     VPURT::BarrierPagesSplitHandler barrierPagesSplitHandler(func, barrierInfo, numBarriers, _log);
     barrierPagesSplitHandler.initializeForVerification(func);
     barrierPagesSplitHandler.verifyTaskBarrierPagesAreValid();
+    barrierPagesSplitHandler.verifyTaskPagesAreNeverDecreasingOnQueue();
     barrierPagesSplitHandler.verifyNoCyclicDeps();
     VPUX_THROW_UNLESS(barrierPagesSplitHandler.isSplitToPagesValid(), "Split to pages is not valid");
 
     barrierPagesSplitHandler.verifyPhysicalBarsDependencies();
 
-    if (_workloadManagementMode.value() == WorkloadManagementMode::FWLM_V1_PAGES) {
+    const auto wlmMode = _workloadManagementMode.value();
+    if (wlmMode == WorkloadManagementMode::FWLM_V1_PAGES) {
         barrierPagesSplitHandler.verifyBarProgDmaDependencies(func);
         barrierPagesSplitHandler.verifyEnqueueDmas(func);
         barrierPagesSplitHandler.verifyEnqueueOfDmas(func);
-
-        // Once we have enqueues inserted, check if FetchTasks have all required dependencies
+    }
+    // Once we have enqueues inserted, check if FetchTasks have all required dependencies
+    if (wlmMode == WorkloadManagementMode::PWLM_V0_1_PAGES || wlmMode == WorkloadManagementMode::FWLM_V1_PAGES) {
         auto& execGroupAnalysis = getAnalysis<ExecutionGroupAnalysis>();
         auto dpuGroups = execGroupAnalysis.getDPUExecutionGroups();
         auto swGroups = execGroupAnalysis.getActShvExecutionGroups();
-        VPUX_THROW_WHEN(!barrierPagesSplitHandler.verifyFetchDmaDependencies(func, dpuGroups),
+        VPUX_THROW_WHEN(!VPURT::verifyFetchDmaDependencies(func, barrierInfo, dpuGroups, _log),
                         "Unsafe dependencies for Fetch DMA around DPUs");
-        VPUX_THROW_WHEN(!barrierPagesSplitHandler.verifyFetchDmaDependencies(func, swGroups),
+        VPUX_THROW_WHEN(!VPURT::verifyFetchDmaDependencies(func, barrierInfo, swGroups, _log),
                         "Unsafe dependencies for Fetch DMA around SHVs");
     }
 

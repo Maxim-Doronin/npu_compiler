@@ -8,12 +8,12 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers_for_net_results.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
-#include "vpux/compiler/utils/allocate_buffers_for_net_results.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -60,7 +60,7 @@ private:
     void addBuffersForNetResults(mlir::ModuleOp moduleOp);
 
 private:
-    SmallVector<mlir::func::FuncOp> _outlinedFunctions = {};
+    mlir::DenseSet<mlir::func::FuncOp> _outlinedFunctions = {};
 };
 
 void AsyncRegionsOutliner::outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) {
@@ -220,9 +220,9 @@ void AsyncRegionsOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallV
         const size_t sliceIdx = 0;
         const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                       ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
-        const auto funcLoc = appendLoc(mainFuncOp.getLoc(), "_part{0}", targetIdx + 1);
+        const auto funcLoc = appendLoc(mainFuncOp.getLoc(), "part{0}", targetIdx + 1);
         auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
-        _outlinedFunctions.push_back(func);
+        _outlinedFunctions.insert(func);
         func.setPrivate();
 
         auto builder = mlir::OpBuilder::atBlockEnd(func.addEntryBlock(), &builderLog);
@@ -241,7 +241,7 @@ void AsyncRegionsOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallV
                 funcOutputFromSlices.push_back(waitOp.getResult());
             }
         }
-        const auto returnLoc = appendLoc(mainFuncOp.getLoc(), "_part{0}_return", targetIdx + 1);
+        const auto returnLoc = appendLoc(mainFuncOp.getLoc(), "part{0}_return", targetIdx + 1);
         builder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromSlices);
     }
 }
@@ -269,7 +269,7 @@ void AsyncRegionsOutliner::buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallV
             newInputs.push_back(oldToNewArgMap[input]);
         }
 
-        const auto callLoc = appendLoc(mainFuncOp.getLoc(), "_part{0}_call", targetIdx + 1);
+        const auto callLoc = appendLoc(mainFuncOp.getLoc(), "part{0}_call", targetIdx + 1);
         auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                           funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
         for (auto res : newCall.getResults()) {
@@ -368,13 +368,13 @@ void AsyncRegionsOutliner::addBuffersForNetResults(mlir::ModuleOp moduleOp) {
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
 
     auto logger = getLogger().nest();
-    SmallVector<mlir::CallOpInterface> outlinedCallOps;
+    mlir::DenseSet<mlir::CallOpInterface> outlinedCallOps;
     mainFuncOp.walk([&](mlir::func::CallOp callOp) {
         if (callOp.getCallee().contains("async_region")) {
-            outlinedCallOps.push_back(callOp);
+            outlinedCallOps.insert(callOp);
         }
     });
-    vpux::allocateBuffersForNetResults(outlinedCallOps, _outlinedFunctions, logger);
+    VPUIP::allocateBuffersForNetResults(outlinedCallOps, _outlinedFunctions, logger);
 }
 
 }  // namespace outliner

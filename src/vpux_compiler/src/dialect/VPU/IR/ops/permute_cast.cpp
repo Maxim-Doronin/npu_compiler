@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -93,8 +94,8 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::Permute
     const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
     auto castedOutputDistribution =
-            applyPermutationOnDistributionInfo(inType, distribution, getMemPerm(), srcType.getDimsOrder(),
-                                               dstType.getDimsOrder(), srcType.getShape(), dstType.getShape());
+            VPU::applyPermutationOnDistributionInfo(inType, distribution, getMemPerm(), srcType.getDimsOrder(),
+                                                    dstType.getDimsOrder(), srcType.getShape(), dstType.getShape());
     if (mlir::failed(castedOutputDistribution)) {
         return mlir::failure();
     };

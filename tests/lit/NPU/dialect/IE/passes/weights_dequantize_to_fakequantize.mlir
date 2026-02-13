@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --weights-dequantize-to-fake-quantize --mlir-print-elementsattrs-with-hex-if-larger -1 %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="rewriter=weights-dequantize-to-fq" --mlir-print-elementsattrs-with-hex-if-larger -1 %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @WeightsMultToFakeQuantize
@@ -562,7 +562,7 @@ func.func @DontReconvertWeightsMultToFakeQuantize(%input: tensor<4x4x3x3xf32>) -
 
   return %1 : tensor<4x4x3x3xf32>
 
-  // CHECK:   [[DATA:%.+]] = const.Declare tensor<4x4x3x3xf32> = dense<5> {{.*}} [#const.CastElemType<f32>]
+  // CHECK:   [[DATA:%.+]] = const.Declare tensor<4x4x3x3xf32> = dense<5> {{.+}} [#const.CastElemType<f32>]
   // CHECK:   [[IN_LOW:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<-2.750000e-01>
   // CHECK:   [[IN_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<4.070000e-01>
 

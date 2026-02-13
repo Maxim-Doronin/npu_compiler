@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --resolve-shaped-type-result-dims %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --resolve-shaped-type-result-dims %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // -----
@@ -73,4 +73,31 @@ func.func @NCEMaxPool(%arg0: tensor<1x16x?x15xf16, {mem_space = @CMX_NN, bounds 
     // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.MaxPool([[INPUT0]], [[INPUT1]] )
     // CHECK:       [[DIM:%.+]] = tensor.dim [[INPUT0]], [[C2]]
     // CHECK:       return [[OUTPUT]], [[DIM]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+module @test {
+  config.PipelineOptions @Options {
+    config.Option @config.AutoPaddingODU : true
+    config.Option @config.AutoPaddingIDU : true
+}
+
+// CHECK-LABEL: @ConvWithFlattenedFilter
+func.func @ConvWithFlattenedFilter(%arg0: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 2160, 3840]> : tensor<4xsi64>, order = #NHWC}>) -> (tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>, index) {
+    // CHECK: [[IN:%.+]]: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 2160, 3840]> : tensor<4xsi64>, order = #NHWC}>
+    %C2 = arith.constant 2 : index
+    // CHECK: [[C2:%.+]] = arith.constant 2 : index
+    %cst_0 = const.Declare tensor<32x1x1x144xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x1x1x144xf16>, [#const.Reorder<#NHWC>]
+    // CHECK: [[WEIGHT:%.+]] = const.Declare
+    %CONV = VPU.NCE.Convolution(%arg0, %cst_0) {ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, rawFilterShape = [32, 3, 3, 3], strides = [2, 2]} : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 2160, 3840]> : tensor<4xsi64>, order = #NHWC}>, tensor<32x1x1x144xf16, {order = #NHWC}> -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK: [[CONV:%.+]] = VPU.NCE.Convolution([[IN]], [[WEIGHT]])
+    %DIM = tensor.dim %CONV, %C2 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK: [[VAL:%.+]] = tensor.dim [[IN]], [[C2]]
+    // CHECK: [[DIM:%.+]] = arith.divsi [[VAL]], [[C2]] : index
+    return %CONV, %DIM : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>, index
+    // CHECK: return [[CONV]], [[DIM]]
+}
 }

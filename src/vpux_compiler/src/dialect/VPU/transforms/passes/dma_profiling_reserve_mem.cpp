@@ -45,7 +45,7 @@ void DMATaskProfilingReserveMemPass::safeRunOnModule() {
     VPUX_THROW_UNLESS(enableDMAProfiling.hasValue(), "No option");
     auto dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling);
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
     VPUX_THROW_UNLESS(dmaPortCount > 0, "No DMA ports");
     VPUX_THROW_UNLESS((VPUIP::HW_DMA_PROFILING_MAX_BUFFER_SIZE % dmaPortCount) == 0,

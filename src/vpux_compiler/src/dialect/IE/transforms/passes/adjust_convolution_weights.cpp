@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,12 +8,12 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTCONVOLUTIONWEIGHTS
 #define GEN_PASS_DEF_ADJUSTCONVOLUTIONWEIGHTS
@@ -235,12 +235,8 @@ mlir::LogicalResult AdjustConvWeights::matchAndRewrite(IE::ExpandOp expandOp, ml
     auto paddedFilter = createNewWeights(convOp, convOp.getFilter(), getShape(expandOp.getInput())[Dims4D::Act::C],
                                          concatOp, rewriter);
 
-    rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
-            convOp, convOp.getOutput().getType(), newConcatOp.getOutput(), paddedFilter, convOp.getBias(),
-            convOp.getStridesAttr(), convOp.getPadsBeginAttr(), convOp.getPadsEndAttr(), convOp.getDilationsAttr(),
-            convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(),
-            convOp.getInputPaddingAttr());
-
+    rewriter.replaceOp(convOp, cloneConvolutionOp(rewriter, convOp, convOp.getOutput().getType(),
+                                                  newConcatOp.getOutput(), paddedFilter));
     return mlir::success();
 }
 

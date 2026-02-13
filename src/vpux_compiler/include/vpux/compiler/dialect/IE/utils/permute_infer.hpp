@@ -42,7 +42,7 @@ mlir::LogicalResult fusePermutations(PermOp permuteOp, mlir::PatternRewriter& re
 
     const auto canFuseIntoPermuteCastOp =
             mlir::isa<IE::PermuteCastOp>(prevPermuteOp) && mlir::isa<IE::PermuteCastOp>(permuteOp);
-    auto newLoc = takeOpLoc(permuteOp, llvm::formatv("_memperm_{0}", DimsOrder::fromAffineMap(newMemPerm)));
+    auto newLoc = takeOpLoc(permuteOp, "memperm_{0}", DimsOrder::fromAffineMap(newMemPerm));
     if (canFuseIntoPermuteCastOp) {
         rewriter.replaceOpWithNewOp<IE::PermuteCastOp>(permuteOp, permuteOp.getType(), prevPermuteOp.getInput(),
                                                        permuteOp.getDstOrderAttr(),

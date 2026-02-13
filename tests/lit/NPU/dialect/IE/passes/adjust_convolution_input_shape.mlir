@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -799,4 +799,106 @@ func.func @NotShapeCastToAlignExpandedDWConvQuantPerChannel(%arg0: tensor<1x3x64
     // CHECK:        [[EXPAND:%.+]] = IE.Expand([[INPUT]])
     // CHECK:        [[GRP_CONV:%.+]] = IE.GroupConvolution([[EXPAND]], [[FILTER]], [[BIAS]])
     // CHECK:        return [[GRP_CONV]]
+}
+
+// -----
+
+// CHECK-LABEL: @ReshapeInputFor1x1ConvWithLargeHeight
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x96x65536x1xf16>
+func.func @ReshapeInputFor1x1ConvWithLargeHeight(%arg0: tensor<1x96x65536x1xf16>) -> tensor<1x96x65536x1xf16> {
+    %filter = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    %bias = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    %0 = IE.Convolution(%arg0, %filter, %bias) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x65536x1xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x65536x1xf16>
+    return %0 : tensor<1x96x65536x1xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 96, 8192, 8]} : tensor<1x96x65536x1xf16> -> tensor<1x96x8192x8xf16>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x8192x8xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x8192x8xf16>
+    // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 96, 65536, 1]} : tensor<1x96x8192x8xf16> -> tensor<1x96x65536x1xf16>
+    // CHECK:       return [[RESHAPE1]] : tensor<1x96x65536x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ReshapeInputFor1x1ConvWithLargeHeightAndExpand
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x96x65521x1xf16>
+func.func @ReshapeInputFor1x1ConvWithLargeHeightAndExpand(%arg0: tensor<1x96x65521x1xf16>) -> tensor<1x96x65521x1xf16> {
+    %filter = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    %bias = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    %0 = IE.Convolution(%arg0, %filter, %bias) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x65521x1xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x65521x1xf16>
+    return %0 : tensor<1x96x65521x1xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 7, 0]} : tensor<1x96x65521x1xf16> -> tensor<1x96x65528x1xf16>
+    // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[EXPAND]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 96, 8191, 8]} : tensor<1x96x65528x1xf16> -> tensor<1x96x8191x8xf16>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x8191x8xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x8191x8xf16>
+    // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 96, 65528, 1]} : tensor<1x96x8191x8xf16> -> tensor<1x96x65528x1xf16>
+    // CHECK:       [[SLICE:%.+]] = IE.Slice [[RESHAPE1]] [0, 0, 0, 0] [1, 96, 65521, 1] : tensor<1x96x65528x1xf16> to tensor<1x96x65521x1xf16>
+    // CHECK:       return [[SLICE]] : tensor<1x96x65521x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ReshapeInputFor1x1ConvWithLargeHeightWithSqrt
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x96x65535x1xf16>
+func.func @ReshapeInputFor1x1ConvWithLargeHeightWithSqrt(%arg0: tensor<1x96x65535x1xf16>) -> tensor<1x96x65535x1xf16> {
+    %filter = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    %bias = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    %0 = IE.Convolution(%arg0, %filter, %bias) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x65535x1xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x65535x1xf16>
+    return %0 : tensor<1x96x65535x1xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 96, 257, 255]} : tensor<1x96x65535x1xf16> -> tensor<1x96x257x255xf16>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x257x255xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x257x255xf16>
+    // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 96, 65535, 1]} : tensor<1x96x257x255xf16> -> tensor<1x96x65535x1xf16>
+    // CHECK:       return [[RESHAPE1]] : tensor<1x96x65535x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ReshapeInputFor1x1ConvWithLargeWidth
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x96x1x65536xf16>
+func.func @ReshapeInputFor1x1ConvWithLargeWidth(%arg0: tensor<1x96x1x65536xf16>) -> tensor<1x96x1x65536xf16> {
+    %filter = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    %bias = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    %0 = IE.Convolution(%arg0, %filter, %bias) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x1x65536xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x1x65536xf16>
+    return %0 : tensor<1x96x1x65536xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 96, 8192, 8]} : tensor<1x96x1x65536xf16> -> tensor<1x96x8192x8xf16>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x8192x8xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x8192x8xf16>
+    // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 96, 1, 65536]} : tensor<1x96x8192x8xf16> -> tensor<1x96x1x65536xf16>
+    // CHECK:       return [[RESHAPE1]] : tensor<1x96x1x65536xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ReshapeInputFor1x1ConvWithHugeHeight
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x96x268435456x1xf16>
+func.func @ReshapeInputFor1x1ConvWithHugeHeight(%arg0: tensor<1x96x268435456x1xf16>) -> tensor<1x96x268435456x1xf16> {
+    %filter = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    %bias = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    %0 = IE.Convolution(%arg0, %filter, %bias) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x268435456x1xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x268435456x1xf16>
+    return %0 : tensor<1x96x268435456x1xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<96x96x1x1xf16> = dense<1.000000e+00> : tensor<96x96x1x1xf16>
+    // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x96x1x1xf16> = dense<1.000000e+00> : tensor<1x96x1x1xf16>
+    // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 96, 32768, 8192]} : tensor<1x96x268435456x1xf16> -> tensor<1x96x32768x8192xf16>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE0]], [[FILTER]], [[BIAS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x96x32768x8192xf16>, tensor<96x96x1x1xf16>, tensor<1x96x1x1xf16> -> tensor<1x96x32768x8192xf16>
+    // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[CONV]])
+    // CHECK-SAME{LITERAL}:  {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 96, 268435456, 1]} : tensor<1x96x32768x8192xf16> -> tensor<1x96x268435456x1xf16>
+    // CHECK:       return [[RESHAPE1]] : tensor<1x96x268435456x1xf16>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -271,9 +271,8 @@ std::optional<int> getNumberOfDMAEngines(const intel_npu::Config& config) {
         Revert this back to "return maxDmaPorts" and implement E#135226 */
         if (maxArchTiles == 1) {
             return 1;
-        }
-        // E#182008 We can support maxDmaPorts once FWLM is enabled for NPU50XX+
-        else if (archKind == config::ArchKind::NPU50XX) {
+        } else if (archKind == config::ArchKind::NPU50XX) {
+            // E#182008 We can support maxDmaPorts once FWLM is enabled for NPU50XX+
             return maxDmaPorts;
         } else {
             return std::min(maxDmaPorts, numOfDpuGroups.value_or(maxDmaPorts));
@@ -549,6 +548,20 @@ std::optional<bool> getEnableDecomposeSDPA(const intel_npu::Config& config) {
     } else {
         return std::nullopt;
     }
+}
+
+std::set<std::string> getIoWithDynamicStrides(const intel_npu::Config& config) {
+    if (getArchKind(config) == config::ArchKind::NPU37XX && config.has<intel_npu::ENABLE_STRIDES_FOR>()) {
+        VPUX_THROW("ENABLE_STRIDES_FOR not supported on NPU3720");
+    }
+    auto enableStridesFor = config.get<intel_npu::ENABLE_STRIDES_FOR>();
+    std::istringstream stream(enableStridesFor);
+    std::string name;
+    std::set<std::string> dynamicStridesIos;
+    while (std::getline(stream, name, ',')) {
+        dynamicStridesIos.insert(name);
+    }
+    return dynamicStridesIos;
 }
 
 }  // namespace vpux

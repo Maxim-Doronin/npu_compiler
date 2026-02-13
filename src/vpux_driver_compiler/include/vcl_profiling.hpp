@@ -76,7 +76,7 @@ static_assert(sizeof(ze_profiling_layer_info) == sizeof(vpux::profiling::LayerIn
 /**
  * @brief Parse the profiling output with blob.
  *
- * Check @ref how-to-use-profiling.md about how to collect the data
+ * Check @ref how_to_use_profiling.md about how to collect the data
  */
 class VPUXProfilingL0 final {
 public:

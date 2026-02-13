@@ -12,5 +12,4 @@ add_npu_library(npu_compiler_dialect_ie_interfaces
         npu_llvm_utils
         npu_ov_utils
         npu_elf
-        npu_costmodel
-        npu_compiler_npu37xx)
+        npu_costmodel)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,12 +43,12 @@ func.func @SETableSingleCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = memref.alloc() : !Weights_CMX
     %weights_sm_cmx = memref.alloc() : !WeightsSM_CMX
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_CMX, sparsity_map=!WeightsSM_CMX, is_weights>
 
     %weights = VPUIP.Copy inputs(%weights_sparse: !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)
@@ -171,12 +171,12 @@ func.func @SETableMultiCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR)
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights = VPUIP.Copy
         inputs(%weights_sparse : !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)
@@ -280,20 +280,20 @@ func.func @Interpolate(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !Out
                                             nearest_mode = <FLOOR>,  offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
                 seSize = [16], seDepth = 1
             } -> !InputSE_DDR
-    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
+    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) <{
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                         nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>
-        } -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
+        }> -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
                                  #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                                     nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>>
 
     %input_data_cmx = VPURT.AllocDistributed -> !InputDistributed
     %input_sm_cmx = VPURT.AllocDistributed -> !InputSMDistributed
     %input_se_cmx = VPURT.AllocDistributed -> !InputSEDistributed
-    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) {
+    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) <{
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                         nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>
-        } -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
+        }> -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
                                  #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                                     nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>>
     %input = VPUIP.Copy
@@ -302,12 +302,12 @@ func.func @Interpolate(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !Out
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights = VPUIP.Copy
         inputs(%weights_sparse : !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)
@@ -418,20 +418,20 @@ func.func @InterpolateSESize(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -
                                             nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>,
                 seSize = [16, 16], seDepth = 2
             } -> !InputSE_DDR
-    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
+    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) <{
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                         nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>
-        } -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
+        }> -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
                                  #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                                     nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>>
 
     %input_data_cmx = VPURT.AllocDistributed -> !InputDistributed
     %input_sm_cmx = VPURT.AllocDistributed -> !InputSMDistributed
     %input_se_cmx = VPURT.AllocDistributed -> !InputSEDistributed
-    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) {
+    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) <{
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                         nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>
-        } -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
+        }> -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
                                  #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                                     nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 6, 6]>>
     %input = VPUIP.Copy
@@ -440,12 +440,12 @@ func.func @InterpolateSESize(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights = VPUIP.Copy
         inputs(%weights_sparse : !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)
@@ -556,20 +556,20 @@ func.func @InterpolateOutputOffsets(%input_data: !Input_DDR, %input_sm: !InputSM
                                             nearest_mode = <FLOOR>,  offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>,
                 seSize = [16], seDepth = 1
             } -> !InputSE_DDR
-    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
+    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) <{
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                         nearest_mode = <FLOOR>, offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>
-        } -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
+        }> -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
                                  #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                                     nearest_mode = <FLOOR>, offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>>
 
     %input_data_cmx = VPURT.AllocDistributed -> !InputDistributed
     %input_sm_cmx = VPURT.AllocDistributed -> !InputSMDistributed
     %input_se_cmx = VPURT.AllocDistributed -> !InputSEDistributed
-    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) {
+    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) <{
             seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                         nearest_mode = <FLOOR>, offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>
-        } -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
+        }> -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
                                  #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00],
                                                     nearest_mode = <FLOOR>, offsets = [0, 0, 1, 0], sizes = [1, 32, 4, 6]>>
     %input = VPUIP.Copy
@@ -578,12 +578,12 @@ func.func @InterpolateOutputOffsets(%input_data: !Input_DDR, %input_sm: !InputSM
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights = VPUIP.Copy
         inputs(%weights_sparse : !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)
@@ -706,10 +706,10 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     %input_alloc_1 = memref.alloc() : !Input_DDR_Tile
     %input_copy_1 = VPUIP.Copy inputs(%input_sub_1 : memref<1x16x4x6xf16, {order = #NHWC, strides = [1536, 1, 256, 16]}, @DDR>)
                                outputs(%input_alloc_1 : !Input_DDR_Tile) -> !Input_DDR_Tile
-    %input_sparse_1 = VPUIP.GroupSparseBuffer (%input_copy_1, %input_sm_1, %input_se_1) {
+    %input_sparse_1 = VPUIP.GroupSparseBuffer (%input_copy_1, %input_sm_1, %input_se_1) <{
                    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>
-              } -> !VPUIP.SparseBuffer<data=!Input_DDR_Tile, sparsity_map=!InputSM_DDR_Tile, storage_element_table=!InputSE_DDR_Tile,
+              }> -> !VPUIP.SparseBuffer<data=!Input_DDR_Tile, sparsity_map=!InputSM_DDR_Tile, storage_element_table=!InputSE_DDR_Tile,
                             #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>>
 
@@ -718,20 +718,20 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     %input_alloc_0 = memref.alloc() :!Input_DDR_Tile
     %input_copy_0 = VPUIP.Copy inputs(%input_sub_0 : memref<1x16x4x6xf16, {order = #NHWC, strides = [1536, 1, 256, 16]}, @DDR>)
                                outputs(%input_alloc_0 : !Input_DDR_Tile) -> !Input_DDR_Tile
-    %input_sparse_0 = VPUIP.GroupSparseBuffer (%input_copy_0, %input_sm_0, %input_se_0) {
+    %input_sparse_0 = VPUIP.GroupSparseBuffer (%input_copy_0, %input_sm_0, %input_se_0) <{
                    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>
-              } -> !VPUIP.SparseBuffer<data=!Input_DDR_Tile, sparsity_map=!InputSM_DDR_Tile, storage_element_table=!InputSE_DDR_Tile,
+              }> -> !VPUIP.SparseBuffer<data=!Input_DDR_Tile, sparsity_map=!InputSM_DDR_Tile, storage_element_table=!InputSE_DDR_Tile,
                             #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>>
 
     %input_data_cmx_0 = VPURT.AllocDistributed -> !InputDistributed
     %input_sm_cmx_0 = VPURT.AllocDistributed -> !InputSMDistributed
     %input_se_cmx_0 = VPURT.AllocDistributed -> !InputSEDistributed
-    %input_sparse_cmx_0 = VPUIP.GroupSparseBuffer (%input_data_cmx_0, %input_sm_cmx_0, %input_se_cmx_0) {
+    %input_sparse_cmx_0 = VPUIP.GroupSparseBuffer (%input_data_cmx_0, %input_sm_cmx_0, %input_se_cmx_0) <{
                    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>
-        } -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
+        }> -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
                             #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 0, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>>
     %input_0 = VPUIP.Copy
@@ -740,12 +740,12 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
 
     %cst_weights_0 = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm_0 = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse_0 = VPUIP.GroupSparseBuffer (%cst_weights_0, %cst_weights_sm_0) {is_weights}
+    %weights_sparse_0 = VPUIP.GroupSparseBuffer (%cst_weights_0, %cst_weights_sm_0) <{is_weights}>
               -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx_0 = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx_0 = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx_0 = VPUIP.GroupSparseBuffer (%weights_data_cmx_0, %weights_sm_cmx_0) {is_weights}
+    %weights_sparse_cmx_0 = VPUIP.GroupSparseBuffer (%weights_data_cmx_0, %weights_sm_cmx_0) <{is_weights}>
               -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights_0 = VPUIP.Copy
         inputs(%weights_sparse_0 : !VPUIP.SparseBuffer<data = !Weights_DDR, sparsity_map = !WeightsSM_DDR, is_weights>)
@@ -782,10 +782,10 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     %input_data_cmx_1 = VPURT.AllocDistributed -> !InputDistributed
     %input_sm_cmx_1 = VPURT.AllocDistributed -> !InputSMDistributed
     %input_se_cmx_1 = VPURT.AllocDistributed -> !InputSEDistributed
-    %input_sparse_cmx_1 = VPUIP.GroupSparseBuffer (%input_data_cmx_1, %input_sm_cmx_1, %input_se_cmx_1) {
+    %input_sparse_cmx_1 = VPUIP.GroupSparseBuffer (%input_data_cmx_1, %input_sm_cmx_1, %input_se_cmx_1) <{
                    seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>
-        } -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
+        }> -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
                             #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <PYTORCH_HALF_PIXEL>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                 offsets = [0, 0, 3, 0], sizes = [1, 16, 11, 20], initial_input_shape = [1, 16, 6, 6], initial_output_shape = [1, 16, 18, 18]>>
     %input_1 = VPUIP.Copy
@@ -794,12 +794,12 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
 
     %cst_weights_1 = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm_1 = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse_1 = VPUIP.GroupSparseBuffer (%cst_weights_1, %cst_weights_sm_1) {is_weights}
+    %weights_sparse_1 = VPUIP.GroupSparseBuffer (%cst_weights_1, %cst_weights_sm_1) <{is_weights}>
               -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx_1 = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx_1 = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx_1 = VPUIP.GroupSparseBuffer (%weights_data_cmx_1, %weights_sm_cmx_1) {is_weights}
+    %weights_sparse_cmx_1 = VPUIP.GroupSparseBuffer (%weights_data_cmx_1, %weights_sm_cmx_1) <{is_weights}>
               -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights_1 = VPUIP.Copy
         inputs(%weights_sparse_1 : !VPUIP.SparseBuffer<data = !Weights_DDR, sparsity_map = !WeightsSM_DDR, is_weights>)
@@ -943,20 +943,20 @@ func.func @InterpolateBilinearAlignCornersOutputOffsets(%input_data: !Input_DDR,
                                             offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5], initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>,
                 seSize = [16], seDepth = 1
             } -> !InputSE_DDR
-    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) {
+    %input_sparse = VPUIP.GroupSparseBuffer (%input_data, %input_sm, %input_se) <{
             seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                         offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5], initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>
-        } -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
+        }> -> !VPUIP.SparseBuffer<data=!Input_DDR, sparsity_map=!InputSM_DDR, storage_element_table=!InputSE_DDR,
                      #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                         offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5], initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>>
 
     %input_data_cmx = VPURT.AllocDistributed -> !InputDistributed
     %input_sm_cmx = VPURT.AllocDistributed -> !InputSMDistributed
     %input_se_cmx = VPURT.AllocDistributed -> !InputSEDistributed
-    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) {
+    %input_sparse_cmx = VPUIP.GroupSparseBuffer (%input_data_cmx, %input_sm_cmx, %input_se_cmx) <{
             seAttr = #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                         offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5], initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>
-        } -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
+        }> -> !VPUIP.SparseBuffer<data=!InputDistributed, sparsity_map=!InputSMDistributed, storage_element_table=!InputSEDistributed,
                                  #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ALIGN_CORNERS>, scale = [1.000000e+00, 1.000000e+00, 3.000000e+00, 3.000000e+00],
                                         offsets = [0, 0, 1, 1], sizes = [1, 16, 5, 5], initial_input_shape = [1, 16, 3, 3], initial_output_shape = [1, 16, 7, 7]>>
     %input = VPUIP.Copy
@@ -965,12 +965,12 @@ func.func @InterpolateBilinearAlignCornersOutputOffsets(%input_data: !Input_DDR,
 
     %cst_weights = const.Declare !Weights_DDR = dense<1.0> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSM_DDR = dense<1.0> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {is_weights}
+    %weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights>
     %weights = VPUIP.Copy
         inputs(%weights_sparse : !VPUIP.SparseBuffer<data=!Weights_DDR, sparsity_map=!WeightsSM_DDR, is_weights>)

@@ -36,9 +36,8 @@ private:
 void CalculateAsyncRegionCycleCostPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
     funcOp->walk([&](mlir::async::ExecuteOp execOp) {
         if (auto costInterface = mlir::dyn_cast_or_null<VPUIP::CycleCostInterface>(execOp.getOperation())) {

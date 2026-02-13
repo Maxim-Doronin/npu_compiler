@@ -1,14 +1,13 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
-//
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/init.hpp"
-#include "vpux/compiler/utils/locations_verifier.hpp"
+#include "vpux/compiler/locverif/locations_verifier.hpp"
 
 #include "common/utils.hpp"
 

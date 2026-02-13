@@ -117,21 +117,21 @@ func.func @UnrollNceSoHOutputOverlappedSplitCandidates(%input: !Input_DDR, %outp
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !InputDistributed) -> !InputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !InputDistributed) -> !InputDistributed
     }
     // Select cluster 2 as candidate for split
-    // CHECK:   VPUIP.NNDMA {port = 0 : i64, split_candidate}
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
     // CHECK-SAME:      memref<1x16x12x33xf16, #NHWC, @DDR>
     // CHECK-SAME:      memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weights table
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Cluster tiling
@@ -179,10 +179,10 @@ func.func @UnrollNceSoHOutputOverlappedSplitCandidates(%input: !Input_DDR, %outp
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
     // Select cluster 2 as candidate for split
-    // CHECK:   VPUIP.NNDMA {port = 0 : i64, split_candidate}
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
     // CHECK-SAME:      memref<1x16x11x33xf16, #NHWC, [@CMX_NN, 2]>
     // CHECK-SAME:      memref<1x16x11x33xf16, #NHWC, @DDR>
 

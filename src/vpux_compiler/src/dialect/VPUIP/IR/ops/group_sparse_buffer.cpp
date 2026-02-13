@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,13 +25,12 @@ void VPUIP::GroupSparseBufferOp::build(mlir::OpBuilder& builder, mlir::Operation
 void VPUIP::GroupSparseBufferOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value data,
                                        mlir::Value sparsityMap, mlir::Value storageElementTable, bool isWeights,
                                        VPUIP::SparsityCompressionAttr sparsityCompression) {
-    const auto isWeightsAttr = isWeights ? mlir::UnitAttr::get(builder.getContext()) : nullptr;
-    build(builder, state, data, sparsityMap, storageElementTable, isWeightsAttr, sparsityCompression, nullptr);
+    build(builder, state, data, sparsityMap, storageElementTable, isWeights, sparsityCompression, nullptr);
 }
 
 void VPUIP::GroupSparseBufferOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value data,
                                        mlir::Value sparsityMap, mlir::Value storageElementTable, VPU::SEAttr seAttr) {
-    build(builder, state, data, sparsityMap, storageElementTable, nullptr, nullptr, seAttr);
+    build(builder, state, data, sparsityMap, storageElementTable, false, nullptr, seAttr);
 }
 
 //
@@ -65,7 +64,8 @@ mlir::LogicalResult VPUIP::GroupSparseBufferOp::inferReturnTypes(mlir::MLIRConte
             groupOp.getStorageElementTable() != nullptr ? groupOp.getStorageElementTable().getType() : nullptr;
 
     inferredReturnTypes.push_back(
-            VPUIP::SparseBufferType::get(dataType, sparsityMapType, storageElementTableType, groupOp.getIsWeightsAttr(),
+            VPUIP::SparseBufferType::get(dataType, sparsityMapType, storageElementTableType,
+                                         groupOp.getIsWeights() ? mlir::UnitAttr::get(ctx) : nullptr,
                                          groupOp.getSparsityCompressionAttr(), groupOp.getSeAttrAttr()));
 
     return mlir::success();

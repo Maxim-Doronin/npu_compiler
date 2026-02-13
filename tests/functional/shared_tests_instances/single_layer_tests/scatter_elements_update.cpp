@@ -1,8 +1,9 @@
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/scatter_elements_update.hpp"
+#include <random>
 #include "vpu_ov2_layer_test.hpp"
 
 namespace ov {
@@ -32,6 +33,7 @@ TEST_P(ScatterElementsUpdate12LayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(ScatterElementsUpdateLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
@@ -41,6 +43,7 @@ TEST_P(ScatterElementsUpdate12LayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 
@@ -100,5 +103,40 @@ INSTANTIATE_TEST_SUITE_P(smoke_ScatterElementsUpdate12, ScatterElementsUpdate12L
                                             ::testing::Values(ov::element::f16), ::testing::Values(ov::element::i32),
                                             ::testing::Values(test_utils::TARGET_DEVICE)),
                          ScatterElementsUpdate12LayerTestCommon::getTestCaseName);
+
+// Generates random indices from the first shape configuration
+// Since values are related to input shape, this function only works with single case scenario
+std::vector<int64_t> generateConstIndicesForLargeShapes(
+        const std::map<std::vector<size_t>, std::map<std::vector<size_t>, std::vector<int>>>& input_shapes_map) {
+    const auto& [input_shape, indices_map] = *input_shapes_map.begin();
+    const auto& [indices_shape, axis_list] = *indices_map.begin();
+    int64_t index_limit = input_shape[axis_list[0]];
+    std::vector<int64_t> indices_value;
+    auto indices_element_count = ov::shape_size(indices_shape);
+    indices_value.reserve(indices_element_count);
+    std::mt19937 gen(12345);
+    std::uniform_int_distribution<int64_t> dis(-index_limit, index_limit - 1);
+    for (size_t i = 0; i < indices_element_count; ++i) {
+        indices_value.push_back(dis(gen));
+    }
+    return indices_value;
+}
+
+std::map<std::vector<size_t>, std::map<std::vector<size_t>, std::vector<int>>> inputShapesForLargeShapes{
+        {{1024, 2048}, {{{32, 2048}, {0}}}},
+};
+
+std::vector<ov::op::v12::ScatterElementsUpdate::Reduction> reductionModesForLargeShapes{
+        ov::op::v12::ScatterElementsUpdate::Reduction::SUM,
+};
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_ScatterElementsUpdate12ForLargeShapes, ScatterElementsUpdate12LayerTestCommon,
+        ::testing::Combine(::testing::ValuesIn(combineShapes(inputShapesForLargeShapes)),
+                           ::testing::Values(generateConstIndicesForLargeShapes(inputShapesForLargeShapes)),
+                           ::testing::ValuesIn(reductionModesForLargeShapes), ::testing::ValuesIn({true}),
+                           ::testing::Values(ov::element::f32), ::testing::Values(ov::element::i32),
+                           ::testing::Values(test_utils::TARGET_DEVICE)),
+        ScatterElementsUpdate12LayerTestCommon::getTestCaseName);
 
 }  // namespace

@@ -470,14 +470,14 @@ func.func @PropagateFQUpAndDownAndCleanup(%arg0: tensor<70x28xf16>) -> tensor<1x
 func.func @PropagateFQDownThroughConcatAndCleanup(%arg0: tensor<1x3x320x640xf32>, %arg1: tensor<1x3x320x640xf32>) -> tensor<1x48x320x320xf32> {
     %cst_0 = const.Declare tensor<4xsi64> = dense<[0, 0, 0, 0]> : tensor<4xsi64>
     %cst_1 = const.Declare tensor<4xsi64> = dense<[0, 0, 0, 320]> : tensor<4xsi64>
-    %cst_2 = const.Declare tensor<4xsi64> = dense<[1, 1, 1, 1]> : tensor<4xsi64> isSplat
+    %cst_2 = const.Declare tensor<4xsi64> = dense<[1, 1, 1, 1]> : tensor<4xsi64>
 
     %cst_3 = const.Declare tensor<48x6x3x3xf32> = dense<1> : tensor<48x6x3x3xsi8>, [#const.CastElemType<f32>]
 
-    %out_high = const.Declare tensor<1x1x1x1xf32> = dense<9.0> : tensor<1x1x1x1xf32> isSplat
-    %out_low = const.Declare tensor<1x1x1x1xf32> = dense<0.0> : tensor<1x1x1x1xf32> isSplat
-    %in_high = const.Declare tensor<1x1x1x1xf32> = dense<9.0> : tensor<1x1x1x1xf32> isSplat
-    %in_low = const.Declare tensor<1x1x1x1xf32> = dense<0.0> : tensor<1x1x1x1xf32> isSplat
+    %out_high = const.Declare tensor<1x1x1x1xf32> = dense<9.0> : tensor<1x1x1x1xf32>
+    %out_low = const.Declare tensor<1x1x1x1xf32> = dense<0.0> : tensor<1x1x1x1xf32>
+    %in_high = const.Declare tensor<1x1x1x1xf32> = dense<9.0> : tensor<1x1x1x1xf32>
+    %in_low = const.Declare tensor<1x1x1x1xf32> = dense<0.0> : tensor<1x1x1x1xf32>
 
     %0 = IE.StridedSlice(%arg0, %cst_0, %cst_1, %cst_2) {begin_mask = [1, 1, 1, 0], ellipsis_mask = [], end_mask = [1, 1, 1, 0], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 1, 1, 1>, shrink_axis_mask = []} : tensor<1x3x320x640xf32>, tensor<4xsi64>, tensor<4xsi64>, tensor<4xsi64> -> tensor<1x3x320x320xf32>
     %1 = IE.FakeQuantize(%0, %in_low, %in_high, %out_low, %out_high) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x320x320xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x3x320x320xf32>

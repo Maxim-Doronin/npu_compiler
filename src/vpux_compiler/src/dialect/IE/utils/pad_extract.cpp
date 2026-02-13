@@ -27,7 +27,7 @@ mlir::FailureOr<SmallVector<int64_t>> extractPads(mlir::Location loc, const mlir
     } else if (padValue != nullptr) {
         auto padsConst = padValue.getDefiningOp<Const::DeclareOp>();
         if (padsConst == nullptr) {
-            return errorAt(loc, "Only constant input is supported for pad");
+            return SmallVector<int64_t>();
         }
 
         auto padValueShape = mlir::cast<vpux::NDTypeInterface>(padValue.getType()).getShape().raw();
@@ -40,7 +40,7 @@ mlir::FailureOr<SmallVector<int64_t>> extractPads(mlir::Location loc, const mlir
         return to_small_vector(padContent.getValues<int64_t>());
     }
 
-    return errorAt(loc, "Pads were not provided");
+    return SmallVector<int64_t>();
 }
 
 }  // namespace IE

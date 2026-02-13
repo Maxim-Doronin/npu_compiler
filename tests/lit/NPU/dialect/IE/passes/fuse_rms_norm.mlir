@@ -298,8 +298,8 @@ func.func @FuseRMSNormForReduceSumPSUUnstripped(%arg0: tensor<1x1x512x3072xf32>)
 // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x1x2048xf32>
 func.func @FuseRMSNormForReduceMeanExtendedPattern(%arg0: tensor<1x1x2048xf32>) -> tensor<1x1x2048xf32> {
     %cst_0 = const.Declare tensor<1x1x2048xf32> = dense<2.000000e+00> : tensor<1x1x2048xf32>
-    %cst_1 = const.Declare tensor<1x1x1xf32> = dense<-0.5> : tensor<1x1x1xf32> isSplat
-    %cst_2 = const.Declare tensor<1x1x1xf32> = dense<1.00135803E-5> : tensor<1x1x1xf32> isSplat
+    %cst_1 = const.Declare tensor<1x1x1xf32> = dense<-0.5> : tensor<1x1x1xf32>
+    %cst_2 = const.Declare tensor<1x1x1xf32> = dense<1.00135803E-5> : tensor<1x1x1xf32>
 
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x2048xf32>, tensor<1x1x2048xf32> -> tensor<1x1x2048xf32>
     %1 = IE.ReduceMean(%0) {axes_value = [2], keep_dims} : tensor<1x1x2048xf32> -> tensor<1x1x1xf32>
@@ -320,8 +320,8 @@ func.func @FuseRMSNormForReduceMeanExtendedPattern(%arg0: tensor<1x1x2048xf32>) 
 // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x1x2048xf32>
 func.func @NotFuseRMSNormForReduceMeanExtendedPatternDueToUnmatchedReciprocalOfSqrt(%arg0: tensor<1x1x2048xf32>) -> tensor<1x1x2048xf32> {
     %cst_0 = const.Declare tensor<1x1x2048xf32> = dense<2.000000e+00> : tensor<1x1x2048xf32>
-    %cst_1 = const.Declare tensor<1x1x1xf32> = dense<2.0> : tensor<1x1x1xf32> isSplat
-    %cst_2 = const.Declare tensor<1x1x1xf32> = dense<1.00135803E-5> : tensor<1x1x1xf32> isSplat
+    %cst_1 = const.Declare tensor<1x1x1xf32> = dense<2.0> : tensor<1x1x1xf32>
+    %cst_2 = const.Declare tensor<1x1x1xf32> = dense<1.00135803E-5> : tensor<1x1x1xf32>
 
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x2048xf32>, tensor<1x1x2048xf32> -> tensor<1x1x2048xf32>
     %1 = IE.ReduceMean(%0) {axes_value = [2], keep_dims} : tensor<1x1x2048xf32> -> tensor<1x1x1xf32>
@@ -575,8 +575,8 @@ func.func @NotFuseRMSNormForReduceMeanPatternAsDivideNumeratorNotOne(%arg0: tens
 // CHECK-LABEL: @FuseRMSNormForReduceMeanEndsWithDivide
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1024x1792xf32>)
 func.func @FuseRMSNormForReduceMeanEndsWithDivide(%arg0: tensor<1x1024x1792xf32>) -> tensor<1x1024x1792xf32> {
-  %cst = const.Declare tensor<1x1x1xf32> = dense<2.0> : tensor<1x1x1xf32> isSplat
-  %cst_1 = const.Declare tensor<1x1x1xf32> = dense<1.0> : tensor<1x1x1xf32> isSplat
+  %cst = const.Declare tensor<1x1x1xf32> = dense<2.0> : tensor<1x1x1xf32>
+  %cst_1 = const.Declare tensor<1x1x1xf32> = dense<1.0> : tensor<1x1x1xf32>
 
   %0 = IE.Power(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024x1792xf32>, tensor<1x1x1xf32> -> tensor<1x1024x1792xf32>
   %1 = IE.ReduceMean(%0) {axes_value = [2], keep_dims} : tensor<1x1024x1792xf32> -> tensor<1x1024x1xf32>
@@ -597,8 +597,8 @@ func.func @FuseRMSNormForReduceMeanEndsWithDivide(%arg0: tensor<1x1024x1792xf32>
 // CHECK-LABEL: @FuseRMSNormForReduceMeanEndsWithDivideMultiUser
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1024x1x256xf32>)
 func.func @FuseRMSNormForReduceMeanEndsWithDivideMultiUser(%arg0: tensor<1x1024x1x256xf32>) -> (tensor<1x1024x1x128xf32>, tensor<1x1024x1x128xf32>) {
-  %cst = const.Declare tensor<1x1x1x1xf32> = dense<2.0> : tensor<1x1x1x1xf32> isSplat
-  %cst_1 = const.Declare tensor<1x1x1x1xf32> = dense<1.0> : tensor<1x1x1x1xf32> isSplat
+  %cst = const.Declare tensor<1x1x1x1xf32> = dense<2.0> : tensor<1x1x1x1xf32>
+  %cst_1 = const.Declare tensor<1x1x1x1xf32> = dense<1.0> : tensor<1x1x1x1xf32>
 
   %0 = IE.Power(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024x1x256xf32>, tensor<1x1x1x1xf32> -> tensor<1x1024x1x256xf32>
   %1 = IE.ReduceMean(%0) {axes_value = [3], keep_dims} : tensor<1x1024x1x256xf32> -> tensor<1x1024x1x1xf32>

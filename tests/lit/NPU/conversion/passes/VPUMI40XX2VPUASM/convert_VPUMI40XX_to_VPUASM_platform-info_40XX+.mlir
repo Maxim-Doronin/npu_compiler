@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,7 +27,7 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
   }
   func.func private @main() {
     %2 = VPUMI40XX.PlatformInfo -> <0:0:0>
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }

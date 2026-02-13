@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/ShaveCodeGen/utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/utils/core/format.hpp"
@@ -17,12 +18,10 @@
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 
 namespace vpux {
-namespace VPU {
-
-// Forward declaration to avoid including VPU headers
+namespace config {
 enum class ExecutorKind : uint64_t;
+}  // namespace config
 
-}  // namespace VPU
 namespace IE {
 
 //
@@ -146,6 +145,13 @@ mlir::LogicalResult inferTensorTypes(InferTypeComponentsCb componentsCb, mlir::M
 //
 
 PostOpAttr attributizePostOp(mlir::Operation* postOp);
+
+/* Sets clamp attribute for the main operation.
+   If clamp attribute exist it merges with the new one:
+    - min from both attributes: new_min = max(old_min, new_min)
+    - max from both attributes: new_max = min(old_max, new_max)
+*/
+void setClampOp(mlir::Operation* mainOp, mlir::Operation* clampOp);
 
 //
 // LayoutInfoOpInterface

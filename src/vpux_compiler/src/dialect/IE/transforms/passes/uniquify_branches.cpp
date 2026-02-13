@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -300,7 +301,7 @@ bool MoveReorderBeforeSlice::isBeneficialTransformation(IE::SliceOp sliceOp, IE:
     for (auto reorder : siblingLayerOps) {
         // no need to calculate reoder data size when Reorder is a PermuteCast
         parallelReordersTotalSize +=
-                isTrivialReorder(reorder)
+                IE::isTrivialReorder(reorder)
                         ? 0
                         : mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType()).getTotalAllocSize().count();
     }
@@ -514,30 +515,56 @@ SmallVector<int64_t> MoveAffineReshapeBeforeSlice::getNewSizes(IE::SliceOp, IE::
 
 SmallVector<int64_t> MoveAffineReshapeBeforeSlice::getNewOffsets(IE::SliceOp sliceOp, ArrayRef<uint64_t> sliceAxes,
                                                                  IE::AffineReshapeOp layerOp) const {
-    auto sliceOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
-    auto sliceSize = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
+    const auto sliceOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
+    const auto sliceSize = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizes());
+
     VPUX_THROW_UNLESS(sliceAxes.size() == 1, "Unexpected slice axes for {0}", sliceOp);
-    auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
-    auto outShape = outType.getShape();
+    const auto sliceAxis = sliceAxes[0];
+
+    const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(layerOp.getOutput().getType());
+    const auto outShape = outType.getShape();
     const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(layerOp.getDimMapping());
-    auto mappedSliceDim = dimMapping[sliceAxes[0]];
-    auto sliceDim = Dim(mappedSliceDim[0]);
+    const auto mappedSliceDim = dimMapping[sliceAxis];
+    const auto sliceDim = Dim(mappedSliceDim[0]);
+
     auto sliceSizeVal = 1;
     if (mappedSliceDim.size() > 1) {
         for (size_t index = 1; index < mappedSliceDim.size(); index++) {
             sliceSizeVal = sliceSizeVal * outShape[Dim(mappedSliceDim[index])];
         }
     } else {
-        sliceSizeVal = sliceSize[sliceAxes[0]];
+        sliceSizeVal = sliceSize[sliceAxis];
     }
-    auto sliceOffsetVal = sliceOffset[sliceAxes[0]];
 
-    auto newSizes = getNewSizes(sliceOp, layerOp);
-    auto sliceIdx = sliceOffsetVal / sliceSizeVal;
+    const auto sliceOffsetVal = sliceOffset[sliceAxis];
+    const auto newSizes = getNewSizes(sliceOp, layerOp);
+    const auto sliceIdx = sliceOffsetVal / sliceSizeVal;
+    const auto newSize = mappedSliceDim.size() == 1 ? newSizes[sliceDim.ind()] : 1;
+    auto newSliceOffset = sliceIdx * newSize;
+
+    // Handle overlapping slices case:
+    // When slices overlap (e.g., slice0: offset=[0,10,0,0] shape=[1,40,1,1],
+    //                            slice1: offset=[0,20,0,0] shape=[1,40,1,1])
+    // The above calculation (sliceIdx * newSize) doesn't preserve the original offset relationship.
+    //
+    // Check if AffineReshape is actually a trivial reshape (no dimension split/merge):
+    // - Same rank: input and output have same number of dimensions
+    // - Same axis size: the sliced axis size remains unchanged
+    // - Total size equals axis size: effectively a 1D reshape (all other dims are 1)
+    //
+    // We need to keep offset=10 and offset=20 respectively, not recalculate them.
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(layerOp.getInput().getType());
+    const auto inputSliceAxisSize = inputType.getShape()[Dim(sliceAxis)];
+    const auto outputSliceAxisSize = outShape[Dim(sliceDim)];
+
+    if (inputType.getRank() == outType.getRank() && inputSliceAxisSize == outputSliceAxisSize &&
+        inputSliceAxisSize == outShape.totalSize()) {
+        // Trivial reshape detected - use original offset to preserve overlap
+        newSliceOffset = sliceOffsetVal;
+    }
 
     SmallVector<int64_t> newOffsets(newSizes.size(), 0);
-    auto newSliceOffset = mappedSliceDim.size() == 1 ? newSizes[sliceDim.ind()] : 1;
-    newOffsets[sliceDim.ind()] = sliceIdx * newSliceOffset;
+    newOffsets[sliceDim.ind()] = newSliceOffset;
 
     return newOffsets;
 }

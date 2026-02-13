@@ -438,12 +438,12 @@ static bool setupActivationFunction(const std::optional<MVCNN::PPETask>& ppe_tas
                                     const std::optional<MVCNN::TensorReference>& inputRef,
                                     activationFunctionDesc& actFuncDesc) {
     if (ppe_task && ppe_task->fixed_function()) {
-        auto ff = ppe_task->fixed_function();
-        if (ff->Ops()->size() == 0) {
+        const auto& ff = ppe_task->fixed_function().value();
+        if (ff.Ops()->size() == 0) {
             // If Ops.size is 0 or PPELayerType == NOOP, no activation function will be used.
             actFuncDesc.funcType = no_activation_function;
-        } else if (ff->Ops()->size() == 1) {
-            switch (ff->Ops()->Get(0)) {
+        } else if (ff.Ops()->size() == 1) {
+            switch (ff.Ops()->Get(0)) {
             case MVCNN::PPELayerType_LRELU:
                 actFuncDesc.funcType = relu;
                 actFuncDesc.alphaFP32.f32 = -0.0;  // note: -0.0, to ensure zero-gained data uses positive zero in
@@ -486,8 +486,8 @@ static bool setupActivationFunction(const std::optional<MVCNN::PPETask>& ppe_tas
             return false;
         }
 
-        actFuncDesc.clampHigh = ff->Clamp_High();
-        actFuncDesc.clampLow = ff->Clamp_Low();
+        actFuncDesc.clampHigh = ff.Clamp_High();
+        actFuncDesc.clampLow = ff.Clamp_Low();
     }
 
     return true;
@@ -821,7 +821,7 @@ void Setup_Output_SOH(const std::optional<MVCNN::TensorReference>& outputRef,
 void SetupInput(vpux::VPUMI37XX::DPUInvariantOp op, nn_public::VpuDPUInvariantRegisters& registers) {
     // Parent input override is required for PermuteQuantize.
     // Needed because input dimensions are read from parent input
-    const auto isPermuteQuantize = op.getIsPermuteQuantizeAttr() != nullptr;
+    const auto isPermuteQuantize = op.getIsPermuteQuantize();
     const auto overrideParentIn = isPermuteQuantize && (op.getParentInput().getType() != op.getInput().getType());
     auto parentInput = overrideParentIn ? op.getInput() : op.getParentInput();
 
@@ -1417,7 +1417,7 @@ bool SetupInvariant_Eltwise(vpux::VPUMI37XX::DPUInvariantOp op, nn_public::VpuDP
 
     // Parent input override is required for PermuteQuantize.
     // PermuteQuantize is always an ELTWISE op.
-    const auto isPermuteQuantize = op.getIsPermuteQuantizeAttr() != nullptr;
+    const auto isPermuteQuantize = op.getIsPermuteQuantize();
     const auto overrideParentIn = isPermuteQuantize && (op.getParentInput().getType() != op.getInput().getType());
     auto parentInput = overrideParentIn ? op.getInput() : op.getParentInput();
 

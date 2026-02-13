@@ -118,7 +118,7 @@ def VPU_MaxPoolOp :
         I64ArrayAttr:$pads_end,
         IE_RoundingTypeAttr:$rounding_type,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op
     );
 
     let results = (outs
@@ -132,6 +132,8 @@ def VPU_MaxPool8Op :
             "MaxPool8",
             [
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface, ["isOperationSplitOverKernelCompatible",
+                                                                     "isOperationSplitOverBatchCompatible"]>,
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>
             ]
         > {

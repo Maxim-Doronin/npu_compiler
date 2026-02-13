@@ -15,7 +15,7 @@ namespace vpux::config {
 
 class ConstraintsInitializer50XX final : public IConstraintsInitializer {
 public:
-    void initialize(mlir::MLIRContext* context) override;
+    void initialize(mlir::MLIRContext* context, PlatformOrArch target) override;
 };
 
 }  // namespace vpux::config

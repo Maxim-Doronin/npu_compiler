@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -112,7 +112,7 @@ func.func @CollapseReshapeAndExpand(%arg0: tensor<1x1x12x7xf32>) -> tensor<16x7x
     return %1 : tensor<16x7xf32>
 
     // CHECK:               [[EXPAND:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 4, 0]} : tensor<1x1x12x7xf32> -> tensor<1x1x16x7xf32>
-    // CHECK:               [[RESHAPE:%.*]]  = IE.AffineReshape([[EXPAND]])
+    // CHECK:               [[RESHAPE:%.+]]  = IE.AffineReshape([[EXPAND]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [16, 7]} : tensor<1x1x16x7xf32> -> tensor<16x7xf32>
     // CHECK:               return [[RESHAPE]] : tensor<16x7xf32>
 }
@@ -530,7 +530,7 @@ func.func @SwapAffineReshapeGeluChangeLayout(%arg0: tensor<1x512x64x64xf16, {ord
 // -----
 
 // CHECK-LABEL: @SwapAffineReshapeSwish
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<1x1280x1x1xf16>)
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1280x1x1xf16>)
 func.func @SwapAffineReshapeSwish(%arg0: tensor<1x1280x1x1xf16>) -> tensor<1x1x1x1280xf16> {
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1, 1280]} : tensor<1x1280x1x1xf16> -> tensor<1x1x1x1280xf16>
     %1 = IE.Swish(%0) {beta_value = 1.000000e+00 : f64} : tensor<1x1x1x1280xf16> -> tensor<1x1x1x1280xf16>
@@ -548,7 +548,7 @@ func.func @SwapAffineReshapeSwish(%arg0: tensor<1x1280x1x1xf16>) -> tensor<1x1x1
 // -----
 
 // CHECK-LABEL: @NotSwapAffineReshapeSwishDueToDifferentRank
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<2048x375x4xf16>)
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<2048x375x4xf16>)
 func.func @NotSwapAffineReshapeSwishDueToDifferentRank(%arg0: tensor<2048x375x4xf16>) -> tensor<1x2048x1500x1xf16> {
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [2, 3]], shape_value = [1, 2048, 1500, 1]} : tensor<2048x375x4xf16> -> tensor<1x2048x1500x1xf16>
     %1 = IE.Swish(%0) {beta_value = 1.000000e+00 : f64} : tensor<1x2048x1500x1xf16> -> tensor<1x2048x1500x1xf16>
@@ -608,8 +608,8 @@ func.func @NotSwapAffineReshapeAbsBecausePreviousTransposeHaveMultipleUses(%arg0
 // -----
 
 // CHECK-LABEL: @SwapAffineReshapeMultiply
-// CHECK-SAME:    ([[INPUT0:%.*]]: tensor<4096x2560x1x1xf16>,
-// CHECK-SAME:     [[INPUT1:%.*]]: tensor<4096x2560x1x1xf16>)
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<4096x2560x1x1xf16>,
+// CHECK-SAME:     [[INPUT1:%.+]]: tensor<4096x2560x1x1xf16>)
 func.func @SwapAffineReshapeMultiply(%arg0: tensor<4096x2560x1x1xf16>, %arg1: tensor<4096x2560x1x1xf16>) -> tensor<1x1x4096x2560xf16> {
      %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 4096, 2560]} : tensor<4096x2560x1x1xf16> -> tensor<1x1x4096x2560xf16>
     %1 = IE.AffineReshape(%arg1) {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 4096, 2560]} : tensor<4096x2560x1x1xf16> -> tensor<1x1x4096x2560xf16>
@@ -646,8 +646,8 @@ func.func @SwapAffineReshapeMultiplyF32(%arg0: tensor<4096x2560x1x1xf16>, %arg1:
 // -----
 
 // CHECK-LABEL: @NotSwapAffineReshapeMultiplyWhenRankIsChanged
-// CHECK-SAME:    ([[INPUT0:%.*]]: tensor<16x32x32xf16>,
-// CHECK-SAME:     [[INPUT1:%.*]]: tensor<16x32x32xf16>)
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<16x32x32xf16>,
+// CHECK-SAME:     [[INPUT1:%.+]]: tensor<16x32x32xf16>)
 func.func @NotSwapAffineReshapeMultiplyWhenRankIsChanged(%arg0: tensor<16x32x32xf16>, %arg1: tensor<16x32x32xf16>) -> tensor<1x16x32x32xf16> {
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 16, 32, 32]} : tensor<16x32x32xf16> -> tensor<1x16x32x32xf16>
     %1 = IE.AffineReshape(%arg1) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 16, 32, 32]} : tensor<16x32x32xf16> -> tensor<1x16x32x32xf16>
@@ -669,8 +669,8 @@ func.func @NotSwapAffineReshapeMultiplyWhenRankIsChanged(%arg0: tensor<16x32x32x
 // -----
 
 // CHECK-LABEL: @SwapAffineReshapeMultiplySplitAndMergeAxes
-// CHECK-SAME:    ([[INPUT0:%.*]]: tensor<1x16x32x32xf16>,
-// CHECK-SAME:     [[INPUT1:%.*]]: tensor<1x16x32x32xf16>)
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x16x32x32xf16>,
+// CHECK-SAME:     [[INPUT1:%.+]]: tensor<1x16x32x32xf16>)
 func.func @SwapAffineReshapeMultiplySplitAndMergeAxes(%arg0: tensor<1x16x32x32xf16>, %arg1: tensor<1x16x32x32xf16>) -> tensor<1x512x1x32xf16> {
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 512, 1, 32]} : tensor<1x16x32x32xf16> -> tensor<1x512x1x32xf16>
     %1 = IE.AffineReshape(%arg1) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 512, 1, 32]} : tensor<1x16x32x32xf16> -> tensor<1x512x1x32xf16>
@@ -688,7 +688,7 @@ func.func @SwapAffineReshapeMultiplySplitAndMergeAxes(%arg0: tensor<1x16x32x32xf
 // -----
 
 // CHECK-LABEL: @SwapAffineReshapeMultiplyWithScalarConst
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<1x512x768x1xf16>
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x512x768x1xf16>
 func.func @SwapAffineReshapeMultiplyWithScalarConst(%arg0: tensor<1x512x768x1xf16>) -> tensor<1x512x1x768xf16> {
     %cst = const.Declare tensor<1x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf16>
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 512, 1, 768]} : tensor<1x512x768x1xf16> -> tensor<1x512x1x768xf16>
@@ -705,7 +705,7 @@ func.func @SwapAffineReshapeMultiplyWithScalarConst(%arg0: tensor<1x512x768x1xf1
 // -----
 
 // CHECK-LABEL: @SwapAffineReshapeMultiplyWithConstBroadCastOnOneDim
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<1x512x768x1xf16>
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x512x768x1xf16>
 func.func @SwapAffineReshapeMultiplyWithConstBroadCastOnOneDim(%arg0: tensor<1x512x768x1xf16>) -> tensor<1x512x1x768xf16> {
     %cst = const.Declare tensor<1x1x1x768xf16> = dense<2.0> : tensor<1x1x1x768xf16>
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1, 2], [3], [3]], shape_value = [1, 512, 1, 768]} : tensor<1x512x768x1xf16> -> tensor<1x512x1x768xf16>
@@ -726,7 +726,7 @@ func.func @SwapAffineReshapeMultiplyWithConstBroadCastOnOneDim(%arg0: tensor<1x5
 #map = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
 
 // CHECK-LABEL: @SwapAffineReshapeMultiplyWithReorderedConstBroadCastOnOneDim
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<1x192x900x4xf16, {order = #NHWC}>
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x192x900x4xf16, {order = #NHWC}>
 func.func @SwapAffineReshapeMultiplyWithReorderedConstBroadCastOnOneDim(%arg0: tensor<1x192x900x4xf16, {order = #NHWC}>) -> tensor<1x192x3600x1xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<1x192x1x1xf16, {order = #NHWC}> = dense<2.0> : tensor<1x1x192xf32>, [#const.Reshape<[1, 192, 1, 1]>, #const.CastElemType<f16>, #const.Transpose<#map>, #const.Reorder<#NHWC>]
     %affine_reshape = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 192, 3600, 1]} : tensor<1x192x900x4xf16, {order = #NHWC}> -> tensor<1x192x3600x1xf16, {order = #NHWC}>
@@ -743,7 +743,7 @@ func.func @SwapAffineReshapeMultiplyWithReorderedConstBroadCastOnOneDim(%arg0: t
 // -----
 
 // CHECK-LABEL: @NotSwapAffineReshapeMultiplyWithMultiNonBroadCastDims
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<2x256x4x192xf16>
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<2x256x4x192xf16>
 func.func @NotSwapAffineReshapeMultiplyWithMultiNonBroadCastDims(%arg0: tensor<2x256x4x192xf16>) -> tensor<1x512x4x192xf16> {
     %cst = const.Declare tensor<1x1x4x192xf16> = dense<2.0> : tensor<1x1x4x192xf16>
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0, 1], [2], [3]], shape_value = [1, 512, 4, 192]} : tensor<2x256x4x192xf16> -> tensor<1x512x4x192xf16>
@@ -760,7 +760,7 @@ func.func @NotSwapAffineReshapeMultiplyWithMultiNonBroadCastDims(%arg0: tensor<2
 // -----
 
 // CHECK-LABEL: @NotSwapAffineReshapeMultiplyWithNonBroadCastDimChanged
-// CHECK-SAME:    ([[INPUT:%.*]]: tensor<2x4x1x1xf16>
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<2x4x1x1xf16>
 func.func @NotSwapAffineReshapeMultiplyWithNonBroadCastDimChanged(%arg0: tensor<2x4x1x1xf16>) -> tensor<1x2x2x2xf16> {
     %cst = const.Declare tensor<1x1x2x1xf16> = dense<2.0> : tensor<1x1x2x1xf16>
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0], [1, 2], [2, 3]], shape_value = [1, 2, 2, 2]} : tensor<2x4x1x1xf16> -> tensor<1x2x2x2xf16>
@@ -777,8 +777,8 @@ func.func @NotSwapAffineReshapeMultiplyWithNonBroadCastDimChanged(%arg0: tensor<
 // -----
 
 // CHECK-LABEL: @NotSwapAffineReshapeMultiplyForReshapeDifferentInTypes
-// CHECK-SAME:    ([[INPUT0:%.*]]: tensor<1x16x32x32xf16>,
-// CHECK-SAME:     [[INPUT1:%.*]]: tensor<1x1x512x1xf16>)
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x16x32x32xf16>,
+// CHECK-SAME:     [[INPUT1:%.+]]: tensor<1x1x512x1xf16>)
 func.func @NotSwapAffineReshapeMultiplyForReshapeDifferentInTypes(%arg0: tensor<1x16x32x32xf16>, %arg1: tensor<1x1x512x1xf16>) -> tensor<1x512x1x32xf16> {
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 512, 1, 32]} : tensor<1x16x32x32xf16> -> tensor<1x512x1x32xf16>
     %1 = IE.AffineReshape(%arg1) {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 512, 1, 1]} : tensor<1x1x512x1xf16> -> tensor<1x512x1x1xf16>
@@ -800,8 +800,8 @@ func.func @NotSwapAffineReshapeMultiplyForReshapeDifferentInTypes(%arg0: tensor<
 // -----
 
 // CHECK-LABEL: @NotSwapAffineReshapeMultiplyForReshapeDifferentDimMapping
-// CHECK-SAME:    ([[INPUT0:%.*]]: tensor<16x1x1x32xf16>,
-// CHECK-SAME:     [[INPUT1:%.*]]: tensor<16x1x1x32xf16>)
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<16x1x1x32xf16>,
+// CHECK-SAME:     [[INPUT1:%.+]]: tensor<16x1x1x32xf16>)
 func.func @NotSwapAffineReshapeMultiplyForReshapeDifferentDimMapping(%arg0: tensor<16x1x1x32xf16>, %arg1: tensor<16x1x1x32xf16>) -> tensor<1x16x1x32xf16> {
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 16, 1, 32]} : tensor<16x1x1x32xf16> -> tensor<1x16x1x32xf16>
     %1 = IE.AffineReshape(%arg1) {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 16, 1, 32]} : tensor<16x1x1x32xf16> -> tensor<1x16x1x32xf16>

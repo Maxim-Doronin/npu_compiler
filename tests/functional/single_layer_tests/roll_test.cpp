@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -69,6 +69,7 @@ TEST_P(SEPRollLayerTest_NPU4000, HW) {
     configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-se-ptrs-operations=true";
     run(Platform::NPU4000);
 }
+
 TEST_P(SEPRollLayerTest_NPU5010, HW) {
     setDefaultHardwareMode();
     configuration["NPU_COMPILATION_MODE_PARAMS"] = "enable-se-ptrs-operations=true";
@@ -92,6 +93,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_HeightAndWidth, SEPRollLayerTest_NPU4
                                             ::testing::Values(ov::element::f16), ::testing::Values(ov::Layout("NHWC")),
                                             ::testing::Values(ov::Layout("NCHW"))),
                          SEPRollLayerTest_NPU4000::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_HeightAndWidth, SEPRollLayerTest_NPU5010,
                          ::testing::Combine(::testing::ValuesIn(inputShapesHW), ::testing::ValuesIn(shiftsHW),
                                             ::testing::ValuesIn(axesHW), ::testing::Values(ov::element::f16),
@@ -118,6 +120,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_HeightOrWidth, SEPRollLayerTest_NPU40
                                             ::testing::Values(ov::element::f16), ::testing::Values(ov::Layout("NHWC")),
                                             ::testing::Values(ov::Layout("NCHW"))),
                          SEPRollLayerTest_NPU4000::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_HeightOrWidth, SEPRollLayerTest_NPU5010,
                          ::testing::Combine(::testing::ValuesIn(inputShapesHeightOrWidth),
                                             ::testing::ValuesIn(shiftsHeightOrWidth),
@@ -147,6 +150,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_ChannelAndHeight, SEPRollLayerTest_NP
                                             ::testing::Values(ov::Layout("NHWC")),
                                             ::testing::Values(ov::Layout("NCHW"))),
                          SEPRollLayerTest_NPU4000::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_ChannelAndHeight, SEPRollLayerTest_NPU5010,
                          ::testing::Combine(::testing::ValuesIn(inputShapesChannelAndHeight),
                                             ::testing::ValuesIn(shiftsChannelAndHeight),
@@ -173,10 +177,12 @@ INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_Channel, SEPRollLayerTest_NPU4000,
                                             ::testing::Values(ov::element::f16), ::testing::Values(ov::Layout("NHWC")),
                                             ::testing::Values(ov::Layout("NCHW"))),
                          SEPRollLayerTest_NPU4000::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_SEPRollTest_Channel, SEPRollLayerTest_NPU5010,
                          ::testing::Combine(::testing::ValuesIn(inputShapesChannel), ::testing::ValuesIn(shiftsChannel),
                                             ::testing::ValuesIn(axesChannel), ::testing::Values(ov::element::f16),
                                             ::testing::Values(ov::element::f16), ::testing::Values(ov::Layout("NHWC")),
                                             ::testing::Values(ov::Layout("NCHW"))),
                          SEPRollLayerTest_NPU5010::getTestCaseName);
+
 }  // namespace ov::test

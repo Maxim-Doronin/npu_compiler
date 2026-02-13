@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,11 +30,11 @@ module @CallChain {
 
         %b = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%b : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%inAlloc : memref<1x3x64x64xf16, @DDR>)
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%inAlloc : memref<1x3x64x64xf16, @DDR>)
                 outputs(%tmpCmx : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%b : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%tmpCmx : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%tmpCmx : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
                 outputs(%outAlloc : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
@@ -53,7 +53,7 @@ module @CallChain {
         %b_fooCall2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         VPURT.Task updates(%b_fooCall1CopyIn : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%netIn : memref<1x3x64x64xf16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%netIn : memref<1x3x64x64xf16, @DDR>)
                 outputs(%inAlloc : memref<1x3x64x64xf16, @DDR>)
                 -> memref<1x3x64x64xf16, @DDR>
         }
@@ -63,7 +63,7 @@ module @CallChain {
         }
 
         VPURT.Task waits(%b_fooCall1 : !VPURT.Barrier) updates(%b_fooCall2CopyIn : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%outAlloc : memref<1x3x64x64xf16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%outAlloc : memref<1x3x64x64xf16, @DDR>)
                 outputs(%inAlloc : memref<1x3x64x64xf16, @DDR>)
                 -> memref<1x3x64x64xf16, @DDR>
         }
@@ -73,7 +73,7 @@ module @CallChain {
         }
 
         VPURT.Task waits(%b_fooCall2 : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%outAlloc : memref<1x3x64x64xf16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%outAlloc : memref<1x3x64x64xf16, @DDR>)
                 outputs(%netOut : memref<1x3x64x64xf16, @DDR>)
                 -> memref<1x3x64x64xf16, @DDR>
         }
@@ -104,27 +104,27 @@ module @CallChain {
         // CHECK-SAME: inputs([[NET_IN]]
         // CHECK-SAME: outputs([[MAIN_IN_ALLOC]]
 
-        // CHECK: VPURT.Task waits([[MAIN_FOO_CALL1_COPY_BARRIER]] {{.*}} updates([[FOO_CALL1_BARRIER]]
+        // CHECK: VPURT.Task waits([[MAIN_FOO_CALL1_COPY_BARRIER]] {{.+}} updates([[FOO_CALL1_BARRIER]]
         // CHECK-NEXT: VPUIP.NNDMA
         // CHECK-SAME: inputs([[FOO_CALL1_IN_ALLOC]]
         // CHECK-SAME: outputs([[FOO_CALL1_CMX]]
 
-        // CHECK: VPURT.Task waits([[FOO_CALL1_BARRIER]] {{.*}} updates([[MAIN_FOO_CALL1_BARRIER]]
+        // CHECK: VPURT.Task waits([[FOO_CALL1_BARRIER]] {{.+}} updates([[MAIN_FOO_CALL1_BARRIER]]
         // CHECK-NEXT: VPUIP.NNDMA
         // CHECK-SAME: inputs([[FOO_CALL1_CMX]]
         // CHECK-SAME: outputs([[FOO_CALL1_OUT_ALLOC]]
 
-        // CHECK: VPURT.Task waits([[MAIN_FOO_CALL1_BARRIER]] {{.*}} updates([[MAIN_FOO_CALL2_COPY_BARRIER]]
+        // CHECK: VPURT.Task waits([[MAIN_FOO_CALL1_BARRIER]] {{.+}} updates([[MAIN_FOO_CALL2_COPY_BARRIER]]
         // CHECK-NEXT: VPUIP.NNDMA
         // CHECK-SAME: inputs([[MAIN_OUT_ALLOC]]
         // CHECK-SAME: outputs([[MAIN_IN_ALLOC]]
 
-        // CHECK: VPURT.Task waits([[MAIN_FOO_CALL2_COPY_BARRIER]] {{.*}} updates([[FOO_CALL2_BARRIER]]
+        // CHECK: VPURT.Task waits([[MAIN_FOO_CALL2_COPY_BARRIER]] {{.+}} updates([[FOO_CALL2_BARRIER]]
         // CHECK-NEXT: VPUIP.NNDMA
         // CHECK-SAME: inputs([[FOO_CALL2_IN_ALLOC]]
         // CHECK-SAME: outputs([[FOO_CALL2_CMX]]
 
-        // CHECK: VPURT.Task waits([[FOO_CALL2_BARRIER]] {{.*}} updates([[MAIN_FOO_CALL2_BARRIER]]
+        // CHECK: VPURT.Task waits([[FOO_CALL2_BARRIER]] {{.+}} updates([[MAIN_FOO_CALL2_BARRIER]]
         // CHECK-NEXT: VPUIP.NNDMA
         // CHECK-SAME: inputs([[FOO_CALL2_CMX]]
         // CHECK-SAME: outputs([[FOO_CALL2_OUT_ALLOC]]

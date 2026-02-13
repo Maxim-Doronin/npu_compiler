@@ -89,6 +89,10 @@ bool vpux::VPU::NCEAveragePoolOp::isSupported(IE::AvgPoolOp op, LogCb logCb, boo
         return false;
     }
 
+    if (inputType.getElementType().isF32()) {
+        return false;
+    }
+
     if (checkChannelAlignment) {
         auto iface = mlir::cast<IE::AlignedChannelsOpInterface>(op.getOperation());
         if (!NCEInvariant::isInputActTypeSupported(inputType, iface.getInputChannelAlignment(), false) ||
@@ -241,10 +245,11 @@ bool vpux::VPU::NCEAveragePoolOp::checkStrategyCompatibility(VPU::MultiClusterSt
 vpux::VPU::DistributionInfo vpux::VPU::NCEAveragePoolOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles) {
     return VPU::getNCEExplicitDistributionInfo(mlir::dyn_cast<VPU::NCEOpInterface>(getOperation()), shape,
                                                distributionMode, numTiles, numClusters, alignment,
-                                               uniformDistributedSegments, overlapParams);
+                                               uniformDistributedSegments, overlapParams, memoryNumTiles);
 }
 
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOH

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -102,7 +102,6 @@ def IE_CodeGenCapsuleOp :
 
     let hasVerifier = 1;
     let hasCustomAssemblyFormat = 1;
-    let hasCanonicalizer = 1;
 }
 
 //
@@ -487,6 +486,8 @@ def IE_OneHotOp :
         OptionalAttr<F64Attr>:$off_value_attr,
 
         IntAttr:$axis_attr,
+        OptionalAttr<IE_OneHotModeAttr>:$mode,
+
         TypeAttr:$outputType
     );
 
@@ -504,10 +505,7 @@ def IE_OneHotOp :
 
 def IE_FlashSDPAOp :
         IE_LayerOp<
-            "FlashSDPA",
-            [
-                AttrSizedOperandSegments
-            ]
+            "FlashSDPA"
         > {
     let summary = "Flash Attention SDPA layer";
 
@@ -515,14 +513,21 @@ def IE_FlashSDPAOp :
         RankedTensorOf<[F16, F32, F64]>:$query,
         RankedTensorOf<[F16, F32, F64]>:$key,
         RankedTensorOf<[F16, F32, F64]>:$value,
+        RankedTensorOf<[F16, F32, F64]>:$input_running_output,
+        RankedTensorOf<[F16, F32, F64]>:$input_running_max,
+        RankedTensorOf<[F16, F32, F64]>:$input_running_sum,
         Optional<RankedTensorOf<[F16, F32, F64]>>:$attention_mask,
-        Optional<RankedTensorOf<[F16, F32, F64]>>:$scale,
+
+        BoolAttr:$is_head,
+        BoolAttr:$is_tail,
 
         IntAttr:$source_seq_len_pad_size
     );
 
     let results = (outs
-        RankedTensorOf<[F16, F32, F64]>:$output
+        RankedTensorOf<[F16, F32, F64]>:$result_running_output,
+        RankedTensorOf<[F16, F32, F64]>:$result_running_max,
+        RankedTensorOf<[F16, F32, F64]>:$result_running_sum
     );
 }
 
@@ -530,7 +535,8 @@ def IE_PermuteCastOp :
         IE_LayerOp<
             "PermuteCast",
             [
-                IE_ViewLikeOpInterface
+                IE_ViewLikeOpInterface,
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface, ["shouldJITCompile", "shouldJITCompileToEnableFusion"]>
             ]
         > {
     let summary = "InferenceEngine PermuteCast layer";
@@ -804,6 +810,7 @@ def IE_SDPAExtendedOp :
         RankedTensorOf<[F16, F32]>:$inputV,
         Optional<RankedTensorOf<[F16, F32]>>:$inputMask,
         Optional<RankedTensorOf<[F16, F32]>>:$inputScale,
+        Optional<RankedTensorOf<[F16, F32]>>:$inputBias,
 
         OptionalAttr<IntAttr>:$padSizeS
      );
@@ -882,6 +889,54 @@ def IE_TopKOp :
     let hasVerifier = 1;
 }
 
+def IE_LogSoftmaxTopKOp :
+        IE_LayerOp<
+            "LogSoftmaxTopK"
+        > {
+    let summary = "InferenceEngine LogSoftmaxTopK layer";
+
+    let description = [{
+        This operator is fused from a LogSoftmaxOp and a TopKOp (K=1) with both on the inner axis
+    }];
+
+    let arguments = (ins
+        RankedTensorOf<[F16]>:$input,
+
+        IntAttr:$axisInd,
+        IntAttr:$padSize,
+        TypeAttr:$dstElemType
+    );
+
+    let results = (outs
+        RankedTensorOf<[F32]>:$output,
+        RankedTensorOf<[SI64]>:$topKOutput
+    );
+}
+
+def IE_LogSoftmaxPeakOp :
+        IE_LayerOp<
+            "LogSoftmaxPeak"
+        > {
+    let summary = "InferenceEngine LogSoftmaxPeak layer";
+
+    let description = [{
+        This operator is fused from a LogSoftmaxOp and a TopKOp (K=1) going into a GatherElements
+    }];
+
+    let arguments = (ins
+        RankedTensorOf<[F16]>:$input,
+
+        IntAttr:$axisInd,
+        IntAttr:$padSize,
+        TypeAttr:$dstElemType
+    );
+
+    let results = (outs
+        RankedTensorOf<[F32]>:$output,
+        RankedTensorOf<[SI64]>:$topKOutput
+    );
+}
+
 def IE_STFTOp :
         IE_LayerOp<
             "STFT",
@@ -919,6 +974,65 @@ def IE_STFTOp :
         OptionalAttr<IntAttr>:$frame_size_attr,
         OptionalAttr<IntAttr>:$frame_step_attr,
         UnitAttr:$transpose_frames
+    );
+
+    let results = (outs
+        RankedTensorOf<[F16, F32, F64]>:$output
+    );
+
+    let hasVerifier = 1;
+}
+
+def IE_ISTFTOp :
+        IE_LayerOp<
+            "ISTFT"
+        > {
+    let summary = "InferenceEngine Inverse Short-Time Fourier Transform (ISTFT) layer";
+
+    let description = [{
+        ISTFT operation performs Inverse Short-Time Fourier Transform to reconstruct time-domain signals
+        from frequency-domain representations.
+
+        Based on OpenVINO ISTFT specification:
+        - Input signal: 3D [fft_results, frames, 2] or 4D [batch, fft_results, frames, 2]
+        - Window: Required 1D [window_length] tensor of type T, specifying the window   values applied to restore the signal. The window_length is required to be equal or smaller than frame_size, if smaller the window will be padded with zeros on the left and right sides.
+        - Frame size: scalar describing the size of each time-domain frame
+        - Frame step: scalar describing the hop length between frames
+        - Signal length: optional scalar specifying the desired output signal length
+
+        If the signal_length is not provided as an input value, it is calculated according to the following rules:
+
+        - default_signal_length = (frames - 1) * frame_step for center == true
+        - default_signal_length = (frames - 1) * frame_step + frame_size for center == false
+
+        If the signal_length input is provided, the number of output values will be adjusted accordingly.
+        - If signal_length > default_signal_length the output is padded with zeros at the end
+        - If signal_length < default_signal_length any additional generated samples are cut to the signal_length size
+
+        The operation reconstructs the time-domain signal using overlap-add method:
+        1. Apply IRDFT to each frequency frame to get time-domain frames
+        2. Apply windowing function (if provided) to each frame
+        3. Overlap and add frames according to frame_step to reconstruct continuous signal
+
+         Input to output shape mapping:
+        - 3D input [fft_results, frames, 2] → 1D output [signal_length]
+        - 4D input [batch, fft_results, frames, 2] → 2D output [batch, signal_length]
+
+
+        Attributes:
+        - center
+        - normalized
+    }];
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32, F64]>:$signal,
+        RankedTensorOf<[F16, F32, F64]>:$window,
+        RankedTensorOf<[AnyInteger]>:$frame_size,
+        RankedTensorOf<[AnyInteger]>:$frame_step,
+        Optional<RankedTensorOf<[AnyInteger]>>:$signal_length,
+
+        OptionalAttr<UnitAttr>:$center,
+        OptionalAttr<UnitAttr>:$normalized
     );
 
     let results = (outs

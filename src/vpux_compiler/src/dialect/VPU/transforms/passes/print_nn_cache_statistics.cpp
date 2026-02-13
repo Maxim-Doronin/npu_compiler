@@ -36,11 +36,10 @@ private:
 
 void PrintNNCacheStatisticsPass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    auto costModelUtils = VPU::getICostModelUtilsInterface(moduleOp->getContext());
-    if (costModelUtils->isNNCacheStatisticsSupported()) {
+    auto& costModelUtils = VPU::getICostModelUtilsInterface(moduleOp->getContext());
+    if (costModelUtils.isNNCacheStatisticsSupported()) {
         auto maybeCostModelAnalysis = getCachedAnalysis<VPU::CostModelAnalysis>();
-        const auto arch = config::getArch(moduleOp);
-        auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+        auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
         _log.info("[NN Cache statistics] for Pass {0}, costModel: {1}", passName,
                   costModel->getPreloadedCacheCounter().printString());
     }

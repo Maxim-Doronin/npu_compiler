@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,8 +14,8 @@
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/Dialect/Bufferization/Transforms/Passes.h>
@@ -70,14 +70,33 @@ void ReferenceSWStrategy::buildPipeline(mlir::OpPassManager& pm) {
 // HostPipelineStrategy
 //
 
+void HostPipelineStrategy::buildOutputShapePredictFunc(mlir::OpPassManager& pm) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+    pm.addPass(HostExec::createExtractReturnShapesPass(_log));
+    pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
+    pm.addPass(HostExec::createOutlineDimOperationsPass(_log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+}
+
 void HostPipelineStrategy::buildPipeline(mlir::OpPassManager& pm) {
     auto strategy = _createPipelineStrategy(config::CompilationMode::HostCompile);
 
     strategy->initializePipeline(pm, _log);
 
-    strategy->buildIEPipeline(pm, _log);
-    strategy->buildLowerIE2VPUPipeline(pm, _log);
-    strategy->buildVPUPipeline(pm, _log);
+    // build output shape predict func and pack @main func to a nested @NPU module
+    buildOutputShapePredictFunc(pm);
+
+    // pack @NPU module
+    pm.addPass(Core::createPackNestedModulesPass(_log, Core::NestingMode::EntryPoint));
+
+    // perform these transformations on the nested @NPU module
+    auto& nestedNPUPm = pm.nest<mlir::ModuleOp>();
+    strategy->buildIEPipeline(nestedNPUPm, _log);
+    strategy->buildLowerIE2VPUPipeline(nestedNPUPm, _log);
+    strategy->buildVPUPipeline(nestedNPUPm, _log);
+
+    // unpack @NPU module
+    pm.addPass(Core::createUnpackNestedModulesPass(_log, Core::NestingMode::EntryPoint));
 
     strategy->buildLowerVPU2VPUIPPipeline(pm, _log);
 
@@ -95,7 +114,7 @@ void HostPipelineStrategy::buildPipeline(mlir::OpPassManager& pm) {
     pm.addPass(vpux::HostExec::createPrepareHostFuncForAsyncExecutionPass(_log));
 
     auto& nestedPm = pm.nest<mlir::ModuleOp>();
-    strategy->buildVPUIPPipeline(nestedPm, _log);
+    { strategy->buildVPUIPPipeline(nestedPm, _log); }
 }
 
 //

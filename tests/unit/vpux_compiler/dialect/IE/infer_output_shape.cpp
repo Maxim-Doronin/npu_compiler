@@ -11,6 +11,7 @@
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Parser/Parser.h>
@@ -492,15 +493,15 @@ TEST_P(ReifyDimTests, ReifyDimTest) {
     for (auto i : irange(rank)) {
         auto result = reifyDim(builder, inArg, i);
         if (params.shape[i] == mlir::ShapedType::kDynamic) {
-            EXPECT_TRUE(result.is<mlir::Value>());
-            EXPECT_TRUE(mlir::isa<mlir::tensor::DimOp>(result.get<mlir::Value>().getDefiningOp()));
-            auto dimOp = mlir::cast<mlir::tensor::DimOp>(result.get<mlir::Value>().getDefiningOp());
+            EXPECT_TRUE(mlir::isa<mlir::Value>(result));
+            EXPECT_TRUE(mlir::isa<mlir::tensor::DimOp>(mlir::cast<mlir::Value>(result).getDefiningOp()));
+            auto dimOp = mlir::cast<mlir::tensor::DimOp>(mlir::cast<mlir::Value>(result).getDefiningOp());
             EXPECT_TRUE(dimOp.getConstantIndex().has_value());
             EXPECT_EQ(dimOp.getConstantIndex().value(), i);
         } else {
-            EXPECT_TRUE(result.is<mlir::Attribute>());
-            EXPECT_TRUE(mlir::isa<mlir::IntegerAttr>(result.get<mlir::Attribute>()));
-            EXPECT_EQ(mlir::cast<mlir::IntegerAttr>(result.get<mlir::Attribute>()).getInt(), params.shape[i]);
+            EXPECT_TRUE(mlir::isa<mlir::Attribute>(result));
+            EXPECT_TRUE(mlir::isa<mlir::IntegerAttr>(mlir::cast<mlir::Attribute>(result)));
+            EXPECT_EQ(mlir::cast<mlir::IntegerAttr>(mlir::cast<mlir::Attribute>(result)).getInt(), params.shape[i]);
         }
     }
     builder.create<mlir::func::ReturnOp>(loc);

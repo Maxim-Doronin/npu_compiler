@@ -4,8 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
@@ -70,8 +69,9 @@ bool OutputPipelineTilingPass::isTilingAdjustmentBeneficial(VPU::NCEOpInterface 
     // num_tiles = [1, 1, 2, 1]
     // alignment = [1, 1, 4, 1]
     // would be unrolled into shape [1, 48, 8, 771] and [1, 48, 2, 771], such uneven unrolling is not beneficial
+    auto strategy = mlir::cast<VPU::ClusteredOpInterface>(origOp).getMultiClusterStrategy();
     auto canTileBeEvenlyUnrolled = [&](auto& tileInfo) {
-        auto curTileTypes = VPU::getTileTypes(origOp, tileInfo);
+        auto curTileTypes = VPU::getTileTypes(origOp, tileInfo, strategy);
         VPUX_THROW_WHEN(curTileTypes.empty(), "Tile types vector is empty");
         auto curTileInputType = curTileTypes[0];
         auto inputDistType = mlir::dyn_cast<VPU::DistributedTensorType>(curTileInputType);
@@ -155,10 +155,9 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
 
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(module);
     auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
     auto layerCostModel =
-            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, &getContext(), _log);
 
     auto siblingsOpsAnalysis = getAnalysis<VPU::SiblingOpsAnalysis>();
     auto costModel = std::make_shared<VPU::LayerCostModel>(func, _enablePrefetchTiling, siblingsOpsAnalysis,
@@ -193,10 +192,12 @@ void OutputPipelineTilingPass::safeRunOnFunc() {
             return;
         }
 
-        auto tilingMode = VPU::getTilingSupportedMode(tilingBuilderOp, _enablePrefetchTiling, _log);
-        if (tilingMode != TilingMode::PIPELINING) {
+        const auto tilingModeOpt =
+                VPU::getTilingMode(tilingBuilderOp.getOperation(), _enablePrefetchTiling, nullptr, _log);
+        if (!tilingModeOpt.has_value() || tilingModeOpt.value().first != TilingMode::PIPELINING) {
             return;
         }
+        const auto tilingMode = tilingModeOpt.value().first;
 
         const auto outputShape = getShape(origOp->getResult(0));
         auto origTiles = fillDividedTiles(origOp, origTilingStrategy, outputShape);

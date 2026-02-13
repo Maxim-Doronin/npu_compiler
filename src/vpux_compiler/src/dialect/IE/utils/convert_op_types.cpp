@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -81,7 +81,6 @@ void vpux::IE::setupConvertPrecision(mlir::TypeConverter& typeConverter,
 
     typeConverter.addSourceMaterialization(convert);
     typeConverter.addTargetMaterialization(convert);
-    typeConverter.addArgumentMaterialization(convert);
 }
 
 mlir::LogicalResult vpux::IE::runConvertPrecision(mlir::ModuleOp module, mlir::TypeConverter& typeConverter,

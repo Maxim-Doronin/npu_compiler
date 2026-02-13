@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,6 @@
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 
 #include <npu_40xx_nnrt.hpp>
-#include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/abi_version.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/passes.hpp"
 
 #include <mlir/Transforms/Passes.h>
@@ -28,20 +27,20 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
                                                  Logger log, VPU::DPUDryRunMode dpuDryRunMode) {
     log.info("BackendCompilationOptions:\n"
              "  workloadManagementEnable = {0}\n"
-             "  workloadManagementMode = V{1}\n"
+             "  workloadManagementMode = {1}\n"
              "  workloadManagementBarrierCountThreshold = {2}\n"
-             "  enableMemorySideCache = {3}\n"
-             "  enableDMAProfiling = {4}\n"
-             "  enableShaveDDRAccessOptimization = {5}\n"
-             "  workloadManagementBarrierProgrammingMode = {6}\n"
-             "  workloadManagementDmaFifoType = {7}\n",
+             "  workloadManagementBarrierProgrammingMode = {3}\n"
+             "  workloadManagementDmaFifoType = {4}\n"
+             "  enableMemorySideCache = {5}\n"
+             "  enableDMAProfiling = {6}\n"
+             "  enableShaveDDRAccessOptimization = {7}\n",
              backendCompilationOptions.workloadManagementEnable,
-             static_cast<int>(backendCompilationOptions.workloadManagementMode.getValue()),
+             stringifyEnum(backendCompilationOptions.workloadManagementMode),
              backendCompilationOptions.workloadManagementBarrierCountThreshold,
-             backendCompilationOptions.enableMemorySideCache, backendCompilationOptions.enableDMAProfiling,
-             backendCompilationOptions.enableShaveDDRAccessOptimization,
              stringifyEnum(backendCompilationOptions.workloadManagementBarrierProgrammingMode),
-             stringifyEnum(backendCompilationOptions.workloadManagementDmaFifoType));
+             stringifyEnum(backendCompilationOptions.workloadManagementDmaFifoType),
+             backendCompilationOptions.enableMemorySideCache, backendCompilationOptions.enableDMAProfiling,
+             backendCompilationOptions.enableShaveDDRAccessOptimization);
 
     pm.addPass(VPUMI40XX::createAddPlatformInfoPass(log));
 
@@ -51,8 +50,9 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     // Currently only ELF backend is retriggered during rollback and IR after VPURT
     // needs to be left in a state suitable for nonWLM flow.
     if (backendCompilationOptions.workloadManagementEnable &&
-        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-        if (backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
+        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
+        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        if (backendCompilationOptions.workloadManagementMode > WorkloadManagementMode::PWLM_V0_LCA) {
             pm.addPass(VPURT::createFindWlmEnqueueBarrierPass(
                     backendCompilationOptions.workloadManagementMode,
                     backendCompilationOptions.workloadManagementDmaFifoType == DMAFifoType::HW, log));
@@ -65,8 +65,7 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
                                                 backendCompilationOptions.allocateShaveStackFrames));
     pm.addPass(VPUMI40XX::createSetupProfilingVPUMI40XXPass(backendCompilationOptions.enableDMAProfiling, log));
     pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(ELF::createAddABIVersionPass(log, NPUReg40XX::ABI_VERSION_MAJOR, NPUReg40XX::ABI_VERSION_MINOR,
-                                            NPUReg40XX::ABI_VERSION_PATCH));
+    pm.addPass(ELF::createAddABIVersionPass(log));
     elfSubsetPipelineVPUMI(pm, backendCompilationOptions.workloadManagementEnable,
                            backendCompilationOptions.workloadManagementMode,
                            backendCompilationOptions.enableDumpStatisticsOfWlmOps,
@@ -94,7 +93,7 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     pm.addPass(ELF::createSetCMXSymbolValuePass(
             log, npu40xx::nn_public::VPU_WORKSPACE_ADDR, npu40xx::nn_public::VPU_WORKSPACE_SIZE,
             npu40xx::VPU_METADATA_STORAGE_START, npu40xx::nn_public::VPU_METADATA_SIZE));
-
+    pm.addPass(ELF::createAddRelocationsForDynamicStridesDMAs(log));
     pm.addPass(ELF::createAddELFRelocationsPass(log));
     pm.addPass(ELF::createRemoveEmptyELFSectionsPass(log));
 }
@@ -116,13 +115,15 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
     } else {
         pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
 
-        // No passes following this point need barriers ordered for FWLM
-        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
+        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
+            workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
+            // Generate barrier dependencies in IR if WLM mode requires it
             pm.addPass(VPUMI40XX::createBarrierTopologicalMappingPass(log));
         }
 
         pm.addPass(VPUMI40XX::createGroupExecutionOpsPass(log));
-        if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+        if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES ||
+            workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
             pm.addPass(VPUMI40XX::createConvertFetchDmasToFetchTaskOpsPass(log));
         } else {
             pm.addPass(VPUMI40XX::createAddFetchOpsPass(log));
@@ -134,12 +135,19 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(VPUMI40XX::createNextSameIdAssignmentPass(log));
 
+        if (workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+            pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
+        }
+
         if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
             pm.addPass(VPUMI40XX::createAddEnqueueOpsPass(workloadManagementMode, log));
         }
 
-        pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
-        if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
+        if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
+            pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
+        }
+
+        if (workloadManagementMode > WorkloadManagementMode::PWLM_V0_1_PAGES) {
             pm.addPass(VPUMI40XX::createAddBarrierConfigurationOps(workloadManagementMode,
                                                                    workloadManagementBarrierProgrammingMode, log));
         }
@@ -162,7 +170,7 @@ void vpux::arch40xx::elfSubsetPipelineVPUMI(
             pm.addPass(VPUMI40XX::createUnrollEnqueueOpsPass(log));
         }
 
-        if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
+        if (workloadManagementMode > WorkloadManagementMode::PWLM_V0_1_PAGES) {
             pm.addPass(VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass(log));
         }
         pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));

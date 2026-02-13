@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,10 +36,12 @@ TEST_P(GRUSequenceLayerTestCommon, NPU4000_HW) {
     configuration["NPU_COMPILATION_MODE_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
+
 TEST_P(GRUSequenceLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

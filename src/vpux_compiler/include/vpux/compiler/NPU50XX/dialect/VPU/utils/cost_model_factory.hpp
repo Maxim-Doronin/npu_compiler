@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/VPU/interfaces/cost_model_factory.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/cost_model_shave_utils_interface.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mutex>
 
@@ -33,12 +34,8 @@ public:
      */
     std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel() const override;
 
-    /**
-     * @brief Will create a unique pointer to the Shave Cost Model Utils
-     *
-     * @return std::unique_ptr<IShaveCostModelUtils>
-     */
-    std::unique_ptr<IShaveCostModelUtils> createShaveCostModelUtil() const override;
+    CostModelFactory(std::optional<config::Platform> platformOpt = std::nullopt): _platformOpt(platformOpt) {
+    }
 
 private:
     /**
@@ -53,9 +50,7 @@ private:
     mutable std::shared_ptr<VPUNN::VPUCostModel> _costModel{nullptr};            // cached cost model instance
     mutable std::shared_ptr<VPUNN::VPULayerCostModel> _layerCostModel{nullptr};  // cached layer cost model instance
     mutable std::mutex _mutex;  // mutex to protect access to the cost model instances
-
-    static constexpr bool _isShave2ApiUsedInVPUNN{
-            false};  // cached flag indicating if Shave2Api is used should be set here
+    std::optional<config::Platform> _platformOpt;
 };
 
 }  // namespace arch50xx

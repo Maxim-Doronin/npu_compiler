@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,10 @@
 
 namespace vpux {
 
+constexpr uint32_t CMX_BASE_ADDR = 0x40000000;
+constexpr uint32_t CMX_WORKSPACE_OFFSET = 0x18000;
+constexpr Byte CMX_SHAVE_STACK_SIZE = Byte(7_KB);
+
 constexpr Byte VPUX37XX_CMX_WORKSPACE_SIZE = Byte(1936_KB);
 constexpr Byte VPUX37XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE = Byte(
         static_cast<int64_t>(static_cast<double>(VPUX37XX_CMX_WORKSPACE_SIZE.count()) * FRAGMENTATION_AVOID_RATIO));
@@ -22,7 +26,6 @@ constexpr Byte VPUX40XX_CMX_WORKSPACE_SIZE = Byte(1439_KB);
 constexpr Byte VPUX40XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE = Byte(
         static_cast<int64_t>(static_cast<double>(VPUX40XX_CMX_WORKSPACE_SIZE.count()) * FRAGMENTATION_AVOID_RATIO));
 constexpr Byte VPUX50XX_CMX_WORKSPACE_SIZE = Byte(1439_KB);
-constexpr uint32_t VPUX50XX_CMX_WORKSPACE_OFFSET = 0x18000;
 constexpr Byte VPUX50XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE = Byte(
         static_cast<int64_t>(static_cast<double>(VPUX50XX_CMX_WORKSPACE_SIZE.count()) * FRAGMENTATION_AVOID_RATIO));
 

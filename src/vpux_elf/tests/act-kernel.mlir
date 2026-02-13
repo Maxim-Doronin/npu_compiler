@@ -128,20 +128,20 @@ module @Test attributes {config.arch = #config.arch_kind<NPU37XX>, config.compil
       ELF.PutOpInSection %55 : !ELF.Symbol
     }
     %c0_i8 = arith.constant 0 : i8
-    %58 = ELF.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") {isBuiltin} : i8
+    %58 = ELF.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") <{isBuiltin}> : i8
     %c1_i8 = arith.constant 1 : i8
-    %59 = ELF.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR") {isBuiltin} : i8
+    %59 = ELF.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR") <{isBuiltin}> : i8
     %c2_i8 = arith.constant 2 : i8
-    %60 = ELF.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") {isBuiltin} : i8
+    %60 = ELF.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") <{isBuiltin}> : i8
     %c3_i8 = arith.constant 3 : i8
-    %61 = ELF.Symbol %c3_i8 name("VPU_NNRD_SYM_RTM_DMA0") {isBuiltin} : i8
+    %61 = ELF.Symbol %c3_i8 name("VPU_NNRD_SYM_RTM_DMA0") <{isBuiltin}> : i8
     %c4_i8 = arith.constant 4 : i8
-    %62 = ELF.Symbol %c4_i8 name("VPU_NNRD_SYM_RTM_DMA1") {isBuiltin} : i8
+    %62 = ELF.Symbol %c4_i8 name("VPU_NNRD_SYM_RTM_DMA1") <{isBuiltin}> : i8
     %c5_i8 = arith.constant 5 : i8
-    %63 = ELF.Symbol %c5_i8 name("VPU_NNRD_SYM_FIFO_BASE") {isBuiltin} : i8
+    %63 = ELF.Symbol %c5_i8 name("VPU_NNRD_SYM_FIFO_BASE") <{isBuiltin}> : i8
     %c6_i8 = arith.constant 6 : i8
-    %64 = ELF.Symbol %c6_i8 name("VPU_NNRD_SYM_BARRIERS_START") {isBuiltin} : i8
-    %65 = ELF.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") {isBuiltin} -> !ELF.Section {
+    %64 = ELF.Symbol %c6_i8 name("VPU_NNRD_SYM_BARRIERS_START") <{isBuiltin}> : i8
+    %65 = ELF.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") <{isBuiltin}> -> !ELF.Section {
       ELF.PutOpInSection %58 : !ELF.Symbol
       ELF.PutOpInSection %59 : !ELF.Symbol
       ELF.PutOpInSection %60 : !ELF.Symbol

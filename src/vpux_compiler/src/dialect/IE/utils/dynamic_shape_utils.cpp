@@ -20,9 +20,9 @@ namespace IE {
 void DynamicDimOpBuilder::notifyOperationInserted(mlir::Operation* op, mlir::OpBuilder::InsertPoint) {
     if (auto dimOp = mlir::dyn_cast<mlir::tensor::DimOp>(op)) {
         auto index = dimOp.getConstantIndex().value_or(0);
-        extendOpLoc(op, StringLiteral("dim_{0}"), index);
+        extendOpLoc(op, "dim_{0}", index);
     } else if (auto indexOp = mlir::dyn_cast<mlir::arith::ConstantIndexOp>(op)) {
-        extendOpLoc(op, StringLiteral("const_index_{0}"), parseIntAttr<int64_t>(indexOp.getValue()));
+        extendOpLoc(op, "const_index_{0}", parseIntAttr<int64_t>(indexOp.getValue()));
     }
 }
 

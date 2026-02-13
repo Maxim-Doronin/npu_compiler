@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,10 +37,10 @@ func.func @main(%arg0: memref<1xui8>, %arg1: memref<2xf16>, %arg2: memref<3xf32>
 //CHECK-NEXT:   VPUASM.DeclareBuffer @profilingOutput_buffDecl !VPUASM.Buffer< "ProfilingOutput"[0] <0> : memref<4xui64> :  swizzling(0)>
 
 //CHECK: func.func @main() {
-//CHECK: [[ARG0:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1xui8>
-//CHECK: [[ARG1:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<2xf16>
-//CHECK: [[ARG2:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [1] <0> {swizzlingKey = 0 : i64} -> memref<3xf32>
-//CHECK: [[ARG3:%.*]] = VPURT.DeclareBuffer <ProfilingOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<4xui64>
+//CHECK: [[ARG0:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1xui8>
+//CHECK: [[ARG1:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<2xf16>
+//CHECK: [[ARG2:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [1] <0> {swizzlingKey = 0 : i64} -> memref<3xf32>
+//CHECK: [[ARG3:%.+]] = VPURT.DeclareBuffer <ProfilingOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<4xui64>
 //CHECK: "foo"([[ARG0]], [[ARG1]])
 //CHECK: "bar"([[ARG2]], [[ARG3]])
 //CHECK: "foobar"([[ARG0]], [[ARG1]], [[ARG2]], [[ARG3]])

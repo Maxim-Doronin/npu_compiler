@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -104,12 +104,16 @@ def IE_LayerWithPostOpInterface : OpInterface<"LayerWithPostOpInterface"> {
 
         InterfaceMethod<
             "Set secondary post-processing operation attribute",
-            "void", "setLayerClampOp", (ins "mlir::Operation*":$clamp)
+            "void", "setClampOp", (ins "mlir::Operation*":$clampOp),
+            [{}],
+            [{
+                vpux::IE::setClampOp($_op, clampOp);
+            }]
         >,
 
         InterfaceMethod<
             "Checks if the operation supports a secondary post-processing operation",
-            "bool", "isSupportedClampOp", (ins "mlir::Operation*":$clamp, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
+            "bool", "isSupportedClampOp", (ins "mlir::Operation*":$clampOp, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
         >,
 
         InterfaceMethod<
@@ -295,11 +299,18 @@ def IE_ShaveCodeGenSupportedOpInterface: OpInterface<"ShaveCodeGenSupportedOpInt
     let cppNamespace = "vpux::IE";
 
     let methods = [
+        InterfaceMethod<"Determines if we can conditionally select this op to JIT compile in order to fuse other ops",
+            "bool", "shouldJITCompileToEnableFusion", (ins),
+            [{}],
+            [{
+                return false;
+            }]
+        >,
         InterfaceMethod<"Determines the benefit & decision to JIT compile based on op-specific properties",
             "bool", "shouldJITCompile", (ins),
             [{}],
             [{
-                return true;
+                return vpux::ShaveCodeGen::hasOnlySupportedTypes($_op);
             }]
         >
     ];
@@ -317,7 +328,7 @@ def IE_ExecutorOpInterface : OpInterface<"ExecutorOpInterface"> {
     let methods = [
         InterfaceMethod<
             "Get preferred executors in order of preference",
-            "mlir::SmallVector<vpux::VPU::ExecutorKind>", "getPreferredExecutors", (ins)
+            "mlir::SmallVector<vpux::config::ExecutorKind>", "getPreferredExecutors", (ins)
         >
     ];
 }

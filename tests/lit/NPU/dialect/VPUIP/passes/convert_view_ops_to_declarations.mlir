@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-view-ops-to-declarations %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-view-ops-to-declarations %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK: func.func @Reshape([[ARG0:%.+]]: memref<1x512xf16>, [[ARG1:%.+]]: memref<1x512xf16>)
@@ -19,18 +19,18 @@ func.func @Reshape(%arg0: memref<1x512xf16>, %arg1: memref<1x512xf16>) -> memref
     return %arg1 : memref<1x512xf16>
 
 
-    // CHECK-DAG:       [[OUT:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x512xf16>
-    // CHECK-DAG:       [[IN:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x512x1x1xf16>
+    // CHECK-DAG:       [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x512xf16>
+    // CHECK-DAG:       [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x512x1x1xf16>
 
-    // CHECK-DAG:       [[VAR1:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x512x1x1xf16, @DDR>
+    // CHECK-DAG:       [[VAR1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x512x1x1xf16, @DDR>
 
-    // CHECK:       [[VAR2:%.*]] = VPUIP.NNDMA
+    // CHECK:       [[VAR2:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[IN]] : memref<1x512x1x1xf16>)
     // CHECK-SAME:      outputs([[VAR1]] : memref<1x512x1x1xf16, @DDR>)
 
-    // CHECK:       [[VAR3:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x512xf16, @DDR>
+    // CHECK:       [[VAR3:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x512xf16, @DDR>
 
-    // CHECK:       [[VAR4:%.*]] = VPUIP.NNDMA
+    // CHECK:       [[VAR4:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[VAR3]] : memref<1x512xf16, @DDR>)
     // CHECK-SAME:      outputs([[OUT]] : memref<1x512xf16>) -> memref<1x512xf16>
 
@@ -54,15 +54,15 @@ func.func @SubView(%arg0: memref<4x4xf16>, %arg1: memref<4x4xf16>) -> memref<4x4
 
     return %arg1 : memref<4x4xf16>
 
-    // CHECK:       [[VAR0:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x4xf16>
-    // CHECK:       [[VAR1:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<2x4xf16>
-    // CHECK:       [[VAR2:%.*]] = VPUIP.NNDMA
+    // CHECK:       [[VAR0:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x4xf16>
+    // CHECK:       [[VAR1:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<2x4xf16>
+    // CHECK:       [[VAR2:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[VAR0]] : memref<2x4xf16>)
     // CHECK-SAME:      outputs([[VAR1]] : memref<2x4xf16>) -> memref<2x4xf16>
 
-    // CHECK:       [[VAR3:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <16> -> memref<2x4xf16>
-    // CHECK:       [[VAR4:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <16> -> memref<2x4xf16>
-    // CHECK:       [[VAR5:%.*]] = VPUIP.NNDMA
+    // CHECK:       [[VAR3:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <16> -> memref<2x4xf16>
+    // CHECK:       [[VAR4:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <16> -> memref<2x4xf16>
+    // CHECK:       [[VAR5:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[VAR3]] : memref<2x4xf16>)
     // CHECK-SAME:      outputs([[VAR4]] : memref<2x4xf16>) -> memref<2x4xf16>
 
@@ -92,13 +92,13 @@ func.func @PermuteCast(%arg0: memref<1x12x16x16xf16, #NHWC>, %arg1: memref<1x16x
         outputs(%out : memref<1x16x16x12xf16>) -> memref<1x16x16x12xf16>
     return %arg1 : memref<1x16x16x12xf16>
 
-    //CHECK-DAG:    [[OUT:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x16x16x12xf16>
-    //CHECK-DAG:    [[IN:%.*]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x16x16x12xf16>
-    //CHECK-DAG:    [[VAR1:%.*]] = VPURT.DeclareBuffer <DDR> <2000> -> memref<1x16x16x12xf16, @DDR>
-    //CHECK:        [[VAR2:%.*]] = VPUIP.NNDMA
+    //CHECK-DAG:    [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x16x16x12xf16>
+    //CHECK-DAG:    [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x16x16x12xf16>
+    //CHECK-DAG:    [[VAR1:%.+]] = VPURT.DeclareBuffer <DDR> <2000> -> memref<1x16x16x12xf16, @DDR>
+    //CHECK:        [[VAR2:%.+]] = VPUIP.NNDMA
     //CHECK-SAME:       inputs([[IN]] : memref<1x16x16x12xf16>)
     //CHECK-SAME:       outputs([[VAR1]] : memref<1x16x16x12xf16, @DDR>) -> memref<1x16x16x12xf16, @DDR>
-    //CHECK:        [[VAR3:%.*]] = VPUIP.NNDMA
+    //CHECK:        [[VAR3:%.+]] = VPUIP.NNDMA
     //CHECK-SAME:       inputs([[VAR2]] : memref<1x16x16x12xf16, @DDR>)
     //CHECK-SAME:       outputs([[OUT]] : memref<1x16x16x12xf16>) -> memref<1x16x16x12xf16>
     //CHECK:        return [[ARG1]] : memref<1x16x16x12xf16>
@@ -199,9 +199,9 @@ func.func @VPUIPSubViewDistributed(%arg0: !OutputBuffer) -> !OutputBuffer {
 
     return %arg0 : !OutputBuffer
 
-    // CHECK-DAG:       [[BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
-    // CHECK-DAG:       [[BUF_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
-    // CHECK-DAG:       [[BUF_SLICE:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
+    // CHECK-DAG:       [[BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
+    // CHECK-DAG:       [[BUF_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
+    // CHECK-DAG:       [[BUF_SLICE:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
 
     // CHECK-NOT:   VPUIP.SubView
 
@@ -250,13 +250,13 @@ func.func @VPUIPSubViewDistributedSegmentedOnSubviewAxis(%arg0: !OutputBuffer) -
 
     return %arg0 : !OutputBuffer
 
-    // CHECK:       [[BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0>
+    // CHECK:       [[BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       [[BUF_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384>
+    // CHECK:       [[BUF_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> <16384>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x8x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       [[BUF_SLICE:%.*]] = VPURT.DeclareBuffer <CMX_NN> <4096>
+    // CHECK:       [[BUF_SLICE:%.+]] = VPURT.DeclareBuffer <CMX_NN> <4096>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN,
     // CHECK-SAME:         {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
@@ -303,13 +303,13 @@ func.func @VPUIPSubViewOnHAndWDistributedSegmentedOnH(%arg0: !OutputBuffer) -> !
 
     return %arg0 : !OutputBuffer
 
-    // CHECK:       [[BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0>
+    // CHECK:       [[BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       [[BUF_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384>
+    // CHECK:       [[BUF_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> <16384>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x8x8xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       [[BUF_SLICE:%.*]] = VPURT.DeclareBuffer <CMX_NN> <5120>
+    // CHECK:       [[BUF_SLICE:%.+]] = VPURT.DeclareBuffer <CMX_NN> <5120>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x8x8xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN,
     // CHECK-SAME:         {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
@@ -356,13 +356,13 @@ func.func @VPUIPSubViewOnCDistributedSegmentedOnH(%arg0: !OutputBuffer) -> !Outp
 
     return %arg0 : !OutputBuffer
 
-    // CHECK:       [[BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0>
+    // CHECK:       [[BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x64x15x16xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       [[BUF_OUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384>
+    // CHECK:       [[BUF_OUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> <16384>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x32x15x16xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
 
-    // CHECK:       [[BUF_SLICE:%.*]] = VPURT.DeclareBuffer <CMX_NN> <4096>
+    // CHECK:       [[BUF_SLICE:%.+]] = VPURT.DeclareBuffer <CMX_NN> <4096>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x32x15x16xf16, {order = #NCHW, strides = [15360, 240, 16, 1]}, @CMX_NN,
     // CHECK-SAME:         {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}
 
@@ -419,12 +419,12 @@ func.func @ImplicitConcatViewOnCAndDistrubedSegmentedOnH(%arg0: !InputBufferDDR,
 
     return %arg2 : !OutputBufferDDR
 
-    // CHECK:       [[BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0>
+    // CHECK:       [[BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0>
     // CHECK-SAME:      -> !VPUIP.DistributedBuffer<1x2x128x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     // CHECK-NOT:   VPUIP.SubView
 
-    // CHECK:       [[BUF0:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0>
+    // CHECK:       [[BUF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0>
     // CHECK-SAME:     -> !VPUIP.DistributedBuffer<1x1x128x128xf16, {order = #NCHW, strides = [32768, 16384, 128, 1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs([[IN0]]
@@ -432,7 +432,7 @@ func.func @ImplicitConcatViewOnCAndDistrubedSegmentedOnH(%arg0: !InputBufferDDR,
 
     // CHECK-NOT:   VPUIP.SubView
 
-    // CHECK:       [[BUF1:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384>
+    // CHECK:       [[BUF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> <16384>
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:      inputs([[IN1]]
     // CHECK-SAME:      outputs([[BUF1]]
@@ -493,17 +493,17 @@ func.func @ImplicitConcatView(%arg0: !InputBufferDdr, %arg1: !OutputBufferDdr) -
 
     return %arg1 : !OutputBufferDdr
 
-    // CHECK-DAG:       [[BUF_INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
+    // CHECK-DAG:       [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
 
     // CHECK-NOT:   VPUIP.SubView
-    // CHECK:       [[BUF_INPUT_SLICE1:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
+    // CHECK:       [[BUF_INPUT_SLICE1:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
 
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:       inputs([[ARG0]]
     // CHECK-SAME:       outputs([[BUF_INPUT_SLICE1]]
 
     // CHECK-NOT:   VPUIP.SubView
-    // CHECK:       [[BUF_INPUT_SLICE2:%.*]] = VPURT.DeclareBuffer <CMX_NN> <16384> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
+    // CHECK:       [[BUF_INPUT_SLICE2:%.+]] = VPURT.DeclareBuffer <CMX_NN> <16384> -> !VPUIP.DistributedBuffer<1x64x8x16xf16, {order = #NHWC, strides = [16384, 1, 1024, 64]}, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>
 
     // CHECK:       VPUIP.NNDMA
     // CHECK-SAME:       inputs([[ARG0]]
@@ -554,11 +554,11 @@ func.func @ShapeCast(%arg0: memref<64x3x7x7xf16, #NHWC>, %arg1: memref<1x64x56x5
 
 return %1 : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
 
-//CHECK:        [[VAR0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR1:%.*]] = VPUIP.NNDMA inputs(%arg0 : memref<64x3x7x7xf16, #NHWC>) outputs([[VAR0]] : memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR4:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR5:%.*]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}
+//CHECK:        [[VAR0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
+//CHECK:        [[VAR1:%.+]] = VPUIP.NNDMA inputs(%arg0 : memref<64x3x7x7xf16, #NHWC>) outputs([[VAR0]] : memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
+//CHECK:        [[VAR2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>
+//CHECK:        [[VAR4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>
+//CHECK:        [[VAR5:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}
 //CHECK-SAME:           input([[VAR4]] : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           weights([[VAR2]] : memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           parent_input([[VAR4]] : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
@@ -607,12 +607,12 @@ func.func @ReinterpretCast(%arg0: memref<8xi8, @DDR>, %arg1: memref<8xi8, @DDR>)
 
     %cast_in = Core.ReinterpretCast(%in) : memref<8xi8, @DDR> -> memref<4x1x1x1xf16, @DDR>
     %tmp = VPURT.DeclareBuffer <DDR> <0> -> memref<4x1x1x1xf16, @DDR>
-    %copy = VPUIP.NNDMA {port = 0 : i64}
+    %copy = VPUIP.NNDMA <{port = 0 : i64}>
         inputs(%cast_in : memref<4x1x1x1xf16, @DDR>) outputs(%tmp : memref<4x1x1x1xf16, @DDR>)
         -> memref<4x1x1x1xf16, @DDR>
 
     %cast_out = Core.ReinterpretCast(%copy) : memref<4x1x1x1xf16, @DDR> -> memref<8xi8, @DDR>
-    %res = VPUIP.NNDMA {port = 0 : i64}
+    %res = VPUIP.NNDMA <{port = 0 : i64}>
         inputs(%cast_out : memref<8xi8, @DDR>) outputs(%out : memref<8xi8, @DDR>)
         -> memref<8xi8, @DDR>
 
@@ -632,4 +632,156 @@ func.func @ReinterpretCast(%arg0: memref<8xi8, @DDR>, %arg1: memref<8xi8, @DDR>)
     // CHECK-SAME: outputs([[OUT]]
 
     // CHECK: return [[ARG1]]
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+
+net.NetworkInfo entryPoint :  @ConvertViewOpsWithStridedInput inputsInfo : {
+    DataInfo "Input_1" : tensor<4x6xui8> {dynamicStrides}
+} outputsInfo : {
+    DataInfo "Outputs_1" : tensor<4x6xui8>
+}
+
+func.func @ConvertViewOpsWithStridedInput(%arg0: memref<4x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<4x6xui8, @DDR>
+    %1 = VPUIP.SubView %0 [0, 0] [2, 3] : memref<4x6xui8, @DDR> to memref<2x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> {offsets = [0, 0]}
+    %2 = VPUIP.SubView %0 [2, 3] [2, 3] : memref<4x6xui8, @DDR> to memref<2x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <15> {offsets = [2, 3]}
+    %3 = VPUIP.SubView %0 [0, 0] [2, 6] : memref<4x6xui8, @DDR> to memref<2x6xui8, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> {offsets = [0, 0]}
+    %4 = VPUIP.GenericReshape inputs(%3 : memref<2x6xui8, @DDR>) -> memref<2x2x3xui8, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> {offsets = [0, 0, 0]}
+
+    return %arg1 : memref<4x6xui8, @DDR>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
+
+!qElemType = !quant.uniform<u8:f16, 1.000000e+00:128>
+!qElemType1 = !quant.uniform<u8:f16, 2.000000e+00:128>
+
+// CHECK-LABEL: @ComplexViewSequence
+func.func @ComplexViewSequence(%arg0: memref<512x1024x!qElemType, @DDR>,
+    %arg1: memref<16x16x32x32x!qElemType1, #NHCW, @DDR>)
+    -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR> {
+    %in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<512x1024x!qElemType, @DDR>
+    %out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+    // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<512x1024x!qElemType, @DDR>
+    // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+
+    %0 = VPUIP.GenericReshape inputs(%in : memref<512x1024x!qElemType, @DDR>) -> memref<1x2x256x1024x!qElemType, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x2x256x1024x!qElemType, @DDR>
+
+    %1 = VPUIP.SubView %0 [0, 1, 0, 0] [1, 1, 256, 1024] : 
+        memref<1x2x256x1024x!qElemType, @DDR> to memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>
+
+    %2 = VPUIP.PermuteCast {dst_order = #NHCW, mem_perm = #NHCW}
+        inputs(%1 : memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>) 
+        -> memref<256x1x1024x1x!qElemType, #NHCW, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<256x1x1024x1x!qElemType, #NHCW, @DDR>
+    
+    %3 = VPUIP.ShapeCast {shape = [16, 16, 32, 32]} 
+        inputs(%2 : memref<256x1x1024x1x!qElemType, #NHCW, @DDR>) 
+        -> memref<16x16x32x32x!qElemType, #NHCW, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<16x16x32x32x!qElemType, #NHCW, @DDR>
+
+    %4 = VPUIP.QuantizeCast inputs(%3 : memref<16x16x32x32x!qElemType, #NHCW, @DDR>) -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+    // CHECK: [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+    
+    %5 = VPUIP.NNDMA inputs(%4 : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) 
+        outputs(%out : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+    // CHECK: VPUIP.NNDMA  inputs([[BUF_INPUT]] : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) outputs([[OUT]] : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+    
+    return %arg1 : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<i4:f16, 1.000000e+00>
+
+// CHECK-LABEL: @SI4SubViewAndQuantization
+func.func @SI4SubViewAndQuantization(%arg0: memref<2048x16384xsi4, @DDR>,
+    %arg1: memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>)
+    -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR> {
+    %in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2048x16384xsi4, @DDR>
+    %out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+    // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2048x16384xsi4, @DDR>
+    // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+
+    %0 = VPUIP.SubView %in [0, 8192] [2048, 8192] : 
+        memref<2048x16384xsi4, @DDR> to memref<2048x8192xsi4, {order = affine_map<(d0, d1) -> (d0, d1)>, strides = [16384, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<2048x8192xsi4, {order = #NC, strides = [16384, 1]}, @DDR>
+
+    %1 = VPUIP.GenericReshape inputs(%0 : memref<2048x8192xsi4, {order = affine_map<(d0, d1) -> (d0, d1)>, strides = [16384, 1]}, @DDR>) 
+        -> memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
+
+    %2 = VPUIP.QuantizeCast inputs(%1 : memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>) 
+        -> memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
+    
+    %3 = VPUIP.GenericReshape inputs(%2 : memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>) 
+        -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+
+    %4 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC}
+        inputs(%3 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) 
+        -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+    // CHECK: [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+
+    %5 = VPUIP.NNDMA inputs(%4 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) 
+        outputs(%out : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) 
+        -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+    // CHECK: VPUIP.NNDMA  inputs([[BUF_INPUT]] : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) outputs([[OUT]] : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+
+    return %arg1 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
+}
+
+// -----
+
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @NestedSubViewAndReshape
+func.func @NestedSubViewAndReshape(%arg0: memref<2x64x256xf16, @DDR>,
+    %arg1: memref<1x32x4x64xf16, @DDR>)
+    -> memref<1x32x4x64xf16, @DDR> {
+    %in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x256xf16, @DDR>
+    %out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x32x4x64xf16, @DDR>
+    // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x256xf16, @DDR>
+    // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x32x4x64xf16, @DDR>
+
+    %0 = VPUIP.SubView %in [0, 0, 0] [2, 64, 128] : 
+        memref<2x64x256xf16, @DDR> to memref<2x64x128xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x128xf16, {order = #CHW, strides = [16384, 256, 1]}, @DDR>
+
+    // Second SubView: 2x64x128 -> 2x64x64 (take first half of last dimension again)
+    // Offset calculation: offset[0]=0, offset[1]=0, offset[2]=0, so offset = 0 bytes from previous buffer
+    // Strides: [16384, 256, 1] (inherited from parent)
+    %1 = VPUIP.SubView %0 [0, 0, 0] [2, 64, 64] : 
+        memref<2x64x128xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR> to memref<2x64x64xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x64xf16, {order = #CHW, strides = [16384, 256, 1]}, @DDR>
+
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<2x64x64xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>) 
+        -> memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>
+    // CHECK: [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>
+
+    // Copy to output
+    %3 = VPUIP.NNDMA inputs(%2 : memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>) 
+        outputs(%out : memref<1x32x4x64xf16, @DDR>) 
+        -> memref<1x32x4x64xf16, @DDR>
+    // CHECK: VPUIP.NNDMA inputs([[BUF_INPUT]] : memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>) outputs([[OUT]] : memref<1x32x4x64xf16, @DDR>) -> memref<1x32x4x64xf16, @DDR>
+
+    return %arg1 : memref<1x32x4x64xf16, @DDR>
 }

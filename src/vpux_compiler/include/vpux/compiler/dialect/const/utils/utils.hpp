@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -64,6 +64,16 @@ mlir::Value createConst(
 
     auto contentAttr = Const::ContentAttr::get(dataAttr, setup);
     return builder.create<Const::DeclareOp>(loc, contentAttr.getType(), std::move(contentAttr)).getOutput();
+}
+
+template <typename In>
+mlir::Value createDenseConst(mlir::OpBuilder& builder, mlir::Location loc, mlir::RankedTensorType type, In value) {
+    const auto constShape = type.getShape();
+    const auto shapeTotalSize =
+            std::accumulate(constShape.begin(), constShape.end(), int64_t(1), std::multiplies<int64_t>());
+
+    auto valueArray = SmallVector<In>(shapeTotalSize, value);
+    return createConst<In>(builder, loc, type, valueArray);
 }
 
 mlir::Value buildWeightsConst(mlir::OpBuilder& builder, mlir::Location loc, mlir::RankedTensorType type,

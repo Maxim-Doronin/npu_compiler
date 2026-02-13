@@ -9,8 +9,8 @@
 // CHECK-LABEL: @MergeParallelMultiplyLayers
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1x512xf16>
 func.func @MergeParallelMultiplyLayers(%arg0: tensor<1x1x512xf16>) -> (tensor<1x1x256xf16>, tensor<1x1x256xf16>) {
-    %cst_0 = const.Declare tensor<1x1x1xf16> = dense<0.2> : tensor<1x1x1xf32> isSplat, [#const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1x1xf16> = dense<0.3> : tensor<1x1x1xf32> isSplat, [#const.CastElemType<f16>]
+    %cst_0 = const.Declare tensor<1x1x1xf16> = dense<0.2> : tensor<1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst_1 = const.Declare tensor<1x1x1xf16> = dense<0.3> : tensor<1x1x1xf32>, [#const.CastElemType<f16>]
 
     %0 = IE.Slice %arg0 [0, 0, 0] [1, 1, 256] : tensor<1x1x512xf16> to tensor<1x1x256xf16>
     %1 = IE.Multiply(%0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1x1xf16> -> tensor<1x1x256xf16>
@@ -38,8 +38,8 @@ func.func @MergeParallelMultiplyLayers(%arg0: tensor<1x1x512xf16>) -> (tensor<1x
 // CHECK-LABEL: @MergeParallelMultiplyLayersWithDiffRanks
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1x512xf16>
 func.func @MergeParallelMultiplyLayersWithDiffRanks(%arg0: tensor<1x1x512xf16>) -> (tensor<1x1x256xf16>, tensor<1x1x256xf16>) {
-    %cst_0 = const.Declare tensor<1x1xf16> = dense<0.2> : tensor<1x1xf32> isSplat, [#const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1xf16> = dense<0.3> : tensor<1x1xf32> isSplat, [#const.CastElemType<f16>]
+    %cst_0 = const.Declare tensor<1x1xf16> = dense<0.2> : tensor<1x1xf32>, [#const.CastElemType<f16>]
+    %cst_1 = const.Declare tensor<1x1xf16> = dense<0.3> : tensor<1x1xf32>, [#const.CastElemType<f16>]
 
     %0 = IE.Slice %arg0 [0, 0, 0] [1, 1, 256] : tensor<1x1x512xf16> to tensor<1x1x256xf16>
     %1 = IE.Multiply(%0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256xf16>, tensor<1x1xf16> -> tensor<1x1x256xf16>
@@ -102,8 +102,8 @@ func.func @MergeParallelMultiplyLayersNHWC(%arg0: tensor<1x16x32x64xf16, {order 
 // CHECK-LABEL: @MergeParallelMultiplyLayersSlicedOnInnerNonTrivialDim
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1536x2xf16>
 func.func @MergeParallelMultiplyLayersSlicedOnInnerNonTrivialDim(%arg0: tensor<1x1536x2xf16>) -> (tensor<1x1536x1xf16>, tensor<1x1536x1xf16>) {
-    %cst_0 = const.Declare tensor<1x1x1xf16> = dense<0.2> : tensor<1x1x1xf32> isSplat, [#const.CastElemType<f16>]
-    %cst_1 = const.Declare tensor<1x1x1xf16> = dense<0.3> : tensor<1x1x1xf32> isSplat, [#const.CastElemType<f16>]
+    %cst_0 = const.Declare tensor<1x1x1xf16> = dense<0.2> : tensor<1x1x1xf32>, [#const.CastElemType<f16>]
+    %cst_1 = const.Declare tensor<1x1x1xf16> = dense<0.3> : tensor<1x1x1xf32>, [#const.CastElemType<f16>]
 
     %0 = IE.Slice %arg0 [0, 0, 0] [1, 1536, 1] : tensor<1x1536x2xf16> to tensor<1x1536x1xf16>
     %1 = IE.Multiply(%0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536x1xf16>, tensor<1x1x1xf16> -> tensor<1x1536x1xf16>

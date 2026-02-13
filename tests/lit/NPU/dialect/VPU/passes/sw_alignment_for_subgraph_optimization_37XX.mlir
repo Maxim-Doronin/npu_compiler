@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,33 +33,33 @@ func.func @MVNInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {order 
 
     return %mvn : tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[PERMUTE:%.*]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
+    //CHECK:        [[PERMUTE:%.+]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.*]] = VPU.Copy([[PERMUTE]] as %arg1: tensor<1x32x64x64xf16, {order = #NWHC}>)
+    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.+]] = VPU.Copy([[PERMUTE]] as %arg1: tensor<1x32x64x64xf16, {order = #NWHC}>)
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_MVN:%.*]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]]
+    //CHECK:        [[CLUSTERED_MVN:%.+]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[MVN_OUT_COPY:%.*]] =  VPU.Copy([[CLUSTERED_MVN]]
+    //CHECK:        [[MVN_OUT_COPY:%.+]] =  VPU.Copy([[CLUSTERED_MVN]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
     //CHECK:        return [[MVN_OUT_COPY]] : tensor<1x32x64x64xf16, {order = #NWHC}>
@@ -94,33 +94,33 @@ func.func @SOKMVNInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {ord
 
     return %mvn : tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[PERMUTE:%.*]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
+    //CHECK:        [[PERMUTE:%.+]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.*]] = VPU.Copy([[PERMUTE]]
+    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.+]] = VPU.Copy([[PERMUTE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_MVN:%.*]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]]
+    //CHECK:        [[CLUSTERED_MVN:%.+]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[MVN_OUT_COPY:%.*]] =  VPU.Copy([[CLUSTERED_MVN]]
+    //CHECK:        [[MVN_OUT_COPY:%.+]] =  VPU.Copy([[CLUSTERED_MVN]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
     //CHECK:        return [[MVN_OUT_COPY]] : tensor<1x32x64x64xf16, {order = #NWHC}>
@@ -147,31 +147,31 @@ func.func @TanhInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {order
 
     return %tanh : tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[CLUSTERED_COPY_TO_TANH:%.*]] = VPU.Copy([[CONV_OUT_COPY]]
+    //CHECK:        [[CLUSTERED_COPY_TO_TANH:%.+]] = VPU.Copy([[CONV_OUT_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_TANH:%.*]] = VPU.Tanh([[CLUSTERED_COPY_TO_TANH]]
+    //CHECK:        [[CLUSTERED_TANH:%.+]] = VPU.Tanh([[CLUSTERED_COPY_TO_TANH]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[TANH_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_TANH]]
+    //CHECK:        [[TANH_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_TANH]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
     //CHECK:        return [[TANH_OUT_COPY]] : tensor<1x32x64x64xf16, {order = #NHWC}>
@@ -197,31 +197,31 @@ func.func @SOKTanhInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {or
 
     return %tanh : tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[CLUSTERED_COPY_TO_TANH:%.*]] = VPU.Copy([[CONV_OUT_COPY]]
+    //CHECK:        [[CLUSTERED_COPY_TO_TANH:%.+]] = VPU.Copy([[CONV_OUT_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_TANH:%.*]] = VPU.Tanh([[CLUSTERED_COPY_TO_TANH]]
+    //CHECK:        [[CLUSTERED_TANH:%.+]] = VPU.Tanh([[CLUSTERED_COPY_TO_TANH]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[TANH_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_TANH]]
+    //CHECK:        [[TANH_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_TANH]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
     //CHECK:        return [[TANH_OUT_COPY]] : tensor<1x32x64x64xf16, {order = #NHWC}>
@@ -250,33 +250,33 @@ func.func @MVNOutputAlignForSegmentedOutput(%input: tensor<1x32x64x64xf16, {orde
 
     return %dwconv : tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[MVN:%.*]] = VPU.MVN([[INPUT_COPY]]
+    //CHECK:        [[MVN:%.+]] = VPU.MVN([[INPUT_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[MVN_OUT_COPY:%.*]] = VPU.Copy([[MVN]]
+    //CHECK:        [[MVN_OUT_COPY:%.+]] = VPU.Copy([[MVN]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK:        [[PERMUTE:%.*]] = VPU.PermuteCast([[MVN_OUT_COPY]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NWHC}> -> tensor<1x32x64x64xf16, {order = #NHWC}>
+    //CHECK:        [[PERMUTE:%.+]] = VPU.PermuteCast([[MVN_OUT_COPY]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NWHC}> -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[CONV_IN_COPY:%.*]] = VPU.Copy([[PERMUTE]]
+    //CHECK:        [[CONV_IN_COPY:%.+]] = VPU.Copy([[PERMUTE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x16x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[DWCONV:%.*]] = VPU.NCE.DepthConvolution([[CONV_IN_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[DWCONV:%.+]] = VPU.NCE.DepthConvolution([[CONV_IN_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[DWCONV_OUT_COPY:%.*]] = VPU.Copy([[DWCONV]]
+    //CHECK:        [[DWCONV_OUT_COPY:%.+]] = VPU.Copy([[DWCONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
     //CHECK:        return %9 : tensor<1x32x64x64xf16, {order = #NHWC}>
@@ -313,33 +313,33 @@ func.func @DoNotAlignForSOHInput(%input: tensor<1x32x64x64xf16, {order = #NHWC}>
 
     // Don't add alignment when the input is SOH
     // since SOH and channel split cannot be compatible
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x32x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[PERMUTE:%.*]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
+    //CHECK:        [[PERMUTE:%.+]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.*]] = VPU.Copy([[PERMUTE]]
+    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.+]] = VPU.Copy([[PERMUTE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
 
-    //CHECK:        [[CLUSTERED_MVN:%.*]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]])
+    //CHECK:        [[CLUSTERED_MVN:%.+]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]])
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
 
-    //CHECK:        [[MVN_OUT_COPY:%.*]] =  VPU.Copy([[CLUSTERED_MVN]]
+    //CHECK:        [[MVN_OUT_COPY:%.+]] =  VPU.Copy([[CLUSTERED_MVN]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
     //CHECK:        return [[MVN_OUT_COPY]] : tensor<1x32x64x64xf16, {order = #NWHC}>
@@ -368,33 +368,33 @@ func.func @DoNotAlignForUnalignedChannel(%input: tensor<1x32x64x64xf16, {order =
 
     // Don't add alignment when the channel needs extra expansion to align
     // to avoid regression caused by redundant alignment
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   ->  !VPU.DistributedTensor<1x32x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[SLICE:%.*]] = VPU.Slice %4 [0, 0, 0, 0] [1, 3, 64, 64] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x3x64x64xf16, {order = #NHWC}>
+    //CHECK:        [[SLICE:%.+]] = VPU.Slice %4 [0, 0, 0, 0] [1, 3, 64, 64] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x3x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[TANH_IN_COPY:%.*]] = VPU.Copy([[SLICE]]
+    //CHECK:        [[TANH_IN_COPY:%.+]] = VPU.Copy([[SLICE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x3x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    //CHECK:        [[TANH:%.*]] = VPU.Tanh([[TANH_IN_COPY]]
+    //CHECK:        [[TANH:%.+]] = VPU.Tanh([[TANH_IN_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x3x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    //CHECK:        [[TANH_OUT_COPY:%.*]] = VPU.Copy([[TANH]]
+    //CHECK:        [[TANH_OUT_COPY:%.+]] = VPU.Copy([[TANH]]
     //CHECK-SAME:   -> tensor<1x3x64x64xf16, {order = #NHWC}>
 
     //CHECK:        return [[TANH_OUT_COPY]] : tensor<1x3x64x64xf16, {order = #NHWC}>
@@ -420,31 +420,31 @@ func.func @SWOpHasAlignedInputChannelReq(%input: tensor<1x384x1x1xf16, {order = 
 
     return %swish : tensor<1x32x1x1xf16, {order = #NHWC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x384x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x384x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x384x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x384x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x384x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   !VPU.DistributedTensor<32x384x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   ->  !VPU.DistributedTensor<1x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x1x1xf16, {order = #NHWC}>
 
-    //CHECK:        [[SWISH_IN_COPY:%.*]] = VPU.Copy([[CONV_OUT_COPY]]
+    //CHECK:        [[SWISH_IN_COPY:%.+]] = VPU.Copy([[CONV_OUT_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[SWISH:%.*]] = VPU.Swish([[SWISH_IN_COPY]]
+    //CHECK:        [[SWISH:%.+]] = VPU.Swish([[SWISH_IN_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[SWISH_OUT_COPY:%.*]] = VPU.Copy([[SWISH]]
+    //CHECK:        [[SWISH_OUT_COPY:%.+]] = VPU.Copy([[SWISH]]
     //CHECK-SAME:   -> tensor<1x32x1x1xf16, {order = #NHWC}>
 
     //CHECK:        return [[SWISH_OUT_COPY]] : tensor<1x32x1x1xf16, {order = #NHWC}>
@@ -470,31 +470,31 @@ func.func @SWOpHasAlignedOutputChannelReq(%input: tensor<1x384x1x1xf16, {order =
 
     return %conv : tensor<1x32x1x1xf16, {order = #NHWC}>
 
-    //CHECK:        [[SWISH_IN_COPY:%.*]] = VPU.Copy([[INPUT]]
+    //CHECK:        [[SWISH_IN_COPY:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x384x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[SWISH:%.*]] = VPU.Swish([[SWISH_IN_COPY]]
+    //CHECK:        [[SWISH:%.+]] = VPU.Swish([[SWISH_IN_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x384x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[SWISH_OUT_COPY:%.*]] = VPU.Copy([[SWISH]]
+    //CHECK:        [[SWISH_OUT_COPY:%.+]] = VPU.Copy([[SWISH]]
     //CHECK-SAME:   -> tensor<1x384x1x1xf16, {order = #NHWC}>
 
-    //CHECK-DAG:    [[WEIGHTS:%.*]] = const.Declare tensor<32x384x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x384x1x1xf16>, [#const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
+    //CHECK-DAG:    [[WEIGHTS:%.+]] = const.Declare tensor<32x384x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x384x1x1xf16>, [#const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
 
-    //CHECK:        [[INPUT_COPY:%.*]] = VPU.Copy([[SWISH_OUT_COPY]]
+    //CHECK:        [[INPUT_COPY:%.+]] = VPU.Copy([[SWISH_OUT_COPY]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x384x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[WEIGHTS_COPY:%.*]] = VPU.Copy([[WEIGHTS]]
+    //CHECK:        [[WEIGHTS_COPY:%.+]] = VPU.Copy([[WEIGHTS]]
     //CHECK-SAME:   !VPU.DistributedTensor<32x384x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[WT_COPY:%.*]] = VPU.Copy([[WEIGHTS_TABLE]]
+    //CHECK:        [[WT_COPY:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1]}>
 
-    //CHECK:        [[CLUSTERED_CONV:%.*]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
+    //CHECK:        [[CLUSTERED_CONV:%.+]] = VPU.NCE.Convolution([[INPUT_COPY]], [[WEIGHTS_COPY]], [[WT_COPY]])
     //CHECK-SAME:   ->  !VPU.DistributedTensor<1x32x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
-    //CHECK:        [[CONV_OUT_COPY:%.*]] = VPU.Copy([[CLUSTERED_CONV]]
+    //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x1x1xf16, {order = #NHWC}>
 
     //CHECK:        return [[CONV_OUT_COPY]] : tensor<1x32x1x1xf16, {order = #NHWC}>

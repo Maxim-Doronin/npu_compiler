@@ -1,0 +1,54 @@
+//
+// Copyright (C) 2022-2026 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
+//
+
+// RUN: prof_parser -b %data_path_npu%/profiling-40XX-meta2.0.blob -p %data_path_npu%/profiling-0-40XX.bin -f json | FileCheck %s
+// REQUIRES: arch-NPU40XX
+
+//CHECK: {"traceEvents":[
+//CHECK-NEXT: {"name": "process_name", "ph": "M", "pid":0, "args": {"name" : "DMA"}},
+//CHECK-NEXT: {"name": "process_sort_index", "ph": "M", "pid":0, "args": {"sort_index" : "0"}},
+//CHECK-NEXT: {"name": "thread_name", "ph": "M", "pid":0, "tid":0, "args": {"name" : "DMA"}},
+//CHECK-NEXT: {"name": "process_name", "ph": "M", "pid":1, "args": {"name" : "Cluster (0)"}},
+//CHECK-NEXT: {"name": "process_sort_index", "ph": "M", "pid":1, "args": {"sort_index" : "1"}},
+//CHECK-NEXT: {"name": "thread_name", "ph": "M", "pid":1, "tid":1, "args": {"name" : "DPU"}},
+//CHECK-NEXT: {"name": "thread_name", "ph": "M", "pid":1, "tid":2, "args": {"name" : "Shave"}},
+//CHECK-NEXT: {"name": "process_name", "ph": "M", "pid":2, "args": {"name" : "Layers"}},
+//CHECK-NEXT: {"name": "process_sort_index", "ph": "M", "pid":2, "args": {"sort_index" : "2"}},
+//CHECK-NEXT: {"name": "thread_name", "ph": "M", "pid":2, "tid":3, "args": {"name" : "Layers"}},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/reorder_in_0/PermuteQuantize/_expand_input", "cat":"DMA", "ph":"X", "ts":0.000, "dur":0.260, "pid":0, "tid":0, "args":{"Address": "0x8ffdf620", "Time to ready": "0ns", "Time to start": "0ns", "Transfer time": "260ns", "Time to finish": "52ns", "Link agent id": "2", "Channel id": "2", "Read stall cycles": "1", "Write stall cycles": "2", "Total bytes": "32", "Total cycles": "9"}},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/reorder_in_0/PermuteQuantize/_expand_input/_expand_copy_3_14", "cat":"DMA", "ph":"X", "ts":0.261, "dur":0.260, "pid":0, "tid":0, "args":{"Address": "0x8ffdf700", "Time to ready": "0ns", "Time to start": "0ns", "Transfer time": "260ns", "Time to finish": "52ns", "Link agent id": "2", "Channel id": "2", "Read stall cycles": "1", "Write stall cycles": "1", "Total bytes": "224", "Total cycles": "24"}},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/expand_act_channels/input-1-CMX", "cat":"DMA", "ph":"X", "ts":0.521, "dur":0.260, "pid":0, "tid":0, "args":{"Address": "0x8ffdf7e0", "Time to ready": "0ns", "Time to start": "0ns", "Transfer time": "260ns", "Time to finish": "52ns", "Link agent id": "2", "Channel id": "2", "Read stall cycles": "1", "Write stall cycles": "1", "Total bytes": "512", "Total cycles": "56"}},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/expand_act_channels/input-2-CMX", "cat":"DMA", "ph":"X", "ts":0.781, "dur":0.260, "pid":0, "tid":0, "args":{"Address": "0x8ffdf8c0", "Time to ready": "0ns", "Time to start": "0ns", "Transfer time": "260ns", "Time to finish": "52ns", "Link agent id": "2", "Channel id": "2", "Read stall cycles": "1", "Write stall cycles": "1", "Total bytes": "256", "Total cycles": "15"}},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/expand_act_channels/input-0-CMX", "cat":"DMA", "ph":"X", "ts":7.917, "dur":0.052, "pid":0, "tid":0, "args":{"Address": "0x8ffded00", "Time to ready": "8us 177ns", "Time to start": "0ns", "Transfer time": "52ns", "Time to finish": "52ns", "Link agent id": "5", "Channel id": "3", "Read stall cycles": "1", "Write stall cycles": "1", "Total bytes": "32", "Total cycles": "1"}},
+//CHECK-NEXT: {"name":"Conv_0?t_Convert/input-0-CMX", "cat":"DMA", "ph":"X", "ts":8.386, "dur":0.052, "pid":0, "tid":0, "args":{"Address": "0x8ffdeec0", "Time to ready": "0ns", "Time to start": "0ns", "Transfer time": "52ns", "Time to finish": "52ns", "Link agent id": "5", "Channel id": "3", "Read stall cycles": "0", "Write stall cycles": "3", "Total bytes": "8", "Total cycles": "1"}},
+//CHECK-NEXT: {"name":"495/sink_port_0?t_Result", "cat":"DMA", "ph":"X", "ts":44.323, "dur":0.052, "pid":0, "tid":0, "args":{"Address": "0x8ffdf080", "Time to ready": "0ns", "Time to start": "0ns", "Transfer time": "52ns", "Time to finish": "104ns", "Link agent id": "5", "Channel id": "3", "Read stall cycles": "0", "Write stall cycles": "3", "Total bytes": "4", "Total cycles": "1"}},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/reorder_in_0/PermuteQuantize/cluster_0", "cat":"DPU", "ph":"X", "ts":7.751, "dur":0.061, "pid":1, "tid":1},
+//CHECK-NEXT: {"name":"Convolution_6?t_Convolution/expand_act_channels/cluster_0", "cat":"DPU", "ph":"X", "ts":7.941, "dur":0.080, "pid":1, "tid":1},
+//CHECK-NEXT: {"name":"Conv_0?t_Convert/cluster_0", "cat":"Shave", "ph":"X", "ts":35.833, "dur":5.468, "pid":1, "tid":2, "args":{"Total cycles": "5761", "Active cycles": "379", "Stall cycles": "5382", "LSU0 stalls": "372", "LSU1 stalls": "87", "Instruction stalls": "4936"}},
+//CHECK-NEXT: {"name":"Convolution_6", "cat":"Layer", "ph":"X", "ts":0.000, "dur":8.021, "pid":2, "tid":3, "args":{"Layer type": "Convolution", "DPU time": "141ns", "DMA time": "1us 92ns"}},
+//CHECK-NEXT: {"name":"Conv_0", "cat":"Layer", "ph":"X", "ts":8.386, "dur":32.915, "pid":2, "tid":3, "args":{"Layer type": "Convert", "Shave time": "5us 468ns", "DMA time": "52ns"}},
+//CHECK-NEXT: {"name":"495/sink_port_0", "cat":"Layer", "ph":"X", "ts":44.323, "dur":0.052, "pid":2, "tid":3, "args":{"Layer type": "Result", "DMA time": "52ns"}}
+//CHECK-NEXT: ],
+//CHECK-NEXT: "taskStatistics": {
+//CHECK-NEXT: "total duration":44.375,
+//CHECK-NEXT: "DMA duration":1.196,
+//CHECK-NEXT: "DPU duration":0.141,
+//CHECK-NEXT: "SW duration":5.468,
+//CHECK-NEXT: "M2I duration":0.000,
+//CHECK-NEXT: "DMA-DPU overlap":0.028,
+//CHECK-NEXT: "DMA-SW overlap":0.000,
+//CHECK-NEXT: "SW-DPU overlap":0.000,
+//CHECK-NEXT: "all tasks union":6.777,
+//CHECK-NEXT: "total idle":37.598,
+//CHECK-NEXT: "SW duration without DPU overlap":5.468,
+//CHECK-NEXT: "DMA duration without overlaps":1.168,
+//CHECK-NEXT: "Sum of DMA task durations":1.196,
+//CHECK-NEXT: "Sum of DPU task durations":0.141,
+//CHECK-NEXT: "Sum of SW task durations":5.468,
+//CHECK-NEXT: "Sum of M2I task durations":0.000
+//CHECK-NEXT: },
+//CHECK-NEXT: "workpoint": { "freq": 1850.0, "status": "OK" },
+//CHECK-NEXT: "displayTimeUnit": "ns"
+//CHECK-NEXT: }

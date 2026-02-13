@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,7 +49,7 @@ func.func @FuseLayoutCasts(%arg0: tensor<1x4x8x64xf32>) -> tensor<1x4x8x64xf32, 
 
     return %1 : tensor<1x4x8x64xf32, {order = #NHWC}>
 
-    // CHECK:   [[LAYOUT_CAST:%.*]] = IE.LayoutCast(%arg0) {
+    // CHECK:   [[LAYOUT_CAST:%.+]] = IE.LayoutCast(%arg0) {
     // CHECK-SAME:      order = #NHWC
     // CHECK-SAME:  } : tensor<1x4x8x64xf32> -> tensor<1x4x8x64xf32, {order = #NHWC}>
 

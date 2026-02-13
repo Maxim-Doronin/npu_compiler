@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,8 +14,8 @@ func.func @SwapWithSoftmax(%arg0 : tensor<1x24x16x1xf32>) -> tensor<1x1x16x24xf3
     %2 = IE.SoftMax(%1) {axisInd = -1 : i64} : tensor<1x1x16x24xf32> -> tensor<1x1x16x24xf32>
     return %2 : tensor<1x1x16x24xf32>
 
-    // CHECK:        [[SOFTMAX:%.*]] = IE.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x24x16x1xf32> -> tensor<1x24x16x1xf32>
-    // CHECK:        [[TRANSPOSE:%.*]] = IE.Transpose([[SOFTMAX]]) {order_value = #NWHC} : tensor<1x24x16x1xf32> -> tensor<1x1x16x24xf32>
+    // CHECK:        [[SOFTMAX:%.+]] = IE.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x24x16x1xf32> -> tensor<1x24x16x1xf32>
+    // CHECK:        [[TRANSPOSE:%.+]] = IE.Transpose([[SOFTMAX]]) {order_value = #NWHC} : tensor<1x24x16x1xf32> -> tensor<1x1x16x24xf32>
     // CHECK:        return [[TRANSPOSE]] : tensor<1x1x16x24xf32>
 }
 
@@ -29,8 +29,8 @@ func.func @SwapWithGelu(%arg0 : tensor<1x24x16x1xf32>) -> tensor<1x1x16x24xf32> 
     %2 = IE.Gelu(%1) : tensor<1x1x16x24xf32> -> tensor<1x1x16x24xf32>
     return %2 : tensor<1x1x16x24xf32>
 
-    // CHECK: [[GELU:%.*]] = IE.Gelu(%arg0) : tensor<1x24x16x1xf32> -> tensor<1x24x16x1xf32>
-    // CHECK: [[TRANSPOSE:%.*]] = IE.Transpose([[GELU]]) {order_value = #NWHC} : tensor<1x24x16x1xf32> -> tensor<1x1x16x24xf32>
+    // CHECK: [[GELU:%.+]] = IE.Gelu(%arg0) : tensor<1x24x16x1xf32> -> tensor<1x24x16x1xf32>
+    // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[GELU]]) {order_value = #NWHC} : tensor<1x24x16x1xf32> -> tensor<1x1x16x24xf32>
     // CHECK: return [[TRANSPOSE]] : tensor<1x1x16x24xf32>
 }
 
@@ -125,10 +125,10 @@ func.func @SwapWithAvgPool(%arg0: tensor<1x512x768x1xf16>) -> tensor<512x768x1x1
     %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
     return %2: tensor<512x768x1x1xf16>
 
-    // CHECK:        [[ADD:%.*]] = IE.Add
-    // CHECK:        [[AVGPOOL:%.*]] = IE.AvgPool([[ADD]]) {exclude_pads, kernel_size = [1, 1],
+    // CHECK:        [[ADD:%.+]] = IE.Add
+    // CHECK:        [[AVGPOOL:%.+]] = IE.AvgPool([[ADD]]) {exclude_pads, kernel_size = [1, 1],
     // CHECK-SAME:     tensor<1x512x768x1xf16> -> tensor<1x512x768x1xf16>
-    // CHECK-NEXT:   [[TRANSPOSE:%.*]] = IE.Transpose([[AVGPOOL]])
+    // CHECK-NEXT:   [[TRANSPOSE:%.+]] = IE.Transpose([[AVGPOOL]])
     // CHECK-SAME{LITERAL}: {order_value = #map} : tensor<1x512x768x1xf16> -> tensor<512x768x1x1xf16>
     // CHECK-NEXT:   return [[TRANSPOSE]] : tensor<512x768x1x1xf16>
 }
@@ -179,9 +179,9 @@ func.func @NotSwapWithAvgPoolAsModelInputToTranspose(%arg0: tensor<1x512x768x1xf
     %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
     return %1: tensor<512x768x1x1xf16>
 
-    // CHECK:        [[TRANSPOSE:%.*]] = IE.Transpose(%arg0)
+    // CHECK:        [[TRANSPOSE:%.+]] = IE.Transpose(%arg0)
     // CHECK-SAME{LITERAL}: {order_value = #map} : tensor<1x512x768x1xf16> -> tensor<512x768x1x1xf16>
-    // CHECK-NEXT:   [[AVGPOOL:%.*]] = IE.AvgPool([[TRANSPOSE]]) {exclude_pads, kernel_size = [1, 1],
+    // CHECK-NEXT:   [[AVGPOOL:%.+]] = IE.AvgPool([[TRANSPOSE]]) {exclude_pads, kernel_size = [1, 1],
     // CHECK-SAME:     tensor<512x768x1x1xf16> -> tensor<512x768x1x1xf16>
     // CHECK-NEXT:   return [[AVGPOOL]] : tensor<512x768x1x1xf16>
 }
@@ -197,8 +197,8 @@ func.func @SwapWithSwish(%arg0 : tensor<1x24x16x1xf32>) -> tensor<1x1x16x24xf32>
 
     return %2 : tensor<1x1x16x24xf32>
 
-    // CHECK: [[LAYER:%.*]] = IE.Swish(%arg0) {beta_value = 1.000000e+00 : f64} : tensor<1x24x16x1xf32> -> tensor<1x24x16x1xf32>
-    // CHECK: [[TRANSPOSE:%.*]] = IE.Transpose([[LAYER]]) {order_value = #NWHC} : tensor<1x24x16x1xf32> -> tensor<1x1x16x24xf32>
+    // CHECK: [[LAYER:%.+]] = IE.Swish(%arg0) {beta_value = 1.000000e+00 : f64} : tensor<1x24x16x1xf32> -> tensor<1x24x16x1xf32>
+    // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[LAYER]]) {order_value = #NWHC} : tensor<1x24x16x1xf32> -> tensor<1x1x16x24xf32>
     // CHECK: return [[TRANSPOSE]] : tensor<1x1x16x24xf32>
 }
 

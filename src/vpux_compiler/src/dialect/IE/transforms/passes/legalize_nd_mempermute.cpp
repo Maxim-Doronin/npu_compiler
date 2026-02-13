@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -133,8 +134,7 @@ private:
 
 mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origOp,
                                                           mlir::PatternRewriter& rewriter) const {
-    // Only enabled for NPU37XX, NPU40XX
-    // and NPU50XX
+    // Only enabled for NPU37XX, NPU40XX and NPU50XX
     // where Tiling for SW kernels is limited to 4D ops.
     // ToDo: Remove pass after limitation.
 
@@ -183,7 +183,7 @@ mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origO
     mlir::Value permuteInput = inputReshape.getOutput();
     mlir::Value permuteOutput;
     if (decomposedPermMaps.empty()) {
-        permuteOutput = rewriter.create<IE::MemPermuteOp>(appendLoc(origOp.getLoc(), "_mempermute"), permuteInput,
+        permuteOutput = rewriter.create<IE::MemPermuteOp>(appendLoc(origOp.getLoc(), "mempermute"), permuteInput,
                                                           mlir::AffineMap::getMultiDimIdentityMap(
                                                                   checked_cast<uint32_t>(mergedShape.size()), ctx),
                                                           reducedPermutation)
@@ -193,8 +193,7 @@ mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origO
         for (const auto& item : decomposedPermMaps | indexed) {
             const auto& perm = item.value();
             permuteOutput = rewriter.create<IE::MemPermuteOp>(
-                                            appendLoc(origOp.getLoc(), llvm::formatv("_mempermute_{0}", item.index())),
-                                            permuteInput,
+                                            appendLoc(origOp.getLoc(), "mempermute_{0}", item.index()), permuteInput,
                                             mlir::AffineMap::getMultiDimIdentityMap(
                                                     checked_cast<uint32_t>(mergedShape.size()), ctx),
                                             perm)

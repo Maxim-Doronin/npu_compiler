@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -114,17 +115,17 @@ mlir::LogicalResult MaxPoolConverter::matchAndRewrite(IE::MaxPoolOp origOp, mlir
     const auto inputShapeAttr = getIntArrayAttr(ctx, newInputShape);
     const SmallVector<unsigned> order = {0, 1, 3, 2};
     auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(order, ctx));
-    auto transposeIn = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose_in"), origOp.getInput(),
-                                                        nullptr, orderAttr);
-    auto reshapeIn = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_in"), transposeIn.getOutput(),
-                                                    nullptr, false, inputShapeAttr);
+    auto transposeInResult = rewriter.createOrFold<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose_in"),
+                                                                    origOp.getInput(), nullptr, orderAttr);
+    auto reshapeInResult = rewriter.createOrFold<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_in"),
+                                                                transposeInResult, nullptr, false, inputShapeAttr);
 
     const auto newKernel = getIntArrayAttr(ctx, SmallVector<int64_t>{kernel[1], kernel[0]});
     const auto newStrides = getIntArrayAttr(ctx, SmallVector<int64_t>{strides[1], strides[0]});
     auto maxpool = rewriter.create<IE::MaxPoolOp>(
-            origOp.getLoc(), reshapeIn.getOutput(), newKernel, newStrides, origOp.getPadsBeginAttr(),
-            origOp.getPadsEndAttr(), origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+            origOp.getLoc(), reshapeInResult, newKernel, newStrides, origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(),
+            origOp.getRoundingType(), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
 
     const SmallVector<int64_t> newOutputShape = {
             outShape[Dims4D::Act::N],
@@ -133,12 +134,12 @@ mlir::LogicalResult MaxPoolConverter::matchAndRewrite(IE::MaxPoolOp origOp, mlir
             outShape[Dims4D::Act::H],
     };
     const auto outputShapeAttr = getIntArrayAttr(ctx, newOutputShape);
-    auto reshapeOut = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_out"), maxpool->getResult(0),
-                                                     nullptr, false, outputShapeAttr);
+    auto reshapeOutResult = rewriter.createOrFold<IE::ReshapeOp>(
+            appendLoc(origOp->getLoc(), "reshape_out"), maxpool->getResult(0), nullptr, false, outputShapeAttr);
 
-    auto transposeOut = rewriter.create<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose_out"),
-                                                         reshapeOut.getOutput(), nullptr, orderAttr);
-    origOp.getOutput().replaceAllUsesWith(transposeOut.getOutput());
+    auto transposeOutResult = rewriter.createOrFold<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose_out"),
+                                                                     reshapeOutResult, nullptr, orderAttr);
+    origOp.getOutput().replaceAllUsesWith(transposeOutResult);
 
     return mlir::success();
 }
@@ -154,9 +155,7 @@ void ReshapeMaxPoolPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MaxPoolConverter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

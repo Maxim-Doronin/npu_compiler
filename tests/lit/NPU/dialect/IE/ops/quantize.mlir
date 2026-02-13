@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @ConstFoldWithRealQuantize() -> tensor<1x8x4x4x!qElemType> {
     %1 = IE.Quantize(%0) {dstElemType = !qElemType}: tensor<1x8x4x4xf16> -> tensor<1x8x4x4x!qElemType>
     return %1 : tensor<1x8x4x4x!qElemType>
 
-    // CHECK:       [[VAL0:%.*]] = const.Declare tensor<1x8x4x4x!qElemType> = dense<5.000000e+00> : tensor<1x8x4x4xf32>,
+    // CHECK:       [[VAL0:%.+]] = const.Declare tensor<1x8x4x4x!qElemType> = dense<5.000000e+00> : tensor<1x8x4x4xf32>,
     // CHECK-SAME:          [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>,
     // CHECK-SAME:           #const.Dequantize, #const.Quantize<!qElemType>, #const.CastElemType<!qElemType>]
     // CHECK-NOT:   IE.Quantize
@@ -30,7 +30,7 @@ func.func @ConstFold() -> tensor<1x8x4x4x!qElemType> {
     %1 = IE.Quantize(%0) {dstElemType = !qElemType}: tensor<1x8x4x4xf32> -> tensor<1x8x4x4x!qElemType>
     return %1 : tensor<1x8x4x4x!qElemType>
 
-    // CHECK:       [[VAL0:%.*]] = const.Declare tensor<1x8x4x4x!qElemType> =
+    // CHECK:       [[VAL0:%.+]] = const.Declare tensor<1x8x4x4x!qElemType> =
     // CHECK-SAME:       dense<5.000000e+00> : tensor<1x8x4x4xf32>,
     // CHECK-SAME:       [#const.Quantize<!qElemType>, #const.CastElemType<!qElemType>]
     // CHECK-NOT:   IE.Quantize
@@ -47,9 +47,9 @@ func.func @FuseDequantQuantWithSeveralUses(%arg0: tensor<1x8x4x4x!qElemType>) ->
     %2 = IE.Quantize(%0) {dstElemType = !qElemType}: tensor<1x8x4x4xf16> -> tensor<1x8x4x4x!qElemType>
     return %1, %2 : tensor<1x8x4x4xf16>, tensor<1x8x4x4x!qElemType>
 
-    // CHECK:   [[VAL0:%.*]] = IE.Dequantize(%arg0)
+    // CHECK:   [[VAL0:%.+]] = IE.Dequantize(%arg0)
     // CHECK-NOT:   IE.Quantize
-    // CHECK:       [[VAL1:%.*]] = IE.ReLU([[VAL0]])
+    // CHECK:       [[VAL1:%.+]] = IE.ReLU([[VAL0]])
     // CHECK:       return [[VAL1]], %arg0 : tensor<1x8x4x4xf16>, tensor<1x8x4x4x!qElemType>
 }
 

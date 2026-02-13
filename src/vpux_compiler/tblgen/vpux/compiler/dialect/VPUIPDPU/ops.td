@@ -63,7 +63,7 @@ def VPUIPDPU_DPUInvariantOp :
         OptionalAttr<SymbolRefAttr>:$output,
         OptionalAttr<SymbolRefAttr>:$output_sparsity_map,
         OptionalAttr<SymbolRefAttr>:$profiling_data,
-        UnitAttr:$is_zero_offset_weights_table,
+        UnitProp:$is_zero_offset_weights_table,
 
         OptionalAttr<SymbolRefAttr>:$max_per_xy,
         OptionalAttr<SymbolRefAttr>:$min_per_xy,
@@ -72,7 +72,7 @@ def VPUIPDPU_DPUInvariantOp :
         OptionalAttr<SymbolRefAttr>:$dynamic_sequence_length,
 
         VPUIP_NCETaskTypeAttr:$nce_task_type,
-        UnitAttr:$is_continued
+        UnitProp:$is_continued
     );
 
     let regions = (region
@@ -81,8 +81,8 @@ def VPUIPDPU_DPUInvariantOp :
 
     let assemblyFormat = [{
         $sym_name
-        (`profiling_data` `(` $profiling_data^ `)`)?
         attr-dict
+        prop-dict
         `DPUCfg` `:` $region
     }];
 
@@ -284,13 +284,14 @@ def VPUIPDPU_DPUGroupOp:
     let arguments = (ins
         VPUASM_IndexTypeAttr:$invariantIdx,
         UI64Attr:$variantCount,
-        UnitAttr:$isFirstVariant,
-        UnitAttr:$isLastVariant
+        UnitProp:$isFirstVariant,
+        UnitProp:$isLastVariant
     );
 
     let assemblyFormat = [{
         `invariantIdx` `(` $invariantIdx `)`
         `variantCount` `(` $variantCount `)`
+        prop-dict
         attr-dict
     }];
 }

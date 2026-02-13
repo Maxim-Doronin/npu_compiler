@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,6 +15,9 @@ module @InitAndWrapper {
     }
 
     func.func private @init(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>)
+    {
+        return %arg0, %arg1 : tensor<f32>, tensor<f32>
+    }
 
     func.func private @main(%input: tensor<f32>, %cst_1: tensor<f32>, %cst_2: tensor<f32>) -> tensor<f32> attributes {do_not_nest}
 
@@ -27,17 +30,26 @@ module @InitAndWrapper {
     }
 
     // Note: Check this for verify insertion location
-    // CHECK: net.NetworkInfo
+    // CHECK: net.NetworkInfo entryPoint : @main_wrapper inputsInfo
+    // CHECK:   DataInfo "input" : tensor<f32>
+    // CHECK: } outputsInfo : {
+    // CHECK:   DataInfo "output" : tensor<f32>
 
 
-    // CHECK: module @Module0 {
+    // CHECK-LABEL: module @Module0 attributes {{.+}} {
+    // CHECK:     config.PipelineOptions @Options {
+    // CHECK:     config.Resources {{.+}} of @NCE at {{.+}} MHz
+    // CHECK:     config.Resources {{.+}} of @global
+    // CHECK:     net.NetworkInfo entryPoint : @init inputsInfo
+    // CHECK:       DataInfo "in_0" : tensor<f32>
+    // CHECK:       DataInfo "in_1" : tensor<f32>
+    // CHECK:     } outputsInfo : {
+    // CHECK:       DataInfo "out_0" : tensor<f32>
+    // CHECK:       DataInfo "out_1" : tensor<f32>
+
     // CHECK:     func.func private @init
-    // CHECK: }
 
-
-    // CHECK: func.func private @main
-
-
+    // CHECK: func.func private @main(tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32> attributes {do_not_nest}
     // CHECK: func.func @main_wrapper
     // CHECK:     [[CST_0:%.+]] = const.Declare tensor<f32> = dense<1.000000e+00> : tensor<f32>
     // CHECK:     [[CST_1:%.+]] = const.Declare tensor<f32> = dense<2.000000e+00> : tensor<f32>
@@ -51,6 +63,7 @@ module @InitAndWrapper {
 
 // -----
 
+// CHECK-LABEL: module @MultipleSubModules attributes {{.+}} {
 module @MultipleSubModules {
     net.NetworkInfo entryPoint : @main inputsInfo : {
         DataInfo "input" : tensor<f32>
@@ -58,16 +71,11 @@ module @MultipleSubModules {
         DataInfo "output" : tensor<f32>
     }
 
-    // Note: Check this for verify insertion location
-    // CHECK: net.NetworkInfo
+    func.func private @foo_cluster1(%arg: tensor<f32>) -> tensor<f32> {
+        return %arg: tensor<f32>
+    }
 
-    // Note: private here is just set so that we don't have to define a function body
-
-    // Cluster 1
-    func.func private @foo_cluster1(tensor<f32>) -> tensor<f32>
-
-    // Cluster 2
-    func.func private @bar_cluster2(tensor<f32>) -> tensor<f32>
+    func.func private @bar_cluster2(tensor<f32> ) -> tensor<f32>
 
     func.func @goo_cluster2(%arg: tensor<f32>) -> tensor<f32> {
         %0 = call @bar_cluster2(%arg): (tensor<f32>) -> tensor<f32>
@@ -79,19 +87,6 @@ module @MultipleSubModules {
         return %0: tensor<f32>
     }
 
-    // CHECK: module @Module0
-    // CHECK:     func.func private @f
-
-    // CHECK: module @Module1 {
-    // CHECK:     func.func private @bar_cluster2
-
-    // CHECK:     func.func @goo_cluster2
-    // CHECK:         call @bar_cluster2
-
-    // CHECK:     func.func @baz_cluster2
-    // CHECK:         call @bar_cluster2
-
-    // Top Cluster (no nesting)
     func.func @main(%arg: tensor<f32>) -> tensor<f32> {
         %0 = call @foo_cluster1(%arg): (tensor<f32>) -> tensor<f32>
         %1 = call @goo_cluster2(%arg): (tensor<f32>) -> tensor<f32>
@@ -99,10 +94,31 @@ module @MultipleSubModules {
         return %0: tensor<f32>
     }
 
-    // CHECK: func.func @main
-    // CHECK:     Core.NestedCall @Module0::@foo_cluster1
-    // CHECK:     Core.NestedCall @Module1::@goo_cluster2
-    // CHECK:     Core.NestedCall @Module1::@baz_cluster2
+    // CHECK-LABEL: module @Module0 attributes {{.+}} {
+    // CHECK:     config.PipelineOptions @Options {
+    // CHECK:     config.Resources {{.+}} of @NCE at {{.+}} MHz
+    // CHECK:     config.Resources {{.+}} of @global
+    // CHECK:     net.NetworkInfo entryPoint : @foo_cluster1 inputsInfo : {
+    // CHECK:       DataInfo "in_0" : tensor<f32>
+    // CHECK:     } outputsInfo : {
+    // CHECK:       DataInfo "out_0" : tensor<f32>
+    // CHECK:     func.func private @foo_cluster1
+    // CHECK: }
+    // CHECK-LABEL: module @Module1 attributes {{.+}} {
+    // CHECK-NOT:    config.PipelineOptions @Options
+    // CHECK-NOT:    config.Resources {{.+}} of @NCE at {{.+}} MHz
+    // CHECK-NOT:    config.Resources {{.+}} of @global
+    // CHECK-NOT:    net.NetworkInfo entryPoint
+    // CHECK:  func.func private @bar_cluster2(tensor<f32>) -> tensor<f32>
+    // CHECK:  func.func @goo_cluster2
+    // CHECK:  func.func @baz_cluster2
+
+    // CHECK: func.func @main([[ARG:%.+]]: tensor<f32>) -> tensor<f32> {
+    // CHECK:   [[foo:%.+]] = Core.NestedCall @Module0::@foo_cluster1([[ARG]]) : (tensor<f32>) -> tensor<f32>
+    // CHECK:   [[goo:%.+]] = Core.NestedCall @Module1::@goo_cluster2([[ARG]]) : (tensor<f32>) -> tensor<f32>
+    // CHECK:   [[baz:%.+]] = Core.NestedCall @Module1::@baz_cluster2([[ARG]]) : (tensor<f32>) -> tensor<f32>
+    // CHECK:   return [[foo]] : tensor<f32>
+
 }
 
 // -----
@@ -126,7 +142,7 @@ module @NoNesting {
         return %0: tensor<f32>
     }
 
-    // CHECK:     module @NoNesting
+    // CHECK: module @NoNesting
     // CHECK-NOT: module
     // CHECK:     func.func private @foo
 
@@ -148,8 +164,19 @@ module @VPUIP {
     }
 
     func.func private @foo(%arg0: memref<f16, @DDR>, %arg1: memref<f16, @DDR>) -> memref<f16, @DDR>
+    {
+        return %arg1 : memref<f16, @DDR>
+    }
 
-    // CHECK: module @Module0 {
+    // CHECK-LABEL: module @Module0 attributes {{.+}} {
+    // CHECK:     config.PipelineOptions @Options {
+    // CHECK:     config.Resources {{.+}} of @NCE at {{.+}} MHz
+    // CHECK:     config.Resources {{.+}} of @global
+    // CHECK:     net.NetworkInfo entryPoint : @foo inputsInfo : {
+    // CHECK:       DataInfo "in_0" : tensor<f16>
+    // CHECK:       DataInfo "in_1" : tensor<f16>
+    // CHECK:     } outputsInfo : {
+    // CHECK:       DataInfo "out_0" : tensor<f16>
     // CHECK:     func.func private @foo
     // CHECK: }
 
@@ -164,7 +191,7 @@ module @VPUIP {
         %b_fooCall1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         VPURT.Task updates(%b_fooCall1CopyIn : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%netIn : memref<f16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%netIn : memref<f16, @DDR>)
                 outputs(%inAlloc : memref<f16, @DDR>)
                 -> memref<f16, @DDR>
         }
@@ -175,7 +202,7 @@ module @VPUIP {
         }
 
         VPURT.Task waits(%b_fooCall1 : !VPURT.Barrier) {
-            %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%outAlloc : memref<f16, @DDR>)
+            %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%outAlloc : memref<f16, @DDR>)
                 outputs(%netOut : memref<f16, @DDR>)
                 -> memref<f16, @DDR>
         }

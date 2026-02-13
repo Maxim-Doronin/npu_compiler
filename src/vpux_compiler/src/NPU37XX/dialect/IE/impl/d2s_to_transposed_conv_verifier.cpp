@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,7 +21,8 @@ using namespace vpux::IE::arch37xx;
 // - E#113159
 
 mlir::LogicalResult D2SToTransposedConvVerifier::isBeneficialConversion(Logger log, mlir::PatternRewriter& rewriter,
-                                                                        IE::DepthToSpaceOp d2sOp) const {
+                                                                        IE::DepthToSpaceOp d2sOp,
+                                                                        const bool seOpsEnabled) const {
     if (d2sOp.getBlockSize() >= 4) {
         return matchFailed(log, rewriter, d2sOp, "mapping D2S to DPU is not beneficial: blockSize({0}) >= 4",
                            d2sOp.getBlockSize());
@@ -33,7 +34,7 @@ mlir::LogicalResult D2SToTransposedConvVerifier::isBeneficialConversion(Logger l
 
     auto alignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
 
-    if (outputChannels < alignment) {
+    if (outputChannels < alignment && !seOpsEnabled) {
         return matchFailed(log, rewriter, d2sOp,
                            "mapping D2S to DPU is not beneficial: outputChannels({0}) < alignment({1})", outputChannels,
                            alignment);

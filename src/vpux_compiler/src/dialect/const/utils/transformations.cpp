@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1173,24 +1173,35 @@ std::pair<optimization::TransformAttrPos, bool> moveTransformationIntoFuse(
     return {currPos, false};
 }
 
-int64_t getValueRangeOffset(mlir::quant::QuantizedType inType, mlir::quant::QuantizedType outType) {
+SmallVector<double> getValueRangeOffset(mlir::quant::QuantizedType inType, mlir::quant::QuantizedType outType) {
     const bool isSupportedConversion =
             mlir::isa<mlir::IntegerType>(inType.getStorageType()) &&
             mlir::isa<mlir::IntegerType>(outType.getStorageType()) &&
             inType.getStorageType().getIntOrFloatBitWidth() == outType.getStorageType().getIntOrFloatBitWidth();
     VPUX_THROW_UNLESS(isSupportedConversion, "Unsupported conversion: {0} -> {1}", inType, outType);
 
-    const auto inZp = extractSingleZeroPoint(inType);
-    const auto outZp = extractSingleZeroPoint(outType);
-    VPUX_THROW_UNLESS(inZp.has_value() && outZp.has_value(), "Unsupported conversion: {0} -> {1}", inType, outType);
+    auto inZeroPoints = extractScalesAndZeroPoints(inType).second;
+    auto outZeroPoints = extractScalesAndZeroPoints(outType).second;
+    VPUX_THROW_WHEN(inZeroPoints.empty() || outZeroPoints.empty(), "Extracted no zero points");
+    VPUX_THROW_WHEN(inZeroPoints.size() != outZeroPoints.size(), "Zero points size mismatch: {0} vs {1}",
+                    inZeroPoints.size(), outZeroPoints.size());
+
+    const bool inZeroPointsEqual = llvm::all_equal(inZeroPoints);
+    const bool outZeroPointsEqual = llvm::all_equal(outZeroPoints);
+
+    size_t zeroPointsSize = inZeroPointsEqual && outZeroPointsEqual ? 1 : inZeroPoints.size();
+
+    SmallVector<double> zeroPointOffsets(zeroPointsSize, 0);
+    for (size_t i = 0; i < zeroPointsSize; i++) {
+        zeroPointOffsets[i] = static_cast<double>(outZeroPoints[i] - inZeroPoints[i]);
+    }
 
     // Note: the assumption here is that when quantized type is converted to
-    // another quantized type, in reality only value range is shifted. in this
+    // another quantized type, in reality only value range is shifted. In this
     // case, zero-point of the type must also be updated accordingly (since
-    // zero-point shifts with the whole range). thus, the reverse is also true:
+    // zero-point shifts with the whole range). Thus, the reverse is also true:
     // shift in zero-point is the shift of the value range.
-    const auto offset = outZp.value() - inZp.value();
-    return offset;
+    return zeroPointOffsets;
 }
 
 }  // namespace vpux::Const::details

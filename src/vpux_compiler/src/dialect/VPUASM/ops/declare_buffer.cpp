@@ -27,7 +27,7 @@ void VPUASM::DeclareBufferOp::setMemoryOffset(mlir::IntegerAttr) {
     return;
 }
 
-uint64_t VPUASM::DeclareBufferOp::getMemoryOffset() {
+int64_t VPUASM::DeclareBufferOp::getMemoryOffset() {
     auto location = getBufferType().getLocation();
     return location.getByteOffset();
 }

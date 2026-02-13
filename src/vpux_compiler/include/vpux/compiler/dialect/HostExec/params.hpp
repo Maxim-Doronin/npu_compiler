@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,16 +40,40 @@ enum HostMainFuncArgs {
 #define HOST_EXEC_NETWORK_METADATA_NAME "HostExec.networkMetadata"
 #define HOST_EXEC_NUM_SUBGRAPH_ATTR_NAME "HostExec.numSubgraphs"
 
+// NOTE: keep in sync with dynamicStridesAttrName in vpux_compiler/core/dialect/core
+//       when dynamicstrides is supported in core dialect, this definition should be removed
+#define HOST_EXEC_DYNAMIC_STRIDES_ATTR_NAME "dynamicStrides"
+#define HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME "func.dynamicStrides"
+
 constexpr uint64_t MaxStrideDim = 5;
 
 /**
  * @brief LLVM struct for dynamic stride support
+ * @note Update getTensorDescStructType if this struct is changed
  */
+enum class MemRefDescMemberIndex {
+    DATA,
+    OFFSET,
+    ELEMENT_BYTE_SIZE,
+    DIM_COUNT,
+    NETWORK_ARG_INDEX,
+    SIZES,
+    STRIDES,
+
+    COUNT
+};
+
 struct MemRefDesc {
     void* data;
+    uint64_t offset;
+    uint64_t elementByteSize;
     uint64_t dimCount;
+    uint64_t networkArgIndex;
     uint64_t sizes[MaxStrideDim];
     uint64_t strides[MaxStrideDim];
 };
+
+#define ENABLE_HOSTCOMPILE_USE_SINGLE_CMDLIST "ENABLE_HOSTCOMPILE_USE_SINGLE_CMDLIST"
+#define ENABLE_HOSTCOMPILE_PRINT_KERNEL_NAME "ENABLE_PRINT_HOSTCOMPILE_KERNEL_NAME"
 
 }  // namespace vpux::HostExec

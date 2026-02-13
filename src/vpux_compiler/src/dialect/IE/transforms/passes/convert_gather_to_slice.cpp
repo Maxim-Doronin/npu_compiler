@@ -75,7 +75,7 @@ mlir::LogicalResult ConvertGatherToSlicePass::GatherConverter::matchAndRewrite(I
     SmallVector<int64_t> staticSizes(inputShape.begin(), inputShape.end());
     staticSizes[axisVal] = 1;
 
-    const auto sliceOpLoc = appendLoc(gatherOp.getLoc(), "_slice");
+    const auto sliceOpLoc = appendLoc(gatherOp.getLoc(), "slice");
     auto sliceOp = rewriter.create<IE::SliceOp>(sliceOpLoc, gatherOp.getInput(), getIntArrayAttr(ctx, staticOffsets),
                                                 getIntArrayAttr(ctx, staticSizes));
 

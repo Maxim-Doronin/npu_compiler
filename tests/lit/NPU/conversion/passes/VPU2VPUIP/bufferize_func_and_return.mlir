@@ -212,8 +212,9 @@ module @BufferizeHost {
 // CHECK:   [[ALLOC:%.+]] = memref.alloc()
 // CHECK:   [[FOR:%.+]] = scf.for [[ARG2:%.+]] = [[C0]] to [[C720]] step [[C90]] iter_args([[ARG3:%.+]] = [[ALLOC]])
 // CHECK:       [[SUBVIEW:%.+]] = memref.subview [[ARG0]][0, [[ARG2]], 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-// CHECK:       [[CAST:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW]]
-// CHECK:       [[CALL:%.+]] = func.call @main_func0([[CAST]])
+// CHECK:       [[ALLOC_NO_STRIDES:%.+]] = memref.alloc() {alignment = 64 : i64} : memref<1x90x1000x16xf16>
+// CHECK:       memref.copy [[SUBVIEW]], [[ALLOC_NO_STRIDES]]
+// CHECK:       [[CALL:%.+]] = func.call @main_func0([[ALLOC_NO_STRIDES]])
 // CHECK:       [[INSERTED:%.+]] = memref.subview [[ARG3]][0, [[ARG2]], 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
 // CHECK:       memref.copy [[CALL]], [[INSERTED]]
 // CHECK:       scf.yield [[ARG3]] : memref<1x720x1000x16xf16>

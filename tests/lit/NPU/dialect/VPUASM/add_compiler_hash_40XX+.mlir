@@ -28,4 +28,4 @@ module @AddCompilerHash {
 
 // CHECK:    VPUASM.CompilerHash
 // CHECK-SAME: @CompilerHash
-// CHECK-SAME: compiler_hash("{{[0-9a-f]+}}")
+// CHECK-SAME: compiler_hash("{{[0-9a-fA-F]+}}")

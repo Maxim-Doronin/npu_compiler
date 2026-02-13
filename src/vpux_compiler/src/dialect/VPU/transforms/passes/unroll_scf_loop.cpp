@@ -1,21 +1,31 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/scf/scf_analysis_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_unroll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/FormatVariadic.h>
 #include <mlir/Dialect/Affine/Analysis/Utils.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/SCF/Utils/Utils.h>
+#include <mlir/IR/Dominance.h>
 #include "mlir/Dialect/SCF/TransformOps/SCFTransformOps.h"
+#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include "mlir/Dialect/SCF/Utils/Utils.h"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_UNROLLSCFLOOP
@@ -40,7 +50,7 @@ struct LoopInfo {
 //
 class UnrollSCFLoopPass final : public VPU::impl::UnrollSCFLoopBase<UnrollSCFLoopPass> {
 public:
-    explicit UnrollSCFLoopPass(StringRef loopUnrollFactor, Logger log): _loopUnrollFactor(loopUnrollFactor) {
+    explicit UnrollSCFLoopPass(const UnrollSCFLoopOptions& options, Logger log): UnrollSCFLoopBase(options) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -50,7 +60,7 @@ public:
         unrollFactorStr.split(tokens, ',');
         for (auto token : tokens) {
             token = token.trim();  // Remove whitespace
-            int64_t value;
+            int64_t value = 0;
             if (token.getAsInteger(10, value)) {
                 _log.error("Failed to parse unroll factor from string: {0}", token);
                 return {};
@@ -71,17 +81,6 @@ private:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override;
     void safeRunOnModule() final;
 };
-
-unsigned getNestingDepth(mlir::Operation* op) {
-    mlir::Operation* currOp = op;
-    unsigned depth = 0;
-    while ((currOp = currOp->getParentOp())) {
-        if (mlir::isa<mlir::scf::ForOp>(currOp)) {
-            depth++;
-        }
-    }
-    return depth;
-}
 
 void UnrollSCFLoopPass::collectForOpsInnerToOuter(mlir::Operation* rootOp, SmallVector<LoopInfo>& loops) {
     // Map to store loops by their nesting depth
@@ -112,8 +111,8 @@ mlir::scf::ForOp findParentForOpFromOffset(mlir::OpFoldResult offset) {
                 return scfForOp;
             }
         } else {
-            AffineChainUtils affineUtils;
-            auto opChain = affineUtils.collectAffineOpsChain(offsetValue);
+            OpChainAnalysis opChainAnalysis;
+            auto opChain = opChainAnalysis.collectParentOpsChain(offsetValue);
             for (auto op : opChain) {
                 for (auto operand : op->getOperands()) {
                     if (auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand)) {
@@ -199,7 +198,7 @@ mlir::LogicalResult fuseSiblingUnrolledLoops(mlir::func::FuncOp funcOp) {
         loopsToProcess.push_back(loopsInBlock);
     });
 
-    for (auto allLoopsInBlocks : llvm::make_early_inc_range(loopsToProcess)) {
+    for (const auto& allLoopsInBlocks : llvm::make_early_inc_range(loopsToProcess)) {
         std::map<int64_t, SmallVector<mlir::scf::ForOp>> loopGroups;
 
         // Group them into separate vectors based on their id
@@ -267,7 +266,10 @@ mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, const SmallV
 
             auto parentLoop = findParentForOpFromOffset(offset);
             if (parentLoop != nullptr) {
-                auto dimUnrollFactor = parentLoop->hasAttr("residual") ? 1 : unrollFactor[idx];
+                auto unrolledFactor = parentLoop->hasAttr("unrolled-factor")
+                                              ? parentLoop->getAttrOfType<mlir::IntegerAttr>("unrolled-factor").getInt()
+                                              : unrollFactor[idx];
+                auto dimUnrollFactor = parentLoop->hasAttr("residual") ? 1 : unrolledFactor;
                 auto loopId = parentLoop->getAttrOfType<mlir::IntegerAttr>("id");
                 TileDimensionInfo dimInfo;
                 dimInfo.id = loopId.getInt();
@@ -304,6 +306,96 @@ mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, const SmallV
 }
 
 /**
+ * @brief Corrects unrolled loop bounds to ensure memory safety with dynamic tensor dimensions.
+ *
+ * When MLIR's loopUnrollByFactor calculates loop bounds based on compile-time maximum dimensions,
+ * it may generate unsafe bounds that exceed actual runtime tensor sizes.
+ * Example: For cascaded unrolling (10→5→2) with dim=1200, initialStep=47:
+ *   Loop 1 (×10, step=470): main loop [0,940), epilogue [940,1200)
+ *      2xiter
+ *   Loop 2 (×5, step=235): main loop [940,1175), epilogue [1175,1200)
+ *      1xiter
+ *   Loop 3 (×2, step=94): main loop [1175,1269), epilogue [1269,1200) -> out of bounds!
+ *   ...
+ * This function adds runtime
+ * guards to prevent out-of-bounds memory access by dynamically adjusting the main loop's upper bound.
+ *
+ * The correction strategy:
+ * 1. Checks if the first iteration can complete within available runtime data
+ * 2. If sufficient data exists: sets upperBound = min(calculatedBound, actualDimSize)
+ * 3. If insufficient data: sets upperBound = lowerBound (zero iterations, skip to next loop)
+ * 4. Updates epilogue's lowerBound to maintain continuous data coverage
+ *
+ * Example after postProcessUnrolledLoop: For cascaded unrolling (10→5→2) with dim=1200, initialStep=47:
+ *   Loop 1 (×10, step=470): main loop [0,940), epilogue [940,1200)
+ *      2xiter
+ *   Loop 2 (×5, step=235): main loop [940,1175), epilogue [1175,1200)
+ *      1xiter
+ *   Loop 3 (×2, step=94): main loop [1175,1175), epilogue [1175,1200) -> no single iteration!
+ *      0xiter
+ *   Loop 4 (residual loop, ×1, step=47)): [1175,1200)
+ *      1xiter (backtrack is applied here if needed)
+ *
+ * @param result The UnrolledLoopInfo structure from loopUnrollByFactor containing:
+ *               - mainLoopOp: The unrolled loop with compile-time calculated bounds
+ *               - epilogueLoopOp: The residual loop handling remaining iterations
+ * @param builder OpBuilder for creating runtime guard arithmetic operations (AddIOp, CmpIOp, MinUIOp, SelectOp)
+ *
+ * @return mlir::success() - Bounds successfully corrected and loops updated
+ *         mlir::failure() - Should never occur in current implementation (reserved for future validation)
+ */
+mlir::LogicalResult postProcessUnrolledLoop(mlir::UnrolledLoopInfo& result, mlir::OpBuilder& builder) {
+    auto mainLoop = *result.mainLoopOp;
+    auto loc = mainLoop.getLoc();
+    auto currentLow = mainLoop.getLowerBound();
+    auto currentStep = mainLoop.getStep();
+
+    // Get original dimension size from epilogue upper bound - user provided dim size
+    auto originalDimSize = result.epilogueLoopOp->getUpperBound();
+
+    // Get DominanceInfo for the parent function
+    auto funcOp = mainLoop->getParentOfType<mlir::func::FuncOp>();
+    mlir::DominanceInfo dominanceInfo(funcOp);
+
+    // Set insertion point after all dependencies
+    auto setInsertionPointAfterValues = [&](mlir::OpBuilder& builder, ArrayRef<mlir::Value> values) {
+        mlir::Operation* lastOp = nullptr;
+        for (auto val : values) {
+            if (auto defOp = val.getDefiningOp()) {
+                if (!lastOp || dominanceInfo.dominates(lastOp, defOp)) {
+                    lastOp = defOp;
+                }
+            }
+        }
+        if (lastOp) {
+            builder.setInsertionPointAfter(lastOp);
+        }
+    };
+
+    SmallVector<mlir::Value> deps = {currentLow, currentStep, originalDimSize, mainLoop.getUpperBound()};
+    setInsertionPointAfterValues(builder, deps);
+
+    // Calculate: where will the FIRST iteration end
+    auto firstIterationEnd = builder.create<mlir::arith::AddIOp>(loc, currentLow, currentStep);
+
+    // Check: do we have enough user-provided data to ensure the FIRST iteration can ends without out-of-bounds access
+    auto canExecute = builder.create<mlir::arith::CmpIOp>(loc, mlir::arith::CmpIPredicate::ule, firstIterationEnd,
+                                                          originalDimSize);
+    // Calculate base safe upper bound as min(mainLoop.upperBound, runtime-calculated originalDimSize)
+    auto baseSafeUpperbound = builder.create<mlir::arith::MinUIOp>(loc, mainLoop.getUpperBound(), originalDimSize);
+    // If there is not enough data to execute even a single iteration, set safe upperbound to current low. It prevents
+    // any iterations at all. we just got to the next loop
+    auto safeUpperbound = builder.create<mlir::arith::SelectOp>(loc, canExecute, baseSafeUpperbound, currentLow);
+
+    // Update bounds. Next for loop starts from the place where current main loop ends
+    mainLoop.setUpperBound(safeUpperbound);
+
+    // update epilogue loop lower bound
+    result.epilogueLoopOp->setLowerBound(safeUpperbound);
+    return mlir::success();
+}
+
+/**
  * @brief Unrolls SCF loops by specified factors and sets corresponding attributes on the resulting operations.
  *
  * This function processes a collection of loop information structures, performing loop unrolling
@@ -313,43 +405,94 @@ mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, const SmallV
  *
  * @param builder MLIR OpBuilder used for creating attributes and managing the IR
  * @param loops Vector of LoopInfo structures containing loop operations and their unroll factors
+ * @param enableCascadedUnrolling Enable cascaded unrolling with decreasing factors (e.g., 10 -> 5 -> 2)
+ * @param log Logger for standard logging
+ * @param debugStream Optional output stream for detailed debug output
  *
  * @return mlir::LogicalResult Returns success if all loop unrolling operations complete successfully,
  *         failure if any unrolling operation fails
  *
  */
-mlir::LogicalResult unrollLoopsAndSetAttributes(mlir::OpBuilder& builder, SmallVector<LoopInfo>& loops) {
+mlir::LogicalResult unrollLoopsAndSetAttributes(mlir::OpBuilder& builder, SmallVector<LoopInfo>& loops,
+                                                bool enableCascadedUnrolling, Logger log) {
     for (auto& loopInfo : loops) {
         if (loopInfo.unrollFactor == 1) {
             continue;
         }
 
         auto forOp = mlir::dyn_cast<mlir::scf::ForOp>(loopInfo.loopOp);
-        auto result = mlir::loopUnrollByFactor(forOp, loopInfo.unrollFactor);
-        if (mlir::failed(result)) {
-            return mlir::failure();
-        }
-        forOp->setAttr("unrolled", builder.getUnitAttr());
-
         auto loopId = forOp->getAttrOfType<mlir::IntegerAttr>("id");
-        mlir::Block* block = forOp->getBlock();
-        auto forOps = block->getOps<mlir::scf::ForOp>();
-        mlir::scf::ForOp siblingLoop = nullptr;
-        for (auto forOp : forOps) {
-            auto id = forOp->getAttrOfType<mlir::IntegerAttr>("id");
-            if ((id == loopId) && !forOp->hasAttr("unrolled")) {
-                if (siblingLoop != nullptr) {
-                    return errorAt(forOp->getLoc(), "Multiple sibling loops found for loop with id {0}",
-                                   loopId.getInt());
-                }
-                siblingLoop = forOp;
+
+        log.trace("Unrolling loop with id {0} by factor {1}", loopId.getInt(), loopInfo.unrollFactor);
+
+        int64_t currentFactor = loopInfo.unrollFactor;
+        SmallVector<int64_t> unrollFactors{currentFactor};
+
+        if (enableCascadedUnrolling) {
+            log.trace("Cascaded unrolling enabled for loop id {0}", loopId.getInt());
+            // Cascaded unrolling: 10 -> 5 -> 2 -> epilogue
+            // Generate sequence of factors by dividing by 2
+            while ((currentFactor / 2) > 1) {
+                currentFactor = currentFactor / 2;
+                unrollFactors.push_back(currentFactor);
             }
         }
 
-        if (siblingLoop != nullptr) {
-            siblingLoop->setAttr("residual", builder.getUnitAttr());
+        mlir::scf::ForOp currentLoop = forOp;
+
+        // Apply unrolling with each factor in sequence
+        for (size_t i = 0; i < unrollFactors.size(); ++i) {
+            int64_t factor = unrollFactors[i];
+            log.trace("Applying unroll factor {0} for loop id {1}", factor, loopId.getInt());
+
+            auto result = mlir::loopUnrollByFactor(currentLoop, factor);
+
+            if (mlir::failed(result)) {
+                return mlir::failure();
+            }
+
+            // Mark the main loop with unroll attribute
+            if (result->mainLoopOp.has_value()) {
+                result->mainLoopOp->getOperation()->setAttr("unrolled-factor", builder.getI64IntegerAttr(factor));
+                result->mainLoopOp->getOperation()->setAttr("id", loopId);
+                moveAffineArithOpsEarly(*result->mainLoopOp->getBody());
+            }
+
+            // change loop id to avoid id's duplication
+            // new id = int(str(loopId.getInt()) + str(current_unroll_factor))
+            auto loopIdStr = std::to_string(loopId.getInt()) + std::to_string(unrollFactors[i]);
+            int64_t newLoopIdInt = std::stoll(loopIdStr);
+            currentLoop->setAttr(
+                    "id", mlir::IntegerAttr::get(mlir::IntegerType::get(currentLoop.getContext(), 64), newLoopIdInt));
+
+            if (!result->epilogueLoopOp.has_value()) {
+                // static dims to unroll and no epilogue left
+                break;
+            }
+            // The following attributes will be referred in ConvertToLLVMUMD pass
+            result->mainLoopOp->getOperation()->setAttr("no_await_all", builder.getBoolAttr(true));
+
+            // Post-process main unrolled loop to fix bounds and add runtime guards
+            if (mlir::failed(postProcessUnrolledLoop(*result, builder))) {
+                log.error("Failed to post-process unrolled loop with id {0}", loopId.getInt());
+                return mlir::failure();
+            }
+
+            // Process epilogue - it becomes the next loop to unroll
+            result->epilogueLoopOp->getOperation()->setAttr("id", loopId);
+
+            // If this is the last unroll factor, mark epilogue as residual
+            if (i == unrollFactors.size() - 1) {
+                result->epilogueLoopOp->getOperation()->setAttr("residual", builder.getUnitAttr());
+                // The following attributes will be referred in ConvertToLLVMUMD pass
+                result->epilogueLoopOp->getOperation()->setAttr("no_reset_cmdlist", builder.getBoolAttr(true));
+            }
+
+            // residual will be unrolled with smaller unroll factor in the next iteration
+            currentLoop = *result->epilogueLoopOp;
+
+            moveAffineArithOpsEarly(*result->mainLoopOp->getBody());
         }
-        moveAffineArithOpsEarly(*forOp.getBody());
     }
 
     return mlir::success();
@@ -361,8 +504,8 @@ void cleanupAttributes(mlir::func::FuncOp funcOp) {
             forOp->removeAttr("id");
         }
 
-        if (forOp->hasAttr("unrolled")) {
-            forOp->removeAttr("unrolled");
+        if (forOp->hasAttr("unrolled-factor")) {
+            forOp->removeAttr("unrolled-factor");
         }
 
         if (forOp->hasAttr("residual")) {
@@ -396,19 +539,19 @@ void UnrollSCFLoopPass::safeRunOnModule() {
         return;
     }
 
-    auto unrollFactorsVec = parseUnrollFactorsStr(_loopUnrollFactor);
-    if (unrollFactorsVec.empty()) {
+    SmallVector<int64_t> initialUnrollFactors{parseUnrollFactorsStr(_loopUnrollFactor)};
+    if (initialUnrollFactors.empty()) {
         _log.trace("Unroll factor not specified or invalid. Skipping unroll scf pass");
         return;
     }
 
     // Check unroll factor constraints using LLVM utilities
-    auto numDimsToUnroll = llvm::count_if(unrollFactorsVec, [](auto factor) {
+    auto numDimsToUnroll = llvm::count_if(initialUnrollFactors, [](auto factor) {
         return factor > 1;
     });
 
     if (numDimsToUnroll == 0) {
-        _log.trace("All unroll factors are <= 1. Skipping unroll scf pass");
+        _log.trace("No unroll factors greater than 1 specified. Skipping unroll scf pass");
         return;
     }
 
@@ -429,10 +572,9 @@ void UnrollSCFLoopPass::safeRunOnModule() {
         return;
     }
 
-    mapUnrollFactorToLoop(mainFuncOp, unrollFactorsVec, loopInfoVector);
+    mapUnrollFactorToLoop(mainFuncOp, initialUnrollFactors, loopInfoVector);
 
-    if (mlir::failed(unrollLoopsAndSetAttributes(builder, loopInfoVector))) {
-        _log.trace("Failed to unroll loops and set attributes");
+    if (mlir::failed(unrollLoopsAndSetAttributes(builder, loopInfoVector, enableCascadedUnrolling.getValue(), _log))) {
         signalPassFailure();
         return;
     }
@@ -443,7 +585,7 @@ void UnrollSCFLoopPass::safeRunOnModule() {
         return;
     }
 
-    if (mlir::failed(processUnrolledLoops(mainFuncOp, unrollFactorsVec))) {
+    if (mlir::failed(processUnrolledLoops(mainFuncOp, initialUnrollFactors))) {
         _log.trace("Failed to process unrolled loops");
         signalPassFailure();
         return;
@@ -457,6 +599,10 @@ void UnrollSCFLoopPass::safeRunOnModule() {
 // createUnrollSCFLoopPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createUnrollSCFLoopPass(StringRef loopUnrollFactor, Logger log) {
-    return std::make_unique<UnrollSCFLoopPass>(loopUnrollFactor, log);
+std::unique_ptr<mlir::Pass> vpux::VPU::createUnrollSCFLoopPass(StringRef loopUnrollFactor, bool enableCascadedUnrolling,
+                                                               Logger log) {
+    UnrollSCFLoopOptions options;
+    options.loopUnrollFactor = loopUnrollFactor.str();
+    options.enableCascadedUnrolling = enableCascadedUnrolling;
+    return std::make_unique<UnrollSCFLoopPass>(options, log);
 }

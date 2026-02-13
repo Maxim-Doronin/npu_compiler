@@ -424,7 +424,7 @@ Example:
 
     <!-- E###### -->
     <skip_config>
-        <message>Other devices than NPU doesn't allow to set NPU properties with OV1.0 and CACHE_DIR + MLIR is not supported</message>
+        <message>Other devices than NPU doesn't allow to set NPU properties with OV1.0 and CACHE_DIR + PLUGIN is not supported</message>
         <filters>
             <filter>.*smoke_AutoBatch_BehaviorTests/CorrectConfigTests.*</filter>
         </filters>
@@ -440,12 +440,14 @@ Example:
         </filters>
     </skip_config>
 
-    <!-- E#103391 -->
+    <!-- E#111555 -->
     <skip_config>
         <message>IfTest segfaults npuFuncTest on Ubuntu</message>
         <enable_rules>
             <backend>LEVEL0</backend>
             <device>3720</device>
+            <device>4000</device>
+            <device>5010</device>
             <operating_system>linux</operating_system>
         </enable_rules>
         <filters>
@@ -845,9 +847,9 @@ Example:
 
     <!-- C#165445 -->
     <skip_config>
-        <message>OVBlobCompatibilityNPU tests designed for NPU3720</message>
+        <message>OVBlobCompatibilityNPU tests are designed for NPU3720 and NPU4000 only</message>
         <enable_rules>
-            <device>!3720</device>
+            <device>5010</device>
         </enable_rules>
         <filters>
             <filter>.*OVBlobCompatibilityNPU.*</filter>
@@ -876,13 +878,15 @@ Example:
             <filter>.*ClassExecutableNetworkInvalidDeviceIDTestSuite.InvalidNPUdeviceIDTest.*DEVICE_ID=NPU.3990.*</filter>
         </filters>
     </skip_config>
+
     <!-- E#170866 -->
     <skip_config>
         <message>LSTM Sequence accuracy fails</message>
         <enable_rules>
         </enable_rules>
         <filters>
-            <filter>.*smoke_precommit_LSTMSequencePt/LSTMSequenceLayerTestCommon.*direction=bidirectional_clip=0_WRBType=CONSTANT_modelType=f32.*</filter>
+            <filter>.*smoke_precommit_LSTMSequencePt/LSTMSequenceLayerTestCommon.*</filter>
+            <filter>.*smoke_precommit_LSTMSequenceAccuracy/LSTMSequenceLayerTestCommon.*</filter>
             <filter>.*smoke_precommit_LSTMSequenceCommonZeroClip/LSTMSequenceLayerTestCommon.*</filter>
         </filters>
     </skip_config>
@@ -956,79 +960,22 @@ Example:
 
     <!-- E#175296 -->
     <skip_config>
-        <message>MLIR test cases enabled only for public platforms, NPU3720 and NPU4000.</message>
+        <message>PLUGIN test cases enabled only for public platforms, NPU3720 and NPU4000.</message>
         <enable_rules>
             <device>5010</device>
         </enable_rules>
         <filters>
-            <filter>.*smoke_BehaviorTestMLIR/DynamicBatchedTensorsRunTests.*</filter>
-            <filter>.*smoke_DynamicBatchingSeqTests_MLIR/DynamicBatchingRunSeqTests.*</filter>
+            <filter>.*smoke_BehaviorTestPLUGIN/DynamicBatchedTensorsRunTests.*</filter>
+            <filter>.*smoke_DynamicBatchingSeqTests_PLUGIN/DynamicBatchingRunSeqTests.*</filter>
         </filters>
     </skip_config>
-
-    <!-- E#184993-->
-    <!-- E#185104-->
-    <!-- E#189841-->
-    <skip_config>
-        <message>Skip dynamic convolution tests till E#184993, E#185104 and E#189841 are resolved</message>
-        <enable_rules>
-            <device>5010</device>
-            <device>4000</device>
-        </enable_rules>
-        <filters>
-            <filter>.*ConvolutionLayerTest_HostCompile.*1.3.1..1280.1280.*</filter>
-            <filter>.*ConvolutionLayerTest_HostCompile.*1..1280.1..1280.*</filter>
-            <filter>.*ConvolutionLayerTest_SCF_Unroll.*</filter>
-        </filters>
-    </skip_config>
-
-    <!-- E#186778-->
-    <skip_config>
-        <message>Skip dynamic tests till "dynamicSizes size doesn't match dynamic sizes count in memref shape" fixed.</message>
-        <enable_rules>
-            <device>5010</device>
-            <device>4000</device>
-        </enable_rules>
-        <filters>
-            <filter>.*DynamicShapes.*EltwiseAddLayerTest_HostCompile.*1.3.1..1280.1280.*</filter>
-            <filter>.*DynamicShapes.*EltwiseAddLayerTest_HostCompile.*1.3.1..1280.1..1280.*</filter>
-        </filters>
-    </skip_config>
-
-    <!-- E#181313 -->
     <!-- E#186100 -->
-    <!-- E#188029 -->
-    <!-- E#189262 -->
-    <skip_config>
-        <message>Some ZeroGraphTest run only on NPU 3720</message>
-        <enable_rules>
-            <device>!3720</device>
-        </enable_rules>
-        <filters>
-            <filter>.*smoke_BehaviorTest/ZeroGraphTest.GetGraphInitBlob.*</filter>
-            <filter>.*smoke_BehaviorTest/ZeroGraphTest.GetGraphBinary.*</filter>
-            <filter>.*smoke_BehaviorTest/ZeroGraphTest.GetInitSetArgsDestroyGraphAlignedMemoryMallocBlob.*</filter>
-            <filter>.*smoke_BehaviorTest/ZeroGraphTest.GetInitSetArgsDestroyGraphNotAlignedMemoryMallocBlob.*</filter>
-        </filters>
-    </skip_config>
-
+    <!-- E#192507 -->
     <!-- E#188471 -->
     <skip_config>
         <message>Fails after OV commit update. To be investigated with E#188471</message>
         <filters>
             <filter>.*smoke_DynamicConcatOptimized/DynamicConcatLayerTest.*BoundedShape=\{1_1_1_128\}_\{\{1_1_1_128\}\}.*</filter>
-        </filters>
-    </skip_config>
-
-    <!-- E#189841-->
-    <skip_config>
-        <message>Skip dynamic Eltwise tests till E#189841 is resolved</message>
-        <enable_rules>
-            <device>5010</device>
-            <device>4000</device>
-        </enable_rules>
-        <filters>
-            <filter>.*EltwiseLayerTestDynamicSCFUnroll.*</filter>
         </filters>
     </skip_config>
 
@@ -1040,6 +987,60 @@ Example:
         </enable_rules>
         <filters>
             <filter>.*NpuDeviceAllocMemSizeSameAfterDestroyInferRequestGetTensor.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#195941-->
+    <skip_config>
+        <message>Skip HostCompile tests due to compilation errors. To be investigated with E#195941</message>
+        <enable_rules>
+            <device>4000</device>
+            <device>5010</device>
+        </enable_rules>
+        <filters>
+            <filter>.*FuseD2sExpand_Dyn_u8q.*_HC.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#198787-->
+    <skip_config>
+        <message>Skip SCF Tiling tests due to accuracy issues</message>
+        <enable_rules>
+            <device>5010</device>
+        </enable_rules>
+        <filters>
+            <filter>.*DepthToSpace_SCFTilingLayerTest.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#191394-->
+    <skip_config>
+        <message>Skip SCF Tiling tests due to accuracy issues</message>
+        <enable_rules>
+        </enable_rules>
+        <filters>
+            <filter>.*DepthwiseConvolutionSCFTilingLayerTest_HW.*</filter>
+        </filters>
+    </skip_config>
+
+    <skip_config>
+        <message>Strides are not supported with the current driver</message>
+        <filters>
+            <filter>.*RoiTensorsTestsRun.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#199510-->
+    <skip_config>
+        <message>Shave Code Gen ActivationLayerTest failing</message>
+        <enable_rules>
+            <operating_system>linux</operating_system>
+            <device>4000</device>
+            <device>5010</device>
+        </enable_rules>
+        <filters>
+            <filter>.*ShaveCodeGenActivationLayerTest.*Elu_constants.*</filter>
+            <filter>.*ShaveCodeGenActivationLayerTest.*Selu_constants.*</filter>
         </filters>
     </skip_config>
 

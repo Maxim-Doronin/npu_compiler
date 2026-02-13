@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -137,7 +137,7 @@ func.func @NoChannelExpandAndOp(%arg0: tensor<1x3x30x25xf16, {order = #NHWC}>) -
 }
 
 // CHECK-NOT:   IE.Expand
-// CHECK:       [[SW_AND:%.*]] = IE.And([[ARG0]], [[ARG0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+// CHECK:       [[SW_AND:%.+]] = IE.And([[ARG0]], [[ARG0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
 // CHECK-NOT:   IE.Slice
 // CHECK:       return [[SW_AND]] : tensor<1x3x30x25xf16, {order = #NHWC}>
 
@@ -246,7 +246,7 @@ func.func @ExpandConvolutionChannelsWithSoftMaxAfter(%arg0: tensor<1x512x56x56xf
 
 // CHECK-LABEL: @ExpandInterpolateChannels
 // CHECK-SAME: ([[INPUT:%.+]]: tensor<1x21x48x48xf16, {order = #NHWC}>)
-func.func @ExpandInterpolateChannels(%input: tensor<1x21x48x48xf16, {order = #NHWC}>) -> tensor<1x21x384x384xf16, {order = #NHWC}> {
+func.func @ExpandInterpolateChannels(%input: tensor<1x21x48x48xf16, {order = #NHWC}>) -> tensor<1x21x336x336xf16, {order = #NHWC}> {
     %add = IE.Add(%input, %input) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} :
         tensor<1x21x48x48xf16, {order = #NHWC}>,
         tensor<1x21x48x48xf16, {order = #NHWC}>
@@ -261,11 +261,11 @@ func.func @ExpandInterpolateChannels(%input: tensor<1x21x48x48xf16, {order = #NH
                                    cube_coeff = -7.500000e-01 : f64>,
                                    axes_attr = [2, 3],
                                    operandSegmentSizes = array<i32: 1, 0, 0, 0>,
-                                   scales_attr = [8.000000e+00, 8.000000e+00],
-                                   sizes_attr = [384, 384]} :
+                                   scales_attr = [7.000000e+00, 7.000000e+00],
+                                   sizes_attr = [336, 336]} :
         tensor<1x21x48x48xf16, {order = #NHWC}>
-        -> tensor<1x21x384x384xf16, {order = #NHWC}>
-    return %interp : tensor<1x21x384x384xf16, {order = #NHWC}>
+        -> tensor<1x21x336x336xf16, {order = #NHWC}>
+    return %interp : tensor<1x21x336x336xf16, {order = #NHWC}>
 
     // CHECK:    [[EXPAND:%.+]] = IE.Expand([[INPUT]])
 
@@ -273,10 +273,10 @@ func.func @ExpandInterpolateChannels(%input: tensor<1x21x48x48xf16, {order = #NH
     // CHECK-SAME:        -> tensor<1x32x48x48xf16, {order = #NHWC}>
 
     // CHECK:    [[INTERP:%.+]] = IE.Interpolate([[ADD]])
-    // CHECK-SAME:        -> tensor<1x32x384x384xf16, {order = #NHWC}>
+    // CHECK-SAME:        -> tensor<1x32x336x336xf16, {order = #NHWC}>
 
     // CHECK:    [[SLICE:%.+]] = IE.Slice [[INTERP]]
-    // CHECK-SAME:        to tensor<1x21x384x384xf16, {order = #NHWC}>
+    // CHECK-SAME:        to tensor<1x21x336x336xf16, {order = #NHWC}>
 
     // CHECK:    return [[SLICE]]
 }

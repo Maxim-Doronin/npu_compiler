@@ -1,4 +1,4 @@
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include "vpu_ov2_layer_test.hpp"
@@ -110,12 +110,14 @@ TEST_P(FakeQuantPerChLayerTest_NPU4000, SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(FakeQuantPerChLayerTest_NPU5010, SW) {
     rel_threshold = 0.001;
     abs_threshold = 0.2;
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
 TEST_P(FakeQuantPerChCustomLimitsLayerTest_NPU3720, SW) {
     rel_threshold = 0.1;
     setReferenceSoftwareMode();
@@ -147,6 +149,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTestConfig_NPU
 
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU4000, ::testing::ValuesIn(shapesSW));
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU5010, ::testing::ValuesIn(shapesSW));
+
 INSTANTIATE_TEST_SUITE_P(smoke_tiling_FakeQuantPerCh, FakeQuantPerChLayerTestConfig_NPU3720,
                          ::testing::ValuesIn(shapesTiling));
 

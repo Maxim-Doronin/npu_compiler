@@ -202,8 +202,9 @@ mlir::LogicalResult TransposeInputs::matchAndRewrite(IE::MatMulOp matmulOp, mlir
         return mlir::failure();
     }
 
-    rewriter.replaceOpWithNewOp<IE::MatMulOp>(matmulOp, input1, input2, /*transpose_a=*/false,
-                                              /*transpose_b=*/true, matmulOp.getPostOpAttr());
+    rewriter.replaceOp(matmulOp, cloneMatMulOp(rewriter, matmulOp, input1, input2,
+                                               /*transposeA=*/false,
+                                               /*transposeB=*/true));
 
     return mlir::success();
 }
@@ -213,4 +214,16 @@ mlir::LogicalResult TransposeInputs::matchAndRewrite(IE::MatMulOp matmulOp, mlir
 void vpux::IE::MatMulOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns, mlir::MLIRContext* context) {
     patterns.add<TransposeInputs>(context);
     patterns.add<UseFullyConnected>(context);
+}
+
+void vpux::IE::MatMulOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value input1,
+                               mlir::Value input2, bool transposeA, bool transposeB) {
+    build(odsBuilder, odsState, input1, input2, transposeA, transposeB,
+          /*postOpAttr=*/nullptr, /*clampAttr=*/nullptr);
+}
+
+void vpux::IE::MatMulOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Type output,
+                               mlir::Value input1, mlir::Value input2, bool transposeA, bool transposeB) {
+    build(odsBuilder, odsState, output, input1, input2, transposeA, transposeB,
+          /*postOpAttr=*/nullptr, /*clampAttr=*/nullptr);
 }

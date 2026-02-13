@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/dilated_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
@@ -23,7 +24,6 @@
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/dilated_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
@@ -209,7 +209,7 @@ mlir::LogicalResult vpux::VPU::NCEDepthConvolutionOp::verify() {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto filterType = mlir::cast<vpux::NDTypeInterface>(getFilter().getType());
 
-    const auto alignedFilterShape = filterType.getShape();
+    const auto alignedFilterShape = getBoundedShape(filterType);
     const auto expectedAlignedFilterShape = inferAlignedFilterShape(outputType, filterType);
 
     if (alignedFilterShape != expectedAlignedFilterShape) {
@@ -225,12 +225,10 @@ Shape vpux::VPU::NCEDepthConvolutionOp::inferAlignedFilterShape(NDTypeInterface 
     const auto KY = rawFilterShape[Dims4D::Filter::KY];
     const auto KX = rawFilterShape[Dims4D::Filter::KX];
 
-    const auto OC = output.getShape()[Dims4D::Act::C];
+    const auto OC = getBoundedShape(output)[Dims4D::Act::C];
 
     const auto alignment = NCEInvariant::getAlignment(filter.getElementType());
-
     const auto remainder = (KY * KX) % alignment;
-
     if (remainder == 0) {
         return Shape{OC, 1, KY, KX};
     }
@@ -283,8 +281,8 @@ mlir::LogicalResult vpux::VPU::NCEDepthConvolutionOp::inferReturnTypes(
     inShapeInfo.shape[Dims4D::Act::C.ind()] = 1;
     filterShapeInfo.shape = parseIntArrayAttr<int64_t>(op.getRawFilterShape());
 
-    auto shapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, windowStrides, dataPaddingBelow,
-                                                     dataPaddingAbove, windowDilations);
+    auto shapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, filterType, windowStrides,
+                                                     dataPaddingBelow, dataPaddingAbove, windowDilations);
 
     const auto outDesc =
             vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, BoundsRef(shapeInfo.bounds));
@@ -368,10 +366,11 @@ bool vpux::VPU::NCEDepthConvolutionOp::checkStrategyCompatibility(VPU::MultiClus
 vpux::VPU::DistributionInfo vpux::VPU::NCEDepthConvolutionOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles) {
     return VPU::getNCEExplicitDistributionInfo(mlir::dyn_cast<VPU::NCEOpInterface>(getOperation()), shape,
                                                distributionMode, numTiles, numClusters, alignment,
-                                               uniformDistributedSegments, overlapParams);
+                                               uniformDistributedSegments, overlapParams, memoryNumTiles);
 }
 
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOH
@@ -379,7 +378,7 @@ vpux::VPU::DistributionInfo vpux::VPU::NCEDepthConvolutionOp::getExplicitDistrib
 // specified for compilation.
 // For example for 4 cluster compilation the output height must be a minimum of 4.
 bool VPU::NCEDepthConvolutionOp::isOperationSplitOverHeightCompatible(const vpux::TileInfo& oriOutputTile) {
-    if (isSEPDWConv(getOperation())) {
+    if (VPU::isSEPDWConv(getOperation())) {
         // [E#154046] SOH Dilated SEP DWConv is inaccurate for now
         const auto sparseInputTensor = mlir::cast<VPU::SparseTensorType>(getOperand(0).getType());
         auto seAttr = sparseInputTensor.getSeAttr();

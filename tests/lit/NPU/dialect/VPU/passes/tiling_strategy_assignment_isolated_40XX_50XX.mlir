@@ -67,3 +67,25 @@ func.func @NCEMatMulSOGAndHTile(%arg0: tensor<6x1x512x512xf16>, %arg1: tensor<6x
   // CHECK-SAME:    tilingStrategy = [1, 1, 1, 2, 1]
 }
 }
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+module @Test attributes {config.compilationMode = #config.compilation_mode<HostCompile>}  {
+
+config.Resources 3 of @NCE {
+config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+}
+
+// CHECK-LABEL: @DepthToSpaceDynamic2Dim
+func.func @DepthToSpaceDynamic2Dim(%arg0: tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 256, 256]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 512, 512]> : tensor<4xsi64>, order = #NHWC}> {
+  %1 = VPU.DepthToSpace(%arg0) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 13 : i64>} : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 256, 256]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 512, 512]> : tensor<4xsi64>, order = #NHWC}>
+  return %1 : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 512, 512]> : tensor<4xsi64>, order = #NHWC}>
+
+  // CHECK:         VPU.DepthToSpace
+  // CHECK-SAME:    tilingStrategy = [1, 1, 2, 2]
+}
+}

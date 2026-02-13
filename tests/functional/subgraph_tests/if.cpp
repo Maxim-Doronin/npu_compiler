@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -71,16 +71,34 @@ public:
     };
 };
 
-class IfTest_NPU3720 : public IfTestCommon {};
-
-TEST_P(IfTest_NPU3720, SW) {
+TEST_P(IfTestCommon, SW_NPU3720) {
     setReferenceSoftwareMode();
     run(Platform::NPU3720);
 }
 
-TEST_P(IfTest_NPU3720, HW) {
+TEST_P(IfTestCommon, HW_NPU3720) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
+}
+
+TEST_P(IfTestCommon, SW_NPU4000) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(IfTestCommon, HW_NPU4000) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(IfTestCommon, SW_NPU5010) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(IfTestCommon, HW_NPU5010) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 const TypeVector inType = {
@@ -89,7 +107,7 @@ const TypeVector inType = {
 
 const std::vector<ov::Shape> inputShapes = {{1, 1, 4, 4}, {1, 2, 32, 64}};
 
-INSTANTIATE_TEST_SUITE_P(smoke_IfTest, IfTest_NPU3720,
+INSTANTIATE_TEST_SUITE_P(smoke_IfTest, IfTestCommon,
                          ::testing::Combine(::testing::ValuesIn(inType), ::testing::ValuesIn(inputShapes)),
                          IfTestCommon::getTestCaseName);
 

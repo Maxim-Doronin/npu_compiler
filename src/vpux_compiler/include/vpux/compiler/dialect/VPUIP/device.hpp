@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -206,18 +206,6 @@ enum InterpolationCoordTransMode {
     InterpolationCoordTransMode_ALIGN_CORNERS = 4,
     InterpolationCoordTransMode_MIN = InterpolationCoordTransMode_HALF_PIXEL,
     InterpolationCoordTransMode_MAX = InterpolationCoordTransMode_ALIGN_CORNERS
-};
-
-enum PhysicalProcessor {
-    PhysicalProcessor_NULL = 0,
-    PhysicalProcessor_LEON_RT = 1,
-    PhysicalProcessor_LEON_NN = 2,
-    PhysicalProcessor_NN_SHV = 3,
-    PhysicalProcessor_ARM = 4,
-    PhysicalProcessor_NCE_Cluster = 5,
-    PhysicalProcessor_NCE_PerClusterDPU = 6,
-    PhysicalProcessor_MIN = PhysicalProcessor_NULL,
-    PhysicalProcessor_MAX = PhysicalProcessor_NCE_PerClusterDPU
 };
 
 enum PhysicalMem {

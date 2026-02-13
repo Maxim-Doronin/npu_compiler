@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -34,6 +34,7 @@ std::optional<DummyOpMode> getDummyOpReplacement(const intel_npu::Config& config
 std::optional<bool> getCompilerDynamicQuantization(const intel_npu::Config& config);
 std::optional<bool> getPerfCount(const intel_npu::Config& config);
 std::optional<bool> getEnableDecomposeSDPA(const intel_npu::Config& config);
+std::set<std::string> getIoWithDynamicStrides(const intel_npu::Config& config);
 
 #ifdef BACKGROUND_FOLDING_ENABLED
 struct ConstantFoldingConfig {

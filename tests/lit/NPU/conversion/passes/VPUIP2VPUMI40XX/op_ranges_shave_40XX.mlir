@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,8 +43,8 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelRange>
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelInvocation>
     // CHECK-SAME: ])
-    // CHECK-SAME: begins(%[[VAL0:[0-9]+]], %[[VAL1:[0-9]+]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
-    // CHECK-SAME: ends(%[[VAL0]], %[[VAL1]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
+    // CHECK-SAME: begins([[VAL0:%[0-9]+]], [[VAL1:%[0-9]+]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
+    // CHECK-SAME: ends([[VAL0]], [[VAL1]] : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
 }
 }
 
@@ -105,8 +105,8 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelRange>
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelInvocation>
     // CHECK-SAME: ])
-    // CHECK-SAME: begins(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
-    // CHECK-SAME: ends(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<0:0:2>, !VPURegMapped.Index<0:0:2>)
+    // CHECK-SAME: begins({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>)
+    // CHECK-SAME: ends({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<0:0:2>, !VPURegMapped.Index<0:0:2>)
 }
 }
 
@@ -149,8 +149,8 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelRange>
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelInvocation>
     // CHECK-SAME: ])
-    // CHECK-SAME: begins(%[[VAL0:[0-9]+]], %[[VAL1:[0-9]+]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
-    // CHECK-SAME: ends(%[[VAL0]], %[[VAL1]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
+    // CHECK-SAME: begins([[VAL0:%[0-9]+]], [[VAL1:%[0-9]+]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
+    // CHECK-SAME: ends([[VAL0]], [[VAL1]] : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
 }
 }
 
@@ -211,7 +211,7 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelRange>
     // CHECK-DAG: #VPURegMapped.task_type<ActKernelInvocation>
     // CHECK-SAME: ])
-    // CHECK-SAME: begins(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
-    // CHECK-SAME: ends(%{{[0-9]+}}, %{{[0-9]+}} : !VPURegMapped.Index<2:0:2>, !VPURegMapped.Index<2:0:2>)
+    // CHECK-SAME: begins({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<2:0:0>, !VPURegMapped.Index<2:0:0>)
+    // CHECK-SAME: ends({{%[0-9]+}}, {{%[0-9]+}} : !VPURegMapped.Index<2:0:2>, !VPURegMapped.Index<2:0:2>)
 }
 }

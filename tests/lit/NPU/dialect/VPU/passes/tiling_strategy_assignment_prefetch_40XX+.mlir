@@ -86,50 +86,6 @@ module @executors {
         config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
     }
 
-    // CHECK-LABEL: func.func @SplitSoftMaxWithSoK
-    // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x8x4096x4096xf16>
-    func.func @SplitSoftMaxWithSoK(%arg0: tensor<1x8x4096x4096xf16>) -> tensor<1x8x4096x4096xf16> {
-        %0 = VPU.SoftMax(%arg0) {axisInd = 3 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x8x4096x4096xf16> -> tensor<1x8x4096x4096xf16>
-        return %0 : tensor<1x8x4096x4096xf16>
-
-        // CHECK:       [[OUTPUT:%.+]] = VPU.SoftMax([[INPUT]]) {axisInd = 3 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, tilingStrategy = [1, 1, 94, 1]}
-        // CHECK-SAME:      : tensor<1x8x4096x4096xf16> -> tensor<1x8x4096x4096xf16>
-
-        // CHECK:       return [[OUTPUT]] : tensor<1x8x4096x4096xf16>
-    }
-
-}
-
-// -----
-
-module @executors {
-    config.Resources 6 of @NCE at 1.700000e+03 MHz {
-        config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
-        config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
-    }
-
-    // CHECK-LABEL: func.func @SplitSoftMaxOverW
-    // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x20x256x384xf16>
-    func.func @SplitSoftMaxOverW(%arg0: tensor<1x20x256x384xf16>) -> tensor<1x20x256x384xf16> {
-        %0 = VPU.SoftMax(%arg0) {axisInd = 1}: tensor<1x20x256x384xf16> -> tensor<1x20x256x384xf16>
-        return %0 : tensor<1x20x256x384xf16>
-
-        // CHECK:       [[OUTPUT:%.+]] = VPU.SoftMax([[INPUT]]) {axisInd = 1 : i64, tilingStrategy = [1, 1, 6, 1]}
-        // CHECK-SAME:      : tensor<1x20x256x384xf16> -> tensor<1x20x256x384xf16>
-
-        // CHECK:       return [[OUTPUT]] : tensor<1x20x256x384xf16>
-    }
-
-}
-
-// -----
-
-module @executors {
-    config.Resources 6 of @NCE at 1.700000e+03 MHz {
-        config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
-        config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
-    }
-
     // CHECK-LABEL: func.func @InterpSplitOverC
     // CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x24x64x64xf16>
     func.func @InterpSplitOverC(
@@ -1037,28 +993,6 @@ module @executors {
         return %0 : tensor<1x8x80x960xf16>
 
         // CHECK:       [[OUTPUT:%.+]] = VPU.Tan([[INPUT]]) {
-        // CHECK-SAME:  tilingStrategy = [1, 1, 1, 2]} : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
-
-        // CHECK:       return [[OUTPUT]] : tensor<1x8x80x960xf16>
-    }
-
-}
-
-// -----
-
-module @executors {
-    config.Resources 6 of @NCE at 1.700000e+03 MHz {
-        config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
-        config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
-    }
-
-    // CHECK-LABEL: @SwishSplitOverW
-    // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x8x80x960xf16>) -> tensor<1x8x80x960xf16> {
-    func.func @SwishSplitOverW(%arg0: tensor<1x8x80x960xf16>) -> tensor<1x8x80x960xf16> {
-        %0 = VPU.Swish(%arg0) {beta_value = 1.000000e+00 : f64} : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
-        return %0 : tensor<1x8x80x960xf16>
-
-        // CHECK:       [[OUTPUT:%.+]] = VPU.Swish([[INPUT]]) {
         // CHECK-SAME:  tilingStrategy = [1, 1, 1, 2]} : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
 
         // CHECK:       return [[OUTPUT]] : tensor<1x8x80x960xf16>

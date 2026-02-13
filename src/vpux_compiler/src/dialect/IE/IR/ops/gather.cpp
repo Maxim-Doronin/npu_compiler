@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -11,6 +12,7 @@
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -49,6 +51,34 @@ mlir::FailureOr<int64_t> extractAxis(mlir::Location loc, IE::GatherOpAdaptor gat
     }
 }
 
+auto calculateOutputShape(const llvm::ArrayRef<int64_t>& inputShape, const llvm::ArrayRef<int64_t>& indicesShape,
+                          int64_t batchDims, int64_t axisVal, int64_t indicesRank) {
+    SmallVector<int64_t> shape;
+    int64_t outRank = inputShape.size() + indicesRank - 1 - batchDims;
+    VPUX_THROW_UNLESS(outRank >= 0, "Calculated output rank expected to be non-negative, but got {0}", outRank);
+    int64_t i = 0;
+
+    for (; i < batchDims; i++) {
+        VPUX_THROW_WHEN(inputShape[i] != indicesShape[i],
+                        "The first dimensions in Input and Indices shapes are expected to be equal");
+        shape.push_back(inputShape[i]);
+    }
+    for (; i < axisVal; i++) {
+        shape.push_back(inputShape[i]);
+    }
+    for (; i < axisVal + indicesRank - batchDims; i++) {
+        shape.push_back(indicesShape[batchDims - axisVal + i]);
+    }
+    for (; i < outRank; i++) {
+        shape.push_back(inputShape[batchDims + 1 - indicesRank + i]);
+    }
+    // To avoid shape size 0 error, set the shape 1.
+    if (shape.empty()) {
+        shape.push_back(1);
+    }
+    return shape;
+};
+
 }  // namespace
 
 mlir::LogicalResult vpux::IE::GatherOp::inferReturnTypeComponents(
@@ -62,56 +92,34 @@ mlir::LogicalResult vpux::IE::GatherOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<mlir::ShapedType>(gather.getInput().getType());
-    const auto inputShape = inType.getShape();
-    const auto indicesShape = mlir::cast<mlir::ShapedType>(gather.getIndices().getType()).getShape();
+    const auto inputType = mlir::cast<mlir::ShapedType>(gather.getInput().getType());
+    const auto inputShape = inputType.getShape();
+    const auto indicesType = mlir::cast<mlir::ShapedType>(gather.getIndices().getType());
+    const auto indicesShape = indicesType.getShape();
 
-    const auto axis = extractAxis(loc, gather);
-    if (mlir::failed(axis)) {
+    const auto inAxis = extractAxis(loc, gather);
+    if (mlir::failed(inAxis)) {
         return mlir::failure();
     }
 
-    SmallVector<int64_t> outShape;
-    SmallVector<int64_t> outShapeBounds;
+    auto batch = gather.getBatchDims();
+    auto axis = checked_cast<int64_t>(*inAxis);
+    auto rank = gather.getIndicesRank().value_or(indicesShape.size());
 
-    auto calculateOutputShape = [&](auto& shape, const auto& indicesShape) {
-        int64_t batchDims = gather.getBatchDims();
-        int64_t axisVal = checked_cast<int64_t>(*axis);
-        int64_t indicesRank = gather.getIndicesRank().value_or(indicesShape.size());
-        int64_t outRank = inputShape.size() + indicesRank - 1 - batchDims;
-        int64_t i = 0;
+    auto outShape = calculateOutputShape(inputShape, indicesShape, batch, axis, rank);
 
-        for (; i < batchDims; i++) {
-            shape.push_back(inputShape[i] & indicesShape[i]);
-        }
-        for (; i < axisVal; i++) {
-            shape.push_back(inputShape[i]);
-        }
-        for (; i < axisVal + indicesRank - batchDims; i++) {
-            shape.push_back(indicesShape[batchDims - axisVal + i]);
-        }
-        for (; i < outRank; i++) {
-            shape.push_back(inputShape[batchDims + 1 - indicesRank + i]);
-        }
-        // To avoid shape size 0 error, set the shape 1.
-        if (shape.empty()) {
-            shape.push_back(1);
-        }
-    };
-
-    calculateOutputShape(outShape, indicesShape);
-
-    auto indicesType = gather.getIndices().getType();
     Bounds bounds;
-    if (auto boundedTensor = mlir::dyn_cast<Core::BoundedTensorType>(indicesType)) {
-        auto indicesBounds = boundedTensor.getBounds().raw();
-        calculateOutputShape(outShapeBounds, indicesBounds);
-        bounds = Bounds(outShapeBounds);
+    if (vpux::details::isDynamicDimValues(outShape)) {
+        auto boundedInputTensor = mlir::dyn_cast<Core::BoundedTensorType>(inputType);
+        auto boundedIndicesTensor = mlir::dyn_cast<Core::BoundedTensorType>(indicesType);
+        auto actualInputShape = boundedInputTensor ? boundedInputTensor.getBounds().raw() : inputShape;
+        auto actualIndicesShape = boundedIndicesTensor ? boundedIndicesTensor.getBounds().raw() : indicesShape;
+        bounds = Bounds(calculateOutputShape(actualInputShape, actualIndicesShape, batch, axis, rank));
     }
 
     const auto outDesc =
             vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()), /*memSpace=*/nullptr, bounds);
-    inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
+    inferredReturnShapes.emplace_back(outShape, inputType.getElementType(), outDesc);
 
     return mlir::success();
 }

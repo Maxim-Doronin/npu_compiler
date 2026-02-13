@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,11 +44,11 @@ void HostExec::buildHostExecPipeline(mlir::OpPassManager& pm, Logger /*log*/) {
     // This should be placed after ConvertToLLVMUMDCalls
     // as additional arguments (e.g., L0 command list, command queue, and so on)
     // are added in ConvertToLLVMUMDCalls
-    pm.addPass(mlir::LLVM::createRequestCWrappersPass());
+    pm.addPass(mlir::LLVM::createLLVMRequestCWrappersPass());
 
     // Lowering to LLVM passes, inspired by mlir/test/lib/Dialect/LLVM/TestLowerToLLVM.cpp
     pm.addPass(mlir::createLowerAffinePass());
-    pm.addPass(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(mlir::createCSEPass());
 

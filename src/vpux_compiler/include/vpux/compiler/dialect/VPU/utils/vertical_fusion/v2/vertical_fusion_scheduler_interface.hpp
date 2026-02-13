@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,14 +70,15 @@ protected:
     */
     virtual void correctOutputSpillCost(StrategyCost& spillCost, VFConfig& config,
                                         const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost,
-                                        const int64_t index, const int64_t tilesNumber) const;
+                                        SmallVector<StrategyCost>& prefetchCostList, const int64_t index,
+                                        const int64_t tilesNumber) const;
 
     /*
       Prefetch input dmas
     */
     virtual void correctInputPrefetchingCost(StrategyCost& prefetchCost, mlir::Operation* operation, VFConfig& config,
                                              const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost,
-                                             const size_t index) const;
+                                             SmallVector<StrategyCost>& prefetchCostList, const size_t index) const;
 
     /*
       Get cost of parent operation
@@ -93,12 +94,19 @@ protected:
                                                    const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction) const;
 
     /*
-      Get input dmas cost
+      Get input DMA cost
     */
     StrategyCost getPrefetchingCost(mlir::Operation* operation, VFConfig& config,
                                     const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction,
                                     const VPUNNCostParameters& parameters, const bool isInput,
                                     const TilingOperationStorage::UPtr& tilingInfo, const int64_t index) const;
+
+    /*
+      Get output DMA cost
+    */
+    StrategyCost getOutputSpillCost(mlir::Operation* operation, VFConfig& config,
+                                    const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction,
+                                    const VPUNNCostParameters& parameters, const bool isOutput) const;
 
     /*
       Get internal slice copy dma cost
@@ -112,7 +120,7 @@ protected:
       Reduce the cost with already prefetched dmas from previous tile
     */
     void reduceCostWithPrefetchedDMA(StrategyCost& parentCost, const StrategyCost& prefetchCost,
-                                     const size_t index) const;
+                                     StrategyCost& accumulatedPrefetchCost) const;
 
     /*
       Check if the VF can support shared weights
@@ -134,8 +142,6 @@ protected:
 protected:
     Logger _log;
     bool _prefetching = true;
-    // the cost of DMAs which VF tile has already had prefetched
-    mutable DenseMap<size_t, StrategyCost> _prefetchedCost;
 
 private:
     std::deque<std::shared_ptr<IVFScheduling<VFConfig>>> _dependents;

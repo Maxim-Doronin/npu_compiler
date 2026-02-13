@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,12 +23,8 @@ void vpux::VPUIP::arch37xx::buildMemoryAllocationPipeline(mlir::OpPassManager& p
                                                           Logger log) {
     pm.addPass(VPUIP::createFeasibleAllocationPass(
             VPU::getMemKind<VPU::MemoryKind::CMX_NN>, VPU::getMemKind<VPU::MemoryKind::DDR>, options.linearizeSchedule,
-            options.enablePipelining, options.enablePrefetching, options.optimizeFragmentation,
-            options.optimizeDynamicSpilling, options.enableMultiScheduleHeuristic, log));
-
-    if (options.enableGroupAsyncExecuteOps) {
-        pm.addPass(VPUIP::createGroupAsyncExecuteOpsPass(log));
-    }
+            options.enableLoopAllocation, options.enablePipelining, options.enablePrefetching,
+            options.optimizeFragmentation, options.optimizeDynamicSpilling, options.enableMultiScheduleHeuristic, log));
 
     pm.addPass(VPUIP::createQueryArgsAllocationAnalysisPass());
     pm.addPass(VPUIP::createStaticAllocationPass(VPU::getMemKind<VPU::MemoryKind::DDR>, log));
@@ -60,16 +56,17 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
                                                options.setMemorySpaceForFunctionBoundaries, log));
 
     if (options.enableSEPtrsOperations || options.enableExperimentalSEPtrsOperations) {
-        pm.addPass(VPUIP::createMoveSubViewBeforeSparseBufferPass(log));
         pm.addPass(VPUIP::createComputeSEBasePtrsPass(log));
         pm.addPass(VPUIP::createConvertSETablesToConstantsPass(log));
     }
     if (options.enableWeightsSparsity) {
         pm.addPass(VPUIP::createPropagateSparsityCompressionPass(log));
     }
+
     if (options.enableWeightsSparsity || VPU::isActSparsityEnabled(options.enableActivationSparsity) ||
         options.enableSEPtrsOperations || options.enableExperimentalSEPtrsOperations) {
-        pm.addPass(VPUIP::createUngroupSparseBuffersPass(log));
+        pm.addPass(VPUIP::createUngroupBufferSectionRewriterExecutorPass(options.enableSEPtrsOperations ||
+                                                                         options.enableExperimentalSEPtrsOperations));
     }
 
     pm.addPass(VPUIP::createUngroupBoundedBuffersPass(log));
@@ -109,11 +106,11 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPUIP::createConvertTransferOpsToDMAsPass(log));
 
     if (options.enableProfiling && options.enableDPUProfiling) {
-        pm.addPass(VPUIP::createDPUProfilingPass(vpux::VPU::getMemKind<VPU::MemoryKind::CMX_NN>, log));
+        pm.addPass(VPUIP::createDPUProfilingPass(log));
     }
 
     if (options.enableProfiling && options.enableSWProfiling) {
-        pm.addPass(VPUIP::createActShaveProfilingPass(vpux::VPU::getMemKind<VPU::MemoryKind::CMX_NN>, log));
+        pm.addPass(VPUIP::createActShaveProfilingPass(log));
     }
 
     VPUIP::buildAsyncSchedulingPipeline(pm, log);
@@ -161,18 +158,16 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     if (!options.linearizeSchedule) {
-        pm.addPass(VPUIP::createDMABarrierOptimizationPass(std::nullopt, log));
+        pm.addPass(VPUIP::createBarrierOptimizationPass(std::nullopt, log));
     }
 
-    if (options.enableSimpleSchedule) {
-        pm.addPass(VPURT::createSimplifySchedulePass(options.reduceParallelControlFlows, std::nullopt, log));
-    }
+    pm.addPass(VPURT::createSimplifySchedulePass(options.reduceParallelControlFlows, std::nullopt, log));
 
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(std::nullopt, std::nullopt, log));
 
     pm.addPass(VPURT::createAddFinalBarrierPass(options.workloadManagementMode, log));
 
-    VPURT::buildBarrierLegalizationPipeline(pm, std::nullopt, std::nullopt,
+    VPURT::buildBarrierLegalizationPipeline(pm, /* workloadManagementMode */ std::nullopt, std::nullopt,
                                             /* unevenVariantSplitFlag */ false, log);
 
     pm.addPass(Const::createApplySwizzlingPass());
@@ -192,9 +187,9 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(Core::createMoveDeclarationsToTopPass(log));
     }
 
-    pm.addPass(VPURT::createAssignPhysicalBarriersPass(options.enableColorBinPhysicalBarrierAssignment, std::nullopt,
-                                                       std::nullopt, log));
-    pm.addPass(VPURT::createBarrierSimulationPass(false, log));
+    pm.addPass(VPURT::createAssignPhysicalBarriersPass(
+            /* workloadManagementMode */ std::nullopt, log));
+    pm.addPass(VPURT::createBarrierSimulationPass(log));
     pm.addPass(VPUIP::createUpdateSwKernelParamsPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(Const::createConstantFoldingPass());
@@ -208,10 +203,8 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPURT::createIntermediateBufferOutputPass(log));
     }
 
-    if (options.enableActivityFactor || options.enableScheduleTrace) {
-        pm.addPass(VPURT::createInferenceExecutionAnalysisPass(options.scheduleTraceFile, options.enableScheduleTrace,
-                                                               options.enableActivityFactor, log));
-    }
+    pm.addPass(
+            VPURT::createInferenceExecutionAnalysisPass(options.scheduleTraceFile, options.enableScheduleTrace, log));
     pm.addPass(VPU::createCostModelAnalysisDestroyPass(log));
     if (options.enableDumpTaskStats) {
         // Force logging if dump-task-stats was enabled explicitly on the command line
@@ -232,7 +225,7 @@ void vpux::VPUIP::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
     if (options.enableProfiling && options.enableSWProfiling) {
-        pm.addPass(VPUIP::createActShaveProfilingPass(VPU::getMemKind<VPU::MemoryKind::CMX_NN>, log));
+        pm.addPass(VPUIP::createActShaveProfilingPass(log));
     }
 
     pm.addPass(VPUIP::createUngroupBoundedBuffersPass(log));
@@ -260,9 +253,8 @@ void vpux::VPUIP::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
         pm.addPass(Core::createMoveDeclarationsToTopPass(log));
     }
 
-    pm.addPass(VPURT::createAssignPhysicalBarriersPass(options.enableColorBinPhysicalBarrierAssignment, std::nullopt,
-                                                       std::nullopt, log));
-    pm.addPass(VPURT::createBarrierSimulationPass(false, log));
+    pm.addPass(VPURT::createAssignPhysicalBarriersPass(/* workloadManagementMode */ std::nullopt, log));
+    pm.addPass(VPURT::createBarrierSimulationPass(log));
     pm.addPass(VPUIP::createUpdateSwKernelParamsPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(Const::createConstantFoldingPass());

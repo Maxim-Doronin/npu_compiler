@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
+#include "vpux/compiler/locverif/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/Linalg/Passes.h>
@@ -16,6 +17,71 @@
 #include <mlir/Transforms/Passes.h>
 
 using namespace vpux;
+
+//
+// OptimizeViewLikeOps
+//
+
+void vpux::IE::buildOptimizeViewLikeOpsPipeline(mlir::OpPassManager& pm, Logger log) {
+    pm.addPass(IE::createRemoveViewLikeOpsChainPass(log));
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(IE::createUniquifySimilarOpsPass(log));
+}
+
+//
+// DimensionAlignment
+//
+
+void vpux::IE::buildDimensionAlignmentPipeline(mlir::OpPassManager& pm, const ExpandActivationChannelsOptions& options,
+                                               Logger log) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+    if (options.enableExpandActivationChannels) {
+        pm.addPass(IE::createAlignDimensionsForDPUPass(log));
+        if (options.enableAdjustInputShapePass) {
+            pm.addPass(IE::createAdjustInputShapePass(log));
+        }
+        pm.addPass(mlir::createCanonicalizerPass(grc));
+        pm.addPass(IE::createPropagateAffineReshapePass(log));
+        if (options.enableOptimizeSliceExpand) {
+            pm.addPass(IE::createOptimizeSliceExpandPass(log));
+        }
+        pm.addPass(mlir::createCanonicalizerPass(grc));
+    }
+}
+
+//
+// OptimizeSliceOp
+//
+
+void vpux::IE::buildOptimizeSliceOpPipeline(mlir::OpPassManager& pm, Logger log) {
+    pm.addPass(IE::createFuseConvWithSlicePass(log));
+    pm.addPass(IE::createOptimizeOpSlicePass(log));
+    pm.addPass(IE::createConvertParallelSlicesToGatherPass(log));
+    pm.addPass(IE::createOptimizeSliceWithStridePass(log));
+    // Note: createAdjustConvolutionShapePass is needed after slice optimizations
+    // to fix convolution shapes if input slices were changed
+    pm.addPass(IE::createAdjustConvolutionShapePass(log));
+}
+
+//
+// buildBatchTransformationPipeline
+//
+
+void vpux::IE::buildBatchTransformationPipeline(mlir::OpPassManager& pm,
+                                                const std::unique_ptr<BatchUnrollOptions>& batchUnrollOptions,
+                                                bool enableUpstreamSlice, Logger log) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+    pm.addPass(IE::createConvertBatchedLayerTo1NPass(log));
+    pm.addPass(IE::createConvertBroadcastToTilePass(log));
+    if (batchUnrollOptions) {
+        pm.addPass(IE::createUnrollBatchPass(log, isOptionEnabled(batchUnrollOptions->skipUnrollBatch)));
+    }
+    if (enableUpstreamSlice) {
+        pm.addPass(IE::createUpstreamSlicePass(log));
+    }
+    pm.addPass(IE::createConvertBranchesConcatToConvPass(log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+}
 
 //
 // ExpandAndOptimizeActivationChannels
@@ -29,6 +95,7 @@ void vpux::IE::buildExpandAndOptimizeActivationChannelsPipeline(mlir::OpPassMana
         if (options.enableAdjustConvShapePass) {
             pm.addPass(IE::createOptimizeAvgPoolWithUnalignedChannelsPass(log));
             pm.addPass(IE::createAdjustConvolutionShapePass(log));
+            pm.addPass(IE::createAdjustGroupConvShapePass(log));
         }
         pm.addPass(IE::createExpandActivationChannelsPass(
                 /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations), log));
@@ -47,7 +114,8 @@ void vpux::IE::buildExpandAndOptimizeActivationChannelsPipeline(mlir::OpPassMana
         if (options.enableOptimizeSliceExpand) {
             pm.addPass(IE::createOptimizeSliceExpandPass(log));
         }
-        pm.addPass(IE::createUniquifyOpsPass(log));
+        pm.addPass(mlir::createCSEPass());
+        pm.addPass(IE::createUniquifySimilarOpsPass(log));
         pm.addPass(IE::createHandleEltwiseWithSmallHeightPass(log));
         pm.addPass(IE::createPropagateAffineReshapePass(log));
         pm.addPass(IE::createUniquifyBranchesPass(log));
@@ -77,21 +145,15 @@ void vpux::IE::buildOptimizeActivationsPipeline(mlir::OpPassManager& pm, const O
                                                 Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
-    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
-                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                            log));
-    pm.addPass(IE::createInsertIdentityPoolBeforeOpPass(log));
-    pm.addPass(IE::createSwapMaxPoolWithActivation(log));
-
     if (options.enableDPUF16ToF32Convert) {
         if (options.enableSwapConvertWithSWOp) {
             pm.addPass(IE::createSwapConvertWithSWOpPass(log));
         }
         pm.addPass(IE::createRunF16ToF32ConvertOnDPUPass(log));
     }
-
-    pm.addPass(IE::createFuseActivationOpsPass(options.enableFuseClampOperations, log));
+    pm.addPass(IE::createOptimizeActivationsPipelineRewriterExecutorPass(options, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createOptimizeTileOpPass(log));
 }
 
 //
@@ -104,7 +166,7 @@ void vpux::IE::buildInitialTransformationsPipeline(mlir::OpPassManager& pm, cons
 
     pm.addPass(IE::createFuseDynamicQuantizePass(log));
     pm.addPass(IE::createFuseRMSNormPass(log));
-    pm.addPass(IE::createUniquifyOpsPass(log));
+    pm.addPass(mlir::createCSEPass());
     pm.addPass(IE::createResolveStridedSlicePass(log));
     pm.addPass(IE::createOptimizeParallelLayersPass(log));
     pm.addPass(IE::createDecomposeLSTMSequencePass(log));
@@ -115,7 +177,6 @@ void vpux::IE::buildInitialTransformationsPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(IE::createDecomposeGRUCellPass(log));
     pm.addPass(IE::createDecomposeL2OpsPass(log));
     pm.addPass(IE::createReshapeMatMulInputsPass(options.enableGroupedMatMul, log));
-    pm.addPass(IE::createAdjustFakeQuantizeParamsPass(log));
     pm.addPass(IE::createAdjustFakeQdqParamsPass(log));
     pm.addPass(IE::createFuseFQAndMulPass(options.fuseFQAndMulWithNonConstInput, log));
     pm.addPass(IE::createHandleU16FakeQuantizePass(log));
@@ -131,23 +192,36 @@ void vpux::IE::buildInitialTransformationsPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(IE::createUnrollTensorIteratorPass(log));
     pm.addPass(IE::createNormalizeL2FusionPass(log));
     pm.addPass(IE::createMVNFusionPass(log));
-    pm.addPass(IE::createFuseReduceMeanSquarePass(log));
+    if (options.enableConvertToReduceMeanSquare) {
+        pm.addPass(IE::createFuseReduceMeanSquarePass(log));
+    }
     if (options.enableConvertFFTToConv) {
         pm.addPass(IE::createConvertFFTToConvPass(log));
     }
     pm.addPass(IE::createMoveMultiplyDividePostOpPass(log));
+    pm.addPass(IE::createUnrollSDPAPatternPass(log));
     pm.addPass(IE::createShrinkMatmulGroupsPass(log));
     pm.addPass(IE::createMatMulInputsTo2dPass(options.enableGroupedMatMul, log));
     pm.addPass(IE::createPropagateOpThroughBatchConcatPass(log));
+    pm.addPass(IE::createMatMulInputsTo2dPass(options.enableGroupedMatMul, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
-    if (options.fuseMvn6ScaleBias) {
-        pm.addPass(IE::createFuseMvn6ScaleBiasPass(log));
-    }
     pm.addPass(IE::createConvertMVN6ToMVN1Pass(log));
     pm.addPass(IE::createConvertSubGRUSequenceToConvPass(log));
     pm.addPass(IE::createLegalizeConvBackpropDataPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createDilatedConvConvertPass(log));
+}
+
+//
+// AdjustShape
+//
+
+void vpux::IE::buildAdjustShapePipeline(mlir::OpPassManager& pm, Logger log) {
+    pm.addPass(IE::createConvertNceOpsTo4DPass(log));
+    pm.addPass(IE::createReshapeMaxPoolPass(log));
+    pm.addPass(IE::createAdjustMaxPoolInputShapePass(log));
+    pm.addPass(IE::createAdaptShapesForScaleShiftPass(log));
+    pm.addPass(IE::createResolveStridedSlicePass(log));
 }
 
 //
@@ -157,6 +231,8 @@ void vpux::IE::buildInitialTransformationsPipeline(mlir::OpPassManager& pm, cons
 void vpux::IE::buildAdjustLayoutPipeline(mlir::OpPassManager& pm, const AdjustLayoutOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
+    pm.addPass(IE::createSwapMVNWithTransposePass(log));
+
     if (options.enableForceZMajorConcat) {
         pm.addPass(IE::createInsertReorderBetweenLayerAndConcatPass(log));
     }
@@ -164,6 +240,7 @@ void vpux::IE::buildAdjustLayoutPipeline(mlir::OpPassManager& pm, const AdjustLa
     pm.addPass(IE::createPropagateAffineReshapePass(log));
     pm.addPass(IE::createPropagateTransposePass(log));
     pm.addPass(IE::createUniquifyBranchesPass(log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createSwapTransposeConcatPass(log));
     pm.addPass(IE::createTransposeToPermuteCastPass(log));
     pm.addPass(IE::createAdjustLayoutsPass(
@@ -179,7 +256,7 @@ void vpux::IE::buildAdjustLayoutPipeline(mlir::OpPassManager& pm, const AdjustLa
         pm.addPass(IE::createOptimizeReordersAcrossFunctionCallsPass(
                 /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
                 /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
-        pm.addPass(IE::createUniquifyOpsPass(log));
+        pm.addPass(mlir::createCSEPass());
         pm.addPass(IE::createUniquifyBranchesPass(log));
         pm.addPass(IE::createPropagateReorderToNCEPass(log));
         pm.addPass(IE::createFuseReordersPass(log));
@@ -197,10 +274,10 @@ void vpux::IE::buildDynamicShapeTransformationsPipeline(mlir::OpPassManager& pm,
     }
     // The verifier is disabled before the MLIR pass which cannot be adjusted and then re-enabled after the
     // locations are fixed to ensure their uniqueness in this part of the pipeline.
-    pm.addPass(Core::createStopLocationVerifierPass(log));
+    pm.addPass(locverif::createStopLocationVerifierPass(log));
     pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
     pm.addPass(IE::createFixDynamicOpsLocationsPass(log));
-    pm.addPass(Core::createStartLocationVerifierPass(log, options.locationsVerificationMode));
+    pm.addPass(locverif::createStartLocationVerifierPass(log, options.locationsVerificationMode));
     pm.addPass(IE::createLegalizeReifyResultShapesResidualsPass(log));
     pm.addPass(IE::createPadDynamicInputsPass(log));
     pm.addPass(IE::createDynamicConcatToScatterNDUpdatePass(log));
@@ -208,6 +285,10 @@ void vpux::IE::buildDynamicShapeTransformationsPipeline(mlir::OpPassManager& pm,
 
 void vpux::IE::buildOptimizeMemPermuteAndActivationChannelsExpandPipeline(
         mlir::OpPassManager& pm, const ExpandActivationChannelsOptions& options, Logger log) {
+    if (options.enableFusePermuteQuantize) {
+        pm.addPass(IE::createFusePermuteQuantizePass(true, log));
+        pm.addPass(IE::createConvertReorderToPermuteQuantizePass(log));
+    }
     IE::buildMemPermutePositioningPipeline(pm, IE::MemPermutePositioningOptions(options), log);
     IE::buildExpandAndOptimizeActivationChannelsPipeline(pm, options, log);
     IE::buildMemPermuteProcessingPipeline(pm, options, log);
@@ -223,7 +304,9 @@ void vpux::IE::buildMemPermutePositioningPipeline(mlir::OpPassManager& pm, const
     pm.addPass(IE::createConvertToMemPermutePass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createPropagateMemPermuteThroughSoftMaxPass(log));
-    pm.addPass(IE::createMovePermutePostEltwisePass(log));
+    if (options.enableMovePermutePostEltwise) {
+        pm.addPass(IE::createMovePermutePostEltwisePass(log));
+    }
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createLegalizeNDMemPermutePass(log));
     pm.addPass(IE::createPropagateMemPermuteBeforeOpPass(log));
@@ -231,7 +314,8 @@ void vpux::IE::buildMemPermutePositioningPipeline(mlir::OpPassManager& pm, const
     if (options.enablePropagateMemPermuteThroughEltwise) {
         pm.addPass(IE::createPropagateMemPermuteThroughEltwisePass(log));
     }
-    pm.addPass(IE::createUniquifyOpsPass(log));
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(IE::createUniquifySimilarOpsPass(log));
     if (options.enableAdjustMemPermuteAroundOp) {
         pm.addPass(IE::createAdjustMemPermuteAroundOpPass(log));
     }
@@ -244,23 +328,12 @@ void vpux::IE::buildMemPermutePositioningPipeline(mlir::OpPassManager& pm, const
 void vpux::IE::buildMemPermuteProcessingPipeline(mlir::OpPassManager& pm,
                                                  const ExpandActivationChannelsOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
-    pm.addPass(IE::createSwapMemPermuteAndExpandPass(log));
-    pm.addPass(IE::createPropagateMemPermuteBeforeOpPass(log));
-    pm.addPass(IE::createOptimizeConcatWithConvPass(log));
-    if (options.enableAdjustConvShapePass) {
-        // For such Convolution which used to optimize Concat need to be processed by AdjustConvolutionShapePass for
-        // efficiency.
-        pm.addPass(IE::createAdjustConvolutionShapePass(log));
-    }
-    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
-                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                            log));
-    pm.addPass(IE::createInsertIdentityPoolBeforeOpPass(log));
-    pm.addPass(IE::createOptimizeInnermostConcatPass(log));
-    pm.addPass(IE::createFuseMemPermutePass(log));
+
+    pm.addPass(IE::createMemPermuteProcessingPipelineRewriterExecutorPass(options, log));
     pm.addPass(IE::createConvertMemPermuteToOpPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
-    pm.addPass(IE::createUniquifyOpsPass(log));
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(IE::createUniquifySimilarOpsPass(log));
 }
 
 //
@@ -308,7 +381,7 @@ void vpux::IE::buildAdjustForVPUPipeline(mlir::OpPassManager& pm, const AdjustFo
     pm.addPass(IE::createConvertBilinearToStridedConcatAndConvPass(
             /*interpolateAsSEOp=*/isOptionEnabled(options.enableSEPtrsOperations), log));
     pm.addPass(IE::createConvertBroadcastToTilePass(log));
-    pm.addPass(IE::createConvertScatterNDUpdateToStridedConcatPass(log));
+    pm.addPass(IE::createConvertScatterPass(log));
     pm.addPass(IE::createConvertTransposedConv2DToConv2DPass(
             /*enableSEPTransposedConv=*/isOptionEnabled(options.enableSEPtrsOperations), log));
     pm.addPass(IE::createConvertGroupTransposedConvToGroupConvPass(
@@ -317,6 +390,7 @@ void vpux::IE::buildAdjustForVPUPipeline(mlir::OpPassManager& pm, const AdjustFo
             /*enableSEPTransposedConv=*/isOptionEnabled(options.enableSEPtrsOperations), log));
     pm.addPass(IE::createConvertGroupConvToConvPass(log));
     pm.addPass(IE::createConvertUpsamplingToStridedConcatPass(log));
+    pm.addPass(IE::createConvertNegativePadToSlicePass(log));
     if (options.enableConvertNonConstantPadToSliceAndConcat) {
         pm.addPass(IE::createConvertNonConstantPadToSliceAndConcatPass(
                 /*enableSEPPad=*/isOptionEnabled(options.enableSEPtrsOperations), log));
@@ -349,18 +423,15 @@ void vpux::IE::buildOperationConversionPipeline(mlir::OpPassManager& pm, const I
     const auto grc = getDefaultGreedyRewriteConfig();
 
     // Resolve group quant MatMul pattern
-    pm.addPass(IE::createUniquifyOpsPass(log));
+    pm.addPass(mlir::createCSEPass());
     pm.addPass(IE::createMergeParallelFullyConnectedPass(log));
     pm.addPass(IE::createUnrollGroupQuantizePass(log));
-    pm.addPass(IE::createUnrollFullyConnectedPass(log, options.accumulateMatmulWithDPU));
+    pm.addPass(IE::createUnrollFullyConnectedPass(log));
     pm.addPass(IE::createConvertDynamicDequantizeToDequantizePass(log));
     pm.addPass(IE::createMoveMultiplyDividePostOpPass(log));
     pm.addPass(IE::createSwapOperationWithGatherPass(log));
     if (options.mergeUnrolledMatmul) {
         pm.addPass(IE::createMergeFullyConnectedPass(log));
-    }
-    if (options.fuseScalesToAccumulate) {
-        pm.addPass(IE::createFuseScalesToAccumulatePass(log));
     }
 
     pm.addPass(IE::createConvertMatMulToConvPass(log));
@@ -369,6 +440,7 @@ void vpux::IE::buildOperationConversionPipeline(mlir::OpPassManager& pm, const I
     }
 
     pm.addPass(IE::createDecomposeConcatMatMulPass(log));
+    pm.addPass(IE::createDecomposeISTFTPass(log));
     pm.addPass(IE::createConvertExtractImagePatchesPass(log));
     pm.addPass(IE::createConvertReduceSumToConvPass(log));
     pm.addPass(IE::createUnrollReduceMinAllAxesPass(log));
@@ -390,7 +462,103 @@ void vpux::IE::buildShaveCodeGenPipeline(mlir::OpPassManager& pm, Logger log) {
     ShaveCodeGen::buildLowerSwLayers2LinalgPipeline(pm, log);
     pm.addPass(mlir::createLinalgElementwiseOpFusionPass());
     pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(ShaveCodeGen::createFoldUnitDimReshapesPass(log));
+
     pm.addPass(ShaveCodeGen::createOutlineCodeGenCapsulesPass());
+}
+
+void vpux::IE::buildSplitLargeOpsPipeline(mlir::OpPassManager& pm, Logger log) {
+    pm.addPass(IE::createUnrollConv3dToConv2dPass(log));
+    pm.addPass(IE::createSplitInterpolateAxesPass(log));
+    pm.addPass(IE::createHandleExcludePadForAvgPoolPass(log));
+}
+
+void vpux::IE::buildConvertToEfficientOpsPipeline(mlir::OpPassManager& pm, const ConvertToEfficientOpsOptions& options,
+                                                  Logger log) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+
+    pm.addPass(IE::createConvertDivideToMultiplyPass(log));
+    // NOTE: ReassociateMultiply relies on ConvertDivideToMultiply
+    pm.addPass(IE::createReassociateMultiplyPass(log));
+    pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
+    // NOTE: Canonicalizer required after ConvertShapeTo4DPass
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createConvertGatherElementsToGatherPass(log));
+    pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableSEPtrsOperations), log));
+    pm.addPass(IE::createConvertSubtractToAddPass(log));
+    pm.addPass(IE::createSwapTransposeConcatPass(log));
+    pm.addPass(IE::createConvertSplitConcatToAffineReshapePass(log));
+    pm.addPass(IE::createConvertBranchesConcatToConvPass(log));
+    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
+                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
+                                            log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createSwapPadLayerPass(log));
+    // NOTE: apply FuseStaticScale after ConvertDivideToMultiply to increase
+    // the applicability
+    pm.addPass(IE::createFuseStaticScalePass(log));
+    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
+                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
+                                            log));
+    pm.addPass(IE::createBroadcastInputForAddPass(log));
+    pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
+    // E#79878: Solve eltwise single layer test failure.
+    // SwapOperations pass may generate non-4D AddOp.
+    // If AddOp appears here means that it cannot be fused into NCE task.
+    // So convert it's shape to 4D and then convert this AddOp to ScaleShift.
+    pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
+    pm.addPass(IE::createConvertToScaleShiftPass(log));
+    // NOTE: Canonicalizer required after ConvertShapeTo4DPass
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
+    pm.addPass(IE::createConvertGroupConvToConvPass(log));
+    // NOTE: Required to avoid performance regression related to AddOp
+    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
+                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
+                                            log));
+    if (options.enableD2SToTransposedConvConversion) {
+        pm.addPass(
+                IE::createConvertDepth2SpaceToTransposedConvPass(isOptionEnabled(options.enableSEPtrsOperations), log));
+    }
+    // NOTE: SwapD2SAndScaleShift depends on ConvertDepth2SpaceToTransposedConv
+    pm.addPass(IE::createSwapD2SAndScaleShiftPass(log));
+    pm.addPass(IE::createConvertReverseToDWConvPass(log));
+    if (options.enableConvertDeformableConvToConv) {
+        pm.addPass(IE::createConvertDeformableConvToConvPass(log));
+    }
+}
+
+void vpux::IE::buildHandleHyperParametersPipeline(mlir::OpPassManager& pm, const HyperParameterOptions& options,
+                                                  Logger log) {
+    const auto grc = getDefaultGreedyRewriteConfig();
+
+    pm.addPass(IE::createHandleExcludePadForAvgPoolPass(log));
+    pm.addPass(IE::createResolveStridedSlicePass(log));
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    if (options.enableHandleLargeKernel) {
+        pm.addPass(IE::createHandleLargeKernelsPass(log));
+    }
+    if (options.enableHandleLargeStrides) {
+        pm.addPass(IE::createHandleLargeStridesPass(log));
+    }
+    if (options.enableHandleLargePads) {
+        pm.addPass(IE::createHandleLargePadsPass(log));
+    }
+}
+
+void vpux::IE::buildReorderFakeQuantizePipeline(mlir::OpPassManager& pm, const ReorderFakeQuantizeOptions& options,
+                                                Logger log) {
+    if (options.enableSwapTransposeWithFQ) {
+        pm.addPass(IE::createSwapTransposeWithFQPass(log));
+    }
+    if (options.enableSplitConvWithMultipleFQ) {
+        pm.addPass(IE::createSplitConvWithMultipleFQPass(log));
+    }
+}
+
+void vpux::IE::buildConvertToConvolutionPipeline(mlir::OpPassManager& pm, Logger log) {
+    pm.addPass(IE::createConvertGroupConvToConvPass(log));
+    pm.addPass(IE::createConvertStridedSlice2ConvPass(log));
 }
 
 //

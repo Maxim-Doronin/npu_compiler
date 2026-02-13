@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
@@ -12,25 +13,31 @@
 #include <mlir/IR/Attributes.h>
 
 #include <cstdint>
-#include <optional>
 
 namespace vpux {
 
-mlir::LogicalResult convertFromAttribute(std::optional<int64_t>& prop, mlir::Attribute attr,
-                                         llvm::function_ref<mlir::InFlightDiagnostic()> emitError);
-mlir::Attribute convertToAttribute(mlir::MLIRContext* ctx, const std::optional<int64_t>& prop);
-mlir::LogicalResult readFromMlirBytecode(mlir::DialectBytecodeReader&, std::optional<int64_t>& prop);
-void writeToMlirBytecode(mlir::DialectBytecodeWriter&, const std::optional<int64_t>& prop);
+//
+// SmallVector<Integer> property
+//
+template <typename Integer>
+mlir::LogicalResult convertFromAttribute(SmallVector<Integer>& storage, mlir::Attribute attr,
+                                         llvm::function_ref<mlir::InFlightDiagnostic()>) {
+    auto arrayAttr = llvm::dyn_cast_if_present<::mlir::ArrayAttr>(attr);
+    if (!arrayAttr) {
+        return mlir::failure();
+    }
+    storage = parseIntArrayAttr<Integer>(arrayAttr);
+    return mlir::success();
+}
 
-mlir::LogicalResult convertFromAttribute(std::optional<bool>& prop, mlir::Attribute attr,
-                                         llvm::function_ref<mlir::InFlightDiagnostic()> emitError);
-mlir::Attribute convertToAttribute(mlir::MLIRContext* ctx, const std::optional<bool>& prop);
-mlir::LogicalResult readFromMlirBytecode(mlir::DialectBytecodeReader&, std::optional<bool>& prop);
-void writeToMlirBytecode(mlir::DialectBytecodeWriter&, const std::optional<bool>& prop);
+template <typename Integer>
+mlir::Attribute convertToAttribute(mlir::MLIRContext* ctx, const SmallVector<Integer>& storage) {
+    return getIntArrayAttr(ctx, storage);
+}
 
-mlir::LogicalResult convertFromAttribute(SmallVector<uint8_t>& storage, mlir::Attribute attr,
-                                         llvm::function_ref<mlir::InFlightDiagnostic()>);
-mlir::Attribute convertToAttribute(mlir::MLIRContext* ctx, ArrayRef<uint8_t> storage);
-llvm::hash_code hash_value(ArrayRef<uint8_t> storage);
+template <typename Integer>
+llvm::hash_code hash_value(ArrayRef<Integer> storage) {
+    return llvm::hash_value(storage);
+}
 
 }  // namespace vpux

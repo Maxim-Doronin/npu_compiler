@@ -12,6 +12,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 namespace vpux::IE {
@@ -85,7 +86,7 @@ bool isOptimizableDynamicDequantizeOp(IE::DynamicDequantizeOp origOp) {
         return (bitWidth == 4) && mlir::isa<mlir::quant::QuantileQuantizedType>(qType);
     }(inputType.getElementType());
 
-    if (isNF4Quantized || quantStorageType.isInteger(CHAR_BIT) || vpux::isFloat8(quantStorageType)) {
+    if (isNF4Quantized || quantStorageType.isInteger(8) || isLowFpType(quantStorageType)) {
         auto quantCastOp = origOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
         if (quantCastOp == nullptr) {
             return false;
@@ -95,9 +96,12 @@ bool isOptimizableDynamicDequantizeOp(IE::DynamicDequantizeOp origOp) {
 }
 
 // Reshape from 1x32x64 to 32x64 or from 32x1x64 to 32x64
-bool isSqueezeLikeReshape(IE::ReshapeOp reshapeOp) {
-    SmallVector<int64_t> inShape(getShape(reshapeOp.getInput()).raw());
-    SmallVector<int64_t> outShape(getShape(reshapeOp.getOutput()).raw());
+bool isSqueezeLikeReshape(mlir::Operation* operation) {
+    if (!mlir::isa_and_nonnull<IE::ReshapeOp, IE::AffineReshapeOp>(operation)) {
+        return false;
+    }
+    SmallVector<int64_t> inShape(getShape(operation->getOperand(0)).raw());
+    SmallVector<int64_t> outShape(getShape(operation->getResult(0)).raw());
     if (outShape.size() >= inShape.size()) {
         return false;
     }
@@ -127,8 +131,8 @@ std::optional<IE::FullyConnectedOp> isDirectConnected(IE::DynamicDequantizeOp or
 }
 
 std::optional<IE::FullyConnectedOp> isReshapeTranspose(IE::DynamicDequantizeOp origOp) {
-    auto reshapeOp = mlir::dyn_cast<IE::ReshapeOp>(*origOp->user_begin());
-    if (reshapeOp == nullptr || !reshapeOp->hasOneUse() || !isSqueezeLikeReshape(reshapeOp)) {
+    auto reshapeOp = *origOp->user_begin();
+    if (!isSqueezeLikeReshape(reshapeOp) || !reshapeOp->hasOneUse()) {
         return std::nullopt;
     }
 
@@ -181,13 +185,13 @@ std::optional<IE::FullyConnectedOp> isTransposeReshape(IE::DynamicDequantizeOp o
         return std::nullopt;
     }
 
-    auto reshapeOp = mlir::dyn_cast<IE::ReshapeOp>(*transposeOp->user_begin());
-    if (reshapeOp == nullptr || !reshapeOp->hasOneUse() || !isSqueezeLikeReshape(reshapeOp)) {
+    auto reshapeOp = *transposeOp->user_begin();
+    if (!isSqueezeLikeReshape(reshapeOp) || !reshapeOp->hasOneUse()) {
         return std::nullopt;
     }
 
     auto fcOp = mlir::dyn_cast<IE::FullyConnectedOp>(*reshapeOp->user_begin());
-    if (fcOp && fcOp.getWeights() == reshapeOp.getOutput()) {
+    if (fcOp && fcOp.getWeights() == reshapeOp->getResult(0)) {
         const auto fcOutShape = getShape(fcOp.getOutput()).raw();
         const auto scaleShape = getShape(origOp.getScale()).raw();
         const auto dequantOutShape = getShape(origOp.getOutput()).raw();
@@ -217,13 +221,13 @@ std::optional<IE::FullyConnectedOp> isTransposeReshape(IE::DynamicDequantizeOp o
 }
 
 std::optional<IE::FullyConnectedOp> isReshapeOnly(IE::DynamicDequantizeOp origOp) {
-    auto reshapeOp = mlir::dyn_cast<IE::ReshapeOp>(*origOp->user_begin());
-    if (reshapeOp == nullptr || !reshapeOp->hasOneUse() || !isSqueezeLikeReshape(reshapeOp)) {
+    auto reshapeOp = *origOp->user_begin();
+    if (!isSqueezeLikeReshape(reshapeOp) || !reshapeOp->hasOneUse()) {
         return std::nullopt;
     }
 
     auto fcOp = mlir::dyn_cast<IE::FullyConnectedOp>(*reshapeOp->user_begin());
-    if (fcOp && fcOp.getWeights() == reshapeOp.getOutput()) {
+    if (fcOp && fcOp.getWeights() == reshapeOp->getResult(0)) {
         const auto fcOutShape = getShape(fcOp.getOutput()).raw();
         const auto scaleShape = getShape(origOp.getScale()).raw();
         const auto dequantOutShape = getShape(origOp.getOutput()).raw();
@@ -336,20 +340,20 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
     const auto scaleSize = getShape(origOp.getScale()).totalSize();
     const SmallVector<int64_t> outShape{1, scaleSize == 1 ? 1 : fcOutShape.back()};
     const auto outShapeAttr = getIntArrayAttr(origOp->getContext(), outShape);
-    auto scale = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "_reshape_scale"), origOp.getScale(), nullptr, false,
-                                                outShapeAttr)
-                         .getOutput();
+    auto scale = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_scale"), origOp.getScale(), nullptr,
+                                                      false, outShapeAttr);
     auto isNF4Quantized = [](mlir::Type type) -> bool {
         const auto qType = mlir::cast<mlir::quant::QuantizedType>(type);
         const auto bitWidth = qType.getStorageTypeIntegralWidth();
         return (bitWidth == 4) && mlir::isa<mlir::quant::QuantileQuantizedType>(qType);
     }(inputType.getElementType());
 
-    if (isNF4Quantized || quantStorageType.isInteger(CHAR_BIT) || vpux::isFloat8(quantStorageType)) {
-        // Rescale scales by descaler and weights by rescaler to scale down the I8/FP8/NF4 weights into I4 range to
-        // avoid overflow in the following FullyConnected. See details in #E161479
+    if (isNF4Quantized || quantStorageType.isInteger(8) || isLowFpType(quantStorageType)) {
+        // Rescale scales by descaler and weights by rescaler to scale down weights:
+        // I8, FP8, NF4
+        // into I4 range to avoid overflow in the following FullyConnected. See details in #E161479
 
-        _log.trace("Found DynamicDequantizeOp for I8/FP8/NF4, try to rescale it into I4 range");
+        _log.trace("Found DynamicDequantizeOp for '{0}', try to rescale it into I4 range", inputType.getElementType());
         const float minI4 = -8.f;
         const float maxI4 = 7.f;
 
@@ -400,7 +404,7 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
                         /*max=*/uniformType.getStorageTypeMax());
             }
             auto quantCastOpRescaled =
-                    rewriter.create<IE::QuantizeCastOp>(appendLoc(origOp->getLoc(), "_quant_cast_i8_with_rescaler"),
+                    rewriter.create<IE::QuantizeCastOp>(appendLoc(origOp->getLoc(), "quant_cast_i8_with_rescaler"),
                                                         quantCastOp.getInput(), quantTypeRescaled);
             rewriter.replaceOp(quantCastOp, quantCastOpRescaled.getOutput());
 
@@ -411,12 +415,12 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
             const auto descalerContentAttr = Const::ContentAttr::get(descalerBaseAttr);
             auto descalerConstAttr = descalerContentAttr.transform().get();
             const auto descalerType = mlir::cast<vpux::NDTypeInterface>(descalerContentAttr.getType());
-            auto descalerConstOp = rewriter.create<Const::DeclareOp>(appendLoc(origOp->getLoc(), "_descaler"),
+            auto descalerConstOp = rewriter.create<Const::DeclareOp>(appendLoc(origOp->getLoc(), "descaler"),
                                                                      descalerType, std::move(descalerConstAttr));
 
             auto multiplyWithRescaler = rewriter.create<IE::MultiplyOp>(
-                    appendLoc(origOp->getLoc(), "_descale_scaler"), scale, descalerConstOp,
-                    IE::AutoBroadcastType::NUMPY, nullptr, nullptr, nullptr, nullptr);
+                    appendLoc(origOp->getLoc(), "descale_scaler"), scale, descalerConstOp, IE::AutoBroadcastType::NUMPY,
+                    nullptr, nullptr, nullptr, nullptr);
             scale = multiplyWithRescaler;
         }
     }
@@ -424,7 +428,7 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
     // insert a multiply post FC
     rewriter.setInsertionPointAfter(fcOp);
     auto multiply =
-            rewriter.create<IE::MultiplyOp>(appendLoc(origOp->getLoc(), "_post_multiply"), fcOp.getOutput(), scale,
+            rewriter.create<IE::MultiplyOp>(appendLoc(origOp->getLoc(), "post_multiply"), fcOp.getOutput(), scale,
                                             IE::AutoBroadcastType::NUMPY, nullptr, nullptr, nullptr, nullptr);
     fcOp.getOutput().replaceUsesWithIf(multiply.getOutput(), [&](mlir::OpOperand& opOperand) {
         return opOperand.getOwner() != multiply;
@@ -465,9 +469,7 @@ void ConvertDynamicDequantizeToDequantizePass::safeRunOnFunc() {
     patterns.add<ConvertDynamicDequantizeToDequantize>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

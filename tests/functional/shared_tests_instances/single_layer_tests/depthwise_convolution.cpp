@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,14 @@ namespace test {
 
 class DepthwiseConvolutionLayerTest_HW : public GroupConvolutionLayerTest, virtual public VpuOv2LayerTest {};
 
+class DepthwiseConvolutionSCFTilingLayerTest_HW : public DepthwiseConvolutionLayerTest_HW {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
+    }
+};
+
 TEST_P(DepthwiseConvolutionLayerTest_HW, NPU4000) {
     rel_threshold = 0.01;
     setDefaultHardwareMode();
@@ -23,6 +31,13 @@ TEST_P(DepthwiseConvolutionLayerTest_HW, NPU5010) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
+TEST_P(DepthwiseConvolutionSCFTilingLayerTest_HW, NPU5010) {
+    rel_threshold = 0.01;
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -84,4 +99,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_DepthwiseConvolution2D_1111_channels, DepthwiseCo
                          combineDepthwiseConv2D(1111), DepthwiseConvolutionLayerTest_HW::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_DepthwiseConvolution2D_2048_channels, DepthwiseConvolutionLayerTest_HW,
                          combineDepthwiseConv2D(2048), DepthwiseConvolutionLayerTest_HW::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_DepthwiseConvolution2D_64_channels_tiling, DepthwiseConvolutionSCFTilingLayerTest_HW,
+                         combineDepthwiseConv2D(64, 300, 300),
+                         DepthwiseConvolutionSCFTilingLayerTest_HW::getTestCaseName);
 }  // namespace

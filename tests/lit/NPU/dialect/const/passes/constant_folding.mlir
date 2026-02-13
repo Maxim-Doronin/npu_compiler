@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,7 +22,7 @@ func.func @ConstFold() -> memref<16x3x1x1xf16, #YXOI> {
 
     return %0 : memref<16x3x1x1xf16, #YXOI>
 
-    // CHECK:       [[CST:%.*]] = const.Declare memref<16x3x1x1xf16, #YXOI>
+    // CHECK:       [[CST:%.+]] = const.Declare memref<16x3x1x1xf16, #YXOI>
     // CHECK-SAME:       dense<
     // CHECK-SAME:       tensor<16x3x1x1xf16
     // CHECK-SAME:       {order = #YXOI}>
@@ -44,7 +44,7 @@ func.func @QuantConstFold() -> memref<16x3x1x1x!qElemType, #YXOI> {
 
     return %0 : memref<16x3x1x1x!qElemType, #YXOI>
 
-    // CHECK:       [[CST:%.*]] = const.Declare memref<16x3x1x1x!qElemType, #YXOI>
+    // CHECK:       [[CST:%.+]] = const.Declare memref<16x3x1x1x!qElemType, #YXOI>
     // CHECK-SAME:       dense<
     // CHECK-SAME:       tensor<16x3x1x1xui8
     // CHECK-SAME:       {order = #YXOI}>
@@ -62,7 +62,7 @@ func.func @I1SubviewConstFoldSplat() -> memref<1x16x3x3xi1> {
 
     return %cst : memref<1x16x3x3xi1>
 
-    // CHECK:   [[CST:%.*]] = const.Declare memref<1x16x3x3xi1> = dense<true> : tensor<1x16x3x3xi1>
+    // CHECK:   [[CST:%.+]] = const.Declare memref<1x16x3x3xi1> = dense<true> : tensor<1x16x3x3xi1>
     // CHECK:   return [[CST]]
 }
 
@@ -78,7 +78,7 @@ func.func @I1SubviewConstFoldNonSplat1D() -> memref<4xi1> {
 
     return %cst : memref<4xi1>
 
-    // CHECK:           [[CST:%.*]] = const.Declare memref<4xi1>
+    // CHECK:           [[CST:%.+]] = const.Declare memref<4xi1>
     // CHECK-SAME:         = dense<[true, true, true, false]> : tensor<4xi1>
     // CHECK:           return [[CST]]
 }
@@ -96,7 +96,7 @@ func.func @I1SubviewConstFoldNonSplat2D() -> memref<1x2xi1> {
 
     return %cst : memref<1x2xi1>
 
-    // CHECK:           [[CST:%.*]] = const.Declare memref<1x2xi1>
+    // CHECK:           [[CST:%.+]] = const.Declare memref<1x2xi1>
     // CHECK{LITERAL}:      = dense<[[true, false]]> : tensor<1x2xi1>
     // CHECK:           return [[CST]]
 }
@@ -116,7 +116,7 @@ func.func @I1SubviewConstFoldNonSplat3D() -> memref<1x2x4xi1> {
 
     return %cst : memref<1x2x4xi1>
 
-    // CHECK:           [[CST:%.*]] = const.Declare memref<1x2x4xi1>
+    // CHECK:           [[CST:%.+]] = const.Declare memref<1x2x4xi1>
     // CHECK{LITERAL}:      = dense<[[[false, true, true, true], [true, false, true, false]]]> : tensor<1x2x4xi1>
     // CHECK:           return [[CST]]
 }
@@ -136,7 +136,7 @@ func.func @I1SubviewConstFoldNonSplat4D() -> memref<1x16x1x1xi1> {
 
     return %cst : memref<1x16x1x1xi1>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x16x1x1xi1> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x16x1x1xi1> = dense<
     // CHECK-SAME{LITERAL}:     [[[[false]], [[true]], [[false]], [[true]], [[false]], [[true]], [[false]], [[true]],
     // CHECK-SAME{LITERAL}:       [[true]], [[false]], [[true]], [[false]], [[true]], [[false]], [[true]], [[false]]]]
     // CHECK-SAME:              >
@@ -157,7 +157,7 @@ func.func @I1SubviewConstFoldNonSplat5D() -> memref<1x1x2x3x1xi1> {
 
     return %cst : memref<1x1x2x3x1xi1>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x1x2x3x1xi1>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x1x2x3x1xi1>
     // CHECK-SAME{LITERAL}:     = dense<[[[[[false], [true], [true]], [[true], [false], [true]]]]]> : tensor<1x1x2x3x1xi1>
     // CHECK:               return [[CST]]
 }
@@ -174,7 +174,7 @@ func.func @I4SubviewConstFoldSplat1D() -> tensor<2xi8> {
 
     return %cst : tensor<2xi8>
 
-    // CHECK:   [[CST:%.*]] = const.Declare tensor<2xi8> = dense<2> : tensor<2xi8>
+    // CHECK:   [[CST:%.+]] = const.Declare tensor<2xi8> = dense<2> : tensor<2xi8>
     // CHECK:   return [[CST]]
 }
 
@@ -198,7 +198,7 @@ func.func @I4SubviewConstFoldNonSplat1D() -> tensor<2xi8> {
 
     return %cst : tensor<2xi8>
 
-    // CHECK:   [[CST:%.*]] = const.Declare tensor<2xi8> = dense<[3, 4]> : tensor<2xi8>
+    // CHECK:   [[CST:%.+]] = const.Declare tensor<2xi8> = dense<[3, 4]> : tensor<2xi8>
     // CHECK:   return [[CST]]
 }
 
@@ -222,7 +222,7 @@ func.func @I4SubviewConstFoldNonSplat2D() -> tensor<1x2xi8> {
 
     return %cst : tensor<1x2xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x2xi8>
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x2xi8>
     // CHECK-SAME{LITERAL}:     = dense<[[6, 7]]> : tensor<1x2xi8>
     // CHECK:               return [[CST]]
 }
@@ -247,7 +247,7 @@ func.func @I4SubviewConstFoldNonSplat3D() -> tensor<1x2x1xi8> {
 
     return %cst : tensor<1x2x1xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x2x1xi8>
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x2x1xi8>
     // CHECK-SAME{LITERAL}:     = dense<[[[6], [7]]]> : tensor<1x2x1xi8>
     // CHECK:               return [[CST]]
 }
@@ -272,7 +272,7 @@ func.func @I4SubviewConstFoldNonSplat4D() -> tensor<1x2x1x1xi8> {
 
     return %cst : tensor<1x2x1x1xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x2x1x1xi8>
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x2x1x1xi8>
     // CHECK-SAME{LITERAL}:     = dense<[[[[2]], [[0]]]]> : tensor<1x2x1x1xi8>
     // CHECK:               return [[CST]]
 }
@@ -297,7 +297,7 @@ func.func @I4SubviewConstFoldNonSplat5D() -> tensor<1x2x1x1x1xi8> {
 
     return %cst : tensor<1x2x1x1x1xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x2x1x1x1xi8>
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x2x1x1x1xi8>
     // CHECK-SAME{LITERAL}:     = dense<[[[[[2]]], [[[0]]]]]> : tensor<1x2x1x1x1xi8>
     // CHECK:               return [[CST]]
 }
@@ -317,7 +317,7 @@ func.func @broadcastNonSplatPreChannel() -> tensor<1x9x1x1xi8> {
     %cst = const.Declare tensor<1x9x1x1xi8> = dense<[1, 2, 3]> : tensor<3xi8>, [#const.Reshape<[1, 3, 1, 1]>, #const.Broadcast<0 : i64, 3 : i64>, #const.Reshape<[1, 9, 1, 1]>]
     return %cst : tensor<1x9x1x1xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x9x1x1xi8> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x9x1x1xi8> = dense<
     // CHECK-SAME{LITERAL}:     [[[[1]], [[2]], [[3]], [[1]], [[2]], [[3]], [[1]], [[2]], [[3]]]]
     // CHECK-SAME:              >
     // CHECK-SAME:              tensor<1x9x1x1xi8>
@@ -331,7 +331,7 @@ func.func @broadcastNonSplatPostChannel() -> tensor<1x9x1x1xi8> {
     %cst = const.Declare tensor<1x9x1x1xi8> = dense<[1, 2, 3]> : tensor<3xi8>, [#const.Reshape<[1, 3, 1, 1]>, #const.Broadcast<2 : i64, 3 : i64>, #const.Reshape<[1, 9, 1, 1]>]
     return %cst : tensor<1x9x1x1xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x9x1x1xi8> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x9x1x1xi8> = dense<
     // CHECK-SAME{LITERAL}:     [[[[1]], [[1]], [[1]], [[2]], [[2]], [[2]], [[3]], [[3]], [[3]]]]
     // CHECK-SAME:              >
     // CHECK-SAME:              tensor<1x9x1x1xi8>
@@ -345,7 +345,7 @@ func.func @broadcastNonSplatMiddleChannel() -> tensor<1x3x2x2xi8> {
     %cst = const.Declare tensor<1x3x2x2xi8> = dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi8>, [#const.Reshape<[1, 3, 1, 2]>, #const.Broadcast<2 : i64, 2 : i64>]
     return %cst : tensor<1x3x2x2xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x3x2x2xi8> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x3x2x2xi8> = dense<
     // CHECK-SAME{LITERAL}:     [[[[1, 2], [1, 2]],
     // CHECK-SAME{LITERAL}:       [[3, 4], [3, 4]],
     // CHECK-SAME{LITERAL}:       [[5, 6], [5, 6]]]]
@@ -360,7 +360,7 @@ func.func @broadcastNonSplatMiddleChannel() -> tensor<1x3x2x2xi8> {
 func.func @broadcastNonSplatMiddleChannelNone1() -> tensor<1x3x4x2xi8> {
     %cst = const.Declare tensor<1x3x4x2xi8> = dense<[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]> : tensor<12xi8>, [#const.Reshape<[1, 3, 2, 2]>, #const.Broadcast<2 : i64, 4 : i64>]
     return %cst : tensor<1x3x4x2xi8>
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x3x4x2xi8> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x3x4x2xi8> = dense<
     // CHECK-SAME{LITERAL}:     [[[[1, 2], [3, 4], [1, 2], [3, 4]],
     // CHECK-SAME{LITERAL}:       [[5, 6], [7, 8], [5, 6], [7, 8]],
     // CHECK-SAME{LITERAL}:       [[9, 10], [11, 12], [9, 10], [11, 12]]]]
@@ -376,7 +376,7 @@ func.func @broadcastNonSplatTwoDims() -> tensor<1x4x4x4xf16> {
     %cst = const.Declare tensor<1x4x4x4xf16> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]]]]>
             : tensor<1x1x1x4xf16>, [#const.CastElemType<f16>, #const.Reshape<[1, 1, 1, 4]>, #const.Broadcast<1 : i64, 4 : i64>, #const.Broadcast<2 : i64, 4 : i64>]
     return %cst : tensor<1x4x4x4xf16>
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x4x4x4xf16> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x4x4x4xf16> = dense<
     // CHECK-SAME{LITERAL}:     [[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00],
     // CHECK-SAME{LITERAL}:       [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]],
     // CHECK-SAME{LITERAL}:       [[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00],
@@ -397,7 +397,7 @@ func.func @broadcastNonSplatMultiDims() -> tensor<1x4x4x4xf16> {
     %cst = const.Declare tensor<1x4x4x4xf16> = dense<[[[[1.000000e+00], [2.000000e+00], [3.000000e+00], [4.000000e+00]]]]>
             : tensor<1x1x4x1xf16>, [#const.CastElemType<f16>, #const.Reshape<[1, 1, 4, 1]>, #const.Broadcast<1 : i64, 4 : i64>, #const.Broadcast<3 : i64, 4 : i64>]
     return %cst : tensor<1x4x4x4xf16>
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<1x4x4x4xf16> = dense<
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<1x4x4x4xf16> = dense<
     // CHECK-SAME{LITERAL}:     [[[[1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00], [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00],
     // CHECK-SAME{LITERAL}:       [3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00], [4.000000e+00, 4.000000e+00, 4.000000e+00, 4.000000e+00]],
     // CHECK-SAME{LITERAL}:       [[1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00], [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00],
@@ -420,7 +420,7 @@ func.func @ConstFoldI4() -> memref<1x4x1x1x!qElemType, #YXOI> {
     %weights = const.Declare memref<1x4x1x1x!qElemType, #YXOI> = dense<[[[[1.000000e+00]], [[0.000000e+00]], [[1.000000e+00]], [[2.000000e+00]]]]> :
     tensor<1x4x1x1xf16>, [#const.CastElemType<si4>, #const.CastElemType<!qElemType>, #const.Reorder<#YXOI>]
     return %weights : memref<1x4x1x1x!qElemType, #YXOI>
-    // CHECK:       [[CST:%.*]] = const.Declare memref<1x4x1x1x!qElemType, #YXOI>
+    // CHECK:       [[CST:%.+]] = const.Declare memref<1x4x1x1x!qElemType, #YXOI>
     // CHECK-SAME{LITERAL}:     dense<[[[[1, 33]]]]
     // CHECK-SAME:              tensor<1x1x1x2xui8
     // CHECK-SAME:              {order = #YXOI}>
@@ -447,7 +447,7 @@ func.func @ConstFoldNF4() -> memref<2x2x1x1x!qElemType, #NHWC> {
         ]
     return %weights : memref<2x2x1x1x!qElemType, #NHWC>
 
-    // CHECK:       [[CST:%.*]] = const.Declare memref<2x2x1x1x!qElemType, #NHWC>
+    // CHECK:       [[CST:%.+]] = const.Declare memref<2x2x1x1x!qElemType, #NHWC>
     // CHECK-SAME{LITERAL}:     dense<[[[[16, 50]]]]> :
     // CHECK-SAME:              tensor<1x1x1x2xui8, {order = #NHWC}>, [#const.Reshape<[2, 2, 1, 1]>, #const.CastElemType<!qElemType>]
     // CHECK:       return [[CST]]
@@ -475,7 +475,7 @@ func.func @ConstFoldDequantizeAxis0() -> memref<1x2x4x8xf16> {
 
     return %0 : memref<1x2x4x8xf16>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x2x4x8xf16>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x2x4x8xf16>
     // CHECK-SAME{LITERAL}: dense<-1.270000e+02>
     // CHECK-SAME:          tensor<1x2x4x8xf16>
     // CHECK:               return [[CST]]
@@ -495,7 +495,7 @@ func.func @ConstFoldDequantizeAxis1() -> memref<1x2x4x8xf16> {
 
     return %0 : memref<1x2x4x8xf16>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x2x4x8xf16>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x2x4x8xf16>
     // CHECK-SAME{LITERAL}: dense<[[[[-1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02], [-1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02], [-1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02], [-1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02]], [[-3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01], [-3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01], [-3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01], [-3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01]]]]>
     // CHECK-SAME:          tensor<1x2x4x8xf16>
     // CHECK:               return [[CST]]
@@ -515,7 +515,7 @@ func.func @ConstFoldDequantizeAxis2() -> memref<1x2x4x8xf16> {
 
     return %0 : memref<1x2x4x8xf16>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x2x4x8xf16>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x2x4x8xf16>
     // CHECK-SAME{LITERAL}: dense<[[[[-1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02], [-3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01], [-7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00], [-1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00]], [[-1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02, -1.270000e+02], [-3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01, -3.150000e+01], [-7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00, -7.750000e+00], [-1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00, -1.875000e+00]]]]>
     // CHECK-SAME:          tensor<1x2x4x8xf16>
     // CHECK:               return [[CST]]
@@ -535,7 +535,7 @@ func.func @ConstFoldDequantizeAxis3() -> memref<1x2x4x8xf16> {
 
     return %0 : memref<1x2x4x8xf16>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x2x4x8xf16>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x2x4x8xf16>
     // CHECK-SAME{LITERAL}: dense<[[[[-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02], [-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02], [-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02], [-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02]], [[-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02], [-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02], [-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02], [-1.270000e+02, -3.150000e+01, -7.750000e+00, -1.875000e+00, -1.270310e+01, -2.540630e+01, -5.081250e+01, -1.016250e+02]]]]>
     // CHECK-SAME:          tensor<1x2x4x8xf16>
     // CHECK:               return [[CST]]
@@ -555,7 +555,7 @@ func.func @ConstFoldDequantizeAxis4() -> memref<2x2x2x2x2xf16> {
 
     return %0 : memref<2x2x2x2x2xf16>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<2x2x2x2x2xf16>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<2x2x2x2x2xf16>
     // CHECK-SAME{LITERAL}: dense<[[[[[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]], [[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]]], [[[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]], [[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]]]], [[[[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]], [[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]]], [[[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]], [[-1.270000e+02, -3.150000e+01], [-1.270000e+02, -3.150000e+01]]]]]>
     // CHECK-SAME:          tensor<2x2x2x2x2xf16>
     // CHECK:               return [[CST]]
@@ -739,7 +739,7 @@ func.func @QuantizeSubbyteSplat() -> memref<1x16x3x3x!qElemType> {
     // This will create 'dense<170> : tensor<1x1x1x72xui8>, [...]'
     // where 170 which is 0b10101010 which consists of two 0b1010 nibbles
     // and 0b1010 is decimal 10. Because the scale is 0.5 then we get 10 x 0.5 = 5.0.
-    // CHECK:   [[CST:%.*]] = const.Declare memref<1x16x3x3x!qElemType> = dense<170> : tensor<1x1x1x72xui8>,
+    // CHECK:   [[CST:%.+]] = const.Declare memref<1x16x3x3x!qElemType> = dense<170> : tensor<1x1x1x72xui8>,
     // CHECK-SAME:  [#const.Reshape<[1, 16, 3, 3]>, #const.CastElemType<!qElemType>]
     // CHECK:   return [[CST]] : memref<1x16x3x3x!qElemType>
 }
@@ -758,7 +758,7 @@ func.func @QuantizeSplat() -> memref<1x16x3x3x!qElemType> {
 
     return %cst : memref<1x16x3x3x!qElemType>
 
-    // CHECK:   [[CST:%.*]] = const.Declare memref<1x16x3x3x!qElemType> = dense<10> : tensor<1x16x3x3xui8>
+    // CHECK:   [[CST:%.+]] = const.Declare memref<1x16x3x3x!qElemType> = dense<10> : tensor<1x16x3x3xui8>
     // CHECK:   return [[CST]]
 }
 
@@ -774,7 +774,7 @@ func.func @I1ConvertElemTypeConstFoldSplat() -> memref<1x2x3xi8> {
 
     return %cst : memref<1x2x3xi8>
 
-    // CHECK:   [[CST:%.*]] = const.Declare memref<1x2x3xi8> = dense<1> : tensor<1x2x3xi8>
+    // CHECK:   [[CST:%.+]] = const.Declare memref<1x2x3xi8> = dense<1> : tensor<1x2x3xi8>
     // CHECK:   return [[CST]]
 }
 
@@ -790,7 +790,7 @@ func.func @I1ConvertElemTypeConstFoldNonSplat() -> memref<1x2x3x4xi8> {
 
     return %cst : memref<1x2x3x4xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare memref<1x2x3x4xi8>
+    // CHECK:               [[CST:%.+]] = const.Declare memref<1x2x3x4xi8>
     // CHECK-SAME{LITERAL}:     = dense<[[[[0, 0, 0, 0], [0, 1, 0, 0], [1, 1, 1, 1]], [[0, 1, 0, 1], [1, 0, 1, 1], [0, 0, 0, 1]]]]> : tensor<1x2x3x4xi8>
     // CHECK:               return [[CST]]
 }
@@ -807,7 +807,7 @@ func.func @I4ConvertElemTypeConstFoldSplat() -> tensor<2x4xi8> {
 
     return %cst : tensor<2x4xi8>
 
-    // CHECK:   [[CST:%.*]] = const.Declare tensor<2x4xi8> = dense<2> : tensor<2x4xi8>
+    // CHECK:   [[CST:%.+]] = const.Declare tensor<2x4xi8> = dense<2> : tensor<2x4xi8>
     // CHECK:   return [[CST]]
 }
 
@@ -831,7 +831,7 @@ func.func @I4ConvertElemTypeConstFoldNonSplat() -> tensor<2x4xi8> {
 
     return %cst : tensor<2x4xi8>
 
-    // CHECK:               [[CST:%.*]] = const.Declare tensor<2x4xi8>
+    // CHECK:               [[CST:%.+]] = const.Declare tensor<2x4xi8>
     // CHECK-SAME{LITERAL}:     = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi8>
     // CHECK:               return [[CST]]
 }

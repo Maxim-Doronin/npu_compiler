@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/fuse_outstanding_quant_strategy_getter.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_FUSEOUTSTANDINGQUANT
@@ -47,12 +46,11 @@ void FuseOutstandingQuantPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
 
     // register platform specific rewriters using the platform specific strategy
-    auto strategy = vpux::IE::createFuseOutstandingQuantStrategy(func);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getFuseOutstandingQuantStrategy();
     strategy->addPatterns(patterns, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace vpux

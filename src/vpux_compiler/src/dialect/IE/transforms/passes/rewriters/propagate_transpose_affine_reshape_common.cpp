@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,10 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
@@ -40,7 +40,7 @@ SmallVector<int64_t> invertDimMappingWithAxesNotSplitOrMerged(ArrayRef<SmallVect
         for (size_t i = 0; i < dimsArr.size(); i++) {
             auto outDim = dimsArr[i];
             if (affineInShape[Dim(inDim)] == affineOutShape[Dim(outDim)]) {
-                invertedDimMapping[dimsArr[i]] = inDim;
+                invertedDimMapping[outDim] = inDim;
                 break;
             }
         }
@@ -560,6 +560,91 @@ mlir::LogicalResult MoveTransposeAffineReshapeThroughAdd::matchAndRewrite(IE::Ad
 
     _log.trace("[{0}] Replaced with 'IE::AffineReshapeOp'", getDebugName());
     return mlir::success();
+}
+
+// Find the new Softmax axis after swapping ShapeCast and Softmax operations.
+// The algorithm works on memory shape (permuted shape) to find the matching axis,
+// then converts it back to logical shape axis for returning.
+//
+// To ensure the swap is valid, the new axis must satisfy:
+// 1. The dimension size at the new axis equals the dimension size at the original axis
+// 2. The product of dimensions to the left of the new axis equals the product to the left of the original axis
+// 3. The product of dimensions to the right of the new axis equals the product to the right of the original axis
+//
+// Example 1 - Valid swap (working on memory shape):
+//
+//   Input logical shape:  [1, 16, 16, 1] with #NWCH -> memShape: [1, 1, 16, 16]
+//   Output logical shape: [1, 1, 16, 16] with #NWCH -> memShape: [1, 16, 1, 16]
+//   Original axis in logical shape: 2 -> in memShape: axis 3 (dim=16)
+//
+//   For original memAxis 3 (dim=16) in output memShape [1, 16, 1, 16]:
+//     - Left product:  1 * 16 * 1 = 16
+//     - Right product: 1
+//
+//   Searching in input memShape [1, 1, 16, 16] for matching axis:
+//     - At memAxis 3: dim=16, left product = 1*1*16 = 16, right product = 1
+//   memAxis 3 corresponds to logical axis 2 (d2 at position 3 in memory order)
+//   After swap, the new SoftMax axis will be 2 in the input logical shape.
+//
+// Example 2 - Invalid swap (cannot find matching axis):
+//
+//   Input logical shape:  [1, 17, 16, 1] with #NWCH -> memShape: [1, 1, 17, 16]
+//   Output logical shape: [1, 1, 17, 16] with #NWCH -> memShape: [1, 16, 1, 17]
+//   Original axis in logical shape: 2 -> in memShape: axis 3 (dim=17)
+//
+//   For original memAxis 3 (dim=17) in output memShape [1, 16, 1, 17]:
+//     - Left product:  1 * 16 * 1 = 16
+//     - Right product: 1
+//
+//   Searching in input memShape [1, 1, 17, 16] for matching axis:
+//     - At memAxis 2: dim=17, left product = 1*1 = 1 (need 16)
+//     - At memAxis 3: dim=16, dimension mismatch (need 17)
+//   No matching axis found, so this swap is invalid.
+//
+std::optional<int64_t> getNewSoftmaxAxisAfterSwappingWithShapeCast(IE::SoftMaxOp softmaxOp, IE::ShapeCastOp shapeCastOp,
+                                                                   const Logger& log) {
+    if (shapeCastOp == nullptr || !shapeCastOp->hasOneUse()) {
+        log.trace("ShapeCastOp not found or has multiple uses");
+        return std::nullopt;
+    }
+
+    const auto inMemShape = getMemShape(shapeCastOp.getInput());
+    const auto outMemShape = getMemShape(shapeCastOp.getOutput());
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(shapeCastOp.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(shapeCastOp.getOutput().getType());
+    const auto inDimsOrder = inputType.getDimsOrder();
+    const auto outDimsOrder = outputType.getDimsOrder();
+    const auto softmaxLogicalAxis = getPositiveAxisInd(softmaxOp.getAxisIndAttr(),
+                                                       checked_cast<int64_t>(getShape(shapeCastOp.getOutput()).size()));
+    auto softmaxMemAxis = outDimsOrder.toMemDim(Dim(softmaxLogicalAxis)).ind();
+
+    // Calculate the product of dimensions before and after the softmax axis in output memory shape
+    int64_t leftProduct = 1;
+    for (size_t idx = 0; idx < outMemShape.size(); idx++) {
+        if (idx < static_cast<size_t>(softmaxMemAxis)) {
+            leftProduct *= outMemShape[MemDim(idx)];
+        }
+    }
+
+    // Find the corresponding axis in input memory shape by matching dimension size and position
+    int64_t currentLeftProduct = 1;
+    for (size_t inMemIdx = 0; inMemIdx < inMemShape.size(); inMemIdx++) {
+        const int64_t currentDimSize = inMemShape[MemDim(inMemIdx)];
+        if (currentDimSize == outMemShape[MemDim(softmaxMemAxis)]) {
+            if (currentLeftProduct == leftProduct) {
+                // Note: padSize is safe even when logical axis changes, because:
+                // - padSize operates on the dimension in memory layout
+                // - Since we matched the memory axis with same dimension size and products,
+                //   the same elements in memory are affected by padSize
+                auto newLogicalAxis = inDimsOrder.toDim(MemDim(inMemIdx)).ind();
+                return newLogicalAxis;
+            }
+        }
+        currentLeftProduct *= currentDimSize;
+    }
+
+    log.trace("Not found valid softmax axis after swapping with ShapeCast");
+    return std::nullopt;
 }
 
 }  // namespace IE

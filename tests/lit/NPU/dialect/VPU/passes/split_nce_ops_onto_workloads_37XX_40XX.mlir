@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -260,22 +260,22 @@ func.func @ConvolutionWithDistributedTensor(%arg0: !Input_DDR) -> !Output_DDR {
 
     return %output: !Output_DDR
 
-    // CHECK-DAG:        [[WEIGHTS:%.*]] = const.Declare tensor<64x32x3x3xf16, {mem_space = @DDR, order = #NHWC}>
+    // CHECK-DAG:        [[WEIGHTS:%.+]] = const.Declare tensor<64x32x3x3xf16, {mem_space = @DDR, order = #NHWC}>
     // CHECK-SAME:       = dense<1.000000e+00> : tensor<64x32x3x3xf16, {mem_space = @DDR}>, [#const.Reorder<#NHWC>]
-    // CHECK-DAG:        [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>
+    // CHECK-DAG:        [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:        [[INPUT_CMX:%.*]] = VPU.Copy([[INPUT]])
+    // CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT]])
     // CHECK-SAME:           -> !VPU.DistributedTensor<1x32x16x16xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:              {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], kernel = [3, 3],
     // CHECK-SAME:               pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
 
-    // CHECK:        [[WEIGHTS_CMX:%.*]] = VPU.Copy([[WEIGHTS]])
+    // CHECK:        [[WEIGHTS_CMX:%.+]] = VPU.Copy([[WEIGHTS]])
     // CHECK-SAME:           -> !VPU.DistributedTensor<64x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 
-    // CHECK:        [[WEIGHTS_TABLE_CMX:%.*]] = VPU.Copy([[WEIGHTS_TABLE]])
+    // CHECK:        [[WEIGHTS_TABLE_CMX:%.+]] = VPU.Copy([[WEIGHTS_TABLE]])
     // CHECK-SAME:           -> !VPU.DistributedTensor<64x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 
-    // CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.Convolution([[INPUT_CMX]], [[WEIGHTS_CMX]], [[WEIGHTS_TABLE_CMX]])
+    // CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.Convolution([[INPUT_CMX]], [[WEIGHTS_CMX]], [[WEIGHTS_TABLE_CMX]])
     // CHECK-SAME:                            pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     // CHECK-SAME:                            strides = [1, 1]
     // CHECK-SAME:             -> !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64}>
@@ -285,7 +285,7 @@ func.func @ConvolutionWithDistributedTensor(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK:                    DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 64, 4, 16] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 2 : i64}
     // CHECK:                    DPU.Workload outOffsets [0, 0, 12, 0] outSizes [1, 64, 4, 16] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 3 : i64}
 
-    // CHECK:        [[OUT:%.*]] = VPU.Copy([[OUT_CMX]])
+    // CHECK:        [[OUT:%.+]] = VPU.Copy([[OUT_CMX]])
     // CHECK-SAME:           -> tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
 
     // CHECK:        return [[OUT]] : tensor<1x64x16x16xf16, {mem_space = @DDR, order = #NHWC}>
@@ -531,22 +531,22 @@ func.func @ConvolutionWithSparseDistributedTensor(%arg0: !Input_DDR) -> !Output_
 
     return %output: !Output_DDR
 
-    // CHECK-DAG:        [[WEIGHTS:%.*]] = const.Declare tensor<32x16x7x7xf16, {mem_space = @DDR, order = #NHWC}>
+    // CHECK-DAG:        [[WEIGHTS:%.+]] = const.Declare tensor<32x16x7x7xf16, {mem_space = @DDR, order = #NHWC}>
     // CHECK-SAME:       = dense<1.000000e+00> : tensor<32x16x7x7xf16, {mem_space = @DDR}>, [#const.Reorder<#NHWC>]
-    // CHECK-DAG:        [[WEIGHTS_TABLE:%.*]] = const.Declare tensor<32x1x1x4xsi32, {mem_space = @DDR, order = #NCHW}>
+    // CHECK-DAG:        [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32, {mem_space = @DDR, order = #NCHW}>
     // CHECK-SAME:       = dense<10> : tensor<32x1x1x4xsi32, {mem_space = @CMX_NN}>
-    // CHECK:        [[INPUT_CMX:%.*]] = VPU.Copy([[INPUT]])
+    // CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT]])
     // CHECK-SAME:           -> !VPU.SparseTensor<
     // CHECK-SAME:              data=!VPU.DistributedTensor<1x16x224x224xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
     // CHECK-SAME:              sparsity_map=!VPU.DistributedTensor<1x16x224x224xi1, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>>
 
-    // CHECK:        [[WEIGHTS_CMX:%.*]] = VPU.Copy([[WEIGHTS]])
+    // CHECK:        [[WEIGHTS_CMX:%.+]] = VPU.Copy([[WEIGHTS]])
     // CHECK-SAME:           -> !VPU.DistributedTensor<32x16x7x7xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    // CHECK:        [[WEIGHTS_TABLE_CMX:%.*]] = VPU.Copy([[WEIGHTS_TABLE]])
+    // CHECK:        [[WEIGHTS_TABLE_CMX:%.+]] = VPU.Copy([[WEIGHTS_TABLE]])
     // CHECK-SAME:           -> !VPU.DistributedTensor<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    // CHECK:        [[OUT_CMX:%.*]] = VPU.NCE.Convolution([[INPUT_CMX]], [[WEIGHTS_CMX]], [[WEIGHTS_TABLE_CMX]])
+    // CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.Convolution([[INPUT_CMX]], [[WEIGHTS_CMX]], [[WEIGHTS_TABLE_CMX]])
     // CHECK-SAME:                            pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
     // CHECK-SAME:                            ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>,
     // CHECK-SAME:                            rawFilterShape = [32, 16, 7, 7], strides = [2, 2]}
@@ -556,7 +556,7 @@ func.func @ConvolutionWithSparseDistributedTensor(%arg0: !Input_DDR) -> !Output_
     // CHECK:                    VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 56, 112] <left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
     // CHECK:                    VPU.DPU.Workload outOffsets [0, 0, 56, 0] outSizes [1, 32, 56, 112] <left = 3 : i64, right = 2 : i64, top = 0 : i64, bottom = 2 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 
-    // CHECK:        [[OUT:%.*]] = VPU.Copy([[OUT_CMX]])
+    // CHECK:        [[OUT:%.+]] = VPU.Copy([[OUT_CMX]])
     // CHECK-SAME:           -> !VPU.SparseTensor<data=tensor<1x32x112x112xf16, {mem_space = @DDR, order = #NHWC}>,
     // CHECK-SAME:                                sparsity_map=tensor<1x32x112x112xi1, {mem_space = @DDR, order = #NHWC}>>
 

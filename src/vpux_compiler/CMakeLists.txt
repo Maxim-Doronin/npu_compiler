@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2024-2025 Intel Corporation.
+# Copyright (C) 2024-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -15,24 +15,20 @@ if(ENABLE_LTO)
 endif()
 
 set(TARGET_NAME "npu_mlir_compiler")
-set(OBJ_TARGET_NAME "${TARGET_NAME}_obj")
 set(STATIC_TARGET_NAME "${TARGET_NAME}_static")
 set(gen_base_dst_include_dir "src/vpux_compiler/include/vpux/compiler")
 
-# These headers are needed by Unit tests even if ENABLE_MLIR_COMPILER=OFF
+# These headers are needed by Unit tests
 add_subdirectory(include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers)
 add_subdirectory(include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers)
 
-if(NOT ENABLE_MLIR_COMPILER)
-    return()
-endif()
-
 #
-# OBJECT target
+# STATIC target
 #
 
 file(GLOB SOURCES CONFIGURE_DEPENDS
-        src/*.cpp)
+        src/*.cpp
+        src/init/*.cpp)
 
 find_package(MLIR REQUIRED CONFIG)
 if(ENABLE_PREBUILT_LLVM_MLIR_LIBS)
@@ -57,10 +53,9 @@ add_subdirectory(tblgen)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(SYSTEM ${CMAKE_CURRENT_BINARY_DIR}/include)
-# ELF is used in tblgen and therefore in entire compiler
+# GraphFile schema is used in tblgen and therefore in entire compiler
 include_directories(
     ${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPUIP/generated
-    $<TARGET_PROPERTY:flatbuffers,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:npu_elf,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
@@ -81,7 +76,7 @@ add_custom_target(update_compiler_hash ALL
         -D COMMIT_HASH_CACHE=${COMMIT_HASH_CACHE}
         -P ${PROJECT_SOURCE_DIR}/cmake/compiler_commit_hash.cmake
     COMMENT "Updating compiler commit hash..."
-    BYPRODUCTS ${COMMIT_HASH_FILE}
+    BYPRODUCTS ${COMMIT_HASH_FILE} ${COMMIT_HASH_CACHE}
 )
 
 add_library(compiler_commit_hash INTERFACE)
@@ -104,15 +99,8 @@ target_include_directories(mlir-dependencies
     SYSTEM INTERFACE
         ${MLIR_INCLUDE_DIRS})
 
-if(BUILD_SHARED_LIBS)
-    set(COMPILER_TARGET ${OBJ_TARGET_NAME})
-    add_library(${OBJ_TARGET_NAME} OBJECT ${SOURCES})
-else()
-    set(COMPILER_TARGET ${TARGET_NAME})
-    add_library(${TARGET_NAME} STATIC ${SOURCES})
-
-    target_compile_definitions(${TARGET_NAME} PRIVATE OPENVINO_STATIC_LIBRARY)
-endif()
+set(COMPILER_TARGET ${STATIC_TARGET_NAME})
+add_library(${STATIC_TARGET_NAME} STATIC ${SOURCES})
 
 add_dependencies(${COMPILER_TARGET} mlir-doc)
 
@@ -130,7 +118,6 @@ target_include_directories(${COMPILER_TARGET}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPUIP/generated>
-        $<TARGET_PROPERTY:flatbuffers,INTERFACE_INCLUDE_DIRECTORIES>
         $<TARGET_PROPERTY:npu_elf,INTERFACE_INCLUDE_DIRECTORIES>
 )
 target_include_directories(${COMPILER_TARGET}
@@ -181,39 +168,9 @@ endif()
 ov_add_version_defines(${VPUX_COMPILER_VERSION_FILE} ${COMPILER_TARGET})
 
 #
-# MODULE library
-#
-
-if(BUILD_SHARED_LIBS)
-    add_library(${TARGET_NAME} MODULE $<TARGET_OBJECTS:${OBJ_TARGET_NAME}>)
-    target_link_libraries(${TARGET_NAME} PRIVATE ${OBJ_TARGET_NAME})
-    if(WIN32)
-        ov_add_api_validator_post_build_step(TARGET ${TARGET_NAME})
-        ov_add_vs_version_file(NAME ${TARGET_NAME} FILEDESCRIPTION "NPU Compiler")
-    endif()
-endif()
-
-#
 # STATIC target
 #
 
-if(BUILD_SHARED_LIBS)
-    add_library(${STATIC_TARGET_NAME} STATIC $<TARGET_OBJECTS:${OBJ_TARGET_NAME}>)
-    # Link the same to propagate dependencies
-    target_link_libraries(${STATIC_TARGET_NAME} PUBLIC ${OBJ_TARGET_NAME})
-else()
-    bundle_static_library(${COMPILER_TARGET} npu_costmodel)
-    add_library(${STATIC_TARGET_NAME} ALIAS ${COMPILER_TARGET})
-endif()
-
-#
-# targets install
-#
-
-# Note not included in OpenVINOTargets export!
-
-if(BUILD_SHARED_LIBS)
-install(TARGETS ${TARGET_NAME}
-        ARCHIVE DESTINATION ${OV_CPACK_ARCHIVEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
-        LIBRARY DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT})
+if(NOT BUILD_SHARED_LIBS)
+    bundle_static_library(${STATIC_TARGET_NAME} npu_costmodel)
 endif()

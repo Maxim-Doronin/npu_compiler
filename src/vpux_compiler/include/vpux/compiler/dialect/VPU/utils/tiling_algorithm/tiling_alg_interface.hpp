@@ -25,9 +25,8 @@ public:
 
     virtual mlir::LogicalResult applyTiling(mlir::Operation* operation, mlir::RewriterBase& builder, Logger log) = 0;
 
-    virtual mlir::FailureOr<SmallVector<mlir::Operation*>> applyVerticalFusion(mlir::Operation* operation,
-                                                                               mlir::RewriterBase& builder,
-                                                                               Logger log) = 0;
+    virtual SmallVector<mlir::Operation*> applySCFTilingAndFusion(mlir::Operation* operation,
+                                                                  mlir::RewriterBase& builder, Logger log) = 0;
 };
 }  // namespace VPU
 }  // namespace vpux

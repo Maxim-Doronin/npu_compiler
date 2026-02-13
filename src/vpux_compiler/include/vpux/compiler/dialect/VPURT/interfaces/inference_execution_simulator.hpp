@@ -72,7 +72,7 @@ public:
     void runSim();
     std::map<TaskQueueType, TaskConfigVec> getQueueTaskMap();
     TaskConfigVec getTaskCycleConfig();
-    TaskConfigVec getTaskCycleConfig(VPU::ExecutorKind execKind);
+    TaskConfigVec getTaskCycleConfig(config::ExecutorKind execKind);
     int64_t getInferenceLatencyInCycles();
     void updateCyclesInIR();
     double getDPUTotalEnergy();
@@ -95,7 +95,7 @@ private:
     // are not assigned to it by compiler but are dispatched during inference
     // based on availability. Compiler needs to know this to correctly model
     // this parallelism as this is not modeled on TaskOp level
-    mlir::DenseMap<VPU::ExecutorKind, int64_t> _numOfExecutorQueuesForWhichAssignmentIsAtInference;
+    mlir::DenseMap<config::ExecutorKind, int64_t> _numOfExecutorQueuesForWhichAssignmentIsAtInference;
     // Flag to discriminate between legacy approach for assignment of ActShave engines (at inference time) and the
     // approach with dedicated FIFOs for each engine with tasks assigned by the compiler.
     bool _supportsDedicatedActShaveQueues = true;

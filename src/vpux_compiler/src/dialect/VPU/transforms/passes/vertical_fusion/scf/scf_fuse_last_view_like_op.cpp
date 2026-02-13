@@ -1,21 +1,27 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/Operation.h>
+#include <mlir/IR/Visitors.h>
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 
+#include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_SCFFUSELASTVIEWLIKEOP
@@ -65,28 +71,33 @@ OffsetSizePair updateOffsetAndSize(VPU::PermuteCastOp permuteCastOp, ArrayRef<in
     return {newOffsets, newSizes};
 }
 
-void moveOpInsideForLoop(VPU::PermuteCastOp permuteCastOp, mlir::tensor::InsertSliceOp insertSliceOp) {
+void moveOpInsideForLoop(VPU::ViewLikeOpInterface viewLikeOp, mlir::tensor::InsertSliceOp insertSliceOp) {
     mlir::OpBuilder bodyBuilder(insertSliceOp.getOperation());
 
     mlir::IRMapping mapper;
-    mapper.map(permuteCastOp->getOperand(0), insertSliceOp.getSource());
-    auto newPermuteCastOp = bodyBuilder.clone(*permuteCastOp.getOperation(), mapper);
-    vpux::inferReturnTypes(newPermuteCastOp, vpux::InferShapedTypeMode::ALL);
+    mapper.map(viewLikeOp->getOperand(0), insertSliceOp.getSource());
+    auto newViewLikeOp = bodyBuilder.clone(*viewLikeOp.getOperation(), mapper);
+    vpux::inferReturnTypes(newViewLikeOp, vpux::InferShapedTypeMode::ALL);
 
-    auto permuteCastOutType = mlir::cast<NDTypeInterface>(permuteCastOp.getResult().getType());
-    insertSliceOp.setOperand(0, newPermuteCastOp->getResult(0));
-    insertSliceOp.getDestMutable().get().setType(permuteCastOutType);
-    insertSliceOp.getResult().setType(mlir::cast<mlir::RankedTensorType>(permuteCastOutType));
+    auto viewLikeOutType = mlir::cast<NDTypeInterface>(viewLikeOp->getResult(0).getType());
+    insertSliceOp.setOperand(0, newViewLikeOp->getResult(0));
+    insertSliceOp.getDestMutable().get().setType(viewLikeOutType);
+    insertSliceOp.getResult().setType(mlir::cast<mlir::RankedTensorType>(viewLikeOutType));
 
-    auto [newOffsets, newSizes] =
-            updateOffsetAndSize(permuteCastOp, insertSliceOp.getStaticOffsets(), insertSliceOp.getStaticSizes());
-
-    insertSliceOp.setStaticOffsets(newOffsets);
-    insertSliceOp.setStaticSizes(newSizes);
+    if (auto permuteCastOp = mlir::dyn_cast<VPU::PermuteCastOp>(viewLikeOp.getOperation())) {
+        auto [newOffsets, newSizes] =
+                updateOffsetAndSize(permuteCastOp, insertSliceOp.getStaticOffsets(), insertSliceOp.getStaticSizes());
+        insertSliceOp.setStaticOffsets(newOffsets);
+        insertSliceOp.setStaticSizes(newSizes);
+    } else if (auto sliceOp = mlir::dyn_cast<VPU::SliceOp>(viewLikeOp.getOperation())) {
+        insertSliceOp.setStaticSizes(viewLikeOutType.getShape().raw());
+    } else {
+        VPUX_THROW("Unsupported operator is being moved inside for loop");
+    }
 }
 
-bool traverseNestedForLoops(mlir::scf::ForOp forOp, VPU::PermuteCastOp permuteCastOp, Logger log) {
-    auto permuteCastOutType = mlir::cast<NDTypeInterface>(permuteCastOp.getResult().getType());
+bool traverseNestedForLoops(mlir::scf::ForOp forOp, VPU::ViewLikeOpInterface viewLikeOp, Logger log) {
+    auto viewOpCastOutType = mlir::cast<NDTypeInterface>(viewLikeOp->getResult(0).getType());
     auto body = forOp.getBody();
 
     auto yieldOps = body->getOps<mlir::scf::YieldOp>();
@@ -97,71 +108,76 @@ bool traverseNestedForLoops(mlir::scf::ForOp forOp, VPU::PermuteCastOp permuteCa
 
     mlir::Operation* producer = yieldOp->getOperand(0).getDefiningOp();
 
-    bool movedPermute = false;
+    bool movedViewOp = false;
     if (auto insertSliceOp = mlir::dyn_cast_or_null<mlir::tensor::InsertSliceOp>(producer)) {
         log.trace("Found InsertSliceOp at {0}", insertSliceOp->getLoc());
-        moveOpInsideForLoop(permuteCastOp, insertSliceOp);
-        movedPermute = true;
+        moveOpInsideForLoop(viewLikeOp, insertSliceOp);
+        movedViewOp = true;
     }
 
     if (auto innerForOp = mlir::dyn_cast_or_null<mlir::scf::ForOp>(producer)) {
         log.trace("Found inner scf for loop at {0}", innerForOp->getLoc());
-        movedPermute = traverseNestedForLoops(innerForOp, permuteCastOp, log);
+        movedViewOp = traverseNestedForLoops(innerForOp, viewLikeOp, log);
     }
 
-    if (movedPermute) {
+    if (movedViewOp) {
         log.trace("Permute got moved, adapt return type for scf.for at {0}", forOp->getLoc());
         auto iterArg = forOp.getInitArgsMutable().begin()->get();
-        iterArg.setType(permuteCastOutType);
-        forOp.getResult(0).setType(permuteCastOutType);
+        iterArg.setType(viewOpCastOutType);
+        forOp.getResult(0).setType(viewOpCastOutType);
     }
-    return movedPermute;
+    return movedViewOp;
 }
 
 void SCFFuseLastViewLikeOpPass::safeRunOnFunc() {
     auto func = getOperation();
 
-    SmallVector<VPU::PermuteCastOp> permuteCastOpToErase;
-    func->walk([&](VPU::PermuteCastOp permuteCastOp) {
-        mlir::Operation* user = *permuteCastOp->getResult(0).getUsers().begin();
-        const auto& nestedLog = _log.nest();
-        _log.trace("Got '{0}' at '{1}'", permuteCastOp->getName(), permuteCastOp->getLoc());
+    SmallVector<VPU::ViewLikeOpInterface> viewLikeOpsToErase;
 
+    func->walk<mlir::WalkOrder::PreOrder>([&](VPU::ViewLikeOpInterface viewLikeOp) {
+        mlir::Operation* op = viewLikeOp.getOperation();
+        if (!mlir::isa<VPU::PermuteCastOp>(op) && !mlir::isa<VPU::SliceOp>(op)) {
+            _log.trace("Skipping non-PermuteCast and non-Slice view-like op at '{0}'", viewLikeOp->getLoc());
+            return;
+        }
+        const auto& nestedLog = _log.nest();
+        _log.trace("Got '{0}' at '{1}'", viewLikeOp->getName(), viewLikeOp->getLoc());
+
+        mlir::Operation* user = *viewLikeOp->getResult(0).getUsers().begin();
         if (!mlir::isa<mlir::func::ReturnOp>(user)) {
             nestedLog.trace("Not used by a return operation");
             return;
         }
 
-        mlir::Operation* producer = permuteCastOp->getOperand(0).getDefiningOp();
+        mlir::Operation* producer = op->getOperand(0).getDefiningOp();
         if (!mlir::isa<mlir::scf::ForOp>(producer)) {
             nestedLog.trace("Not produced by a scf::ForOp");
             return;
         }
 
         auto forOp = mlir::cast<mlir::scf::ForOp>(producer);
-
         if (!forOp->getResult(0).hasOneUse()) {
             nestedLog.trace("scf::ForOp output has more than one use.");
             return;
         }
 
-        const auto movedPermute = traverseNestedForLoops(forOp, permuteCastOp, nestedLog);
+        const auto movedViewOp = traverseNestedForLoops(forOp, viewLikeOp, nestedLog);
 
-        if (!movedPermute) {
+        if (!movedViewOp) {
             nestedLog.trace("Could not move view op into parent scf.for.");
             return;
         }
 
-        permuteCastOp->replaceAllUsesWith(forOp.getResults());
+        viewLikeOp->replaceAllUsesWith(forOp.getResults());
 
-        if (permuteCastOp->getUses().empty()) {
-            permuteCastOpToErase.push_back(permuteCastOp);
+        if (viewLikeOp->getUses().empty()) {
+            viewLikeOpsToErase.push_back(viewLikeOp);
         }
         nestedLog.trace("Successfully fused last view op into scf::ForOp.");
     });
 
-    for (auto permCast : llvm::make_early_inc_range(permuteCastOpToErase)) {
-        permCast->erase();
+    for (auto viewLikeOp : llvm::make_early_inc_range(viewLikeOpsToErase)) {
+        viewLikeOp->erase();
     }
 }
 

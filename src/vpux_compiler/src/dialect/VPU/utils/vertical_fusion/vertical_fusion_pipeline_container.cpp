@@ -9,12 +9,12 @@
 using namespace vpux;
 using namespace VPU;
 
-VPU::ExecutorKind getExecutorByOperation(mlir::Operation* operation) {
+config::ExecutorKind getExecutorByOperation(mlir::Operation* operation) {
     if (operation == nullptr) {
-        return ExecutorKind::DMA_NN;
+        return config::ExecutorKind::DMA_NN;
     }
 
-    return mlir::isa<SWOpInterface>(operation) ? ExecutorKind::SHAVE_ACT : ExecutorKind::DPU;
+    return mlir::isa<SWOpInterface>(operation) ? config::ExecutorKind::SHAVE_ACT : config::ExecutorKind::DPU;
 }
 
 TimelineInterval::TimelineInterval(StrategyCost begin, StrategyCost end, mlir::Location location,
@@ -194,7 +194,7 @@ StrategyCost VFPipelineContainer::getPrefetchAvailability() const {
     }
 
     auto foundExecutor = llvm::find_if(_containerMapper | reversed, [](auto item) {
-        return item._mExecutor == VPU::ExecutorKind::DMA_NN;
+        return item._mExecutor == config::ExecutorKind::DMA_NN;
     });
 
     auto currentCost = maxCost();

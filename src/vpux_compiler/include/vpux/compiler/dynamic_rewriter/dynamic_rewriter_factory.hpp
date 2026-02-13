@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/scope_exit.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -148,8 +149,9 @@ public:
 
 protected:
     // Common rewriter execution logic called from safeRunOnFunc
-    mlir::LogicalResult executeRewriters(mlir::MLIRContext* ctx, Logger& log, mlir::func::FuncOp funcOp,
-                                         RewriterRegistry* customRegistry = nullptr);
+    mlir::LogicalResult executeRewriters(
+            mlir::MLIRContext* ctx, Logger& log, mlir::func::FuncOp funcOp, RewriterRegistry* customRegistry = nullptr,
+            const mlir::GreedyRewriteConfig& greedyRewriteConfig = getDefaultGreedyRewriteConfig());
 
     // Default implementation with dynamic rewriter selection
     virtual mlir::LogicalResult addRewritersToPatterns(mlir::MLIRContext* ctx, Logger& log, RewriterRegistry& registry,

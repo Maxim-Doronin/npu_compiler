@@ -80,10 +80,10 @@ func.func @UnrollMatMulAndPropagate(%arg0: tensor<1x8x4096x40xf32>, %arg1: tenso
 // CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x1537xf32>,
 // CHECK-SAME:      [[INPUT_3:%.+]]: tensor<1x1537x256xf32>
 func.func @MergeParallelLayers(%arg0: tensor<1x1x2x256xf32>, %arg1: tensor<1x1537x256xf32>, %arg2: tensor<1x1537xf32>, %arg3: tensor<1x1537x256xf32>) -> tensor<1x1x512xf32> {
-    %cst_20 = const.Declare tensor<1x1x1xf32> = dense<0.1> : tensor<1x1x1xf32> isSplat
-    %cst_21 = const.Declare tensor<1x1x1xf32> = dense<0.2> : tensor<1x1x1xf32> isSplat
-    %cst_22 = const.Declare tensor<1x1x1xf32> = dense<0.3> : tensor<1x1x1xf32> isSplat
-    %cst_23 = const.Declare tensor<1x1x1xf32> = dense<0.4> : tensor<1x1x1xf32> isSplat
+    %cst_20 = const.Declare tensor<1x1x1xf32> = dense<0.1> : tensor<1x1x1xf32>
+    %cst_21 = const.Declare tensor<1x1x1xf32> = dense<0.2> : tensor<1x1x1xf32>
+    %cst_22 = const.Declare tensor<1x1x1xf32> = dense<0.3> : tensor<1x1x1xf32>
+    %cst_23 = const.Declare tensor<1x1x1xf32> = dense<0.4> : tensor<1x1x1xf32>
 
     %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [2]], shape_value = [1, 1, 512]} : tensor<1x1x2x256xf32> -> tensor<1x1x512xf32>
 
@@ -174,4 +174,190 @@ func.func @MergeParallelLayers(%arg0: tensor<1x1x2x256xf32>, %arg1: tensor<1x153
     // CHECK:       [[OUT_RESHAPE:%.+]] = IE.Reshape([[FC_1]]) {shape_value = [1, 1, 512]} : tensor<2x256xf32> -> tensor<1x1x512xf32>
 
     // CHECK:       return [[OUT_RESHAPE]] : tensor<1x1x512xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @UnrollSDPAPattern
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x8x128x128xf32>, [[ARG1:%.+]]: tensor<1x8x128x128xf32>, [[MASK:%.+]]: tensor<1x1x128x128xf32>, [[V_IN:%.+]]: tensor<1x1x1x128x128xf32>)
+func.func @UnrollSDPAPattern(%arg0: tensor<1x8x128x128xf32>, %arg1: tensor<1x8x128x128xf32>, %mask: tensor<1x1x128x128xf32>, %v_in: tensor<1x1x1x128x128xf32>) -> tensor<1x8x128x128xf32> {
+  %target_shape = const.Declare tensor<5xsi64> = dense<[1, 1, 8, 128, 128]> : tensor<5xsi64>
+  %broadcast = IE.Broadcast(%v_in, %target_shape) {mode = #IE.broadcast_type<BIDIRECTIONAL>} : tensor<1x1x1x128x128xf32>, tensor<5xsi64> -> tensor<1x1x8x128x128xf32>
+  %reshape = IE.AffineReshape(%broadcast) {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [1, 8, 128, 128]} : tensor<1x1x8x128x128xf32> -> tensor<1x8x128x128xf32>
+  %transpose = IE.Transpose(%reshape) {order_value = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>} : tensor<1x8x128x128xf32> -> tensor<1x8x128x128xf32>
+  %0 = IE.MatMul(%arg0, %arg1) {transpose_b} : tensor<1x8x128x128xf32>, tensor<1x8x128x128xf32> -> tensor<1x8x128x128xf32>
+  %1 = IE.Add(%0, %mask) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x8x128x128xf32>, tensor<1x1x128x128xf32> -> tensor<1x8x128x128xf32>
+  %2 = IE.SoftMax(%1) {axisInd = 3 : i64} : tensor<1x8x128x128xf32> -> tensor<1x8x128x128xf32>
+  %3 = IE.MatMul(%2, %transpose) {transpose_b} : tensor<1x8x128x128xf32>, tensor<1x8x128x128xf32> -> tensor<1x8x128x128xf32>
+  return %3 : tensor<1x8x128x128xf32>
+
+  // CHECK: [[TARGET_SHAPE:%.+]] = const.Declare
+  // CHECK: [[BROADCAST:%.+]] = IE.Broadcast([[V_IN]], [[TARGET_SHAPE]])
+  // CHECK: [[RESHAPE:%.+]] = IE.AffineReshape([[BROADCAST]])
+  // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[RESHAPE]])
+  
+  // CHECK: [[SLICE_Q_0:%.+]] = IE.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_1:%.+]] = IE.Slice [[ARG0]] [0, 1, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_2:%.+]] = IE.Slice [[ARG0]] [0, 2, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_3:%.+]] = IE.Slice [[ARG0]] [0, 3, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_4:%.+]] = IE.Slice [[ARG0]] [0, 4, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_5:%.+]] = IE.Slice [[ARG0]] [0, 5, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_6:%.+]] = IE.Slice [[ARG0]] [0, 6, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_Q_7:%.+]] = IE.Slice [[ARG0]] [0, 7, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_0:%.+]] = IE.Slice [[ARG1]] [0, 0, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_1:%.+]] = IE.Slice [[ARG1]] [0, 1, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_2:%.+]] = IE.Slice [[ARG1]] [0, 2, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_3:%.+]] = IE.Slice [[ARG1]] [0, 3, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_4:%.+]] = IE.Slice [[ARG1]] [0, 4, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_5:%.+]] = IE.Slice [[ARG1]] [0, 5, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_6:%.+]] = IE.Slice [[ARG1]] [0, 6, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_K_7:%.+]] = IE.Slice [[ARG1]] [0, 7, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_0:%.+]] = IE.Slice [[TRANSPOSE]] [0, 0, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_1:%.+]] = IE.Slice [[TRANSPOSE]] [0, 1, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_2:%.+]] = IE.Slice [[TRANSPOSE]] [0, 2, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_3:%.+]] = IE.Slice [[TRANSPOSE]] [0, 3, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_4:%.+]] = IE.Slice [[TRANSPOSE]] [0, 4, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_5:%.+]] = IE.Slice [[TRANSPOSE]] [0, 5, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_6:%.+]] = IE.Slice [[TRANSPOSE]] [0, 6, 0, 0] [1, 1, 128, 128]
+  // CHECK: [[SLICE_V_7:%.+]] = IE.Slice [[TRANSPOSE]] [0, 7, 0, 0] [1, 1, 128, 128]
+
+  // CHECK:       [[RESHAPE_Q_0:%.+]] = IE.AffineReshape([[SLICE_Q_0]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_0:%.+]] = IE.AffineReshape([[SLICE_K_0]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_0:%.+]] = IE.FullyConnected([[RESHAPE_Q_0]], [[RESHAPE_K_0]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_0:%.+]] = IE.AffineReshape([[FC_0]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_0:%.+]] = IE.Add([[RESHAPE_0]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_0:%.+]] = IE.SoftMax([[ADD_0]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S0:%.+]] = IE.AffineReshape([[SOFTMAX_0]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_0:%.+]] = IE.AffineReshape([[SLICE_V_0]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_0:%.+]] = IE.FullyConnected([[RESHAPE_S0]], [[RESHAPE_V_0]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_0:%.+]] = IE.AffineReshape([[FC_V_0]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_1:%.+]] = IE.AffineReshape([[SLICE_Q_1]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_1:%.+]] = IE.AffineReshape([[SLICE_K_1]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_1:%.+]] = IE.FullyConnected([[RESHAPE_Q_1]], [[RESHAPE_K_1]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_1:%.+]] = IE.AffineReshape([[FC_1]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_1:%.+]] = IE.Add([[RESHAPE_1]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_1:%.+]] = IE.SoftMax([[ADD_1]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S1:%.+]] = IE.AffineReshape([[SOFTMAX_1]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_1:%.+]] = IE.AffineReshape([[SLICE_V_1]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_1:%.+]] = IE.FullyConnected([[RESHAPE_S1]], [[RESHAPE_V_1]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_1:%.+]] = IE.AffineReshape([[FC_V_1]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_2:%.+]] = IE.AffineReshape([[SLICE_Q_2]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_2:%.+]] = IE.AffineReshape([[SLICE_K_2]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_2:%.+]] = IE.FullyConnected([[RESHAPE_Q_2]], [[RESHAPE_K_2]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_2:%.+]] = IE.AffineReshape([[FC_2]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_2:%.+]] = IE.Add([[RESHAPE_2]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_2:%.+]] = IE.SoftMax([[ADD_2]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S2:%.+]] = IE.AffineReshape([[SOFTMAX_2]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_2:%.+]] = IE.AffineReshape([[SLICE_V_2]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_2:%.+]] = IE.FullyConnected([[RESHAPE_S2]], [[RESHAPE_V_2]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_2:%.+]] = IE.AffineReshape([[FC_V_2]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_3:%.+]] = IE.AffineReshape([[SLICE_Q_3]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_3:%.+]] = IE.AffineReshape([[SLICE_K_3]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_3:%.+]] = IE.FullyConnected([[RESHAPE_Q_3]], [[RESHAPE_K_3]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_3:%.+]] = IE.AffineReshape([[FC_3]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_3:%.+]] = IE.Add([[RESHAPE_3]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_3:%.+]] = IE.SoftMax([[ADD_3]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S3:%.+]] = IE.AffineReshape([[SOFTMAX_3]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_3:%.+]] = IE.AffineReshape([[SLICE_V_3]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_3:%.+]] = IE.FullyConnected([[RESHAPE_S3]], [[RESHAPE_V_3]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_3:%.+]] = IE.AffineReshape([[FC_V_3]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_4:%.+]] = IE.AffineReshape([[SLICE_Q_4]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_4:%.+]] = IE.AffineReshape([[SLICE_K_4]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_4:%.+]] = IE.FullyConnected([[RESHAPE_Q_4]], [[RESHAPE_K_4]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_4:%.+]] = IE.AffineReshape([[FC_4]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_4:%.+]] = IE.Add([[RESHAPE_4]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_4:%.+]] = IE.SoftMax([[ADD_4]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S4:%.+]] = IE.AffineReshape([[SOFTMAX_4]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_4:%.+]] = IE.AffineReshape([[SLICE_V_4]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_4:%.+]] = IE.FullyConnected([[RESHAPE_S4]], [[RESHAPE_V_4]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_4:%.+]] = IE.AffineReshape([[FC_V_4]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_5:%.+]] = IE.AffineReshape([[SLICE_Q_5]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_5:%.+]] = IE.AffineReshape([[SLICE_K_5]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_5:%.+]] = IE.FullyConnected([[RESHAPE_Q_5]], [[RESHAPE_K_5]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_5:%.+]] = IE.AffineReshape([[FC_5]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_5:%.+]] = IE.Add([[RESHAPE_5]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_5:%.+]] = IE.SoftMax([[ADD_5]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S5:%.+]] = IE.AffineReshape([[SOFTMAX_5]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_5:%.+]] = IE.AffineReshape([[SLICE_V_5]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_5:%.+]] = IE.FullyConnected([[RESHAPE_S5]], [[RESHAPE_V_5]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_5:%.+]] = IE.AffineReshape([[FC_V_5]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_6:%.+]] = IE.AffineReshape([[SLICE_Q_6]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_6:%.+]] = IE.AffineReshape([[SLICE_K_6]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_6:%.+]] = IE.FullyConnected([[RESHAPE_Q_6]], [[RESHAPE_K_6]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_6:%.+]] = IE.AffineReshape([[FC_6]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_6:%.+]] = IE.Add([[RESHAPE_6]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_6:%.+]] = IE.SoftMax([[ADD_6]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S6:%.+]] = IE.AffineReshape([[SOFTMAX_6]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_6:%.+]] = IE.AffineReshape([[SLICE_V_6]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_6:%.+]] = IE.FullyConnected([[RESHAPE_S6]], [[RESHAPE_V_6]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_6:%.+]] = IE.AffineReshape([[FC_V_6]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[RESHAPE_Q_7:%.+]] = IE.AffineReshape([[SLICE_Q_7]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_K_7:%.+]] = IE.AffineReshape([[SLICE_K_7]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_7:%.+]] = IE.FullyConnected([[RESHAPE_Q_7]], [[RESHAPE_K_7]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_7:%.+]] = IE.AffineReshape([[FC_7]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+  // CHECK:       [[ADD_7:%.+]] = IE.Add([[RESHAPE_7]], [[MASK]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK:       [[SOFTMAX_7:%.+]] = IE.SoftMax([[ADD_7]]) {axisInd = 3 : i64}
+  // CHECK:       [[RESHAPE_S7:%.+]] = IE.AffineReshape([[SOFTMAX_7]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_V_7:%.+]] = IE.AffineReshape([[SLICE_V_7]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 128]} : tensor<1x1x128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[FC_V_7:%.+]] = IE.FullyConnected([[RESHAPE_S7]], [[RESHAPE_V_7]]) : tensor<128x128xf32>, tensor<128x128xf32> -> tensor<128x128xf32>
+  // CHECK:       [[RESHAPE_OUT_7:%.+]] = IE.AffineReshape([[FC_V_7]])
+  // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 128, 128]} : tensor<128x128xf32> -> tensor<1x1x128x128xf32>
+
+  // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RESHAPE_OUT_0]], [[RESHAPE_OUT_1]], [[RESHAPE_OUT_2]], [[RESHAPE_OUT_3]], [[RESHAPE_OUT_4]], [[RESHAPE_OUT_5]], [[RESHAPE_OUT_6]], [[RESHAPE_OUT_7]])
+  // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0], [0, 4, 0, 0], [0, 5, 0, 0], [0, 6, 0, 0], [0, 7, 0, 0]]} : tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32>, tensor<1x1x128x128xf32> -> tensor<1x8x128x128xf32>
+  // CHECK:       return [[CONCAT]]
 }

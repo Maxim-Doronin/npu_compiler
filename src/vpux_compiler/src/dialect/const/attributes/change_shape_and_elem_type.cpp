@@ -16,8 +16,7 @@ using namespace vpux;
 //
 
 mlir::LogicalResult vpux::Const::ChangeShapeAndElemTypeAttr::verify(FuncRef<mlir::InFlightDiagnostic()> emitError,
-                                                                    mlir::ArrayAttr shape, mlir::Type,
-                                                                    llvm::hash_code) {
+                                                                    mlir::ArrayAttr shape, mlir::Type) {
     if (shape == nullptr) {
         return printTo(emitError(), "Got NULL 'shape' in 'ChangeShapeAndElemTypeAttr'");
     }
@@ -101,14 +100,4 @@ bool vpux::Const::ChangeShapeAndElemTypeAttr::inferOutputSplat(bool inputIsSplat
 Const::Content vpux::Const::ChangeShapeAndElemTypeAttr::transform(vpux::Const::Content& input) const {
     const auto outputType = inferOutputType(input.getType());
     return Const::Content::moveBuffer(outputType, std::move(input));
-}
-
-//
-// ChangeShapeAndElemTypeAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::stableHashForChangeShapeAndElemType(mlir::ArrayAttr shapeAttr, mlir::Type type) {
-    const auto shape = parseIntArrayAttr<int64_t>(shapeAttr);
-    return llvm::hash_combine(vpux::Const::ChangeShapeAndElemTypeAttr::getMnemonic(),
-                              llvm::hash_combine_range(shape.begin(), shape.end()), getStableHash(type));
 }

@@ -19,23 +19,6 @@ namespace {
 // ConcatOpConverter
 //
 
-// This rewriter creates `FakeQuantize` operation, which combines per-channel quantization from `Concat` inputs,
-// and places it after the `Concat` operation. For example:
-// The following `Concat`:
-// ```
-//     FQ 1x256x128x128 -> Concat <- FQ 1x48x128x128
-//                             |
-//                         GroupConv 1x304x128x128
-// ```
-// will be transformed into:
-// ```
-//     FQ 1x256x128x128 -> Concat <- FQ 1x48x128x128
-//                             |
-//                             FQ 1x304x128x128
-//                             |
-//                         GroupConv 1x304x128x128
-// ```
-
 class ConcatOpConverter final : public mlir::OpRewritePattern<IE::ConcatOp> {
 public:
     ConcatOpConverter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ConcatOp>(ctx), _log(log) {

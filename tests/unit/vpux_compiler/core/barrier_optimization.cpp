@@ -738,7 +738,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig(mlir::MLIRContext* ctx
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) {
@@ -748,7 +748,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig(mlir::MLIRContext* ctx
                 }
 
                 VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) {
@@ -859,23 +859,23 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig2(mlir::MLIRContext* ct
                 %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
 
                 VPURT.Task updates(%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 return %arg1: memref<1x3x64x64xf16, @DDR>
@@ -958,31 +958,31 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig3(mlir::MLIRContext* ct
                 %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
 
                 VPURT.Task updates(%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar1 : !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 return %arg1: memref<1x3x64x64xf16, @DDR>
@@ -1173,11 +1173,11 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig6(
                 %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
 
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0, %bar1: !VPURT.Barrier, !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 return %arg1: memref<1x3x64x64xf16, @DDR>
@@ -1202,7 +1202,7 @@ BarrierInfoMaps barriersWithFIFOdependenciesNPU40XXconfig6(
          *        1p1
          *
          * Redundant barrier b1 is removed in regular optimization but b0 is not removed in this optimization.
-         * This is done separately by logic in DMABarrierOptimizationPass.
+         * This is done separately by logic in BarrierOptimizationPass.
          *
          */
         expectedBarrierMaps.taskUpdateBarriers = {
@@ -1298,19 +1298,19 @@ SmallVector<size_t> variableGraphSplitBlockSizeNPU40XXconfig(
                 %buf1 = VPURT.DeclareBuffer <DDR> <32> -> memref<1x3x64x64xf16, @DDR>
 
                 VPURT.Task updates(%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) attributes {"sync-task"} {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) {
@@ -1320,7 +1320,7 @@ SmallVector<size_t> variableGraphSplitBlockSizeNPU40XXconfig(
                 }
 
                 VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar3: !VPURT.Barrier) updates(%bar4: !VPURT.Barrier) {
@@ -1330,11 +1330,11 @@ SmallVector<size_t> variableGraphSplitBlockSizeNPU40XXconfig(
                 }
 
                 VPURT.Task waits(%bar4: !VPURT.Barrier) updates(%bar5: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar5: !VPURT.Barrier) updates(%bar6: !VPURT.Barrier)  attributes {"sync-task"} {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar6: !VPURT.Barrier) {
@@ -1344,7 +1344,7 @@ SmallVector<size_t> variableGraphSplitBlockSizeNPU40XXconfig(
                 }
 
                 VPURT.Task waits(%bar6: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 return %arg1: memref<1x3x64x64xf16, @DDR>
@@ -1689,10 +1689,10 @@ BarrierInfoMaps graphToCheckMergingBarriers() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dma1Type{VPU::ExecutorKind::DMA_NN, 1};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
-    const VPURT::TaskQueueType dpu1Type{VPU::ExecutorKind::DPU, 1};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dma1Type{config::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dpu1Type{config::ExecutorKind::DPU, 1};
     barrierMapsConfig.taskQueueTypeMap[dma0Type] = {0, 2, 8, 11};
     barrierMapsConfig.taskQueueTypeMap[dma1Type] = {1, 7};
     barrierMapsConfig.taskQueueTypeMap[dpu0Type] = {3, 5, 9};
@@ -1853,8 +1853,8 @@ BarrierInfoMaps graphToCheckControlPathsWithFifo() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 1, 3};
     barrierMapsConfig.taskQueueTypeMap[dpuType] = {2, 4, 5, 6};
 
@@ -1958,42 +1958,42 @@ void parallelWaitBarriersIRconfig(mlir::MLIRContext* ctx, mlir::OwningOpRef<mlir
                 }
 
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0, %bar1:  !VPURT.Barrier, !VPURT.Barrier)  {
-                    VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task updates (%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task updates (%bar0: !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 VPURT.Task waits(%bar0, %bar1: !VPURT.Barrier, !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
                 VPURT.Task waits(%bar0, %bar1: !VPURT.Barrier, !VPURT.Barrier) {
-                    VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+                    VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
                 }
 
                 return %arg1: memref<1x3x64x64xf16, @DDR>
@@ -2073,8 +2073,8 @@ BarrierInfoMaps getIncorrectGraphSplitConfig(bool fixGraph = false) {
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2, 5};
 
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 2, 3, 4, 5, 8};
     inputBarrierMaps.taskQueueTypeMap[dpu0Type] = {1, 6, 7};
     return inputBarrierMaps;
@@ -2119,8 +2119,8 @@ BarrierInfoMaps getIncorrectGraphSplitConfig2(bool fixGraph = false) {
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {1};
 
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 1, 2};
     inputBarrierMaps.taskQueueTypeMap[dpu0Type] = {3};
     return inputBarrierMaps;
@@ -2165,8 +2165,8 @@ BarrierInfoMaps getIncorrectGraphSplitConfig3(bool fixGraph = false) {
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2};
 
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 2, 3};
     inputBarrierMaps.taskQueueTypeMap[dpu0Type] = {1};
     return inputBarrierMaps;
@@ -2220,8 +2220,8 @@ BarrierInfoMaps getIncorrectGraphSplitConfig4(bool fixWaitBarrier = false, bool 
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2, 5};
 
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 1, 2, 4, 5, 6};
     inputBarrierMaps.taskQueueTypeMap[dpu0Type] = {3};
     return inputBarrierMaps;
@@ -2286,8 +2286,8 @@ std::pair<BarrierInfoMaps, BarrierInfoMaps> outOfBlockWaitDependencyConfig() {
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2, 5};
 
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 2, 3, 4, 5, 6, 9};
     inputBarrierMaps.taskQueueTypeMap[dpu0Type] = {1, 7, 8};
 
@@ -2375,8 +2375,8 @@ std::pair<BarrierInfoMaps, BarrierInfoMaps> outOfBlockWaitDependencyToSyncTaskCo
 
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2, 5};
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 2, 3, 4, 5, 6, 8};
     inputBarrierMaps.taskQueueTypeMap[dpu0Type] = {1, 7};
 
@@ -2467,7 +2467,7 @@ std::pair<BarrierInfoMaps, BarrierInfoMaps> multipleOutOfBlockWaitDependenciesCo
 
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2, 5};
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
 
     expectedBarrierMaps.taskUpdateBarriers = {
@@ -2555,7 +2555,7 @@ std::pair<BarrierInfoMaps, BarrierInfoMaps> outOfBlockUpdateDependencyConfig() {
 
     fillProducersAndConsumers(inputBarrierMaps);
     inputBarrierMaps.syncTasksIds = {2, 5};
-    const VPURT::TaskQueueType dma0Type{VPU::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dma0Type{config::ExecutorKind::DMA_NN, 0};
     inputBarrierMaps.taskQueueTypeMap[dma0Type] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
 
     expectedBarrierMaps.taskUpdateBarriers = {
@@ -2650,9 +2650,9 @@ BarrierInfoMaps graphToCheckControlDepsTowardsTasksWithLowerIndex() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpu0Type{VPU::ExecutorKind::DPU, 0};
-    const VPURT::TaskQueueType dpu1Type{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpu0Type{config::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dpu1Type{config::ExecutorKind::DPU, 0};
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 3, 4};
     barrierMapsConfig.taskQueueTypeMap[dpu0Type] = {2};
     barrierMapsConfig.taskQueueTypeMap[dpu1Type] = {1};

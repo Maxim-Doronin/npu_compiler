@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
 #include "vpux/compiler/compiler_hash.hpp"
+#include "vpux/compiler/core/developer_build_utils.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
@@ -41,9 +42,9 @@ void AddCompilerHashPass::safeRunOnFunc() {
     auto elfMain = mainOps[0];
     std::unordered_map<ELF::SectionSignature, ELF::ElfSectionInterface> sectionMap;
     auto builder = mlir::OpBuilder::atBlockEnd(elfMain.getBody());
-    auto compilerHashOp =
-            builder.create<VPUASM::CompilerHashOp>(elfMain.getLoc(), builder.getStringAttr("CompilerHash"),
-                                                   builder.getStringAttr(vpux::ELF::NPU_COMPILER_GIT_COMMIT_HASH));
+    const auto compilerCommit = isDeveloperBuild() ? "0" : vpux::ELF::NPU_COMPILER_GIT_COMMIT_HASH;
+    auto compilerHashOp = builder.create<VPUASM::CompilerHashOp>(
+            elfMain.getLoc(), builder.getStringAttr("CompilerHash"), builder.getStringAttr(compilerCommit));
     moveOpToSection(compilerHashOp.getOperation(), sectionMap, builder);
 }
 

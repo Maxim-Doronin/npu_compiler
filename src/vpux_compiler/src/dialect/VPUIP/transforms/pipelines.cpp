@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,10 +68,9 @@ void vpux::VPUIP::buildDMAUnrollingPipeline(mlir::OpPassManager& pm, Logger log)
 //
 
 void vpux::VPUIP::buildShaveCodeGenPipeline(mlir::OpPassManager& pm) {
-    pm.addPass(ShaveCodeGen::createShaveStackAllocationPass());
     pm.addPass(
             mlir::createConvertLinalgToAffineLoopsPass());  // E#154403 Analyze the pros/cons & replace Affine with SCF
-    pm.addPass(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(mlir::memref::createExpandStridedMetadataPass());
     pm.addPass(ShaveCodeGen::createExpandLayersPass());
     pm.addPass(ShaveCodeGen::createLowerMathToShaveIntrinsicsPass());

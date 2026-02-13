@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,6 +23,9 @@ class Config_EnumAttr <EnumAttrInfo enumInfo, string name = "", list <Trait> tra
         EnumAttr<Config_Dialect, enumInfo, name, traits> {
     let assemblyFormat = "`<`$value`>`";
 }
+
+class Config_Attr <string name, list <Trait> traits = []> :
+        AttrDef<Config_Dialect, name, traits>;
 
 //
 // CompilationMode
@@ -83,6 +86,31 @@ def Config_ArchKind :
 def Config_ArchKindAttr : Config_EnumAttr<Config_ArchKind, "arch_kind">;
 
 //
+// Version
+//
+
+def Config_VersionAttr : Config_Attr<"Version"> {
+    let summary = "Represents a semantic version";
+    let mnemonic = "version";
+    let parameters = (ins
+        "uint32_t":$major,
+        "uint32_t":$minor,
+        "uint32_t":$patch
+    );
+    let assemblyFormat = "`<`$major`:`$minor`:`$patch`>`";
+    let extraClassDeclaration = [{
+        Version getVersion() const {
+            return {getMajor(), getMinor(), getPatch()};
+        }
+    }];
+    let builders = [
+        AttrBuilder<(ins "const Version &":$value), [{
+            return $_get($_ctxt, value.major, value.minor, value.patch);
+        }]>
+    ];
+}
+
+//
 // RevisionID
 //
 
@@ -104,5 +132,27 @@ def Config_RevisionID  :
 }
 
 def Config_RevisionIDAttr : Config_EnumAttr<Config_RevisionID, "revision_id">;
+
+//
+// ExecutorKind
+//
+
+def Config_ExecutorKind :
+        Config_I64EnumAttr<
+            "ExecutorKind",
+            "Representd hardware executror resources",
+            [
+                I64EnumAttrCase<"DMA_NN",    0>,
+                I64EnumAttrCase<"NCE",       1>,
+                I64EnumAttrCase<"DPU",       2>,
+                I64EnumAttrCase<"SHAVE_NN",  3>,
+                I64EnumAttrCase<"SHAVE_ACT", 4>,
+                I64EnumAttrCase<"M2I",       5>,
+                I64EnumAttrCase<"UNKNOWN",   6>,
+            ]
+        > {
+}
+
+def Config_ExecutorKindAttr : Config_EnumAttr<Config_ExecutorKind, "executor_kind">;
 
 #endif

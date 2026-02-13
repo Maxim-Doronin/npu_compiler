@@ -180,7 +180,7 @@ void SplitNNDMARewriter::createTiles(VPUIP::NNDMAOp nndmaOp, mlir::PatternRewrit
         auto newDMAPort = tileIdx % _dmaPortCount;
         const auto newNNDMA = VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), tileLoc, inputNewBuffer,
-                outputNewBuffer, newDMAPort, false, false, spillIdAttr, nndmaOp.getCompressCandidateAttr());
+                outputNewBuffer, newDMAPort, false, false, spillIdAttr, nndmaOp.getCompressCandidate());
 
         log.trace("New tile '{0}' NNDMA op: '{1}'", tileIdx, newNNDMA);
 
@@ -232,7 +232,7 @@ void NNDMATilingPass::safeRunOnFunc() {
     auto module = func->getParentOfType<mlir::ModuleOp>();
     const auto arch = config::getArch(module);
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     mlir::RewritePatternSet patterns(&ctx);

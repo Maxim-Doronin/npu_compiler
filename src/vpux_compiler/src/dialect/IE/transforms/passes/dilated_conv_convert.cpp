@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,8 +9,10 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_DILATEDCONVCONVERT
@@ -137,11 +139,8 @@ bool isLegalSpaceBatchAttr(IE::SpaceToBatch spaceToBatchOp, IE::BatchToSpace bat
 mlir::Value createDilatedConvOp(mlir::PatternRewriter& rewriter, IE::ConvolutionOp convOp, mlir::Value input,
                                 mlir::ArrayAttr padsBeginAttr, mlir::ArrayAttr padsEndAttr,
                                 mlir::ArrayAttr dilationsAttr) {
-    return rewriter
-            .create<IE::ConvolutionOp>(convOp.getLoc(), input, convOp.getFilter(), convOp.getBias(),
-                                       convOp.getStridesAttr(), padsBeginAttr, padsEndAttr, dilationsAttr,
-                                       convOp.getPostOpAttr(), convOp.getClampAttr(), convOp.getStaticScaleAttr(),
-                                       convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr())
+    return IE::cloneConvolutionOp(rewriter, convOp, input, convOp.getFilter(), convOp.getBias(), convOp.getScale(),
+                                  convOp.getStridesAttr(), padsBeginAttr, padsEndAttr, dilationsAttr)
             .getResult();
 }
 
@@ -252,9 +251,7 @@ void DilatedConvConvertPass::safeRunOnFunc() {
     patterns.add<DilatedConvConverter<IE::GroupConvolutionOp>>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

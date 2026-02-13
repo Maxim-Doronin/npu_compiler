@@ -4,22 +4,11 @@
 //
 
 #include "vpux/compiler/utils/dma.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/utils/core/error.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 using namespace vpux;
-
-int64_t vpux::getDMAPortValue(mlir::Operation* wrappedTaskOp) {
-    if (auto dmaOp = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(wrappedTaskOp)) {
-        auto portAttr = dmaOp.getPortAttribute();
-        if (portAttr == nullptr) {
-            return 0;
-        }
-        return portAttr.getInt();
-    }
-
-    VPUX_THROW("Could not cast to DMA task '{0}'", *wrappedTaskOp);
-}
 
 SmallVector<VPUIP::DmaChannelType> vpux::getDMAChannelsWithIndependentLinkAgents(config::ArchKind arch) {
     if (arch <= config::ArchKind::NPU37XX) {
@@ -61,20 +50,4 @@ VPUIP::DmaChannelType vpux::getDMAChannelTypeFromEncodedId(int64_t dmaQueueIdEnc
     }
 
     return static_cast<VPUIP::DmaChannelType>(dmaQueueIdEncoding % (VPUIP::getMaxEnumValForDmaChannelType() + 1));
-}
-
-std::string vpux::getDMAChannelTypeAsString(VPUIP::DmaChannelType channelType, config::ArchKind arch) {
-    if (arch <= config::ArchKind::NPU37XX) {
-        return "";
-    }
-
-    return stringifyEnum(channelType).str();
-}
-
-std::string vpux::getDMAChannelTypeAsString(int64_t dmaQueueIdEncoding, config::ArchKind arch) {
-    if (arch <= config::ArchKind::NPU37XX) {
-        return "";
-    }
-
-    return stringifyEnum(getDMAChannelTypeFromEncodedId(dmaQueueIdEncoding, arch)).str();
 }

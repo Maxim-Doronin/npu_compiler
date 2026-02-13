@@ -33,12 +33,12 @@ func.func @SparseConvWeightsWithCompressCandidate(%arg0: memref<1x32x3x3xf16, #N
     %8 = VPUIP.NNDMA inputs(%cst_weights_sm : memref<64x1x1x128xi1>) outputs(%4 : memref<64x1x1x128xi1, [@CMX_NN, 0]>) -> memref<64x1x1x128xi1, [@CMX_NN, 0]>
   }
   VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-    %8 = VPUIP.NNDMA {compress_candidate, spillId = 0 : i64} inputs(%3 : memref<64x32x1x1xf16, {sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, [@CMX_NN, 0]>)
+    %8 = VPUIP.NNDMA <{compress_candidate, spillId = 0 : i64}> inputs(%3 : memref<64x32x1x1xf16, {sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, [@CMX_NN, 0]>)
                                       outputs(%6 : memref<64x32x1x1xf16, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, @DDR>)
             -> memref<64x32x1x1xf16, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, @DDR>
   }
   VPURT.Task waits(%bar1 : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-    %8 = VPUIP.NNDMA {compress_candidate, spillId = 0 : i64} inputs(%6 : memref<64x32x1x1xf16, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, @DDR>)
+    %8 = VPUIP.NNDMA <{compress_candidate, spillId = 0 : i64}> inputs(%6 : memref<64x32x1x1xf16, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, @DDR>)
                                        outputs(%7 : memref<64x32x1x1xf16, {sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, [@CMX_NN, 0]>)
             -> memref<64x32x1x1xf16, {sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<32> : tensor<64xi64>, alignment = 16 : i64>, order = #NHWC}, [@CMX_NN, 0]>
   }
@@ -75,13 +75,13 @@ func.func @SparseConvWeightsWithCompressCandidate(%arg0: memref<1x32x3x3xf16, #N
   // CHECK-SAME:        -> memref<4096x1x1x1xui8, {order = #NHWC}, [@CMX_NN, 0]>
 
   // CHECK:       VPURT.Task
-  // CHECK:           VPUIP.NNDMA {compress_candidate, spillId = 0 : i64}
+  // CHECK:           VPUIP.NNDMA <{compress_candidate, spillId = 0 : i64}>
   // CHECK-SAME:          inputs([[WEIGHTS_CMX]] : memref<4096x1x1x1xui8, {order = #NHWC}, [@CMX_NN, 0]>)
   // CHECK-SAME:          outputs([[WEIGHTS_SPILL_DDR]] : memref<4096x1x1x1xui8, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC}, @DDR>)
   // CHECK-SAME:        -> memref<4096x1x1x1xui8, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC}, @DDR>
 
   // CHECK:       VPURT.Task
-  // CHECK:           VPUIP.NNDMA {compress_candidate, spillId = 0 : i64}
+  // CHECK:           VPUIP.NNDMA <{compress_candidate, spillId = 0 : i64}>
   // CHECK-SAME:          inputs([[WEIGHTS_SPILL_DDR]] : memref<4096x1x1x1xui8, {allocSize = 4192 : i64, compression = #VPUIP.Compression<CompressionCandidate>, order = #NHWC}, @DDR>)
   // CHECK-SAME:          outputs([[WEIGHTS_SPILL_CMX]] : memref<4096x1x1x1xui8, {order = #NHWC}, [@CMX_NN, 0]>)
   // CHECK-SAME:        -> memref<4096x1x1x1xui8, {order = #NHWC}, [@CMX_NN, 0]>

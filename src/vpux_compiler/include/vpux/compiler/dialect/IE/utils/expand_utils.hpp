@@ -43,9 +43,19 @@ bool beneficialToKeepExpand(ShapeRef unExpandedShape, ShapeRef expandedShape, ml
 // convert expand op to convolution utils
 int64_t calculateAlignmentRequirementForExpandOpConversion(const vpux::NDTypeInterface expandInType);
 bool beneficialToPadHeight(IE::ExpandOp origOp);
+bool beneficialToPadHeight(vpux::NDTypeInterface expandInType);
 bool beneficialToPadWidth(IE::ExpandOp origOp);
+bool beneficialToPadWidth(vpux::NDTypeInterface expandInType, mlir::Value origExpandOutput);
 bool beneficialToReshapeHeightToChannel(IE::ExpandOp origOp);
+bool beneficialToReshapeHeightToChannel(vpux::NDTypeInterface inputType, vpux::NDTypeInterface outputType);
+void convertExpandTypesToSupportedLayout(IE::ExpandOp expandOp, vpux::DimsOrder supportedLayout,
+                                         vpux::NDTypeInterface& expandInType, vpux::NDTypeInterface& expandOutType,
+                                         SmallVector<int64_t>& padsBegin, SmallVector<int64_t>& padsEnd);
 bool isEligibleConvertToConv(IE::ExpandOp expandOp, Logger log, StringRef debugName);
+bool isEligibleConvertToConv(mlir::Value origExpandOutput, vpux::NDTypeInterface expandInType,
+                             vpux::NDTypeInterface expandOutType, ArrayRef<int64_t> expandPadsBegin,
+                             ArrayRef<int64_t> expandPadsEnd, mlir::ModuleOp moduleOp, mlir::Location loc, Logger log,
+                             StringRef debugName);
 std::optional<vpux::Dim> getExpandAxis(IE::ExpandOp expandOp);
 }  // namespace IE
 }  // namespace vpux

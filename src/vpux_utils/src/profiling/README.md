@@ -4,7 +4,7 @@
 The library contains several model profiling infrastructure components within `::vpux::profiling` namespace.
 
 1. Profiling output parser `parser/api.hpp`
-2. Reporting code and profiling hooks used also by [Compiler Schedule Trace](../../../../guides/how-to-get-schedule-trace-and-analysis.md) `reports/api.hpp`
+2. Reporting code and profiling hooks used also by [Compiler Schedule Trace](../../../../guides/how_to_get_schedule_trace_and_analysis.md) `reports/api.hpp`
 3. Metadata serialization/deserialization code shared between the compiler and parser `metadata.hpp`
 4. Profiling utilities
     - definitions shared with the compiler `location.hpp` `common.hpp`

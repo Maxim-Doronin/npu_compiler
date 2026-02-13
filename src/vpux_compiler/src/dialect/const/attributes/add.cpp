@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,12 +18,16 @@ using namespace vpux;
 
 void vpux::Const::AddAttr::print(mlir::AsmPrinter& printer) const {
     printer << "<";
-    printer.printAttribute(getBias());
+    if (getBias()) {
+        printer.printAttribute(getBias());
+    } else if (getBiasArray()) {
+        printer.printAttribute(getBiasArray());
+    }
     printer << ">";
 }
 
 //
-// PadWithZeroAttr::parse
+// AddAttr::parse
 //
 
 mlir::Attribute vpux::Const::AddAttr::parse(mlir::AsmParser& parser, mlir::Type) {
@@ -31,8 +35,8 @@ mlir::Attribute vpux::Const::AddAttr::parse(mlir::AsmParser& parser, mlir::Type)
         return nullptr;
     }
 
-    mlir::FloatAttr bias;
-    if (mlir::failed(parser.parseAttribute(bias))) {
+    mlir::Attribute attr;
+    if (mlir::failed(parser.parseAttribute(attr))) {
         return nullptr;
     }
 
@@ -40,7 +44,15 @@ mlir::Attribute vpux::Const::AddAttr::parse(mlir::AsmParser& parser, mlir::Type)
         return nullptr;
     }
 
-    return Const::AddAttr::get(bias);
+    if (auto floatAttr = mlir::dyn_cast<mlir::FloatAttr>(attr)) {
+        return Const::AddAttr::get(floatAttr);
+    }
+
+    if (auto arrayAttr = mlir::dyn_cast<mlir::ArrayAttr>(attr)) {
+        return Const::AddAttr::get(arrayAttr);
+    }
+
+    return nullptr;
 }
 
 //
@@ -64,23 +76,28 @@ Const::Content vpux::Const::AddAttr::transform(vpux::Const::Content& input) cons
             Const::Content::allocTempBuffer(inferOutputType(input.getType()), mlir::Float32Type::get(getContext()),
                                             inferOutputSplat(input.isSplat(), input.getType()));
 
-    auto shiftedVals = output.getTempBuf<float>();
+    llvm::MutableArrayRef<float> shiftedVals = output.getTempBuf<float>();
 
-    const auto bias = static_cast<float>(getBias().getValue().convertToDouble());
-    input.read([&](auto values) {
-        for (size_t i = 0; i < shiftedVals.size(); ++i) {
-            shiftedVals[i] = checked_cast<float>(values[i]) + bias;
-        }
-    });
+    if (getBias()) {
+        // Single bias value applied to all elements
+        const auto bias = static_cast<float>(getBias().getValue().convertToDouble());
+        input.read([&](auto values) {
+            for (size_t i = 0; i < shiftedVals.size(); ++i) {
+                shiftedVals[i] = checked_cast<float>(values[i]) + bias;
+            }
+        });
+    } else if (getBiasArray()) {
+        // Array of bias values - broadcast across all elements
+        const auto biasArray = getBiasArray().getValue();
+        input.read([&](auto values) {
+            for (size_t i = 0; i < shiftedVals.size(); ++i) {
+                const auto biasIdx = checked_cast<size_t>(i % biasArray.size());
+                const auto bias = static_cast<float>(
+                        mlir::cast<mlir::FloatAttr>(biasArray[biasIdx]).getValue().convertToDouble());
+                shiftedVals[i] = checked_cast<float>(values[i]) + bias;
+            }
+        });
+    }
 
     return output;
-}
-
-//
-// AddAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::AddAttr::getStableHashValue() const {
-    const auto bias = getBias().getValue();
-    return llvm::hash_combine(getMnemonic(), bias);
 }

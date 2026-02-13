@@ -12,11 +12,11 @@
 #include <vpux/compiler/dialect/VPUMI40XX/dialect.hpp>
 #include <vpux/compiler/utils/types.hpp>
 
-#include "vpux/compiler/utils/dma_transaction_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
 
 using namespace vpux;
 
-DMATransaction VPUMI40XX::NNDMATransactionAttr::getDMATransaction() const {
+DMATransaction VPUMI40XX::NNDMATransactionAttr::getDMATransaction(bool stridedInput, bool stridedOutput) const {
     DMATransaction dmaTransaction;
 
     auto inType = mlir::cast<vpux::NDTypeInterface>(getInputType());
@@ -25,35 +25,37 @@ DMATransaction VPUMI40XX::NNDMATransactionAttr::getDMATransaction() const {
     auto [outputMemShape, outputMemStrides, outputElemSize] = getTypeInfo(outType);
 
     dmaTransaction.inputs.push_back(
-            reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize));
+            reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize, stridedInput));
     dmaTransaction.outputs.push_back(
-            reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize));
+            reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize, stridedOutput));
 
     return dmaTransaction;
 }
 
 // PermuteDMATransactionAttr has the same semantic as VPUIP::InternalDataFlowAttr. Some details about the
 // VPUIP::InternalDataFlowAttr members can be found together with its the table-gen definition.
-DMATransaction VPUMI40XX::PermuteDMATransactionAttr::getDMATransaction() const {
+DMATransaction VPUMI40XX::PermuteDMATransactionAttr::getDMATransaction(bool stridedInput, bool stridedOutput) const {
     DMATransaction dmaTransaction;
 
     auto inType = mlir::cast<vpux::NDTypeInterface>(getInputType());
     auto outType = mlir::cast<vpux::NDTypeInterface>(getOutputType());
 
-    return getDMATransactionFromPermutation(inType, outType, getMappingOrder().getAffineMap(),
-                                            getLoopOrder().getAffineMap());
+    return VPUIP::getDMATransactionFromPermutation(inType, outType, getMappingOrder().getAffineMap(),
+                                                   getLoopOrder().getAffineMap(), stridedInput, stridedOutput);
 }
 
-DMATransaction VPUMI40XX::ExpandDMATransactionAttr::getDMATransaction() const {
+DMATransaction VPUMI40XX::ExpandDMATransactionAttr::getDMATransaction(bool stridedInput, bool stridedOutput) const {
     DMATransaction dmaTransaction;
 
     auto inType = mlir::cast<vpux::NDTypeInterface>(getInputType());
     auto outType = mlir::cast<vpux::NDTypeInterface>(getOutputType());
 
-    return getDMATransactionFromExpand(inType, outType, getPadsBegin(), getPadsEnd());
+    return VPUIP::getDMATransactionFromExpand(inType, outType, getPadsBegin(), getPadsEnd(), stridedInput,
+                                              stridedOutput);
 }
 
-DMATransaction VPUMI40XX::PerAxisTileDMATransactionAttr::getDMATransaction() const {
+DMATransaction VPUMI40XX::PerAxisTileDMATransactionAttr::getDMATransaction(bool stridedInput,
+                                                                           bool stridedOutput) const {
     DMATransaction dmaTransaction;
 
     auto inType = mlir::cast<vpux::NDTypeInterface>(getInputType());
@@ -72,9 +74,9 @@ DMATransaction VPUMI40XX::PerAxisTileDMATransactionAttr::getDMATransaction() con
     inputMemStrides.insert(inputMemStrides.begin() + memAxis, Bit(0));
 
     dmaTransaction.inputs.push_back(
-            reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize));
+            reduceDimsForDma(std::move(inputMemShape), std::move(inputMemStrides), inputElemSize, stridedInput));
     dmaTransaction.outputs.push_back(
-            reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize));
+            reduceDimsForDma(std::move(outputMemShape), std::move(outputMemStrides), outputElemSize, stridedOutput));
 
     return dmaTransaction;
 }

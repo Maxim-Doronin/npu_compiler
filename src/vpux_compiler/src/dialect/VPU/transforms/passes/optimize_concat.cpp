@@ -265,8 +265,9 @@ mlir::LogicalResult EliminateSameSiblingConcat::matchAndRewrite(VPU::ConcatOp or
     }
 
     for (auto concatOp : concatOps) {
+        const auto concatOpLoc = concatOp.getLoc();
         rewriter.replaceOp(concatOp, origOp.getOutput());
-        _log.trace("The Concat at {0} is eliminated", concatOp.getLoc());
+        _log.trace("The Concat at {0} is eliminated", concatOpLoc);
     }
 
     return mlir::success();

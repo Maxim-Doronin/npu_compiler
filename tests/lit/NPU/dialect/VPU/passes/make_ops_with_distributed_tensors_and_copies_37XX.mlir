@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -407,17 +407,17 @@ func.func @MaxPoolToDistributedOpSOB(%input: tensor<2x32x112x112xf16, {order = #
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceL1SplitOverKernel(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
 func.func @ReduceL1SplitOverKernel(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
   %0 = VPU.ReduceL1(%arg0) {axes_value = [2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x1024x7x7xf16> -> tensor<1x1024x1x1xf16>
   return %0 : tensor<1x1024x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceL1(%[[VAL_1]]) {axes_value = [2, 3], keep_dims}
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceL1([[VAL_1]]) {axes_value = [2, 3], keep_dims}
     // CHECK-SAME:              -> !VPU.DistributedTensor<1x1024x1x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
 
-    // CHECK:   return %[[VAL_7]] : tensor<1x1024x1x1xf16>
+    // CHECK:   return [[VAL_7]] : tensor<1x1024x1x1xf16>
 }
 
 // -----
@@ -425,17 +425,17 @@ func.func @ReduceL1SplitOverKernel(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x10
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceL2SplitOverKernel(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
 func.func @ReduceL2SplitOverKernel(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1024x1x1xf16> {
   %0 = VPU.ReduceL2(%arg0) {axes_value = [2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x1024x7x7xf16> -> tensor<1x1024x1x1xf16>
   return %0 : tensor<1x1024x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:              > !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceL2(%[[VAL_1]]) {axes_value = [2, 3], keep_dims}
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceL2([[VAL_1]]) {axes_value = [2, 3], keep_dims}
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1024x1x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1024x1x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1024x1x1xf16>
 }
 
 // -----
@@ -443,17 +443,17 @@ func.func @ReduceL2SplitOverKernel(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x10
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceLogicalAndClustering(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
 func.func @ReduceLogicalAndClustering(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
   %0 = VPU.ReduceLogicalAnd(%arg0) {axes_value = [1, 2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x1024x7x7xf16> -> tensor<1x1x1x1xf16>
   return %0 : tensor<1x1x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:              -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceLogicalAnd(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceLogicalAnd([[VAL_1]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x1x1xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x1x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x1x1xf16>
 }
 
 // -----
@@ -461,17 +461,17 @@ func.func @ReduceLogicalAndClustering(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceLogicalOrClustering(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
 func.func @ReduceLogicalOrClustering(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x1x1xf16> {
   %0 = VPU.ReduceLogicalOr(%arg0) {axes_value = [1, 2, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>} : tensor<1x1024x7x7xf16> -> tensor<1x1x1x1xf16>
   return %0 : tensor<1x1x1x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:              -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceLogicalOr(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceLogicalOr([[VAL_1]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x1x1xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x1x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x1x1xf16>
 }
 
 // -----
@@ -479,17 +479,17 @@ func.func @ReduceLogicalOrClustering(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceMaxSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceMaxSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceMax(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceMax(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceMax([[VAL_1]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 // -----
@@ -497,17 +497,17 @@ func.func @ReduceMaxSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceMeanSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceMeanSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceMean(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceMean(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceMean([[VAL_1]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 // -----
@@ -515,17 +515,17 @@ func.func @ReduceMeanSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceProdSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceProdSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceProd(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceProd(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceProd([[VAL_1]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 // -----
@@ -533,17 +533,17 @@ func.func @ReduceProdSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: func.func @ReduceSumSplitOverHeight(
-// CHECK-SAME:      %[[VAL_0:.*]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
+// CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
 func.func @ReduceSumSplitOverHeight(%arg0: tensor<1x1024x7x7xf16>) -> tensor<1x1x7x1xf16> {
   %0 = VPU.ReduceSum(%arg0) {axes_value = [1, 3], keep_dims, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1024x7x7xf16> -> tensor<1x1x7x1xf16>
   return %0 : tensor<1x1x7x1xf16>
 
-    // CHECK:   %[[VAL_1:.*]] = VPU.Copy(%[[VAL_0]]
+    // CHECK:   [[VAL_1:%.+]] = VPU.Copy([[VAL_0]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1024x7x7xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_4:.*]] = VPU.ReduceSum(%[[VAL_1]]
+    // CHECK:   [[VAL_4:%.+]] = VPU.ReduceSum([[VAL_1]]
     // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x7x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    // CHECK:   %[[VAL_7:.*]] = VPU.Copy(%[[VAL_4]]
-    // CHECK:   return %[[VAL_7]] : tensor<1x1x7x1xf16>
+    // CHECK:   [[VAL_7:%.+]] = VPU.Copy([[VAL_4]]
+    // CHECK:   return [[VAL_7]] : tensor<1x1x7x1xf16>
 }
 
 // -----
@@ -1664,13 +1664,13 @@ func.func @MultiplySWSOKTileAtBroadcastAxis(%arg0: tensor<1x32x1x44xf16, {order 
     return %0 : tensor<1x32x1x44xf16, {order = #NHWC}>
 
     //CHECK:        [[INPUT0:%.+]] = VPU.Copy
-    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x1x44xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x1x44xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 8, 1, 1]}>
 
     //CHECK:        [[INPUT1:%.+]] = VPU.Copy
     //CHECK-SAME:                       -> !VPU.DistributedTensor<1x1x1x44xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     //CHECK:        [[MULTIPLY:%.+]] = VPU.Multiply([[INPUT0]], [[INPUT1]])
-    //CHECK-SAME:      -> !VPU.DistributedTensor<1x32x1x44xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    //CHECK-SAME:      -> !VPU.DistributedTensor<1x32x1x44xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 8, 1, 1]}>
 
     //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[MULTIPLY]]
 
@@ -3058,274 +3058,6 @@ func.func @RoundSWClustering(%arg0: tensor<1x1x1x513xf16>) -> tensor<1x1x1x513xf
     //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[ROUND]]
 
     //CHECK:        return [[OUTPUT]] : tensor<1x1x1x513xf16>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateClustering
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateClustering(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]],
-    // CHECK-SAME:      [[COPY_RHS]],
-    // CHECK-SAME:      [[COPY_LHS_SCALES]],
-    // CHECK-SAME:      [[COPY_RHS_SCALES]])
-    // CHECK-SAME:   -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]])
-    // CHECK-SAME:  -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-}
-
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateSplitOverHeight
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateSplitOverHeight(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 2, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 2, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]],
-    // CHECK-SAME:      [[COPY_RHS]],
-    // CHECK-SAME:      [[COPY_LHS_SCALES]],
-    // CHECK-SAME:      [[COPY_RHS_SCALES]])
-    // CHECK-SAME:   -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 2, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]])
-    // CHECK-SAME:  -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateSplitOverKernel
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateSplitOverKernel(
-    %LHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x1xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x1xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
-    } : tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x16x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 2, 1, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 2, 1, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 2, 1, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 2, 1, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]],
-    // CHECK-SAME:      [[COPY_RHS]],
-    // CHECK-SAME:      [[COPY_LHS_SCALES]],
-    // CHECK-SAME:      [[COPY_RHS_SCALES]])
-    // CHECK-SAME:   -> !VPU.DistributedTensor<1x64x16x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 2, 1, 1],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]])
-    // CHECK-SAME:  -> tensor<1x64x16x1xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x1xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x1xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @AccumulateSplitOverWidth
-// CHECK-SAME: ([[LHS:%arg[0-9]]]: tensor<1x64x16x32xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS:%arg[0-9]]]: tensor<1x64x16x32xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[LHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>,
-// CHECK-SAME:  [[RHS_SCALES:%arg[0-9]]]: tensor<1x64x1x1xf16, {order = #NHWC}>)
-func.func @AccumulateSplitOverWidth(
-    %LHS: tensor<1x64x16x32xf16, {order = #NHWC}>,
-    %RHS: tensor<1x64x16x32xf16, {order = #NHWC}>,
-    %LHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>,
-    %RHS_SCALES: tensor<1x64x1x1xf16, {order = #NHWC}>
-) -> tensor<1x64x16x32xf16, {order = #NHWC}> {
-    %ACCUMULATE = VPU.Accumulate(%LHS, %RHS, %LHS_SCALES, %RHS_SCALES) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>
-    } : tensor<1x64x16x32xf16, {order = #NHWC}>,
-        tensor<1x64x16x32xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>,
-        tensor<1x64x1x1xf16, {order = #NHWC}>
-            -> tensor<1x64x16x32xf16, {order = #NHWC}>
-
-    // CHECK:   [[COPY_LHS:%.+]] = VPU.Copy([[LHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x32xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 1, 2],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS:%.+]] = VPU.Copy([[RHS]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x16x32xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 1, 2],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_LHS_SCALES:%.+]] = VPU.Copy([[LHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_RHS_SCALES:%.+]] = VPU.Copy([[RHS_SCALES]])
-    // CHECK-SAME:  -> !VPU.DistributedTensor<1x64x1x1xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "DUPLICATED",
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[ACCUMULATE:%.+]] = VPU.Accumulate(
-    // CHECK-SAME:      [[COPY_LHS]],
-    // CHECK-SAME:      [[COPY_RHS]],
-    // CHECK-SAME:      [[COPY_LHS_SCALES]],
-    // CHECK-SAME:      [[COPY_RHS_SCALES]])
-    // CHECK-SAME:   -> !VPU.DistributedTensor<1x64x16x32xf16, #NHWC, @CMX_NN, {
-    // CHECK-SAME:      mode = "SEGMENTED",
-    // CHECK-SAME:      num_tiles = [1, 1, 1, 2],
-    // CHECK-SAME:      num_clusters = 2 : i64
-    // CHECK-SAME:  }>
-
-    // CHECK:   [[COPY_OUT:%.+]] = VPU.Copy([[ACCUMULATE]])
-    // CHECK-SAME:  -> tensor<1x64x16x32xf16, {order = #NHWC}>
-
-    return %ACCUMULATE : tensor<1x64x16x32xf16, {order = #NHWC}>
-    // CHECK:   return [[COPY_OUT]] : tensor<1x64x16x32xf16, {order = #NHWC}>
 }
 
 // -----

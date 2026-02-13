@@ -9,6 +9,7 @@
 
 #include <mlir/IR/BuiltinTypes.h>
 
+#include <mlir/IR/BuiltinAttributes.h>
 //
 // Generated
 //

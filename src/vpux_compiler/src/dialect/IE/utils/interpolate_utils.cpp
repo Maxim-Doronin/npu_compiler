@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,13 +53,12 @@ mlir::Value createPadding(mlir::PatternRewriter& rewriter, IE::InterpolateOp ori
 
     backOffsets[axis.ind()] = inputShape[axis] - 1;
     backSizes[axis.ind()] = 1;
-    auto forwardSubSlice =
-            rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("{0}_forward_slice"), locPrefix), input,
-                                         getIntArrayAttr(origOp.getContext(), forwardOffsets),
-                                         getIntArrayAttr(origOp.getContext(), forwardSizes))
-                    .getResult();
-    auto backSubSlice = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("{0}_backward_slice"), locPrefix),
-                                                     input, getIntArrayAttr(origOp.getContext(), backOffsets),
+    auto forwardSubSlice = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "{0}_forward_slice", locPrefix), input,
+                                                        getIntArrayAttr(origOp.getContext(), forwardOffsets),
+                                                        getIntArrayAttr(origOp.getContext(), forwardSizes))
+                                   .getResult();
+    auto backSubSlice = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "{0}_backward_slice", locPrefix), input,
+                                                     getIntArrayAttr(origOp.getContext(), backOffsets),
                                                      getIntArrayAttr(origOp.getContext(), backSizes))
                                 .getResult();
 
@@ -75,8 +74,7 @@ mlir::Value createPadding(mlir::PatternRewriter& rewriter, IE::InterpolateOp ori
     if (backpad != 0) {
         subSlices.insert(subSlices.end(), backpad, backSubSlice);
     }
-    return rewriter
-            .create<IE::ConcatOp>(takeOpLoc(origOp, StringLiteral("{0}_pad_slice_concat"), locPrefix), subSlices, axis)
+    return rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "{0}_pad_slice_concat", locPrefix), subSlices, axis)
             .getOutput();
 }
 

@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
@@ -156,7 +157,10 @@ namespace {
 
 class FuseReshapes final : public mlir::OpRewritePattern<IE::ReshapeOp> {
 public:
-    using mlir::OpRewritePattern<IE::ReshapeOp>::OpRewritePattern;
+    FuseReshapes(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ReshapeOp>(ctx, benefit) {
+        this->setDebugName("FuseReshapes");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ReshapeOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -190,7 +194,10 @@ namespace {
 
 class ConvertConstToAttr final : public mlir::OpRewritePattern<IE::ReshapeOp> {
 public:
-    using mlir::OpRewritePattern<IE::ReshapeOp>::OpRewritePattern;
+    ConvertConstToAttr(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ReshapeOp>(ctx, benefit) {
+        this->setDebugName("ConvertConstToAttr");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ReshapeOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -231,7 +238,10 @@ namespace {
 //      c x h x w -> c x (h x w) x 1 x 1 (AffineReshape, for the last dims equals to 1 exception)
 class ConvertToAffineReshape final : public mlir::OpRewritePattern<IE::ReshapeOp> {
 public:
-    using mlir::OpRewritePattern<IE::ReshapeOp>::OpRewritePattern;
+    ConvertToAffineReshape(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ReshapeOp>(ctx, benefit) {
+        this->setDebugName("ConvertToAffineReshape");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ReshapeOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -271,4 +281,11 @@ void vpux::IE::ReshapeOp::getCanonicalizationPatterns(mlir::RewritePatternSet& p
     patterns.add<FuseReshapes>(ctx);
     patterns.add<ConvertConstToAttr>(ctx);
     patterns.add<ConvertToAffineReshape>(ctx);
+}
+
+void vpux::IE::registerReshapeOpRewriters(RewriterRegistry& registry, ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                          size_t index) {
+    registry.registerRewriter<FuseReshapes>("fuse-reshapes", benefitLevels[index]);
+    registry.registerRewriter<ConvertConstToAttr>("convert-const-to-attr", benefitLevels[index]);
+    registry.registerRewriter<ConvertToAffineReshape>("convert-to-affine-reshape", benefitLevels[index]);
 }

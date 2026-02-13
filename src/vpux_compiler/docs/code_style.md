@@ -386,6 +386,8 @@ class NCEClusterTaskOp;
 vpux::VPUIP::NCEClusterTaskOp processNCEOp(vpux::VPUIP::NCEClusterTaskOp);
 ```
 
+> **Note**: Some headers also provide dedicated headers for forward declarations. For example, the operations header from every dialect provides such a header (e.g. `VPUIP/IR/ops_fwd.hpp`, which contains the forward-declarations for all classes from `VPUIP/IR/ops.hpp`). If such a header exists, it is recommended to use it instead of manually forward-declaring the symbols. The forward-declarations header is normally placed next to its associated header.
+
 By using forward declarations, the definition of a symbol is no longer known to the file. The declaration is sufficient for simple cases like the one above, where the symbol is used in the signature of a function (as an argument or a return value). Forward declaration however is not usable in case the definition of a symbol is necessary, such as when the size of the object or its internal details (e.g. methods) must be known. Examples:
 
 ```cpp
@@ -410,9 +412,9 @@ Based on these examples, it should be clear when it is feasible to use forward d
 
 When using forward declaration for a symbol, its definition will likely be necessary in the source file(s) that use it. For the first example above, the source file that defines the `processNCEOp` method will need to include the `VPUIP/IR/ops.hpp` header. The benefit of this approach is that only this source file will have to process `VPUIP/IR/ops.hpp` during the project build, instead of all of the sources which include the header that declares `processNCEOp`.
 
-**Note:** The forward declaration of a symbol must be the identical to the definition. For example, if an enum is defined as `enum class MyEnum : uint64_t {...}`, its forward declaration must reflect this type as well: `enum class MyEnum : uint64_t;`. Otherwise, the project will fail to build with an error.
+> **Note:** The forward declaration of a symbol must be the identical to the definition. For example, if an enum is defined as `enum class MyEnum : uint64_t {...}`, its forward declaration must reflect this type as well: `enum class MyEnum : uint64_t;`. Otherwise, the project will fail to build with an error.
 
-**Note:** In case the definition of a symbol is necessary, but a translation unit only has access to its declaration, an incomplete type error will appear during build. To solve this, the header which contains the symbol's definition should be included in the source that requires it.
+> **Note:** In case the definition of a symbol is necessary, but a translation unit only has access to its declaration, an incomplete type error will appear during build. To solve this, the header which contains the symbol's definition should be included in the source that requires it.
 
 ## Patterns
 

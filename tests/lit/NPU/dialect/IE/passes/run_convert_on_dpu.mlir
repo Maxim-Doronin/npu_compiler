@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -104,7 +104,7 @@ func.func @NotFoldConvertIntoConvNotSingleUser(%arg0: tensor<1x8x128x128xf16, {o
   %1 = IE.Convert(%0) {dstElemType = f32} : tensor<1x2x128x64xf16, {order = #NHWC}> -> tensor<1x2x128x64xf32, {order = #NHWC}>
   return %1, %0 : tensor<1x2x128x64xf32, {order = #NHWC}>, tensor<1x2x128x64xf16, {order = #NHWC}>
 
-  // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]], %{{.+}})
+  // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]], {{.+}})
   // CHECK-SAME:    -> tensor<1x2x128x64xf16, {order = #NHWC}>
   // CHECK-NEXT:  [[RET:%.+]] = IE.Convert([[CONV]]) {dstElemType = f32}
   // CHECK-SAME:    -> tensor<1x2x128x64xf32, {order = #NHWC}>

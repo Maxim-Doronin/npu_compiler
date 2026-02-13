@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @noConvertSpaceToDepth_BLOCKS_FIRST(%arg0: tensor<1x3x512x512xf16>) ->
 
     return %0 : tensor<1x48x128x128xf16>
 
-    //CHECK: [[SPACETODEPTH:%.*]] = IE.SpaceToDepthOp(%arg0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>} : tensor<1x3x512x512xf16> -> tensor<1x48x128x128xf16>
+    //CHECK: [[SPACETODEPTH:%.+]] = IE.SpaceToDepthOp(%arg0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>} : tensor<1x3x512x512xf16> -> tensor<1x48x128x128xf16>
     //CHECK: return [[SPACETODEPTH]] : tensor<1x48x128x128xf16>
 }
 // -----
@@ -27,7 +27,7 @@ func.func @noConvertSpaceToDepth_DEPTH_FIRST(%arg0: tensor<1x3x512x512xf16>) -> 
 
     return %0 : tensor<1x48x128x128xf16>
 
-    //CHECK: [[SPACETODEPTH:%.*]] = IE.SpaceToDepthOp(%arg0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>} : tensor<1x3x512x512xf16> -> tensor<1x48x128x128xf16>
+    //CHECK: [[SPACETODEPTH:%.+]] = IE.SpaceToDepthOp(%arg0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>} : tensor<1x3x512x512xf16> -> tensor<1x48x128x128xf16>
     //CHECK: return [[SPACETODEPTH]] : tensor<1x48x128x128xf16>
 }
 // -----
@@ -40,7 +40,7 @@ func.func @noConvertSpaceToDepth_BLOCKS_FIRST(%arg0: tensor<1x3x520x520xf16>) ->
 
     return %0 : tensor<1x202800x2x2xf16>
 
-    //CHECK: [[SPACETODEPTH:%.*]] = IE.SpaceToDepthOp(%arg0) {block_size = 260 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>} : tensor<1x3x520x520xf16> -> tensor<1x202800x2x2xf16>
+    //CHECK: [[SPACETODEPTH:%.+]] = IE.SpaceToDepthOp(%arg0) {block_size = 260 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>} : tensor<1x3x520x520xf16> -> tensor<1x202800x2x2xf16>
     //CHECK: return [[SPACETODEPTH]] : tensor<1x202800x2x2xf16>
 }
 
@@ -54,6 +54,6 @@ func.func @noConvertSpaceToDepth_DEPTH_FIRST(%arg0: tensor<1x3x520x520xf16>) -> 
 
     return %0 : tensor<1x202800x2x2xf16>
 
-    //CHECK: [[SPACETODEPTH:%.*]] = IE.SpaceToDepthOp(%arg0) {block_size = 260 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>} : tensor<1x3x520x520xf16> -> tensor<1x202800x2x2xf16>
+    //CHECK: [[SPACETODEPTH:%.+]] = IE.SpaceToDepthOp(%arg0) {block_size = 260 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>} : tensor<1x3x520x520xf16> -> tensor<1x202800x2x2xf16>
     //CHECK: return [[SPACETODEPTH]] : tensor<1x202800x2x2xf16>
 }

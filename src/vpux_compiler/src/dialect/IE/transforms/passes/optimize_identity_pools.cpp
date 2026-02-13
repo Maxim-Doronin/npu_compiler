@@ -54,11 +54,11 @@ mlir::LogicalResult RemoveIdentityPool<ConcreteOp>::matchAndRewrite(ConcreteOp o
     auto inputType = origOp.getInput().getType();
     auto outputType = origOp.getOutput().getType();
     if (inputType != outputType) {
-        _log.nest().trace("Mismatched input/output type '{1}' with '{2}'", inputType, outputType);
+        _log.nest().trace("Mismatched input/output type '{0}' with '{1}'", inputType, outputType);
         return mlir::failure();
     }
 
-    _log.nest().trace("Replacing '{1}' with '{2}'", origOp->getName(), origOp.getInput());
+    _log.nest().trace("Replacing '{0}' with '{1}'", origOp->getName(), origOp.getInput());
     rewriter.replaceOp(origOp, origOp.getInput());
     return mlir::success();
 }

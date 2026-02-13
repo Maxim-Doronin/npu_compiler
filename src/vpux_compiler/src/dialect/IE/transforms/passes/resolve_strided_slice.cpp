@@ -125,15 +125,14 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
                 sliceShape[axis] = 1;
                 for (int64_t i = 0; i < sliceNums; i++) {
                     sliceOffset[axis] = i;
-                    concatInputs.push_back(
-                            rewriter.create<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("slice_{0}_{1}"), i, axis),
-                                                         source, sliceOffset, sliceShape)
-                                    .getResult());
+                    concatInputs.push_back(rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "slice_{0}_{1}", i, axis),
+                                                                        source, sliceOffset, sliceShape)
+                                                   .getResult());
                 }
                 std::reverse(concatInputs.begin(), concatInputs.end());
 
-                auto concatOp = rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, StringLiteral("concat_in_{0}"), axis),
-                                                              concatInputs, Dim(axis));
+                auto concatOp = rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "concat_in_{0}", axis), concatInputs,
+                                                              Dim(axis));
                 source = concatOp.getOutput();
 
                 /* Since the elements along `axis` are being reversed, also need to correct begins and ends indices:
@@ -174,8 +173,8 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
             beginAttr = getIntArrayAttr(getContext(), newBegin);
             newInputShape.erase(newInputShape.begin() + index);
             source = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
-                    rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, StringLiteral("slice_{0}"), index), source,
-                                                         nullptr, false, getIntArrayAttr(getContext(), newInputShape)));
+                    rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "slice_{0}", index), source, nullptr, false,
+                                                         getIntArrayAttr(getContext(), newInputShape)));
         }
         const auto endsAttr = getIntArrayAttr(getContext(), sizes);
         newOp = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "slice_source"), source, beginAttr, endsAttr);

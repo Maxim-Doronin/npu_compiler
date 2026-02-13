@@ -23,3 +23,24 @@ mlir::LogicalResult vpux::IE::FloorOp::inferReturnTypeComponents(
 
     return mlir::success();
 }
+
+//
+// fold
+//
+
+mlir::OpFoldResult vpux::IE::FloorOp::fold(FoldAdaptor /*adaptor*/) {
+    const auto inputType = mlir::cast<NDTypeInterface>(getInput().getType());
+    const auto outputType = mlir::cast<NDTypeInterface>(getOutput().getType());
+
+    if (inputType != outputType) {
+        return nullptr;
+    }
+
+    if (const auto elemType = mlir::dyn_cast<mlir::IntegerType>(inputType.getElementType())) {
+        if (elemType.isSignedInteger(32) || elemType.isSignedInteger(64)) {
+            return getInput();
+        }
+    }
+
+    return nullptr;
+}

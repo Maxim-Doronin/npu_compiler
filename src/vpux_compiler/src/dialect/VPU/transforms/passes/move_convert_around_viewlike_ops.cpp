@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,21 +41,19 @@ template <class ViewLikeOp>
 mlir::LogicalResult MoveConvertAfterOperation<ViewLikeOp>::matchAndRewrite(ViewLikeOp originOp,
                                                                            mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", originOp->getName(), originOp->getLoc());
-    auto nestedLogger = _log.nest();
     auto convertOp = originOp->getOperand(0).template getDefiningOp<VPU::ConvertOp>();
     if (convertOp == nullptr) {
-        nestedLogger.trace("Did not find input to be ConvertOp", originOp->getLoc());
-        return mlir::failure();
+        return matchFailed(rewriter, originOp, "Did not find input to be ConvertOp at '{0}'", originOp->getLoc());
     }
 
     if (!convertOp->hasOneUse()) {
-        nestedLogger.trace("ConvertOp has more than 1 users", convertOp->getLoc());
-        return mlir::failure();
+        return matchFailed(rewriter, originOp, "ConvertOp has more than 1 users at '{0}'", convertOp->getLoc());
     }
 
     if (!isConvertSupportedOnDMA<VPU::ConvertOp>(convertOp)) {
-        nestedLogger.trace("ConvertOp not supported on DMA only FP32->BF16/F16 is supported", originOp->getLoc());
-        return mlir::failure();
+        return matchFailed(rewriter, originOp,
+                           "ConvertOp not supported on DMA only FP32->BF16/F16 is supported at '{0}'",
+                           originOp->getLoc());
     }
 
     // Move ConvertOp after ViewLikeOp so we can later fuse Copy and convertDMAOp

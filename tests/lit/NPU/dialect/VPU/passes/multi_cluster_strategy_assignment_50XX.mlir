@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -251,6 +251,82 @@ func.func @MultiplyInconsistentShapeSplitOverHeight(%arg0: tensor<1x4x256x1xf16,
 
     return %0 : tensor<1x4x256x2048xf16, {order = #map}>
 
-    //CHECK:      [[MULTIPLY:%.*]] = VPU.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x256x1xf16, {order = #map}>, tensor<1x1x256x2048xf16, {order = #map}> -> tensor<1x4x256x2048xf16, {order = #map}>
+    //CHECK:      [[MULTIPLY:%.+]] = VPU.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x256x1xf16, {order = #map}>, tensor<1x1x256x2048xf16, {order = #map}> -> tensor<1x4x256x2048xf16, {order = #map}>
     //CHECK:      return [[MULTIPLY]] : tensor<1x4x256x2048xf16, {order = #map}>
+}
+
+// -----
+
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+config.Resources 3 of @NCE at 2.100000e+03 MHz {
+    config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+    config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+    config.ExecutorResource 2 of @SHAVE_ACT
+    config.ExecutorResource 1 of @DPU
+}
+
+// CHECK-LABEL:   @FlashSDPA_TargetSeqLen1_SoK
+func.func @FlashSDPA_TargetSeqLen1_SoK(%query: tensor<1x32x1x128xf16>, %key: tensor<1x32x1024x128xf16>, %value: tensor<1x32x1024x128xf16, {order = #NCWH}>, %attention_mask: tensor<1x1x1x1024xf16>) -> tensor<1x32x1x128xf16> {
+    %weights_table0 = const.Declare tensor<1x1x1024x4xsi32> = dense<0> : tensor<1x1x1024x4xsi32>
+    %weights_table1 = const.Declare tensor<1x1x128x4xsi32> = dense<0> : tensor<1x1x128x4xsi32>
+    %dpu_desc = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
+    %aux_buffer = VPU.Empty : tensor<1x4x1x1024xf16>
+    %running_out = const.Declare tensor<1x32x1x128xf16> = dense<0.000000e+00> : tensor<32x1x128xf16>, [#const.Reshape<[1, 32, 1, 128]>]
+    %running_max = const.Declare tensor<1x32x1x1xf16> = dense<0xFC00> : tensor<32x1xf16>, [#const.Reshape<[1, 1, 32, 1]>, #const.AffineReshape<[[0], [0], [1], [2, 3]], [1, 32, 1, 1]>]
+    %running_sum = const.Declare tensor<1x32x1x1xf32> = dense<0.000000e+00> : tensor<32x1xf32>, [#const.Reshape<[1, 1, 32, 1]>, #const.CastElemType<f32>, #const.AffineReshape<[[0], [0], [1], [2, 3]], [1, 32, 1, 1]>]
+
+    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+        VPU.FlashSDPA(%query, %key, %value, %aux_buffer, %dpu_desc, %weights_table0, %weights_table1, %running_out, %running_max, %running_sum, %attention_mask) {
+            is_head = true,
+            is_tail = true,
+            source_seq_len_pad_size = 0 : i64
+        } : tensor<1x32x1x128xf16>, tensor<1x32x1024x128xf16>, tensor<1x32x1024x128xf16, {order = #NCWH}>,
+            tensor<1x4x1x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
+            tensor<1x1x128x4xsi32>, tensor<1x32x1x128xf16>, tensor<1x32x1x1xf16>,
+            tensor<1x32x1x1xf32>, tensor<1x1x1x1024xf16>
+        -> tensor<1x32x1x128xf16>, tensor<1x32x1x1xf16>, tensor<1x32x1x1xf32>, tensor<1x32x1x128xf16>
+
+    return %result_running_output : tensor<1x32x1x128xf16>
+
+    // CHECK:       VPU.FlashSDPA
+    // CHECK-SAME:      SplitOverKernel
+}
+
+// -----
+
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+config.Resources 3 of @NCE at 2.100000e+03 MHz {
+    config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+    config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+    config.ExecutorResource 2 of @SHAVE_ACT
+    config.ExecutorResource 1 of @DPU
+}
+
+// CHECK-LABEL:   @FlashSDPA_TargetSeqLen1024_SoH
+func.func @FlashSDPA_TargetSeqLen1024_SoH(%query: tensor<1x32x1024x128xf16>, %key: tensor<1x32x1024x128xf16>, %value: tensor<1x32x1024x128xf16, {order = #NCWH}>, %attention_mask: tensor<1x1x1024x1024xf16>) -> tensor<1x32x1024x128xf16> {
+    %weights_table0 = const.Declare tensor<1x1x1024x4xsi32> = dense<0> : tensor<1x1x1024x4xsi32>
+    %weights_table1 = const.Declare tensor<1x1x128x4xsi32> = dense<0> : tensor<1x1x128x4xsi32>
+    %dpu_desc = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
+    %aux_buffer = VPU.Empty : tensor<1x4x1024x1024xf16>
+    %running_out = const.Declare tensor<1x32x1024x128xf16> = dense<0.000000e+00> : tensor<1x32x1024x128xf16>
+    %running_max = const.Declare tensor<1x32x1024x1xf16> = dense<0xFC00> : tensor<1x32x1024x1xf16>
+    %running_sum = const.Declare tensor<1x32x1024x1xf32> = dense<0.000000e+00> : tensor<1x32x1024x1xf32>
+
+    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+        VPU.FlashSDPA(%query, %key, %value, %aux_buffer, %dpu_desc, %weights_table0, %weights_table1, %running_out, %running_max, %running_sum, %attention_mask) {
+            is_head = true,
+            is_tail = true,
+            source_seq_len_pad_size = 0 : i64
+        } : tensor<1x32x1024x128xf16>, tensor<1x32x1024x128xf16>, tensor<1x32x1024x128xf16, {order = #NCWH}>,
+            tensor<1x4x1024x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
+            tensor<1x1x128x4xsi32>, tensor<1x32x1024x128xf16>, tensor<1x32x1024x1xf16>,
+            tensor<1x32x1024x1xf32>, tensor<1x1x1024x1024xf16>
+        -> tensor<1x32x1024x128xf16>, tensor<1x32x1024x1xf16>, tensor<1x32x1024x1xf32>, tensor<1x32x1024x128xf16>
+
+    return %result_running_output : tensor<1x32x1024x128xf16>
+
+    // CHECK:       VPU.FlashSDPA
+    // CHECK-SAME:      SplitOverHeight
 }

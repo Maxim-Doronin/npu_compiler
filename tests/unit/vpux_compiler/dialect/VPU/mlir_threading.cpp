@@ -15,6 +15,7 @@
 #include <mlir/IR/Types.h>
 
 #include <gtest/gtest.h>
+#include <mlir/Support/LLVM.h>
 
 using namespace vpux;
 
@@ -166,6 +167,54 @@ TEST_F(MLIRThreadPool, ParallelFor_4d) {
             for (auto it : policy) {
                 runMLIRLoop1D(numThreads, it);
             }
+        }
+    }
+}
+
+TEST_F(MLIRThreadPool, ParallelFindIf) {
+    SmallVector<int64_t> values = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
+
+    for (size_t numThreads = 1; numThreads <= MAX_TEST_THREADS; numThreads *= 2) {
+        mlir::MLIRContext ctx(registry);
+        llvm::StdThreadPool threadPool(llvm::optimal_concurrency(numThreads));
+        ctx.disableMultithreading();
+        ctx.setThreadPool(threadPool);
+
+        {
+            // Find first element
+            auto result = vpux::parallel_find_index(&ctx, values.size(), [&](size_t idx) {
+                return values[idx] == 10;
+            });
+            EXPECT_EQ(result.value_or(-1), 0);
+        }
+        {
+            // Find middle element
+            auto result = vpux::parallel_find_index(&ctx, values.size(), [&](size_t idx) {
+                return values[idx] == 50;
+            });
+            EXPECT_EQ(result.value_or(-1), 4);
+        }
+        {
+            // Find last element
+            auto result = vpux::parallel_find_index(&ctx, values.size(), [&](size_t idx) {
+                return values[idx] == 100;
+            });
+            EXPECT_EQ(result.value_or(-1), 9);
+        }
+        {
+            // Missing element
+            auto result = vpux::parallel_find_index(&ctx, values.size(), [&](size_t idx) {
+                return values[idx] == 0;
+            });
+            EXPECT_TRUE(mlir::failed(result));
+        }
+        {
+            // Size of zero
+            const size_t size = 0;
+            auto result = vpux::parallel_find_index(&ctx, size, [&](size_t idx) {
+                return values[idx] == 10;
+            });
+            EXPECT_TRUE(mlir::failed(result));
         }
     }
 }

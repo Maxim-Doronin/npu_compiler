@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,7 +48,7 @@ int readFile(const char* fileName, char** buffer, size_t* size) {
     }
 
     // Null-terminate the buffer
-    buffer[bytesRead] = '\0';
+    binaryBuffer[bytesRead] = '\0';
 
     if (bytesRead <= 0) {
         free(binaryBuffer);
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
                "where\n"
                "\tnetwork.blob - blob with profiling enabled ('PERF_COUNT YES' parameter in the compiler)"
                "\tprofiling_output.bin - raw profiling output acquired from InferenceManagerDemo according to "
-               "guides/how-to-use-profiling.md\n");
+               "guides/how_to_use_profiling.md\n");
         return EXIT_FAILURE;
     }
 
@@ -95,9 +95,9 @@ int main(int argc, char** argv) {
     }
 
     vcl_result_t ret = VCL_RESULT_SUCCESS;
-    vcl_profiling_input_t profilingApiInput = {.blobData = blobBuffer,
+    vcl_profiling_input_t profilingApiInput = {.blobData = (uint8_t*)blobBuffer,
                                                .blobSize = blobSize,
-                                               .profData = profBuffer,
+                                               .profData = (uint8_t*)profBuffer,
                                                .profSize = profSize};
     vcl_profiling_handle_t profHandle = NULL;
     ret = vclProfilingCreate(&profilingApiInput, &profHandle, NULL);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,9 +33,9 @@ module @act_shave_weights_access {
   }
 }
 
-// CHECK: %[[SEC_SCRATCH:.*]] = ELFNPU37XX.CreateLogicalSection secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_PROC_SHAVE") {{{.*}} secName = ".data.BuffersIO"} -> !ELFNPU37XX.Section
+// CHECK: [[SEC_SCRATCH:%.+]] = ELFNPU37XX.CreateLogicalSection secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_PROC_SHAVE") {{{.+}} secName = ".data.BuffersIO"} -> !ELFNPU37XX.Section
 
-// CHECK: %[[SEC_CONST:.*]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {{{.*}} secName = ".data.ConstIO"} -> !ELFNPU37XX.Section
+// CHECK: [[SEC_CONST:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_SHAVE") {{{.+}} secName = ".data.ConstIO"} -> !ELFNPU37XX.Section
 
 // -----
 
@@ -66,6 +66,6 @@ module @act_shave_scratch_access {
   }
 }
 
-// CHECK: %[[SEC_SCRATCH:.*]] = ELFNPU37XX.CreateLogicalSection secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_PROC_SHAVE") {{{.*}} secName = ".data.BuffersIO"} -> !ELFNPU37XX.Section
+// CHECK: [[SEC_SCRATCH:%.+]] = ELFNPU37XX.CreateLogicalSection secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_PROC_SHAVE") {{{.+}} secName = ".data.BuffersIO"} -> !ELFNPU37XX.Section
 
-// CHECK: %[[SEC_CONST:.*]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {{{.*}} secName = ".data.ConstIO"} -> !ELFNPU37XX.Section
+// CHECK: [[SEC_CONST:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {{{.+}} secName = ".data.ConstIO"} -> !ELFNPU37XX.Section

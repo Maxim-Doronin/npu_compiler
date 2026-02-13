@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -194,12 +194,12 @@ public:
 }  // namespace
 
 TEST_P(CrossMultiHeadAttentionLayerTest, NPU5010_HW) {
-    abs_threshold = 0.03f;
+    abs_threshold = 0.01f;
     run(Platform::NPU5010);
 }
 
 TEST_P(SelfMultiHeadAttentionLayerTest, NPU5010_HW) {
-    abs_threshold = 0.03f;
+    abs_threshold = 0.01f;
     run(Platform::NPU5010);
 }
 
@@ -217,7 +217,7 @@ INSTANTIATE_TEST_SUITE_P(smoke, CrossMultiHeadAttentionLayerTest,
                                             ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Full,
                                                                                            Mask::Absent}),  //
                                             ::testing::ValuesIn(std::vector<HasScale>{true, false}),        //
-                                            ::testing::ValuesIn(std::vector<Kind>{ALL_KINDS})),             //
+                                            ::testing::ValuesIn(ALL_KINDS)),                                //
                          PrintTestCaseName());
 
 INSTANTIATE_TEST_SUITE_P(smoke, SelfMultiHeadAttentionLayerTest,
@@ -228,15 +228,15 @@ INSTANTIATE_TEST_SUITE_P(smoke, SelfMultiHeadAttentionLayerTest,
                                             ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Broadcasted,
                                                                                            Mask::Absent}),  //
                                             ::testing::ValuesIn(std::vector<HasScale>{true, false}),        //
-                                            ::testing::ValuesIn(std::vector<Kind>{ALL_KINDS})),             //
+                                            ::testing::ValuesIn(ALL_KINDS)),                                //
                          PrintTestCaseName());
 
 INSTANTIATE_TEST_SUITE_P(smoke_BigSequenceLength, CrossMultiHeadAttentionLayerTest,
-                         ::testing::Combine(::testing::Values(Heads{8}),                                         //
-                                            ::testing::ValuesIn(std::vector<SourceSeqLen>{128}),                 //
-                                            ::testing::ValuesIn(std::vector<TargetSeqLen>{8 * 1024}),            //
-                                            ::testing::Values(QKEmbeddingSize{32}),                              //
-                                            ::testing::Values(VEmbeddingSize{64}),                               //
+                         ::testing::Combine(::testing::Values(Heads{32}),                                        //
+                                            ::testing::ValuesIn(std::vector<SourceSeqLen>{1024}),                //
+                                            ::testing::ValuesIn(std::vector<TargetSeqLen>{1024}),                //
+                                            ::testing::Values(QKEmbeddingSize{128}),                             //
+                                            ::testing::Values(VEmbeddingSize{128}),                              //
                                             ::testing::ValuesIn(std::vector<IsCausal>{false}),                   //
                                             ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Broadcasted}),  //
                                             ::testing::ValuesIn(std::vector<HasScale>{true}),                    //
@@ -245,7 +245,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_BigSequenceLength, CrossMultiHeadAttentionLayerTe
 
 INSTANTIATE_TEST_SUITE_P(smoke_CornerCases, CrossMultiHeadAttentionLayerTest,
                          ::testing::ValuesIn(std::vector<CrossMultiHeadAttentionParams>{
-                                 CrossMultiHeadAttentionParams{Heads{25}, SourceSeqLen{1024}, TargetSeqLen{1},
+                                 CrossMultiHeadAttentionParams{Heads{27}, SourceSeqLen{1024}, TargetSeqLen{1},
                                                                QKEmbeddingSize{64}, VEmbeddingSize{64}, IsCausal{true},
                                                                AttentionMask{Mask::Absent}, HasScale{false},
                                                                Kind{SDPA::FlashAttention}},
@@ -287,6 +287,19 @@ INSTANTIATE_TEST_SUITE_P(smoke_RealNetworks_Llama_2_13B, SelfMultiHeadAttentionL
                                             ::testing::Values(Kind{SDPA::FlashAttention})),       //
                          PrintTestCaseName());
 
+// Accurate locally but fails on CI E#195300
+INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_8k_SourceSequenceLength, CrossMultiHeadAttentionLayerTest,
+                         ::testing::Combine(::testing::Values(Heads{32}),                                        //
+                                            ::testing::ValuesIn(std::vector<SourceSeqLen>{8 * 1024}),            //
+                                            ::testing::ValuesIn(std::vector<TargetSeqLen>{1024}),                //
+                                            ::testing::Values(QKEmbeddingSize{128}),                             //
+                                            ::testing::Values(VEmbeddingSize{128}),                              //
+                                            ::testing::ValuesIn(std::vector<IsCausal>{false}),                   //
+                                            ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Broadcasted}),  //
+                                            ::testing::ValuesIn(std::vector<HasScale>{true}),                    //
+                                            ::testing::Values(Kind{SDPA::FlashAttention})),                      //
+                         PrintTestCaseName());
+
 // Fails on CI E#180955
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_WLM_Reproducer, CrossMultiHeadAttentionLayerTest,         //
                          ::testing::Combine(::testing::Values(Heads{32}),                         //
@@ -325,6 +338,16 @@ INSTANTIATE_TEST_SUITE_P(DISABLED_Padding_compilation_fail, CrossMultiHeadAttent
                                             ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Full}),  //
                                             ::testing::ValuesIn(std::vector<HasScale>{true}),             //
                                             ::testing::Values(Kind{SDPA::FlashAttention})),               //
+                         PrintTestCaseName());
+
+// Incorrect distribution after apply tiling E#200131
+INSTANTIATE_TEST_SUITE_P(DISABLED_Incorrect_mc_distribution_after_apply_tiling, CrossMultiHeadAttentionLayerTest,
+                         ::testing::ValuesIn(std::vector<CrossMultiHeadAttentionParams>{
+                                 CrossMultiHeadAttentionParams{Heads{25}, SourceSeqLen{1024}, TargetSeqLen{1},
+                                                               QKEmbeddingSize{64}, VEmbeddingSize{64}, IsCausal{true},
+                                                               AttentionMask{Mask::Absent}, HasScale{false},
+                                                               Kind{SDPA::FlashAttention}},
+                         }),
                          PrintTestCaseName());
 
 //

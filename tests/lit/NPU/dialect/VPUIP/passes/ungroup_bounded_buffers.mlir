@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,40 +27,40 @@ module @TestCopy attributes {config.arch = #config.arch_kind<NPU37XX>, config.co
 
     %DATA = memref.alloc() : memref<2x4x20x20xf16>
     %SHAPE = memref.alloc() : memref<4xsi32>
-    // CHECK: [[DATA:%.*]] = memref.alloc
-    // CHECK: [[SHAPE:%.*]] = memref.alloc
+    // CHECK: [[DATA:%.+]] = memref.alloc
+    // CHECK: [[SHAPE:%.+]] = memref.alloc
 
     %IN_BOUNDED_BUFFER = VPUIP.GroupBoundedBuffer(%arg0, %arg1) :
         memref<2x4x20x20xf16>, memref<4xsi32>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECK-NOT: [[IN_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[IN_DATA]], [[IN_SHAPE]])
+    // CHECK-NOT: [[IN_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[IN_DATA]], [[IN_SHAPE]])
     %BOUNDED_BUFFER = VPUIP.GroupBoundedBuffer(%DATA, %SHAPE) :
         memref<2x4x20x20xf16>, memref<4xsi32>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECK-NOT: [[BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[DATA]], [[SHAPE]])
+    // CHECK-NOT: [[BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[DATA]], [[SHAPE]])
 
     %COPY = VPUIP.Copy inputs(%IN_BOUNDED_BUFFER: !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>)
                        outputs (%BOUNDED_BUFFER: !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>)
                        -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECK: [[DATA_COPY:%.*]] = VPUIP.Copy
+    // CHECK: [[DATA_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[IN_DATA]]
     // CHECK-SAME: outputs([[DATA]]
-    // CHECK: [[SHAPE_COPY:%.*]] = VPUIP.Copy
+    // CHECK: [[SHAPE_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[IN_SHAPE]]
     // CHECK-SAME: outputs([[SHAPE]]
-    // CHECK-NOT: [[COPY_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[DATA_COPY]], [[SHAPE_COPY]])
+    // CHECK-NOT: [[COPY_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[DATA_COPY]], [[SHAPE_COPY]])
 
     %OUT_DATA, %OUT_SHAPE = VPUIP.UngroupBoundedBuffer(%COPY) :
         !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
         -> memref<2x4x20x20xf16>, memref<4xsi32>
-    // CHECK-NOT: [[DDR_OUT_DATA:%.*]], [[DDR_OUT_SHAPE:%.*]] = VPUIP.UngroupBoundedBuffer
+    // CHECK-NOT: [[DDR_OUT_DATA:%.+]], [[DDR_OUT_SHAPE:%.+]] = VPUIP.UngroupBoundedBuffer
 
     %RESULT_DATA = VPUIP.Copy inputs(%OUT_DATA: memref<2x4x20x20xf16>) outputs(%arg2 : memref<2x4x20x20xf16>) -> memref<2x4x20x20xf16>
     %RESULT_SHAPE = VPUIP.Copy inputs(%OUT_SHAPE: memref<4xsi32>) outputs(%arg3 : memref<4xsi32>) -> memref<4xsi32>
-    // CHECK: [[DATA_RESULT:%.*]] = VPUIP.Copy
+    // CHECK: [[DATA_RESULT:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[DATA_COPY]]
     // CHECK-SAME: outputs([[OUT_DATA]]
-    // CHECK: [[SHAPE_RESULT:%.*]] = VPUIP.Copy
+    // CHECK: [[SHAPE_RESULT:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[SHAPE_COPY]]
     // CHECK-SAME: outputs([[OUT_SHAPE]]
 
@@ -105,8 +105,8 @@ module @TestSwKernel attributes {config.arch = #config.arch_kind<NPU37XX>, confi
     // CMX Input
     %ALLOC0 = memref.alloc() : memref<2x4x20x20xf16, [@CMX_NN, 0]>
     %ALLOC1 = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: [[ALLOC0:%.*]] = memref.alloc
-    // CHECK: [[ALLOC1:%.*]] = memref.alloc
+    // CHECK: [[ALLOC0:%.+]] = memref.alloc
+    // CHECK: [[ALLOC1:%.+]] = memref.alloc
     %CMX_IN_BOUNDED_BUFFER = VPUIP.GroupBoundedBuffer(%ALLOC0, %ALLOC1) :
         memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<4xsi32,[@CMX_NN, 0]>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
@@ -114,17 +114,17 @@ module @TestSwKernel attributes {config.arch = #config.arch_kind<NPU37XX>, confi
     %COPY_IN = VPUIP.Copy inputs(%IN_BOUNDED_BUFFER : !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>)
                           outputs(%CMX_IN_BOUNDED_BUFFER : !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>)
                           -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
-    // CHECK: [[COPY_IN:%.*]] = VPUIP.Copy
+    // CHECK: [[COPY_IN:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[IN_DATA]]
     // CHECK-SAME: outputs([[ALLOC0]]
-    // CHECK: [[SHAPE_COPY:%.*]] = VPUIP.Copy
+    // CHECK: [[SHAPE_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[IN_SHAPE]]
     // CHECK-SAME: outputs([[ALLOC1]]
 
     %ALLOC2 = memref.alloc() : memref<2x4x20x20xf16, [@CMX_NN, 0]>
     %ALLOC3 = memref.alloc() : memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: [[ALLOC2:%.*]] = memref.alloc
-    // CHECK: [[ALLOC3:%.*]] = memref.alloc
+    // CHECK: [[ALLOC2:%.+]] = memref.alloc
+    // CHECK: [[ALLOC3:%.+]] = memref.alloc
     %CMX_OUT_BOUNDED_BUFFER = VPUIP.GroupBoundedBuffer(%ALLOC2, %ALLOC3) :
         memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
@@ -136,7 +136,7 @@ module @TestSwKernel attributes {config.arch = #config.arch_kind<NPU37XX>, confi
             VPUIP.SW.Kernel.run(%arg4, %arg5) : !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>,
                                                 !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
         }
-    // CHECK: [[KERNEL_OUT:%.*]], [[OUTPUT_DIMS:%.*]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>} @VPU.SW::@builtin_ReLU
+    // CHECK: [[KERNEL_OUT:%.+]], [[OUTPUT_DIMS:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>} @VPU.SW::@builtin_ReLU
     // CHECK-SAME: inputs([[ALLOC0]] as %arg4
     // CHECK-SAME: outputs([[ALLOC2]] as %arg5
     // CHECK-SAME: -> (memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
@@ -145,18 +145,18 @@ module @TestSwKernel attributes {config.arch = #config.arch_kind<NPU37XX>, confi
 
     %ALLOC4 = memref.alloc() : memref<2x4x20x20xf16>
     %ALLOC5 = memref.alloc() : memref<4xsi32>
-    // CHECK: [[ALLOC4:%.*]] = memref.alloc
-    // CHECK: [[ALLOC5:%.*]] = memref.alloc
+    // CHECK: [[ALLOC4:%.+]] = memref.alloc
+    // CHECK: [[ALLOC5:%.+]] = memref.alloc
     %OUTPUT = VPUIP.GroupBoundedBuffer(%ALLOC4, %ALLOC5) :
         memref<2x4x20x20xf16>, memref<4xsi32>
         -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
     %COPY_OUTPUT  = VPUIP.Copy inputs(%KERNEL_OUT: !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>)
                           outputs(%OUTPUT: !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>)
                           -> !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16>, dynamic_shape=memref<4xsi32>>
-    // CHECK: [[DATA_COPY:%.*]] = VPUIP.Copy
+    // CHECK: [[DATA_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[KERNEL_OUT]]
     // CHECK-SAME: outputs([[ALLOC4]]
-    // CHECK: [[SHAPE_COPY:%.*]] = VPUIP.Copy
+    // CHECK: [[SHAPE_COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[OUTPUT_DIMS]]
     // CHECK-SAME: outputs([[ALLOC5]]
 
@@ -166,10 +166,10 @@ module @TestSwKernel attributes {config.arch = #config.arch_kind<NPU37XX>, confi
 
     %RESULT_DATA = VPUIP.Copy inputs(%OUT_DATA: memref<2x4x20x20xf16>) outputs(%arg2 : memref<2x4x20x20xf16>) -> memref<2x4x20x20xf16>
     %RESULT_SHAPE = VPUIP.Copy inputs(%OUT_SHAPE: memref<4xsi32>) outputs(%arg3 : memref<4xsi32>) -> memref<4xsi32>
-    // CHECK: [[DATA_RESULT:%.*]] = VPUIP.Copy
+    // CHECK: [[DATA_RESULT:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[DATA_COPY]]
     // CHECK-SAME: outputs([[OUT_DATA]]
-    // CHECK: [[SHAPE_RESULT:%.*]] = VPUIP.Copy
+    // CHECK: [[SHAPE_RESULT:%.+]] = VPUIP.Copy
     // CHECK-SAME: inputs([[SHAPE_COPY]]
     // CHECK-SAME: outputs([[OUT_SHAPE]]
 

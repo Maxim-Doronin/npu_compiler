@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -106,7 +106,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, QuantizeCast) {
 
         auto overlappedDistribution = VPU::DistributionInfo(
                 VPU::DistributionMode::OVERLAPPED, numTiles, {}, {}, {}, numClusters, {}, {}, expectedPerClusterShapes,
-                expectedPerClusterOffsets, expectedPerClusterShapes, expectedPerClusterOffsets, {});
+                expectedPerClusterOffsets, expectedPerClusterShapes, expectedPerClusterOffsets, {}, std::nullopt);
 
         getInputTypeAndTest(overlappedDistribution);
     }
@@ -117,7 +117,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, QuantizeCast) {
 
         auto duplicatedDistribution = VPU::DistributionInfo(
                 VPU::DistributionMode::DUPLICATED, {}, {}, {}, {}, numClusters, {}, {}, expectedPerClusterShapes,
-                expectedPerClusterOffsets, expectedPerClusterShapes, expectedPerClusterOffsets, {});
+                expectedPerClusterOffsets, expectedPerClusterShapes, expectedPerClusterOffsets, {}, std::nullopt);
 
         getInputTypeAndTest(duplicatedDistribution);
     }
@@ -165,7 +165,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, AffineReshape) {
 
         auto segDistribution = VPU::DistributionInfo(VPU::DistributionMode::SEGMENTED, numTiles, {}, {}, {},
                                                      numClusters, {}, {}, inPerClusterShapes, inPerClusterOffsets,
-                                                     inPerClusterShapes, inPerClusterOffsets, {});
+                                                     inPerClusterShapes, inPerClusterOffsets, {}, std::nullopt);
         VPU::DistributionInfo emptyDistribution{};
 
         getInputTypeAndTest(segDistribution, emptyDistribution);
@@ -177,14 +177,14 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, AffineReshape) {
 
         auto inDistribution = VPU::DistributionInfo(VPU::DistributionMode::DUPLICATED, {}, {}, {}, {}, numClusters, {},
                                                     {}, inPerClusterShapes, inPerClusterOffsets, inPerClusterShapes,
-                                                    inPerClusterOffsets, {});
+                                                    inPerClusterOffsets, {}, std::nullopt);
 
         const PerClusterShapesOffsetsVec expectedPerClusterShapes(numClusters, SmallVector<int64_t>{1, 128, 1, 256});
         const PerClusterShapesOffsetsVec expectedPerClusterOffsets(numClusters, SmallVector<int64_t>{0, 0, 0, 0});
 
         auto duplicatedDistribution = VPU::DistributionInfo(
                 VPU::DistributionMode::DUPLICATED, {}, {}, {}, {}, numClusters, {}, {}, expectedPerClusterShapes,
-                expectedPerClusterOffsets, expectedPerClusterShapes, expectedPerClusterOffsets, {});
+                expectedPerClusterOffsets, expectedPerClusterShapes, expectedPerClusterOffsets, {}, std::nullopt);
 
         getInputTypeAndTest(inDistribution, duplicatedDistribution);
     }
@@ -201,7 +201,26 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, AffineReshape) {
         auto inDistribution = VPU::DistributionInfo(
                 VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED, numTiles, {}, {}, {}, numClusters,
                 {}, {}, inPerClusterComputeShapes, inPerClusterComputeOffsets, inPerMemoryClusterShapes,
-                inPerMemoryClusterOffsets, {});
+                inPerMemoryClusterOffsets, {}, std::nullopt);
+        VPU::DistributionInfo emptyDistribution{};
+        getInputTypeAndTest(inDistribution, emptyDistribution);
+    }
+
+    {
+        const auto numTiles = SmallVector<int64_t>({1, 2, 1, 1});
+        const auto memNumTiles = SmallVector<int64_t>({1, 1, 2, 1});
+
+        const PerClusterShapesOffsetsVec inPerClusterComputeShapes(numClusters, SmallVector<int64_t>{1, 64, 16, 16});
+        const PerClusterShapesOffsetsVec inPerClusterComputeOffsets(
+                {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 64, 0, 0}});
+        const PerClusterShapesOffsetsVec inPerMemoryClusterShapes(numClusters, SmallVector<int64_t>{1, 128, 8, 16});
+        const PerClusterShapesOffsetsVec inPerMemoryClusterOffsets(
+                {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 0, 8, 0}});
+
+        auto inDistribution = VPU::DistributionInfo(
+                VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED, numTiles, {}, {}, {}, numClusters,
+                {}, {}, inPerClusterComputeShapes, inPerClusterComputeOffsets, inPerMemoryClusterShapes,
+                inPerMemoryClusterOffsets, {}, memNumTiles);
         VPU::DistributionInfo emptyDistribution{};
         getInputTypeAndTest(inDistribution, emptyDistribution);
     }
@@ -250,7 +269,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, PermuteCast) {
 
         auto ovrDistribution = VPU::DistributionInfo(VPU::DistributionMode::OVERLAPPED, inNumTiles, {}, {}, {},
                                                      numClusters, {}, {}, inPerClusterShapes, inPerClusterOffsets,
-                                                     inPerClusterShapes, inPerClusterOffsets, {});
+                                                     inPerClusterShapes, inPerClusterOffsets, {}, std::nullopt);
 
         const auto outNumTiles = SmallVector<int64_t>({1, 2, 1, 1});
         const PerClusterShapesOffsetsVec outPerClusterShapes(numClusters, SmallVector<int64_t>{1, 20, 1, 256});
@@ -258,7 +277,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, PermuteCast) {
                 {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 20, 0, 0}});
         auto segDistribution = VPU::DistributionInfo(VPU::DistributionMode::SEGMENTED, outNumTiles, {}, {}, {},
                                                      numClusters, {}, {}, outPerClusterShapes, outPerClusterOffsets,
-                                                     outPerClusterShapes, outPerClusterOffsets, {});
+                                                     outPerClusterShapes, outPerClusterOffsets, {}, std::nullopt);
 
         getTypesAndTest(ovrDistribution, segDistribution);
     }
@@ -277,7 +296,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, PermuteCast) {
         auto ovrDistribution =
                 VPU::DistributionInfo(VPU::DistributionMode::OVERLAPPED, inNumTiles, {}, {}, {}, numClusters, {}, {},
                                       inPerClusterComputeShapes, inPerClusterComputeOffsets, inPerClusterMemoryShapes,
-                                      inPerClusterMemoryOffsets, {});
+                                      inPerClusterMemoryOffsets, {}, std::nullopt);
         VPU::DistributionInfo emptyDistribution{};
         // output axis is C and Overlapped is not equivalent to Segmented => cannot infer distribution
         getTypesAndTest(ovrDistribution, emptyDistribution);
@@ -295,7 +314,7 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, PermuteCast) {
         auto inDistribution = VPU::DistributionInfo(
                 VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED, inNumTiles, {}, {}, {},
                 numClusters, {}, {}, inPerClusterComputeShapes, inPerClusterComputeOffsets, inPerMemoryClusterShapes,
-                inPerMemoryClusterOffsets, {});
+                inPerMemoryClusterOffsets, {}, std::nullopt);
 
         const auto outNumTiles = SmallVector<int64_t>({1, 1, 1, 2});
 
@@ -308,7 +327,41 @@ TEST_F(MLIR_DistributedCastOpInterfaceTest, PermuteCast) {
         auto outDistribution = VPU::DistributionInfo(
                 VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED, outNumTiles, {}, {}, {},
                 numClusters, {}, {}, outPerClusterComputeShapes, outPerClusterComputeOffsets, outPerMemoryClusterShapes,
-                outPerMemoryClusterOffsets, {});
+                outPerMemoryClusterOffsets, {}, std::nullopt);
+
+        getTypesAndTest(inDistribution, outDistribution);
+    }
+
+    {
+        const auto inNumTiles = SmallVector<int64_t>({1, 2, 1, 1});
+        const auto inMemoryNumTiles = SmallVector<int64_t>({1, 1, 2, 1});
+
+        const PerClusterShapesOffsetsVec inPerClusterComputeShapes(numClusters, SmallVector<int64_t>{1, 128, 40, 1});
+        const PerClusterShapesOffsetsVec inPerClusterComputeOffsets(
+                {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 128, 0, 0}});
+        const PerClusterShapesOffsetsVec inPerMemoryClusterShapes(numClusters, SmallVector<int64_t>{1, 256, 20, 1});
+        const PerClusterShapesOffsetsVec inPerMemoryClusterOffsets(
+                {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 0, 20, 0}});
+
+        auto inDistribution = VPU::DistributionInfo(
+                VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED, inNumTiles, {}, {}, {},
+                numClusters, {}, {}, inPerClusterComputeShapes, inPerClusterComputeOffsets, inPerMemoryClusterShapes,
+                inPerMemoryClusterOffsets, {}, inMemoryNumTiles);
+
+        const auto outNumTiles = SmallVector<int64_t>({1, 1, 1, 2});
+        const auto outMemoryNumTiles = SmallVector<int64_t>({1, 2, 1, 1});
+
+        const PerClusterShapesOffsetsVec outPerClusterComputeShapes(numClusters, SmallVector<int64_t>{1, 40, 1, 128});
+        const PerClusterShapesOffsetsVec outPerClusterComputeOffsets(
+                {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 0, 0, 128}});
+        const PerClusterShapesOffsetsVec outPerMemoryClusterShapes(numClusters, SmallVector<int64_t>{1, 20, 1, 256});
+        const PerClusterShapesOffsetsVec outPerMemoryClusterOffsets(
+                {SmallVector<int64_t>{0, 0, 0, 0}, SmallVector<int64_t>{0, 20, 0, 0}});
+
+        auto outDistribution = VPU::DistributionInfo(
+                VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED, outNumTiles, {}, {}, {},
+                numClusters, {}, {}, outPerClusterComputeShapes, outPerClusterComputeOffsets, outPerMemoryClusterShapes,
+                outPerMemoryClusterOffsets, {}, outMemoryNumTiles);
 
         getTypesAndTest(inDistribution, outDistribution);
     }

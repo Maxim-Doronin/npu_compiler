@@ -166,7 +166,6 @@ func.func @EltwiseAndSameInputsNCEtoCMX(%arg0: tensor<1x64x28x28xf16, {order = #
 
 func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHWC}>) -> tensor<1x64x10x20xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<64x64x2x2xf16, {order = #NHWC}> = dense<1.0> : tensor<64x64x2x2xf16>, [#const.Reorder<#NHWC>]
-    %weightsTable = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %sparsityMap = const.Declare tensor<1x64x11x21xi1> = dense<1> : tensor<1x64x11x21xi1>
 
     %storageElement = VPU.StorageElementTable {
@@ -200,7 +199,7 @@ func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NH
                 offsets = [0, 0, 0, 0],
                 sizes = [1, 64, 11, 21]>>
 
-    %interpolate = VPU.NCE.Interpolate(%input, %weights, %weightsTable) {
+    %interpolate = VPU.NCE.Interpolate(%input, %weights) {
         strides = [1, 1],
         rawFilterShape = [64, 64, 2, 2],
         mode = #VPU.nce_interpolate_mode<BILINEAR>,
@@ -211,7 +210,6 @@ func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NH
     return %interpolate : tensor<1x64x10x20xf16, {order = #NHWC}>
 
     // CHECK:       [[WEIGHTS:%.+]] = const.Declare tensor<64x64x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<64x64x2x2xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:       [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     // CHECK:       [[SPARSITY_MAP:%.+]] = const.Declare tensor<1x64x11x21xi1> = dense<true> : tensor<1x64x11x21xi1>
 
     // CHECK:       [[STORAGE_ELEMENT:%.+]] = VPU.StorageElementTable {
@@ -269,10 +267,7 @@ func.func @InterpolateBilinearNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NH
     // CHECK:       [[COPY_1:%.+]] = VPU.Copy([[WEIGHTS]]) {out_mem_space = [@CMX_NN, 0]} :
     // CHECK-SAME:      tensor<64x64x2x2xf16, {order = #NHWC}> -> tensor<64x64x2x2xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
 
-    // CHECK:       [[COPY_2:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]) {out_mem_space = [@CMX_NN, 0]} :
-    // CHECK-SAME:      tensor<64x1x1x4xsi32> -> tensor<64x1x1x4xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
-
-    // CHECK:       [[INTERPOLATE:%.+]] = VPU.NCE.Interpolate([[COPY_0]], [[COPY_1]], [[COPY_2]]) {
+    // CHECK:       [[INTERPOLATE:%.+]] = VPU.NCE.Interpolate([[COPY_0]], [[COPY_1]]) {
     // CHECK-SAME:      mode = #VPU.nce_interpolate_mode<BILINEAR>,
     // CHECK-SAME:      ppe = #VPU.PPEStub<>,
     // CHECK-SAME:      rawFilterShape = [64, 64, 2, 2],
@@ -330,7 +325,7 @@ func.func @InterpolateNearestNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHW
                 offsets = [0, 0, 0, 0],
                 sizes = [1, 64, 10, 20]>>
 
-    %interpolate = VPU.NCE.Interpolate(%input, %weights, %weightsTable) {
+    %interpolate = VPU.NCE.Interpolate(%input, %weights) {
         strides = [1, 1],
         rawFilterShape = [64, 64, 1, 1],
         mode = #VPU.nce_interpolate_mode<NEAREST>,
@@ -341,7 +336,6 @@ func.func @InterpolateNearestNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHW
     return %interpolate : tensor<1x64x10x20xf16, {order = #NHWC}>
 
     // CHECK:       [[WEIGHTS:%.+]] = const.Declare tensor<64x64x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<64x64x1x1xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:       [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     // CHECK:       [[SPARSITY_MAP:%.+]] = const.Declare tensor<1x64x10x20xi1> = dense<true> : tensor<1x64x10x20xi1>
 
     // CHECK:       [[STORAGE_ELEMENT:%.+]] = VPU.StorageElementTable {
@@ -404,10 +398,7 @@ func.func @InterpolateNearestNCEtoCMX(%arg0: tensor<1x64x5x10xf16, {order = #NHW
     // CHECK:       [[COPY_1:%.+]] = VPU.Copy([[WEIGHTS]]) {out_mem_space = [@CMX_NN, 0]} :
     // CHECK-SAME:      tensor<64x64x1x1xf16, {order = #NHWC}> -> tensor<64x64x1x1xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
 
-    // CHECK:       [[COPY_2:%.+]] = VPU.Copy([[WEIGHTS_TABLE]]) {out_mem_space = [@CMX_NN, 0]} :
-    // CHECK-SAME:      tensor<64x1x1x4xsi32> -> tensor<64x1x1x4xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
-
-    // CHECK:       [[INTERPOLATE:%.+]] = VPU.NCE.Interpolate([[COPY_0]], [[COPY_1]], [[COPY_2]]) {
+    // CHECK:       [[INTERPOLATE:%.+]] = VPU.NCE.Interpolate([[COPY_0]], [[COPY_1]]) {
     // CHECK-SAME:      mode = #VPU.nce_interpolate_mode<NEAREST>,
     // CHECK-SAME:      ppe = #VPU.PPEStub<>,
     // CHECK-SAME:      rawFilterShape = [64, 64, 1, 1],

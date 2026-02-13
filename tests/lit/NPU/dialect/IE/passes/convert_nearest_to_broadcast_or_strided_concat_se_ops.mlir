@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,8 +18,8 @@ func.func @ConvertNearestWithSmallChannelAndSmallSpatialSize(%arg0: tensor<1x4x1
     return %0 : tensor<1x4x640x640xf32>
 
     // CHECK-NOT: IE.Interpolate
-    // CHECK:   [[CONCAT_1:%.*]] = IE.Concat(%arg0, %arg0, %arg0, %arg0) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 4 : i64>} : tensor<1x4x160x160xf32>, tensor<1x4x160x160xf32>, tensor<1x4x160x160xf32>, tensor<1x4x160x160xf32> -> tensor<1x4x160x640xf32>
-    // CHECK:   [[CONCAT_2:%.*]] = IE.Concat([[CONCAT_1]], [[CONCAT_1]], [[CONCAT_1]], [[CONCAT_1]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 4 : i64>} : tensor<1x4x160x640xf32>, tensor<1x4x160x640xf32>, tensor<1x4x160x640xf32>, tensor<1x4x160x640xf32> -> tensor<1x4x640x640xf32>
+    // CHECK:   [[CONCAT_1:%.+]] = IE.Concat(%arg0, %arg0, %arg0, %arg0) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 4 : i64>} : tensor<1x4x160x160xf32>, tensor<1x4x160x160xf32>, tensor<1x4x160x160xf32>, tensor<1x4x160x160xf32> -> tensor<1x4x160x640xf32>
+    // CHECK:   [[CONCAT_2:%.+]] = IE.Concat([[CONCAT_1]], [[CONCAT_1]], [[CONCAT_1]], [[CONCAT_1]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 4 : i64>} : tensor<1x4x160x640xf32>, tensor<1x4x160x640xf32>, tensor<1x4x160x640xf32>, tensor<1x4x160x640xf32> -> tensor<1x4x640x640xf32>
     // CHECK:   return [[CONCAT_2]] : tensor<1x4x640x640xf32>
 }
 
@@ -37,6 +37,6 @@ func.func @DontConvertNearestWithSmallChannelAndLargeSpatialSize(%arg0: tensor<1
     return %0 : tensor<1x3x1472x2560xf32>
 
     // CHECK-NOT: IE.Concat
-    // CHECK: [[OUT:%.*]] = IE.Interpolate(%arg0)
+    // CHECK: [[OUT:%.+]] = IE.Interpolate(%arg0)
     // CHECK: return [[OUT]] : tensor<1x3x1472x2560xf32>
 }

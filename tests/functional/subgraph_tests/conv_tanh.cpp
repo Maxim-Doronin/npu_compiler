@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -62,6 +62,7 @@ public:
         return result.str();
     };
 };
+
 TEST_P(ConvWithTanhTest, NPU5010_HW) {
     abs_threshold = 0.0001;
     setDefaultHardwareMode();

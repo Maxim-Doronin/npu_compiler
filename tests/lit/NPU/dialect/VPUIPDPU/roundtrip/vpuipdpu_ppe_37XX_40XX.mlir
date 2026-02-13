@@ -13,7 +13,7 @@ module @Test_1a { // Use case #1a: u8 DPU in, u8 DPU out - with activation scali
     VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
     VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
 
-    VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}
+    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}>
         DPUCfg : {
             ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                  %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -41,7 +41,7 @@ module @Test_1a { // Use case #1a: u8 DPU in, u8 DPU out - with activation scali
         }
 }
 
-// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 {input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, task_index = !VPURegMapped.Index<0:0:0>, weight_table = @DeclareBuffer_WeightTable} DPUCfg : {
+// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
 // CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
@@ -66,7 +66,7 @@ module @Test_1b { // Use case #1b: u8 DPU in, u8 DPU out - with activation trunc
     VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
     VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
 
-    VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}
+    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}>
         DPUCfg : {
             ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                  %act_out: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
@@ -93,7 +93,7 @@ module @Test_1b { // Use case #1b: u8 DPU in, u8 DPU out - with activation trunc
         }
 }
 
-// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 {input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, task_index = !VPURegMapped.Index<0:0:0>} DPUCfg : {
+// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
 // CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
@@ -119,7 +119,7 @@ module @Test_2 { // Use case #2: u8 DPU in, fp16 DPU out
     VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
     VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
 
-    VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}
+    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}>
         DPUCfg : {
             ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                  %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -144,7 +144,7 @@ module @Test_2 { // Use case #2: u8 DPU in, fp16 DPU out
         }
 }
 
-// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 {input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, task_index = !VPURegMapped.Index<0:0:0>, weight_table = @DeclareBuffer_WeightTable} DPUCfg : {
+// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
 // CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
@@ -167,7 +167,7 @@ module @Test_3 { // Use case #3: fp16 DPU in, fp16 DPU out
     VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
     VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
 
-    VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}
+    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}>
         DPUCfg : {
             ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                  %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -197,7 +197,7 @@ module @Test_3 { // Use case #3: fp16 DPU in, fp16 DPU out
         }
 }
 
-// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 {input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, task_index = !VPURegMapped.Index<0:0:0>, weight_table = @DeclareBuffer_WeightTable} DPUCfg : {
+// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
 // CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpBiasAdd %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
@@ -225,7 +225,7 @@ module @Test_4 { // Use case #4: fp16 DPU in, u8 DPU out
     VPUASM.DeclareBuffer @DeclareBuffer_ActOut !VPUASM.Buffer< "CMX_NN"[0] <128> : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
     VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <131200> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
 
-    VPUIPDPU.DPUInvariant @DPUInvariant_0 {task_index = !VPURegMapped.Index<0:0:0>, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}
+    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, input = @DeclareBuffer_ActIn, weight_table=@DeclareBuffer_WeightTable, output = @DeclareBuffer_ActOut, nce_task_type = #VPUIP.nce_task_type<CONV>}>
         DPUCfg : {
             ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                  %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -255,7 +255,7 @@ module @Test_4 { // Use case #4: fp16 DPU in, u8 DPU out
         }
 }
 
-// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 {input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, taskLocation = @DeclareTaskBuffer_DPUInvariant_0, task_index = !VPURegMapped.Index<0:0:0>, weight_table = @DeclareBuffer_WeightTable} DPUCfg : {
+// CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
 // CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpBiasAdd %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>

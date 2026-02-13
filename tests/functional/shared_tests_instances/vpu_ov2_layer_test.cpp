@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,11 +33,6 @@ VpuOv2LayerTest::VpuOv2LayerTest(): testTool(envConfig) {
 
     _log.setName("VPUTest");
     _log.setLevel(vpux::LogLevel::Info);
-
-    if (!envConfig.IE_NPU_TESTS_LOG_LEVEL.empty()) {
-        const auto logLevel = ::intel_npu::OptionParser<ov::log::Level>::parse(envConfig.IE_NPU_TESTS_LOG_LEVEL);
-        _log.setLevel(vpux::getLogLevel(logLevel));
-    }
 }
 
 void VpuOv2LayerTest::importModel() {
@@ -144,6 +139,12 @@ void VpuOv2LayerTest::run() {
     ASSERT_FALSE(targetStaticShapes.empty()) << "Target Static Shape is empty!";
     auto crashHandler = std::make_unique<ov::test::utils::CrashHandler>();
 
+    // [Track number: E#198709]
+    // Bypass the caching of compiled models in UMD
+    if (targetDevice == "NPU") {
+        setBypassUmdCaching();
+    }
+
 #ifdef _WIN32
     switch (setjmp(ov::test::utils::env)) {
 #else
@@ -229,6 +230,9 @@ VpuOv2LayerTest::ErrorMessage VpuOv2LayerTest::runTest() {
                 report.inferred(testInfo);
                 report.validated(testInfo);
 
+                // Call get_profiling_info() function to trigger profiling machinery
+                // described in (guides/how_to_use_profiling.md)
+                inferRequest.get_profiling_info();
             } catch (const std::exception& ex) {
                 return ErrorMessage{"Test failed on static shape: " + ov::test::utils::vec2str(targetStaticShapeVec) +
                                     "\n" + ex.what()};
@@ -309,6 +313,10 @@ bool VpuOv2LayerTest::skipCompilationImpl() {
 }
 
 VpuOv2LayerTest::ErrorMessage VpuOv2LayerTest::skipInferenceImpl() {
+    if (!envConfig.IE_NPU_TESTS_RUN_INFER) {
+        _log.warning("Inference is skipped globally");
+        return ErrorMessage{"SKIP"};
+    }
     const auto backendName = getBackendName(*core);
 
     if (backendName.empty()) {
@@ -358,12 +366,16 @@ void VpuOv2LayerTest::setHostCompileMode() {
     configuration[ov::intel_npu::compilation_mode.name()] = "HostCompile";
 }
 
-void VpuOv2LayerTest::setMLIRCompilerType() {
-    configuration[ov::intel_npu::compiler_type.name()] = "MLIR";
+void VpuOv2LayerTest::setPluginCompilerType() {
+    configuration[ov::intel_npu::compiler_type.name()] = "PLUGIN";
 }
 
 void VpuOv2LayerTest::setBatchCompilerMode(const std::string& mode) {
     configuration[ov::intel_npu::batch_compiler_mode_settings.name()] = "batch-compile-method=" + mode;
+}
+
+void VpuOv2LayerTest::setBypassUmdCaching() {
+    configuration[ov::intel_npu::bypass_umd_caching.name()] = true;
 }
 
 bool VpuOv2LayerTest::isReferenceSoftwareMode() const {

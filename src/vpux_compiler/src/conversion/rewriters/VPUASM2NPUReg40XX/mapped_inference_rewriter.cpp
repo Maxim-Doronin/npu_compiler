@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -103,7 +103,7 @@ mlir::LogicalResult MappedInferenceRewriter::matchAndRewrite(VPUASM::MappedInfer
     auto isActKernelInvocations = origOp.getActKernelInvocationsCount().size() > 0;
     NPUReg40XX::fillNNrtConfig<NPUReg40XX::ActShaveRtOp>(mi.shv_rt_configs, origOp, origOp.getActShaveRt(), stackSize,
                                                          isActShaveProfilingEnabled, isActKernelInvocations,
-                                                         std::nullopt);
+                                                         /*stackFrames*/ {});
 
     if (origOp.getManagedMappedInference().has_value()) {
         mi.managed_inference.count = 1;

@@ -87,9 +87,8 @@ module @ClampU16 {
     } -> tensor<1x1x1x1000xui16>
     return %0 : tensor<1x1x1x1000xui16>
 // CHECK-NOT:     IE.Clamp
-// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 1 : i16
 // CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 6 : i16
@@ -99,8 +98,7 @@ module @ClampU16 {
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xui16>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi16>
   }
 }
 
@@ -122,9 +120,8 @@ module @ClampU16NonRepresentable {
     } -> tensor<1x1x1x1000xui16>
     return %0 : tensor<1x1x1x1000xui16>
 // CHECK-NOT:     IE.Clamp
-// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 0 : i16
 // CHECK-NEXT:      [[HIGH:%.+]] = arith.constant -1 : i16
@@ -134,8 +131,7 @@ module @ClampU16NonRepresentable {
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xui16>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi16>
   }
 }
 
@@ -157,9 +153,8 @@ module @ClampS16 {
     } -> tensor<1x1x1x1000xsi16>
     return %0 : tensor<1x1x1x1000xsi16>
 // CHECK-NOT:     IE.Clamp
-// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant 1 : i16
 // CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 6 : i16
@@ -169,8 +164,7 @@ module @ClampS16 {
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xsi16>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi16>
   }
 }
 
@@ -193,9 +187,8 @@ module @ClampS16NonRepresentable {
     return %0 : tensor<1x1x1x1000xsi16>
 
 // CHECK-NOT:     IE.Clamp
-// CHECK:         [[ARG_BC:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG_BC]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
 // CHECK-NEXT:      [[LOW:%.+]] = arith.constant -32768 : i16
 // CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 32767 : i16
@@ -205,8 +198,7 @@ module @ClampS16NonRepresentable {
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi16> to tensor<1x1x1x1000xsi16>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi16>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi16>
   }
 }
 

@@ -5,11 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/utils/core/string_ref.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+
+#include <optional>
 
 namespace vpux {
 
-vpux::config::ArchKind parseArchKind(int argc, char* argv[], StringRef helpHeader = "");
+std::optional<vpux::config::ArchKind> parseArchKind(int argc, char* argv[]);
 
 }  // namespace vpux

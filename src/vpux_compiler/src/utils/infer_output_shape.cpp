@@ -399,8 +399,9 @@ ShapeInfo vpux::inferPermuteQuantizeOutputShapeInfo(mlir::Value input, DimsOrder
 }
 
 ShapeInfo vpux::inferConvolutionOutputShapeInfo(const ShapeInfo& inShapeInfo, const ShapeInfo& filterShapeInfo,
-                                                ArrayRef<int64_t> windowStrides, ArrayRef<int64_t> dataPaddingBelow,
-                                                ArrayRef<int64_t> dataPaddingAbove, ArrayRef<int64_t> windowDilations) {
+                                                NDTypeInterface filterType, ArrayRef<int64_t> windowStrides,
+                                                ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove,
+                                                ArrayRef<int64_t> windowDilations) {
     const auto inPartialShape = createPartialShapeFromShapeInfo(inShapeInfo);
     const auto filterPartialShape = createPartialShapeFromShapeInfo(filterShapeInfo);
 
@@ -411,7 +412,19 @@ ShapeInfo vpux::inferConvolutionOutputShapeInfo(const ShapeInfo& inShapeInfo, co
                                     ov::CoordinateDiff(dataPaddingBelow.begin(), dataPaddingBelow.end()),
                                     ov::CoordinateDiff(dataPaddingAbove.begin(), dataPaddingAbove.end()),
                                     ov::Strides(windowDilations.begin(), windowDilations.end()));
-    return createShapeInfoFromPartialShape(op.get_output_partial_shape(0));
+
+    auto shapeInfo = createShapeInfoFromPartialShape(op.get_output_partial_shape(0));
+    if (mlir::isa<Core::BoundedTensorType>(filterType)) {
+        if (filterType.getShape()[Dims4D::Filter::OC] == mlir::ShapedType::kDynamic) {
+            if (shapeInfo.bounds.empty()) {
+                shapeInfo.bounds = shapeInfo.shape;
+            }
+            shapeInfo.bounds[Dims4D::Act::C.ind()] = filterShapeInfo.shape[Dims4D::Filter::OC.ind()];
+            shapeInfo.shape[Dims4D::Act::C.ind()] = mlir::ShapedType::kDynamic;
+        }
+    }
+
+    return shapeInfo;
 }
 
 ShapeInfo vpux::inferGroupConvolutionOutputShapeInfo(ShapeInfo& inShapeInfo, ShapeInfo& filterShapeInfo,
@@ -500,7 +513,7 @@ mlir::OpFoldResult vpux::reifyDim(mlir::OpBuilder builder, mlir::Value value, ml
                                   std::optional<mlir::Location> loc) {
     if (type.isDynamicDim(idx)) {
         const auto actualLoc = loc.value_or(value.getLoc());
-        auto dimLoc = appendLoc(actualLoc, llvm::StringLiteral("dim_{0}"), idx);
+        auto dimLoc = appendLoc(actualLoc, "dim_{0}", idx);
         auto index = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(dimLoc, "const_index"), idx);
         auto dimOp = builder.createOrFold<mlir::tensor::DimOp>(dimLoc, value, index);
         return mlir::getValueOrCreateConstantIndexOp(builder, appendLoc(actualLoc, "const_index"), dimOp);
@@ -720,7 +733,7 @@ mlir::FailureOr<SmallVector<mlir::OpFoldResult>> vpux::reifyConvPoolTensors(
                             idx, input, loc);
             auto adjustedIdx = idx - 2;
             return calculateDimSize(inputDimVal, kernelSize[adjustedIdx], padBegin[adjustedIdx], padEnd[adjustedIdx],
-                                    strides[adjustedIdx], appendLoc(loc, llvm::StringLiteral("dim_{0}"), adjustedIdx));
+                                    strides[adjustedIdx], appendLoc(loc, "dim_{0}", adjustedIdx));
         } else {
             VPUX_THROW("Unexpected dimension index {0}", idx);
         }

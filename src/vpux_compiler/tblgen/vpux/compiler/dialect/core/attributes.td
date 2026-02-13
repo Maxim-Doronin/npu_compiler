@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,7 +10,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
 include "vpux/compiler/dialect/core/attr_interfaces.td"
 
-def IntAttr : Attr<CPred<"$_self.isa<mlir::IntegerAttr>()">, "Integer attribute"> {
+def IntAttr : Attr<CPred<"llvm::isa<mlir::IntegerAttr>($_self)">, "Integer attribute"> {
     let storageType = "mlir::IntegerAttr";
     let valueType = I64;
     let returnType = "int64_t";
@@ -29,7 +29,7 @@ def UI8ArrayAttr : TypedArrayAttrBase<UI8Attr,
                                       "Unsigned 8-bit integer array attribute">;
 def IndexedSymbolAttr :
         Attr<
-            CPred<"$_self.isa<vpux::IndexedSymbolAttr>()">,
+            CPred<"llvm::isa<vpux::IndexedSymbolAttr>($_self)">,
             "Symbol name with optional index"
         > {
     let storageType = "vpux::IndexedSymbolAttr";
@@ -40,7 +40,7 @@ def IndexedSymbolAttr :
 
 def TensorAttr :
         Attr<
-            CPred<"$_self.isa<vpux::TensorAttr>()">,
+            CPred<"llvm::isa<vpux::TensorAttr>($_self)">,
             "Symbol name with optional index"
         > {
     let storageType = "vpux::TensorAttr";
@@ -64,13 +64,6 @@ class InlinerDispatchAttr<Dialect dialect, string name> : AttrDef<dialect, name,
         func.call {inliner_dispatch = #MyDialect.MyInlinerDispatchAttr} @someFunction() -> ()
         ```
     }];
-}
-
-def SmallVectorU8Prop: Property<"SmallVector<uint8_t>">{
-    let hashProperty = "hash_value($_storage)";
-    let storageType = "SmallVector<uint8_t>";
-    let writeToMlirBytecode = writeMlirBytecodeWithConvertToAttribute;
-    let readFromMlirBytecode = readMlirBytecodeUsingConvertFromAttribute;
 }
 
 #endif

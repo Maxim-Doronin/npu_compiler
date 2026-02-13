@@ -30,6 +30,10 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+constexpr float MAX_CLAMPED_RANGE_THRESHOLD =
+        0.35f;  // If more than this threshold of the aligned range would be clamped for positive-only FQs, the
+                // alignment is skipped to avoid excessive precision loss causing accuracy issues.
+
 class AlignConcatScalesRewriter final : public mlir::OpRewritePattern<IE::ConcatOp> {
 public:
     AlignConcatScalesRewriter(mlir::MLIRContext* ctx, Logger log, bool seOpsEnabled)
@@ -248,6 +252,38 @@ SmallVector<IE::FakeQuantizeOp> selectFqsToAlign(ArrayRef<IE::FakeQuantizeOp> fq
     return filteredFQOpsToAlign;
 }
 
+bool wouldAlignmentWastePrecision(MutableArrayRef<IE::FakeQuantizeOp> fqOpsToAlign) {
+    float globalMin = 0.0f;
+    float globalMax = 0.0f;
+    bool hasPositiveOnlyFQ = false;
+
+    for (auto fqOpToAlign : fqOpsToAlign) {
+        const auto outputLowVals = IE::getConst(fqOpToAlign.getOutputLow().getDefiningOp<Const::DeclareOp>());
+        const auto outputHighVals = IE::getConst(fqOpToAlign.getOutputHigh().getDefiningOp<Const::DeclareOp>());
+
+        float currentLow = outputLowVals[0];
+        float currentHigh = outputHighVals[0];
+
+        globalMin = std::min(globalMin, currentLow);
+        globalMax = std::max(globalMax, currentHigh);
+
+        if (currentLow >= 0.0f) {
+            hasPositiveOnlyFQ = true;
+        }
+    }
+
+    if (globalMin >= 0.0f || !hasPositiveOnlyFQ) {
+        return false;
+    }
+
+    // Calculate what part of the aligned range would be clamped for positive-only FQs
+    float alignedRange = globalMax - globalMin;
+    float clampedPart = -globalMin / alignedRange;
+
+    // Drop alignment if a substantial part of the aligned range is clamped
+    return clampedPart > MAX_CLAMPED_RANGE_THRESHOLD;
+}
+
 void findMinMax(MutableArrayRef<IE::FakeQuantizeOp> fqOpsToAlign, float& min, float& max, float& range,
                 int& maxLevels) {
     for (auto fqOpToAlign : fqOpsToAlign) {
@@ -281,8 +317,8 @@ void alignFQRanges(IE::ConcatOp origOp, MutableArrayRef<IE::FakeQuantizeOp> fqOp
     // Create the input/output low/high constants and level attribute that will be used to align the FQ ranges
     const auto elemType = mlir::cast<vpux::NDTypeInterface>(fqOpsToAlign[0].getInput().getType()).getElementType();
     const auto fqArgType = mlir::RankedTensorType::get({1, 1, 1, 1}, elemType);
-    auto commonInputLow = IE::createFQConst(ctx, appendLoc(origOp->getLoc(), "_input_low"), min, fqArgType, rewriter);
-    auto commonInputHigh = IE::createFQConst(ctx, appendLoc(origOp->getLoc(), "_input_high"), max, fqArgType, rewriter);
+    auto commonInputLow = IE::createFQConst(ctx, appendLoc(origOp->getLoc(), "input_low"), min, fqArgType, rewriter);
+    auto commonInputHigh = IE::createFQConst(ctx, appendLoc(origOp->getLoc(), "input_high"), max, fqArgType, rewriter);
     auto commonLevels = getIntAttr(rewriter, maxLevels);
     log.trace("Created common constants for input/output low/high constants and level attribute.");
 
@@ -311,8 +347,8 @@ void alignFQRanges(IE::ConcatOp origOp, MutableArrayRef<IE::FakeQuantizeOp> fqOp
             // Replace the old FQ operation with the FQ with new ranges + Clamp operation that preserves the original
             // range interval
             auto newFQOp = rewriter.create<IE::FakeQuantizeOp>(
-                    appendLoc(origOp->getLoc(), llvm::formatv("_fq_{0}", i)), fqOpsToAlign[i].getInput(),
-                    commonInputLow, commonInputHigh, commonInputLow, commonInputHigh, commonLevels, nullptr,
+                    appendLoc(origOp->getLoc(), "fq_{0}", i), fqOpsToAlign[i].getInput(), commonInputLow,
+                    commonInputHigh, commonInputLow, commonInputHigh, commonLevels, nullptr,
                     fqOpsToAlign[i].getAutoBroadcastAttr());
             log.trace("Created new FQ op at {0}", newFQOp->getLoc());
 
@@ -324,8 +360,8 @@ void alignFQRanges(IE::ConcatOp origOp, MutableArrayRef<IE::FakeQuantizeOp> fqOp
             // if the in out range is different, insert a new range FQ then clamp back to old range.
             rewriter.setInsertionPointAfter(fqOpsToAlign[i]);
             auto newFQOp = rewriter.create<IE::FakeQuantizeOp>(
-                    appendLoc(origOp->getLoc(), llvm::formatv("_fq_{0}", i)), fqOpsToAlign[i].getOutput(),
-                    commonInputLow, commonInputHigh, commonInputLow, commonInputHigh, commonLevels, nullptr,
+                    appendLoc(origOp->getLoc(), "fq_{0}", i), fqOpsToAlign[i].getOutput(), commonInputLow,
+                    commonInputHigh, commonInputLow, commonInputHigh, commonLevels, nullptr,
                     fqOpsToAlign[i].getAutoBroadcastAttr());
             log.trace("Created new FQ op at {0} for different in out range case", newFQOp->getLoc());
 
@@ -333,7 +369,7 @@ void alignFQRanges(IE::ConcatOp origOp, MutableArrayRef<IE::FakeQuantizeOp> fqOp
             if (fqHasMaxRanges(fqOpsToAlign[i])) {
                 output = newFQOp.getOutput();
             } else {
-                auto clampOp = rewriter.create<IE::ClampOp>(appendLoc(origOp->getLoc(), "_clamp"), newFQOp.getOutput(),
+                auto clampOp = rewriter.create<IE::ClampOp>(appendLoc(origOp->getLoc(), "clamp"), newFQOp.getOutput(),
                                                             inputLowAttr, inputHighAttr);
                 log.trace("Created new Clamp op at {0} for different in out range case", clampOp->getLoc());
                 output = clampOp.getOutput();
@@ -384,7 +420,15 @@ mlir::LogicalResult AlignConcatScalesRewriter::matchAndRewrite(IE::ConcatOp orig
         return mlir::failure();
     }
 
-    // 5. Check that the ranges are already aligned
+    // 5. Check if we're mixing positive-only ranges with negative ranges
+    if (wouldAlignmentWastePrecision(fqOpsToAlign)) {
+        _log.trace("Failed because alignment would waste more than {0}% precision for positive-only FQs due to "
+                   "clamping.",
+                   MAX_CLAMPED_RANGE_THRESHOLD * 100);
+        return mlir::failure();
+    }
+
+    // 6. Check that the ranges are already aligned
     if (allFqsHaveTheSameRange(fqOpsToAlign)) {
         _log.trace("All gathered FQs have the same FQs.");
         return mlir::failure();
@@ -513,7 +557,7 @@ mlir::LogicalResult AlignSliceRewriter::matchAndRewrite(IE::FakeQuantizeOp fqOp,
     if (fqOutputLowVal > parentFqOutputLowVal || fqOutputHighVal < parentFqOutputHighVal) {
         const auto inputLowAttr = getFPAttr(ctx, fqOutputLowVal);
         const auto inputHighAttr = getFPAttr(ctx, fqOutputHighVal);
-        auto clampOp = rewriter.create<IE::ClampOp>(appendLoc(fqOp->getLoc(), "_clamp"), newFQOp.getOutput(),
+        auto clampOp = rewriter.create<IE::ClampOp>(appendLoc(fqOp->getLoc(), "clamp"), newFQOp.getOutput(),
                                                     inputLowAttr, inputHighAttr);
         rewriter.replaceOp(fqOp, clampOp.getOutput());
     } else {

@@ -5,7 +5,6 @@
 
 #include "vpux/compiler/core/cycle_cost_info.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 
@@ -14,7 +13,7 @@
 using namespace vpux;
 
 CycleCostInfo::CycleCostInfo(mlir::func::FuncOp func)
-        : CycleCostInfo(VPU::CostModelConfig::createCostModel(config::getArch(func)), func) {
+        : CycleCostInfo(VPU::CostModelConfig::createCostModel(func), func) {
 }
 
 CycleCostInfo::CycleCostInfo(std::shared_ptr<VPUNN::VPUCostModel> costModel, mlir::func::FuncOp func)

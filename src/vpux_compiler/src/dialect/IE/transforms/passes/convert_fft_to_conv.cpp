@@ -247,8 +247,8 @@ auto fftOneAxisDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc, An
     // produce constant twiddle factors with ouput type precision. Keep consistent precision.
     auto twiddleConstant = getTwiddleFactors(appendLoc(loc, "TwiddleFactors"), axisLength, inType.getElementType(),
                                              rewriter, isInverseFFT, isRdftLastAxisCut);
-    auto multiplyOp = rewriter.create<IE::MatMulOp>(appendLoc(loc, "MatMulOp"), reshapeOut, twiddleConstant, false,
-                                                    true, nullptr);
+    auto multiplyOp =
+            rewriter.create<IE::MatMulOp>(appendLoc(loc, "MatMulOp"), reshapeOut, twiddleConstant, false, true);
     // restore original shape
     auto reshapeRestoredOut =
             reshapeRestoreAndComplexAdd(rewriter, appendLoc(loc, "ReshapeOut"), multiplyOp.getOutput(), transposesOut,
@@ -331,8 +331,8 @@ auto irdftLastAxisDecompose(mlir::PatternRewriter& rewriter, mlir::Location loc,
     auto twiddleConstant = fftGetTwiddleFactorsForIrdftRealOutput(appendLoc(irdftLoc, "TwiddleFactors"), shape[axis],
                                                                   inType.getElementType(), rewriter);
     // mat mull for complex number
-    auto multiplyOp = rewriter.create<IE::MatMulOp>(appendLoc(irdftLoc, "MatMulOp"), reshapeOut, twiddleConstant, false,
-                                                    true, nullptr);
+    auto multiplyOp =
+            rewriter.create<IE::MatMulOp>(appendLoc(irdftLoc, "MatMulOp"), reshapeOut, twiddleConstant, false, true);
     // reshape to output size representation
     auto reshapeRestoredOut = reshapeRestoreIrdftLastAxis(rewriter, appendLoc(irdftLoc, "ReshapeOut"),
                                                           multiplyOp.getOutput(), transposesOut, _log);

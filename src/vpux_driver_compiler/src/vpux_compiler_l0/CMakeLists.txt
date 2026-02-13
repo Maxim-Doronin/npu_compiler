@@ -1,9 +1,13 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(TARGET_NAME npu_driver_compiler)
+if(BUILD_COMPILER_FOR_DRIVER)
+    set(TARGET_NAME npu_driver_compiler)
+else()
+    set(TARGET_NAME openvino_intel_npu_compiler)
+endif()
 
 add_library(${TARGET_NAME}
     SHARED
@@ -30,7 +34,7 @@ target_compile_definitions(${TARGET_NAME}
 )
 
 # The first section is WDDM version, it aligns with operation system change
-set(VERSION_WDDM 31)
+set(VERSION_WDDM 32)
 # The second section is always 0 now
 set(VERSION_UNUSED 0)
 # The last two sections use date to identify build number
@@ -41,14 +45,19 @@ set(VERSION_BUILD_MINOR ${DATE_MINOR})
 string(TIMESTAMP CURRENT_YEAR "%Y")
 set(COPYRIGHT_STR "Copyright (C) ${CURRENT_YEAR} Intel Corporation")
 
+if(NOT ENABLE_DEVELOPER_BUILD)
+    set(OV_VS_VER_PRODUCTNAME_STR "NPU Compiler")
+    set(OV_VS_VER_FILEDESCRIPTION_STR "Intel NPU Compiler")
+else()
+    set(OV_VS_VER_PRODUCTNAME_STR "NPU Compiler DEV")
+    set(OV_VS_VER_FILEDESCRIPTION_STR "Intel NPU Compiler DEV")
+endif()
 set(OV_VS_VER_FILEVERSION_QUAD "${VERSION_WDDM},${VERSION_UNUSED},${VERSION_BUILD_MAJOR},${VERSION_BUILD_MINOR}")
 set(OV_VS_VER_PRODUCTVERSION_QUAD "${VERSION_WDDM},${VERSION_UNUSED},${VERSION_BUILD_MAJOR},${VERSION_BUILD_MINOR}")
 set(OV_VS_VER_FILEVERSION_STR "${VERSION_WDDM}.${VERSION_UNUSED}.${VERSION_BUILD_MAJOR}.${VERSION_BUILD_MINOR}")
 set(OV_VS_VER_PRODUCTVERSION_STR "${VERSION_WDDM}.${VERSION_UNUSED}.${VERSION_BUILD_MAJOR}.${VERSION_BUILD_MINOR}")
 set(OV_VS_VER_COMPANY_NAME_STR "Intel Corporation")
-set(OV_VS_VER_PRODUCTNAME_STR "VPU Compiler In Driver")
 set(OV_VS_VER_COPYRIGHT_STR "${COPYRIGHT_STR}")
-set(OV_VS_VER_FILEDESCRIPTION_STR "VPU Plugin Compiler L0")
 set(OV_VS_VER_ORIGINALFILENAME_STR "${CMAKE_SHARED_LIBRARY_PREFIX}${TARGET_NAME}${CMAKE_SHARED_LIBRARY_SUFFIX}")
 set(OV_VS_VER_INTERNALNAME_STR ${TARGET_NAME})
 set(vs_version_output "${CMAKE_CURRENT_BINARY_DIR}/vs_version.rc")
@@ -82,22 +91,24 @@ add_dependencies(${TARGET_NAME} VPUXLoader)
 
 ov_add_api_validator_post_build_step(TARGET ${TARGET_NAME})
 
-if(WIN32)
-    install(TARGETS ${TARGET_NAME}
-            RUNTIME DESTINATION cid/lib
-            COMPONENT ${CID_COMPONENT})
+# Install library related files to component
+install_target_with_debug_files(${TARGET_NAME} ${INSTALL_DESTINATION}/lib ${INSTALL_COMPONENT})
 
-    install(FILES $<TARGET_PDB_FILE:npu_driver_compiler>
-            DESTINATION cid/pdb
-            COMPONENT ${CID_COMPONENT})
-else()
-    install(TARGETS ${TARGET_NAME}
-            LIBRARY DESTINATION cid/lib
-            COMPONENT ${CID_COMPONENT})
-endif()
-
+# Install library header
 install(
         FILES
             "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/include/npu_driver_compiler.h"
-        DESTINATION cid
-        COMPONENT ${CID_COMPONENT})
+        DESTINATION ${INSTALL_DESTINATION}
+        COMPONENT ${INSTALL_COMPONENT})
+
+# Install library for plugin if building for plugin and not for driver
+if(NOT BUILD_COMPILER_FOR_DRIVER)
+    # Install the openvino_intel_npu_compiler library to the same path of mlir_compiler
+    # TODO: check if ARCHIVE is needed and then remove it.
+    # Keep the installation method consistent with the previous CID target.
+    install(TARGETS ${TARGET_NAME}
+            ARCHIVE DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+            RUNTIME DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+            LIBRARY DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+            )
+endif()

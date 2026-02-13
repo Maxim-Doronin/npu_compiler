@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,6 +40,38 @@ module @SinhF16Layer {
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
+}      
+    
+
+
+// -----
+// IE.Asinh
+
+// CHECK: [[NCHW:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK: AsinhF32Layer
+module @AsinhF32Layer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf32>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf32>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf32>) -> tensor<1x1x1x1000xf32> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf32>) {
+      %1 = IE.Asinh(%arg1) : tensor<1x1x1x1000xf32> -> tensor<1x1x1x1000xf32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf32>
+    } -> tensor<1x1x1x1000xf32>
+    return %0 : tensor<1x1x1x1000xf32>    
+
+    // CHECK-NOT:     IE.Asinh
+    // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf32>
+    // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf32>) outs([[EMPTY]] : tensor<1x1x1x1000xf32>) {
+    // CHECK-NEXT:    ^bb0([[IN:%.+]]: f32, {{%.+}}: f32):
+    // CHECK-NEXT:      [[RES:%.+]] = math.asinh [[IN]] fastmath<afn> : f32
+    // CHECK-NEXT:      linalg.yield [[RES]] : f32
+    // CHECK-NEXT:    } -> tensor<1x1x1x1000xf32>
+    // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf32>
+  }
 }
 
 // -----
@@ -75,6 +107,63 @@ module @CoshF16Layer {
     // CHECK-NEXT:      linalg.yield [[RES]] : f16
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
+  }
+}
+
+// -----
+// IE.Acosh
+
+// CHECK: [[NCHW:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK: AcoshF16Layer
+module @AcoshF16Layer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Acosh(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>    
+
+    // CHECK-NOT:     IE.Acosh
+    // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
+    // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+    // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
+    // CHECK-NEXT:      [[RES:%.+]] = math.acosh [[IN]] fastmath<afn> : f16
+    // CHECK-NEXT:      linalg.yield [[RES]] : f16
+    // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
+  }
+}
+
+// -----
+// IE.Acosh
+
+// CHECK: [[NCHW:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK: AcoshF32Layer
+module @AcoshF32Layer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf32>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf32>
+  }
+  func.func @main(%arg0: tensor<1x1x1x1000xf32>) -> tensor<1x1x1x1000xf32> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf32>) {
+      %1 = IE.Acosh(%arg1) : tensor<1x1x1x1000xf32> -> tensor<1x1x1x1000xf32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf32>
+    } -> tensor<1x1x1x1000xf32>
+    return %0 : tensor<1x1x1x1000xf32>    
+
+    // CHECK-NOT:     IE.Acosh
+    // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf32>
+    // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf32>) outs([[EMPTY]] : tensor<1x1x1x1000xf32>) {
+    // CHECK-NEXT:    ^bb0([[IN:%.+]]: f32, {{%.+}}: f32):
+    // CHECK-NEXT:      [[RES:%.+]] = math.acosh [[IN]] fastmath<afn> : f32
+    // CHECK-NEXT:      linalg.yield [[RES]] : f32
+    // CHECK-NEXT:    } -> tensor<1x1x1x1000xf32>
+    // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf32>
   }
 }
 

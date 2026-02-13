@@ -1,12 +1,13 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common/utils.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/interfaces_registry.hpp"
 #include "vpux/compiler/utils/passes.hpp"
@@ -73,14 +74,13 @@ public:
     void safeRunOnFunc() final {
         auto func = getOperation();
         auto module = func->getParentOfType<mlir::ModuleOp>();
-        const auto arch = config::getArch(module);
 
         const auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
-        auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+        auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
 
         const auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
         auto layerCostModel =
-                VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log)
+                VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, &getContext(), _log)
                         ->get_cost_model_shared();
 
         VPUX_THROW_UNLESS(costModel != nullptr, "CostModelAnalysis must have a valid VPUCostModel instance");
@@ -114,7 +114,7 @@ TEST_F(MLIR_CostModelAnalysisTest, CostModelAnalysisBehavior) {
     const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
+    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{std::nullopt, config::ArchKind::NPU40XX});
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
@@ -149,7 +149,7 @@ TEST_F(MLIR_CostModelAnalysisTest, CostModelCachedSharedInstance_NPU50XX) {
     auto registry = vpux::createDialectRegistry();
     auto interfacesRegistry = vpux::createInterfacesRegistry(config::ArchKind::NPU50XX);
     interfacesRegistry->registerInterfaces(registry);
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU50XX);
+    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{std::nullopt, config::ArchKind::NPU50XX});
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR50XX, &ctx);

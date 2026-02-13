@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -208,7 +208,15 @@ class EltwiseIntegerLayerTest : public EltwiseLayerTest, virtual public VpuOv2La
 
 class EltwiseLayerTestDynamicSCFUnroll : public EltwiseLayerTestDynamic {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "loop-unroll-factor=1,1,2,1";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "loop-unroll-factor=1,1,10,1";
+    }
+};
+
+class EltwiseLayerTestSCFTiling : public EltwiseLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
     }
 };
 
@@ -262,6 +270,7 @@ TEST_P(EltwiseLayerTestF32Common, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
+
 TEST_P(EltwiseLayerTestCommon, NPU5010_SW) {
     abs_threshold = 0.6;
     setReferenceSoftwareMode();
@@ -272,6 +281,12 @@ TEST_P(EltwiseLayerTestF32Common, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
+TEST_P(EltwiseLayerTestSCFTiling, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 TEST_P(EltwiseEmptyShapeInputLayerTest, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
@@ -281,6 +296,7 @@ TEST_P(EltwiseEmptyShapeInputLayerTest, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 void setCommonSkipCompilationCallback(EltwiseIntegerLayerTest* test) {
     test->setSkipCompilationCallback([test](std::stringstream& skip) {
         const auto eltwiseType = std::get<1>(test->GetParam());
@@ -326,7 +342,7 @@ TEST_P(EltwiseLayerTestDynamicSCFUnroll, NPU4000_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -362,7 +378,7 @@ TEST_P(EltwiseLayerTestDynamicSCFUnroll, NPU5010_HC) {
     });
 
     setHostCompileMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
 
@@ -419,6 +435,18 @@ const auto typesParams =
 INSTANTIATE_TEST_SUITE_P(precommit_EltwiseTypes, EltwiseLayerTestCommon, typesParams,
                          EltwiseLayerTestCommon::getTestCaseName);
 
+std::vector<std::vector<ov::Shape>> tilingShape = {{{1, 10, 1024, 1024}, {1, 10, 1024, 1024}}};
+
+const auto tilingParams =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(tilingShape)),
+                           ::testing::Values(EltwiseTypes::ADD), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::Values(ov::test::utils::OpType::VECTOR), ::testing::ValuesIn(netPrecisionsF16),
+                           ::testing::Values(ov::element::dynamic), ::testing::Values(ov::element::dynamic),
+                           ::testing::Values(test_utils::TARGET_DEVICE), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(precommit_EltwiseTypes, EltwiseLayerTestSCFTiling, tilingParams,
+                         EltwiseLayerTestSCFTiling::getTestCaseName);
+
 const auto typesParamsF32 = ::testing::Combine(
         ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bigShape)),
         ::testing::ValuesIn(eltwiseTypesF32), ::testing::ValuesIn(secondaryInputTypes), ::testing::ValuesIn(opTypes),
@@ -432,8 +460,8 @@ INSTANTIATE_TEST_SUITE_P(precommit_EltwiseTypesF32, EltwiseLayerTestF32Common, t
 // Dynamic shape tests
 //
 
-std::set<EltwiseTypes> DynamicEltwiseOpTypes = {EltwiseTypes::SUBTRACT, EltwiseTypes::MOD, EltwiseTypes::FLOOR_MOD,
-                                                EltwiseTypes::DIVIDE, EltwiseTypes::POWER};
+std::set<EltwiseTypes> DynamicEltwiseOpTypes = {EltwiseTypes::SUBTRACT, EltwiseTypes::MOD,   EltwiseTypes::FLOOR_MOD,
+                                                EltwiseTypes::DIVIDE,   EltwiseTypes::POWER, EltwiseTypes::MULTIPLY};
 
 std::vector<std::vector<ov::test::InputShape>> in_shapes_dynamic = {
         {{{1, 1, 1, ov::Dimension(1, 10)}, {{1, 1, 1, 10}, {1, 1, 1, 5}}},
@@ -724,13 +752,13 @@ class ShaveCodeGenEltwiseIntegerLayerTest : public EltwiseIntegerLayerTest {
 TEST_P(ShaveCodeGenEltwiseLayerTestCommon, NPU4000_SW) {
     abs_threshold = 0.6;
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
 TEST_P(ShaveCodeGenEltwiseLayerTestF32Common, NPU4000_SW) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -738,20 +766,20 @@ TEST_P(ShaveCodeGenEltwiseIntegerLayerTest, NPU4000_SW) {
     abs_threshold = 0.6;
     setCommonSkipCompilationCallback(this);
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
 TEST_P(ShaveCodeGenEltwiseLayerTestCommon, NPU5010_SW) {
     abs_threshold = 0.6;
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
 
 TEST_P(ShaveCodeGenEltwiseLayerTestF32Common, NPU5010_SW) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
 
@@ -759,7 +787,7 @@ TEST_P(ShaveCodeGenEltwiseIntegerLayerTest, NPU5010_SW) {
     abs_threshold = 0.6;
     setCommonSkipCompilationCallback(this);
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
 

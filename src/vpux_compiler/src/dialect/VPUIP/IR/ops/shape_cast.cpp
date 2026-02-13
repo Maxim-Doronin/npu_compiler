@@ -167,7 +167,7 @@ mlir::LogicalResult VPUIP::ShapeCastOp::inferReturnTypes(mlir::MLIRContext* ctx,
                 origDistribution.getAlignment(), origDistribution.getUniformDistributedSegments(),
                 shapeCast.getExplicitOutputShapes().value(), shapeCast.getExplicitOutputOffsets().value(),
                 shapeCast.getExplicitOutputShapes().value(), shapeCast.getExplicitOutputOffsets().value(),
-                origDistribution.getEqualMemoryAndComputeView());
+                origDistribution.getEqualMemoryAndComputeView(), origDistribution.getMemoryNumTiles());
     };
 
     auto getDistType = [&](VPU::DistributedTypeInterface inDistInterface) {

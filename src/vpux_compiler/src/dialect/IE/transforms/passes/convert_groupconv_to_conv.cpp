@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
@@ -40,12 +41,246 @@ public:
     }
 
 public:
+    class DepthwiseConvSinglePixelInputToMultiplyConverter;
     class GroupConvToSingleConvConverter;
     class GroupConvToMultiConvConverter;
 
 private:
     void safeRunOnFunc() final;
 };
+
+//
+// DepthwiseConvSinglePixelInputToMultiplyConverter
+//
+
+class ConvertGroupConvToConvPass::DepthwiseConvSinglePixelInputToMultiplyConverter final :
+        public mlir::OpRewritePattern<IE::GroupConvolutionOp> {
+public:
+    DepthwiseConvSinglePixelInputToMultiplyConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::GroupConvolutionOp>(ctx, benefit), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    bool isSpecialPattern(IE::GroupConvolutionOp op) const;
+    Logger _log;
+};
+
+// Check if this is the pattern we want to optimize:
+// - Depthwise convolution (groups == IC == OC)
+// - Input spatial dimensions are 1x1
+// - Padding is used to expand spatial dimensions
+// - Kernel size > 1 in at least one dimension (1D kernel)
+bool ConvertGroupConvToConvPass::DepthwiseConvSinglePixelInputToMultiplyConverter::isSpecialPattern(
+        IE::GroupConvolutionOp op) const {
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
+
+    if (inputType.getRank() != 4 || filterType.getRank() != 4 || outputType.getRank() != 4) {
+        return false;
+    }
+
+    const auto inputShape = inputType.getShape();
+    const auto filterShape = filterType.getShape();
+    const auto outputShape = outputType.getShape();
+
+    const auto groups = op.getGroups().value();
+    const auto IC = inputShape[Dims4D::Act::C];
+    const auto OC = outputShape[Dims4D::Act::C];
+
+    // Must be depthwise: groups == IC == OC
+    if (groups != IC || groups != OC) {
+        return false;
+    }
+
+    // Filter must have IC=1 for depthwise
+    const auto filterIC = filterShape[Dims4D::Filter::IC];
+    if (filterIC != 1) {
+        return false;
+    }
+
+    // Input spatial dimensions must be 1x1
+    const auto inputH = inputShape[Dims4D::Act::H];
+    const auto inputW = inputShape[Dims4D::Act::W];
+    if (inputH != 1 || inputW != 1) {
+        return false;
+    }
+
+    // Check if padding is used (at least one padding dimension > 0)
+    const auto padsBegin = parseIntArrayAttr<int64_t>(op.getPadsBegin());
+    const auto padsEnd = parseIntArrayAttr<int64_t>(op.getPadsEnd());
+    const bool hasPadding = padsBegin[Dims4D::PadsBegin::Top.ind()] > 0 ||
+                            padsBegin[Dims4D::PadsBegin::Left.ind()] > 0 ||
+                            padsEnd[Dims4D::PadsEnd::Bottom.ind()] > 0 || padsEnd[Dims4D::PadsEnd::Right.ind()] > 0;
+
+    if (!hasPadding) {
+        return false;
+    }
+
+    // Kernel must be larger than 1x1 (at least in one dimension)
+    const auto KY = filterShape[Dims4D::Filter::KY];
+    const auto KX = filterShape[Dims4D::Filter::KX];
+    if (KY == 1 && KX == 1) {
+        return false;
+    }
+
+    // Check stride is 1x1 (required for this optimization)
+    const auto strides = parseIntArrayAttr<int64_t>(op.getStrides());
+    if (strides[Dims4D::Strides::Y.ind()] != 1 || strides[Dims4D::Strides::X.ind()] != 1) {
+        return false;
+    }
+
+    // Check dilations are 1x1
+    const auto dilations = parseIntArrayAttr<int64_t>(op.getDilations());
+    if (dilations[Dims4D::Dilation::Y.ind()] != 1 || dilations[Dims4D::Dilation::X.ind()] != 1) {
+        return false;
+    }
+
+    _log.trace(
+            "Found depthwise conv with single-pixel input: {0} channels, kernel {1}x{2}, padding [{3},{4}]x[{5},{6}]",
+            groups, KY, KX, padsBegin[Dims4D::PadsBegin::Top.ind()], padsEnd[Dims4D::PadsEnd::Bottom.ind()],
+            padsBegin[Dims4D::PadsBegin::Left.ind()], padsEnd[Dims4D::PadsEnd::Right.ind()]);
+
+    return true;
+}
+
+mlir::LogicalResult ConvertGroupConvToConvPass::DepthwiseConvSinglePixelInputToMultiplyConverter::matchAndRewrite(
+        IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!isSpecialPattern(origOp)) {
+        return mlir::failure();
+    }
+
+    _log.trace("Converting depthwise GroupConv with single-pixel input at '{0}'", origOp->getLoc());
+
+    const auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+
+    const auto filterShape = filterType.getShape();
+    const auto outputShape = outputType.getShape();
+
+    const auto C = outputShape[Dims4D::Act::C];
+    const auto OH = outputShape[Dims4D::Act::H];
+    const auto OW = outputShape[Dims4D::Act::W];
+    const auto KY = filterShape[Dims4D::Filter::KY];
+    const auto KX = filterShape[Dims4D::Filter::KX];
+
+    // Only support 1D kernels: either KY>1 && KX=1, or KY=1 && KX>1
+    const bool isYDimKernel = (KY > 1 && KX == 1);
+    const bool isXDimKernel = (KX > 1 && KY == 1);
+
+    if (!isYDimKernel && !isXDimKernel) {
+        if (KY == 1 && KX == 1) {
+            _log.trace("Kernel is 1x1, no need for this optimization");
+        } else {
+            _log.trace("Only support 1D kernels, got KY={0}, KX={1}", KY, KX);
+        }
+        return mlir::failure();
+    }
+
+    // Configure parameters based on kernel dimension
+    int64_t outputSize, kernelSize, dimH, dimW, shapeH, shapeW;
+    std::string dimensionName;
+    int64_t concatAxis;
+
+    if (isYDimKernel) {
+        // Kernel in Y dimension: [C, 1, KY, 1] -> [1, C, OH, 1]
+        outputSize = OH;
+        kernelSize = KY;
+        dimH = 1;
+        dimW = 0;
+        dimensionName = "Y-dimension";
+        concatAxis = Dims4D::Act::H.ind();
+        shapeH = OH;
+        shapeW = 1;
+    } else {
+        // Kernel in X dimension: [C, 1, 1, KX] -> [1, C, 1, OW]
+        outputSize = OW;
+        kernelSize = KX;
+        dimH = 0;
+        dimW = 1;
+        dimensionName = "X-dimension";
+        concatAxis = Dims4D::Act::W.ind();
+        shapeH = 1;
+        shapeW = OW;
+    }
+
+    // Pre-check: outputSize must not exceed kernelSize, otherwise some output positions
+    // would have no corresponding weight (kernelPos would be < 0)
+    if (outputSize > kernelSize) {
+        _log.trace("Output size {0} exceeds kernel size {1}, cannot apply optimization", outputSize, kernelSize);
+        return mlir::failure();
+    }
+
+    _log.trace("Processing {0} kernel", dimensionName);
+
+    // Step 1: Tile/Broadcast input from [N, C, 1, 1] to [N, C, OH, OW]
+    const auto repeatsAttr = getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>{1, 1, OH, OW});
+
+    auto tileLoc = appendLoc(origOp->getLoc(), "_tile_input");
+    auto tiledInput = rewriter.create<IE::TileOp>(tileLoc, origOp.getInput(), /*repeats=*/nullptr, repeatsAttr);
+
+    // Step 2: Create reorganized weights based on kernel dimension
+    SmallVector<mlir::Value> weightSlices;
+    weightSlices.reserve(outputSize);
+    for (int64_t outPos = 0; outPos < outputSize; outPos++) {
+        int64_t kernelPos = kernelSize - 1 - outPos;
+
+        auto sliceOffsets =
+                getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>{0, 0, dimH * kernelPos, dimW * kernelPos});
+        auto sliceShape = getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>{C, 1, 1, 1});
+
+        auto sliceLoc = appendLoc(origOp->getLoc(), formatv("_slice_weight_{0}", outPos).str());
+        auto weightSlice = rewriter.create<IE::SliceOp>(sliceLoc, origOp.getFilter(), sliceOffsets, sliceShape);
+        weightSlices.push_back(weightSlice.getResult());
+    }
+
+    const SmallVector<int64_t> finalWeightsShape = {1, C, shapeH, shapeW};
+
+    auto concatLoc = appendLoc(origOp->getLoc(), "_concat_weights");
+    auto concatWeights = rewriter.create<IE::ConcatOp>(concatLoc, weightSlices, concatAxis);
+
+    // Reshape to final shape
+    const auto reshapedWeightsShapeAttr = getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>(finalWeightsShape));
+    auto reshapeLoc = appendLoc(origOp->getLoc(), "_reshape_weights");
+    auto reshapedWeights = rewriter.create<IE::ReshapeOp>(reshapeLoc, concatWeights.getOutput(), nullptr, false,
+                                                          reshapedWeightsShapeAttr);
+
+    // Broadcast weights to [1, C, OH, OW] if needed
+    mlir::Value weightsForMultiply = reshapedWeights.getOutput();
+
+    if (isYDimKernel && OW > 1) {
+        // Y-dim kernel: need to tile in W dimension
+        const auto weightTileRepeats = getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>{1, 1, 1, OW});
+        auto tileLoc = appendLoc(origOp->getLoc(), "_tile_weights");
+        weightsForMultiply = rewriter.create<IE::TileOp>(tileLoc, reshapedWeights.getOutput(),
+                                                         /*repeats=*/nullptr, weightTileRepeats)
+                                     .getResult();
+    } else if (isXDimKernel && OH > 1) {
+        // X-dim kernel: need to tile in H dimension
+        const auto weightTileRepeats = getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>{1, 1, OH, 1});
+        auto tileLoc = appendLoc(origOp->getLoc(), "_tile_weights");
+        weightsForMultiply = rewriter.create<IE::TileOp>(tileLoc, reshapedWeights.getOutput(),
+                                                         /*repeats=*/nullptr, weightTileRepeats)
+                                     .getResult();
+    }
+
+    // Step 3: Element-wise multiply
+    auto autoBroadcastAttr =
+            IE::AutoBroadcastTypeAttr::get(rewriter.getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
+
+    auto multiplyLoc = appendLoc(origOp->getLoc(), "_multiply");
+    auto multiplyOp =
+            rewriter.create<IE::MultiplyOp>(multiplyLoc, outputType, tiledInput.getOutput(), weightsForMultiply,
+                                            autoBroadcastAttr, origOp.getPostOpAttr(), origOp.getClampAttr(),
+                                            /*output_padding=*/nullptr,
+                                            /*input_padding=*/nullptr);
+    rewriter.replaceOp(origOp, multiplyOp.getOutput());
+    _log.trace("Successfully converted depthwise GroupConv with single-pixel input to Tile + Multiply");
+    return mlir::success();
+}
 
 //
 // GroupConvToSingleConvConverter
@@ -215,6 +450,22 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
         return mlir::failure();
     }
 
+    std::optional<int64_t> perAxisWeightsFQ;
+    if (isWeightsHasFQ) {
+        perAxisWeightsFQ = IE::getFQAxisIndex(weightsFQ);
+        if (perAxisWeightsFQ.has_value() && perAxisWeightsFQ.value() != Dims4D::Filter::IC.ind() &&
+            perAxisWeightsFQ.value() != Dims4D::Filter::OC.ind()) {
+            _log.trace("Unsupported quantization axis");
+            return mlir::failure();
+        }
+
+        if (perAxisWeightsFQ.has_value() && perAxisWeightsFQ.value() == Dims4D::Filter::IC.ind() &&
+            weightsAffineReshapeOp == nullptr) {
+            _log.trace("Unsupported IC quantization axis");
+            return mlir::failure();
+        }
+    }
+
     auto inputFQ = origOp.getInput().getDefiningOp<IE::FakeQuantizeOp>();
     if (inputFQ && !IE::isPerTensorFQ({inputFQ})) {
         _log.trace("Convolution is not supported per-channel quantization.");
@@ -254,8 +505,7 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
             }
 
             return rewriter
-                    .create<IE::ConcatOp>(takeOpLoc(origOp, StringLiteral("concat_{0}"), groupIdx), concatInputs,
-                                          Dims4D::Filter::IC)
+                    .create<IE::ConcatOp>(takeOpLoc(origOp, "concat_{0}", groupIdx), concatInputs, Dims4D::Filter::IC)
                     .getResult();
         }
 
@@ -277,18 +527,39 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
 
     auto newWeights = weightsConcat;
     if (isWeightsHasFQ) {
-        newWeights = rewriter.create<IE::FakeQuantizeOp>(takeOpLoc(origOp, "weights_fq"), newWeights,
-                                                         weightsFQ.getInputLow(), weightsFQ.getInputHigh(),
-                                                         weightsFQ.getOutputLow(), weightsFQ.getOutputHigh(),
+        auto updateQuantParams = [&](mlir::Value threshold) -> mlir::Value {
+            if (!perAxisWeightsFQ.has_value() || perAxisWeightsFQ.value() == Dims4D::Filter::OC.ind()) {
+                return threshold;
+            }
+
+            auto thresholdShape = getShape(threshold);
+            auto axisSize = thresholdShape[Dim(perAxisWeightsFQ.value())];
+            if (axisSize == 1) {
+                return threshold;
+            }
+
+            _log.trace("Create Reshape for threshold");
+            auto newShape = Shape(thresholdShape.size(), 1);
+            newShape[Dims4D::Filter::OC] = axisSize;
+            return rewriter.createOrFold<IE::ReshapeOp>(threshold.getLoc(), threshold, nullptr, false,
+                                                        getIntArrayAttr(origOp.getContext(), ShapeRef(newShape)));
+        };
+
+        auto newInputLow = updateQuantParams(weightsFQ.getInputLow());
+        auto newInputHigh = updateQuantParams(weightsFQ.getInputHigh());
+        auto newOutputLow = updateQuantParams(weightsFQ.getOutputLow());
+        auto newOutputHigh = updateQuantParams(weightsFQ.getOutputHigh());
+        newWeights = rewriter.create<IE::FakeQuantizeOp>(takeOpLoc(origOp, "weights_fq"), newWeights, newInputLow,
+                                                         newInputHigh, newOutputLow, newOutputHigh,
                                                          weightsFQ.getLevelsAttr(), weightsFQ.getLowFpTypeAttr(),
                                                          weightsFQ.getAutoBroadcastAttr())
                              .getResult();
     }
 
-    rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(origOp, origOp.getInput(), newWeights, origOp.getBias(),
-                                                   origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(),
-                                                   origOp.getDilations(), nullptr, nullptr, nullptr,
-                                                   origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+    rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
+            origOp, origOp.getInput(), newWeights, origOp.getBias(), /*scale*/ nullptr, origOp.getStrides(),
+            origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), nullptr, nullptr, nullptr,
+            origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     return mlir::success();
 }
@@ -337,8 +608,8 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
         Shape inputOffsets = Shape(inputShape.size(), 0);
         inputOffsets[Dims4D::Act::C] = checked_cast<int64_t>(inputShape[Dims4D::Act::C] / group * sliceIdx);
         const auto inputOffsetsAttr = getIntArrayAttr(getContext(), inputOffsets);
-        const auto inputSlice = rewriter.createOrFold<IE::SliceOp>(
-                takeOpLoc(origOp, StringLiteral("slice_in_{0}"), sliceIdx), input, inputOffsetsAttr, inputShapeAttr);
+        const auto inputSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "slice_in_{0}", sliceIdx), input,
+                                                                   inputOffsetsAttr, inputShapeAttr);
 
         // Slice weights
         Shape weightsOffsets = Shape(weightsShape.size(), 0);
@@ -353,38 +624,37 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
             auto outputLow = fakeQuantizeOp.getOutputLow();
             auto outputHigh = fakeQuantizeOp.getOutputHigh();
 
-            auto newInput = rewriter.createOrFold<IE::SliceOp>(
-                    takeOpLoc(fakeQuantizeOp, StringLiteral("slice_in_{0}"), sliceIdx), fakeQuantizeOp.getInput(),
-                    weightsOffsetsAttr, weightsShapeAttr);
+            auto newInput =
+                    rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fakeQuantizeOp, "slice_in_{0}", sliceIdx),
+                                                       fakeQuantizeOp.getInput(), weightsOffsetsAttr, weightsShapeAttr);
             if (mlir::cast<vpux::NDTypeInterface>(inputLow.getType()).getShape()[Dims4D::Filter::OC] != 1) {
-                inputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
-                        takeOpLoc(fakeQuantizeOp, StringLiteral("slice_in_low_{0}"), sliceIdx), inputLow,
-                        weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
+                inputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+                        rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fakeQuantizeOp, "slice_in_low_{0}", sliceIdx),
+                                                           inputLow, weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
             if (mlir::cast<vpux::NDTypeInterface>(outputLow.getType()).getShape()[Dims4D::Filter::OC] != 1) {
-                outputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
-                        takeOpLoc(fakeQuantizeOp, StringLiteral("slice_out_low_{0}"), sliceIdx), outputLow,
-                        weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
+                outputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+                        rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fakeQuantizeOp, "slice_out_low_{0}", sliceIdx),
+                                                           outputLow, weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
             if (mlir::cast<vpux::NDTypeInterface>(inputHigh.getType()).getShape()[Dims4D::Filter::OC] != 1) {
-                inputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
-                        takeOpLoc(fakeQuantizeOp, StringLiteral("slice_in_high_{0}"), sliceIdx), inputHigh,
-                        weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
+                inputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+                        rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fakeQuantizeOp, "slice_in_high_{0}", sliceIdx),
+                                                           inputHigh, weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
             if (mlir::cast<vpux::NDTypeInterface>(outputHigh.getType()).getShape()[Dims4D::Filter::OC] != 1) {
-                outputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::SliceOp>(
-                        takeOpLoc(fakeQuantizeOp, StringLiteral("slice_out_high_{0}"), sliceIdx), outputHigh,
-                        weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
+                outputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+                        rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fakeQuantizeOp, "slice_out_high_{0}", sliceIdx),
+                                                           outputHigh, weightsOffsetsAttr, fakeQuantizeParamShapeAttr));
             }
 
             weightsSlice = rewriter.create<IE::FakeQuantizeOp>(
-                    takeOpLoc(fakeQuantizeOp, StringLiteral("weights_fq_{0}"), sliceIdx), newInput, inputLow, inputHigh,
-                    outputLow, outputHigh, fakeQuantizeOp.getLevelsAttr(), fakeQuantizeOp.getLowFpTypeAttr(),
+                    takeOpLoc(fakeQuantizeOp, "weights_fq_{0}", sliceIdx), newInput, inputLow, inputHigh, outputLow,
+                    outputHigh, fakeQuantizeOp.getLevelsAttr(), fakeQuantizeOp.getLowFpTypeAttr(),
                     fakeQuantizeOp.getAutoBroadcastAttr());
         } else {
-            weightsSlice =
-                    rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("weights_slice_{0}"), sliceIdx),
-                                                       weights, weightsOffsetsAttr, weightsShapeAttr);
+            weightsSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "weights_slice_{0}", sliceIdx), weights,
+                                                              weightsOffsetsAttr, weightsShapeAttr);
         }
 
         // Slice Bias
@@ -402,11 +672,10 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
         }
 
         // New conv
-        auto newConvLoc = appendLoc(origOp->getLoc(), "_ConvertGroupConv_{0}", sliceIdx);
-        auto convOp = rewriter.create<IE::ConvolutionOp>(
-                newConvLoc, inputSlice, weightsSlice, biasSlice, origOp.getStrides(), origOp.getPadsBegin(),
-                origOp.getPadsEnd(), origOp.getDilations(), nullptr, nullptr, nullptr, nullptr, nullptr);
-
+        auto newConvLoc = appendLoc(origOp->getLoc(), "ConvertGroupConv_{0}", sliceIdx);
+        auto convOp = rewriter.create<IE::ConvolutionOp>(newConvLoc, inputSlice, weightsSlice, biasSlice, nullptr,
+                                                         origOp.getStrides(), origOp.getPadsBegin(),
+                                                         origOp.getPadsEnd(), origOp.getDilations());
         slices.push_back(convOp);
     }
 
@@ -433,9 +702,12 @@ void ConvertGroupConvToConvPass::safeRunOnFunc() {
     target.addLegalOp<IE::SliceOp>();
     target.addLegalOp<Const::DeclareOp>();
     target.addLegalOp<IE::FakeQuantizeOp>();
+    target.addLegalOp<IE::TileOp>();
+    target.addLegalOp<IE::MultiplyOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<GroupConvToSingleConvConverter>(&ctx, vpux::benefitHigh, _log);
+    patterns.add<DepthwiseConvSinglePixelInputToMultiplyConverter>(&ctx, vpux::benefitHigh, _log);
+    patterns.add<GroupConvToSingleConvConverter>(&ctx, vpux::benefitMid, _log);
     patterns.add<GroupConvToMultiConvConverter>(&ctx, vpux::benefitLow, _log);
 
     auto func = getOperation();

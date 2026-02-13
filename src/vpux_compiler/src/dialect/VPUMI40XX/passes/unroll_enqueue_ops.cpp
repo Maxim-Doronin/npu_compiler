@@ -30,23 +30,20 @@ public:
         setDebugName("UnrollEnqueuePatternRewriter");
     }
 
-    mlir::LogicalResult match(VPURegMapped::EnqueueOp enqueueOp) const final;
-    void rewrite(VPURegMapped::EnqueueOp enqueueOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(VPURegMapped::EnqueueOp enqueueOp,
+                                        mlir::PatternRewriter& rewriter) const override;
 
 private:
     Logger _log;
 };
 
-mlir::LogicalResult UnrollEnqueuePattern::match(VPURegMapped::EnqueueOp enqueueOp) const {
-    // only care to rewrite IF and only IF we have more than one task to enqueue
-    if (enqueueOp.getStart() != enqueueOp.getEnd()) {
-        return mlir::success();
-    } else {
-        return mlir::failure();
+mlir::LogicalResult UnrollEnqueuePattern::matchAndRewrite(VPURegMapped::EnqueueOp enqueueOp,
+                                                          mlir::PatternRewriter& rewriter) const {
+    // Only rewrite if we have more than one task to enqueue.
+    if (enqueueOp.getStart() == enqueueOp.getEnd()) {
+        return rewriter.notifyMatchFailure(enqueueOp, "single-task enqueue, nothing to unroll");
     }
-}
 
-void UnrollEnqueuePattern::rewrite(VPURegMapped::EnqueueOp enqueueOp, mlir::PatternRewriter& rewriter) const {
     auto start = mlir::cast<VPURegMapped::TaskOpInterface>(enqueueOp.getStart().getDefiningOp());
     auto end = mlir::cast<VPURegMapped::TaskOpInterface>(enqueueOp.getEnd().getDefiningOp());
 
@@ -74,7 +71,8 @@ void UnrollEnqueuePattern::rewrite(VPURegMapped::EnqueueOp enqueueOp, mlir::Patt
         return !mlir::isa<VPUMI40XX::MappedInferenceOp>(operand.getOwner());
     });
 
-    rewriter.eraseOp(enqueueOp.getOperation());
+    rewriter.eraseOp(enqueueOp);
+    return mlir::success();
 }
 
 class UnrollEnqueueOpsPass : public VPUMI40XX::impl::UnrollEnqueueOpsBase<UnrollEnqueueOpsPass> {

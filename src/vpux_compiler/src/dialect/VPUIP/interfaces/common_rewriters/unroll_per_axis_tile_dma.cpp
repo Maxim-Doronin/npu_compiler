@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -249,12 +249,12 @@ mlir::LogicalResult MultiClusterPerAxisTileDMARewriter::unrollSegmentedOrOverlap
         outputInsertionPoint = outBuffer.getDefiningOp();
         _log.trace("Insert new output buffer declaration: '{0}'", outBuffer);
 
-        const auto newLoc = appendLoc(loc, "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         auto newDMAPort = clusterId % _dmaPortCount;
         auto newPerAxisTileDMAOp = VPURT::wrapIntoTaskOp<VPUIP::PerAxisTileDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffer, outBuffer,
                 vpux::getIntAttr(rewriter, newDMAPort), perAxisTileDMAOp.getAxisAttr(), perAxisTileDMAOp.getTilesAttr(),
-                dmaDescriptorAttr, perAxisTileDMAOp.getIsOutOfOrderAttr(), perAxisTileDMAOp.getIsCriticalAttr(),
+                dmaDescriptorAttr, perAxisTileDMAOp.getIsOutOfOrder(), perAxisTileDMAOp.getIsCritical(),
                 perAxisTileDMAOp.getDmaHwpIdAttr(), perAxisTileDMAOp.getProfilingMetadataAttr());
 
         _log.trace("Insert new PerAxisTile dma : '{0}'", newPerAxisTileDMAOp);
@@ -312,11 +312,11 @@ mlir::LogicalResult MultiClusterPerAxisTileDMARewriter::unrollDuplicated(VPUIP::
                                                             elemTypeSize.count());
     }
 
-    const auto newLoc = appendLoc(loc, "_broadcast_copy_to_CMX[{0},{1}]", clusters.front(), clusters.back());
+    const auto newLoc = appendLoc(loc, "broadcast_copy_to_CMX[{0},{1}]", clusters.front(), clusters.back());
     const auto newPerAxisTileDMA = VPURT::wrapIntoTaskOp<VPUIP::PerAxisTileDMAOp>(
             rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, input, cmxBuffer,
             vpux::getIntAttr(rewriter, 0), perAxisTileDMAOp.getAxisAttr(), perAxisTileDMAOp.getTilesAttr(),
-            dmaDescriptorAttr, perAxisTileDMAOp.getIsOutOfOrderAttr(), perAxisTileDMAOp.getIsCriticalAttr(),
+            dmaDescriptorAttr, perAxisTileDMAOp.getIsOutOfOrder(), perAxisTileDMAOp.getIsCritical(),
             perAxisTileDMAOp.getDmaHwpIdAttr(), perAxisTileDMAOp.getProfilingMetadataAttr());
 
     _log.trace("Insert new PerAxisTileDMA op: '{0}'", newPerAxisTileDMA);

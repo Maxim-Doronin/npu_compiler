@@ -17,6 +17,7 @@
 #include "vpux/compiler/utils/strings.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTMVN6TOMVN1
@@ -30,8 +31,15 @@ namespace {
 
 //
 // ConvertMVN6ToMVN1
+// Motivation:
+// For MVN operation there are two kernels, namely, MVN1, and MVN6.
+// MVN6 is more general in terms of norm-axes (can be any, can be non-adjacent,
+// also supports optional SCALE, BIAS); but contains less optimizations than MVN1.
+// The general (any axes) implementation of MVN6 is slower. Therefore this pass
+// attempts to convert MVN6 to MVN1 in cases when the conversion is possible.
+// This often requires inserting Transpose operations before and after MVN1 to
+// ensure that the axes used for normalization are the ones supported by MVN1.
 //
-
 class ConvertMVN6ToMVN1 final : public mlir::OpRewritePattern<IE::MVN6Op> {
 public:
     ConvertMVN6ToMVN1(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::MVN6Op>(ctx), _log(log) {
@@ -107,12 +115,27 @@ mlir::LogicalResult ConvertMVN6ToMVN1::matchAndRewrite(IE::MVN6Op origOp, mlir::
     // 4D input and axis is 1, we need a Transpose to transpose dim C
     // to spatial dim
     IE::TransposeOp transposeIn;
+    mlir::AffineMapAttr inverseTransposeOrder;
     SmallVector<int64_t> origInputShapeVal(inputShapeVal.begin(), inputShapeVal.end());
-    if (inputShapeSize == 4 && axesAttr.size() == 1 && axesAttr[0] == 1) {
+    if (inputShapeSize == 4 && axesAttr.size() == 1 && (axesAttr[0] == 1 || axesAttr[0] == 2)) {
         needsTranspose = true;
         _log.trace("Transpose dim C to spatial dim");
-        const auto transposeOrder = mlir::AffineMapAttr::get(
-                mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 2, 3, 1}, getContext()));
+        mlir::AffineMapAttr transposeOrder;
+        if (axesAttr[0] == 1) {
+            transposeOrder = mlir::AffineMapAttr::get(
+                    mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 2, 3, 1}, getContext()));
+            // Inverse permutation of {0,2,3,1} is {0,3,1,2}
+            inverseTransposeOrder = mlir::AffineMapAttr::get(
+                    mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 3, 1, 2}, getContext()));
+        } else {
+            // Ensure that the more efficient mvn kernel is used when axesAttr[0] == 2.
+            // This aligns with the behaviour of NBPerf.
+            transposeOrder = mlir::AffineMapAttr::get(
+                    mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 1, 3, 2}, getContext()));
+            // Inverse permutation of {0,1,3,2} is {0,1,3,2}
+            inverseTransposeOrder = mlir::AffineMapAttr::get(
+                    mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 1, 3, 2}, getContext()));
+        }
         const auto transposeLoc = appendLoc(origOp->getLoc(), "transpose_mvn_in");
         rewriter.setInsertionPoint(origOp);
         transposeIn = rewriter.create<IE::TransposeOp>(transposeLoc, origOp.getInput(), nullptr, transposeOrder);
@@ -265,10 +288,8 @@ mlir::LogicalResult ConvertMVN6ToMVN1::matchAndRewrite(IE::MVN6Op origOp, mlir::
         }
 
         if (needsTranspose) {
-            // Inverse permutation of {0,2,3,1} is {0,3,1,2}
-            const auto transposeOrder = mlir::AffineMapAttr::get(
-                    mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 3, 1, 2}, getContext()));
-            auto transposeOut = rewriter.create<IE::TransposeOp>(transposeLoc, reshapeOutput, nullptr, transposeOrder);
+            auto transposeOut =
+                    rewriter.create<IE::TransposeOp>(transposeLoc, reshapeOutput, nullptr, inverseTransposeOrder);
             rewriter.replaceOp(origOp, transposeOut.getOutput());
         } else {
             rewriter.replaceOp(origOp, reshapeOutput);
@@ -305,9 +326,7 @@ void ConvertMVN6ToMVN1Pass::safeRunOnFunc() {
     patterns.add<ConvertMVN6ToMVN1>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

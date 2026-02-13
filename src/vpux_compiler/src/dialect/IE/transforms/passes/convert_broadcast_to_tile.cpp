@@ -15,6 +15,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -191,9 +192,7 @@ void ConvertBroadcastToTilePass::safeRunOnFunc() {
 
     mlir::RewritePatternSet tilePatterns(&ctx);
     IE::TileOp::getCanonicalizationPatterns(tilePatterns, &ctx);
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(tilePatterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(tilePatterns));
 }
 
 }  // namespace

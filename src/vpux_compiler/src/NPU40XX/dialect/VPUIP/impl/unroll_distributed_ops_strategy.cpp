@@ -15,7 +15,7 @@ namespace vpux::VPUIP::arch40xx {
 
 void UnrollDistributedOpsStrategy::prepareOps(mlir::MLIRContext& ctx, Logger& log) {
     auto module = _funcOp->getParentOfType<mlir::ModuleOp>();
-    auto dmaOpExecutor = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOpExecutor = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOpExecutor.getCount();
 
     const VPUIP::arch37xx::ClusterSWRewriter swRewriter(&ctx, module, log);

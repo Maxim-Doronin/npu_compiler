@@ -1,15 +1,15 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -33,7 +33,7 @@ bool fitsIntoCMX(mlir::Value rootInput, VPU::ConcatOp* concat) {
 }
 
 void propagateReturnType(mlir::Operation*& op, mlir::OpBuilder& builder) {
-    for (auto* user : op->getUsers()) {
+    for (auto* user : make_early_inc_range(op->getUsers())) {
         if (mlir::isa<VPU::ConcatOp>(user)) {
             return;
         }
@@ -87,14 +87,14 @@ bool checkInputTypes(VPU::ConcatOp* concatOp, mlir::Operation*& inputCopy) {
 
         auto* defOp = input.getDefiningOp();
 
-        if (mlir::isa<VPU::QuantizeCastOp>(defOp) || mlir::isa<VPU::CopyOp>(defOp)) {
+        if (mlir::isa<VPU::QuantizeCastOp, VPU::ShapeCastOp>(defOp) || mlir::isa<VPU::CopyOp>(defOp)) {
             ++copyOpCount;
             if (!foundCopyOp) {
                 foundCopyOp = defOp;
             }
         }
 
-        if (!mlir::isa<VPU::SliceOp>(defOp) && !mlir::isa<VPU::QuantizeCastOp>(defOp)) {
+        if (!mlir::isa<VPU::SliceOp>(defOp) && !mlir::isa<VPU::QuantizeCastOp, VPU::ShapeCastOp>(defOp)) {
             allSliceOrQuantize = false;
         }
 
@@ -217,8 +217,9 @@ bool matchReflectPadPatterns(const Logger& log, VPU::ConcatOp& concatOp,
         if (sliceInput) {
             auto sliceSource = sliceInput.getSource();
             auto quantCast = mlir::dyn_cast_or_null<VPU::QuantizeCastOp>(sliceSource.getDefiningOp());
-            if (!quantCast) {
-                log.trace("Slice input source is not a QuantizeCast Op.");
+            auto shapeCast = mlir::dyn_cast_or_null<VPU::ShapeCastOp>(sliceSource.getDefiningOp());
+            if (!quantCast && !shapeCast) {
+                log.trace("Slice input source is not a QuantizeCast or ShapeCast Op.");
                 return false;
             }
 
@@ -229,8 +230,13 @@ bool matchReflectPadPatterns(const Logger& log, VPU::ConcatOp& concatOp,
                 return false;
             }
 
-            auto quantCastInput = quantCast.getInput().getDefiningOp();
-            cmxToDdrCopy = mlir::dyn_cast_or_null<VPU::CopyOp>(quantCastInput);
+            mlir::Operation* castInput = nullptr;
+            if (quantCast) {
+                castInput = quantCast.getInput().getDefiningOp();
+            } else if (shapeCast) {
+                castInput = shapeCast.getInput().getDefiningOp();
+            }
+            cmxToDdrCopy = mlir::dyn_cast_or_null<VPU::CopyOp>(castInput);
             opsWithSameSource.push_back(inputOp);
             inputSource = sliceSource;
         } else if (permuteCastInput) {
@@ -253,7 +259,8 @@ bool matchReflectPadPatterns(const Logger& log, VPU::ConcatOp& concatOp,
             opsWithSameSource.push_back(permuteCastSource);
             inputSource = sliceSource;
             hasPermuteCastInput = true;
-        } else if (mlir::isa<VPU::CopyOp>(inputOp) || mlir::isa<VPU::QuantizeCastOp>(inputOp)) {
+        } else if (mlir::isa<VPU::CopyOp>(inputOp) ||
+                   mlir::isa<VPU::QuantizeCastOp, VPU::PermuteCastOp, VPU::ShapeCastOp>(inputOp)) {
             continue;
         } else {
             return false;
@@ -349,10 +356,9 @@ private:
 void MoveReflectPadToCMXPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto arch = config::getArch(module);
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-    auto vpunnCostModel = vpux::VPU::CostModelConfig::createLayerCostModel(arch);
-    auto vpuDevice = vpux::VPU::getVPUDeviceType(arch);
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
+    auto vpunnCostModel = vpux::VPU::CostModelConfig::createLayerCostModel(&getContext());
+    auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
 
     func.walk([&](VPU::ConcatOp concatOp) {
         _log.trace("Found Concat operation '{0}' at '{1}'.", concatOp->getName(), concatOp->getLoc());

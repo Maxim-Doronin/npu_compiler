@@ -1,5 +1,6 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+//
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -89,6 +90,7 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
                     "Enable output size ensurance when checking nce op shapes in EnsureNCEOpsSizeRequirements pass"),
             llvm::cl::init(true)};
 
+    // This option is deprecated and does nothing
     BoolOption accumulateMatmulWithDPU{*this, "accumulate-matmul-with-dpu",
                                        llvm::cl::desc("Accumulate unrolled Matmul results with DPU"),
                                        llvm::cl::init(false)};
@@ -108,17 +110,19 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
                                "Partial WLM with split into subgraphs"),
                     clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                "Partial WLM, enqueue barriers search algorithm at VPURT ENABLED"),
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                               "PWLM with split into subgraphs (pages)"),
                     clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                "Partial WLM, enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                "enqueue algorithm at VPUMI"))};
     static WorkloadManagementMode getDefaultWorkloadManagementMode(config::ArchKind arch) {
         switch (arch) {
         case config::ArchKind::NPU40XX:
-            return WorkloadManagementMode::PWLM_V0_LCA;
+            return WorkloadManagementMode::PWLM_V0_1_PAGES;
         case config::ArchKind::NPU50XX:
             return WorkloadManagementMode::FWLM_V1_PAGES;
         default:
-            return WorkloadManagementMode::PWLM_V0_LCA;
+            return WorkloadManagementMode::PWLM_V0_1_PAGES;
         }
     }
 

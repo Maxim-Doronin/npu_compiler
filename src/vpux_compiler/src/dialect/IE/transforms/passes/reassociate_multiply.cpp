@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_REASSOCIATEMULTIPLY
@@ -90,16 +91,16 @@ mlir::LogicalResult MultiplyRewriter::matchAndRewrite(IE::MultiplyOp origOp, mli
         return matchFailed(_log, rewriter, origOp, "new multiply output is too big");
     }
 
-    auto multiply_1 = rewriter.create<IE::MultiplyOp>(appendLoc(origOp.getLoc(), "_new_multiply_1"), middleSizeInput,
-                                                      smallestSizeInput, IE::AutoBroadcastType::NUMPY, nullptr, nullptr,
-                                                      nullptr, nullptr);
+    auto multiply1Result = rewriter.createOrFold<IE::MultiplyOp>(
+            appendLoc(origOp.getLoc(), "new_multiply_1"), middleSizeInput, smallestSizeInput,
+            IE::AutoBroadcastType::NUMPY, nullptr, nullptr, nullptr, nullptr);
 
-    auto multiply_2 = rewriter.create<IE::MultiplyOp>(
-            appendLoc(origOp.getLoc(), "_new_multiply_2"), producerLargeSizeInput, multiply_1.getOutput(),
+    auto multiply2Result = rewriter.createOrFold<IE::MultiplyOp>(
+            appendLoc(origOp.getLoc(), "new_multiply_2"), producerLargeSizeInput, multiply1Result,
             origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
             origOp.getInputPaddingAttr());
 
-    rewriter.replaceAllUsesWith(origOp.getOutput(), multiply_2.getOutput());
+    rewriter.replaceAllUsesWith(origOp.getOutput(), multiply2Result);
 
     return mlir::success();
 }
@@ -124,14 +125,12 @@ private:
 
 void ReassociateMultiplyPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MultiplyRewriter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

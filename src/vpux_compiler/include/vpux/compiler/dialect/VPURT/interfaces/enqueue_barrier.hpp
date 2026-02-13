@@ -28,7 +28,7 @@ public:
                           const SmallVector<size_t>& shvTasksWithDpu = {}, Logger log = Logger::global());
 
     mlir::LogicalResult calculateEnqueueBarriers(
-            const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorEnqAtBootstrap = {});
+            const mlir::DenseSet<vpux::config::ExecutorKind>& executorEnqAtBootstrap = {});
     std::optional<size_t> getEnqueueBarrier(size_t taskInd);
     mlir::Value getEnqueueBarrier(VPURT::TaskOp taskOp);
 
@@ -52,7 +52,7 @@ private:
                                    std::optional<size_t> previousEnqBarOpt);
 
     mlir::LogicalResult delayEnqIfNeededBasedOnFifoState(
-            size_t taskInd, std::optional<size_t>& enqBarOpt,
+            size_t taskInd, VPURT::TaskQueueType taskQueueType, std::optional<size_t>& enqBarOpt,
             std::vector<std::optional<size_t>>& outstandingEnqueuesTaskIndexVec,
             std::vector<std::optional<size_t>>& outstandingEnqueuesTaskWaitBarIndexVec,
             size_t outstandingEnquOpsCounter);

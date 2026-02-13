@@ -23,100 +23,90 @@ using namespace vpux;
 
 namespace {
 
-//
-// LayerWithPostOpModel37XX
-//
-
-bool isSupportedHWPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) {
-    return llvm::TypeSwitch<mlir::Operation*, bool>(postOp)
-            .Case<IE::ReLUOp>([&](auto) {
-                if (mlir::isa<IE::MaxPoolOp>(mainOp)) {
-                    logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
-                                        mainOp->getName(), postOp->getName(), postOp->getLoc()));
-                    return false;
-                }
-
-                return true;
-            })
-            // TODO: remove option after E#-83187
-            .Case<IE::ClampOp>([&](IE::ClampOp clampOp) {
-                const auto isQuantized = vpux::VPU::checkForQuantization(mainOp, postOp);
-                const auto minVal = clampOp.getMinAttr().getValueAsDouble();
-                if (!isDoubleEqual(minVal, 0.0) && !isQuantized) {
-                    logCb(llvm::formatv("{0} is not quantized and does not have 0 as minVal at `{1}`",
-                                        postOp->getName(), postOp->getLoc()));
-                    return false;
-                }
-                // Disable MaxPool fused with Clamp since it is not fully supported by firmware.
-                // Tracking Number: E#-145636
-                if (mlir::isa<IE::MaxPoolOp>(mainOp)) {
-                    const auto maxVal = clampOp.getMaxAttr().getValueAsDouble();
-                    const auto maxValueFP16 = checked_cast<double>(std::numeric_limits<vpux::type::float16>::max());
-                    // Given upper bound as fp16 max value, keep fusing Clamp into MaxPool to pass CI
-                    // Tracking Number: E#-146652
-                    if ((!isDoubleEqual(maxVal, maxValueFP16))) {
-                        logCb(llvm::formatv("{0} at `{1}` cannot be fused into MaxPool due to lack of firmware support",
-                                            postOp->getName(), postOp->getLoc()));
-                        return false;
-                    }
-                }
-                return true;
-            })
-            .Case<IE::LeakyReluOp>([&](auto) {
-                if (mlir::isa<IE::MaxPoolOp>(mainOp)) {
-                    logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
-                                        mainOp->getName(), postOp->getName(), postOp->getLoc()));
-                    return false;
-                }
-
-                const auto inElemType =
-                        mlir::cast<vpux::NDTypeInterface>(mainOp->getOperand(0).getType()).getElementType();
-                const auto outElemType =
-                        mlir::cast<vpux::NDTypeInterface>(mainOp->getResult(0).getType()).getElementType();
-                // Because of the convert to float, the prelu shift will be bypassed. Check PPE diagram
-                if (mlir::isa<mlir::quant::QuantizedType>(inElemType) &&
-                    !mlir::isa<mlir::quant::QuantizedType>(outElemType)) {
-                    logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
-                                        mainOp->getName(), postOp->getName(), postOp->getLoc()));
-                    return false;
-                }
-
-                return true;
-            })
-            .Default([&](mlir::Operation*) {
-                logCb(llvm::formatv("{0} at `{1}` is not supported on this HW platform", postOp->getName(),
-                                    postOp->getLoc()));
-                return false;
-            });
-}
-
-template <typename ConcreteModel, typename MainOpType>
-class LayerWithPostOpModelBase : public VPU::LayerWithClampOpModel<ConcreteModel, MainOpType> {
-public:
-    bool isSupportedPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) const {
-        if (config::getCompilationMode(postOp) == config::CompilationMode::ReferenceSW) {
-            return false;
-        }
-
-        if (!isSupportedHWPostOp(mainOp, postOp, logCb)) {
-            return false;
-        }
-
-        return VPU::NCEInvariant::isSupported(mlir::cast<MainOpType>(mainOp)).succeeded();
-    }
-};
-
 template <class MainOpType>
-class LayerWithPostOpUsingBiasAndStaticScaleModel final :
-        public LayerWithPostOpModelBase<LayerWithPostOpUsingBiasAndStaticScaleModel<MainOpType>, MainOpType> {
+class LayerWithPostOpModel : public VPU::LayerWithPostOpModelBase<LayerWithPostOpModel<MainOpType>, MainOpType> {
 public:
-    bool supportsFuseBiasScale(mlir::Operation*) const {
+    static bool isSupportedHWClampOp(mlir::Operation* mainOp, IE::ClampOp clampOp, const LogCb& logCb) {
+        const auto isQuantized = vpux::VPU::checkForQuantization(mainOp, clampOp.getOperation());
+        const auto minVal = clampOp.getMinAttr().getValueAsDouble();
+        if (!isDoubleEqual(minVal, 0.0) && !isQuantized) {
+            logCb(llvm::formatv("IE.Clamp is not quantized and does not have 0 as minVal at `{0}`", clampOp.getLoc()));
+            return false;
+        }
+
+        // Disable MaxPool fused with Clamp since it is not fully supported by firmware.
+        // For more detailed information: E#-145636
+        if (mlir::isa<IE::MaxPoolOp>(mainOp)) {
+            const auto maxVal = clampOp.getMaxAttr().getValueAsDouble();
+            const auto maxValueFP16 = checked_cast<double>(std::numeric_limits<vpux::type::float16>::max());
+            // Given upper bound as fp16 max value, keep fusing Clamp into MaxPool to pass CI
+            if ((!isDoubleEqual(maxVal, maxValueFP16))) {
+                logCb(llvm::formatv("IE.Clamp at `{0}` cannot be fused into MaxPool due to lack of firmware support",
+                                    clampOp.getLoc()));
+                return false;
+            }
+        }
         return true;
     }
+
+    static bool isSupportedHWPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) {
+        return llvm::TypeSwitch<mlir::Operation*, bool>(postOp)
+                .Case<IE::ReLUOp>([&](auto) {
+                    if (mlir::isa<IE::MaxPoolOp>(mainOp)) {
+                        logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
+                                            mainOp->getName(), postOp->getName(), postOp->getLoc()));
+                        return false;
+                    }
+
+                    return true;
+                })
+                // TODO: remove option after E#-83187
+                .template Case<IE::ClampOp>([&](IE::ClampOp clampOp) {
+                    return isSupportedHWClampOp(mainOp, clampOp, logCb);
+                })
+                .template Case<IE::LeakyReluOp>([&](auto) {
+                    if (mlir::isa<IE::MaxPoolOp>(mainOp)) {
+                        logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
+                                            mainOp->getName(), postOp->getName(), postOp->getLoc()));
+                        return false;
+                    }
+
+                    const auto inElemType =
+                            mlir::cast<vpux::NDTypeInterface>(mainOp->getOperand(0).getType()).getElementType();
+                    const auto outElemType =
+                            mlir::cast<vpux::NDTypeInterface>(mainOp->getResult(0).getType()).getElementType();
+                    // Because of the convert to float, the prelu shift will be bypassed. Check PPE diagram
+                    if (mlir::isa<mlir::quant::QuantizedType>(inElemType) &&
+                        !mlir::isa<mlir::quant::QuantizedType>(outElemType)) {
+                        logCb(llvm::formatv("{0} does not support fusing with {1} for this HW platform at `{2}`",
+                                            mainOp->getName(), postOp->getName(), postOp->getLoc()));
+                        return false;
+                    }
+
+                    return true;
+                })
+                .Default([&](mlir::Operation*) {
+                    logCb(llvm::formatv("{0} at `{1}` is not supported on this HW platform", postOp->getName(),
+                                        postOp->getLoc()));
+                    return false;
+                });
+    }
+
+    bool supportsFuseBiasScale(mlir::Operation*) const {
+        return _supportsFuseBiasScale;
+    }
+
+protected:
+    bool _supportsFuseBiasScale = false;
 };
 
 template <class MainOpType>
-class LayerWithPostOpModel final : public LayerWithPostOpModelBase<LayerWithPostOpModel<MainOpType>, MainOpType> {};
+class LayerWithPostOpUsingBiasAndStaticScaleModel final : public LayerWithPostOpModel<MainOpType> {
+public:
+    LayerWithPostOpUsingBiasAndStaticScaleModel() {
+        this->_supportsFuseBiasScale = true;
+    }
+};
 
 }  // namespace
 

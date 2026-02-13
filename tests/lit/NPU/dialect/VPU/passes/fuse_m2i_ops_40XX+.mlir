@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @fuseCscConvertInterpPerm(%arg0: tensor<1x288x256x1xui8>) -> tensor<1x
    %3 = VPU.MemPermute(%2) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xf16> -> tensor<1x3x168x224xf16>
    return %3 : tensor<1x3x168x224xf16>
 
-   //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
+   //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
    //CHECK: return [[VAL0]]
 }
 
@@ -28,7 +28,7 @@ func.func @fuseCscInterpConvertPerm(%arg0: tensor<1x288x256x1xui8>) -> tensor<1x
    %perm = VPU.MemPermute(%conv) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xf16> -> tensor<1x3x168x224xf16>
    return %perm : tensor<1x3x168x224xf16>
 
-   //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
+   //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
    //CHECK: return [[VAL0]]
 }
 
@@ -42,7 +42,7 @@ func.func @fuseCscResizeConvertPerm(%arg0: tensor<1x288x256x1xui8>) -> tensor<1x
    %perm = VPU.MemPermute(%conv) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xf16> -> tensor<1x3x168x224xf16>
    return %perm : tensor<1x3x168x224xf16>
 
-   //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
+   //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
    //CHECK: return [[VAL0]]
 }
 
@@ -55,7 +55,7 @@ func.func @fuseCscResizePerm(%arg0: tensor<1x288x256x1xui8>) -> tensor<1x3x168x2
   %2 = VPU.MemPermute(%1) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xui8> -> tensor<1x3x168x224xui8>
   return %2 : tensor<1x3x168x224xui8>
 
-  //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], chroma_out_reverse_channels, do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<PL_YUV420_8>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_RGB24>, sizes = [168, 224]} -> tensor<1x3x168x224xui8>
+  //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], chroma_out_reverse_channels, do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<PL_YUV420_8>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_RGB24>, sizes = [168, 224]} -> tensor<1x3x168x224xui8>
   //CHECK: return [[VAL0]]
 }
 
@@ -68,7 +68,7 @@ func.func @fuseConvertResizePerm(%arg0: tensor<1x192x256x3xui8>) -> tensor<1x3x1
   %perm = VPU.MemPermute(%resize) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xf16> -> tensor<1x3x168x224xf16>
   return %perm : tensor<1x3x168x224xf16>
 
-  //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = false, do_norm = false, inFmt = #VPU.m2i_color_fmt<IL_RGB888>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
+  //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = false, do_norm = false, inFmt = #VPU.m2i_color_fmt<IL_RGB888>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
   //CHECK: return [[VAL0]]
 }
 
@@ -80,7 +80,7 @@ func.func @fuseResizePerm(%arg0: tensor<1x192x256x3xui8>) -> tensor<1x3x168x224x
   %perm = VPU.MemPermute(%resize) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xui8> -> tensor<1x3x168x224xui8>
   return %perm : tensor<1x3x168x224xui8>
 
-  //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = false, do_norm = false, inFmt = #VPU.m2i_color_fmt<IL_RGB888>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_RGB24>, sizes = [168, 224]} -> tensor<1x3x168x224xui8>
+  //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = false, do_norm = false, inFmt = #VPU.m2i_color_fmt<IL_RGB888>, interp = #VPU.m2i_interp<BILINEAR>, outFmt = #VPU.m2i_color_fmt<PL_RGB24>, sizes = [168, 224]} -> tensor<1x3x168x224xui8>
   //CHECK: return [[VAL0]]
 }
 
@@ -92,7 +92,7 @@ func.func @fuseCscResize(%arg0: tensor<1x288x256x1xui8>) -> tensor<1x168x224x3xu
   %1 = VPU.M2I.Resize(%0) {axes = [1, 2], interp = #VPU.m2i_interp<NEAREST>, sizes = [168, 224]} -> tensor<1x168x224x3xui8>
   return %1 : tensor<1x168x224x3xui8>
 
-  //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<IL_RGB888>, sizes = [168, 224]} -> tensor<1x168x224x3xui8>
+  //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<IL_RGB888>, sizes = [168, 224]} -> tensor<1x168x224x3xui8>
   //CHECK: return [[VAL0]]
 }
 
@@ -104,7 +104,7 @@ func.func @fuseCscPermute(%arg0: tensor<1x252x224x1xui8>) -> tensor<1x3x168x224x
   %1 = VPU.MemPermute(%0) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xui8> -> tensor<1x3x168x224xui8>
   return %1 : tensor<1x3x168x224xui8>
 
-  //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<PL_RGB24>} -> tensor<1x3x168x224xui8>
+  //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, outFmt = #VPU.m2i_color_fmt<PL_RGB24>} -> tensor<1x3x168x224xui8>
   //CHECK: return [[VAL0]]
 }
 
@@ -117,7 +117,7 @@ func.func @fuseCscConvertPerm(%arg0: tensor<1x252x224x1xui8>) -> tensor<1x3x168x
   %2 = VPU.MemPermute(%1) {dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x168x224x3xf16> -> tensor<1x3x168x224xf16>
   return %2 : tensor<1x3x168x224xf16>
 
-  //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<PL_YUV420_8>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>} -> tensor<1x3x168x224xf16>
+  //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {do_csc = true, do_norm = false, inFmt = #VPU.m2i_color_fmt<PL_YUV420_8>, outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>} -> tensor<1x3x168x224xf16>
   //CHECK: return [[VAL0]]
 }
 
@@ -204,7 +204,7 @@ func.func @fuseCscConvertResizePermNorm(%arg0: tensor<1x288x256x1xui8>) -> tenso
    %norm = VPU.M2I.Norm(%perm) {beta_value = [0.000000e+00, 0.4169921875, 1.000000e+00], eps = 1.000000e-03 : f64, gamma_value = [0.000000e+00, 0.4169921875, 1.000000e+00], mean_value = [0.000000e+00, 0.4169921875, 1.000000e+00], variance_value = [7.826089859008789E-5, 1.3154296875, 7.5546875]} -> tensor<1x3x168x224xf16>
    return %norm : tensor<1x3x168x224xf16>
 
-   //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = true, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, norm = [0.000000e+00, 0.000000e+00, 0.032836883204562642, 0.000000e+00, 0.4169921875, 0.4169921875, 1.1473576981482279, 0.4169921875, 1.000000e+00, 1.000000e+00, 2.748761084561552, 1.000000e+00], outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
+   //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = true, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, norm = [0.000000e+00, 0.000000e+00, 0.032836883204562642, 0.000000e+00, 0.4169921875, 0.4169921875, 1.1473576981482279, 0.4169921875, 1.000000e+00, 1.000000e+00, 2.748761084561552, 1.000000e+00], outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
    //CHECK: return [[VAL0]]
 }
 
@@ -219,7 +219,7 @@ func.func @fuseCscResizeConvertPermNorm(%arg0: tensor<1x288x256x1xui8>) -> tenso
    %norm = VPU.M2I.Norm(%perm) {beta_value = [0.000000e+00, 0.4169921875, 1.000000e+00], eps = 1.000000e-03 : f64, gamma_value = [0.000000e+00, 0.4169921875, 1.000000e+00], mean_value = [0.000000e+00, 0.4169921875, 1.000000e+00], variance_value = [7.826089859008789E-5, 1.3154296875, 7.5546875]} -> tensor<1x3x168x224xf16>
    return %norm : tensor<1x3x168x224xf16>
 
-   //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = true, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, interp = #VPU.m2i_interp<BILINEAR>, norm = [0.000000e+00, 0.000000e+00, 0.032836883204562642, 0.000000e+00, 0.4169921875, 0.4169921875, 1.1473576981482279, 0.4169921875, 1.000000e+00, 1.000000e+00, 2.748761084561552, 1.000000e+00], outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
+   //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], do_csc = true, do_norm = true, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, interp = #VPU.m2i_interp<BILINEAR>, norm = [0.000000e+00, 0.000000e+00, 0.032836883204562642, 0.000000e+00, 0.4169921875, 0.4169921875, 1.1473576981482279, 0.4169921875, 1.000000e+00, 1.000000e+00, 2.748761084561552, 1.000000e+00], outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [168, 224]} -> tensor<1x3x168x224xf16>
    //CHECK: return [[VAL0]]
 }
 
@@ -233,6 +233,6 @@ func.func @fuseTaskConvertPermNorm(%arg0: tensor<1x768x512x1xui8>) -> tensor<1x3
    %norm = VPU.M2I.Norm(%perm) {beta_value = [-1.8046875, -2.03515625, -2.1171875], eps = 0.000000e+00 : f64, gamma_value = [0.017425537109375, 0.0175018310546875, 0.017120361328125], mean_value = [0.000000e+00, 0.000000e+00, 0.000000e+00], variance_value = [1.000000e+00, 1.000000e+00, 1.000000e+00]} -> tensor<1x3x224x224xf16>
    return %norm : tensor<1x3x224x224xf16>
 
-   //CHECK: [[VAL0:%.*]] = VPU.M2I.Task(%arg0) {axes = [1, 2], chroma_out_reverse_channels, do_csc = true, do_norm = true, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, interp = #VPU.m2i_interp<BILINEAR>, norm = [0.017425537109375, 0.000000e+00, 1.000000e+00, -1.8046875, 0.0175018310546875, 0.000000e+00, 1.000000e+00, -2.03515625, 0.017120361328125, 0.000000e+00, 1.000000e+00, -2.1171875], outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [224, 224]} -> tensor<1x3x224x224xf16>
+   //CHECK: [[VAL0:%.+]] = VPU.M2I.Task(%arg0) {axes = [1, 2], chroma_out_reverse_channels, do_csc = true, do_norm = true, inFmt = #VPU.m2i_color_fmt<SP_NV12_8>, interp = #VPU.m2i_interp<BILINEAR>, norm = [0.017425537109375, 0.000000e+00, 1.000000e+00, -1.8046875, 0.0175018310546875, 0.000000e+00, 1.000000e+00, -2.03515625, 0.017120361328125, 0.000000e+00, 1.000000e+00, -2.1171875], outFmt = #VPU.m2i_color_fmt<PL_FP16_RGB>, sizes = [224, 224]} -> tensor<1x3x224x224xf16>
    //CHECK: return [[VAL0]]
 }

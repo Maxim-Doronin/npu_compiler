@@ -91,7 +91,7 @@ void vpux::VPUIP::VPUIPDialect::setExecutorInstanceMask(mlir::async::ExecuteOp e
     execOp->setAttr(executorInstanceMaskAttrName, executorInstanceMask);
 
     // In case of some DMA tasks port is also maintained as part of operation iself
-    if (getExecutorKind(execOp) == VPU::ExecutorKind::DMA_NN) {
+    if (getExecutorKind(execOp) == config::ExecutorKind::DMA_NN) {
         if (executorInstanceMask.getValue().size() != 1) {
             // In case there are multiple executors subsequent passes should take care
             // of handling this
@@ -125,9 +125,9 @@ IndexedSymbolAttr vpux::VPUIP::VPUIPDialect::getExecutor(mlir::async::ExecuteOp 
     return executorSymbol;
 }
 
-VPU::ExecutorKind vpux::VPUIP::VPUIPDialect::getExecutorKind(mlir::async::ExecuteOp execOp) {
+config::ExecutorKind vpux::VPUIP::VPUIPDialect::getExecutorKind(mlir::async::ExecuteOp execOp) {
     const auto executor = getExecutor(execOp);
-    const auto maybeExecutorKind = vpux::VPU::symbolizeExecutorKind(executor.getLeafNameAttr());
+    const auto maybeExecutorKind = vpux::config::symbolizeExecutorKind(executor.getLeafNameAttr());
     VPUX_THROW_WHEN(!maybeExecutorKind.has_value(), "Unsupported Executor Kind attribute '{0}'",
                     executor.getLeafNameAttr());
 
@@ -138,9 +138,9 @@ bool vpux::VPUIP::VPUIPDialect::hasExecutorInstanceMask(mlir::async::ExecuteOp e
     return (execOp->getAttr(executorInstanceMaskAttrName) != nullptr);
 }
 
-bool vpux::VPUIP::VPUIPDialect::isComputeExecutorKind(VPU::ExecutorKind executorKind) {
-    static const llvm::DenseSet<VPU::ExecutorKind> computeExecutors = {
-            VPU::ExecutorKind::DPU, VPU::ExecutorKind::SHAVE_ACT, VPU::ExecutorKind::M2I};
+bool vpux::VPUIP::VPUIPDialect::isComputeExecutorKind(config::ExecutorKind executorKind) {
+    static const llvm::DenseSet<config::ExecutorKind> computeExecutors = {
+            config::ExecutorKind::DPU, config::ExecutorKind::SHAVE_ACT, config::ExecutorKind::M2I};
     return computeExecutors.find(executorKind) != computeExecutors.end();
 }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -65,14 +65,11 @@ RawData getRawProfilingTasks(const uint8_t* blobData, size_t blobSize, const uin
                              bool ignoreSanitizationErrors = false);
 
 struct FrequenciesSetup {
-public:
     static constexpr double MIN_FREQ_MHZ = 700.0;
 
-public:
     double vpuClk = UNINITIALIZED_FREQUENCY_VALUE;
     double dpuClk = UNINITIALIZED_FREQUENCY_VALUE;
     double profClk = UNINITIALIZED_FREQUENCY_VALUE;
-    bool hasSharedDmaSwCounter = false;
     bool hasSharedDmaDpuCounter = false;
     FreqStatus clockStatus = FreqStatus::UNKNOWN;
 };
@@ -85,7 +82,8 @@ FrequenciesSetup getFrequencySetup(const TargetDevice device, const WorkpointRec
 // sync.cpp
 
 std::optional<int64_t> getDMA2OtherTimersShift(const RawProfilingRecords& dmaTasks,
-                                               const RawProfilingRecords& otherTasks, FrequenciesSetup frequenciesSetup,
+                                               const RawProfilingRecords& otherTasks,
+                                               const FrequenciesSetup& frequenciesSetup,
                                                SynchronizationPointKind pointKind, vpux::Logger& log);
 
 }  // namespace vpux::profiling

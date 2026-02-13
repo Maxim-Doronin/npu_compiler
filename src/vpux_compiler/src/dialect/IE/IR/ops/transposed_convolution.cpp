@@ -108,8 +108,3 @@ mlir::LogicalResult vpux::IE::TransposedConvolutionOp::inferReturnTypeComponents
 
     return mlir::success();
 }
-
-void vpux::IE::TransposedConvolutionOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
-                                                                    mlir::MLIRContext* context) {
-    patterns.add<FuseConvAndBias>(context);
-}

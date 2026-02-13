@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,8 +41,8 @@ private:
 void OneShotBufferizeVPU2VPUIPPass::safeRunOnModule() {
     mlir::bufferization::OneShotBufferizationOptions options = vpux::getOneShotBufferizationOptions();
     mlir::ModuleOp moduleOp = getOperation();
-
-    if (mlir::failed(mlir::bufferization::bufferizeOp(moduleOp, options, /*statistics=*/nullptr))) {
+    mlir::bufferization::BufferizationState state;
+    if (mlir::failed(mlir::bufferization::bufferizeOp(moduleOp, options, state, /*statistics=*/nullptr))) {
         signalPassFailure();
         return;
     }

@@ -5,7 +5,7 @@
 
 #include "vpux/compiler/dialect/IE/transforms/passes/convert_quantize_ops_to_nce_ops.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/convert_quantize_ops_to_nce_ops_strategy_getter.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -83,7 +83,8 @@ void ConvertQuantizeOpsToNceOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto strategy = IE::createConvertQuantizeOpsToNceOpsStrategy(func);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getConvertQuantizeOpsToNceOpsStrategy();
 
     mlir::ConversionTarget toAvgPoolTarget(ctx);
     mlir::RewritePatternSet toAvgPoolPatterns(&ctx);

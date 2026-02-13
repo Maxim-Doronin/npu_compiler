@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -300,7 +300,9 @@ std::map<size_t, size_t> OptimizeReordersAcrossFunctionCallsPass::updateFunction
         const auto arg = funcOp.getArgument(origArgNumber);
         const auto newArgType = argInfo.second.producerOps.front()->getOperand(0).getType();
         const auto newArgNumber = funcOp.getNumArguments();
-        funcOp.insertArgument(newArgNumber, newArgType, nullptr, arg.getLoc());
+        VPUX_THROW_WHEN(failed(funcOp.insertArgument(newArgNumber, newArgType, nullptr, arg.getLoc())),
+                        "Failed to insert argument #{0} (type: '{1}') into function '{2}'", newArgNumber, newArgType,
+                        funcOp.getSymName());
         oldToNewArgMapping[origArgNumber] = newArgNumber;
         _log.nest().trace("Introduced new argument of type {0} at position {1}, for the original argument {2}",
                           newArgType, newArgNumber, origArgNumber);
@@ -327,7 +329,10 @@ std::map<size_t, size_t> OptimizeReordersAcrossFunctionCallsPass::updateFunction
 
         const auto origArgNumber = arg.getArgNumber();
         erasedArguments.push_back(origArgNumber);
-        funcOp.eraseArgument(origArgNumber);
+        VPUX_THROW_WHEN(failed(funcOp.eraseArgument(origArgNumber)),
+                        "Failed to erase argument #{0} from function '{1}' "
+                        "(argument count before erase: {2})",
+                        origArgNumber, funcOp.getSymName(), funcOp.getNumArguments());
     }
 
     return oldToNewArgMapping;

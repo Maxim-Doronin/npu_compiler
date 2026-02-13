@@ -1,11 +1,10 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/conversion.hpp"
 #include "vpux/compiler/NPU50XX/conversion.hpp"
-#include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/abi_version.hpp"
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/ELF/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/passes.hpp"
@@ -28,20 +27,20 @@ void vpux::arch50xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
                                                  Logger log) {
     log.info("BackendCompilationOptions:\n"
              "  workloadManagementEnable = {0}\n"
-             "  workloadManagementMode = V{1}\n"
+             "  workloadManagementMode = {1}\n"
              "  workloadManagementBarrierCountThreshold = {2}\n"
-             "  enableMemorySideCache = {3}\n"
-             "  enableDMAProfiling = {4}\n"
-             "  enableShaveDDRAccessOptimization = {5}\n"
-             "  workloadManagementBarrierProgrammingMode = {6}\n"
-             "  workloadManagementDmaFifoType = {7}\n",
+             "  workloadManagementBarrierProgrammingMode = {3}\n"
+             "  workloadManagementDmaFifoType = {4}\n"
+             "  enableMemorySideCache = {5}\n"
+             "  enableDMAProfiling = {6}\n"
+             "  enableShaveDDRAccessOptimization = {7}\n",
              backendCompilationOptions.workloadManagementEnable,
-             static_cast<int>(backendCompilationOptions.workloadManagementMode.getValue()),
+             stringifyEnum(backendCompilationOptions.workloadManagementMode),
              backendCompilationOptions.workloadManagementBarrierCountThreshold,
-             backendCompilationOptions.enableMemorySideCache, backendCompilationOptions.enableDMAProfiling,
-             backendCompilationOptions.enableShaveDDRAccessOptimization,
              stringifyEnum(backendCompilationOptions.workloadManagementBarrierProgrammingMode),
-             stringifyEnum(backendCompilationOptions.workloadManagementDmaFifoType));
+             stringifyEnum(backendCompilationOptions.workloadManagementDmaFifoType),
+             backendCompilationOptions.enableMemorySideCache, backendCompilationOptions.enableDMAProfiling,
+             backendCompilationOptions.enableShaveDDRAccessOptimization);
 
     pm.addPass(VPUMI40XX::createAddPlatformInfoPass(log));
 
@@ -51,8 +50,9 @@ void vpux::arch50xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     // Currently only ELF backend is retriggered during rollback and IR after VPURT
     // needs to be left in a state suitable for nonWLM flow.
     if (backendCompilationOptions.workloadManagementEnable &&
-        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-        if (backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_LCA) {
+        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
+        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        if (backendCompilationOptions.workloadManagementMode > WorkloadManagementMode::PWLM_V0_LCA) {
             pm.addPass(VPURT::createFindWlmEnqueueBarrierPass(
                     backendCompilationOptions.workloadManagementMode,
                     backendCompilationOptions.workloadManagementDmaFifoType == DMAFifoType::HW, log));
@@ -65,8 +65,7 @@ void vpux::arch50xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
                                                 backendCompilationOptions.allocateShaveStackFrames));
     pm.addPass(VPUMI40XX::createSetupProfilingVPUMI40XXPass(backendCompilationOptions.enableDMAProfiling, log));
     pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(ELF::createAddABIVersionPass(log, NPUReg50XX::ABI_VERSION_MAJOR, NPUReg50XX::ABI_VERSION_MINOR,
-                                            NPUReg50XX::ABI_VERSION_PATCH));
+    pm.addPass(ELF::createAddABIVersionPass(log));
     arch40xx::elfSubsetPipelineVPUMI(pm, backendCompilationOptions.workloadManagementEnable,
                                      backendCompilationOptions.workloadManagementMode,
                                      backendCompilationOptions.enableDumpStatisticsOfWlmOps,
@@ -90,6 +89,7 @@ void vpux::arch50xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     pm.addPass(ELF::createSetCMXSymbolValuePass(
             log, npu40xx::nn_public::VPU_WORKSPACE_ADDR, npu40xx::nn_public::VPU_WORKSPACE_SIZE,
             npu40xx::VPU_METADATA_STORAGE_START, npu40xx::nn_public::VPU_METADATA_SIZE));
+    pm.addPass(ELF::createAddRelocationsForDynamicStridesDMAs(log));
     pm.addPass(ELF::createAddELFRelocationsPass(log));
     pm.addPass(ELF::createRemoveEmptyELFSectionsPass(log));
 }

@@ -65,7 +65,7 @@ func.func @NotSwapMultiplyWithPostOp(%arg0: tensor<1x32x1024x80xf32>, %arg1: ten
     return %1 : tensor<1x32x1x1024xf32>
 
     // CHECK-DAG:   [[CST:%.+]] = const.Declare
-    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[INPUT1]], [[CST]])
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[CST]], [[INPUT1]])
     // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[INPUT2]], [[MULTIPLY]]) {transpose_b}
 
     // CHECK:       return  [[MATMUL]] : tensor<1x32x1x1024xf32>
@@ -123,7 +123,7 @@ func.func @NotBeneficialForSwapMultiply(%arg0: tensor<1x32x1024x80xf32>, %arg1: 
     return %1 : tensor<1x32x1025x1024xf32>
 
     // CHECK-DAG:   [[CST:%.+]] = const.Declare
-    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[INPUT1]], [[CST]])
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[CST]], [[INPUT1]])
     // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[INPUT2]], [[MULTIPLY]]) {transpose_b}
 
     // CHECK:       return  [[MATMUL]] : tensor<1x32x1025x1024xf32>

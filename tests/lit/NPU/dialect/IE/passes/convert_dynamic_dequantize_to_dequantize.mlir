@@ -403,9 +403,9 @@ func.func @RescaleForI8WeightsAsInputs(%arg0: tensor<1024x8960xf16>, %arg1: tens
 
     return %2 : tensor<1024x1536xf16>
 
-    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<1.814060e+01> : tensor<1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.Reshape([[INPUT_2]]) {shape_value = [1, 1536]} : tensor<1536x1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = [[QELEMTYPE_OUT]]} : tensor<1536x8960xsi8> -> tensor<1536x8960x[[QELEMTYPE_OUT]]>
+    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<1.814060e+01> : tensor<1xf16>
     // CHECK:       [[MULTIPLY0:%.+]] = IE.Multiply([[RESHAPE0]], [[CONST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536xf16>, tensor<1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[DEQUANTIZE0:%.+]] = IE.Dequantize([[QUANTIZECAST0]]) {dstElemType = f16} : tensor<1536x8960x[[QELEMTYPE_OUT]]> -> tensor<1536x8960xf16>
     // CHECK:       [[FULLYCONNECTED0:%.+]] = IE.FullyConnected([[INPUT_0]], [[DEQUANTIZE0]]) : tensor<1024x8960xf16>, tensor<1536x8960xf16> -> tensor<1024x1536xf16>
@@ -456,9 +456,10 @@ func.func @RescaleForNF4LargeLUTWeightsAsInputs(%arg0: tensor<1024x8960xf16>, %a
 
     return %2 : tensor<1024x1536xf16>
 
-    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<1.428710e+00> : tensor<1xf16>
+
     // CHECK:       [[RESHAPE0:%.+]] = IE.Reshape([[INPUT_2]]) {shape_value = [1, 1536]} : tensor<1536x1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = [[QELEMTYPE_OUT]]} : tensor<1536x8960x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+01,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+01}>> -> tensor<1536x8960x[[QELEMTYPE_OUT]]>
+    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<1.428710e+00> : tensor<1xf16>
     // CHECK:       [[MULTIPLY0:%.+]] = IE.Multiply([[RESHAPE0]], [[CONST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536xf16>, tensor<1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[DEQUANTIZE0:%.+]] = IE.Dequantize([[QUANTIZECAST0]]) {dstElemType = f16} : tensor<1536x8960x[[QELEMTYPE_OUT]]> -> tensor<1536x8960xf16>
     // CHECK:       [[FULLYCONNECTED0:%.+]] = IE.FullyConnected([[INPUT_0]], [[DEQUANTIZE0]]) : tensor<1024x8960xf16>, tensor<1536x8960xf16> -> tensor<1024x1536xf16>
@@ -484,9 +485,9 @@ func.func @RescaleForNF4AsymmetricNegativeLUTWeightsAsInputs(%arg0: tensor<1024x
 
     return %2 : tensor<1024x1536xf16>
 
-    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<2.000000e+00> : tensor<1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.Reshape([[INPUT_2]]) {shape_value = [1, 1536]} : tensor<1536x1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = [[QELEMTYPE_OUT]]} : tensor<1536x8960x!QuantileFloat.quantileFloat<ui4:f16, {-1.600000e+01,-1.500000e+01,-1.400000e+01,-1.300000e+01,-1.200000e+01,-1.100000e+01,-1.000000e+01,-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}>> -> tensor<1536x8960x[[QELEMTYPE_OUT]]>
+    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<2.000000e+00> : tensor<1xf16>
     // CHECK:       [[MULTIPLY0:%.+]] = IE.Multiply([[RESHAPE0]], [[CONST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536xf16>, tensor<1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[DEQUANTIZE0:%.+]] = IE.Dequantize([[QUANTIZECAST0]]) {dstElemType = f16} : tensor<1536x8960x[[QELEMTYPE_OUT]]> -> tensor<1536x8960xf16>
     // CHECK:       [[FULLYCONNECTED0:%.+]] = IE.FullyConnected([[INPUT_0]], [[DEQUANTIZE0]]) : tensor<1024x8960xf16>, tensor<1536x8960xf16> -> tensor<1024x1536xf16>
@@ -512,12 +513,65 @@ func.func @RescaleForNF4AsymmetricPositiveLUTWeightsAsInputs(%arg0: tensor<1024x
 
     return %2 : tensor<1024x1536xf16>
 
-    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<2.285160e+00> : tensor<1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.Reshape([[INPUT_2]]) {shape_value = [1, 1536]} : tensor<1536x1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = [[QELEMTYPE_OUT]]} : tensor<1536x8960x!QuantileFloat.quantileFloat<ui4:f16, {1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,8.000000e+00,9.000000e+00,1.000000e+01,1.100000e+01,1.200000e+01,1.300000e+01,1.400000e+01,1.500000e+01,1.600000e+01}>> -> tensor<1536x8960x[[QELEMTYPE_OUT]]>
+    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<2.285160e+00> : tensor<1xf16>
     // CHECK:       [[MULTIPLY0:%.+]] = IE.Multiply([[RESHAPE0]], [[CONST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536xf16>, tensor<1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[DEQUANTIZE0:%.+]] = IE.Dequantize([[QUANTIZECAST0]]) {dstElemType = f16} : tensor<1536x8960x[[QELEMTYPE_OUT]]> -> tensor<1536x8960xf16>
     // CHECK:       [[FULLYCONNECTED0:%.+]] = IE.FullyConnected([[INPUT_0]], [[DEQUANTIZE0]]) : tensor<1024x8960xf16>, tensor<1536x8960xf16> -> tensor<1024x1536xf16>
     // CHECK:       [[MULTIPLY1:%.+]] = IE.Multiply([[FULLYCONNECTED0]], [[MULTIPLY0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1024x1536xf16>, tensor<1x1536xf16> -> tensor<1024x1536xf16>
     // CHECK:       return [[MULTIPLY1]] : tensor<1024x1536xf16>
+}
+
+
+// -----
+
+!qElemType = !quant.uniform<i4:f16, 1.000000e+00>
+
+// CHECK-LABEL: @ConvertForAffineReshapeOnly
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x512x128x!qElemType>,
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x512x1xf16>,
+// CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x128xf16>
+func.func @ConvertForAffineReshapeOnly(%arg0: tensor<1x512x128x!qElemType>, %arg1: tensor<1x512x1xf16>, %arg2: tensor<1x128xf16>) -> tensor<1x512xf16> {
+    %0 = IE.DynamicDequantize(%arg0, %arg1) {dstElemType = f16} : tensor<1x512x128x!quant.uniform<i4:f16, 1.000000e+00>>, tensor<1x512x1xf16> -> tensor<1x512x128xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1]], shape_value = [512, 128]} : tensor<1x512x128xf16> -> tensor<512x128xf16>
+    %2 = IE.FullyConnected(%arg2, %1) : tensor<1x128xf16>, tensor<512x128xf16> -> tensor<1x512xf16>
+
+    return %2 : tensor<1x512xf16>
+
+    // CHECK:  [[RESHAPE_SCALE:%.+]] = IE.Reshape([[INPUT_1]]) {shape_value = [1, 512]} : tensor<1x512x1xf16> -> tensor<1x512xf16>
+    // CHECK:  [[DYN_DEQUANTIZE:%.+]] = IE.Dequantize([[INPUT_0]]) {dstElemType = f16} : tensor<1x512x128x!qElemType> -> tensor<1x512x128xf16>
+    // CHECK:  [[AFFINE_RESHAPE_IN:%.+]] = IE.AffineReshape([[DYN_DEQUANTIZE]])
+    // CHECK-SAME{LITERAL}        {dim_mapping = [[0], [0], [1]], shape_value = [512, 128]} : tensor<1x512x128xf16> -> tensor<512x128xf16>
+    // CHECK:  [[FC:%.+]] = IE.FullyConnected([[INPUT_2]], [[AFFINE_RESHAPE_IN]]) : tensor<1x128xf16>, tensor<512x128xf16> -> tensor<1x512xf16>
+    // CHECK:  [[MULTIPLY:%.+]] = IE.Multiply([[FC]], [[RESHAPE_SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x512xf16>, tensor<1x512xf16> -> tensor<1x512xf16>
+    // CHECK:  return  [[MULTIPLY]] : tensor<1x512xf16>
+}
+
+
+// -----
+
+#map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
+!qElemType = !quant.uniform<i4:f16, 1.000000e+00>
+
+// CHECK-LABEL: @ConvertForTransposeAffineReshape
+// CHECK-SAME:      [[INPUT_0:%.+]]: tensor<1x128x512x!qElemType>,
+// CHECK-SAME:      [[INPUT_1:%.+]]: tensor<1x1x512xf16>,
+// CHECK-SAME:      [[INPUT_2:%.+]]: tensor<1x128xf16>
+func.func @ConvertForTransposeAffineReshape(%arg0: tensor<1x128x512x!qElemType>, %arg1: tensor<1x1x512xf16>, %arg2: tensor<1x128xf16>) -> tensor<1x512xf16> {
+    %0 = IE.DynamicDequantize(%arg0, %arg1) {dstElemType = f16} : tensor<1x128x512x!quant.uniform<i4:f16, 1.000000e+00>>, tensor<1x1x512xf16> -> tensor<1x128x512xf16>
+    %1 = IE.Transpose(%0) {order_value = affine_map<(d0, d1, d2) -> (d0, d2, d1)>} : tensor<1x128x512xf16> -> tensor<1x512x128xf16>
+    %2 = IE.AffineReshape(%1) {dim_mapping = [[0], [0], [1]], shape_value = [512, 128]} : tensor<1x512x128xf16> -> tensor<512x128xf16>
+    %3 = IE.FullyConnected(%arg2, %2) : tensor<1x128xf16>, tensor<512x128xf16> -> tensor<1x512xf16>
+
+    return %3 : tensor<1x512xf16>
+
+    // CHECK:  [[RESHAPE_SCALE:%.+]] = IE.Reshape([[INPUT_1]]) {shape_value = [1, 512]} : tensor<1x1x512xf16> -> tensor<1x512xf16>
+    // CHECK:  [[DYN_DEQUANTIZE:%.+]] = IE.Dequantize([[INPUT_0]]) {dstElemType = f16} : tensor<1x128x512x!qElemType> -> tensor<1x128x512xf16>
+    // CHECK:  [[TRANSPOSE:%.+]]  = IE.Transpose([[DYN_DEQUANTIZE]]) {order_value = #map} : tensor<1x128x512xf16> -> tensor<1x512x128xf16>
+    // CHECK:  [[AFFINE_RESHAPE_IN:%.+]] = IE.AffineReshape([[TRANSPOSE]])
+    // CHECK-SAME{LITERAL}      {dim_mapping = [[0], [0], [1]], shape_value = [512, 128]} : tensor<1x512x128xf16> -> tensor<512x128xf16>
+    // CHECK:  [[FC:%.+]] = IE.FullyConnected([[INPUT_2]], [[AFFINE_RESHAPE_IN]]) : tensor<1x128xf16>, tensor<512x128xf16> -> tensor<1x512xf16>
+    // CHECK:  [[MULTIPLY:%.+]] = IE.Multiply([[FC]], [[RESHAPE_SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x512xf16>, tensor<1x512xf16> -> tensor<1x512xf16>
+    // CHECK:  return  [[MULTIPLY]] : tensor<1x512xf16>
 }

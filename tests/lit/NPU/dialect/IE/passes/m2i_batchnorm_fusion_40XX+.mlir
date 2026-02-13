@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -72,9 +72,9 @@ func.func @FuseCSCConvertPermuteMultAddTask(%arg0: tensor<1x360x320x1xui8, {orde
     %add = IE.Add(%mul, %cst_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x240x320xf16, {order = #NCHW}>, tensor<1x3x1x1xf16> -> tensor<1x3x240x320xf16, {order = #NCHW}>
     return %add : tensor<1x3x240x320xf16, {order = #NCHW}>
 
-    // CHECK: [[LUMA:%.*]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 240, 320, 1] : tensor<1x360x320x1xui8, {order = #NHWC}> to tensor<1x240x320x1xui8, {order = #NHWC}>
-    // CHECK: [[CHROMA:%.*]] = IE.Slice %arg0 [0, 240, 0, 0] [1, 120, 320, 1] : tensor<1x360x320x1xui8, {order = #NHWC}> to tensor<1x120x320x1xui8, {order = #NHWC}>
-    // CHECK: [[RESHAPE:%.*]] = IE.Reshape([[CHROMA]]) {shape_value = [1, 120, 160, 2]} : tensor<1x120x320x1xui8, {order = #NHWC}> -> tensor<1x120x160x2xui8>
+    // CHECK: [[LUMA:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 240, 320, 1] : tensor<1x360x320x1xui8, {order = #NHWC}> to tensor<1x240x320x1xui8, {order = #NHWC}>
+    // CHECK: [[CHROMA:%.+]] = IE.Slice %arg0 [0, 240, 0, 0] [1, 120, 320, 1] : tensor<1x360x320x1xui8, {order = #NHWC}> to tensor<1x120x320x1xui8, {order = #NHWC}>
+    // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[CHROMA]]) {shape_value = [1, 120, 160, 2]} : tensor<1x120x320x1xui8, {order = #NHWC}> -> tensor<1x120x160x2xui8>
     // CHECK: [[CSC:%.+]] = IE.YuvToRgb([[LUMA]], [[RESHAPE]]) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<RGB>} : tensor<1x240x320x1xui8, {order = #NHWC}>, tensor<1x120x160x2xui8> -> tensor<1x240x320x3xui8, {order = #NHWC}>
     // CHECK: [[CONVERT:%.+]] = IE.Convert([[CSC]]) {dstElemType = f16} : tensor<1x240x320x3xui8, {order = #NHWC}> -> tensor<1x240x320x3xf16, {order = #NHWC}>
     // CHECK: [[MEMPERM:%.+]] = IE.MemPermute([[CONVERT]]) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x240x320x3xf16, {order = #NHWC}> -> tensor<1x3x240x320xf16, {order = #NCHW}>

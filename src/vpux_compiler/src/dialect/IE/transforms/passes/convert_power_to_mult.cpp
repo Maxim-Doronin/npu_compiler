@@ -57,7 +57,7 @@ mlir::LogicalResult PowerToMultRewriter::matchAndRewrite(IE::PowerOp powerOp, ml
             vpux::IE::AutoBroadcastTypeAttr::get(getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
     auto createMultiplyOp = [&](mlir::Value input1, mlir::Value input2, int64_t idx) {
-        const auto newLoc = takeOpLoc(powerOp, StringLiteral("exponent_{0}"), idx);
+        const auto newLoc = takeOpLoc(powerOp, "exponent_{0}", idx);
         return rewriter
                 .create<IE::MultiplyOp>(newLoc, input1, input2, broadcastType,
                                         /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,

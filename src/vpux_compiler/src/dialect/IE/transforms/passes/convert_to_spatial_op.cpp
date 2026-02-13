@@ -16,6 +16,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTTOSPATIALOP
@@ -31,7 +32,7 @@ mlir::Value createInputTranspose(mlir::AffineMap inAffineMap, mlir::Value input,
                                  mlir::PatternRewriter& rewriter, Logger log) {
     auto inOrderAttr = mlir::AffineMapAttr::get(inAffineMap);
     log.trace("Create input Transpose with order attribute {0}", inOrderAttr);
-    return rewriter.create<IE::TransposeOp>(loc, input, nullptr, inOrderAttr).getOutput();
+    return rewriter.createOrFold<IE::TransposeOp>(loc, input, nullptr, inOrderAttr);
 }
 
 mlir::Value createOutTranspose(mlir::AffineMap inAffineMap, mlir::Value input, mlir::Location loc,
@@ -39,7 +40,7 @@ mlir::Value createOutTranspose(mlir::AffineMap inAffineMap, mlir::Value input, m
     auto outOrderMap = mlir::inversePermutation(inAffineMap);
     auto outOrderAttr = mlir::AffineMapAttr::get(outOrderMap);
     log.trace("Create output Transpose with order attribute {0}", outOrderAttr);
-    return rewriter.create<IE::TransposeOp>(loc, input, nullptr, outOrderAttr).getOutput();
+    return rewriter.createOrFold<IE::TransposeOp>(loc, input, nullptr, outOrderAttr);
 }
 
 //
@@ -168,18 +169,18 @@ mlir::LogicalResult TransposeInterpolation::matchAndRewrite(IE::InterpolateOp or
     const auto newSizesAttr = getIntArrayAttr(ctx, newSizesValue);
     _log.nest().trace("Create new Interpolate with axes attr {0}, scales attr {1}, sizes attr {2}", newAxesAttr,
                       newScalesAttr, newSizesAttr);
-    auto newInterpolate = rewriter.create<IE::InterpolateOp>(
+    auto newInterpolateResult = rewriter.createOrFold<IE::InterpolateOp>(
             origOp->getLoc(), inTranspose, origOp.getSizes(), origOp.getScales(), origOp.getAxes(), newSizesAttr,
             newScalesAttr, newAxesAttr, origOp.getTileOffsetAttrAttr(), origOp.getInitialInputDimsAttrAttr(),
             origOp.getInitialOutputDimsAttrAttr(), origOp.getAttr(), origOp.getOutputPaddingAttr(),
             origOp.getInputPaddingAttr());
 
     // Create output Transpose
-    auto outTransposeOutput = createOutTranspose(inOrderMap, newInterpolate.getOutput(),
-                                                 takeOpLoc(origOp, "transpose_out"), rewriter, _log);
+    auto outTransposeOutputResult =
+            createOutTranspose(inOrderMap, newInterpolateResult, takeOpLoc(origOp, "transpose_out"), rewriter, _log);
 
     _log.trace("Finished replacement at {0}", origOp->getLoc());
-    rewriter.replaceOp(origOp, outTransposeOutput);
+    rewriter.replaceOp(origOp, outTransposeOutputResult);
 
     return mlir::success();
 }
@@ -256,7 +257,7 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
         return mlir::failure();
     }
 
-    const auto newRollInput =
+    const auto newRollInputResult =
             createInputTranspose(newInAffineMap, origOp.getData(), takeOpLoc(origOp, "transpose_in"), rewriter, _log);
 
     const auto newAxes = axes.size() == 1 ? SmallVector<int32_t>{Dims4D::Act::H.ind()}
@@ -270,14 +271,14 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
                                         getTensorAttr(rewriter.getContext(), axesDimOrder, nullptr));
     const auto newAxesValue = Const::createConst(rewriter, origOp.getAxes().getLoc(), newAxesType, ArrayRef(newAxes));
 
-    auto newRollOp = rewriter.create<IE::RollOp>(origOp.getLoc(), newRollInput.getType(), newRollInput,
-                                                 origOp.getShift(), newAxesValue);
+    auto newRollOpResult = rewriter.createOrFold<IE::RollOp>(origOp.getLoc(), newRollInputResult.getType(),
+                                                             newRollInputResult, origOp.getShift(), newAxesValue);
 
-    _log.trace("new Roll {0}", newRollOp);
+    _log.trace("new Roll {0}", newRollOpResult);
 
-    const auto outTransposeOutput = createOutTranspose(newInAffineMap, newRollOp.getOutput(),
-                                                       takeOpLoc(origOp, "transpose_out"), rewriter, _log);
-    rewriter.replaceOp(origOp, outTransposeOutput);
+    const auto outTransposeOutputResult =
+            createOutTranspose(newInAffineMap, newRollOpResult, takeOpLoc(origOp, "transpose_out"), rewriter, _log);
+    rewriter.replaceOp(origOp, outTransposeOutputResult);
 
     return mlir::success();
 }
@@ -333,16 +334,13 @@ void ConvertToSpatialOpPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     if (!_m2iEnabled) {
         patterns.add<TransposeInterpolation>(&ctx, _log);
-        IE::InterpolateOp::getCanonicalizationPatterns(patterns, &ctx);
     }
 
     if (_seOpsEnabled) {
         patterns.add<TransposeRoll>(&ctx, _log);
     }
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -18,7 +18,6 @@ namespace {
 //
 // ShuffleChannelsOpConverter
 //
-// This rewriter converts ShuffleChannels to Reshape->Transpose->Reshape.
 
 class ShuffleChannelsOpConverter final : public mlir::OpRewritePattern<IE::ShuffleChannelsOp> {
 public:

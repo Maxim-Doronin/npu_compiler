@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,8 +27,8 @@ module @Test {
     %5 = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, -1> -> !VPURegMapped.Index<0:0:1>
     %6 = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<2, -1> -> !VPURegMapped.Index<0:0:2>
     %7 = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<3, -1> -> !VPURegMapped.Index<0:0:3>
-    %27 = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x1x1x1000xf16>) waits(%7 : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
-    %8 = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x1x1x1000xf16>) outputs(%0 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) nextDMAIdx(%27 : !VPURegMapped.Index<0:0:1>) updates(%4 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %27 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x1x1x1000xf16>) waits(%7 : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+    %8 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x1x1x1000xf16>) outputs(%0 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) nextDMAIdx(%27 : !VPURegMapped.Index<0:0:1>) updates(%4 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
     %9 = VPUMI37XX.DeclareKernelText kernel_path("activation_sigmoid") -> !VPURegMapped.Index<0:0:0>
     %10 = VPUMI37XX.DeclareKernelArgs kernel_path("activation_sigmoid") -> !VPURegMapped.Index<0:0:0>
     %11 = VPUMI37XX.DeclareKernelEntry kernel_path("activation_sigmoid") -> !VPURegMapped.Index<0:0:0>
@@ -49,13 +49,13 @@ module @Test {
     %26 = VPUMI37XX.KernelParams inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_sigmoid") kernel_params(dense<[0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]> : vector<72xui8>) -> !VPURegMapped.Index<0:0:2>
     return %arg1 : memref<1x1x1x1000xf16>
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}dmaTasks
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}dmaTasks
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}BarrierConfigs
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}BarrierConfigs
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
@@ -65,7 +65,7 @@ module @Test {
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}KernelText
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}KernelText
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
@@ -73,7 +73,7 @@ module @Test {
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}KernelData
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}KernelData
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
@@ -81,7 +81,7 @@ module @Test {
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}KernelParams
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}KernelParams
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
@@ -89,7 +89,7 @@ module @Test {
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}ActKernelRanges
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}ActKernelRanges
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
@@ -97,7 +97,7 @@ module @Test {
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}ActKernelInvocations
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}ActKernelInvocations
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
         // CHECK:      ELFNPU37XX.PutOpInSection
@@ -105,7 +105,7 @@ module @Test {
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 
-    // CHECK:      ELFNPU37XX.CreateSection {{.*}}MappedInference
+    // CHECK:      ELFNPU37XX.CreateSection {{.+}}MappedInference
         // CHECK:      ELFNPU37XX.PutOpInSection
         // CHECK-NOT:      ELFNPU37XX.Pad
 

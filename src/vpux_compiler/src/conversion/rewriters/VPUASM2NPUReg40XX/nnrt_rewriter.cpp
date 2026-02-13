@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,7 +38,7 @@ mlir::LogicalResult NNRTConfigRewriter::matchAndRewrite(VPUASM::NNrtConfigOp ori
     npu40xx::nn_public::VpuNNRTConfig nnrtConfig = {};
     NPUReg40XX::fillNNrtConfig<NPUReg40XX::ActShaveRtOp>(nnrtConfig.shv_rt_configs, origOp, origOp.getActShaveRt(),
                                                          stackSize, isActShaveProfilingEnabled,
-                                                         origOp.getIsActKernelInvocations(), std::nullopt);
+                                                         origOp.getIsActKernelInvocations(), /*stackFrames*/ {});
 
     VpuNNRTConfig nnrtDesc;
     VPUX_THROW_UNLESS(sizeof(npu40xx::nn_public::VpuNNRTConfig) == nnrtDesc.size(),
@@ -47,7 +47,7 @@ mlir::LogicalResult NNRTConfigRewriter::matchAndRewrite(VPUASM::NNrtConfigOp ori
     nnrtDesc.copyFrom(nnrtConfig);
 
     rewriter.create<NPUReg40XX::NNrtConfigOp>(origOp.getLoc(), origOp.getSymNameAttr(),
-                                              origOp.getIsActKernelInvocationsAttr(), origOp.getActShaveRtAttr(),
+                                              origOp.getIsActKernelInvocations(), origOp.getActShaveRtAttr(),
                                               origOp.getActShaveStacksAttr(), origOp.getDmaHwpBaseAttr(),
                                               origOp.getHwpWorkpointCfgAttr(), std::move(nnrtDesc));
     rewriter.eraseOp(origOp);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -233,7 +233,6 @@ void ConvertWeightsToI4Pass::safeRunOnFunc() {
     });
     typeConverter.addSourceMaterialization(dummyConverter<mlir::RankedTensorType>);
     typeConverter.addTargetMaterialization(dummyConverter<mlir::RankedTensorType>);
-    typeConverter.addArgumentMaterialization(dummyConverter<mlir::RankedTensorType>);
 
     const auto isLegalConstDeclareOp = [&](Const::DeclareOp constOp) {
         // only handle U4 type with zero point of 8

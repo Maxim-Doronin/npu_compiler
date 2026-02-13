@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
+#include "vpux/compiler/utils/thread_safe_hash_map.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 
 namespace vpux::VPU::VF::v2 {
@@ -19,29 +20,37 @@ public:
 
     VFConfig(const llvm::SetVector<mlir::Operation*>& operations);
 
+    VFConfig(const VFConfig& other);
+
+    VFConfig(VFConfig&& other);
+
+    VFConfig& operator=(const VFConfig& other);
+
+    VFConfig& operator=(VFConfig&& other);
+
+    // Init vf ops, input/output ops and largest ops
+    void init();
+
     // get original subgraph
     VPU::VerticalFusionOp getSubgraph() const;
 
     // get the largest operation in the subgraph
-    mlir::Operation* getLargestOp();
+    mlir::Operation* getLargestOp() const;
 
     // get all inputs
-    const SmallVector<mlir::Operation*>& getInputs();
+    const SmallVector<mlir::Operation*>& getInputs() const;
 
     // get all outputs
-    const SmallVector<mlir::Operation*>& getOutputs();
+    const SmallVector<mlir::Operation*>& getOutputs() const;
 
-    // get all oeprations in the subgraph
-    const llvm::SetVector<mlir::Operation*>& getVFOperations();
+    // get all operations in the subgraph
+    const llvm::SetVector<mlir::Operation*>& getVFOperations() const;
 
-    // get all oeprations in the subgraph
-    SmallVector<mlir::Operation*> getOperationsForTiling();
+    // get all operations in the subgraph
+    SmallVector<mlir::Operation*> getOperationsForTiling() const;
 
     // check if subgraph might be pipelined
     bool isPipelined() const;
-
-    // Reset cached data
-    void invalidatePointers();
 
     // Get cached types for operation in VF
     SmallVector<NDTypeInterface> getOperationTypes(mlir::Operation* operation, const TileInfo& outTile,
@@ -55,8 +64,9 @@ public:
     bool secondVFNeedTiling() const;
 
 private:
-    bool isVFPipelinePattern();
-    void validateConfig();
+    bool isVFPipelinePattern() const;
+    void validateConfig() const;
+    llvm::hash_code computeOpShapeHash(mlir::Operation* operation, ShapeRef outShape) const;
 
     VPU::VerticalFusionOp _subgraph;
     mlir::Operation* _largestOp = nullptr;
@@ -68,6 +78,7 @@ private:
     bool _firstVFNeedsTiling = true;
     bool _secondVFNeedsTiling = true;
 
-    DenseMap<mlir::Operation*, std::map<Shape, SmallVector<NDTypeInterface>>> _tilesCache;
+    // The mapping of `op & output tile shape` to `types after tiling`
+    ThreadSafeHashMap<llvm::hash_code, SmallVector<NDTypeInterface>> _tilesCache;
 };
 }  // namespace vpux::VPU::VF::v2

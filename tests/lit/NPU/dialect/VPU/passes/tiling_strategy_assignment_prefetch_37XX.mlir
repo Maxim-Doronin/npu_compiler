@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1485,7 +1485,7 @@ func.func @PermuteOpWithHugeInputSize(%arg0: tensor<1x4x2048x336xf16>) -> tensor
     return %0 : tensor<1x4x2048x336xf16, {order = #NHWC}>
 
 
-    //CHECK: [[RET:%.*]] = VPU.NCE.Permute(%arg0) {
+    //CHECK: [[RET:%.+]] = VPU.NCE.Permute(%arg0) {
     //CHECK-SAME{LITERAL}:            tilingStrategy = [1, 1, 3, 1]
     //CHECK:                  tensor<1x4x2048x336xf16, {order = #NHWC}>
 

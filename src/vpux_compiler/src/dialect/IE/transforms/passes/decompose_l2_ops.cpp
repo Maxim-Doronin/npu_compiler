@@ -49,16 +49,16 @@ void decomposeNormalizeL2(IE::NormalizeL2Op origOp, Logger log) {
     }
 
     // --- Calculate sum of squared input data
-    auto multiplyOp = builder.create<IE::MultiplyOp>(appendLoc(loc, "_mul"), data, data, IE::AutoBroadcastType::NUMPY,
+    auto multiplyOp = builder.create<IE::MultiplyOp>(appendLoc(loc, "mul"), data, data, IE::AutoBroadcastType::NUMPY,
                                                      nullptr, nullptr, nullptr, nullptr);
-    auto reduceSumOp = builder.create<IE::ReduceSumOp>(appendLoc(loc, "_reduceSum"), multiplyOp.getOutput(), nullptr,
+    auto reduceSumOp = builder.create<IE::ReduceSumOp>(appendLoc(loc, "reduceSum"), multiplyOp.getOutput(), nullptr,
                                                        axesValueAttr, false, nullptr, nullptr);
 
-    auto sqrtOp = builder.create<IE::SqrtOp>(appendLoc(loc, "_sqrt"), reduceSumOp.getOutput());
+    auto sqrtOp = builder.create<IE::SqrtOp>(appendLoc(loc, "sqrt"), reduceSumOp.getOutput());
 
     // --- Divide all input data by the calculated value
-    auto divOp = builder.create<IE::DivideOp>(appendLoc(loc, "_div"), data, sqrtOp.getOutput(),
-                                              IE::AutoBroadcastType::NUMPY);
+    auto divOp =
+            builder.create<IE::DivideOp>(appendLoc(loc, "div"), data, sqrtOp.getOutput(), IE::AutoBroadcastType::NUMPY);
 
     origOp.getOutput().replaceAllUsesWith(divOp.getOutput());
     origOp.erase();

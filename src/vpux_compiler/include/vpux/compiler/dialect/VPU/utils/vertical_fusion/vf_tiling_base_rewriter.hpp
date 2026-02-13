@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 #pragma once
 
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
@@ -46,11 +47,11 @@ private:
     bool processBlockArgument(mlir::BlockArgument blockArg, TilingStorage& tilingStorage, TileInfo& originalTiling,
                               int64_t tilingIndex, DimArrRef dims) const;
     void applyLinearTiling(const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
-                           SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure) const;
+                           SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure,
+                           VFLoopIndexAttr vfIndexAttr) const;
     void applyPipelinedTiling(const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
                               SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure,
-                              const TilingOperationStorage::UPtr& storage) const;
-
+                              const TilingOperationStorage::UPtr& storage, VFLoopIndexAttr vfIndexAttr) const;
     bool _enableVerticalFusionPipelining;
     const std::unique_ptr<VPU::LayerVPUNNCost>& _vpunnCostFunction;
 };
@@ -250,7 +251,8 @@ void VerticalFusionTilingRewriterBase<VFConfigType, VFSchedulingFactoryType>::ad
 template <typename VFConfigType, typename VFSchedulingFactoryType>
 void VerticalFusionTilingRewriterBase<VFConfigType, VFSchedulingFactoryType>::applyLinearTiling(
         const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
-        SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure) const {
+        SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure,
+        VFLoopIndexAttr vfIndexAttr) const {
     auto operations = config.getVFOperations();
 
     for (auto index : irange(numTiles)) {
@@ -258,6 +260,9 @@ void VerticalFusionTilingRewriterBase<VFConfigType, VFSchedulingFactoryType>::ap
         Shape currentTile;
         for (auto* op : operations) {
             tilingProcedure(index, op, currentResult, currentTile);
+            currentResult.getDefiningOp()->setAttr(VF_LOOP_INDEX_ATTR_NAME, vfIndexAttr);
+            currentResult.getDefiningOp()->setAttr(VF_LOOP_LAYER_INDEX_ATTR_NAME,
+                                                   VFLoopLayerIndexAttr::get(getContext(), index));
         }
 
         resultTileVals.push_back(currentResult);
@@ -269,7 +274,7 @@ template <typename VFConfigType, typename VFSchedulingFactoryType>
 void VerticalFusionTilingRewriterBase<VFConfigType, VFSchedulingFactoryType>::applyPipelinedTiling(
         const int64_t numTiles, VFConfigType& config, SmallVector<mlir::Value>& resultTileVals,
         SmallVector<Shape>& resultTileOffsets, const TilingFunction& tilingProcedure,
-        const TilingOperationStorage::UPtr& storage) const {
+        const TilingOperationStorage::UPtr& storage, VFLoopIndexAttr vfIndexAttr) const {
     auto scheduling = config.getSubgraph().getScenario();
     VPUX_THROW_WHEN(!scheduling.has_value(), "Cannot get scheduling scenario from VF {0}", config.getSubgraph());
 
@@ -301,7 +306,7 @@ void VerticalFusionTilingRewriterBase<VFConfigType, VFSchedulingFactoryType>::ap
             return;
         }
     }
-    applyLinearTiling(numTiles, config, resultTileVals, resultTileOffsets, tilingProcedure);
+    applyLinearTiling(numTiles, config, resultTileVals, resultTileOffsets, tilingProcedure, vfIndexAttr);
 }
 
 template <typename VFConfigType, typename VFSchedulingFactoryType>
@@ -370,10 +375,17 @@ mlir::LogicalResult VerticalFusionTilingRewriterBase<VFConfigType, VFSchedulingF
         mapper.map(op->getResult(0), currentResult);
     };
 
+    VPUX_THROW_UNLESS(vfOp->hasAttrOfType<VFLoopIndexAttr>(VF_LOOP_INDEX_ATTR_NAME),
+                      "Op {0} does not contain an attribute {1} of type vpux::VPUIP::VFIndexAttr", vfOp->getLoc(),
+                      VF_LOOP_INDEX_ATTR_NAME);
+    auto vfIndexAttr = vfOp->getAttrOfType<VFLoopIndexAttr>(VF_LOOP_INDEX_ATTR_NAME);
+    assert(vfIndexAttr != nullptr && "vfIndexAttr is null");
+
     if (vfConfig.isPipelined()) {
-        applyPipelinedTiling(tilesLen, vfConfig, resultTileVals, resultTileOffsets, tilingProcedure, operationStorage);
+        applyPipelinedTiling(tilesLen, vfConfig, resultTileVals, resultTileOffsets, tilingProcedure, operationStorage,
+                             vfIndexAttr);
     } else {
-        applyLinearTiling(tilesLen, vfConfig, resultTileVals, resultTileOffsets, tilingProcedure);
+        applyLinearTiling(tilesLen, vfConfig, resultTileVals, resultTileOffsets, tilingProcedure, vfIndexAttr);
     }
 
     rewriter.replaceOpWithNewOp<VPU::ConcatOp>(vfOp, vfOp->getResult(0).getType(), mlir::ValueRange(resultTileVals),

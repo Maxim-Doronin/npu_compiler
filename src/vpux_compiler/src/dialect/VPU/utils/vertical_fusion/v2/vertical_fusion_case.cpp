@@ -41,7 +41,7 @@ VFCase& VFCase::operator=(VFCase&& other) {
         return *this;
     }
 
-    std::swap(_config, other._config);
+    _config = std::move(other._config);
     std::swap(_vfScheduling, other._vfScheduling);
     _vfTilingStorage = std::move(other._vfTilingStorage);
     _split = std::move(other._split);

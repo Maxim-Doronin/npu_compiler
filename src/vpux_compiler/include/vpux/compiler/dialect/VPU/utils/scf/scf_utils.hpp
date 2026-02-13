@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/Dialect/Utils/StaticValueUtils.h>
+#include <mlir/IR/OpDefinition.h>
 #include <mlir/Interfaces/TilingInterface.h>
 
 namespace vpux::VPU {
@@ -65,6 +66,10 @@ struct SCFTileInfo {
               axis(SCFShape(shape.size(), builder.getIndexAttr(1))),
               bounds(bounds) {
     }
+
+    void printFormat(llvm::raw_ostream& stream) const {
+        printTo(stream, "SCFTile [shape = {0}, offsets = {1}, axis = {2}, bounds = {3}]", shape, offsets, axis, bounds);
+    }
 };
 
 struct SCFTilingInfo {
@@ -94,7 +99,7 @@ SCFTileInfo getWeightsTableSCFTile(mlir::Type origWeightsTableType, mlir::OpBuil
 */
 std::pair<std::optional<mlir::Range>, std::optional<int64_t>> solutionForOutputRange(
         mlir::Location loc, mlir::OpBuilder& builder, const SCFTileInfo& outputTile, Dim dim, const int64_t kernel,
-        const int64_t stride, const int64_t origInputSize, const int64_t origOutputSize,
+        const int64_t stride, mlir::OpFoldResult origInputSize, int64_t origOutputSize,
         const std::pair<int64_t, int64_t>& origPadding, mlir::OpFoldResult& padBefore, mlir::OpFoldResult& padAfter);
 
 /** @brief Generate slice based on tiling information
@@ -150,7 +155,8 @@ inline mlir::Value createQuantizedPaddingValue(mlir::Location loc, mlir::OpBuild
 */
 template <class ConcreteOp>
 mlir::Operation* createTiledPaddedOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
-                                            mlir::OpBuilder& builder, SCFTilingInfo& inputTiling, DimArrRef dims,
+                                            mlir::OpBuilder& builder, SCFTilingInfo& inputTiling,
+                                            const SCFTileInfo& outputTile, DimArrRef dims,
                                             SmallVector<mlir::Value>& tiledOperands, mlir::Operation* operation) {
     const auto isSpatialDim = [](auto dim) {
         return dim.ind() >= static_cast<int32_t>(Dims4D::Act::numSpatialDims);
@@ -240,8 +246,47 @@ mlir::Operation* createTiledPaddedOperation(OpGeneratorFunc opGenerator, OpTilin
         vpux::inferReturnTypes(generatedOp, vpux::InferShapedTypeMode::SHAPE);
         return generatedOp;
     };
+
+    const auto castCreatedOperation = [&](ConcreteOp generatedOp) {
+        SmallVector<int64_t> staticOutputShape;
+        llvm::transform(outputTile.shape, std::back_inserter(staticOutputShape), [&](mlir::OpFoldResult val) {
+            auto shapeDimValue = mlir::getConstantIntValue(val);
+            return shapeDimValue.value();
+        });
+        auto generatedType = mlir::cast<vpux::NDTypeInterface>(generatedOp.getType());
+        auto correctedTensorDesc = vpux::getTensorAttr(generatedType.getContext(), generatedType.getDimsOrder(),
+                                                       generatedType.getMemSpace());
+
+        mlir::Type correctedTiledOutputType =
+                mlir::RankedTensorType::get(staticOutputShape, generatedType.getElementType(), correctedTensorDesc);
+        return builder.create<mlir::tensor::CastOp>(generatedOp.getLoc(), correctedTiledOutputType, generatedOp);
+    };
+
+    // check if next operation has static shape then we cast current dynamic shape to static shape.
+    auto nextOperationIsStaticallyShaped = llvm::all_of(outputTile.shape, [](mlir::OpFoldResult ofr) {
+        return mlir::getConstantIntValue(ofr).has_value();
+    });
+
+    auto nextOperationIsNotLastOperationInFusion = llvm::any_of(operation->getUsers(), [](mlir::Operation* userOp) {
+        return !mlir::isa<mlir::tensor::InsertSliceOp>(userOp);
+    });
+
+    if (nextOperationIsStaticallyShaped && nextOperationIsNotLastOperationInFusion) {
+        return castCreatedOperation(createOperation());
+    }
+
     return createOperation();
 }
+
+/** @brief Adds cast op before tile insertion
+
+    @note If operation has dynamic dims that are not introduced by the current tiling (i.e. there are one or more
+   dynamic dims that are not tiling dims), a Cast operation is introduced to align the result of the tile op with the
+   insertion of the slice into the full tensor.
+*/
+
+mlir::Operation* castOutputForInsertion(mlir::OpBuilder& builder, const SCFTileInfo& outputTile, DimArrRef dims,
+                                        mlir::Operation* operation, mlir::Operation* tiledOperation);
 
 /** @brief adjust padded output
  * In case the PadOp has been added, but operation used to be with static output
@@ -273,7 +318,8 @@ void correctPaddedOutput(mlir::OpBuilder& builder, ConcreteOp operation, SmallVe
     The function checks if there are some spills already between operations
     To be extended to more complex checks
 */
-bool checkFusion(mlir::OpOperand& consumer, mlir::OpResult producerCandidate);
+bool checkFusion(mlir::OpOperand& consumer, mlir::OpResult producerCandidate,
+                 const llvm::SetVector<mlir::Operation*>& producers);
 
 /** @brief Generate upper bounds for dynamic tensors
  */
@@ -290,71 +336,6 @@ mlir::LogicalResult getResultTileBounds(mlir::Operation* operation, unsigned res
  */
 bool isNceOpWithPadAttr(mlir::Operation* op);
 
-llvm::SmallVector<mlir::Operation*> collectOpsInTopologicalOrder(
-        llvm::ArrayRef<mlir::Operation*> startNodes,
-        llvm::function_ref<llvm::SmallSetVector<mlir::Operation*, 16>(mlir::Operation*)> getNeighbors,
-        llvm::function_ref<bool(mlir::Operation*)> stopCheckFn);
-
-/**
- * @brief Utility class for analyzing and processing affine operation chains in MLIR
- *
- * The AffineChainUtils class provides functionality to collect and evaluate
- * chains of affine operations in MLIR. It helps with tracking dependencies between
- * affine operations and computing values from OpFoldResult objects within the context
- * of affine transformations.
- *
- * Key features:
- * - Collects chains of related affine operations from a given value
- * - Evaluates OpFoldResult values with optional bounded shape considerations
- * - Caches affine operation chains for performance optimization
- * - Provides utilities for extracting affine maps and operands from operations
- *
- */
-class AffineChainUtils {
-public:
-    explicit AffineChainUtils(Logger log = Logger::global().nest("affine-utils"));
-
-    llvm::SmallSetVector<mlir::Operation*, 4> collectAffineOpsChain(mlir::Value val);
-
-    enum class MODE { MAX_VALUE, ALL_VALUES };
-
-    /**
-     * @brief Get the value from an OpFoldResult
-     * @param val The OpFoldResult to process
-     * @param valueMap Map of values to their possible ranges
-     * @return The computed value, or nullopt if processing failed
-     */
-    std::optional<SmallVector<int64_t>> getOpFoldResultValue(
-            mlir::OpFoldResult val, llvm::DenseMap<mlir::Value, SmallVector<int64_t>>& valueMap,
-            MODE mode = MODE::MAX_VALUE);
-    std::optional<int64_t> getIntegerFromValue(mlir::Value value, bool processOpChain = false);
-
-private:
-    std::pair<mlir::AffineMap, mlir::ValueRange> getAffineMapAndOperands(mlir::Operation* op);
-    int64_t getAffineResult(mlir::Operation* op, llvm::ArrayRef<int64_t> results);
-    void updateChainCache(mlir::Value val, const llvm::SmallSetVector<mlir::Operation*, 4>& chain) const;
-    std::optional<SmallVector<int64_t>> processAffineCallChain(
-            mlir::Value val, llvm::DenseMap<mlir::Value, SmallVector<int64_t>>& valueMap, MODE mode = MODE::MAX_VALUE);
-    bool processAffineOp(mlir::Operation* op, llvm::DenseMap<mlir::Value, int64_t>& valueMap);
-    bool processArithOp(mlir::Operation* op, llvm::DenseMap<mlir::Value, int64_t>& valueMap);
-    std::optional<int64_t> getIntValueFromDimOp(mlir::tensor::DimOp dimOp);
-
-    std::optional<int64_t> getConstantInt(mlir::Value val) {
-        if (auto constOp = mlir::dyn_cast_or_null<mlir::arith::ConstantOp>(val.getDefiningOp())) {
-            if (auto intAttr = mlir::dyn_cast<mlir::IntegerAttr>(constOp.getValue())) {
-                return intAttr.getInt();
-            }
-        }
-        return std::nullopt;
-    }
-
-    bool evaluateOpChain(llvm::SmallSetVector<mlir::Operation*, 4>& opChain,
-                         llvm::DenseMap<mlir::Value, int64_t>& localOperandMap);
-
-    mutable llvm::DenseMap<mlir::Value, llvm::SmallSetVector<mlir::Operation*, 4>> _chainCache;
-    Logger _log;
-};
-
 mlir::func::FuncOp cloneFuncOp(mlir::func::FuncOp originalFunc, const std::string& newName,
                                mlir::FunctionType newFuncType = nullptr);
 
@@ -366,4 +347,21 @@ void addCheckForBlockSize(mlir::OpBuilder& builder, mlir::tensor::DimOp dimOp, m
                           mlir::func::FuncOp funcOp, llvm::StringRef errorMsg);
 mlir::LogicalResult getTensorDimOpFromIndex(mlir::OpBuilder& builder, mlir::Value tensor, int64_t dimIdx,
                                             mlir::tensor::DimOp& dimOp);
+
+/**
+ * @brief Applies index backtracking to adjust tensor slice indices based on InsertSliceOp parameters.
+ *
+ * This function performs index backtracking for a tensor InsertSliceOp operation, adjusting
+ * the indices for specified dimensions. It returns a vector of adjusted MLIR values that
+ * represent the backtracked indices.
+ *
+ * @param insertSliceOp The MLIR tensor InsertSliceOp operation to analyze for index backtracking
+ * @param dimsToAdjust Array of dimension indices that need to be adjusted during backtracking
+ * @return SmallVector<mlir::Value> A collection of MLIR values representing the adjusted indices
+ *         after applying the backtracking algorithm
+ */
+SmallVector<mlir::Value> applyIndexBacktracking(mlir::tensor::InsertSliceOp insertSliceOp,
+                                                ArrayRef<size_t> dimsToAdjust);
+
+void restorePaddingAttribute(mlir::Operation* region, Logger log);
 }  // namespace vpux::VPU

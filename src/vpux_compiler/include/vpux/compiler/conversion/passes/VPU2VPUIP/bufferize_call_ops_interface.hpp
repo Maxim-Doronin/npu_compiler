@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 #pragma once
 
+#include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 
 #include <mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h>
@@ -43,6 +44,7 @@ public:
                                                                  const mlir::bufferization::AnalysisState& state) const;
     mlir::LogicalResult bufferizeImpl(CallOpT op, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions& options,
+                                      mlir::bufferization::BufferizationState& state,
                                       typename CallOpT::Adaptor& adaptor) const;
 };
 
@@ -111,6 +113,7 @@ mlir::bufferization::AliasingValueList CallOpBufferizeModel<CallOpT>::getAliasin
 template <typename CallOpT>
 mlir::LogicalResult CallOpBufferizeModel<CallOpT>::bufferizeImpl(CallOpT op, mlir::RewriterBase& rewriter,
                                                                  const mlir::bufferization::BufferizationOptions&,
+                                                                 mlir::bufferization::BufferizationState& state,
                                                                  typename CallOpT::Adaptor&) const {
     auto log = vpux::Logger::global().nest("one-shot-bufferize-CallOp", 0);
     log.trace("Got '{0}' at '{1}'", op->getName(), op->getLoc());
@@ -135,8 +138,12 @@ mlir::LogicalResult CallOpBufferizeModel<CallOpT>::bufferizeImpl(CallOpT op, mli
     auto funcType = funcOp.getFunctionType();
     SmallVector<mlir::Value> newOperands;
     newOperands.reserve(callOp->getOperands().size());
+
     for (auto& opOperand : callOp->getOpOperands()) {
-        auto buffer = getBuffer(rewriter, opOperand.get());
+        auto maybeBuffer = mlir::bufferization::getBuffer(rewriter, opOperand.get(),
+                                                          vpux::getOneShotBufferizationOptions(), state);
+        VPUX_THROW_WHEN(mlir::failed(maybeBuffer), "Bufferization process failed for operand '{0}'", opOperand.get());
+        auto buffer = *maybeBuffer;
         auto memRefType = mlir::cast<mlir::MemRefType>(funcType.getInput(opOperand.getOperandNumber()));
         // E#169895: This is a workaround: we align arguments with function parameters, if they are misaligned
         if (buffer.getType() != memRefType) {

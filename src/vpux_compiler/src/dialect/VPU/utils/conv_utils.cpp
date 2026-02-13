@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
@@ -23,7 +24,6 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/conv_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
@@ -743,14 +743,14 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         // Slice inputs
         const auto sliceOffsets = SmallVector<int64_t>{0, offsetIC, 0, 0};
         const auto inSliceShape = SmallVector<int64_t>{inputN, sizeIC, inputH, inputW};
-        auto convInput = rewriter.create<VPU::SliceOp>(appendLoc(origOp->getLoc(), "_in_slice_{0}", sliceOffsets),
+        auto convInput = rewriter.create<VPU::SliceOp>(appendLoc(origOp->getLoc(), "in_slice_{0}", sliceOffsets),
                                                        origOp.getInput(), getIntArrayAttr(rewriter, sliceOffsets),
                                                        getIntArrayAttr(rewriter, inSliceShape));
 
         // Slice kernels
         const auto kernelSliceShape = SmallVector<int64_t>{kernelN, sizeIC, kernelH, kernelW};
         const auto rawKernelSliceShape = getIntArrayAttr(rewriter, kernelSliceShape);
-        auto weightSlice = rewriter.create<VPU::SliceOp>(appendLoc(origOp->getLoc(), "_w_slice_{0}", sliceOffsets),
+        auto weightSlice = rewriter.create<VPU::SliceOp>(appendLoc(origOp->getLoc(), "w_slice_{0}", sliceOffsets),
                                                          weightInput, getIntArrayAttr(rewriter, sliceOffsets),
                                                          getIntArrayAttr(rewriter, kernelSliceShape));
         auto weightSliceResult = weightSlice.getResult();
@@ -801,10 +801,10 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         mlir::Value convBiasTable = (biasTable != nullptr && tile != 0) ? zeroFilledBiasTable : biasTable;
         auto convPpeAttr = tile == 0 ? firstConvPpeAttr : strippedPpeAttr;
         auto convOp = rewriter.create<VPU::NCEConvolutionOp>(
-                appendLoc(origOp->getLoc(), "_ic_tile_{0}"), f16TypeOutputs, convInput.getResult(), weightSliceResult,
-                weightTable, origOp.getWeightTableDataPtr(), origOp.getWeightTableSpPtr(), convScaleTable,
-                convBiasTable, origOp.getWeightZeroPoints(), origOp.getStrides(), origOp.getPad(), convPpeAttr,
-                origOp.getMpeEngineAttr(), rawKernelSliceShape, origOp.getMultiClusterStrategyAttr(),
+                appendLoc(origOp->getLoc(), "ic_tile_{0}", tile), f16TypeOutputs, convInput.getResult(),
+                weightSliceResult, weightTable, origOp.getWeightTableDataPtr(), origOp.getWeightTableSpPtr(),
+                convScaleTable, convBiasTable, origOp.getWeightZeroPoints(), origOp.getStrides(), origOp.getPad(),
+                convPpeAttr, origOp.getMpeEngineAttr(), rawKernelSliceShape, origOp.getMultiClusterStrategyAttr(),
                 origOp.getOutputPaddingAttr(),
                 /*inputPadding=*/nullptr);
         convOps.push_back(convOp);
@@ -835,7 +835,7 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
                 (index == convOps.size() - 2 && hasPerTensorOrNoOutputScales) ? origOutType : f16TypeOutputs;
         auto ppeAttr = (index == convOps.size() - 2 && hasPerTensorOrNoOutputScales) ? finalPpeAttr : eltwisePpeAttr;
         auto outputPadding = origOp.getOutputPaddingAttr();
-        addResult = rewriter.create<VPU::NCEEltwiseOp>(appendLoc(origOp->getLoc(), "_accumulator_{0}", index),
+        addResult = rewriter.create<VPU::NCEEltwiseOp>(appendLoc(origOp->getLoc(), "accumulator_{0}", index),
                                                        eltwiseOutputType, addOperand, convOps[index + 1].getOutput(),
                                                        opType, ppeAttr, /*multicluster_strategy_attr=*/nullptr,
                                                        /*in_place=*/nullptr, outputPadding, outputPadding);
@@ -884,8 +884,8 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
     if (!hasPerTensorOrNoOutputScales) {
         // Construct dummy weights for DW.Conv, all filled with 1s
         const auto weightsShape = Shape{kernelN, 1, 1, 1};
-        auto dwWeights = vpux::buildDwWeights(appendLoc(origOp->getLoc(), "_dummy_weights"),
-                                              weightsShape[Dims4D::Filter::OC], f16Type, rewriter);
+        auto dwWeights = IE::buildDwWeights(appendLoc(origOp->getLoc(), "dummy_weights"),
+                                            weightsShape[Dims4D::Filter::OC], f16Type, rewriter);
         auto alignedWeights = VPU::alignDepthWiseWeightsTensor(rewriter, origOp.getLoc(), dwWeights);
 
         mlir::Value dwWeightTable = nullptr;
@@ -956,7 +956,7 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         auto strides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
         auto padding = VPU::getPaddingAttr(ctx, PadInfo(0, 0, 0, 0));
         auto nceDepthConvolutionOp = rewriter.create<VPU::NCEDepthConvolutionOp>(
-                appendLoc(origOp->getLoc(), "_dw_conv_out_scale"), origOutType, addResult.getOutput(), alignedWeights,
+                appendLoc(origOp->getLoc(), "dw_conv_out_scale"), origOutType, addResult.getOutput(), alignedWeights,
                 dwWeightTable, /*data_ptr_table=*/nullptr, /*sparsity_ptr_table=*/nullptr, dwScaleTable, dwBiasTable,
                 /*zp_table=*/nullptr, strides, padding, finalPpeAttr, getIntArrayAttr(rewriter, weightsShape.raw()),
                 /*multiClusterStrategyAttr=*/nullptr, origOp.getOutputPaddingAttr(), nullptr);

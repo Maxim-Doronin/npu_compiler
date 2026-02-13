@@ -1,12 +1,10 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/permute_utils.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
-#include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 using namespace vpux;
@@ -79,14 +77,6 @@ bool vpux::isTrivialReorder(DimsOrder inOrder, DimsOrder outOrder, ShapeRef shap
     outPerm.erase(std::remove_if(outPerm.begin(), outPerm.end(), shapeIsOne), outPerm.end());
 
     return inPerm == outPerm;
-}
-
-bool vpux::isTrivialReorder(IE::ReorderOp origOp) {
-    const auto inOrder = DimsOrder::fromValue(origOp.getInput());
-    const auto outOrder = DimsOrder::fromValue(origOp.getOutput());
-    const auto inShape = getShape(origOp.getInput());
-
-    return isTrivialReorder(inOrder, outOrder, inShape);
 }
 
 mlir::AffineMap vpux::getPermutationFromOrders(DimsOrder inOrder, DimsOrder outOrder, mlir::MLIRContext* ctx) {
@@ -242,17 +232,6 @@ void vpux::extendPermutationAndShape(SmallVector<uint32_t>& permutation, SmallVe
     }
 }
 
-IE::LayerWithPermuteInterface vpux::getFusableLayerWithPermuteInterface(mlir::Operation* op) {
-    auto inputOp = op->getOperand(0).getDefiningOp();
-    if (auto quantizeCastOp = mlir::dyn_cast_or_null<IE::QuantizeCastOp>(inputOp)) {
-        auto outElemType = quantizeCastOp.getOutput().getType().getElementType();
-        if (quantizeCastOp->hasOneUse() && mlir::isa<mlir::quant::UniformQuantizedType>(outElemType)) {
-            inputOp = quantizeCastOp.getInput().getDefiningOp();
-        }
-    }
-    return mlir::dyn_cast_or_null<IE::LayerWithPermuteInterface>(inputOp);
-}
-
 NDTypeInterface vpux::inferNewTypeWithMemPerm(NDTypeInterface oldType, mlir::AffineMap memPerm,
                                               const DimsOrder& dstOrder) {
     const auto oldMemShape = oldType.getMemShape();
@@ -268,73 +247,6 @@ NDTypeInterface vpux::inferNewTypeWithMemPerm(NDTypeInterface oldType, mlir::Aff
         elemType = changeAxis(perAxisType, outAxis.ind());
     }
     return oldType.changeDimsOrder(dstOrder).changeShapeElemType(newShape, elemType);
-}
-
-mlir::FailureOr<VPU::DistributionInfo> vpux::applyPermutationOnDistributionInfo(
-        vpux::NDTypeInterface inType, const VPU::DistributionInfo& inDistribution, mlir::AffineMap memPerm,
-        DimsOrder srcOrder, DimsOrder dstOrder, ShapeRef srcShape, ShapeRef dstShape) {
-    auto permuteAxisOfArray = [&](ArrayRef<int64_t> arr) -> SmallVector<int64_t> {
-        // At VPUIP level, VPU.LayoutCast gets lowered to VPUIP.PermuteCast.
-        // LayoutCast will have same in/out shape but different orders, which cannot be handled
-        // the same way as the VPU.PermuteCast ops which have the same memory shape between input
-        // and output even if orders and logical shapes differ. In such a case, applying the
-        // `toMemoryOrder -> applyPerm -> toLogicalOrder` transformations will not permute the
-        // distributed attr correctly.
-        if (arr.empty()) {
-            return SmallVector<int64_t>(arr);
-        }
-        if (srcShape == dstShape) {
-            return SmallVector<int64_t>(arr);
-        }
-
-        const auto arrInMemOrder = srcOrder.toMemoryOrder(Shape(arr));
-        const auto arrPermutedInMemOrder = applyPerm(arrInMemOrder, memPerm);
-        auto arrPermutedInLogicalOrder = dstOrder.toLogicalOrder(arrPermutedInMemOrder).raw();
-
-        return arrPermutedInLogicalOrder;
-    };
-
-    auto numTiles = permuteAxisOfArray(inDistribution.getNumTiles());
-    auto alignment = permuteAxisOfArray(inDistribution.getAlignment());
-
-    auto permutePerClusterShapesOffsets =
-            [&](ArrayRef<SmallVector<int64_t>> inPerClusterShapesOffsetsVec) -> SmallVector<SmallVector<int64_t>> {
-        if (inPerClusterShapesOffsetsVec.empty()) {
-            return SmallVector<SmallVector<int64_t>>(inPerClusterShapesOffsetsVec);
-        }
-        SmallVector<SmallVector<int64_t>> outComputeShapesVec{};
-        outComputeShapesVec.reserve(inPerClusterShapesOffsetsVec.size());
-        std::transform(inPerClusterShapesOffsetsVec.begin(), inPerClusterShapesOffsetsVec.end(),
-                       std::back_inserter(outComputeShapesVec), [&](const SmallVector<int64_t>& shapesOffsets) {
-                           return permuteAxisOfArray(shapesOffsets);
-                       });
-
-        return outComputeShapesVec;
-    };
-
-    auto computeShapes = permutePerClusterShapesOffsets(inDistribution.getComputeShapes());
-    auto computeOffsets = permutePerClusterShapesOffsets(inDistribution.getComputeOffsets());
-    auto memoryShapes = permutePerClusterShapesOffsets(inDistribution.getMemoryShapes());
-    auto memoryOffsets = permutePerClusterShapesOffsets(inDistribution.getMemoryOffsets());
-
-    auto distribution = VPU::DistributionInfo(
-            inDistribution.getDistributionMode(), numTiles, inDistribution.getKernel(), inDistribution.getStrides(),
-            inDistribution.getPadding(), inDistribution.getNumClusters(), alignment,
-            inDistribution.hasUniformDistributedSegments(), computeShapes, computeOffsets, memoryShapes, memoryOffsets,
-            inDistribution.hasEqualMemoryAndComputeView());
-
-    if (inDistribution.getDistributionMode() != VPU::DistributionMode::OVERLAPPED) {
-        return distribution;
-    }
-
-    if (VPU::isOverlappedOverH(distribution) || VPU::isOverlappedOverW(distribution)) {
-        return distribution;
-    }
-
-    if (VPU::isSegmentedLikeDistributionMode(inType, inDistribution)) {
-        return VPU::legalizeCastedDistribution(distribution);
-    }
-    return mlir::failure();
 }
 
 // for a given input and a output requirement(outOrdr and outShape), the function is trying to find a permutation that
@@ -395,22 +307,6 @@ std::optional<mlir::AffineMap> vpux::tryToFindPermutationForPermuteCast(NDTypeIn
     }
 
     return permutationMap;
-}
-
-// for a given input and a output requirement(outOrdr and outShape), the function is trying to find a permutation that
-// can use permuteCastOp to convert input to output requirement.
-std::optional<IE::PermuteCastOp> vpux::tryToFindPermuteCastOp(mlir::Location loc, mlir::Value input, DimsOrder outOrder,
-                                                              ShapeRef outShape, mlir::PatternRewriter& rewriter) {
-    const auto ctx = rewriter.getContext();
-    const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
-    auto hasValidPermutationMap =
-            tryToFindPermutationForPermuteCast(inputType, outOrder, outShape, rewriter.getContext());
-    if (hasValidPermutationMap.has_value()) {
-        return rewriter.create<IE::PermuteCastOp>(loc, input, mlir::AffineMapAttr::get(outOrder.toAffineMap(ctx)),
-                                                  mlir::AffineMapAttr::get(hasValidPermutationMap.value()));
-    } else {
-        return std::nullopt;
-    }
 }
 
 /**

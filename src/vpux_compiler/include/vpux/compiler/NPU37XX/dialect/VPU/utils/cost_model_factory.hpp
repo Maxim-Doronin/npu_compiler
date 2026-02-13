@@ -30,17 +30,6 @@ public:
      * @return std::shared_ptr<VPUNN::VPULayerCostModel>
      */
     std::shared_ptr<VPUNN::VPULayerCostModel> createLayerCostModel() const override;
-
-    /**
-     * @brief Each Cost Model Factory knows from compile time if the Shave2Api will be used
-     *
-     * @return boolean that shave2ApiIsUsed
-     */
-    std::unique_ptr<IShaveCostModelUtils> createShaveCostModelUtil() const override;
-
-private:
-    static constexpr bool _isShave2ApiUsedInVPUNN{
-            false};  // cached flag indicating if Shave2Api is used should be set here
 };
 
 }  // namespace arch37xx

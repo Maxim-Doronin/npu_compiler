@@ -1,12 +1,15 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_infer.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -44,7 +47,10 @@ namespace {
 
 class FuseMemPermutes final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
 public:
-    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+    FuseMemPermutes(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx, benefit) {
+        this->setDebugName("FuseMemPermutes");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
@@ -63,7 +69,10 @@ mlir::LogicalResult FuseMemPermutes::matchAndRewrite(IE::MemPermuteOp memPermute
 
 class FusePermCastAndMemPerm final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
 public:
-    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+    FusePermCastAndMemPerm(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx, benefit) {
+        this->setDebugName("FusePermCastAndMemPerm");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
@@ -80,7 +89,10 @@ mlir::LogicalResult FusePermCastAndMemPerm::matchAndRewrite(IE::MemPermuteOp mem
 
 class FuseMemPermuteThroughConcat final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
 public:
-    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+    FuseMemPermuteThroughConcat(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx, benefit) {
+        this->setDebugName("FuseMemPermuteThroughConcat");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
@@ -199,7 +211,10 @@ mlir::ArrayAttr getNewPaddingAttr(mlir::MLIRContext* ctx, ArrayRef<int64_t> pads
 
 class FuseMemPermuteThroughExpand final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
 public:
-    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+    FuseMemPermuteThroughExpand(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx, benefit) {
+        this->setDebugName("FuseMemPermuteThroughExpand");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
@@ -258,7 +273,10 @@ mlir::LogicalResult FuseMemPermuteThroughExpand::matchAndRewrite(IE::MemPermuteO
 
 class FuseMemPermuteAndPermuteQuantize final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
 public:
-    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+    FuseMemPermuteAndPermuteQuantize(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx, benefit) {
+        this->setDebugName("FuseMemPermuteAndPermuteQuantize");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
@@ -288,7 +306,9 @@ mlir::LogicalResult FuseMemPermuteAndPermuteQuantize::matchAndRewrite(IE::MemPer
     // PermuteQuantization Op.
     const auto permuteQuantizeOutElemType =
             mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp.getOutput().getType()).getElementType();
-    if (mlir::isa<mlir::quant::QuantizedType>(permuteQuantizeOutElemType)) {
+    const auto permuteQuantizeInElemType =
+            mlir::cast<vpux::NDTypeInterface>(permuteQuantizeOp.getInput().getType()).getElementType();
+    if (!(IE::isPurePermuteCompatiblePrecision(permuteQuantizeInElemType, permuteQuantizeOutElemType))) {
         return mlir::failure();
     }
 
@@ -301,7 +321,10 @@ mlir::LogicalResult FuseMemPermuteAndPermuteQuantize::matchAndRewrite(IE::MemPer
 
 class ConvertToPermuteCast final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
 public:
-    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+    ConvertToPermuteCast(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::MemPermuteOp>(ctx, benefit) {
+        this->setDebugName("ConvertToPermuteCast");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
@@ -330,7 +353,10 @@ mlir::LogicalResult ConvertToPermuteCast::matchAndRewrite(IE::MemPermuteOp memPe
 
 class ConvertShapeCastToPermuteCast final : public mlir::OpRewritePattern<IE::ShapeCastOp> {
 public:
-    using mlir::OpRewritePattern<IE::ShapeCastOp>::OpRewritePattern;
+    ConvertShapeCastToPermuteCast(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ShapeCastOp>(ctx, benefit) {
+        this->setDebugName("ConvertShapeCastToPermuteCast");
+    }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::ShapeCastOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -338,15 +364,30 @@ public:
 
 mlir::LogicalResult ConvertShapeCastToPermuteCast::matchAndRewrite(IE::ShapeCastOp origOp,
                                                                    mlir::PatternRewriter& rewriter) const {
+    // Check if input is MemPermute
     auto memPermuteOp = origOp.getOperand().getDefiningOp<IE::MemPermuteOp>();
+
+    // If input is not MemPermute, only proceed if this is part of ShapeCast -> PermuteCast -> Reorder pattern
     if (memPermuteOp == nullptr) {
-        return mlir::failure();
+        if (!origOp->hasOneUse()) {
+            return mlir::failure();
+        }
+
+        auto permuteCastUser = mlir::dyn_cast<IE::PermuteCastOp>(*origOp->getUsers().begin());
+        if (permuteCastUser == nullptr || !permuteCastUser->hasOneUse()) {
+            return mlir::failure();
+        }
+
+        auto reorderUser = mlir::dyn_cast<IE::ReorderOp>(*permuteCastUser->getUsers().begin());
+        if (reorderUser == nullptr) {
+            return mlir::failure();
+        }
     }
 
     const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getResult().getType());
     const auto outOrder = outType.getDimsOrder();
-    auto hasValidPermuteCast = vpux::tryToFindPermuteCastOp(origOp.getLoc(), origOp.getOperand(), outOrder,
-                                                            getShape(origOp.getResult()), rewriter);
+    auto hasValidPermuteCast = IE::tryToFindPermuteCastOp(origOp.getLoc(), origOp.getOperand(), outOrder,
+                                                          getShape(origOp.getResult()), rewriter);
 
     if (!hasValidPermuteCast.has_value()) {
         return mlir::failure();
@@ -367,6 +408,19 @@ void vpux::IE::MemPermuteOp::getCanonicalizationPatterns(mlir::RewritePatternSet
     patterns.add<FuseMemPermuteThroughExpand>(context);
     patterns.add<FuseMemPermuteAndPermuteQuantize>(context);
     patterns.add<ConvertShapeCastToPermuteCast>(context);
+}
+
+void vpux::IE::registerMemPermuteOpRewriters(RewriterRegistry& registry, ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                             size_t index) {
+    registry.registerRewriter<FuseMemPermutes>("fuse-mem-permutes", benefitLevels[index]);
+    registry.registerRewriter<ConvertToPermuteCast>("convert-to-permute-cast", benefitLevels[index]);
+    registry.registerRewriter<FusePermCastAndMemPerm>("fuse-perm-cast-and-mem-perm", benefitLevels[index]);
+    registry.registerRewriter<FuseMemPermuteThroughConcat>("fuse-mem-permute-through-concat", benefitLevels[index]);
+    registry.registerRewriter<FuseMemPermuteThroughExpand>("fuse-mem-permute-through-expand", benefitLevels[index]);
+    registry.registerRewriter<FuseMemPermuteAndPermuteQuantize>("fuse-mem-permute-and-permute-quantize",
+                                                                benefitLevels[index]);
+    registry.registerRewriter<ConvertShapeCastToPermuteCast>("convert-shape-cast-to-permute-cast",
+                                                             benefitLevels[index]);
 }
 
 mlir::OpFoldResult vpux::IE::MemPermuteOp::fold(FoldAdaptor adaptor) {

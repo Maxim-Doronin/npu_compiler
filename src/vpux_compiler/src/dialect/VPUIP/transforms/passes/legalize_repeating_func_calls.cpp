@@ -212,7 +212,7 @@ private:
     /// Returns a new allocation for the function argument at the specified
     /// index.
     mlir::Value makeNewCommonArg(mlir::func::FuncOp funcOp, size_t i) {
-        const auto loc = appendLoc(funcOp.getLoc(), "_repeating_call_alloc");
+        const auto loc = appendLoc(funcOp.getLoc(), "repeating_call_alloc");
         const auto type = mlir::dyn_cast<mlir::MemRefType>(funcOp.getArgument(i).getType());
         VPUX_THROW_WHEN(type == nullptr, "Function {0} has non-memref type argument at index {1}",
                         funcOp.getOperationName(), i);
@@ -338,7 +338,7 @@ private:
 
         mlir::OpBuilder::InsertionGuard guard(_builder);
         _builder.setInsertionPoint(callOp);
-        auto loc = appendLoc(callOp.getLoc(), "_repeating_call_input");
+        auto loc = appendLoc(callOp.getLoc(), "repeating_call_input");
 
         auto copy = _builder.create<VPUIP::CopyOp>(loc, src, dst).getResult();
         src.replaceUsesWithIf(copy, [&](mlir::OpOperand& use) {
@@ -355,7 +355,7 @@ private:
 
         mlir::OpBuilder::InsertionGuard guard(_builder);
         _builder.setInsertionPointAfter(callOp);
-        auto loc = appendLoc(callOp.getLoc(), "_repeating_call_output");
+        auto loc = appendLoc(callOp.getLoc(), "repeating_call_output");
 
         const auto operandIndex = numInputs + resultIndex;
         src.replaceUsesWithIf(dst, [&](mlir::OpOperand& use) {

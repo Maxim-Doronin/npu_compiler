@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,16 +68,18 @@ class TensorIteratorSubGraphTestCommon_FORWARD : public TensorIteratorSubGraphTe
     }
 };
 
-class TensorIteratorSubGraphTestCommon_NPU3720_FORWARD : public TensorIteratorSubGraphTestCommon_FORWARD {};
-TEST_F(TensorIteratorSubGraphTestCommon_NPU3720_FORWARD, NPU3720_TestKindSubgraph) {
+TEST_F(TensorIteratorSubGraphTestCommon_FORWARD, NPU3720_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-class TensorIteratorSubGraphTestCommon_NPU4000_FORWARD : public TensorIteratorSubGraphTestCommon_FORWARD {};
-TEST_F(TensorIteratorSubGraphTestCommon_NPU4000_FORWARD, NPU4000_TestKindSubgraph) {
+TEST_F(TensorIteratorSubGraphTestCommon_FORWARD, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
+}
+TEST_F(TensorIteratorSubGraphTestCommon_FORWARD, NPU5010_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 class TensorIteratorSubGraphTestCommon_REVERSE : public TensorIteratorSubGraphTestCommon {
@@ -123,16 +125,18 @@ class TensorIteratorSubGraphTestCommon_REVERSE : public TensorIteratorSubGraphTe
     }
 };
 
-class TensorIteratorSubGraphTestCommon_NPU3720_REVERSE : public TensorIteratorSubGraphTestCommon_REVERSE {};
-TEST_F(TensorIteratorSubGraphTestCommon_NPU3720_REVERSE, NPU3720_TestKindSubgraph) {
+TEST_F(TensorIteratorSubGraphTestCommon_REVERSE, NPU3720_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
-class TensorIteratorSubGraphTestCommon_NPU4000_REVERSE : public TensorIteratorSubGraphTestCommon_REVERSE {};
-TEST_F(TensorIteratorSubGraphTestCommon_NPU4000_REVERSE, NPU4000_TestKindSubgraph) {
+TEST_F(TensorIteratorSubGraphTestCommon_REVERSE, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
+}
+TEST_F(TensorIteratorSubGraphTestCommon_REVERSE, NPU5010_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
 }
 
 }  // namespace ov::test

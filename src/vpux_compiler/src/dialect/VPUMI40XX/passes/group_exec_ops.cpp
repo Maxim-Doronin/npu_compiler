@@ -254,7 +254,7 @@ void GroupExecutionOpsPass::safeRunOnFunc() {
 
     auto numShaveQueuesPerTile = [&] {
         const auto shavesCountPerTile =
-                config::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+                config::getAvailableExecutor(parentModule, config::ExecutorKind::SHAVE_ACT).getCount();
         return fifoPerShaveEngineEnabled ? static_cast<size_t>(shavesCountPerTile) : static_cast<size_t>(1);
     }();
 

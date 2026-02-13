@@ -118,7 +118,7 @@ void reindexTaskLinkAttrForDMA(VPURegMapped::TaskOpInterface head);
 //
 size_t getTaskBinarySize(VPURegMapped::TaskType taskType, config::ArchKind arch);
 
-VPURegMapped::TaskType convertExecutorKindToExecutableTaskType(VPU::ExecutorKind kind);
+VPURegMapped::TaskType convertExecutorKindToExecutableTaskType(config::ExecutorKind kind);
 
 }  // namespace VPUMI40XX
 }  // namespace vpux

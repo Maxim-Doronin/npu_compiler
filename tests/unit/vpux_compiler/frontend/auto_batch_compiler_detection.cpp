@@ -288,6 +288,7 @@ public:
         // allow any other additional config params to be passed as an external option into the plugin config
         // required for checking that auto-batch detection is non-intrusive methof of options processing
         optionDescPtr->add<intel_npu::PERFORMANCE_HINT>();
+        optionDescPtr->add<intel_npu::COMPILATION_MODE>();
 
         Base::SetUp();
         refinedCompileParams = std::get<getFirstParamTupleIndex()>(this->GetParam());
@@ -329,6 +330,10 @@ const std::string turnOffDebatchDisableConditions{
         "max-batch-number-disable-limit=-1}"};
 const CfgMap coeffDeterminingConfigBatchInCompiler{
         {std::make_pair(ov::intel_npu::batch_mode.name(), "COMPILER"),
+         std::make_pair(ov::intel_npu::batch_compiler_mode_settings.name(), turnOffDebatchDisableConditions)}};
+const CfgMap coeffDeterminingConfigBatchInCompilerForHostCompile{
+        {std::make_pair(ov::intel_npu::batch_mode.name(), "COMPILER"),
+         std::make_pair(ov::intel_npu::compilation_mode.name(), "HostCompile"),
          std::make_pair(ov::intel_npu::batch_compiler_mode_settings.name(), turnOffDebatchDisableConditions)}};
 const CfgMap coeffDeterminingConfigBatchInPlugin{{std::make_pair(ov::intel_npu::batch_mode.name(), "PLUGIN")}};
 const std::string predefinedDebatchCoefficients{
@@ -381,6 +386,16 @@ INSTANTIATE_TEST_SUITE_P(
                                 vpux::BatchUnrollOptions::getDefaultOptions() +
                                 " debatcher-settings={debatcher-input-coefficients-partitions=" +
                                 sixCoefficientsWithBatchByOne.to_string() + ", debatching-inlining-method=naive}"),
+                AutoBatchCompilerDebatchCoefficientsDeterminingTestsParams(
+                        IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{"NCHW"}),
+                                        IODescription(ov::PartialShape({100, 200}), ov::Layout{"NC"}),
+                                        IODescription(ov::PartialShape({300, 400}), ov::Layout{"NC"})}),
+                        coeffDeterminingConfigBatchInCompilerForHostCompile,
+                        "batch-compile-method=debatch batch-unroll-settings=" +
+                                vpux::BatchUnrollOptions::getDefaultOptions() +
+                                " debatcher-settings={debatcher-input-coefficients-partitions=" +
+                                sixCoefficientsWithBatchByOne.to_string() +
+                                ", debatching-inlining-method=host_pipeline}"),
                 AutoBatchCompilerDebatchCoefficientsDeterminingTestsParams(
                         IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), {}),
                                         IODescription(ov::PartialShape({100, 200}), {}),

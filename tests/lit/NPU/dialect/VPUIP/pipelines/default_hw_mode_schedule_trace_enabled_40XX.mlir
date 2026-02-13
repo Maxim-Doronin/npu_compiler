@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="enable-schedule-trace=true" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true workload-management-enable=false" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="enable-schedule-trace=true" --vpuip-finalize="enable-schedule-trace=true" %s | FileCheck %s
 // RUN: rm compileTimeScheduleTrace.json
 // REQUIRES: arch-NPU40XX
 
@@ -54,30 +54,30 @@ module @Gather attributes {config.arch = #config.arch_kind<NPU40XX>, config.comp
         // CHECK-DAG:   [[BAR3:%.+]] = VPURT.ConfigureBarrier<3> -> !VPURT.Barrier
         // CHECK-DAG:   [[BAR4:%.+]] = VPURT.ConfigureBarrier<4> <{isFinalBarrier}> -> !VPURT.Barrier
         // CHECK-DAG:   [[CST:%.+]] = const.Declare memref<32000x4096xf16> = dense<1.000000e+00> : tensor<32000x4096xf16>
-        // CHECK-DAG:   [[DUMMY_BUFF0:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
-        // CHECK-DAG:   [[DUMMY_BUFF1:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+        // CHECK-DAG:   [[DUMMY_BUFF0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+        // CHECK-DAG:   [[DUMMY_BUFF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
         // CHECK-DAG:   [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1xsi32, @DDR>
         // CHECK-DAG:   [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x1x4096xf16, @DDR>
         // CHECK-DAG:   [[BUFF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> memref<1x1xsi32, [@CMX_NN, 0]>
         // CHECK-DAG:   [[BUFF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x4096xf16, [@CMX_NN, 0]>
 
         // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.SyncDMA {port = 0 : i64} inputs([[DUMMY_BUFF0]] : memref<0x0x0x0xi32, @DDR>)
+        // CHECK:   VPUIP.SyncDMA <{port = 0 : i64}> inputs([[DUMMY_BUFF0]] : memref<0x0x0x0xi32, @DDR>)
         // CHECK-SAME:              outputs([[DUMMY_BUFF1]] : memref<0x0x0x0xi32, @DDR>) -> memref<0x0x0x0xi32, @DDR>
 
         // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs([[IN]] : memref<1x1xsi32, @DDR>) outputs([[BUFF0]] : memref<1x1xsi32, [@CMX_NN, 0]>) -> memref<1x1xsi32, [@CMX_NN, 0]>
+        // CHECK:   VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs([[IN]] : memref<1x1xsi32, @DDR>) outputs([[BUFF0]] : memref<1x1xsi32, [@CMX_NN, 0]>) -> memref<1x1xsi32, [@CMX_NN, 0]>
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_flush_invalidate inputs() outputs() on tile 0{
         // CHECK:     VPUIP.SW.Kernel.run
 
-        // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) {
+        // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) <{clean_after = 3 : ui64}> {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Gather inputs([[CST]] as [[ARG2:%[^:]+]]: memref<32000x4096xf16>, [[BUFF0]] as [[ARG3:%[^:]+]]: memref<1x1xsi32, [@CMX_NN, 0]>) outputs([[BUFF1]] as [[ARG4:%[^:]+]]: memref<1x1x4096xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x1x4096xf16, [@CMX_NN, 0]>{
         // CHECK:     VPUIP.SW.Kernel.run {attrs = [1, 0]}([[ARG2]], [[ARG3]], [[ARG4]]) : memref<32000x4096xf16>, memref<1x1xsi32, [@CMX_NN, 0]>, memref<1x1x4096xf16, [@CMX_NN, 0]>
 
         // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[BUFF1]] : memref<1x1x4096xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x1x4096xf16, @DDR>) -> memref<1x1x4096xf16, @DDR>
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF1]] : memref<1x1x4096xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x1x4096xf16, @DDR>) -> memref<1x1x4096xf16, @DDR>
 
         // CHECK: return [[ARG1]] : memref<1x1x4096xf16, @DDR>
     }

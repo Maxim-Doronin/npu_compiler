@@ -24,16 +24,16 @@ namespace {
 class InterpolateExecutorOpModel final :
         public IE::ExecutorOpInterface::ExternalModel<InterpolateExecutorOpModel, IE::InterpolateOp> {
 public:
-    mlir::SmallVector<VPU::ExecutorKind> getPreferredExecutors(mlir::Operation* origOp) const {
+    mlir::SmallVector<config::ExecutorKind> getPreferredExecutors(mlir::Operation* origOp) const {
         auto op = mlir::cast<IE::InterpolateOp>(origOp);
         const auto inputShape = getShape(op.getInput());
 
         // Only support 4D Input shape - if not 4D, prefer SHAVE
         if (inputShape.size() != 4) {
-            return {VPU::ExecutorKind::SHAVE_ACT, VPU::ExecutorKind::DPU};
+            return {config::ExecutorKind::SHAVE_ACT, config::ExecutorKind::DPU};
         }
 
-        return {VPU::ExecutorKind::DPU, VPU::ExecutorKind::SHAVE_ACT};
+        return {config::ExecutorKind::DPU, config::ExecutorKind::SHAVE_ACT};
     }
 };
 

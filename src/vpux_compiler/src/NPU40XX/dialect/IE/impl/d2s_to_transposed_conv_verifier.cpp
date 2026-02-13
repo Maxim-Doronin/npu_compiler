@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,7 +30,7 @@ using namespace vpux::IE::arch40xx;
 constexpr int64_t BENEFICIAL_INPUT_CHANNEL_MAX = 256;
 
 mlir::LogicalResult D2SToTransposedConvVerifier::isBeneficialConversion(Logger log, mlir::PatternRewriter& rewriter,
-                                                                        IE::DepthToSpaceOp d2sOp) const {
+                                                                        IE::DepthToSpaceOp d2sOp, const bool) const {
     if (d2sOp.getBlockSize() >= 4) {
         return matchFailed(log, rewriter, d2sOp, "mapping D2S to DPU is not beneficial: blockSize({0}) >= 4",
                            d2sOp.getBlockSize());  // Better to map larger block size to DMA.

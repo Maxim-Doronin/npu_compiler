@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -150,7 +150,7 @@ protected:
         Co->set_friendly_name("Co");
 
         function =
-                std::make_shared<ov::Model>(ov::NodeVector{Y_out, Ho, Co}, ov::ParameterVector{inputParams[0], Y, Z});
+                std::make_shared<ov::Model>(ov::OutputVector{Y_out, Ho, Co}, ov::ParameterVector{inputParams[0], Y, Z});
         function->set_friendly_name("LSTMSequenceSubgraphNPU");
     }
 };
@@ -206,7 +206,7 @@ protected:
         auto reshaped_output3 = std::make_shared<ov::op::v1::Reshape>(transposed_output2, reshapeConst1, true);
         auto reshaped_output4 = std::make_shared<ov::op::v1::Reshape>(reshaped_output3, reshapeConst2, true);
 
-        function = std::make_shared<ov::Model>(ov::NodeVector{Y_out_2, reshaped_output3, reshaped_output4},
+        function = std::make_shared<ov::Model>(ov::OutputVector{Y_out_2, reshaped_output3, reshaped_output4},
                                                ov::ParameterVector{inputParams[0], Y, Z});
         function->set_friendly_name("LSTMSequenceSubgraphNPU");
     }
@@ -366,7 +366,7 @@ protected:
 
         auto softmax_output = std::make_shared<ov::op::v1::Softmax>(add_output2, 2);
 
-        function = std::make_shared<ov::Model>(ov::NodeVector{Y_out_2, Ho_2, Co_2, softmax_output},
+        function = std::make_shared<ov::Model>(ov::OutputVector{Y_out_2, Ho_2, Co_2, softmax_output},
                                                ov::ParameterVector{inputParams[0], Y, Z});
         function->set_friendly_name("LSTMSequenceSubgraphNPU_More_Extended");
     }

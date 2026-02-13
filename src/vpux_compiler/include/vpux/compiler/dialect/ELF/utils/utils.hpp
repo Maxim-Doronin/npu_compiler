@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/types.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux_headers/platform.hpp"
@@ -66,7 +66,7 @@ ArrayRef<uint8_t> getDataAndSizeOfElfSection(ArrayRef<uint8_t> elfBlob, ArrayRef
 class SymbolReferenceMap {
 public:
     SymbolReferenceMap(vpux::ELF::MainOp elfMain, bool preLoadSymbols = false)
-            : _elfMainSymbolTable(elfMain.getOperation()) {
+            : _elfMainSymbolTable(elfMain.getOperation()), _elfMain(elfMain) {
         if (preLoadSymbols) {
             walkAllSymbols();
         }
@@ -77,13 +77,14 @@ public:
 private:
     void walkAllSymbols();
     mlir::SymbolTable _elfMainSymbolTable;
+    ELF::MainOp _elfMain;
     mlir::DenseMap<mlir::StringAttr, mlir::SymbolTable> _sectionSymbolContainers;
 };
 
 ELF::MainOp getElfMainOp(mlir::ModuleOp moduleOp);
 ELF::MainOp getElfMainOp(mlir::func::FuncOp funcOp);
 
-size_t getOffsetOfSymRef(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef);
+int64_t getOffsetOfSymRef(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef);
 
 mlir::SymbolRefAttr composeSectionObjectSymRef(ELF::ElfSectionInterface sectionIface, mlir::Operation* op);
 

@@ -76,7 +76,7 @@ VPU::DistributionInfoAttr VPUIP::LUTConverterBase::createDistributionInfoAttr(
             VPU::DistributionModeAttr::get(nceClusterTask.getContext(), VPU::DistributionMode::DUPLICATED);
     return VPU::DistributionInfoAttr::get(nceClusterTask.getContext(), duplicatedDistrModeAttr, nullptr, nullptr,
                                           nullptr, nullptr, inputDistribInfo.getNumClusters(), nullptr, nullptr,
-                                          nullptr, nullptr, nullptr, nullptr, nullptr);
+                                          nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 }
 
 VPUIP::DistributedBufferType VPUIP::LUTConverterBase::createDistributedBufferType(

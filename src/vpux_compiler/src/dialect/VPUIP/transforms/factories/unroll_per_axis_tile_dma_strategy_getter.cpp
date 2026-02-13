@@ -18,7 +18,7 @@ std::unique_ptr<IGreedilyPassStrategy> VPUIP::createUnrollPerAxisTileDMAStrategy
     const auto arch = config::getArch(funcOp);
 
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     switch (arch) {

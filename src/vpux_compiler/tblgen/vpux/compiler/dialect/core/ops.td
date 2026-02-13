@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,6 +59,18 @@ def Core_NestedCallOp : Core_Op<"NestedCall", [
         void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
             setCalleeAttr(mlir::cast<mlir::SymbolRefAttr>(callee));
         }
+
+        /// These methods are required by the CallOpInterface API.
+        /// Newer versions of the interface expose per-argument and per-result
+        /// call-site attributes. We does not use call-site metadata,
+        /// so these implementations are intentionally no-ops
+        mlir::ArrayAttr getArgAttrsAttr() { return nullptr; }
+        void setArgAttrsAttr(mlir::ArrayAttr) { }
+        mlir::Attribute removeArgAttrsAttr() { return mlir::Attribute(); }
+
+        mlir::ArrayAttr getResAttrsAttr() { return nullptr; }
+        void setResAttrsAttr(mlir::ArrayAttr) { }
+        mlir::Attribute removeResAttrsAttr() { return mlir::Attribute(); }
     }];
 
     let builders = [

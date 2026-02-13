@@ -33,9 +33,10 @@ module @Test {
             VPUIPDPU.DPUInvariant @DPUInvariant1a
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %se_in_seg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
@@ -145,9 +146,10 @@ module @Test {
             VPUIPDPU.DPUInvariant @DPUInvariant1b
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:1>, task_location = @DeclareTaskBuffer_DPUInvariant_1,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:1>, task_location = @DeclareTaskBuffer_DPUInvariant_1,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -158,7 +160,7 @@ module @Test {
                         VPUIPDPU.IDUStorageElement se_size(32)
                         VPUIPDPU.IDUKernel kernel_x(11) kernel_y(11)
                         VPUIPDPU.IDUStride stride_x(8) stride_y(8)
-                        VPUIPDPU.IDUInputLayerCfg sparsity_pattern(31) {input_compressed}
+                        VPUIPDPU.IDUInputLayerCfg sparsity_pattern(31) <{input_compressed}>
                         VPUIPDPU.IDUWorkloadCfg workload_type(MAXPOOL)
                         VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT)
                     }
@@ -246,9 +248,10 @@ module @Test {
             VPUIPDPU.DPUInvariant @DPUInvariant2
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:2>, task_location = @DeclareTaskBuffer_DPUInvariant_2,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:2>, task_location = @DeclareTaskBuffer_DPUInvariant_2,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -314,9 +317,10 @@ module @Test {
             VPUIPDPU.DPUInvariant @DPUInvariant3
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:3>, task_location = @DeclareTaskBuffer_DPUInvariant_3,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:3>, task_location = @DeclareTaskBuffer_DPUInvariant_3,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -401,9 +405,10 @@ module @Test {
             VPUIPDPU.DPUInvariant @DPUInvariant4
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:4>, task_location = @DeclareTaskBuffer_DPUInvariant_4,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:4>, task_location = @DeclareTaskBuffer_DPUInvariant_4,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -479,9 +484,10 @@ module @Test {
             VPUIPDPU.DPUInvariant @DPUInvariant5
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,
@@ -546,10 +552,11 @@ module @ProfilingTest {
             VPUIPDPU.DPUInvariant @DPUInvariantProf
             // CHECK-NOT:   VPUIPDPU.DPUInvariant
             // CHECK:       NPUReg40XX.DPUInvariant
-                {task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0,
+                {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0,
                  input = @DeclareBuffer_ActIn, output = @DeclareBuffer_ActOut,
                  profiling_data = @DeclareBuffer_ProfilingData,
-                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+                 nce_task_type = #VPUIP.nce_task_type<MAXPOOL>}>
                 DPUCfg : {
                     ^bb0(%act_in: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>,
                         %weight_table: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>,

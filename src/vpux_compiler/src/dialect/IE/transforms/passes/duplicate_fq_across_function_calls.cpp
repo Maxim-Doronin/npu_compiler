@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -120,15 +121,6 @@ private:
                 _callFunction[callOp] = calledFuncOp;
             });
         });
-    }
-
-    // Find the Return operation of the given function
-    mlir::func::ReturnOp findReturnOp(mlir::func::FuncOp funcOp) {
-        mlir::func::ReturnOp returnOp;
-        funcOp.walk([&](mlir::func::ReturnOp op) {
-            returnOp = op;
-        });
-        return returnOp;
     }
 
     // Find FakeQuantize operations that are found at the boundaries of functions (i.e. user of argument or producer of
@@ -347,7 +339,7 @@ private:
             mlir::IRMapping mapper;
             mapper.map(op->getOperand(0), inputValue);
             auto newOp = builder.clone(*op, mapper);
-            newOp->setLoc(appendLoc(newOp->getLoc(), "_duplicate{0}", _cloneInstanceIdx));
+            newOp->setLoc(appendLoc(newOp->getLoc(), "duplicate{0}", _cloneInstanceIdx));
             inputValue = newOp->getResult(0);
         }
         mlir::IRMapping mapper;
@@ -357,11 +349,11 @@ private:
             mapper.map(operand.get(), newParentOp->getResult(0));
         }
         auto newFqOp = builder.clone(*fqOp, mapper);
-        newFqOp->setLoc(appendLoc(newFqOp->getLoc(), "_duplicate{0}", _cloneInstanceIdx));
+        newFqOp->setLoc(appendLoc(newFqOp->getLoc(), "duplicate{0}", _cloneInstanceIdx));
 
         const auto shape = mlir::cast<NDTypeInterface>(input.getType()).getShape();
         auto newOperand = builder.createOrFold<IE::ReshapeOp>(
-                appendLoc(fqOp->getLoc(), "_reshape"), newFqOp->getResult(0), /*shape=*/nullptr,
+                appendLoc(fqOp->getLoc(), "reshape"), newFqOp->getResult(0), /*shape=*/nullptr,
                 /*specialZero=*/nullptr, getIntArrayAttr(builder, shape.raw()));
         ++_cloneInstanceIdx;
         return newOperand;
@@ -377,9 +369,9 @@ private:
         const auto shape = mlir::cast<NDTypeInterface>(fqOp->getOperand(0).getType()).getShape();
         if (shape != mlir::cast<NDTypeInterface>(input.getType()).getShape()) {
             auto reshapeOp =
-                    builder.create<IE::ReshapeOp>(appendLoc(fqOp->getLoc(), "_reshape"), input, /*shape=*/nullptr,
+                    builder.create<IE::ReshapeOp>(appendLoc(fqOp->getLoc(), "reshape"), input, /*shape=*/nullptr,
                                                   /*specialZero=*/nullptr, getIntArrayAttr(builder, shape.raw()));
-            reshapeOp->setLoc(appendLoc(reshapeOp->getLoc(), "_duplicate{0}", _cloneInstanceIdx));
+            reshapeOp->setLoc(appendLoc(reshapeOp->getLoc(), "duplicate{0}", _cloneInstanceIdx));
             inputValue = reshapeOp->getResult(0);
             newInputUserOp = reshapeOp;
         }
@@ -391,7 +383,7 @@ private:
             mapper.map(operand.get(), newParentOp->getResult(0));
         }
         auto newFqOp = builder.clone(*fqOp, mapper);
-        newFqOp->setLoc(appendLoc(newFqOp->getLoc(), "_duplicate{0}", _cloneInstanceIdx));
+        newFqOp->setLoc(appendLoc(newFqOp->getLoc(), "duplicate{0}", _cloneInstanceIdx));
         inputValue = newFqOp->getResult(0);
         if (newInputUserOp == nullptr) {
             newInputUserOp = newFqOp;
@@ -401,7 +393,7 @@ private:
             mlir::IRMapping mapper;
             mapper.map(op->getOperand(0), inputValue);
             auto newOp = builder.clone(*op, mapper);
-            newOp->setLoc(appendLoc(newOp->getLoc(), "_duplicate{0}", _cloneInstanceIdx));
+            newOp->setLoc(appendLoc(newOp->getLoc(), "duplicate{0}", _cloneInstanceIdx));
             inputValue = newOp->getResult(0);
         }
 

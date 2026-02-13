@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,8 @@
 
 namespace vpux {
 namespace config {
+
+mlir::func::FuncOp getOwningFuncOp(mlir::Operation* operation);
 
 // Adaptive Stripping
 constexpr StringRef ENABLE_ADAPTIVE_STRIPPING = "config.EnableAdaptiveStripping";
@@ -87,6 +89,10 @@ constexpr StringRef BARRIER_FIFO_DEPTH = "config.BarrierFIFODepth";
 // VPUNN Configurations
 constexpr StringRef VPUNN_PRE_SPLIT = "config.EnableVPUNNPreSplit";
 bool hasVPUNNPreSplit(mlir::Operation* op);
+
+// ODU Configurations
+constexpr StringRef ODU_LOCAL_REGION = "config.EnableODULocalRegion";
+bool hasODULocalRegion(mlir::Operation* op);
 
 // Profiling Configurations
 constexpr StringRef ENABLE_PROFILING = "config.EnableProfiling";

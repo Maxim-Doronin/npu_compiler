@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/NPU50XX/dialect/IE/impl/weights_dequantize_to_fakequantize_strategy.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -53,10 +54,10 @@ mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequanti
         inHigh = (levels + inLow - 1);
     } else {
         // Floating point case
-        const auto fp8RangeOrFail = vpux::getFp8Range(inputElemType);
-        VPUX_THROW_WHEN(mlir::failed(fp8RangeOrFail), "Unexpected data type {0}", inputElemType);
+        const auto lowFpRangeOrFail = vpux::getLowFpRange(inputElemType);
+        VPUX_THROW_WHEN(mlir::failed(lowFpRangeOrFail), "Unexpected data type {0}", inputElemType);
 
-        std::tie(inLow, inHigh) = fp8RangeOrFail.value();
+        std::tie(inLow, inHigh) = lowFpRangeOrFail.value();
         lowFpTypeAttr = mlir::TypeAttr::get(inputElemType);
     }
 
@@ -100,8 +101,8 @@ mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequanti
 
 class WeightsDequantizeToFakeQuantizeConstRewriter final : public mlir::OpRewritePattern<Const::DeclareOp> {
 public:
-    WeightsDequantizeToFakeQuantizeConstRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<Const::DeclareOp>(ctx), _log(log) {
+    WeightsDequantizeToFakeQuantizeConstRewriter(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<Const::DeclareOp>(ctx, benefit), _log(log) {
         setDebugName("WeightsDequantizeToFakeQuantizeRewriter");
     }
 
@@ -134,8 +135,8 @@ private:
 
 class MultiAxisQuantizedBlockArgumentRewriter final : public mlir::OpRewritePattern<IE::ConvertOp> {
 public:
-    MultiAxisQuantizedBlockArgumentRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
+    MultiAxisQuantizedBlockArgumentRewriter(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::ConvertOp>(ctx, benefit), _log(log) {
         setDebugName("MultiAxisQuantizedBlockArgumentRewriter");
     }
 
@@ -183,11 +184,13 @@ private:
 // WeightsDequantizeToFakeQuantizeStrategy
 //
 
-void IE::arch50xx::WeightsDequantizeToFakeQuantizeStrategy::addPatterns(mlir::RewritePatternSet& patterns,
-                                                                        Logger& log) const {
-    auto ctx = patterns.getContext();
-
-    IE::ConvertOp::getCanonicalizationPatterns(patterns, ctx);
-    patterns.add<WeightsDequantizeToFakeQuantizeConstRewriter>(ctx, log);
-    patterns.add<MultiAxisQuantizedBlockArgumentRewriter>(ctx, log);
+void IE::arch50xx::WeightsDequantizeToFakeQuantizeStrategy::registerRewriters(RewriterRegistry& registry,
+                                                                              Logger& log) const {
+    registry.registerRewriterSet("weights-dequantize-to-fq", [&]() {
+        registry.registerRewriter<WeightsDequantizeToFakeQuantizeConstRewriter>("weights-dequantize-to-fq-const", log,
+                                                                                _benefitLevels[_index]);
+        registry.registerRewriter<MultiAxisQuantizedBlockArgumentRewriter>("multi-axis-quantize-block-arg", log,
+                                                                           _benefitLevels[_index]);
+        IE::registerConvertOpRewriters(registry);
+    });
 }

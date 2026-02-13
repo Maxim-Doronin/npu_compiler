@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -137,7 +137,7 @@ mlir::LogicalResult LayerRewriter::matchAndRewrite(IE::LayerOpInterface origOp, 
     return mlir::success();
 }
 
-inline bool isFloatInputQuantWeightsMixedPrecisionOperation(mlir::Operation* op) {
+inline bool keepIntTypeQuantization(mlir::Operation* op) {
     // If a TransposeOp or an op with ViewLikeOpInterface can match the pattern
     // ViewLikeOp/TransposeOp -> ViewLikeOp/TransposeOp -> ... -> Conv
     // The op should also be checked here.
@@ -152,34 +152,49 @@ inline bool isFloatInputQuantWeightsMixedPrecisionOperation(mlir::Operation* op)
             op)) {
         if (!op->getResult(0).hasOneUse()) {
             if (llvm::any_of(op->getUsers(), [](mlir::Operation* userOp) {
-                    return !isFloatInputQuantWeightsMixedPrecisionOperation(userOp);
+                    return keepIntTypeQuantization(userOp);
                 })) {
-                return false;
+                return true;
             }
         }
-
         const auto quantizationType = mlir::dyn_cast<mlir::quant::QuantizedType>(
                 mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType());
         if (quantizationType == nullptr) {
-            return false;
+            return true;
         }
 
-        // Check if there are any users before accessing them
+        // Check if there are any users before accessing them and if there are no users there is not the case of a mixed
+        // precision usecase
         auto users = op->getUsers();
         if (users.empty()) {
-            break;
+            return true;
         }
         op = *users.begin();
     }
 
-    if (!mlir::isa<IE::ConvolutionOp, IE::GroupConvolutionOp>(op)) {
-        return false;
+    auto isValidSignedUsecase = [](mlir::Operation* op) -> bool {
+        // Consider only Convolution and GroupConvolution as valid usecase for mixed precision
+        if (mlir::isa<IE::ConvolutionOp, IE::GroupConvolutionOp>(op)) {
+            // Cases of non quant input and quant wt must remain as Signed
+            if (!op->getOperand(0).getDefiningOp<IE::DequantizeOp>() &&
+                op->getOperand(1).getDefiningOp<IE::DequantizeOp>()) {
+                return true;
+            }
+
+            const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+            const auto filterElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(1).getType()).getElementType();
+            return !mlir::isa<mlir::quant::QuantizedType>(inputElemType) &&
+                   mlir::isa<mlir::quant::QuantizedType>(filterElemType);
+        }
+
+        return op->getNumOperands() == 1;
+    };
+
+    if (mlir::isa<IE::DequantizeOp>(op)) {
+        return llvm::all_of(op->getUsers(), isValidSignedUsecase);
     }
-    const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
-    const auto filterElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(1).getType()).getElementType();
-    // cases of non quant input and quant wt must remain as SI8
-    return !mlir::isa<mlir::quant::QuantizedType>(inputElemType) &&
-           mlir::isa<mlir::quant::QuantizedType>(filterElemType);
+
+    return isValidSignedUsecase(op);
 };
 
 //
@@ -219,18 +234,41 @@ mlir::LogicalResult ConstRewriter::matchAndRewrite(Const::DeclareOp origOp, OpAd
     const auto constTensor = origOp.getResult();
     const auto constUsers = constTensor.getUsers();
     const auto mixedPrecisionUsers = llvm::count_if(constUsers, [&](mlir::Operation* user) {
-        return isFloatInputQuantWeightsMixedPrecisionOperation(user) && user->getOperand(1) == constTensor;
+        return keepIntTypeQuantization(user) && user->getOperand(1) == constTensor;
     });
     if (mixedPrecisionUsers > 0) {
         auto i8ConstOp = rewriter.create<Const::DeclareOp>(origOp.getLoc(), origOp.getType(), origOp.getContentAttr());
         for (auto* user : llvm::make_early_inc_range(constUsers)) {
-            if (isFloatInputQuantWeightsMixedPrecisionOperation(user)) {
+            if (keepIntTypeQuantization(user)) {
                 user->setOperand(1, i8ConstOp);
             }
         }
     }
     rewriter.replaceOpWithNewOp<Const::DeclareOp>(origOp, newType, std::move(newContentAttr));
     return mlir::success();
+}
+
+bool keepIntTypeForSIResult(mlir::Operation* op) {
+    std::function<bool(mlir::Operation*)> searchForReturn = [&](mlir::Operation* currentOp) -> bool {
+        for (auto user : currentOp->getUsers()) {
+            if (mlir::isa<mlir::func::ReturnOp>(user)) {
+                const auto resultType = mlir::cast<vpux::NDTypeInterface>(currentOp->getResult(0).getType());
+                if (resultType.getElementType().isSignedInteger()) {
+                    // Found int result
+                    return true;
+                }
+            } else if (IE::isPureViewOp(user) ||
+                       mlir::isa<IE::QuantizeCastOp, IE::ConcatOp, IE::SliceOp, IE::TransposeOp>(user)) {
+                if (searchForReturn(user)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    return searchForReturn(op);
 }
 
 //
@@ -266,7 +304,6 @@ void ConvertWeightsToU8Pass::safeRunOnFunc() {
     });
     typeConverter.addSourceMaterialization(dummyConverter<mlir::RankedTensorType>);
     typeConverter.addTargetMaterialization(dummyConverter<mlir::RankedTensorType>);
-    typeConverter.addArgumentMaterialization(dummyConverter<mlir::RankedTensorType>);
 
     const auto isLegalConstDeclareOp = [&](Const::DeclareOp constOp) {
         // handle mixed precision of FP input and I8 weights
@@ -274,7 +311,7 @@ void ConvertWeightsToU8Pass::safeRunOnFunc() {
         const auto constUsers = constTensor.getUsers();
 
         const auto mixedPrecisionUsers = llvm::count_if(constUsers, [&](mlir::Operation* user) {
-            return isFloatInputQuantWeightsMixedPrecisionOperation(user);
+            return keepIntTypeQuantization(user);
         });
         if (mixedPrecisionUsers == std::distance(constUsers.begin(), constUsers.end())) {
             return true;
@@ -286,11 +323,11 @@ void ConvertWeightsToU8Pass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<Const::DeclareOp>(isLegalConstDeclareOp);
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
         if (mlir::isa<IE::LayerOpInterface>(op)) {
-            if (IE::keepIntTypeForSIWeightsAsInput(op)) {
+            if (keepIntTypeForSIResult(op) || IE::keepIntTypeForSIWeightsAsInput(op)) {
                 return true;
             }
 
-            if (!isFloatInputQuantWeightsMixedPrecisionOperation(op)) {
+            if (!keepIntTypeQuantization(op)) {
                 return typeConverter.isLegal(op);
             }
         }

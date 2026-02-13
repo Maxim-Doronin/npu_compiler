@@ -23,7 +23,7 @@ public:
 protected:
     void correctInputPrefetchingCost(StrategyCost& prefetchCost, mlir::Operation* operation, VFConfig& config,
                                      const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost,
-                                     const size_t index) const override;
+                                     SmallVector<StrategyCost>& prefetchCostList, const size_t index) const override;
 
     bool isSharedWeightsSupported(VFConfig& config) const override;
 };

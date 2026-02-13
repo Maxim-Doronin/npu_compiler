@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -111,7 +111,7 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::verify() {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto filterType = mlir::cast<vpux::NDTypeInterface>(getFilter().getType());
 
-    const auto alignedFilterShape = filterType.getShape();
+    const auto alignedFilterShape = getBoundedShape(filterType);
     const auto expectedAlignedFilterShape = inferAlignedFilterShape(inputType, outputType, filterType);
 
     if (alignedFilterShape != expectedAlignedFilterShape) {
@@ -127,16 +127,17 @@ Shape vpux::VPU::NCEConvolutionOp::inferAlignedFilterShape(NDTypeInterface input
     const auto rawFilterShape = Shape(parseIntArrayAttr<int64_t>(this->getRawFilterShape()));
     const auto KY = rawFilterShape[Dims4D::Filter::KY];
     const auto KX = rawFilterShape[Dims4D::Filter::KX];
+    const auto inputShape = getBoundedShape(input);
+    const auto outputShape = getBoundedShape(output);
 
     // When IDU autopad is used and the weight pointers are computed during the inference by the DPU, the weight set
     // must have the input channels aligned to 16 as a hardware requirement. For this reason, the filter shape is larger
     // than normally expected, even though there are fewer than 16 channels for the input (due to IDU autopad)
-    const auto usesIDUAutopad = input.getShape()[Dims4D::Act::C] < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
+    const auto usesIDUAutopad = inputShape[Dims4D::Act::C] < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
     const auto weightSetsNeedPaddedIC =
             usesIDUAutopad && getWeightsTable() == nullptr && getWeightTableDataPtr() == nullptr;
-    const auto IC =
-            weightSetsNeedPaddedIC ? VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT : input.getShape()[Dims4D::Act::C];
-    const auto OC = output.getShape()[Dims4D::Act::C];
+    const auto IC = weightSetsNeedPaddedIC ? VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT : inputShape[Dims4D::Act::C];
+    const auto OC = outputShape[Dims4D::Act::C];
 
     const auto alignment = NCEInvariant::getAlignment(filter.getElementType());
     const auto remainder = (IC * KY * KX) % alignment;
@@ -190,9 +191,8 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::inferReturnTypes(
     auto filterShapeInfo = ShapeInfo::fromNDType(filterType);
     filterShapeInfo.shape = filterShape.raw();
 
-    auto shapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, windowStrides, dataPaddingBelow,
-                                                     dataPaddingAbove, windowDilations);
-
+    auto shapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, filterType, windowStrides,
+                                                     dataPaddingBelow, dataPaddingAbove, windowDilations);
     const auto outType =
             vpux::getTensorType(ShapeRef(shapeInfo.shape), inputType.getElementType(), inputType.getDimsOrder(),
                                 /*memSpace=*/nullptr, BoundsRef(shapeInfo.bounds), /*DynamicDimsMask=*/{});
@@ -262,6 +262,10 @@ vpux::InputTiling vpux::VPU::NCEConvolutionOp::backInferTileInfo(const vpux::Til
         inputTiling.tiles.push_back(
                 VPU::getBiasTableTile(this, outputTile, VPU::getWeightsChannelsAutopad(getOperation())));
     }
+    if (nceOp.getWeightZeroPoints()) {
+        inputTiling.tiles.push_back(
+                VPU::getZeroPointTableTile(this, outputTile, VPU::getWeightsChannelsAutopad(getOperation())));
+    }
 
     return inputTiling;
 }
@@ -311,10 +315,11 @@ bool vpux::VPU::NCEConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterSt
 vpux::VPU::DistributionInfo vpux::VPU::NCEConvolutionOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles) {
     return VPU::getNCEExplicitDistributionInfo(mlir::dyn_cast<VPU::NCEOpInterface>(getOperation()), shape,
                                                distributionMode, numTiles, numClusters, alignment,
-                                               uniformDistributedSegments, overlapParams);
+                                               uniformDistributedSegments, overlapParams, memoryNumTiles);
 }
 
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOH
@@ -455,7 +460,7 @@ vpux::NDTypeInterface vpux::VPU::NCEConvolutionOp::getDistributedTypeForOpOperan
                                            weightsTensorNumTiles, weightAlignmentAttr, strategy,
                                            hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeightsTable() || operand.get() == origOp.getWeightTableScale() ||
-               operand.get() == origOp.getWeightTableBias()) {
+               operand.get() == origOp.getWeightTableBias() || operand.get() == origOp.getWeightZeroPoints()) {
         auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
         mlir::ArrayAttr weightAlignmentAttr = nullptr;
         const auto weightsTableTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
@@ -588,6 +593,10 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::verifyConvCMX(mlir::Location lo
         return mlir::failure();
     }
 
+    if (convOp.getWeightZeroPoints()) {
+        requiredCMX += getRequiredCMXSizeForZeroPointTable(convOp, OC, convOp.getWeightZeroPoints());
+    }
+
     const auto cmxSize = vpux::VPU::getTotalCMXSize(module);
     if (requiredCMX > cmxSize) {
         log.trace("[{0}] CMX memory is not enough for Convolution, available '{1}', required '{2}'", loc, cmxSize,
@@ -611,8 +620,8 @@ mlir::LogicalResult vpux::VPU::NCEConvolutionOp::reifyResultShapes(
     const auto dataPaddingAbove = SmallVector<int64_t>({padTop, padLeft});
     const auto dataPaddingBelow = SmallVector<int64_t>({padBottom, padRight});
 
-    auto kernelShape = mlir::cast<vpux::NDTypeInterface>(getFilter().getType()).getShape();
-    SmallVector<int64_t> kernelSize{kernelShape[Dims4D::Filter::KY], kernelShape[Dims4D::Filter::KX]};
+    const auto rawFilterShape = Shape(parseIntArrayAttr<int64_t>(getRawFilterShape()));
+    SmallVector<int64_t> kernelSize{rawFilterShape[Dims4D::Filter::KY], rawFilterShape[Dims4D::Filter::KX]};
 
     // Compute output shape using utility
     auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), getFilter(), kernelSize, strides,

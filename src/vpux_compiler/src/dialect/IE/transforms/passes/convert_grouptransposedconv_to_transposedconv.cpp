@@ -90,8 +90,8 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
         Shape inputOffsets(inputShape.size(), 0);
         inputOffsets[Dims4D::Act::C] = checked_cast<int64_t>(inputShape[Dims4D::Act::C] / groups * sliceIdx);
         const auto inputOffsetsAttr = getIntArrayAttr(getContext(), inputOffsets);
-        const auto inputSlice = rewriter.createOrFold<IE::SliceOp>(
-                takeOpLoc(origOp, StringLiteral("slice_{0}"), sliceIdx), input, inputOffsetsAttr, inputShapeAttr);
+        const auto inputSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "slice_{0}", sliceIdx), input,
+                                                                   inputOffsetsAttr, inputShapeAttr);
 
         // Slice weights
         mlir::Value weightsSlice;
@@ -114,37 +114,36 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
                 if (numElems != 1) {
                     const auto newFqInputShapeAttr = getIntArrayAttr(getContext(), newFqInputShape);
                     fqInput = rewriter.createOrFold<IE::SliceOp>(
-                            takeOpLoc(fqOp, StringLiteral("fq_weights_{0}_{1}"), locSuffix, sliceIdx), fqInput,
-                            weightsOffsetsAttr, newFqInputShapeAttr);
+                            takeOpLoc(fqOp, "fq_weights_{0}_{1}", locSuffix, sliceIdx), fqInput, weightsOffsetsAttr,
+                            newFqInputShapeAttr);
                 }
 
                 const auto newFqInputShapeSqueezed = Shape(newFqInputShape.begin() + 1, newFqInputShape.end());
                 const auto newFqInputShapeSqueezedAttr = getIntArrayAttr(getContext(), newFqInputShapeSqueezed);
                 return rewriter.createOrFold<IE::ReshapeOp>(
-                        takeOpLoc(fqOp, StringLiteral("reshape_weights_{0}_{1}"), locSuffix, sliceIdx), fqInput,
-                        nullptr, false, newFqInputShapeSqueezedAttr);
+                        takeOpLoc(fqOp, "reshape_weights_{0}_{1}", locSuffix, sliceIdx), fqInput, nullptr, false,
+                        newFqInputShapeSqueezedAttr);
             };
 
-            auto newInput = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fqOp, StringLiteral("slice_in_{0}"), sliceIdx),
+            auto newInput = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fqOp, "slice_in_{0}", sliceIdx),
                                                                fqOp.getInput(), weightsOffsetsAttr, weightsShapeAttr);
-            newInput = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(fqOp, StringLiteral("reshape_in_{0}"), sliceIdx),
-                                                            newInput, nullptr, false, newWeightsShapeSqueezedAttr);
+            newInput = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(fqOp, "reshape_in_{0}", sliceIdx), newInput,
+                                                            nullptr, false, newWeightsShapeSqueezedAttr);
             auto inputLow = sliceFqConstInput(fqOp.getInputLow(), "in_low");
             auto inputHigh = sliceFqConstInput(fqOp.getInputHigh(), "in_high");
             auto outputLow = sliceFqConstInput(fqOp.getOutputLow(), "out_low");
             auto outputHigh = sliceFqConstInput(fqOp.getOutputHigh(), "out_high");
             weightsSlice = rewriter.create<IE::FakeQuantizeOp>(
-                    takeOpLoc(fqOp, StringLiteral("fq_in_{0}"), sliceIdx), newInput, inputLow, inputHigh, outputLow,
-                    outputHigh, fqOp.getLevelsAttr(), fqOp.getLowFpTypeAttr(), fqOp.getAutoBroadcastAttr());
+                    takeOpLoc(fqOp, "fq_in_{0}", sliceIdx), newInput, inputLow, inputHigh, outputLow, outputHigh,
+                    fqOp.getLevelsAttr(), fqOp.getLowFpTypeAttr(), fqOp.getAutoBroadcastAttr());
         } else {
-            weightsSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("weights_{0}"), sliceIdx),
-                                                              weights, weightsOffsetsAttr, weightsShapeAttr);
+            weightsSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "weights_{0}", sliceIdx), weights,
+                                                              weightsOffsetsAttr, weightsShapeAttr);
+            weightsSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "slice_in_{0}", sliceIdx), weights,
+                                                              weightsOffsetsAttr, weightsShapeAttr);
             weightsSlice =
-                    rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, StringLiteral("slice_in_{0}"), sliceIdx),
-                                                       weights, weightsOffsetsAttr, weightsShapeAttr);
-            weightsSlice =
-                    rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, StringLiteral("reshape_in_{0}"), sliceIdx),
-                                                         weightsSlice, nullptr, false, newWeightsShapeSqueezedAttr);
+                    rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}", sliceIdx), weightsSlice,
+                                                         nullptr, false, newWeightsShapeSqueezedAttr);
         }
 
         _log.nest().trace("Creating TransposedConvolution op for group {0} with channels [{1}-{2})", sliceIdx,

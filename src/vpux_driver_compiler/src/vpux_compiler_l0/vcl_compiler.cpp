@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -198,11 +198,19 @@ std::shared_ptr<ov::Model> preprocessModel(const std::shared_ptr<ov::Model>& mod
     return preprocessor.build();
 }
 
+/// Compiler create for vcl
 std::unique_ptr<CompilerImpl> createNPUCompiler() {
     return std::make_unique<CompilerImpl>();
 }
 
 }  // namespace
+
+/// Export compiler symbol
+#ifdef VPUX_DEVELOPER_BUILD
+OPENVINO_EXTERN_C OPENVINO_CORE_EXPORTS void CreateNPUCompiler(std::shared_ptr<vpux::ICompiler>& obj) {
+    obj = std::make_shared<CompilerImpl>();
+}
+#endif
 
 /// Compiler version contains the info of code commit, compiler API version
 static const char* COMPILER_VERSION =
@@ -247,7 +255,11 @@ VPUXCompilerL0::VPUXCompilerL0(vcl_compiler_desc_t* compilerDesc, vcl_device_des
     _options->add<intel_npu::QDQ_OPTIMIZATION_AGGRESSIVE>();
     _options->add<intel_npu::QDQ_OPTIMIZATION>();
     _options->add<intel_npu::TURBO>();
-    _options->add<intel_npu::USE_BASE_MODEL_SERIALIZER>();
+    _options->add<intel_npu::MODEL_SERIALIZER_VERSION>();
+    // don't enable for NPU3720 platforms: MTL and ARL
+    if (_deviceDesc.deviceID != 0x7D1D && _deviceDesc.deviceID != 0xAD1D) {
+        _options->add<intel_npu::ENABLE_STRIDES_FOR>();
+    }
 
 #ifdef VPUX_DEVELOPER_BUILD
     // E#103359: WS is only available in developer builds
@@ -448,8 +460,7 @@ bool VPUXCompilerL0::isOptionValueSupported(const char* option, const char* valu
     // see if we need to check for supported value too
     if (value != nullptr) {
         // value is to be checked too
-        /*TO BE IMPLEMENTED*/
-        return false;
+        return _options->get(optName).isValueSupported(value);
     }
 
     return ret;

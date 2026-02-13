@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,18 +10,20 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/factories/unroll_distributed_ops_getter.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/compression_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/memref_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
-#include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/platform_resources.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -213,7 +215,8 @@ SmallVector<mlir::IntegerAttr> VPUIP::ClusterNCEBaseRewriter::getOutChannelOffse
     const auto isSOKMode =
             (inDistributionMode == VPU::DistributionMode::SEGMENTED ||
              inDistributionMode == VPU::DistributionMode::DUPLICATED) &&
-            outDistributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED);
+            (outDistributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED) ||
+             outDistributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED));
     if (!hasWeightsTable || !isSOKMode) {
         return SmallVector<mlir::IntegerAttr>(numClusters, nullptr);
     }
@@ -393,6 +396,33 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
             profilingData = profilingBuffs[clusterId];
         }
 
+        // Calculate LocalRegionAttr for this cluster
+        auto outDistributionMode = outDistribution.getMode().getValue();
+        vpux::VPUIP::LocalRegionAttr localRegion = nullptr;
+        if ((parentOutputType != nullptr) &&
+            (outDistributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED))) {
+            auto computeShapes = parentOutputType.getPerClusterComputeShapes();
+            auto memoryShapes = parentOutputType.getPerClusterMemoryShapes();
+            auto computeOffsets = parentOutputType.getPerClusterComputeShapeOffsets();
+            auto memoryOffsets = parentOutputType.getPerClusterMemoryShapeOffsets();
+            auto overlappedRegion =
+                    vpux::VPUIP::getOverlappedRegion(computeOffsets[clusterId], memoryOffsets[clusterId],
+                                                     computeShapes[clusterId], memoryShapes[clusterId]);
+            if (overlappedRegion.has_value()) {
+                const auto localRegionOffset = overlappedRegion->first;
+                const auto localRegionShape = overlappedRegion->second;
+                const auto xStartAttr = builder.getI64IntegerAttr(localRegionOffset[Dims4D::Act::W]);
+                const auto xEndAttr = builder.getI64IntegerAttr(localRegionOffset[Dims4D::Act::W] +
+                                                                localRegionShape[Dims4D::Act::W] - 1);
+
+                const auto yStartAttr = builder.getI64IntegerAttr(localRegionOffset[Dims4D::Act::H]);
+                const auto yEndAttr = builder.getI64IntegerAttr(localRegionOffset[Dims4D::Act::H] +
+                                                                localRegionShape[Dims4D::Act::H] - 1);
+
+                localRegion = VPUIP::LocalRegionAttr::get(_ctx, xStartAttr, xEndAttr, yStartAttr, yEndAttr, nullptr);
+            }
+        }
+
         auto newTask = VPURT::wrapIntoTaskOp<VPUIP::NCEClusterTaskOp>(
                 builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, outputType,
                 outputSparsityMapType, profilingOutputType, inputBuffs[clusterId], inputSparsityMapBuffs[clusterId],
@@ -410,7 +440,8 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
                 nceTask.getIsZeroOffsetWeightsTableAttr(), nceTask.getIsSuperdenseAttr(), nceTask.getIsInplaceAttr(),
                 nceTask.getInputSeSizeAttr(), nceTask.getOutputSeSizeAttr(), nceTask.getIsPermuteQuantizeAttr(),
                 nceTask.getIsSmallKernelOptimizedAttr(), nceTask.getMpeEngineAttr(), nceTask.getEltwiseTypeAttr(),
-                /*dynamic_scale_config=*/nullptr);
+                nceTask.getSparsityConfigAttr(),
+                /*dynamic_scale_config=*/nullptr, localRegion);
 
         {
             mlir::OpBuilder::InsertionGuard guard(builder);
@@ -486,7 +517,7 @@ SmallVector<mlir::Value> VPUIP::ClusterNCEBaseRewriter::getWeightsBuffers(mlir::
         const auto symbolAttr = vpux::IndexedSymbolAttr::get(_ctx, {cmxNameAttr, vpux::getIntAttr(_ctx, clusterId)});
         cmxBuffType = cmxBuffType.changeMemSpace(symbolAttr);
         auto offset = declBuff.getByteOffset();
-        const auto newLoc = appendLoc(loc, "_weights_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(loc, "weights_cluster_{0}", clusterId);
         offset += Byte(perClusterShapeOffsets[clusterId][Dim(axis)] * distributedType.getStrides()[Dim(axis)]).count();
         auto newCmxBuffer = VPURT::createOp<VPURT::DeclareBufferOp>(
                 builder, insertionPoint, newLoc, cmxBuffType, VPURT::BufferSection::CMX_NN,
@@ -646,7 +677,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
                 bool hasUnevenTileSize =
                         std::find_if(computeShapes.begin(), computeShapes.end(), [&](Shape tileShape) -> bool {
                             return tileShape.raw()[tileAxis] != firstTiledSize;
-                        });
+                        }) != computeShapes.end();
                 if (hasUnevenTileSize && outputDistType.getShape().size() == DimsGroups5D::Filter::numDims) {
                     return false;
                 }
@@ -912,6 +943,9 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
     const auto input = dmaOp.getInput();
     const auto output = dmaOp.getOutputBuff();
 
+    auto isDynamicStridesDma = (dmaOp->getAttr(vpux::stridedInputAttrName) != nullptr) ||
+                               (dmaOp->getAttr(vpux::stridedOutputAttrName) != nullptr);
+
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(output.getType());
     const auto innerInputType =
@@ -936,7 +970,10 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
 
     const size_t numClusters = checked_cast<size_t>(distributionAttr.getNumClusters().getInt());
     const auto numTiles = parseIntArrayAttr<int64_t>(distributionAttr.getNumTiles());
-    const auto tilingAxis = vpux::VPU::getDistributedTilingAxis(numTiles);
+    auto memoryNumTiles = distributionAttr.getMemoryNumTiles();
+    auto tilingAxis = memoryNumTiles != nullptr
+                              ? vpux::VPU::getDistributedTilingAxis(parseIntArrayAttr<int64_t>(memoryNumTiles))
+                              : vpux::VPU::getDistributedTilingAxis(numTiles);
 
     const auto originInShape = inputType.getShape();
     const auto originOutShape = outputType.getShape();
@@ -1073,7 +1110,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
         if (origDistType != nullptr) {
             const auto symbolAttr =
                     vpux::IndexedSymbolAttr::get(_ctx, {_cmxNameAttr, vpux::getIntAttr(_ctx, clusterId)});
-            newType = vpux::updateSwizzlingSchemeBasedOnDistributedType(origDistType, newType);
+            newType = VPUIP::updateSwizzlingSchemeBasedOnDistributedType(origDistType, newType);
             auto newCMXType = newType.changeMemSpace(symbolAttr);
             if (tileNCHWOutOverH) {
                 const auto shape = newCMXType.getShape();
@@ -1114,8 +1151,14 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
         Byte buffOffset{declBuff.getByteOffset()};
         auto offset = buffOffset;
 
-        auto isSwizzSpill = vpux::getSwizzlingSchemeAttr(refDistType) != nullptr && spillIdAttr != nullptr;
-        auto isCompression = maybeNNDMAOp != nullptr && maybeNNDMAOp.getCompressCandidateAttr() != nullptr;
+        Shape viewOffsets{};
+        if (declBuff->hasAttr(vpux::viewOffsetsAttrName)) {
+            viewOffsets = Shape(parseIntArrayAttr<int64_t>(
+                    mlir::dyn_cast_or_null<mlir::ArrayAttr>(declBuff->getAttr(vpux::viewOffsetsAttrName))));
+        }
+
+        auto isSwizzSpill = VPUIP::getSwizzlingSchemeAttr(refDistType) != nullptr && spillIdAttr != nullptr;
+        auto isCompression = maybeNNDMAOp != nullptr && maybeNNDMAOp.getCompressCandidate();
         if (isSwizzSpill || isCompression) {
             // At this moment compiler doesn't support fusion of compressed DMA, see E#149648
             fuseWithNext &= !isCompression;
@@ -1140,7 +1183,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
             // into account in case of compression, where compression buffer size has additional reserved space
             // requirement
             if (isSwizzSpill) {
-                newType = vpux::updateSwizzlingSchemeBasedOnDistributedType(refDistType, newType);
+                newType = VPUIP::updateSwizzlingSchemeBasedOnDistributedType(refDistType, newType);
             }
 
             // Sum up allocation sizes of all previous clusters because their sizes may not be the same
@@ -1154,12 +1197,20 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
 
             if (isCompression) {
                 auto currentClusterSize = refDistType.getAllocSizeOfCluster(clusterId);
-                newType = vpux::setAllocSizeAttr(newType, updateSizeForCompression(currentClusterSize.count()));
-                newType = setCompressionState(newType, VPUIP::CompressionState::CompressionCandidate);
+                newType = VPUIP::setAllocSizeAttr(newType, updateSizeForCompression(currentClusterSize.count()));
+                newType = VPUIP::setCompressionState(newType, VPUIP::CompressionState::CompressionCandidate);
             }
         } else {
             offset += static_cast<Byte>(perClusterShapeOffsets[clusterId][Dim(tilingAxis)] *
                                         newType.getStrides()[Dim(tilingAxis)]);
+            auto shapeVec = to_small_vector(viewOffsets);
+            auto perClusterOffsetVec = to_small_vector(perClusterShapeOffsets[clusterId]);
+            if (shapeVec.size() < perClusterOffsetVec.size()) {
+                shapeVec.insert(shapeVec.end(), perClusterOffsetVec.size() - shapeVec.size(), 0);
+            }
+            std::transform(shapeVec.begin(), shapeVec.end(), perClusterOffsetVec.begin(), shapeVec.begin(),
+                           std::plus<>{});
+            viewOffsets = Shape(shapeVec);
         }
 
         const auto distType =
@@ -1197,9 +1248,13 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
         }
 
         if (sectionIndex.has_value()) {
-            return VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, loc, newType, section,
-                                                           sectionIndex.value(), offset.count(),
-                                                           declBuff.getSwizzlingKeyAttr());
+            auto declareOp = VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, loc, newType, section,
+                                                                     sectionIndex.value(), offset.count(),
+                                                                     declBuff.getSwizzlingKeyAttr());
+            if (isDynamicStridesDma) {
+                declareOp->setAttr(vpux::viewOffsetsAttrName, getIntArrayAttr(_ctx, viewOffsets));
+            }
+            return declareOp;
         }
         return VPURT::createOp<VPURT::DeclareBufferOp>(builder, insertionPoint, loc, newType, section, nullptr,
                                                        offset.count(), declBuff.getSwizzlingKeyAttr());
@@ -1214,7 +1269,14 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
 
     VPUX_THROW_WHEN(_dmaPortCount > maxDMAPorts, "Too many DMA ports");
     // Split one of DMAs to load balance on DMA ports if needed
-    const bool isDmaSplitRequired = numClusters % _dmaPortCount != 0;
+    bool isDmaSplitRequired = numClusters % _dmaPortCount != 0;
+
+    // Current DMA split algorithm requires a flat DMA which would make it incompatible
+    // with dynamic strides which requiers DMA to have as many dimensions as the IO tensor. After DMA split algorithm
+    // is updated to handle split for non-flat DMAs this check can be removed #E194757
+    if (isDynamicStridesDma) {
+        isDmaSplitRequired = false;
+    }
 
     auto origDMAOp = vpurtTask.getInnerTaskOpOfType<VPUIP::DMATypeOpInterface>();
     VPUX_THROW_WHEN(origDMAOp == nullptr, "Inner task is not DMA op");
@@ -1230,6 +1292,12 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
             isInterClusterFusionCandidate =
                     (newInputType == newInTypes[clusterId + 1]) && (newOutType == newOutTypes[clusterId + 1]);
         }
+        // DMA fusion introduces another dimension to DMA which goes over CMX tiles. This introduces additional strides
+        // in the DMA descriptor which might interfere with dynamic strides relocations. Investigate if it can be
+        // removed after #E194757
+        if (isDynamicStridesDma) {
+            isInterClusterFusionCandidate = false;
+        }
 
         const auto inputBuffer = getNewOperand(clusterId, input, inputDistType, newInputType, inputInsertionPoint,
                                                isInterClusterFusionCandidate, /*isInputBuffer*/ true);
@@ -1241,9 +1309,17 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
         outputInsertionPoint = outBuffer.getDefiningOp();
         _log.trace("Insert new output buffer declaration: '{0}'", outBuffer);
 
-        const auto newLoc = appendLoc(loc, "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         auto newDMAOp = wrapIntoTaskOp(origDMAOp, vpurtTask, newLoc, inputBuffer, outBuffer, clusterId % _dmaPortCount,
                                        builder);
+
+        if (origDMAOp->getAttr(vpux::stridedInputAttrName)) {
+            newDMAOp->setAttr(vpux::stridedInputAttrName, mlir::UnitAttr::get(origDMAOp.getContext()));
+        }
+
+        if (origDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+            newDMAOp->setAttr(vpux::stridedOutputAttrName, mlir::UnitAttr::get(origDMAOp.getContext()));
+        }
 
         if (maybeNNDMAOp != nullptr && maybeNNDMAOp.getProfilingBufferMgmt()) {
             if (auto newNNDMAOp = mlir::dyn_cast<VPUIP::NNDMAOp>(newDMAOp.getOperation())) {
@@ -1344,6 +1420,14 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollDuplicated(mlir::Location lo
     const auto newDMAOp = wrapIntoTaskOp(dmaOp, vpurtTask, loc, newInputOperand, newOutputOperand,
                                          dmaOp.getPortAttribute().getInt(), builder);
 
+    if (dmaOp->getAttr(vpux::stridedInputAttrName)) {
+        newDMAOp->setAttr(vpux::stridedInputAttrName, mlir::UnitAttr::get(newDMAOp->getContext()));
+    }
+
+    if (dmaOp->getAttr(vpux::stridedOutputAttrName)) {
+        newDMAOp->setAttr(vpux::stridedOutputAttrName, mlir::UnitAttr::get(newDMAOp->getContext()));
+    }
+
     _log.trace("Insert new DMA op: '{0}'", newDMAOp);
 }
 
@@ -1418,7 +1502,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollAcrossClusterReusableWeightT
                 newInputType.getShape(),
                 VPU::DistributionModeAttr::get(output.getContext(), VPU::DistributionMode::DUPLICATED),
                 distribution.getNumTiles(), distribution.getNumClusters(), distribution.getAlignment(),
-                distribution.getUniformDistributedSegments(), output.getContext());
+                distribution.getUniformDistributedSegments(), outputDistType.getElementType(), output.getContext());
 
         auto weightsType = VPUIP::DistributedBufferType::get(
                 outputDistType.getContext(), newInputType.getShape().raw(), outputDistType.getElementType(),
@@ -1458,7 +1542,7 @@ VPUIP::DMATypeOpInterface VPUIP::ClusterDMARewriter::wrapIntoTaskOp(VPUIP::DMATy
     auto origNNDMAOp = mlir::dyn_cast<VPUIP::NNDMAOp>(dmaOp.getOperation());
     return VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(),
                                                  loc, input, output_buff, port, false, false,
-                                                 origNNDMAOp.getSpillIdAttr(), origNNDMAOp.getCompressCandidateAttr());
+                                                 origNNDMAOp.getSpillIdAttr(), origNNDMAOp.getCompressCandidate());
 }
 
 VPUIP::ClusterDMARewriter::UnrollingType VPUIP::ClusterDMARewriter::getUnrollingType(
@@ -1466,7 +1550,9 @@ VPUIP::ClusterDMARewriter::UnrollingType VPUIP::ClusterDMARewriter::getUnrolling
     VPUX_THROW_WHEN(inputMode == VPU::DistributionMode::NONE && outputMode == VPU::DistributionMode::NONE,
                     "Cannot have both input & output non-distributed for cluster NNDMAOp");
     if (inputMode == VPU::DistributionMode::SEGMENTED || inputMode == VPU::DistributionMode::OVERLAPPED ||
-        outputMode == VPU::DistributionMode::SEGMENTED || outputMode == VPU::DistributionMode::OVERLAPPED) {
+        outputMode == VPU::DistributionMode::SEGMENTED || outputMode == VPU::DistributionMode::OVERLAPPED ||
+        inputMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED) ||
+        outputMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED)) {
         return UnrollingType::SEGMENTED;
     }
     if (VPU::bitEnumContainsAny(inputMode, VPU::DistributionMode::DUPLICATED) ||
@@ -1541,7 +1627,8 @@ void ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Value>& parentOutput
 
         return (distributionMode == VPU::DistributionMode::OVERLAPPED) ||
                (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::DUPLICATED)) ||
-               (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::MULTICASTED));
+               (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::MULTICASTED)) ||
+               (distributionMode == (VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED));
     };
 
     if (hasHalo()) {
@@ -1633,7 +1720,7 @@ void VPUIP::unrollDistributedOpsCommon40XXPlus(mlir::func::FuncOp func,
     auto ctx = func->getContext();
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     const VPUIP::ClusterDMARewriter dmaRewriter(ctx, dmaPortCount, std::move(maybeDmaFusionHandler), log);

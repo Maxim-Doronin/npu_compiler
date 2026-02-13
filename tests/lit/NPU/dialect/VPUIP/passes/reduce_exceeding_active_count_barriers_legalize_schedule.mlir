@@ -47,7 +47,7 @@ func.func @NotCallLegalizeScheduleForNonWlmWhenWlmFlagIsTrue(%arg0: memref<1x32x
   %conv_out = VPURT.DeclareBuffer <CMX_NN> [0] <90112> -> memref<1x64x16x4xf16, #NHWC, [@CMX_NN, 0]>
 
   VPURT.Task updates(%barrier_0 : !VPURT.Barrier)  {
-    %dma = VPUIP.NNDMA {port = 0 : i64} inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
+    %dma = VPUIP.NNDMA <{port = 0 : i64}> inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
   }
 
   VPURT.Task waits(%barrier_0 : !VPURT.Barrier) updates(%barrier_3 : !VPURT.Barrier)  {
@@ -59,11 +59,11 @@ func.func @NotCallLegalizeScheduleForNonWlmWhenWlmFlagIsTrue(%arg0: memref<1x32x
   }
 
   VPURT.Task waits(%barrier_3 : !VPURT.Barrier) updates(%barrier_4, %barrier_1, %barrier_2, %barrier_5 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier)  {
-    %dma = VPUIP.NNDMA {port = 0 : i64} inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
+    %dma = VPUIP.NNDMA <{port = 0 : i64}> inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
   }
 
   VPURT.Task waits(%barrier_3 : !VPURT.Barrier) updates(%barrier_4, %barrier_1, %barrier_2, %barrier_5 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier)  {
-    %dma = VPUIP.NNDMA {port = 0 : i64} inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
+    %dma = VPUIP.NNDMA <{port = 0 : i64}> inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
   }
 
   VPURT.Task waits(%barrier_4 : !VPURT.Barrier) updates(%barrier_1, %barrier_2 : !VPURT.Barrier, !VPURT.Barrier)  {
@@ -323,11 +323,11 @@ func.func @NotCallLegalizeScheduleForNonWlmWhenWlmFlagIsTrue(%arg0: memref<1x32x
   }
 
   VPURT.Task waits(%barrier_6 : !VPURT.Barrier) updates(%barrier_2, %barrier_5 : !VPURT.Barrier, !VPURT.Barrier)  {
-    %dma = VPUIP.NNDMA {port = 0 : i64} inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
+    %dma = VPUIP.NNDMA <{port = 0 : i64}> inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
   }
 
   VPURT.Task waits(%barrier_6 : !VPURT.Barrier) updates(%barrier_2, %barrier_5 : !VPURT.Barrier, !VPURT.Barrier)  {
-    %dma = VPUIP.NNDMA {port = 0 : i64} inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
+    %dma = VPUIP.NNDMA <{port = 0 : i64}> inputs(%dma_in : memref<1x1024x64x4xf16, {order = #NHWC, strides = [11796480, 1, 184320, 1024]}, @DDR>) outputs(%dma_out : memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x1024x64x4xf16, #NHWC, [@CMX_NN, 0]>
   }
 
   VPURT.Task waits(%barrier_2 : !VPURT.Barrier) updates(%barrier_5 : !VPURT.Barrier)  {

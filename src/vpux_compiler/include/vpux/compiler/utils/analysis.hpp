@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Value.h>
@@ -58,4 +59,20 @@ OpT getTopParentOpOfType(mlir::Operation* op) {
     return mlir::dyn_cast_or_null<OpT>(op);
 }
 
+//
+// findReturnOp
+//
+
+mlir::func::ReturnOp findReturnOp(mlir::func::FuncOp funcOp);
+
+// searchOpConsumers
+//
+
+/// @brief Search op on the consumer chain(bypass view like operations), until target operation is found or reach the
+/// last consumer.
+/// @return mlir::Operation if target op is found, otherwise return mlir::failure().
+/// @param op The operation to start searching from
+/// @param isTargetOpFound Predicate function to identify target operations
+mlir::FailureOr<mlir::Operation*> searchOpConsumers(mlir::Operation* op,
+                                                    const std::function<bool(mlir::Operation*)>& isTargetOpFound);
 }  // namespace vpux

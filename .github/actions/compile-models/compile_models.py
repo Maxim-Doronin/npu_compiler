@@ -12,9 +12,9 @@ Compiling AI models from different sources specified in json config with the fol
         "repository_path": "path/to/model/in.repo",
         "framework": "onnx|pytorch",
         "model_type": "transormer",
-        "category": "MLIR/VPU4000/SILICON",
+        "category": "PLUGIN/VPU4000/SILICON",
         "extra_config": {
-            "NPU_COMPILER_TYPE": "MLIR",
+            "NPU_COMPILER_TYPE": "PLUGIN",
             "NPU_PLATFORM": "VPU4000",
             "DEVICE_ID": "4000",
             "PERFORMANCE_HINT": "LATENCY"

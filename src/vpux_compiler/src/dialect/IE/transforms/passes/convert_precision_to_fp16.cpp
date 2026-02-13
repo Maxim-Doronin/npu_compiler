@@ -21,6 +21,7 @@
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/dialect/net/utils/precision_info_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -153,7 +154,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     auto& ctx = getContext();
 
     const auto convertElemType = [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(CHAR_BIT)) {
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(8)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else if (const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType);
                    qType != nullptr && qType.getExpressedType().isF32()) {
@@ -165,8 +166,13 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
 
     mlir::TypeConverter typeConverter;
     setupConvertPrecision(typeConverter, convertElemType);
+    auto module = getOperation();
+    auto rtPrecision = net::PrecisionSensitiveOps{module, _log};
 
     const auto isLegalOp = [&](mlir::Operation* op) {
+        if (rtPrecision.isPrecisionSensitiveOp(op)) {
+            return true;
+        }
         return typeConverter.isLegal(op);
     };
 
@@ -199,6 +205,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     target.addLegalOp<IE::LessEqualOp>();
     target.addLegalOp<IE::GreaterOp>();
     target.addLegalOp<IE::NotEqualOp>();
+    target.addLegalOp<IE::IsInfOp>();
     // AssignOp & ReadValueOp represent inputs/outputs. Cannot convert their type internally.
     target.addLegalOp<IE::AssignOp>();
     target.addLegalOp<IE::ReadValueOp>();
@@ -259,14 +266,12 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
         }
     }
 
-    auto module = getOperation();
-
     // E#160869: Splat floating-point constants must be clamped, not converted,
     // to ensure accurate results (e.g. when comparing to CPU inference).
     module.walk([&](Const::DeclareOp op) {
         const auto inElemType = op.getContentAttr().getType().getElementType();
         const auto precisionLoweringToF16 =
-                mlir::isa<mlir::FloatType>(inElemType) && inElemType.getIntOrFloatBitWidth() >= sizeof(float);
+                mlir::isa<mlir::FloatType>(inElemType) && (inElemType.getIntOrFloatBitWidth() >= (sizeof(float) * 8));
         const auto newContentAttr = precisionLoweringToF16 ? clampF16Splat(op.getContentAttr()) : nullptr;
         if (newContentAttr != nullptr) {
             VPUX_THROW_WHEN(op.getType() != newContentAttr.getType(),
@@ -336,6 +341,9 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     });
 
     const auto isLegalAdditionalOp = [&](mlir::Operation* op) {
+        if (rtPrecision.isPrecisionSensitiveOp(op)) {
+            return true;
+        }
         return additionalTypeConverter.isLegal(op);
     };
 
@@ -352,8 +360,8 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     // SelectOp
     mlir::TypeConverter selectOpConverter;
     setupConvertPrecision(selectOpConverter, [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(CHAR_BIT) ||
-            elemType.isSignedInteger(32) || elemType.isSignedInteger(64)) {
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(8) || elemType.isSignedInteger(32) ||
+            elemType.isSignedInteger(64)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else {
             return elemType;
@@ -361,6 +369,9 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     });
 
     const auto isLegalSelectOp = [&](mlir::Operation* op) {
+        if (rtPrecision.isPrecisionSensitiveOp(op)) {
+            return true;
+        }
         return selectOpConverter.isLegal(op);
     };
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -83,19 +83,19 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR)
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR)
                     outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR)
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR)
                     outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weights table
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table_cst: !WeightsTable)
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table_cst: !WeightsTable)
                     outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
@@ -131,38 +131,38 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed)
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed)
                     outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
 
-    //CHECK-DAG:    [[WEIGHTS_TABLE1_CST:%.*]] = const.Declare memref<16x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 4]>]
-    //CHECK-DAG:    [[WEIGHTS_TABLE2_CST:%.*]] = const.Declare memref<16x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 4]>]
-    //CHECK-DAG:    [[WEIGHTS1_CST:%.*]] = const.Declare memref<16x16x1x1x!qElemType2, #NHWC> = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 16, 1, 1]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType2>, #const.Reorder<#NHWC>]
-    //CHECK-DAG:    [[WEIGHTS2_CST:%.*]] = const.Declare memref<16x16x1x1x!qElemType3, #NHWC> = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 16, 1, 1]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType3>, #const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE1_CST:%.+]] = const.Declare memref<16x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>, [#const.SubView<[0, 0, 0, 0], [16, 1, 1, 4]>]
+    //CHECK-DAG:    [[WEIGHTS_TABLE2_CST:%.+]] = const.Declare memref<16x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>, [#const.SubView<[16, 0, 0, 0], [16, 1, 1, 4]>]
+    //CHECK-DAG:    [[WEIGHTS1_CST:%.+]] = const.Declare memref<16x16x1x1x!qElemType2, #NHWC> = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [16, 16, 1, 1]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType2>, #const.Reorder<#NHWC>]
+    //CHECK-DAG:    [[WEIGHTS2_CST:%.+]] = const.Declare memref<16x16x1x1x!qElemType3, #NHWC> = dense<1.000000e+00> : tensor<32x16x1x1xf16>, [#const.SubView<[16, 0, 0, 0], [16, 16, 1, 1]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType3>, #const.Reorder<#NHWC>]
 
-    //CHECK:        [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    //CHECK:        [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    //CHECK:        [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    //CHECK:        [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
-    //CHECK-DAG:    [[IN_DDR:%.*]] = VPURT.DeclareBuffer <NetworkInput> <0> -> memref<1x16x32x32x!qElemType, #NHWC, @DDR>
-    //CHECK-DAG:    [[OUT_DDR:%.*]] = VPURT.DeclareBuffer <NetworkOutput> <0> -> memref<1x32x32x32x!qElemType1, #NHWC, @DDR>
-    //CHECK-DAG:    [[PARENT_IN_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK-DAG:    [[IN1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x32x32x!qElemType, #NHWC, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[IN2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x32x32x!qElemType, #NHWC, [@CMX_NN, 1]>
-    //CHECK-DAG:    [[IN_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK-DAG:    [[WEIGHTS1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <32768> -> memref<16x16x1x1x!qElemType2, #NHWC, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[WEIGHTS2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <32768> -> memref<16x16x1x1x!qElemType3, #NHWC, [@CMX_NN, 1]>
-    //CHECK-DAG:    [[WEIGHTS1_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <32768> -> memref<16x16x1x1x!qElemType2, #NHWC, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[WEIGHTS2_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <32768> -> memref<16x16x1x1x!qElemType3, #NHWC, [@CMX_NN, 1]>
-    //CHECK-DAG:    [[WEIGHTS_TABLE1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[WEIGHTS_TABLE2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
-    //CHECK-DAG:    [[WEIGHTS_TABLE1_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[WEIGHTS_TABLE2_CMX_COPY:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
-    //CHECK-DAG:    [[PARENT_OUT_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> <33536> -> !VPUIP.DistributedBuffer<1x32x32x32x!qElemType1, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
-    //CHECK-DAG:    [[OUT_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <33536> -> memref<1x32x32x32x!qElemType1, #NHWC, [@CMX_NN, 0]>
-    //CHECK-DAG:    [[OUT1_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <33536> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType4, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
-    //CHECK-DAG:    [[OUT2_CMX:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <33536> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType5, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    //CHECK-DAG:    [[IN_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> <0> -> memref<1x16x32x32x!qElemType, #NHWC, @DDR>
+    //CHECK-DAG:    [[OUT_DDR:%.+]] = VPURT.DeclareBuffer <NetworkOutput> <0> -> memref<1x32x32x32x!qElemType1, #NHWC, @DDR>
+    //CHECK-DAG:    [[PARENT_IN_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> <0> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK-DAG:    [[IN1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x32x32x!qElemType, #NHWC, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[IN2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x32x32x!qElemType, #NHWC, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[IN_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <0> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK-DAG:    [[WEIGHTS1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <32768> -> memref<16x16x1x1x!qElemType2, #NHWC, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[WEIGHTS2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <32768> -> memref<16x16x1x1x!qElemType3, #NHWC, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[WEIGHTS1_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <32768> -> memref<16x16x1x1x!qElemType2, #NHWC, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[WEIGHTS2_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <32768> -> memref<16x16x1x1x!qElemType3, #NHWC, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[WEIGHTS_TABLE1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[WEIGHTS_TABLE2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[WEIGHTS_TABLE1_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[WEIGHTS_TABLE2_CMX_COPY:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
+    //CHECK-DAG:    [[PARENT_OUT_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> <33536> -> !VPUIP.DistributedBuffer<1x32x32x32x!qElemType1, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    //CHECK-DAG:    [[OUT_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <33536> -> memref<1x32x32x32x!qElemType1, #NHWC, [@CMX_NN, 0]>
+    //CHECK-DAG:    [[OUT1_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <33536> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType4, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+    //CHECK-DAG:    [[OUT2_CMX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <33536> -> !VPUIP.DistributedBuffer<1x16x32x32x!qElemType5, {order = #NHWC, strides = [32768, 1, 1024, 32]}, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
 
     // Upload input
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
@@ -180,7 +180,7 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Upload 2nd part of weights
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[WEIGHTS2_CST]] : memref<16x16x1x1x!qElemType3, #NHWC>)
     //CHECK-SAME:       outputs([[WEIGHTS2_CMX_COPY]] : memref<16x16x1x1x!qElemType3, #NHWC, [@CMX_NN, 1]>)
     //CHECK:        }
@@ -194,7 +194,7 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Upload 2nd part of weights table
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[WEIGHTS_TABLE2_CST]] : memref<16x1x1x4xsi32>)
     //CHECK-SAME:       outputs([[WEIGHTS_TABLE2_CMX_COPY]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
     //CHECK:        }
@@ -239,7 +239,7 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
     // Copyback output
     //CHECK:        VPURT.Task waits(%1 : !VPURT.Barrier) {
     //CHECK:          VPUIP.NNDMA
-    //CHECK-SAME:       inputs([[OUT_CMX:%.*]] : memref<1x32x32x32x!qElemType1, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:       inputs([[OUT_CMX:%.+]] : memref<1x32x32x32x!qElemType1, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:       outputs([[OUT_DDR]] : memref<1x32x32x32x!qElemType1, #NHWC, @DDR>)
     //CHECK:        }
 }

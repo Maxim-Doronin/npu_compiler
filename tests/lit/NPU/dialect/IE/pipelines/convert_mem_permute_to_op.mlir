@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -507,7 +507,7 @@ func.func @MemPermuteDimWandDimHCAligned(%arg0: tensor<1x4x20x48xf16, {order = #
     // CHECK-SAME:      strides = [1, 1]} : tensor<1x16x48x5xf16, {order = #NHWC}> -> tensor<1x16x48x5xf16, {order = #NWCH}>
     // CHECK:       [[LAYOUT_CAST_1:%.+]] = IE.LayoutCast([[MAXPOOL_1]]) {dst_order = #NHWC} : tensor<1x16x48x5xf16, {order = #NWCH}> -> tensor<1x16x48x5xf16, {order = #NHWC}>
     // CHECK:       [[SHAPE_CAST_1:%.+]] = IE.ShapeCast {shape = [1, 48, 4, 20]} inputs([[LAYOUT_CAST_1]] : tensor<1x16x48x5xf16, {order = #NHWC}>) -> tensor<1x48x4x20xf16, {order = #NHWC}>
-    // CHECK:       [[MAXPOOL_2:%.*]] = IE.MaxPool([[SHAPE_CAST_1]]) {
+    // CHECK:       [[MAXPOOL_2:%.+]] = IE.MaxPool([[SHAPE_CAST_1]]) {
     // CHECK-SAME:      kernel_size = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -1571,90 +1571,6 @@ func.func @MemPermuteWithSmallByteSize(%arg0: tensor<1x16x32x2xf16, {order = #NH
 
 // -----
 
-#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607:0>
-
-// CHECK-LABEL: @ConvertQuantU8TypeMemPermuteToPermuteQuantize
-// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x4x16x64x!qElemType>
-func.func @ConvertQuantU8TypeMemPermuteToPermuteQuantize(%arg0: tensor<1x4x16x64x!qElemType>) -> tensor<1x16x16x64xf16, {order = #NHWC}> {
-    %MEM_PERMUTE = IE.MemPermute(%arg0) {
-         dst_order = #NHWC, mem_perm = #NHWC
-    } : tensor<1x4x16x64x!qElemType> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-
-    %WEIGHTS = const.Declare tensor<16x4x3x3xf16, {order = #NHWC}> = dense<1.0> : tensor<16x4x3x3xf16>, [#const.Reorder<#NHWC>]
-    
-    %CONV = IE.Convolution(%MEM_PERMUTE, %WEIGHTS) {
-        dilations = [1, 1], 
-        pads_begin = [1, 1], 
-        pads_end = [1, 1], 
-        strides = [1, 1]
-    } : tensor<1x4x16x64x!qElemType, {order = #NHWC}>, tensor<16x4x3x3xf16, {order = #NHWC}> -> tensor<1x16x16x64xf16, {order = #NHWC}>
-
-    return %CONV : tensor<1x16x16x64xf16, {order = #NHWC}>
-
-    // CHECK: [[WEIGHTS:%.+]] = const.Declare tensor<16x4x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x4x3x3xf16>, [#const.Reorder<#NHWC>]
-
-    // CHECK: [[PERMUTE_QUANT:%.+]] = IE.PermuteQuantize([[INPUT]])
-    // CHECK-SAME:     {dstElemType = !qElemType, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]}
-    // CHECK-SAME:     : tensor<1x4x16x64x!qElemType> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-    
-    // CHECK: [[CONV:%.+]] = IE.Convolution([[PERMUTE_QUANT]], [[WEIGHTS]])
-    // CHECK-SAME:     {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
-    // CHECK-SAME:     : tensor<1x4x16x64x!qElemType, {order = #NHWC}>, tensor<16x4x3x3xf16, {order = #NHWC}> -> tensor<1x16x16x64xf16, {order = #NHWC}>
-
-    // CHECK: return [[CONV]] : tensor<1x16x16x64xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607:0>
-
-// CHECK-LABEL: @NotConvertU8TypeMemPermuteToPermuteQuantizeDueToNonConvConsumer
-// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x4x16x64x!qElemType>
-func.func @NotConvertU8TypeMemPermuteToPermuteQuantizeDueToNonConvConsumer(%arg0: tensor<1x4x16x64x!qElemType>) -> tensor<1x4x16x64x!qElemType, {order = #NHWC}> {
-    %MEM_PERMUTE = IE.MemPermute(%arg0) {
-         dst_order = #NHWC, mem_perm = #NHWC
-    } : tensor<1x4x16x64x!qElemType> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-
-    %ADD_CONST = const.Declare tensor<1x4x16x64x!qElemType, {order = #NHWC}> = dense<1> : tensor<1x4x16x64xui8>, [#const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
-    
-    %ADD = IE.Add(%MEM_PERMUTE, %ADD_CONST) {
-        auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>
-    } : tensor<1x4x16x64x!qElemType, {order = #NHWC}>, tensor<1x4x16x64x!qElemType, {order = #NHWC}> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-
-    return %ADD : tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-
-    // CHECK: [[ADD_CONST:%.+]] = const.Declare tensor<1x4x16x64x!qElemType, {order = #NHWC}> = dense<1> : tensor<1x4x16x64xui8>, [#const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
-
-    // CHECK: [[IN_PERMUTE_CAST:%.+]] = IE.PermuteCast([[INPUT]]) {
-    // CHECK-SAME:     dst_order = #NHWC, mem_perm = #NCHW
-    // CHECK-SAME: } : tensor<1x4x16x64x!qElemType>
-    // CHECK-SAME:     -> tensor<1x64x4x16x!qElemType, {order = #NHWC}>
-
-    // CHECK: [[POOLING:%.+]] = IE.MaxPool([[IN_PERMUTE_CAST]]) {
-    // CHECK-SAME:     kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]
-    // CHECK-SAME: } : tensor<1x64x4x16x!qElemType, {order = #NHWC}>
-    // CHECK-SAME:     -> tensor<1x64x4x16x!qElemType, {order = #NWCH}>
-
-    // CHECK: [[OUT_PERMUTE_CAST:%.+]] = IE.PermuteCast([[POOLING]]) {
-    // CHECK-SAME:     dst_order = #NHWC, mem_perm = #NCHW
-    // CHECK-SAME: } : tensor<1x64x4x16x!qElemType, {order = #NWCH}>
-    // CHECK-SAME:     -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-    
-    // CHECK: [[ADD:%.+]] = IE.Add([[OUT_PERMUTE_CAST]], [[ADD_CONST]]) {
-    // CHECK-SAME:     auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>
-    // CHECK-SAME: } : tensor<1x4x16x64x!qElemType, {order = #NHWC}>, tensor<1x4x16x64x!qElemType, {order = #NHWC}> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-
-    // CHECK: return [[ADD]] : tensor<1x4x16x64x!qElemType, {order = #NHWC}>
-}
-
-// -----
-
 !qElemType = !quant.uniform<u16:f16, 0.0039686492845123888>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
@@ -1688,6 +1604,22 @@ func.func @DoNotConvertQuantized16bitsMemPermuteIntoMaxPool1Batch(%arg0: tensor<
     // CHECK:       [[MEMPERMUTE:%.+]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x64x64x4x!qElemType> -> tensor<1x4x64x64x!qElemType>
     // CHECK:       return [[MEMPERMUTE]] : tensor<1x4x64x64x!qElemType>
 }
-
-
+ 
+// -----
+ 
+#NCHW = affine_map < (d0, d1, d2, d3)->(d0, d1, d2, d3)>
+#NHWC = affine_map < (d0, d1, d2, d3)->(d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607>
+// CHECK-LABEL: @ConvertQuantU8TypeMemPermuteToPermuteQuantize
+// CHECK-SAME:        [[INPUT:%.+]]: tensor<1x4x16x64x!qElemType>
+func.func @ConvertQuantU8TypeMemPermuteToPermuteQuantize(%arg0: tensor<1x4x16x64x!qElemType>) -> tensor<1x4x16x64x!qElemType, {order = #NHWC}> {
+    %MEM_PERMUTE = IE.MemPermute(%arg0) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x4x16x64x!qElemType> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
+ 
+    return %MEM_PERMUTE : tensor<1x4x16x64x!qElemType, {order = #NHWC}>
+ 
+    // CHECK: [[PERMUTE_QUANT:%.+]] = IE.PermuteQuantize([[INPUT]]) {dstElemType = !qElemType, dst_order = #NHWC,
+    // mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]}  : tensor<1x4x16x64x!qElemType> ->
+    // tensor<1x4x16x64x!qElemType, {order = #NHWC}> CHECK: return [[PERMUTE_QUANT]] : tensor<1x4x16x64x!qElemType,
+    // {order = #NHWC}>
+}
 

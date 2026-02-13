@@ -114,7 +114,7 @@ mlir::LogicalResult EltwiseRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp orig
             const auto padsEnd = IE::calcPadsEnd(origShape, extendedShape);
 
             auto sliceOp = origOp.getInput1().template getDefiningOp<IE::SliceOp>();
-            auto newLoc = takeOpLoc(origOp, "_expand_input2");
+            auto newLoc = takeOpLoc(origOp, "expand_input2");
             expandedInput2 = IE::expandWithOffset(newLoc, rewriter, origOp, sliceOp, origOp.getInput2(), padsEnd,
                                                   Dims4D::Act::C.ind());
         }

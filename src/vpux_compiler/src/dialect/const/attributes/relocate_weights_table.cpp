@@ -222,6 +222,7 @@ bool vpux::Const::RelocateWeightsTableAttr::inferOutputSplat(bool inputIsSplat, 
 
 Const::Content vpux::Const::RelocateWeightsTableAttr::transform(vpux::Const::Content& input) const {
     constexpr auto numElemPerOC = static_cast<size_t>(VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC);
+
     auto inputSplat = input.isSplat();
     auto output = [&]() {
         if (inputSplat) {
@@ -242,7 +243,12 @@ Const::Content vpux::Const::RelocateWeightsTableAttr::transform(vpux::Const::Con
     auto numWTEntries = getWeightsTableSize().getInt() / sizeof(int32_t);
 
     if (numWTEntries >= numElemPerOC * 2) {
-        weightPtrStep = values[1 * numElemPerOC + 0] - values[0 * numElemPerOC + 0];
+        auto dataPtrOC0 = values[0 * numElemPerOC + 0];
+        auto dataPtrOC1 = values[1 * numElemPerOC + 0];
+        dataPtrOC0 = dataPtrOC0 & 0x0FFFFFFF;
+        dataPtrOC1 = dataPtrOC1 & 0x0FFFFFFF;
+
+        weightPtrStep = dataPtrOC1 - dataPtrOC0;
         sparsityPtrStep = values[1 * numElemPerOC + 1] - values[0 * numElemPerOC + 1];
     }
 
@@ -337,7 +343,13 @@ Const::Content vpux::Const::RelocateWeightsTableAttr::transform(vpux::Const::Con
             clusterIdx++;
         }
         const auto wtInd = oc * numElemPerOC;
-        values[wtInd + 0] = checked_cast<int32_t>(weightsPtr[clusterIdx] + weightsPtrSteps[oc]) + weightsPtrOffset;
+
+        auto newAddress = checked_cast<int32_t>(weightsPtr[clusterIdx] + weightsPtrSteps[oc]) + weightsPtrOffset;
+        int32_t zeroPoint = values[wtInd + 0] & 0xF0000000;
+        newAddress |= zeroPoint;
+
+        values[wtInd + 0] = newAddress;
+
         if (values[wtInd + 1] != VPU::NCESparsity::SPARSITY_PTR_WHEN_NO_SPARSITY) {
             values[wtInd + 1] = checked_cast<int32_t>(sparsityPtr + (oc - offsets[clusterIdx]) * sparsityPtrStep) +
                                 sparsityPtrOffset;
@@ -357,21 +369,5 @@ Const::Content vpux::Const::RelocateWeightsTableAttr::transform(vpux::Const::Con
 //
 
 llvm::hash_code vpux::Const::RelocateWeightsTableAttr::getStableHashValue() const {
-    const auto weightsPtr = parseIntArrayAttr<int32_t>(getWeightsPtr());
-    const auto sparsityPtr = getSparsityPtr().getValue();
-    const auto offsets = parseIntArrayAttr<int64_t>(getOffsets());
-    const auto wtSize = getWeightsTableSize().getValue();
-    const auto weightsElemBitSize = getWeightsElemBitSize().getValue();
-
-    const auto weightsCompressionAxis = getWeightsCompression().getAxis().getValue();
-    const auto weightsCompressionNumElem = getWeightsCompression().getNumElems().getValues<int64_t>();
-    const auto weightsCompressionAlignment = getWeightsCompression().getAlignment().getValue();
-
-    const auto channelOffset = getChannelOffset().getInt();
-    return llvm::hash_combine(
-            getMnemonic(), llvm::hash_combine_range(weightsPtr.begin(), weightsPtr.end()), sparsityPtr,
-            llvm::hash_combine_range(offsets.begin(), offsets.end()), wtSize, weightsElemBitSize,
-            weightsCompressionAxis,
-            llvm::hash_combine_range(weightsCompressionNumElem.begin(), weightsCompressionNumElem.end()),
-            weightsCompressionAlignment, channelOffset);
+    VPUX_THROW("Not implemented. It requires an equivalent representation in IE dialect.");
 }

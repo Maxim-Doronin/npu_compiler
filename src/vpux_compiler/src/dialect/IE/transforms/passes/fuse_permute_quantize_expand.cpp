@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,17 +7,18 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
-#include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_FUSEPERMUTEQUANTIZEEXPAND
@@ -137,11 +138,11 @@ mlir::LogicalResult FusePermuteQuantizeExpandBase::matchAndRewrite(IE::ReorderOp
     const auto permQuantElemType = mlir::cast<vpux::NDTypeInterface>(permQuantOutType).getElementType();
     const auto dstElemTypeAttr = mlir::TypeAttr::get(permQuantElemType);
     const auto permQuantLoc = appendLoc(origOp->getLoc(), "PermuteQuantizeExpand");
-    auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
+    auto permuteQuantizeOpResult = rewriter.createOrFold<IE::PermuteQuantizeOp>(
             permQuantLoc, permQuantOutType, paternInput, origOp.getDstOrderAttr(), memPermAttr, dstElemTypeAttr,
             opExpand.getPadsBeginAttr(), opExpand.getPadsEndAttr());
 
-    replaceByNewOp(opNce, permuteQuantizeOp.getOutput(), rewriter);
+    replaceByNewOp(opNce, permuteQuantizeOpResult, rewriter);
 
     return mlir::success();
 }
@@ -168,15 +169,15 @@ bool FusePermuteQuantizeExpandForAdd::isLegalPattern(IE::ReorderOp origOp) const
 
 mlir::Type FusePermuteQuantizeExpandForAdd::getNceOutType(mlir::Operation* opNce) const {
     // QuantizeToAddRewriter multiplies output scale by 2. It is necessary to cancel out this factor.
-    return rescaleUniformQuantizedType(opNce->getResult(0).getType(), 0.5);
+    return IE::rescaleUniformQuantizedType(opNce->getResult(0).getType(), 0.5);
 }
 
 void FusePermuteQuantizeExpandForAdd::replaceByNewOp(mlir::Operation* opNce, mlir::Value input,
                                                      mlir::PatternRewriter& rewriter) const {
     auto orginalQuantizeCast = mlir::dyn_cast<IE::QuantizeCastOp>(*opNce->getResult(0).getUsers().begin());
-    auto quantCast =
-            rewriter.create<IE::QuantizeCastOp>(opNce->getLoc(), input, orginalQuantizeCast.getDstElemTypeAttr());
-    rewriter.replaceOp(orginalQuantizeCast, quantCast.getOutput());
+    auto quantCastOpResult =
+            rewriter.createOrFold<IE::QuantizeCastOp>(opNce->getLoc(), input, orginalQuantizeCast.getDstElemTypeAttr());
+    rewriter.replaceOp(orginalQuantizeCast, quantCastOpResult);
 }
 
 // ======================================================================================
@@ -258,11 +259,11 @@ mlir::LogicalResult FuseExpandIntoPermuteQuantizeRewrite::matchAndRewrite(IE::Ex
         return mlir::failure();
     }
 
-    auto permuteQuantizeOp = rewriter.create<IE::PermuteQuantizeOp>(
+    auto permuteQuantizeOpResult = rewriter.createOrFold<IE::PermuteQuantizeOp>(
             origOp->getLoc(), opPermuteQuantize.getInput(), opPermuteQuantize.getDstOrderAttr(),
             opPermuteQuantize.getMemPermAttr(), opPermuteQuantize.getDstElemTypeAttr(), origOp.getPadsBeginAttr(),
             origOp.getPadsEndAttr());
-    rewriter.replaceOp(origOp, permuteQuantizeOp.getOutput());
+    rewriter.replaceOp(origOp, permuteQuantizeOpResult);
 
     return mlir::success();
 }
@@ -330,10 +331,10 @@ mlir::LogicalResult FuseQuantizeCastExpandIntoPermuteQuantizeQuantizeCastRewrite
             origOp->getLoc(), opPermuteQuantize.getInput(), opPermuteQuantize.getDstOrderAttr(),
             opPermuteQuantize.getMemPermAttr(), opPermuteQuantize.getDstElemTypeAttr(), origOp.getPadsBeginAttr(),
             origOp.getPadsEndAttr());
-    auto quantizeCastOp = rewriter.create<IE::QuantizeCastOp>(origOp.getLoc(), permuteQuantizeOp.getResult(),
-                                                              opQuantizeCast.getDstElemTypeAttr());
+    auto quantizeCastOpResult = rewriter.createOrFold<IE::QuantizeCastOp>(
+            origOp.getLoc(), permuteQuantizeOp.getResult(), opQuantizeCast.getDstElemTypeAttr());
 
-    rewriter.replaceOp(origOp, quantizeCastOp.getOutput());
+    rewriter.replaceOp(origOp, quantizeCastOpResult);
 
     return mlir::success();
 }
@@ -363,9 +364,7 @@ void FusePermuteQuantizeExpandPass::safeRunOnFunc() {
     patterns.add<FuseExpandIntoPermuteQuantizeRewrite>(&ctx, _log);
     patterns.add<FuseQuantizeCastExpandIntoPermuteQuantizeQuantizeCastRewrite>(&ctx, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,20 +19,20 @@ func.func @ScalarArgumentsWeightsDequantizeToFakeQuantize(%arg0: tensor<1x16x32x
   %3 = IE.GroupConvolution(%0, %2) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x32x32xf32>, tensor<16x1x1x1xf32> -> tensor<1x16x32x32xf32>
   return %3 : tensor<1x16x32x32xf32>
 
-  // CHECK: [[ACT_HIGH:%.*]] = const.Declare tensor<1x1x1x1xf32> = dense<5.99976158>
-  // CHECK: [[ACT_LOW:%.*]] = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00>
+  // CHECK: [[ACT_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<5.99976158>
+  // CHECK: [[ACT_LOW:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00>
 
-  // CHECK: [[WT_IN_LOW:%.*]] = const.Declare tensor<1x1x1x1xf32> = dense<-1.280000e+02>
-  // CHECK: [[WT_IN_HIGH:%.*]] = const.Declare tensor<1x1x1x1xf32> = dense<1.270000e+02>
-  // CHECK: [[WT_OUT_LOW:%.*]] = const.Declare tensor<1xf32> = dense<-8.66282272>
-  // CHECK: [[WT_OUT_HIGH:%.*]] = const.Declare tensor<1xf32> = dense<5.77521514>
+  // CHECK: [[WT_IN_LOW:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<-1.280000e+02>
+  // CHECK: [[WT_IN_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<1.270000e+02>
+  // CHECK: [[WT_OUT_LOW:%.+]] = const.Declare tensor<1xf32> = dense<-8.66282272>
+  // CHECK: [[WT_OUT_HIGH:%.+]] = const.Declare tensor<1xf32> = dense<5.77521514>
 
-  // CHECK: [[WT_DATA:%.*]] = const.Declare tensor<16x1x1x1xf32>
+  // CHECK: [[WT_DATA:%.+]] = const.Declare tensor<16x1x1x1xf32>
   // CHECK-SAME{LITERAL}: dense<[[[[27]]], [[[25]]], [[[39]]], [[[22]]], [[[27]]], [[[25]]], [[[21]]], [[[27]]], [[[31]]], [[[29]]], [[[42]]], [[[27]]], [[[27]]], [[[28]]], [[[33]]], [[[33]]]]>
 
-  // CHECK-DAG: [[WT_FQ:%.*]] = IE.FakeQuantize([[WT_DATA]], [[WT_IN_LOW]], [[WT_IN_HIGH]], [[WT_OUT_LOW]], [[WT_OUT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<16x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<16x1x1x1xf32>
-  // CHECK-DAG: [[ACT_FQ:%.*]] = IE.FakeQuantize(%arg0, [[ACT_LOW]], [[ACT_HIGH]], [[ACT_LOW]], [[ACT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x32x32xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x16x32x32xf32>
-  // CHECK:   [[GRUP_CONV:%.*]] = IE.GroupConvolution([[ACT_FQ]], [[WT_FQ]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x32x32xf32>, tensor<16x1x1x1xf32> -> tensor<1x16x32x32xf32>
+  // CHECK-DAG: [[WT_FQ:%.+]] = IE.FakeQuantize([[WT_DATA]], [[WT_IN_LOW]], [[WT_IN_HIGH]], [[WT_OUT_LOW]], [[WT_OUT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<16x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<16x1x1x1xf32>
+  // CHECK-DAG: [[ACT_FQ:%.+]] = IE.FakeQuantize(%arg0, [[ACT_LOW]], [[ACT_HIGH]], [[ACT_LOW]], [[ACT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x32x32xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x16x32x32xf32>
+  // CHECK:   [[GRUP_CONV:%.+]] = IE.GroupConvolution([[ACT_FQ]], [[WT_FQ]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x32x32xf32>, tensor<16x1x1x1xf32> -> tensor<1x16x32x32xf32>
 
   // CHECK:   return [[GRUP_CONV]] : tensor<1x16x32x32xf32>
 }

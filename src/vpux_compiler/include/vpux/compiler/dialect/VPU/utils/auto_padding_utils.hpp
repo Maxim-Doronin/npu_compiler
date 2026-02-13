@@ -1,18 +1,15 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu_fwd.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <optional>
-
-namespace vpux::VPU {
-class NCEConvolutionOp;
-}
 
 namespace vpux {
 namespace VPU {
@@ -20,6 +17,7 @@ namespace VPU {
 constexpr std::string_view INPUT_PADDING_ATTR_NAME = "input_padding";
 constexpr std::string_view OUTPUT_PADDING_ATTR_NAME = "output_padding";
 
+// Hardware limitation for NPU5
 constexpr int64_t WIDTH16_CHANNEL_LIMIT = 10;
 constexpr int64_t FP16_WIDTH = 16;
 

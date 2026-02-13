@@ -204,6 +204,8 @@ func.func @FuseMaxPoolWithBetaOneSwishTest(%input: tensor<1x16x4x4xf16>) -> tens
     // CHECK-NOT:  IE.Swish
 }
 
+// -----
+
 // CHECK-LABEL: @FuseMaxPoolWithBetaGreaterThanOneSwishTest
 // CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x4x4xf16>)
 func.func @FuseMaxPoolWithBetaGreaterThanOneSwishTest(%input: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf16> {
@@ -407,6 +409,8 @@ func.func @NotFuseClampI32(%arg0: tensor<1x50x1x1xsi32>) -> tensor<1x50x1x1xsi32
 
 }
 
+// -----
+
 // CHECK-LABEL: @NotFuseClampI32IntoAdd
 // CHECK-SAME:    ([[INPUT1:%.+]]: tensor<1x50x1x1xsi32>, [[INPUT2:%.+]]: tensor<1xsi32>)
 
@@ -516,4 +520,3 @@ func.func @FuseHSwishIntoMaxPool(%input: tensor<1x16x4x4xf32>) -> tensor<1x16x3x
 
     // CHECK-NOT:  IE.HSwish
 }
-

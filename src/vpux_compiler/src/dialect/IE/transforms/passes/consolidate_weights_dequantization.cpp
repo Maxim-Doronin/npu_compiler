@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/fake_quantize_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -18,7 +19,6 @@
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LogicalResult.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONSOLIDATEWEIGHTSDEQUANTIZATION
@@ -83,14 +83,17 @@ mlir::FailureOr<Dim> getSingleDim(ArrayRef<int64_t> shape) {
 }
 
 template <typename ConcreteOp>
-class WeightsDequantizeRewriter final : public mlir::OpRewritePattern<ConcreteOp> {
+class WeightsDequantizeRewriter final : public mlir::OpRewritePattern<ConcreteOp>, public IInitializableRewriter {
 public:
-    WeightsDequantizeRewriter(mlir::MLIRContext* ctx, bool enableWeightsDynamicDequantization, Logger log)
-            : mlir::OpRewritePattern<ConcreteOp>(ctx),
-              _enableWeightsDynamicDequantization(enableWeightsDynamicDequantization),
-              _log(log.nest()) {
+    WeightsDequantizeRewriter(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit = 1,
+                              bool enableWeightsDynamicDequantization = false)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefit),
+              _log(log.nest()),
+              _enableWeightsDynamicDequantization(enableWeightsDynamicDequantization) {
         this->setDebugName("WeightsDequantizeRewriter");
     }
+
+    void initialize(mlir::func::FuncOp funcOp) override;
 
 private:
     bool isSupportedInputElemType(mlir::Type elemType) const;
@@ -104,17 +107,22 @@ public:
     mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
-    bool _enableWeightsDynamicDequantization;
     Logger _log;
+    bool _enableWeightsDynamicDequantization;
 };
 
 template <typename ConcreteOp>
+void WeightsDequantizeRewriter<ConcreteOp>::initialize(mlir::func::FuncOp funcOp) {
+    auto module = getModuleOp(funcOp);
+    _enableWeightsDynamicDequantization = config::hasEnableWeightsDynamicDequantization(module);
+}
+
+template <typename ConcreteOp>
 bool WeightsDequantizeRewriter<ConcreteOp>::isSupportedInputElemType(mlir::Type elemType) const {
-    // The only supported weights data types are I16, U16, I8, U8, I4, U4, I2, U2, FP8 and NF4
     return elemType.isSignedInteger(2) || elemType.isUnsignedInteger(2) || elemType.isSignedInteger(4) ||
            elemType.isUnsignedInteger(4) || elemType.isSignedInteger(8) || elemType.isUnsignedInteger(8) ||
            elemType.isSignedInteger(16) || elemType.isUnsignedInteger(16) || elemType.isSignlessInteger(16) ||
-           isFloat8(elemType) || mlir::isa_and_nonnull<vpux::type::QuantileFloatType>(elemType);
+           isLowFpType(elemType) || mlir::isa_and_nonnull<vpux::type::QuantileFloatType>(elemType);
 }
 
 template <typename ConcreteOp>
@@ -271,6 +279,8 @@ mlir::LogicalResult WeightsDequantizeRewriter<ConcreteOp>::dynamicMatchAndRewrit
             rewriter.setInsertionPointAfter(convertOp);
         } else if (auto stridedSliceOp = mlir::dyn_cast_or_null<IE::StridedSliceOp>(scale.getDefiningOp())) {
             rewriter.setInsertionPointAfter(stridedSliceOp);
+        } else if (auto gatherOp = mlir::dyn_cast_or_null<IE::GatherOp>(scale.getDefiningOp())) {
+            rewriter.setInsertionPointAfter(gatherOp);
         }
     }
 
@@ -335,50 +345,16 @@ mlir::LogicalResult WeightsDequantizeRewriter<ConcreteOp>::matchAndRewrite(Concr
     }
 }
 
-class ConsolidateWeightsDequantizationPass final :
-        public IE::impl::ConsolidateWeightsDequantizationBase<ConsolidateWeightsDequantizationPass> {
-public:
-    ConsolidateWeightsDequantizationPass() = default;
-    explicit ConsolidateWeightsDequantizationPass(Logger log) {
-        Base::initLogger(log, Base::getArgumentName());
-
-        initializeFromOptions();
-    }
-
-private:
-    void initializeFromOptions();
-
-    void safeRunOnFunc() final;
-};
-
-void ConsolidateWeightsDequantizationPass::initializeFromOptions() {
-}
-
-void ConsolidateWeightsDequantizationPass::safeRunOnFunc() {
-    auto& ctx = getContext();
-    auto func = getOperation();
-    auto module = getModuleOp(func);
-    auto enableWeightsDynamicDequantization = config::hasEnableWeightsDynamicDequantization(module);
-
-    mlir::RewritePatternSet patterns(&ctx);
-
-    IE::ConvertOp::getCanonicalizationPatterns(patterns, &ctx);  // Ensures Convert chains are folded
-    patterns.add<WeightsDequantizeRewriter<IE::ConvertOp>>(&ctx, enableWeightsDynamicDequantization, _log);
-    patterns.add<WeightsDequantizeRewriter<Const::DeclareOp>>(&ctx, enableWeightsDynamicDequantization, _log);
-
-    auto config = getDefaultGreedyRewriteConfig();
-    config.maxIterations = mlir::GreedyRewriteConfig::kNoLimit;
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), config))) {
-        signalPassFailure();
-    }
-}
-
 }  // namespace vpux
 
-//
-// createConsolidateWeightsDequantizationPass
-//
-
-std::unique_ptr<mlir::Pass> vpux::IE::createConsolidateWeightsDequantizationPass(Logger log) {
-    return std::make_unique<ConsolidateWeightsDequantizationPass>(log);
+void vpux::IE ::registerConsolidateWeightsDequantizationRewriters(RewriterRegistry& registry,
+                                                                  ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                                                  size_t index, Logger log) {
+    registry.registerRewriterSet("consolidate-weights-dequantization", [&registry, log, benefitLevels, index]() {
+        registry.registerRewriter<WeightsDequantizeRewriter<IE::ConvertOp>>("weights-dequantize-convert", log,
+                                                                            benefitLevels[index]);
+        registry.registerRewriter<WeightsDequantizeRewriter<Const::DeclareOp>>("weights-dequantize-declare-op", log,
+                                                                               benefitLevels[index]);
+        vpux::IE::registerConvertOpRewriters(registry);
+    });
 }

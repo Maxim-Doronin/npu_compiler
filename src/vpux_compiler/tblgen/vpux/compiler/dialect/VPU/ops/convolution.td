@@ -33,7 +33,7 @@ def VPU_ConvolutionOp :
         I64ArrayAttr:$pads_end,
         I64ArrayAttr:$dilations,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op
     );
 
     let results = (outs
@@ -146,7 +146,7 @@ def VPU_GroupConvolutionOp :
         I64ArrayAttr:$dilations,
         OptionalAttr<IntAttr>:$groups,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding
     );
@@ -182,7 +182,7 @@ def VPU_MatMulOp:
 
         UnitAttr:$transpose_a,
         UnitAttr:$transpose_b,
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -260,7 +260,7 @@ def VPU_TransposedConvolutionOp:
         I64ArrayAttr:$dilations,
         I64ArrayAttr:$spatial_output_padding,
 
-        OptionalAttr<IE_PostOpAttr>:$post_op,
+        OptionalAttr<IE_PostOpAttrInterface>:$post_op,
         OptionalAttr<DictionaryAttr>:$clamp,
         OptionalAttr<I64ArrayAttr>:$output_padding,
         OptionalAttr<I64ArrayAttr>:$input_padding

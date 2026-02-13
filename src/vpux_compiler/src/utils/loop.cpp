@@ -8,24 +8,28 @@
 #include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
+#include <llvm/ADT/STLExtras.h>
 #include <mlir/IR/Threading.h>
 #include <mlir/IR/Types.h>
+#include <mlir/Support/LLVM.h>
+#include <future>
 
 using namespace vpux;
 
 namespace {
-typedef struct {
+
+struct LoopRange {
     int64_t begin;
     int64_t end;
     bool partition;
-} LoopRange;
+};
 
 SmallVector<LoopRange> partitionData(ArrayRef<int64_t> dims, int64_t availableThreads, int64_t& threadsToUse) {
     SmallVector<LoopRange> ranges(dims.size());
 
     std::optional<size_t> partitionIdx;
     int64_t maxDim = dims[0];
-    int64_t maxDimIdx = 0;
+    size_t maxDimIdx = 0;
     for (size_t dimIdx = 0; dimIdx < dims.size(); ++dimIdx) {
         ranges[dimIdx] = {0, dims[dimIdx], /*partition=*/false};
         if (!partitionIdx.has_value() && dims[dimIdx] >= availableThreads) {
@@ -225,4 +229,53 @@ void vpux::loop_4d(LoopExecPolicy policy, mlir::MLIRContext* ctx, int64_t dim0, 
             }
         });
     }
+}
+
+mlir::FailureOr<size_t> vpux::parallel_find_index(mlir::MLIRContext* ctx, size_t size,
+                                                  vpux::FuncRef<bool(size_t)> pred) {
+    if (size <= 0) {
+        return mlir::failure();
+    }
+
+    const auto findSequentially = [&]() -> mlir::FailureOr<size_t> {
+        for (size_t idx = 0; idx < size; ++idx) {
+            if (pred(idx)) {
+                return idx;
+            }
+        }
+        return mlir::failure();
+    };
+
+    if (!ctx->isMultithreadingEnabled()) {
+        return findSequentially();
+    }
+
+    auto& threadPool = ctx->getThreadPool();
+    const auto totalThreads = static_cast<size_t>(threadPool.getMaxConcurrency());
+    // Fallback to sequential execution in case the number of iterations is small, in order to avoid the overhead from
+    // multithreading
+    if (size < totalThreads) {
+        return findSequentially();
+    }
+
+    llvm::ThreadPoolTaskGroup tasksGroup(threadPool);
+    SmallVector<std::shared_future<bool>> statuses(totalThreads);
+    for (size_t idx = 0; idx < size; idx += totalThreads) {
+        const auto availableThreads = std::min(size - idx, totalThreads);
+
+        for (size_t tId = 0; tId < availableThreads; ++tId) {
+            const auto threadIdx = idx + tId;
+            statuses[tId] = tasksGroup.async([pred, threadIdx] {
+                return pred(threadIdx);
+            });
+        }
+
+        for (size_t tId = 0; tId < availableThreads; ++tId) {
+            if (statuses[tId].get()) {
+                return idx + tId;
+            }
+        }
+    }
+
+    return mlir::failure();
 }

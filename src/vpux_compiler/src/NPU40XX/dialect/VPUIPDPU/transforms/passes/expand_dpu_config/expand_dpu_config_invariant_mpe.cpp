@@ -13,14 +13,14 @@ mlir::LogicalResult vpux::VPUIPDPU::arch40xx::buildDPUInvariantMPE(
         const std::unordered_map<BlockArg, size_t>& invBlockArgsPos) {
     if (auto inAct = getInvBlockArg(BlockArg::ACT_IN, invBlock, invBlockArgsPos)) {
         auto inActType = getBaseType(mlir::cast<mlir::MemRefType>(inAct.getType()).getElementType());
-        if (inActType.isInteger(CHAR_BIT)) {
+        if (inActType.isInteger(8)) {
             builder.create<MPEActivationBiasOp>(origInvOp.getLoc(), VPUIPDPU::getZeroPoint(inAct.getType()));
         }
     }
 
     if (auto weights = getInvBlockArg(BlockArg::WEIGHTS, invBlock, invBlockArgsPos)) {
         auto wtType = getBaseType(mlir::cast<mlir::MemRefType>(weights.getType()).getElementType());
-        if (wtType.isUnsignedInteger(CHAR_BIT)) {
+        if (wtType.isUnsignedInteger(8)) {
             builder.create<MPEWeightsBiasOp>(origInvOp.getLoc(), VPUIPDPU::getZeroPoint(weights.getType()));
         }
     }

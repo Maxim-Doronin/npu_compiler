@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,12 +57,12 @@ module @SimilarConstantsSimilarLocationNames {
     // CHECK-INIT-DAG: [[LOC_INIT1:#.+]] = loc("init_cst1")
 
     // somehow we get unused locations:
-    // CHECK-INIT-DAG: {{#.+}} = loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.*}}])
+    // CHECK-INIT-DAG: {{#.+}} = loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.+}}])
 
-    // CHECK-INIT-DAG: [[LOC_SLICE0:#.+]] = loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.*}})
-    // CHECK-INIT-DAG: [[LOC_SLICE1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_INIT1]], {{.*}})
+    // CHECK-INIT-DAG: [[LOC_SLICE0:#.+]] = loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.+}})
+    // CHECK-INIT-DAG: [[LOC_SLICE1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_INIT1]], {{.+}})
 
-    // CHECK-INIT-DAG: func.func @init([[ARG0:%.+]]: tensor<2x2x1x1xf16> loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.*}}])) -> (tensor<2x2x1x1xsi8>, tensor<2x2x1x1xsi8>)
+    // CHECK-INIT-DAG: func.func @init([[ARG0:%.+]]: tensor<2x2x1x1xf16> loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.+}}])) -> (tensor<2x2x1x1xsi8>, tensor<2x2x1x1xsi8>)
     // CHECK-INIT-DAG: [[SLICEOP0:%.+]] = IE.Slice [[ARG0]] [1, 0, 0, 0] [2, 2, 1, 1] : tensor<2x2x1x1xf16> to tensor<2x2x1x1xf16> loc([[LOC_SLICE0]])
     // CHECK-INIT-DAG: [[CONVERT0:%.+]] = IE.Convert([[SLICEOP0]]) {dstElemType = i8} : tensor<2x2x1x1xf16> -> tensor<2x2x1x1xi8>
     // CHECK-INIT-DAG: [[QC0:%.+]] = IE.QuantizeCast([[CONVERT0]]) {dstElemType = [[QTYPE]]} : tensor<2x2x1x1xi8> -> tensor<2x2x1x1x!qElemType>
@@ -79,13 +79,13 @@ module @SimilarConstantsSimilarLocationNames {
     // CHECK-MAIN-DAG: [[LOC_MAIN1:#.+]] = loc("main_cst1")
 
     // somehow we get unused locations:
-    // CHECK-MAIN-DAG: {{#.+}} = loc(fused[[[CST0_LOC]], [[LOC_MAIN0]], {{.*}}])
-    // CHECK-MAIN-DAG: {{#.+}} = loc(fused[[[CST1_LOC]], [[LOC_MAIN1]], {{.*}}])
+    // CHECK-MAIN-DAG: {{#.+}} = loc(fused[[[CST0_LOC]], [[LOC_MAIN0]], {{.+}}])
+    // CHECK-MAIN-DAG: {{#.+}} = loc(fused[[[CST1_LOC]], [[LOC_MAIN1]], {{.+}}])
 
-    // CHECK-MAIN-DAG: [[LOC_QC0:#.+]] = loc(fused[[[CST0_LOC]], [[LOC_MAIN0]], {{.*}}])
-    // CHECK-MAIN-DAG: [[LOC_QC1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_MAIN1]], {{.*}}])
+    // CHECK-MAIN-DAG: [[LOC_QC0:#.+]] = loc(fused[[[CST0_LOC]], [[LOC_MAIN0]], {{.+}}])
+    // CHECK-MAIN-DAG: [[LOC_QC1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_MAIN1]], {{.+}}])
 
-    // CHECK-MAIN-DAG: func.func @main([[MAIN_ARG0:%.+]]: tensor<2x2x1x1xf16> [[LOC_MAIN_ARG0:.*]], [[MAIN_ARG1:%.+]]: tensor<2x2x1x1xsi8> [[LOC_MAIN_ARG1:.*]], [[MAIN_ARG2:%.+]]: tensor<2x2x1x1xsi8> [[LOC_MAIN_ARG2:.*]]) -> (tensor<2x2x1x1xi8>, tensor<2x2x1x1xi8>)
+    // CHECK-MAIN-DAG: func.func @main([[MAIN_ARG0:%.+]]: tensor<2x2x1x1xf16> [[LOC_MAIN_ARG0:.+]], [[MAIN_ARG1:%.+]]: tensor<2x2x1x1xsi8> [[LOC_MAIN_ARG1:.+]], [[MAIN_ARG2:%.+]]: tensor<2x2x1x1xsi8> [[LOC_MAIN_ARG2:.+]]) -> (tensor<2x2x1x1xi8>, tensor<2x2x1x1xi8>)
     // CHECK-MAIN-DAG: [[MAIN_QC0:%.+]] = VPU.QuantizeCast([[MAIN_ARG1]]) {dstElemType = [[QTYPE]]} : tensor<2x2x1x1xsi8> -> tensor<2x2x1x1x!qElemType> loc([[LOC_QC0]])
     // CHECK-MAIN-DAG: [[MAIN_QC1:%.+]] = VPU.QuantizeCast([[MAIN_ARG2]]) {dstElemType = [[QTYPE]]} : tensor<2x2x1x1xsi8> -> tensor<2x2x1x1x!qElemType> loc([[LOC_QC1]])
     // CHECK-MAIN-DAG: [[MAIN_QC2:%.+]] = VPU.QuantizeCast([[MAIN_QC0]]) {dstElemType = i8} : tensor<2x2x1x1x!qElemType> -> tensor<2x2x1x1xi8>
@@ -99,11 +99,11 @@ module @SimilarConstantsSimilarLocationNames {
     // CHECK-INIT-CONCAT-DAG: [[LOC_INIT1:#.+]] = loc("init_cst1")
     // CHECK-INIT-CONCAT-DAG: [[LOC_OBFS:#.+]] = loc("obfuscated")
 
-    // CHECK-INIT-CONCAT-DAG: [[LOC_RCAST0:#.+]] = loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.*}}, [[LOC_OBFS]]])
-    // CHECK-INIT-CONCAT-DAG: [[LOC_RCAST1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_INIT1]], {{.*}}, [[LOC_OBFS]]])
+    // CHECK-INIT-CONCAT-DAG: [[LOC_RCAST0:#.+]] = loc(fused[[[CST0_LOC]], [[LOC_INIT0]], {{.+}}, [[LOC_OBFS]]])
+    // CHECK-INIT-CONCAT-DAG: [[LOC_RCAST1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_INIT1]], {{.+}}, [[LOC_OBFS]]])
 
-    // CHECK-INIT-CONCAT-DAG: {{%.+}} = Core.ReinterpretCast({{.*}}) {{.*}} loc([[LOC_RCAST0]])
-    // CHECK-INIT-CONCAT-DAG: {{%.+}} = Core.ReinterpretCast({{.*}}) {{.*}} loc([[LOC_RCAST1]])
+    // CHECK-INIT-CONCAT-DAG: {{%.+}} = Core.ReinterpretCast({{.+}}) {{.+}} loc([[LOC_RCAST0]])
+    // CHECK-INIT-CONCAT-DAG: {{%.+}} = Core.ReinterpretCast({{.+}}) {{.+}} loc([[LOC_RCAST1]])
 
 
     // for concat-init-results in 'gen-main', check slices and reinterpret casts
@@ -121,10 +121,10 @@ module @SimilarConstantsSimilarLocationNames {
     // CHECK-MAIN-CONCAT-DAG: [[LOC_SLICE1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_MAIN1]], [[LOC_ARG1]], [[LOC_SLICE]]])
     // CHECK-MAIN-CONCAT-DAG: [[LOC_RCAST1:#.+]] = loc(fused[[[CST1_LOC]], [[LOC_MAIN1]], [[LOC_ARG1]], [[LOC_SLICE]], [[LOC_DEOBFS]]])
 
-    // CHECK-MAIN-CONCAT-DAG: func.func @main({{.*}}, [[BLOB:%.+]]: tensor<8xi8>
-    // CHECK-MAIN-CONCAT-DAG:   [[SLICE0:%.+]] = VPU.Slice [[BLOB]] [0] [4] {{.*}} loc([[LOC_SLICE0]])
-    // CHECK-MAIN-CONCAT-DAG:   {{%.+}} = Core.ReinterpretCast([[SLICE0]]) {{.*}} loc([[LOC_RCAST0]])
+    // CHECK-MAIN-CONCAT-DAG: func.func @main({{.+}}, [[BLOB:%.+]]: tensor<8xi8>
+    // CHECK-MAIN-CONCAT-DAG:   [[SLICE0:%.+]] = VPU.Slice [[BLOB]] [0] [4] {{.+}} loc([[LOC_SLICE0]])
+    // CHECK-MAIN-CONCAT-DAG:   {{%.+}} = Core.ReinterpretCast([[SLICE0]]) {{.+}} loc([[LOC_RCAST0]])
 
-    // CHECK-MAIN-CONCAT-DAG:   [[SLICE1:%.+]] = VPU.Slice [[BLOB]] [4] [4] {{.*}} loc([[LOC_SLICE1]])
-    // CHECK-MAIN-CONCAT-DAG:   {{%.+}} = Core.ReinterpretCast([[SLICE1]]) {{.*}} loc([[LOC_RCAST1]])
+    // CHECK-MAIN-CONCAT-DAG:   [[SLICE1:%.+]] = VPU.Slice [[BLOB]] [4] [4] {{.+}} loc([[LOC_SLICE1]])
+    // CHECK-MAIN-CONCAT-DAG:   {{%.+}} = Core.ReinterpretCast([[SLICE1]]) {{.+}} loc([[LOC_RCAST1]])
 }

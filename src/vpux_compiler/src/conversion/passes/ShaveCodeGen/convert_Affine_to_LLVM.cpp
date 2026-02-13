@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,9 +39,6 @@
 // in CMake but it does not work for early versions of MSVC 2019
 #ifdef _MSC_VER
 #pragma warning(push)
-#ifndef COMPILER_FOR_DRIVER_ENABLED
-#pragma warning(disable : 4146)
-#endif
 #endif
 #include <mlir/ExecutionEngine/ExecutionEngine.h>
 #include <mlir/ExecutionEngine/OptUtils.h>

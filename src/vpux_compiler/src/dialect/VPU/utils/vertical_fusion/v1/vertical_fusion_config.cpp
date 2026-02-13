@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 
 // the length of VF pipelining pattern, should match the pattern DPU-SW-DPU for now
@@ -133,7 +134,8 @@ SmallVector<NDTypeInterface> VFConfig::getOperationTypes(mlir::Operation* operat
 
     auto origShape = Shape(getShape(operation->getResult(0)));
     if (_tilesCache.find(operation) == _tilesCache.end()) {
-        _tilesCache[operation][origShape] = getTileTypes(operation, TileInfo(origShape));
+        auto strategy = getMultiClusterStrategyFromOp(operation);
+        _tilesCache[operation][origShape] = getTileTypes(operation, TileInfo(origShape), strategy);
     }
 
     return _tilesCache[operation][origShape];
@@ -155,7 +157,8 @@ SmallVector<NDTypeInterface> VFConfig::getOperationTypes(mlir::Operation* operat
         if (!inputTiles.empty()) {
             inputTiling = InputTiling(inputTiles);
         }
-        _tilesCache[operation][outTile.shape] = getTileTypes(operation, outTile, inputTiling);
+        auto strategy = getMultiClusterStrategyFromOp(operation);
+        _tilesCache[operation][outTile.shape] = getTileTypes(operation, outTile, strategy, inputTiling);
     }
 
     return _tilesCache[operation][outTile.shape];

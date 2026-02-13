@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -186,6 +187,11 @@ void ConvertNonConstantPadToSliceAndConcatPass::safeRunOnFunc() {
     };
 
     target.addDynamicallyLegalOp<IE::PadOp>([&](IE::PadOp op) -> bool {
+        // Skip this rewriter if Pad is dynamic
+        if (IE::hasDynamicTensors(op)) {
+            return true;
+        }
+
         if (_enableSEPPad &&
             VPU::isSupportedSEPPadOp(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false)) {
             _log.nest().trace("Pad Operation {0} can be executed using SEP", op);

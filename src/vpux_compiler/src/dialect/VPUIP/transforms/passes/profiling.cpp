@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,37 +41,19 @@ namespace {
 
 class ActShaveProfilingPass final : public VPUIP::impl::ActShaveProfilingBase<ActShaveProfilingPass> {
 public:
-    explicit ActShaveProfilingPass(VPUIP::MemKindCreateFunc memKindCb, Logger log): _memKindCb(std::move(memKindCb)) {
-        VPUX_THROW_UNLESS(_memKindCb != nullptr, "Missing memKindCb");
+    explicit ActShaveProfilingPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnModule() final;
-
-private:
-    VPUIP::MemKindCreateFunc _memKindCb;
 };
 
 void ActShaveProfilingPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
 
-    auto maybeMemKind = _memKindCb("");
-    if (!maybeMemKind.has_value()) {
-        _log.trace("Memory Space is not defined");
-        return;
-    }
-
-    vpux::IndexedSymbolAttr memKindAttr = nullptr;
-    {
-        const auto memKind = maybeMemKind.value();
-        if (memKind == VPU::MemoryKind::CMX_NN) {
-            memKindAttr = IndexedSymbolAttr::get(ctx, stringifyEnum(memKind), 0);
-        } else {
-            memKindAttr = IndexedSymbolAttr::get(ctx, stringifyEnum(memKind));
-        }
-    }
+    IndexedSymbolAttr memKindAttr = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
 
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp netFunc;
@@ -226,7 +208,11 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
     // Adding new output buffer
     const mlir::Location suffixLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, "profiling_result"));
     const auto profilingResultLoc = mlir::FusedLoc::get(ctx, {netFunc.getLoc(), suffixLoc});
-    netFunc.insertArgument(totalArgumentsCount, newOutputResult, nullptr, profilingResultLoc);
+    VPUX_THROW_WHEN(failed(netFunc.insertArgument(totalArgumentsCount, newOutputResult, nullptr, profilingResultLoc)),
+                    "insertArgument failed for function '{0}': could not insert argument #{1} "
+                    "of type '{2}' at location {3}",
+                    netFunc.getSymName(), totalArgumentsCount, newOutputResult, profilingResultLoc);
+
     auto newProfilngResult = netFunc.getArgument(totalArgumentsCount);
     SmallVector<unsigned> argsToErase;
     unsigned removedArgs = 0;
@@ -248,7 +234,11 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
                         VPURT::BufferSection::ProfilingOutput, 0, base);
                 use->set(declareOp.getBuffer());
             }
-            netFunc.eraseArgument(argNum);
+            if (failed(netFunc.eraseArgument(argNum))) {
+                VPUX_THROW("eraseArgument failed for function '{0}': could not erase argument #{1}",
+                           netFunc.getSymName(), argNum);
+            }
+
             removedArgs++;
             // Reach the last old profiling output, stop here as the next output is the new buffer
             if (removedArgs == outputBases.size()) {
@@ -314,8 +304,8 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
 // createActShaveProfilingPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPUIP::createActShaveProfilingPass(MemKindCreateFunc memKindCb, Logger log) {
-    return std::make_unique<ActShaveProfilingPass>(std::move(memKindCb), log);
+std::unique_ptr<mlir::Pass> vpux::VPUIP::createActShaveProfilingPass(Logger log) {
+    return std::make_unique<ActShaveProfilingPass>(log);
 }
 
 //

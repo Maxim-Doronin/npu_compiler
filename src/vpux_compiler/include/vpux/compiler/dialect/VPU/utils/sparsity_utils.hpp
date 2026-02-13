@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -54,10 +54,16 @@ enum SparsityRemovalFlag {
 
 SparsityRemovalFlag shouldRemoveOutputSparsity(mlir::Operation* op);
 
+// VPU5 adds a new feature to support SEP without sparsity bitmap
 bool isSEOnlyWithoutSMSupported(config::ArchKind arch);
 
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> getUpdatedSliceOffsetsAndShapesForSETable(
         int64_t seDepth, mlir::ArrayAttr seSizeAttr, ArrayRef<int64_t> sliceOffsets, ArrayRef<int64_t> sliceSizes);
+
+/*
+ * Check if any of the activation inputs or outputs is sparse tensor type
+ */
+bool isActSparseOp(mlir::Operation* op);
 
 }  // namespace VPU
 }  // namespace vpux

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -26,8 +26,6 @@ add_subdirectory(vpux/compiler/dialect/VPUMI37XX)
 add_subdirectory(vpux/compiler/dialect/VPUMI40XX)
 add_subdirectory(vpux/compiler/dialect/VPURegMapped)
 add_subdirectory(vpux/compiler/dialect/VPUASM)
-# TODO: E#184026 Move the remaining dependencies to the common directory
-add_subdirectory(vpux/compiler/NPU40XX/dialect/ELF)
 add_subdirectory(vpux/compiler/NPU37XX/dialect/NPUReg37XX)
 add_subdirectory(vpux/compiler/NPU40XX/dialect/NPUReg40XX)
 add_subdirectory(vpux/compiler/NPU50XX/dialect/NPUReg50XX)

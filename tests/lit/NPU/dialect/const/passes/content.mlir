@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,7 +11,7 @@ func.func @ParsePrintDenseConst() -> tensor<2xf16> {
 
     return %cst : tensor<2xf16>
 
-    // CHECK:       [[CST:%.*]] = const.Declare tensor<2xf16> = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf16>
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<2xf16> = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf16>
     // CHECK:       return [[CST]]
 }
 
@@ -22,7 +22,7 @@ func.func @ParsePrintDenseConstWithTransformation() -> tensor<1xf16> {
 
     return %cst : tensor<1xf16>
 
-    // CHECK:       [[CST:%.*]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf32>, [#const.CastElemType<f16>]
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf32>, [#const.CastElemType<f16>]
     // CHECK:       return [[CST]]
 }
 
@@ -33,7 +33,7 @@ func.func @ParsePrintDenseConstWithTransformations() -> tensor<3xf16> {
 
     return %cst : tensor<3xf16>
 
-    // CHECK:       [[CST:%.*]] = const.Declare tensor<3xf16> = dense<1.000000e+00> : tensor<1xf32>, [#const.CastElemType<f16>, #const.Broadcast<0 : i64, 3 : i64>]
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<3xf16> = dense<1.000000e+00> : tensor<1xf32>, [#const.CastElemType<f16>, #const.Broadcast<0 : i64, 3 : i64>]
     // CHECK:       return [[CST]]
 }
 
@@ -62,7 +62,7 @@ func.func @ParsePrintDenseResource() -> tensor<1x3x1x1xf32> {
 
     return %cst : tensor<1x3x1x1xf32>
 
-    // CHECK:       [[CST:%.*]] = const.Declare tensor<1x3x1x1xf32>
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<1x3x1x1xf32>
     // CHECK-SAME:       dense_resource<blob>
 
     // CHECK:       return [[CST]]
@@ -118,7 +118,7 @@ func.func @ParsePrintDenseResourceSplat() -> tensor<2x3x1x1xf32> {
 
     return %cst : tensor<2x3x1x1xf32>
 
-    // CHECK:       [[CST:%.*]] = const.Declare tensor<2x3x1x1xf32>
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<2x3x1x1xf32>
     // CHECK-SAME:       dense_resource<splat_blob>
 
     // CHECK:       return [[CST]]

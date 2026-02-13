@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,4 +40,104 @@ func.func @DeleteUnrolledType(%arg0: tensor<1x3x112x112xf16>) -> tensor<1x4x112x
     return %1 : tensor<1x4x112x112x!qElemType, {order = #NHWC}>
 
     //CHECK-NOT: VPU.UnrolledType
+}
+
+// -----
+
+#C = affine_map<(d0) -> (d0)>
+
+!Distributed = !VPU.DistributedTensor<100xf16, #C, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+// CHECK-LABEL: @UnrollEmptyOp
+func.func @UnrollEmptyOp() -> !Distributed {
+    %empty = VPU.Empty : tensor<100xf16>
+    %unroll = VPU.UnrolledType(%empty : tensor<100xf16>) -> !Distributed
+    return %unroll : !Distributed
+
+    // CHECK:     [[EMPTY:%.+]] = VPU.Empty : !VPU.DistributedTensor<100xf16, #C, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK-NOT: VPU.UnrolledType
+    // CHECK:     return [[EMPTY]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: func.func @SCF_Pad_Dim_Yield_Cast_With_NonIdentityCast
+// CHECK-SAME:  ([[IN:%.+]]: tensor<1x12x?x?xf16, {order = #NHWC}>) -> tensor<1x12x?x?xf16, {order = #NHWC}>
+func.func @SCF_Pad_Dim_Yield_Cast_With_NonIdentityCast(
+    %arg0: tensor<1x12x?x?xf16, {order = #NHWC}>
+) -> tensor<1x12x?x?xf16, {order = #NHWC}> {
+
+  // Non-identity cast: precise -> bounded/opaque
+  // CHECK: [[BOUNDED:%.+]] = builtin.unrealized_conversion_cast {{.+}} : tensor<1x12x?x?xf16, {order = #NHWC}> to tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+  %bounded = builtin.unrealized_conversion_cast %arg0
+      : tensor<1x12x?x?xf16, {order = #NHWC}>
+      to tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+  // CHECK: tensor.dim
+  %c2 = arith.constant 2 : index
+  %h_raw = tensor.dim %bounded, %c2 : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+  // CHECK: tensor.dim
+  %c3 = arith.constant 3 : index
+  %w_raw = tensor.dim %bounded, %c3 : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+  // Output buffer
+  %out = tensor.empty(%h_raw, %w_raw)
+      : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+  // Loop constants
+  %zero = arith.constant 0 : index
+  %hstep = arith.constant 30 : index
+  %wstep = arith.constant 192 : index
+  %padv = arith.constant 0.0 : f16
+
+  // Outer loop
+  // CHECK: scf.for
+  %hloop = scf.for %hi = %zero to %h_raw step %hstep iter_args(%hout = %out)
+      -> (tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>) {
+
+    // Inner loop
+    // CHECK: scf.for
+    %wloop = scf.for %wi = %zero to %w_raw step %wstep iter_args(%wout = %hout)
+        -> (tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>) {
+
+      %h_rem = arith.subi %h_raw, %hi : index
+      %w_rem = arith.subi %w_raw, %wi : index
+      %h_sz = arith.minui %h_rem, %hstep : index
+      %w_sz = arith.minui %w_rem, %wstep : index
+
+      // CHECK: tensor.extract_slice
+      %sl = tensor.extract_slice %bounded[0, 0, %hi, %wi] [1, 12, %h_sz, %w_sz] [1, 1, 1, 1]
+          : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+            to tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 30, 192]> : tensor<4xsi64>, order = #NHWC}>
+
+      // CHECK: tensor.pad
+      // CHECK: ^bb0
+      // CHECK: tensor.yield
+      %pd = tensor.pad %sl low[0, 0, 0, 0] high[0, 0, 1, 1] {
+      ^bb0(%arg4: index, %arg5: index, %arg6: index, %arg7: index):
+        tensor.yield %padv : f16
+      } : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 30, 192]> : tensor<4xsi64>, order = #NHWC}>
+          to tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 31, 193]> : tensor<4xsi64>, order = #NHWC}>
+
+      // CHECK: tensor.insert_slice
+      %ins = tensor.insert_slice %pd into %wout[0, 0, %hi, %wi] [1, 12, %h_sz, %w_sz] [1, 1, 1, 1]
+          : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 31, 193]> : tensor<4xsi64>, order = #NHWC}>
+            into tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+      scf.yield %ins : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+    }
+    scf.yield %wloop : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+  }
+
+  // Cast back to precise tensor for return
+  // CHECK: [[BACK:%.+]] = builtin.unrealized_conversion_cast {{.+}} : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}> to tensor<1x12x?x?xf16, {order = #NHWC}>
+  %back = builtin.unrealized_conversion_cast %hloop
+      : tensor<1x12x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+      to tensor<1x12x?x?xf16, {order = #NHWC}>
+
+  // CHECK: return [[BACK]] : tensor<1x12x?x?xf16, {order = #NHWC}>
+  return %back : tensor<1x12x?x?xf16, {order = #NHWC}>
 }

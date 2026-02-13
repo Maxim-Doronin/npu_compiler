@@ -46,7 +46,7 @@ void vpux::VPU::SDPAOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationSt
                               ::mlir::Value inputK, ::mlir::Value inputV, ::mlir::Value inputMask,
                               ::mlir::Value inputScale, ::mlir::Value inputBias) {
     const auto auxBuffType = getAuxiliaryBufferType(inputQ, inputK, inputV);
-    auto auxBuffer = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
+    auto auxBuffer = VPU::createEmptyAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
     build(odsBuilder, odsState, inputQ, inputK, inputV, inputMask, inputScale, inputBias, auxBuffer,
           /*multiClusterStrategy=*/nullptr);
 }
@@ -88,7 +88,8 @@ bool vpux::VPU::SDPAOp::checkStrategyCompatibility(VPU::MultiClusterStrategy str
 vpux::VPU::DistributionInfo vpux::VPU::SDPAOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -187,6 +188,6 @@ mlir::FailureOr<OutputTiling> vpux::VPU::SDPAOp::getTilingStrategy(TilingMode ti
     return vpux::getSWLayerTilingStrategy(op, tilingMode, log, maxNumTiles);
 }
 
-SmallVector<mlir::Value> VPU::SDPAOp::getAuxiliaryBuffers() {
-    return {getDataStorage()};
+SmallVector<mlir::OpOperand*> VPU::SDPAOp::getAuxiliaryBuffers() {
+    return {&getDataStorageMutable()};
 }

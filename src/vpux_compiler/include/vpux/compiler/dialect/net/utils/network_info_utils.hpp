@@ -35,4 +35,6 @@ void eraseSectionEntries(mlir::Region& section, size_t begin = 0);
  */
 mlir::func::FuncOp findEntryPointFunc(mlir::Operation* op, Logger& log);
 
+bool isArgStrided(mlir::ModuleOp moduleOp, size_t argIndex);
+
 }  // namespace vpux::net

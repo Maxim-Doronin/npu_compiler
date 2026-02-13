@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,7 +18,7 @@ module {
 // CHECK:     DataInfo "Copy_result" : tensor<1x18x3x3xf32>
 // CHECK:     DataInfo "vpux_ie_shape_Copy_result" : tensor<4xsi32>
   }
-// CHECK:       @TensorsWithBounds([[ARG0:%.*]]: memref<1x18x3x3xf32, #NHWC>, [[ARG1:%.*]]: memref<4xsi32>) -> (memref<1x18x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>)
+// CHECK:       @TensorsWithBounds([[ARG0:%.+]]: memref<1x18x3x3xf32, #NHWC>, [[ARG1:%.+]]: memref<4xsi32>) -> (memref<1x18x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>)
   func.func @TensorsWithBounds(%arg0: !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>) -> !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>> {
     %alloc = memref.alloc() : memref<1x18x3x3xf32, #NHWC, @CMX_NN>
     %alloc_0 = memref.alloc() : memref<4xsi32, @CMX_NN>
@@ -28,16 +28,16 @@ module {
   }
 }
 
-// CHECK:       [[INPUT_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[ARG0]], [[ARG1]]) : memref<1x18x3x3xf32, #NHWC>, memref<4xsi32>
-// CHECK:       [[OUTPUT_DATA:%.*]] = memref.alloc() : memref<1x18x3x3xf32, #NHWC, @CMX_NN>
-// CHECK:       [[OUTPUT_SHAPE:%.*]] = memref.alloc() : memref<4xsi32, @CMX_NN>
-// CHECK:       [[OUTPUT_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[OUTPUT_DATA]], [[OUTPUT_SHAPE]]) : memref<1x18x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
-// CHECK:       [[COPY_OP:%.*]] = VPUIP.Copy inputs([[INPUT_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>)
-// CHECK-SAME:                               outputs([[OUTPUT_BOUNDED_BUFFER:%.*]] : !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>)
+// CHECK:       [[INPUT_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[ARG0]], [[ARG1]]) : memref<1x18x3x3xf32, #NHWC>, memref<4xsi32>
+// CHECK:       [[OUTPUT_DATA:%.+]] = memref.alloc() : memref<1x18x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[OUTPUT_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, @CMX_NN>
+// CHECK:       [[OUTPUT_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[OUTPUT_DATA]], [[OUTPUT_SHAPE]]) : memref<1x18x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
+// CHECK:       [[COPY_OP:%.+]] = VPUIP.Copy inputs([[INPUT_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>)
+// CHECK-SAME:                               outputs([[OUTPUT_BOUNDED_BUFFER:%.+]] : !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>)
 
-// CHECK:       [[OUTPUT_DATA:%.*]], [[OUTPUT_SHAPE:%.*]] = VPUIP.UngroupBoundedBuffer([[COPY_OP]])
+// CHECK:       [[OUTPUT_DATA:%.+]], [[OUTPUT_SHAPE:%.+]] = VPUIP.UngroupBoundedBuffer([[COPY_OP]])
 // CHECK-SAME:      : !VPUIP.BoundedBuffer<data=memref<1x18x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>
-// CHECK:       return [[OUTPUT_DATA:%.*]], [[OUTPUT_SHAPE:%.*]] : memref<1x18x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
+// CHECK:       return [[OUTPUT_DATA:%.+]], [[OUTPUT_SHAPE:%.+]] : memref<1x18x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
 
 // -----
 
@@ -80,9 +80,9 @@ module {
                               memref<1x20x3x3xf32, #NHWC, @CMX_NN>,
                               !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>,
                               memref<1x40x3x3xf32, #NHWC, @CMX_NN>) {
-// CHECK:       @TensorsWithBoundsMultiple([[ARG0_0:%.*]]: memref<1x10x3x3xf32, #NHWC>, [[ARG1:%.*]]: memref<1x20x3x3xf32, #NHWC>,
-// CHECK-SAME:                     [[ARG2_0:%.*]]: memref<1x30x3x3xf32, #NHWC>, [[ARG3:%.*]]: memref<1x40x3x3xf32, #NHWC>,
-// CHECK-SAME:                     [[ARG0_1:%.*]]: memref<4xsi32>, [[ARG2_1:%.*]]: memref<4xsi32>) ->
+// CHECK:       @TensorsWithBoundsMultiple([[ARG0_0:%.+]]: memref<1x10x3x3xf32, #NHWC>, [[ARG1:%.+]]: memref<1x20x3x3xf32, #NHWC>,
+// CHECK-SAME:                     [[ARG2_0:%.+]]: memref<1x30x3x3xf32, #NHWC>, [[ARG3:%.+]]: memref<1x40x3x3xf32, #NHWC>,
+// CHECK-SAME:                     [[ARG0_1:%.+]]: memref<4xsi32>, [[ARG2_1:%.+]]: memref<4xsi32>) ->
 // CHECK-SAME:                     (memref<1x10x3x3xf32, #NHWC, @CMX_NN>,
 // CHECK-SAME:                      memref<1x20x3x3xf32, #NHWC, @CMX_NN>,
 // CHECK-SAME:                      memref<1x30x3x3xf32, #NHWC, @CMX_NN>,
@@ -116,40 +116,40 @@ module {
   }
 }
 
-// CHECK:       [[INPUT_2_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[ARG2_0]], [[ARG2_1]]) : memref<1x30x3x3xf32, #NHWC>, memref<4xsi32>
+// CHECK:       [[INPUT_2_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[ARG2_0]], [[ARG2_1]]) : memref<1x30x3x3xf32, #NHWC>, memref<4xsi32>
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>
 
-// CHECK:       [[INPUT_0_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[ARG0_0]], [[ARG0_1]]) : memref<1x10x3x3xf32, #NHWC>, memref<4xsi32>
+// CHECK:       [[INPUT_0_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[ARG0_0]], [[ARG0_1]]) : memref<1x10x3x3xf32, #NHWC>, memref<4xsi32>
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x10x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>
 
-// CHECK:       [[OUTPUT_0_DATA:%.*]] = memref.alloc() : memref<1x10x3x3xf32, #NHWC, @CMX_NN>
-// CHECK:       [[OUTPUT_0_SHAPE:%.*]] = memref.alloc() : memref<4xsi32, @CMX_NN>
-// CHECK:       [[OUTPUT_0_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[OUTPUT_0_DATA]], [[OUTPUT_0_SHAPE]]) : memref<1x10x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
+// CHECK:       [[OUTPUT_0_DATA:%.+]] = memref.alloc() : memref<1x10x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[OUTPUT_0_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, @CMX_NN>
+// CHECK:       [[OUTPUT_0_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[OUTPUT_0_DATA]], [[OUTPUT_0_SHAPE]]) : memref<1x10x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x10x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>
-// CHECK:       [[OUTPUT_0_BOUNDED_BUFFER_COPY:%.*]] = VPUIP.Copy
+// CHECK:       [[OUTPUT_0_BOUNDED_BUFFER_COPY:%.+]] = VPUIP.Copy
 // CHECK-SAME:    inputs([[INPUT_0_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x10x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>)
 // CHECK-SAME:    outputs([[OUTPUT_0_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x10x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>)
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x10x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>
 
-// CHECK:       [[INPUT_1_STATIC:%.*]] = memref.alloc() : memref<1x20x3x3xf32, #NHWC, @CMX_NN>
-// CHECK:       [[OUTPUT_1_STATIC:%.*]] = VPUIP.Copy inputs([[ARG1]] : memref<1x20x3x3xf32, #NHWC>) outputs([[INPUT_1_STATIC]] : memref<1x20x3x3xf32, #NHWC, @CMX_NN>) -> memref<1x20x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[INPUT_1_STATIC:%.+]] = memref.alloc() : memref<1x20x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[OUTPUT_1_STATIC:%.+]] = VPUIP.Copy inputs([[ARG1]] : memref<1x20x3x3xf32, #NHWC>) outputs([[INPUT_1_STATIC]] : memref<1x20x3x3xf32, #NHWC, @CMX_NN>) -> memref<1x20x3x3xf32, #NHWC, @CMX_NN>
 
-// CHECK:       [[OUTPUT_2_DATA:%.*]] = memref.alloc() : memref<1x30x3x3xf32, #NHWC, @CMX_NN>
-// CHECK:       [[OUTPUT_2_SHAPE:%.*]] = memref.alloc() : memref<4xsi32, @CMX_NN>
-// CHECK:       [[OUTPUT_2_BOUNDED_BUFFER:%.*]] = VPUIP.GroupBoundedBuffer([[OUTPUT_2_DATA]], [[OUTPUT_2_SHAPE]]) : memref<1x30x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
+// CHECK:       [[OUTPUT_2_DATA:%.+]] = memref.alloc() : memref<1x30x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[OUTPUT_2_SHAPE:%.+]] = memref.alloc() : memref<4xsi32, @CMX_NN>
+// CHECK:       [[OUTPUT_2_BOUNDED_BUFFER:%.+]] = VPUIP.GroupBoundedBuffer([[OUTPUT_2_DATA]], [[OUTPUT_2_SHAPE]]) : memref<1x30x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>
-// CHECK:       [[OUTPUT_2_BOUNDED_BUFFER_COPY:%.*]] = VPUIP.Copy
+// CHECK:       [[OUTPUT_2_BOUNDED_BUFFER_COPY:%.+]] = VPUIP.Copy
 // CHECK-SAME:    inputs([[INPUT_2_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC>, dynamic_shape=memref<4xsi32>>)
 // CHECK-SAME:    outputs([[OUTPUT_2_BOUNDED_BUFFER]] : !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>)
 // CHECK-SAME:    -> !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>>
 
-// CHECK:       [[INPUT_3_STATIC:%.*]] = memref.alloc() : memref<1x40x3x3xf32, #NHWC, @CMX_NN>
-// CHECK:       [[OUTPUT_3_STATIC:%.*]] = VPUIP.Copy inputs([[ARG3]] : memref<1x40x3x3xf32, #NHWC>) outputs([[INPUT_3_STATIC]] : memref<1x40x3x3xf32, #NHWC, @CMX_NN>) -> memref<1x40x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[INPUT_3_STATIC:%.+]] = memref.alloc() : memref<1x40x3x3xf32, #NHWC, @CMX_NN>
+// CHECK:       [[OUTPUT_3_STATIC:%.+]] = VPUIP.Copy inputs([[ARG3]] : memref<1x40x3x3xf32, #NHWC>) outputs([[INPUT_3_STATIC]] : memref<1x40x3x3xf32, #NHWC, @CMX_NN>) -> memref<1x40x3x3xf32, #NHWC, @CMX_NN>
 
-// CHECK:       [[OUTPUT_0_DATA_RESULT:%.*]], [[OUTPUT_0_SHAPE_RESULT:%.*]] = VPUIP.UngroupBoundedBuffer([[OUTPUT_0_BOUNDED_BUFFER_COPY]]) :
+// CHECK:       [[OUTPUT_0_DATA_RESULT:%.+]], [[OUTPUT_0_SHAPE_RESULT:%.+]] = VPUIP.UngroupBoundedBuffer([[OUTPUT_0_BOUNDED_BUFFER_COPY]]) :
 // CHECK-SAME:    !VPUIP.BoundedBuffer<data=memref<1x10x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>> -> memref<1x10x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
 
-// CHECK:       [[OUTPUT_2_DATA_RESULT:%.*]], [[OUTPUT_2_SHAPE_RESULT:%.*]] = VPUIP.UngroupBoundedBuffer([[OUTPUT_2_BOUNDED_BUFFER_COPY]]) :
+// CHECK:       [[OUTPUT_2_DATA_RESULT:%.+]], [[OUTPUT_2_SHAPE_RESULT:%.+]] = VPUIP.UngroupBoundedBuffer([[OUTPUT_2_BOUNDED_BUFFER_COPY]]) :
 // CHECK-SAME:    !VPUIP.BoundedBuffer<data=memref<1x30x3x3xf32, #NHWC, @CMX_NN>, dynamic_shape=memref<4xsi32, @CMX_NN>> -> memref<1x30x3x3xf32, #NHWC, @CMX_NN>, memref<4xsi32, @CMX_NN>
 
 // CHECK:       return [[OUTPUT_0_DATA_RESULT]], [[OUTPUT_1_STATIC]], [[OUTPUT_2_DATA_RESULT]], [[OUTPUT_3_STATIC]], [[OUTPUT_0_SHAPE_RESULT]], [[OUTPUT_2_SHAPE_RESULT]]

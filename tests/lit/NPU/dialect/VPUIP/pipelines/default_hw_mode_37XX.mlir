@@ -60,7 +60,7 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.com
         // CHECK-DAG:   [[BUFF4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x1000xf16, [@CMX_NN, 0]>
 
         // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x1x1x1000xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x1x1x1000xf16, @DDR>)
         // CHECK-SAME:              outputs([[DISTR_BUFF]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
 
         // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
@@ -74,7 +74,7 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.com
         // CHECK-SAME:              outputs([[BUFF3]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 1]>) on tile 1
 
         // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[BUFF4]] : memref<1x1000xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF4]] : memref<1x1000xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
 
         // CHECK: return [[ARG1]] : memref<1x1000xf16, @DDR>
     }
@@ -305,10 +305,10 @@ module @TestCopy attributes {config.arch = #config.arch_kind<NPU37XX>, config.co
     %RESULT_SHAPE = VPUIP.Copy inputs(%OUT_SHAPE: memref<4xsi32>) outputs(%arg3 : memref<4xsi32>) -> memref<4xsi32>
 
     // CHECK: VPURT.Task updates({{[^:]+}} : !VPURT.Barrier) {
-    // CHECK: VPUIP.NNDMA {port = 0 : i64} inputs({{[^:]+}}: memref<4xsi32, @DDR>) outputs({{[^:]+}}: memref<4xsi32, @DDR>)
+    // CHECK: VPUIP.NNDMA <{port = 0 : i64}> inputs({{[^:]+}}: memref<4xsi32, @DDR>) outputs({{[^:]+}}: memref<4xsi32, @DDR>)
 
     // CHECK: VPURT.Task updates({{[^:]+}} : !VPURT.Barrier) {
-    // CHECK: VPUIP.NNDMA {port = 1 : i64} inputs({{[^:]+}}: memref<2x4x20x20xf16, @DDR>) outputs({{[^:]+}}: memref<2x4x20x20xf16, @DDR>)
+    // CHECK: VPUIP.NNDMA <{port = 1 : i64}> inputs({{[^:]+}}: memref<2x4x20x20xf16, @DDR>) outputs({{[^:]+}}: memref<2x4x20x20xf16, @DDR>)
 
     return %RESULT_DATA, %RESULT_SHAPE: memref<2x4x20x20xf16>, memref<4xsi32>
     // CHECK: return {{[^:]+}}, {{[^:]+}} : memref<2x4x20x20xf16, @DDR>, memref<4xsi32, @DDR>

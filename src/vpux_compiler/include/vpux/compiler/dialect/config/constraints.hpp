@@ -1,16 +1,17 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <mlir/IR/DialectInterface.h>
+#include "vpux/compiler/dialect/config/version.hpp"
 
 #include <cstdint>
+#include <optional>
 
-namespace vpux {
-namespace config {
+namespace vpux::config {
 
 /**
  * @brief Structure for aggregating configuration constants.
@@ -25,8 +26,20 @@ struct NPUConstraints {
     // perf_clk value after dividing by the default frequency divider.
     struct {
         double defaultFreq = 0;
-        double highFreq = 0;
     } perfClock;
+
+    enum class MappedInferenceFormat {
+        MappedInference,
+        ManagedMappedInference
+    } mappedInferenceFormat = MappedInferenceFormat::ManagedMappedInference;
+
+    // Base ELF ABI version for given target, this may be overridden to a higher
+    // version during compilation if a specific feature requires newer ABI
+    // support
+    std::optional<Version> baseElfAbiVersion;
+
+    // Minimum ELF ABI version required to support dynamic strides if applicable
+    std::optional<Version> dynamicStridesMinElfAbiVersion;
 };
 
 // ConfigCache inside of the MLIRContext to be able to access NPUConstraints from other modules.
@@ -59,5 +72,4 @@ void setNPUConstraints(mlir::MLIRContext* context, const NPUConstraints& constra
  */
 const NPUConstraints& getNPUConstraints(mlir::MLIRContext* context);
 
-}  // namespace config
-}  // namespace vpux
+}  // namespace vpux::config

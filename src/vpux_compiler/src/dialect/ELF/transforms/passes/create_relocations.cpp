@@ -3,11 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/ELF/transforms/passes.hpp"
 #include "vpux/compiler/dialect/ELF/utils/reloc_manager.hpp"
-#include "vpux/compiler/utils/options.hpp"
 
 namespace vpux::ELF {
 #define GEN_PASS_DECL_ADDELFRELOCATIONS
@@ -41,7 +40,7 @@ void AddELFRelocationsPass::safeRunOnFunc() {
     for (auto sectionInterface : elfMain.getOps<ELF::ElfSectionInterface>()) {
         auto targetSection = sectionInterface.getOperation();
 
-        // TODO:  E#59169 consider to add interface dedicated for sections that are intended to hold program data, aka
+        // TODO:  E#195185 consider to add interface dedicated for sections that are intended to hold program data, aka
         // should be relocateable?
         if (!mlir::isa<ELF::DataSectionOp, ELF::LogicalSectionOp>(targetSection)) {
             continue;

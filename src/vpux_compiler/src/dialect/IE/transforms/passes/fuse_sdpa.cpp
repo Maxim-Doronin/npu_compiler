@@ -160,12 +160,12 @@ void createSDPA(mlir::Operation* op, mlir::Value inputQ, mlir::Value inputK, mli
     auto builder = mlir::OpBuilder(op);
     mlir::Value sdpaKInput = inputK;
     if (transposeK) {
-        auto transposedKOp = builder.create<IE::TransposeOp>(appendLoc(op->getLoc(), "_transposed_k"), inputK, nullptr,
+        auto transposedKOp = builder.create<IE::TransposeOp>(appendLoc(op->getLoc(), "transposed_k"), inputK, nullptr,
                                                              transposeK.getOrderValueAttr());
         sdpaKInput = transposedKOp.getOutput();
     }
     auto causal = nullptr;  // information about the causality of the original SDPAOp is lost
-    auto sdpaOp = builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "_sdpa"), inputQ, sdpaKInput, inputV, mask, scale,
+    auto sdpaOp = builder.create<IE::SDPAOp>(appendLoc(op->getLoc(), "sdpa"), inputQ, sdpaKInput, inputV, mask, scale,
                                              causal);
     op->replaceAllUsesWith(sdpaOp);
 }
@@ -226,10 +226,10 @@ void FuseSDPAPass::safeRunOnFunc() {
         permuteNdOrder.push_back(rank - 2);
         const auto orderAttr =
                 mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permuteNdOrder, builder.getContext()));
-        auto transposedVOp = builder.create<IE::TransposeOp>(appendLoc(sdpaOp->getLoc(), "_transpose_v"), inputV,
-                                                             nullptr, orderAttr);
+        auto transposedVOp =
+                builder.create<IE::TransposeOp>(appendLoc(sdpaOp->getLoc(), "transpose_v"), inputV, nullptr, orderAttr);
         auto newSdpaOp = builder.create<IE::SDPAOp>(
-                appendLoc(sdpaOp->getLoc(), "_sdpa"), sdpaOp.getInputQ(), sdpaOp.getInputK(), transposedVOp.getOutput(),
+                appendLoc(sdpaOp->getLoc(), "sdpa"), sdpaOp.getInputQ(), sdpaOp.getInputK(), transposedVOp.getOutput(),
                 sdpaOp.getInputMask(), sdpaOp.getInputScale(), sdpaOp.getCausalAttr());
         newSdpaOp->setAttrs(sdpaOp->getAttrs());
         sdpaOp->replaceAllUsesWith(newSdpaOp);

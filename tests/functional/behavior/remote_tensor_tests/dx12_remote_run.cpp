@@ -28,7 +28,7 @@ std::shared_ptr<ov::Model> getFunction() {
 }  // namespace
 
 auto dynamicRemoteConfigs = []() {
-    return std::vector<ov::AnyMap>{{{"NPU_COMPILER_TYPE", "MLIR"}, {"NPU_COMPILATION_MODE", "ReferenceSW"}}};
+    return std::vector<ov::AnyMap>{{{"NPU_COMPILER_TYPE", "PLUGIN"}, {"NPU_COMPILATION_MODE", "ReferenceSW"}}};
 };
 
 INSTANTIATE_TEST_SUITE_P(

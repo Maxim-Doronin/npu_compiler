@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -89,10 +89,10 @@ func.func @UnrollSWKernelWithDynamicShapes() -> !DistributedShape {
 
     %inputShape = VPURT.DeclareBuffer <CMX_NN> [0, 1] <334856> -> !DistributedShape
     %outputShape = VPURT.DeclareBuffer <CMX_NN> [0, 1] <334864> -> !DistributedShape
-    // CHECK: [[INPUT_SHAPE_CMX_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <334856> -> memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: [[INPUT_SHAPE_CMX_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <334856> -> memref<4xsi32, [@CMX_NN, 1]>
-    // CHECK: [[OUTPUT_SHAPE_CMX_0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <334864> -> memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: [[OUTPUT_SHAPE_CMX_1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <334864> -> memref<4xsi32, [@CMX_NN, 1]>
+    // CHECK: [[INPUT_SHAPE_CMX_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <334856> -> memref<4xsi32, [@CMX_NN, 0]>
+    // CHECK: [[INPUT_SHAPE_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <334856> -> memref<4xsi32, [@CMX_NN, 1]>
+    // CHECK: [[OUTPUT_SHAPE_CMX_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <334864> -> memref<4xsi32, [@CMX_NN, 0]>
+    // CHECK: [[OUTPUT_SHAPE_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <334864> -> memref<4xsi32, [@CMX_NN, 1]>
 
     %output1 = VPURT.DeclareBuffer <CMX_NN> <334872> -> !OutputDistributed1
     %output2 = VPURT.DeclareBuffer <CMX_NN> <337000> -> !OutputDistributed2

@@ -47,8 +47,10 @@ VFScenario FullPrefetchingVFScheduling::getType() const {
 
 void FullPrefetchingVFScheduling::correctOutputSpillCost(
         StrategyCost& spillCost, VFConfig& config, const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost,
-        const int64_t index, const int64_t tilesNumber) const {
-    _prefetchedCost[index + 1] = spillCost;
+        SmallVector<StrategyCost>& prefetchCostList, const int64_t index, const int64_t tilesNumber) const {
+    VPUX_THROW_WHEN(static_cast<size_t>(index + 1) >= prefetchCostList.size(),
+                    "Index {0} out of range for prefetchCostList of size {1}", index + 1, prefetchCostList.size());
+    prefetchCostList[index + 1] = spillCost;
     const auto& inputs = config.getInputs();
     StrategyCost nextTileOpCost = 0;
     if (index != tilesNumber - 1) {
@@ -64,7 +66,8 @@ void FullPrefetchingVFScheduling::correctOutputSpillCost(
 
 void FullPrefetchingVFScheduling::correctInputPrefetchingCost(
         StrategyCost& prefetchCost, mlir::Operation* operation, VFConfig& config,
-        const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, const size_t index) const {
+        const DenseMap<mlir::Operation*, StrategyCost>& isolatedOperCost, SmallVector<StrategyCost>& prefetchCostList,
+        const size_t index) const {
     const auto isInput = llvm::find(config.getInputs(), operation) != config.getInputs().end();
 
     StrategyCost parentCost = 0;
@@ -76,7 +79,10 @@ void FullPrefetchingVFScheduling::correctInputPrefetchingCost(
                                      [](const StrategyCost previous, const auto& item) {
                                          return previous + item.second;
                                      });
-        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, index - 1);
+        VPUX_THROW_WHEN(index - 1 >= prefetchCostList.size(), "Index {0} out of range for prefetchCostList of size {1}",
+                        index - 1, prefetchCostList.size());
+
+        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, prefetchCostList[index - 1]);
 
     } else {
         auto getPrevOp = [&](mlir::Operation* curOp) -> mlir::Operation* {
@@ -95,7 +101,10 @@ void FullPrefetchingVFScheduling::correctInputPrefetchingCost(
             parentCost += getParentCost(curOp, isolatedOperCost);
             curOp = getPrevOp(curOp);
         }
-        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, index);
+
+        VPUX_THROW_WHEN(index >= prefetchCostList.size(), "Index {0} out of range for prefetchCostList of size {1}",
+                        index, prefetchCostList.size());
+        reduceCostWithPrefetchedDMA(parentCost, prefetchCost, prefetchCostList[index]);
     }
 
     prefetchCost = parentCost <= prefetchCost ? prefetchCost - parentCost : 0;

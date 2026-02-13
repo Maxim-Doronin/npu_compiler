@@ -61,8 +61,8 @@ std::pair<BarrierInfoMaps, SmallVector<size_t>> graphSimple() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType2{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType2{config::ExecutorKind::DMA_NN, 1};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType1] = {0, 2, 4, 5, 6};
     barrierMapsConfig.taskQueueTypeMap[dmaType2] = {1, 3};
@@ -171,8 +171,8 @@ std::pair<BarrierInfoMaps, SmallVector<size_t>> graphWithTasksWithoutWaitBar() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType2{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType2{config::ExecutorKind::DMA_NN, 1};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType1] = {0, 2, 4, 5, 6};
     barrierMapsConfig.taskQueueTypeMap[dmaType2] = {1, 3};
@@ -266,9 +266,9 @@ std::pair<BarrierInfoMaps, SmallVector<size_t>> graphDelayEnqueueBasedOnPrevious
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
-    const VPURT::TaskQueueType shvType{VPU::ExecutorKind::SHAVE_NN, 0};
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType shvType{config::ExecutorKind::SHAVE_NN, 0};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 1};
     barrierMapsConfig.taskQueueTypeMap[dpuType] = {5, 6};
@@ -360,8 +360,8 @@ std::pair<BarrierInfoMaps, SmallVector<size_t>> graphDelayEnqueueBasedOnDmaFifoS
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dmaType0{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 1};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType1] = {4, 5, 7};
     barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 1, 2, 3, 6};
@@ -469,9 +469,9 @@ std::pair<BarrierInfoMaps, SmallVector<size_t>> graphDelayEnqueueBasedOnDmaFifoS
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dmaType0{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 1, 9, 10};
     barrierMapsConfig.taskQueueTypeMap[dmaType1] = {2, 3, 4, 6, 8};
@@ -575,8 +575,8 @@ std::pair<BarrierInfoMaps, SmallVector<size_t>> graphOptimizeEnqueueWithPrevious
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType0{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dmaType0{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 1};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType1] = {4, 6};
     barrierMapsConfig.taskQueueTypeMap[dmaType0] = {0, 1, 2, 3, 5};
@@ -689,9 +689,9 @@ std::tuple<BarrierInfoMaps, SmallVector<size_t>, SmallVector<size_t>> graphDelay
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
-    const VPURT::TaskQueueType shvType{VPU::ExecutorKind::SHAVE_NN, 1};  // SHV tile 0 list 1
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType shvType{config::ExecutorKind::SHAVE_NN, 1};  // SHV tile 0 list 1
 
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 1, 4, 6};
     barrierMapsConfig.taskQueueTypeMap[dpuType] = {2, 5};

@@ -1,15 +1,15 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/barrier_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPURT/utils/wlm_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/options.hpp"
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
 
 namespace vpux::VPURT {
 #define GEN_PASS_DECL_INSERTBARRIERTOMARKTHEENDOFDESCRIPTORGROUP
@@ -18,6 +18,7 @@ namespace vpux::VPURT {
 }  // namespace vpux::VPURT
 
 using namespace vpux;
+
 /*
 
 This pass ensures existence of barriers required for managing tasks descriptors for either WLM or non-WLM cases.
@@ -81,7 +82,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::legalizeScheduleForNonWlm(m
     // the following tasks. Without such a barrier, in the case of long task lists, the runtime would not be able to
     // free space and load new descriptors which would lead to a hang at inference.
     auto& barrierInfo = getAnalysis<BarrierInfo>();
-    vpux::legalizeScheduleForNonWlm(netFunc, barrierInfo, _log);
+    VPURT::legalizeScheduleForNonWlm(netFunc, barrierInfo, _log);
     barrierInfo.clearAttributes();
 }
 
@@ -101,7 +102,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::legalizeScheduleForNonWlm(m
 VPURT::TaskOp getAdjacentTaskWithBarriers(BarrierInfo& barrierInfo, size_t currentTaskIdx, size_t queueId) {
     auto isNonDMAOnSpecificTile = [&](mlir::Operation* op) -> bool {
         auto taskOp = mlir::dyn_cast<VPURT::TaskOp>(op);
-        if (taskOp != nullptr && taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
+        if (taskOp != nullptr && taskOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
             size_t taskQueueId = VPURT::getTaskQueueType(taskOp, false).id;
             if (taskQueueId == queueId) {
                 return true;
@@ -161,13 +162,13 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertUpdateBarriersForLast
         BarrierInfo& barrierInfo, const size_t& groupIdx, const BlockRange& blockRange, size_t queueId) {
     auto nextExecutionGroup = executionGroupList[groupIdx + 1];
     VPUX_THROW_WHEN(nextExecutionGroup.empty(), "nextExecutionGroup is empty");
-    auto newBarrierOp = createNewBarrier(builder, barrierInfo, nullptr, nullptr, nullptr);
+    auto newBarrierOp = VPURT::createNewBarrier(builder, barrierInfo, nullptr, nullptr, nullptr);
 
     size_t producerTaskIdx = executionGroup[executionGroup.size() - 1];
     size_t consumerTaskIdx = nextExecutionGroup[nextExecutionGroup.size() - 1];
 
     // If we cannot insert dependency between task of consecutive groups use the next available task with barriers
-    if (!inSameTaskBlock(producerTaskIdx, consumerTaskIdx, blockRange)) {
+    if (!VPURT::inSameTaskBlock(producerTaskIdx, consumerTaskIdx, blockRange)) {
         auto nextTaskWithUpdateBarriers = getAdjacentTaskWithBarriers(barrierInfo, producerTaskIdx, queueId);
         consumerTaskIdx = barrierInfo.getIndex(nextTaskWithUpdateBarriers);
     }
@@ -180,7 +181,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarrierDependency(
         mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap, BarrierInfo& barrierInfo,
         const BlockRange& blockRange, size_t& numOfBarriersInserted) {
     for (auto& [queueType, executionGroup] : executionGroupListMap) {
-        if (queueType.type != VPU::ExecutorKind::SHAVE_ACT && queueType.type != VPU::ExecutorKind::DPU) {
+        if (queueType.type != config::ExecutorKind::SHAVE_ACT && queueType.type != config::ExecutorKind::DPU) {
             continue;
         }
         insertBarriersForQueue(builder, executionGroupListMap, barrierInfo, blockRange, numOfBarriersInserted,
@@ -197,7 +198,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersForQueue(
         auto executionGroup = executionGroupListForTile[groupIdx];
 
         // Last Execution group can have last task without update barriers
-        auto lastTaskHasUpdateBarriers = lastTaskInGroupHasMandatoryUpdateBarrier(executionGroup, barrierInfo);
+        auto lastTaskHasUpdateBarriers = VPURT::lastTaskInGroupHasMandatoryUpdateBarrier(executionGroup, barrierInfo);
         if (!lastTaskHasUpdateBarriers && groupIdx != executionGroupListForTile.size() - 1) {
             ++numOfBarriersInserted;
             insertUpdateBarriersForLastTask(builder, executionGroupListForTile, executionGroup, barrierInfo, groupIdx,
@@ -230,6 +231,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 
     if (!isWlmEnabled) {
         legalizeScheduleForNonWlm(netFunc);
+        VPURT::postProcessBarrierOps(netFunc);
         return;
     }
 
@@ -251,10 +253,13 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
     auto numVirtualBarriers = static_cast<size_t>(std::distance(barriersOps.begin(), barriersOps.end()));
     if (_workloadManagementBarrierCountThreshold.has_value() &&
         numVirtualBarriers > _workloadManagementBarrierCountThreshold.value()) {
-        _log.info("Skip WLM schedule legalization due to high number of barriers: {0}, threshold: {1}",
+        _log.info("Skip WLM schedule legalization due to high number of barriers: {0}, threshold: {1}. WLM will be "
+                  "disabled.",
                   numVirtualBarriers, _workloadManagementBarrierCountThreshold.value());
         config::setWorkloadManagementStatus(module, WorkloadManagementStatus::FAILED);
-        legalizeScheduleForNonWlm(netFunc);
+        // Need to signal pass failure here in order to reconfigure pipeline options with WLM disabled, so as to not
+        // execute WLM passes that are under condition of WLM enabled
+        signalPassFailure();
         return;
     }
 
@@ -296,9 +301,9 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 
     execGroupAnalysis = ExecutionGroupAnalysis(netFunc);
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
-    VPUX_THROW_UNLESS(
-            verifyBarriersForTaskDescriptorFetch(barrierInfo, netFunc, /* wlmFlag */ true, _workloadManagementMode),
-            "Encountered execution group without required barrier for task descriptor fetch.");
+    VPUX_THROW_UNLESS(VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, netFunc, /* wlmFlag */ true,
+                                                                  _workloadManagementMode),
+                      "Encountered execution group without required barrier for task descriptor fetch.");
 
     barrierInfo.clearAttributes();
     VPURT::postProcessBarrierOps(netFunc);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,17 +18,23 @@ using namespace vpux;
 //
 
 void vpux::VPURT::buildBarrierLegalizationPipeline(mlir::OpPassManager& pm,
-                                                   std::optional<int> virtualBarrierThresholdForWlm,
+                                                   std::optional<bool> workloadManagementEnabled,
                                                    std::optional<WorkloadManagementMode> workloadManagementMode,
                                                    const bool unevenVariantSplitFlag, Logger log) {
-    if (!workloadManagementMode.has_value() || workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES) {
+    bool wlmEnabled = workloadManagementEnabled.has_value() && workloadManagementEnabled.value() == true;
+
+    if (!wlmEnabled || !workloadManagementMode.has_value() ||
+        (workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES &&
+         workloadManagementMode.value() != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
         pm.addPass(VPURT::createSplitExceedingBarrierSlotCountPass(log));
     }
-    pm.addPass(VPURT::createSatisfyOneWaitBarrierPerTaskPass(virtualBarrierThresholdForWlm, unevenVariantSplitFlag,
-                                                             workloadManagementMode, log));
-    if (!workloadManagementMode.has_value() || workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES) {
-        pm.addPass(VPURT::createReduceExceedingActiveCountBarriersPass(
-                virtualBarrierThresholdForWlm, workloadManagementMode, unevenVariantSplitFlag, log));
+    pm.addPass(VPURT::createSatisfyOneWaitBarrierPerTaskPass(unevenVariantSplitFlag, workloadManagementMode, log));
+
+    if (!wlmEnabled || !workloadManagementMode.has_value() ||
+        (workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES &&
+         workloadManagementMode.value() != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
+        pm.addPass(VPURT::createReduceExceedingActiveCountBarriersPass(workloadManagementMode, unevenVariantSplitFlag,
+                                                                       log));
     }
 }
 

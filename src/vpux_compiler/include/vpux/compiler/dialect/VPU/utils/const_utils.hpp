@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -84,13 +84,12 @@ std::vector<float> createBiasTableData(mlir::Value opInput, mlir::Value opOutput
                                        const Const::ContentAttr& bias, int64_t OC,
                                        VPU::NCESparsity::BiasConverterCb biasConverter);
 
-template <typename T>
-std::vector<T> createZeroPointOnlyTableData(ArrayRef<int32_t> workloadSizes, mlir::Value weights, int64_t OC,
-                                            bool isZeroPoint4Bit, ArrayRef<T> zeroPoints) {
-    const auto weightsElemType =
-            weights ? mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType() : nullptr;
+std::vector<int64_t> materializeZeroPointTable(mlir::Type weightsElemType, int64_t OC, ArrayRef<int64_t> workloadSizes);
 
-    return VPU::NCESparsity::getZeroPointOnlyTable(workloadSizes, OC, weightsElemType, isZeroPoint4Bit, zeroPoints);
+template <typename T>
+std::vector<T> createZeroPointTableData(ArrayRef<int32_t> workloadSizes, mlir::Type weightsElemType, int64_t OC,
+                                        bool isZeroPoint4Bit, ArrayRef<T> zeroPoints) {
+    return VPU::NCESparsity::getZeroPointTable(workloadSizes, OC, weightsElemType, isZeroPoint4Bit, zeroPoints);
 }
 
 template <typename Type>
@@ -143,6 +142,8 @@ private:
                            VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale);
     mlir::Value initializeScaleBiasTensor(mlir::OpBuilder& builder, mlir::Location loc, ArrayRef<float> tableData,
                                           ShapeRef weightTableShape);
+    mlir::Value initializeZeroPointsTensorWithDummyValues(mlir::OpBuilder& builder, mlir::Location loc,
+                                                          ArrayRef<int8_t> tableData, mlir::Value weights, int64_t OC);
 };
 
 mlir::Value alignDepthWiseWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value origFilter);

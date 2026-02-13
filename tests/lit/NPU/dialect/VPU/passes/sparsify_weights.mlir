@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,8 +70,8 @@ func.func @SparsifyHalfDense(%input: tensor<1x32x16x16xf16, {order = #NHWC}>, %w
 
     return %nce : tensor<1x32x16x16xf16, {order = #NHWC}>
 
-    // CHECK:  [[DATA:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = {{.*}} [#const.Sparsify<false>]
-    // CHECK:  [[DATA_SM:%.+]] = const.Declare tensor<32x1x1x128xi1> = {{.*}} [#const.GetSparsityMap]
+    // CHECK:  [[DATA:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = {{.+}} [#const.Sparsify<false>]
+    // CHECK:  [[DATA_SM:%.+]] = const.Declare tensor<32x1x1x128xi1> = {{.+}} [#const.GetSparsityMap]
     // CHECK:  [[SPARSE:%.+]] = VPU.GroupSparseTensor([[DATA]], [[DATA_SM]])
     // CHECK:  VPU.NCE.Convolution([[INPUT]], [[SPARSE]], [[WEIGHT_TABLE]])
 }
@@ -104,8 +104,8 @@ func.func @SparsifyWithMultiUsers(%arg0: tensor<1x32x16x16xf16, {order = #NHWC}>
 
     return %1, %2: tensor<1x32x16x16xf16, {order = #NHWC}>, tensor<1x32x16x16xf16, {order = #NHWC}>
 
-    // CHECK: [[DATA:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = {{.*}} [#const.Sparsify<false>]
-    // CHECK: [[DATA_SM:%.+]] = const.Declare tensor<32x1x1x128xi1> = {{.*}} [#const.GetSparsityMap]
+    // CHECK: [[DATA:%.+]] = const.Declare tensor<32x32x1x1xf16, {order = #NHWC}> = {{.+}} [#const.Sparsify<false>]
+    // CHECK: [[DATA_SM:%.+]] = const.Declare tensor<32x1x1x128xi1> = {{.+}} [#const.GetSparsityMap]
     // CHECK: [[SPARSE:%.+]] = VPU.GroupSparseTensor([[DATA]], [[DATA_SM]])
 
     // CHECK: [[RES0:%.+]] = VPU.NCE.Convolution([[ARG0]], [[SPARSE]], [[ARG1]])

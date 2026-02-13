@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --consolidate-activation-fp8-quantization %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="rewriter=consolidate-activation-fp8-quantization" %s | FileCheck %s
 // REQUIRES: arch-NPU50XX
 
 !qElemType = !quant.uniform<i4:f32, 1.000000e+00:8>
@@ -230,7 +230,7 @@ func.func @FP8ActivationI4WeightsGroupQuantPostMatMul(%input: tensor<1x1x3072xf3
 // CHECK:  func.func @DecomposeFakeConvert
 // CHECK-SAME:   ([[IN:%.+]]: tensor<1x1x8192xf32>, [[SCALE:%.+]]: tensor<1xf32>)
 func.func @DecomposeFakeConvert(%input: tensor<1x1x8192xf32>, %in_scale: tensor<1xf32>) -> tensor<1x1x8192xf32> {
-    %zp = const.Declare tensor<8192xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[8192]>]
+    %zp = const.Declare tensor<8192xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[8192]>]
     %res = IE.FakeConvert(%input, %in_scale, %zp) {dst_type = f8E4M3FN} : tensor<1x1x8192xf32>, tensor<1xf32>, tensor<8192xf32> -> tensor<1x1x8192xf32>
 
     return %res : tensor<1x1x8192xf32>
@@ -252,7 +252,7 @@ func.func @DecomposeFakeConvert(%input: tensor<1x1x8192xf32>, %in_scale: tensor<
 // CHECK:  func.func @DecomposeDualFakeConvertPostFC
 // CHECK-SAME:   ([[IN_1:%.+]]: tensor<1x8192xf32>, [[SCALE_1:%.+]]: tensor<1xf32>, [[IN_2:%.+]]: tensor<3072x8192xf32>, [[SCALE_2:%.+]]: tensor<1xf32>)
 func.func @DecomposeDualFakeConvertPostFC(%input_1: tensor<1x8192xf32>, %in_scale_1: tensor<1xf32>, %input_2: tensor<3072x8192xf32>, %in_scale_2: tensor<1xf32>) -> tensor<1x3072xf32> {
-    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[1]>]
     %fake_convert_1 = IE.FakeConvert(%input_1, %in_scale_1, %zp) {dst_type = f8E4M3FN} : tensor<1x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1x8192xf32>
     %fake_convert_2 = IE.FakeConvert(%input_2, %in_scale_2, %zp) {dst_type = f8E4M3FN} : tensor<3072x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<3072x8192xf32>
     %res = IE.FullyConnected(%fake_convert_1, %fake_convert_2) : tensor<1x8192xf32>, tensor<3072x8192xf32> -> tensor<1x3072xf32>
@@ -274,8 +274,8 @@ func.func @DecomposeDualFakeConvertPostFC(%input_1: tensor<1x8192xf32>, %in_scal
     // CHECK: [[DEQUANTIZE_2:%.+]] = IE.Dequantize([[QUANTIZE_2]]) {dstElemType = f32} : tensor<3072x8192x!qElemType> -> tensor<3072x8192xf32>
 
     // CHECK: [[FC:%.+]] = IE.FullyConnected([[DEQUANTIZE_1]], [[DEQUANTIZE_2]]) : tensor<1x8192xf32>, tensor<3072x8192xf32> -> tensor<1x3072xf32>
-    // CHECK: [[DIVIDE_1:%.+]] = IE.Divide([[FC]], [[SCALE_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
-    // CHECK: [[DIVIDE_2:%.+]] = IE.Divide([[DIVIDE_1]], [[SCALE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
+    // CHECK: [[DIVIDE_1:%.+]] = IE.Divide([[FC]], [[SCALE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
+    // CHECK: [[DIVIDE_2:%.+]] = IE.Divide([[DIVIDE_1]], [[SCALE_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
     // CHECK: return [[DIVIDE_2]]
 }
 
@@ -285,7 +285,7 @@ func.func @DecomposeDualFakeConvertPostFC(%input_1: tensor<1x8192xf32>, %in_scal
 // CHECK:  func.func @DecomposeDualFakeConvertPostMatMul
 // CHECK-SAME:   ([[IN_1:%.+]]: tensor<1x8192xf32>, [[SCALE_1:%.+]]: tensor<1xf32>, [[IN_2:%.+]]: tensor<3072x8192xf32>, [[SCALE_2:%.+]]: tensor<1xf32>)
 func.func @DecomposeDualFakeConvertPostMatMul(%input_1: tensor<1x8192xf32>, %in_scale_1: tensor<1xf32>, %input_2: tensor<3072x8192xf32>, %in_scale_2: tensor<1xf32>) -> tensor<1x3072xf32> {
-    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[1]>]
     %fake_convert_1 = IE.FakeConvert(%input_1, %in_scale_1, %zp) {dst_type = f8E4M3FN} : tensor<1x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1x8192xf32>
     %fake_convert_2 = IE.FakeConvert(%input_2, %in_scale_2, %zp) {dst_type = f8E4M3FN} : tensor<3072x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<3072x8192xf32>
     %res = IE.MatMul(%fake_convert_1, %fake_convert_2) {transpose_b} : tensor<1x8192xf32>, tensor<3072x8192xf32> -> tensor<1x3072xf32>
@@ -307,8 +307,8 @@ func.func @DecomposeDualFakeConvertPostMatMul(%input_1: tensor<1x8192xf32>, %in_
     // CHECK: [[DEQUANTIZE_2:%.+]] = IE.Dequantize([[QUANTIZE_2]]) {dstElemType = f32} : tensor<3072x8192x!qElemType> -> tensor<3072x8192xf32>
 
     // CHECK: [[MATMUL:%.+]] = IE.MatMul([[DEQUANTIZE_1]], [[DEQUANTIZE_2]]) {transpose_b} : tensor<1x8192xf32>, tensor<3072x8192xf32> -> tensor<1x3072xf32>
-    // CHECK: [[DIVIDE_1:%.+]] = IE.Divide([[MATMUL]], [[SCALE_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
-    // CHECK: [[DIVIDE_2:%.+]] = IE.Divide([[DIVIDE_1]], [[SCALE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
+    // CHECK: [[DIVIDE_1:%.+]] = IE.Divide([[MATMUL]], [[SCALE_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
+    // CHECK: [[DIVIDE_2:%.+]] = IE.Divide([[DIVIDE_1]], [[SCALE_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3072xf32>, tensor<1xf32> -> tensor<1x3072xf32>
     // CHECK: return [[DIVIDE_2]]
 }
 
@@ -317,7 +317,7 @@ func.func @DecomposeDualFakeConvertPostMatMul(%input_1: tensor<1x8192xf32>, %in_
 // CHECK:  func.func @DecomposeFakeConvertMultiConsumers
 // CHECK-SAME:   ([[IN:%.+]]: tensor<1x1x8192xf32>, [[SCALE:%.+]]: tensor<1xf32>)
 func.func @DecomposeFakeConvertMultiConsumers(%input: tensor<1x1x8192xf32>, %in_scale: tensor<1xf32>) -> (tensor<1x1x8192xf16>, tensor<1x1x8192xf16>) {
-    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[1]>]
     %fake_convert = IE.FakeConvert(%input, %in_scale, %zp) {dst_type = f8E4M3FN} : tensor<1x1x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1x1x8192xf32>
     %consumer_1 = IE.Convert(%fake_convert) {dstElemType = f16} : tensor<1x1x8192xf32> -> tensor<1x1x8192xf16>
     %consumer_2 = IE.Convert(%fake_convert) {dstElemType = f16} : tensor<1x1x8192xf32> -> tensor<1x1x8192xf16>
@@ -340,8 +340,8 @@ func.func @DecomposeFakeConvertMultiConsumers(%input: tensor<1x1x8192xf32>, %in_
 // CHECK:  func.func @DoNotDecomposeFakeConvertWithConstScale
 // CHECK-SAME:   ([[IN:%.+]]: tensor<1x1x8192xf32>)
 func.func @DoNotDecomposeFakeConvertWithConstScale(%input: tensor<1x1x8192xf32>) -> tensor<1x1x8192xf32> {
-    %scale = const.Declare tensor<1xf32> = dense<1.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
-    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %scale = const.Declare tensor<1xf32> = dense<1.0> : tensor<f32>, [#const.Reshape<[1]>]
+    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[1]>]
     %res = IE.FakeConvert(%input, %scale, %zp) {dst_type = f8E4M3FN} : tensor<1x1x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1x1x8192xf32>
 
     return %res : tensor<1x1x8192xf32>
@@ -354,7 +354,7 @@ func.func @DoNotDecomposeFakeConvertWithConstScale(%input: tensor<1x1x8192xf32>)
 // CHECK:  func.func @DoNotDecomposeFakeConvertMultiScales
 // CHECK-SAME:   ([[IN:%.+]]: tensor<1x1x8192xf32>, [[SCALE:%.+]]: tensor<8192xf32>)
 func.func @DoNotDecomposeFakeConvertMultiScales(%input: tensor<1x1x8192xf32>, %in_scale: tensor<8192xf32>) -> tensor<1x1x8192xf32> {
-    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32> isSplat, [#const.Reshape<[1]>]
+    %zp = const.Declare tensor<1xf32> = dense<0.0> : tensor<f32>, [#const.Reshape<[1]>]
     %res = IE.FakeConvert(%input, %in_scale, %zp) {dst_type = f8E4M3FN} : tensor<1x1x8192xf32>, tensor<8192xf32>, tensor<1xf32> -> tensor<1x1x8192xf32>
 
     return %res : tensor<1x1x8192xf32>
@@ -380,7 +380,7 @@ func.func @DoNotDecomposeFakeConvertNonSplatConstShift(%input: tensor<1x1x4xf32>
 // CHECK:  func.func @DoNotDecomposeFakeConvertNonZeroConstShift
 // CHECK-SAME:   ([[IN:%.+]]: tensor<1x1x8192xf32>, [[SCALE:%.+]]: tensor<1xf32>)
 func.func @DoNotDecomposeFakeConvertNonZeroConstShift(%input: tensor<1x1x8192xf32>, %in_scale: tensor<1xf32>) -> tensor<1x1x8192xf32> {
-    %zp = const.Declare tensor<1xf32> = dense<1.0> : tensor<1xf32> isSplat, [#const.Reshape<[1]>]
+    %zp = const.Declare tensor<1xf32> = dense<1.0> : tensor<1xf32>, [#const.Reshape<[1]>]
     %res = IE.FakeConvert(%input, %in_scale, %zp) {dst_type = f8E4M3FN} : tensor<1x1x8192xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<1x1x8192xf32>
 
     return %res : tensor<1x1x8192xf32>

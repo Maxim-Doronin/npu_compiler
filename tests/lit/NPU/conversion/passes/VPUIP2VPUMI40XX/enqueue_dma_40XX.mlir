@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,7 @@ module @Module0 {
     %dpu_wt = VPURT.DeclareBuffer <CMX_NN> [0] <42000> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-      %enq_dma =  VPUIP.EnqueueDMA {port = 0 : i64} inputs(%dummy_in : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_out : memref<0x0x0x0xi32, @DDR>) enqueue_dma_attr(<<DPU>, tile = 0 : i64, list = 0 : i64, startTask = 0 : i64, endTask = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
+      %enq_dma =  VPUIP.EnqueueDMA <{port = 0 : i64}> inputs(%dummy_in : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_out : memref<0x0x0x0xi32, @DDR>) enqueue_dma_attr(<<DPU>, tile = 0 : i64, list = 0 : i64, startTask = 0 : i64, endTask = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {

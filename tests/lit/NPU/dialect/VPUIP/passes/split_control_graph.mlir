@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -102,11 +102,11 @@ func.func @SplitControlGraph() -> memref<1x16x1x1xf16, #NHWC, @DDR> {
     //                 |
     //                 5
 
-    // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR2:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR3:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR4:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) attributes {idx = 0 : i64}
     // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]], [[BAR2]] : !VPURT.Barrier, !VPURT.Barrier) attributes {idx = 1 : i64}
@@ -138,42 +138,42 @@ func.func @SplitControlGraphWithImplictDmaDeps() -> memref<1x16x1x1xf16, #NHWC, 
     //  4       5
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 0 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task attributes {idx = 1 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task attributes {idx = 2 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task attributes {idx = 3 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) attributes {idx = 4 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task attributes {idx = 5 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
@@ -196,9 +196,9 @@ func.func @SplitControlGraphWithImplictDmaDeps() -> memref<1x16x1x1xf16, #NHWC, 
     //                 |
     //                 5
 
-    // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR2:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) attributes {idx = 0 : i64}
     // CHECK: VPURT.Task updates([[BAR1]] : !VPURT.Barrier) attributes {idx = 1 : i64}
@@ -229,42 +229,42 @@ func.func @SplitControlGraphSharedBar() -> memref<1x16x1x1xf16, #NHWC, @DDR> {
     //     4  5
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 0 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 1 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 2 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 3 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) attributes {idx = 4 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) attributes {idx = 5 : i64} {
-         VPUIP.NNDMA {port = 1 : i64}
+         VPUIP.NNDMA <{port = 1 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
@@ -289,9 +289,9 @@ func.func @SplitControlGraphSharedBar() -> memref<1x16x1x1xf16, #NHWC, @DDR> {
     //           | /   \ |
     //           4       5
 
-    // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR2:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) attributes {idx = 0 : i64}
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) attributes {idx = 1 : i64}
@@ -322,56 +322,56 @@ func.func @SplitControlGraphLongProdRanger() -> memref<1x16x1x1xf16, #NHWC, @DDR
     //           7
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 0 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 1 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 2 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0: !VPURT.Barrier) attributes {idx = 3 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {idx = 4 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {idx = 5 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {idx = 6 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) attributes {idx = 7 : i64} {
-         VPUIP.NNDMA {port = 0 : i64}
+         VPUIP.NNDMA <{port = 0 : i64}>
             inputs(%buf0: memref<1x16x1x1xf16, #NHWC, @DDR>)
             outputs(%buf1: memref<1x16x1x1xf16, #NHWC, @DDR>)
             -> memref<1x16x1x1xf16, #NHWC, @DDR>
@@ -402,11 +402,11 @@ func.func @SplitControlGraphLongProdRanger() -> memref<1x16x1x1xf16, #NHWC, @DDR
     //             \ |
     //               7
 
-    // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR2:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR3:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR4:%.*]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) attributes {idx = 0 : i64}
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) attributes {idx = 1 : i64}

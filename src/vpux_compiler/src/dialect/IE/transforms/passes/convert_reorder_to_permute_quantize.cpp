@@ -1,14 +1,21 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_to_pool_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -85,7 +92,7 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    bool isSupportedReorder(IE::ReorderOp reorder, Logger log) const;
+    bool isSupportedReorder(IE::ReorderOp reorder, config::ArchKind arch, int64_t numClusters, Logger log) const;
 };
 
 bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder) {
@@ -116,11 +123,44 @@ bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder) {
     return (*avgpoolOp.getOutput().getUsers().begin())->hasTrait<IE::EltwiseOp>();
 }
 
-bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, Logger log) const {
+bool canConvertEltwisePatternToMaxPool(IE::ReorderOp reorder, config::ArchKind arch, int64_t numClusters, Logger log) {
+    auto parentPermuteCast = reorder.getInput().getDefiningOp<IE::PermuteCastOp>();
+    if (parentPermuteCast == nullptr || !parentPermuteCast->hasOneUse()) {
+        return false;
+    }
+
+    auto eltwiseParent = parentPermuteCast.getInput().getDefiningOp();
+    if (eltwiseParent == nullptr || !eltwiseParent->hasOneUse() || !eltwiseParent->hasTrait<IE::EltwiseOp>()) {
+        return false;
+    }
+
+    // Compose PermuteCast and Reorder permutations to get equivalent MemPermute
+    auto reorderInType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
+    auto reorderOutType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
+    auto perm1 = parentPermuteCast.getMemPerm();
+    auto perm2 = vpux::getPermutationFromOrders(reorderInType.getDimsOrder(), reorderOutType.getDimsOrder(),
+                                                reorder->getContext());
+    auto composedPerm = perm2.compose(perm1);
+
+    // Check if the composed permutation can be legally converted to MaxPool
+    const auto inputType = mlir::cast<NDTypeInterface>(parentPermuteCast.getInput().getType());
+
+    return vpux::isLegalConvertToPool(inputType, reorderOutType, eltwiseParent, composedPerm, reorder->getContext(),
+                                      numClusters, "ConvertReorderToPermuteQuantize", arch, log.nest());
+}
+
+bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, config::ArchKind arch,
+                                                             int64_t numClusters, Logger log) const {
     auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
     const auto outType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
     const auto inOrder = inType.getDimsOrder();
     const auto outOrder = outType.getDimsOrder();
+
+    if (isTrivialReorder(reorder)) {
+        log.trace("Skip trivial reorder");
+        return false;
+    }
+
     const auto origMemPerm = vpux::getPermutationFromOrders(inOrder, outOrder, reorder->getContext());
     if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, origMemPerm) && outOrder == DimsOrder::NHWC) {
         // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp for input
@@ -131,17 +171,17 @@ bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reord
         log.trace("Can not convert to PermuteQuantize");
         return false;
     }
-    // Add quant type
-    // TODO: If consumer is convolution op we can support quantized input.
-    // E#-183528 is to address some regressions caused by pass MovePermutePostEltwise after dropping the WA.
-    auto consumer = *reorder.getResult().getUsers().begin();
-    auto inElemType = inType.getElementType();
-    if (mlir::isa<mlir::quant::QuantizedType>(inElemType) && !mlir::isa<IE::ConvolutionOp>(consumer)) {
-        _log.trace("Cannot convert MemPermute with quantized input to PermuteQuantize when consumer is not a conv");
-        return false;
-    }
     if (hasQuantizedAvgPoolUserToPropagate(reorder)) {
         log.trace("PermuteQuantize can not be propagated through avgpool");
+        return false;
+    }
+
+    // Check pattern: EltwiseOp -> PermuteCast -> Reorder
+    // If this pattern can be converted to EltwiseOp -> MaxPool by later passes,
+    // block Reorder to PermuteQuantize conversion to enable data spilling optimization between EltwiseOp and MaxPool
+    if (canConvertEltwisePatternToMaxPool(reorder, arch, numClusters, log)) {
+        log.trace("Block conversion: Eltwise->PermuteCast->Reorder can be converted to MaxPool at {0}",
+                  reorder->getLoc());
         return false;
     }
 
@@ -150,9 +190,11 @@ bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reord
 
 void ConvertReorderToPermuteQuantizePass::safeRunOnFunc() {
     auto func = getOperation();
+    const auto arch = config::getArch(func);
+    const auto numClusters = config::getTileExecutor(func).getCount();
 
     const auto isLegalReorder = [&](IE::ReorderOp reorder) -> bool {
-        return !isSupportedReorder(reorder, _log);
+        return !isSupportedReorder(reorder, arch, numClusters, _log);
     };
     auto& ctx = getContext();
     mlir::ConversionTarget target(ctx);

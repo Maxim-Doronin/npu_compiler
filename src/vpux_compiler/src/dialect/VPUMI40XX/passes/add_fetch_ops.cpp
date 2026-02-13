@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -207,7 +207,8 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const size_t
             auto firstFetch = builder.create<VPURegMapped::FetchTaskOp>(
                     firstGroup.getLoc(), dummyIndexType, mlir::ValueRange({}), mlir::ValueRange({}), nullptr,
                     firstGroup.getStartIndexes()[0], firstGroup.getEndIndexes()[0], firstGroup.getStartIndexes()[1],
-                    firstGroup.getEndIndexes()[1], VPURegMapped::TaskTypeAttr::get(builder.getContext(), taskType),
+                    firstGroup.getEndIndexes()[1], nullptr,
+                    VPURegMapped::TaskTypeAttr::get(builder.getContext(), taskType),
                     mlir::IntegerAttr::get(uint64Type, tileIdx), mlir::IntegerAttr::get(uint64Type, groupIdx),
                     mlir::IntegerAttr::get(int64Type, -1));
             firstDmaTaskOp.setPreviousTask(firstFetch);
@@ -242,7 +243,7 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const size_t
                         travelingGroup.getLoc(), dummyIndexType, mlir::ValueRange({}), mlir::ValueRange({}),
                         insertionDma.getResult(), travelingGroup.getStartIndexes()[0],
                         travelingGroup.getEndIndexes()[0], travelingGroup.getStartIndexes()[1],
-                        travelingGroup.getEndIndexes()[1], VPURegMapped::TaskTypeAttr::get(ctx, taskType),
+                        travelingGroup.getEndIndexes()[1], nullptr, VPURegMapped::TaskTypeAttr::get(ctx, taskType),
                         mlir::IntegerAttr::get(uint64Type, tileIdx), mlir::IntegerAttr::get(uint64Type, groupIdx),
                         insertionDma.getWlmPageAttr());
 
@@ -268,7 +269,8 @@ void AddFetchOpsPass::safeRunOnFunc() {
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = config::getTileExecutor(parentModule).getCount();
-    const auto shavesCountPerTile = config::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+    const auto shavesCountPerTile =
+            config::getAvailableExecutor(parentModule, config::ExecutorKind::SHAVE_ACT).getCount();
 
     auto mpi = VPUMI40XX::getMPI(netFunc);
 

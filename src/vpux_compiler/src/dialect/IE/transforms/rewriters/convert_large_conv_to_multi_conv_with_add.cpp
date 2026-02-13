@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -21,11 +23,6 @@ namespace {
 //
 // SplitConvToMultiConvWithAddConverter
 //
-// This rewriter converts large `Convolution` Op into multiple smaller `Convolution` Op followed by an `Add` Op.
-// The purpose is to optimize the `Convolution` by splitting it into smaller pieces along the input channels.
-// There are two performance benefits:
-// 1. Reduces the overlapped input data, thereby decreasing the DMA size
-// 2. Reduces the number of tiles, preventing excessive tiling and improving workload efficiency
 class SplitConvToMultiConvWithAddConverter final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
 public:
     SplitConvToMultiConvWithAddConverter(mlir::MLIRContext* ctx, Logger log)
@@ -85,7 +82,7 @@ mlir::LogicalResult SplitConvToMultiConvWithAddConverter::matchAndRewrite(IE::Co
             auto outHighConst = fakeQuantizeOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
             if (outLowConst != nullptr && outHighConst != nullptr) {
                 const auto realElemType = mlir::cast<mlir::FloatType>(operandType.getElementType());
-                const auto operandQuantType = getQuantizedType(
+                const auto operandQuantType = IE::getQuantizedType(
                         outLowConst.getContentAttr(), outHighConst.getContentAttr(), fakeQuantizeOp.getLevels(),
                         fakeQuantizeOp.getLowFpType(), realElemType, /*isSigned=*/false, fakeQuantizeOp.getLoc(),
                         fakeQuantizeOp.getAutoBroadcast(), /*ignoreZPCheck=*/false, _log);
@@ -174,15 +171,14 @@ mlir::LogicalResult SplitConvToMultiConvWithAddConverter::matchAndRewrite(IE::Co
                                                 "filter_fq_slice_" + std::to_string(idx));
         }
 
-        auto newConv = cloneOpAndReplaceInputs(origOp, {origOp.getInput(), origOp.getFilter()}, {newInput, newFilter},
-                                               "conv_slice_" + std::to_string(idx));
-
+        mlir::Value bias = nullptr;
         // The bias only needs to exist once, regardless of which Convolution it is applied to
-        if (origOp.getBias() != nullptr && idx != numSplits - 1) {
-            newConv.getDefiningOp()->eraseOperand(2);
+        if (origOp.getBias() != nullptr && idx == numSplits - 1) {
+            bias = origOp.getBias();
         }
-
-        convSlices.push_back(newConv);
+        auto newConv = cloneConvolutionOp(rewriter, origOp, newInput, newFilter, bias, origOp.getScale(),
+                                          takeOpLoc(origOp, "conv_slice_" + std::to_string(idx)));
+        convSlices.push_back(newConv.getOutput());
     }
 
     VPUX_THROW_UNLESS(convSlices.size() >= 2, "Got unexpect slice number");

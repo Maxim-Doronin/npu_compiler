@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -113,14 +113,14 @@ module @SingleCosLayer {
 // CHECK: [[OUTPUT_PTR:%.+]] = llvm.getelementptr [[ARG0]][48] : (!llvm.ptr) -> !llvm.ptr, i8
 // CHECK: [[OUTPUT_ADDR:%.+]] = llvm.load [[OUTPUT_PTR]] : !llvm.ptr -> !llvm.ptr
 
-// CHECK: llvm.intr.experimental.noalias.scope.decl #[[SCOPE0:.*]]
-// CHECK: llvm.intr.experimental.noalias.scope.decl #[[SCOPE1:.*]]
+// CHECK: llvm.intr.experimental.noalias.scope.decl #[[SCOPE0:.+]]
+// CHECK: llvm.intr.experimental.noalias.scope.decl #[[SCOPE1:.+]]
 
-// CHECK: [[INPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[INPUT_ADDR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+// CHECK: [[INPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[INPUT_ADDR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
 // CHECK: [[INPUT_VALUE:%.+]] = llvm.load [[INPUT_VALUE_PTR]] {alias_scopes = [#[[SCOPE0]]], noalias_scopes = [#[[SCOPE1]]]} : !llvm.ptr -> f16
 // CHECK: [[COMPUTATION_RES:%.+]] = llvm.intr.cos([[INPUT_VALUE]])  : (f16) -> f16
 
-// CHECK: [[OUTPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[OUTPUT_ADDR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+// CHECK: [[OUTPUT_VALUE_PTR:%.+]] = llvm.getelementptr [[OUTPUT_ADDR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
 // CHECK: llvm.store [[COMPUTATION_RES]], [[OUTPUT_VALUE_PTR]] {alias_scopes = [#[[SCOPE1]]], noalias_scopes = [#[[SCOPE0]]]} : f16, !llvm.ptr
 
 // CHECK: llvm.return

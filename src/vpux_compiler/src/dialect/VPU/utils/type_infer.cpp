@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reduce_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -98,7 +100,7 @@ void inferPermuteReturnTypes(mlir::Value input, mlir::AffineMap memPerm, mlir::A
         }
 
         if (auto distributedInput = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(inType)) {
-            auto outDistribution = applyPermutationOnDistributionInfoAttr(
+            auto outDistribution = VPU::applyPermutationOnDistributionInfoAttr(
                     distributedInput, memPerm, inType.getDimsOrder(), outOrder, getShape(input), outShape);
 
             VPUX_THROW_WHEN(

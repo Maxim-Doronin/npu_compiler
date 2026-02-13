@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -36,12 +37,14 @@ namespace {
 // temporary limit the pass to use only limited number of operations
 bool isSupportedOp(mlir::Operation* op) {
     return mlir::isa<IE::SoftMaxOp, IE::MinimumOp, IE::MaximumOp, IE::LSTMSequenceOp, IE::LessOp, IE::LessEqualOp,
-                     IE::SubtractOp, IE::ModOp, IE::PowerOp, IE::FloorModOp, IE::DivideOp>(op);
+                     IE::SubtractOp, IE::ModOp, IE::PowerOp, IE::FloorModOp, IE::DivideOp, IE::AndOp, IE::LogicalOrOp,
+                     IE::EqualOp, IE::GreaterEqualOp, IE::GreaterOp, IE::MultiplyOp>(op);
 }
 
 bool supportsStridedAccess(mlir::Operation* op) {
     return mlir::isa<IE::SoftMaxOp, IE::MinimumOp, IE::MaximumOp, IE::LSTMSequenceOp, IE::LessOp, IE::LessEqualOp,
-                     IE::SubtractOp, IE::ModOp, IE::PowerOp, IE::FloorModOp, IE::DivideOp>(op);
+                     IE::SubtractOp, IE::ModOp, IE::PowerOp, IE::FloorModOp, IE::DivideOp, IE::AndOp, IE::LogicalOrOp,
+                     IE::EqualOp, IE::GreaterEqualOp, IE::GreaterOp, IE::MultiplyOp>(op);
 }
 
 void populateDynamicResult(mlir::Operation* op, const unsigned resultIdx) {

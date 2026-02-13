@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,7 @@ func.func @SplitDepthConvWithBigC(%arg0: tensor<1x5120x64x4xf16, {order = #NHWC}
     return %0 : tensor<1x5120x64x4xf16, {order = #NHWC}>
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<5120x16x1x1xf16, {order = #NHWC}>
-    // CHECK: [[DWConv:%.*]] = VPU.NCE.DepthConvolution(%arg0, [[CST]])
+    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[CST]])
     // CHECK-SAME:              {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:               ppe = #VPU.PPEStub<>, rawFilterShape = [5120, 1, 1, 1], strides = [1, 1],
     // CHECK-SAME:               tilingStrategy = [1, 4, 1, 1]} -> tensor<1x5120x64x4xf16, {order = #NHWC}>
@@ -838,7 +838,27 @@ module @NCEConvolutionWithSprLUTDoesntFitIntoCMX {
         } : tensor<1x16x256x128xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}> -> tensor<1x16x256x128xf16, {order = #NHWC}>
         return %0 : tensor<1x16x256x128xf16, {order = #NHWC}>
     }
-    
+
 // CHECK:       VPU.NCE.Convolution
 // CHECK:       tilingStrategy = [1, 1, 2, 1]
+}
+
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+module @ScatterElementsUpdateTiling {
+    config.Resources 3 of @NCE at 6.000000e+02 MHz {
+        config.MemoryResource 2097664 bytes of @CMX_NN_FragmentationAware
+        config.MemoryResource 2107664 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+    }
+    func.func @main(%arg0 : tensor<1x1x1024x2048xf16>, %arg1 : tensor<1x1x32x2048xsi32>, %arg2 : tensor<1x1x32x2048xf16>) -> tensor<1x1x1024x2048xf16> {
+    %0 = VPU.ScatterElementsUpdate(%arg0, %arg1, %arg2) {axis = 2 : i64, reduction = #IE.scatter_elements_update_reduction_type<SUM>, use_init_val = true}
+            : tensor<1x1x1024x2048xf16>, tensor<1x1x32x2048xsi32>, tensor<1x1x32x2048xf16> -> tensor<1x1x1024x2048xf16>
+    return %0 : tensor<1x1x1024x2048xf16>
+}
+
+// CHECK:       VPU.ScatterElementsUpdate
+// CHECK:       tilingStrategy = [1, 1, 1, 5]
 }

@@ -71,6 +71,22 @@ struct CvtHelper<vpux::type::float8_e5m2> final {
 };
 
 template <>
+struct CvtHelper<vpux::type::float8_e8m0> final {
+    template <typename InT>
+    static vpux::type::float8_e8m0 cvt(InT val) {
+        return vpux::type::float8_e8m0(checked_cast<float>(val));
+    }
+};
+
+template <>
+struct CvtHelper<vpux::type::float4_e2m1> final {
+    template <typename InT>
+    static vpux::type::float4_e2m1 cvt(InT val) {
+        return vpux::type::float4_e2m1(checked_cast<float>(val));
+    }
+};
+
+template <>
 struct CvtHelper<bool> final {
     template <typename InT>
     static bool cvt(InT val) {
@@ -406,9 +422,21 @@ private:
             } else if (mlir::isa<mlir::Float8E5M2Type>(elemType)) {
                 return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float8_e5m2>(
                         types, std::forward<Caller>(caller));
+            } else if (mlir::isa<mlir::Float8E8M0FNUType>(elemType)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float8_e8m0>(
+                        types, std::forward<Caller>(caller));
+            } else if (mlir::isa<mlir::Float4E2M1FNType>(elemType)) {
+                return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., vpux::type::float4_e2m1>(
+                        types, std::forward<Caller>(caller));
             } else if (const auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
                 const auto quantStorageType = getNormalizedQuantStorageType(qType);
-                if (quantStorageType.isSignedInteger(8)) {
+                if (quantStorageType.isSignedInteger(16)) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int16_t>(types,
+                                                                                       std::forward<Caller>(caller));
+                } else if (quantStorageType.isUnsignedInteger(16)) {
+                    return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., uint16_t>(types,
+                                                                                        std::forward<Caller>(caller));
+                } else if (quantStorageType.isSignedInteger(8)) {
                     return dispatchByElemTypeImpl<I + 1, N, Caller, Types..., int8_t>(types,
                                                                                       std::forward<Caller>(caller));
                 } else if (quantStorageType.isUnsignedInteger(8)) {

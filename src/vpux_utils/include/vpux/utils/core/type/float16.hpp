@@ -5,14 +5,10 @@
 
 #pragma once
 
-#include <cmath>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <ostream>
 #include <string>
-
-#define ROUND_MODE_TO_NEAREST_EVEN
 
 namespace vpux {
 namespace type {
@@ -233,7 +229,7 @@ public:
     }
 
     static constexpr bool is_iec559 = false;
-    static constexpr bool is_bounded = false;
+    static constexpr bool is_bounded = true;
     static constexpr bool is_modulo = false;
     static constexpr bool traps = false;
     static constexpr bool tinyness_before = false;

@@ -32,15 +32,15 @@ module @DMAGraph {
     %buf1 = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> !dataType
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 0 : i64 } inputs(%arg0 : !dataType) outputs(%buf0 : !dataType) -> !dataType
+      %dma0 = VPUIP.NNDMA <{ port = 0 : i64 }> inputs(%arg0 : !dataType) outputs(%buf0 : !dataType) -> !dataType
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 0 : i64 } inputs(%buf0 : !dataType) outputs(%buf1 : !dataType) -> !dataType
+      %dma0 = VPUIP.NNDMA <{ port = 0 : i64 }> inputs(%buf0 : !dataType) outputs(%buf1 : !dataType) -> !dataType
     }
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 0 : i64 } inputs(%buf1 : !dataType) outputs(%arg1 : !dataType) -> !dataType
+      %dma0 = VPUIP.NNDMA <{ port = 0 : i64 }> inputs(%buf1 : !dataType) outputs(%arg1 : !dataType) -> !dataType
     }
 
     return %arg1 : !dataType
@@ -63,7 +63,7 @@ module @DMAGraph {
 // Profiled DMA task 1
 // CHECK:  VPURT.Task
 // CHECK-SAME:        updates([[BAR0]] : !VPURT.Barrier)
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 1 : si32,
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 1 : si32,
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>}
 // CHECK-SAME:        inputs(%arg0 :
 // CHECK-SAME:        outputs([[BUF_DATA_0]] :
@@ -71,7 +71,7 @@ module @DMAGraph {
 // Profiled DMA task 2
 // CHECK:  VPURT.Task
 // CHECK-SAME:        waits([[BAR0]] : !VPURT.Barrier)
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 2 : si32
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 2 : si32
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 2 : i64>}
 // CHECK-SAME:        inputs([[BUF_DATA_0]] :
 // CHECK-SAME:        outputs([[BUF_DATA_1]] :
@@ -79,7 +79,7 @@ module @DMAGraph {
 // Profiled DMA task 3
 // CHECK:  VPURT.Task
 // CHECK-SAME:        updates([[PROF_BAR]] : !VPURT.Barrier)
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 3 : si32
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 3 : si32
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 3 : i64>}
 // CHECK-SAME:        inputs([[BUF_DATA_1]] :
 // CHECK-SAME:        outputs(%arg1 :
@@ -131,19 +131,19 @@ module @DMAComplexGraph {
     %ddrbuf1 = VPURT.DeclareBuffer <DDR> <512> -> !dataTypeDDR
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 0 : i64 } inputs(%arg0 : !dataTypeCMX) outputs(%cmxbuf0 : !dataTypeCMX) -> !dataTypeCMX
+      %dma0 = VPUIP.NNDMA <{ port = 0 : i64 }> inputs(%arg0 : !dataTypeCMX) outputs(%cmxbuf0 : !dataTypeCMX) -> !dataTypeCMX
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 1 : i64 } inputs(%cmxbuf0 : !dataTypeCMX) outputs(%ddrbuf0 : !dataTypeDDR) -> !dataTypeDDR
+      %dma0 = VPUIP.NNDMA <{ port = 1 : i64 }> inputs(%cmxbuf0 : !dataTypeCMX) outputs(%ddrbuf0 : !dataTypeDDR) -> !dataTypeDDR
     }
 
     VPURT.Task waits(%bar1 : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 0 : i64 } inputs(%ddrbuf1 : !dataTypeDDR) outputs(%ddrbuf0 : !dataTypeDDR) -> !dataTypeDDR
+      %dma0 = VPUIP.NNDMA <{ port = 0 : i64 }> inputs(%ddrbuf1 : !dataTypeDDR) outputs(%ddrbuf0 : !dataTypeDDR) -> !dataTypeDDR
     }
 
     VPURT.Task waits(%bar2 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %dma0 = VPUIP.NNDMA { port = 1 : i64 } inputs(%ddrbuf1 : !dataTypeDDR) outputs(%arg1 : !dataTypeCMX) -> !dataTypeCMX
+      %dma0 = VPUIP.NNDMA <{ port = 1 : i64 }> inputs(%ddrbuf1 : !dataTypeDDR) outputs(%arg1 : !dataTypeCMX) -> !dataTypeCMX
     }
 
     return %arg1 : !dataTypeCMX
@@ -170,7 +170,7 @@ module @DMAComplexGraph {
 // Profiled DMA task 1
 // CHECK:  VPURT.Task
 // CHECK-SAME:        updates([[BAR0]], [[PROF_BAR]]
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 1 : si32, port = 0 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 1 : si32, port = 0 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>}
 // CHECK-SAME:        inputs(%arg0 :
 // CHECK-SAME:        outputs([[CMX_BUF_DATA_0]] :
@@ -179,7 +179,7 @@ module @DMAComplexGraph {
 // CHECK:  VPURT.Task
 // CHECK-SAME:        waits([[BAR0]]
 // CHECK-SAME:        updates([[BAR1]], [[PROF_BAR]]
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 2 : si32, port = 1 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 2 : si32, port = 1 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 2 : i64>}
 // CHECK-SAME:        inputs([[CMX_BUF_DATA_0]] :
 // CHECK-SAME:        outputs([[DDR_BUF_DATA_0]] :
@@ -188,7 +188,7 @@ module @DMAComplexGraph {
 // CHECK:  VPURT.Task
 // CHECK-SAME:        waits([[BAR1]]
 // CHECK-SAME:        updates([[BAR2]], [[PROF_BAR]]
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 3 : si32, port = 0 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 3 : si32, port = 0 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 3 : i64>}
 // CHECK-SAME:        inputs([[DDR_BUF_DATA_1]] :
 // CHECK-SAME:        outputs([[DDR_BUF_DATA_0]] :
@@ -197,7 +197,7 @@ module @DMAComplexGraph {
 // CHECK:  VPURT.Task
 // CHECK-SAME:        waits([[BAR2]]
 // CHECK-SAME:        updates([[PROF_BAR]]
-// CHECK-NEXT:    VPUIP.NNDMA {dma_hwp_id = 4 : si32, port = 1 : i64
+// CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 4 : si32, port = 1 : i64
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 4 : i64>}
 // CHECK-SAME:        inputs([[DDR_BUF_DATA_1]] :
 // CHECK-SAME:        outputs(%arg1 :

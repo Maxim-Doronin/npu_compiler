@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -16,18 +16,15 @@ if(ENABLE_BLOB_DUMP)
     target_compile_definitions(${FUNCTIONAL_TARGET} PUBLIC BLOB_DUMP=1)
 endif()
 
-set(MODULE_DIR "build-modules")
-if(${PROJECT_BINARY_DIR} MATCHES ${MODULE_DIR})
-    if(NOT TARGET gtest)
-        add_subdirectory(${OpenVINO_SOURCE_DIR}/thirdparty/gtest gtest)
-    endif()
+if(NOT TARGET gtest)
+    add_subdirectory(${OpenVINO_SOURCE_DIR}/thirdparty/gtest gtest)
 endif()
 
 if(WIN32)
     # Shlwapi.lib is to check file existence.
     target_link_libraries(${FUNCTIONAL_TARGET}
         PUBLIC
-            npu_driver_compiler
+            ${LINK_COMPILER_LIBRARY}
             gtest
             gtest_main
             Shlwapi.lib
@@ -35,12 +32,11 @@ if(WIN32)
 else()
     target_link_libraries(${FUNCTIONAL_TARGET}
         PUBLIC
-            npu_driver_compiler
+            ${LINK_COMPILER_LIBRARY}
             gtest
             gtest_main
     )
 endif()
-
 
 if(ENABLE_PREBUILT_LLVM_MLIR_LIBS)
     find_package(MLIR REQUIRED CONFIG)
@@ -66,13 +62,5 @@ ov_link_system_libraries(${FUNCTIONAL_TARGET}
 
 ov_add_api_validator_post_build_step(TARGET vpuxCompilerL0Test)
 
-install(TARGETS vpuxCompilerL0Test
-        RUNTIME DESTINATION cid
-        COMPONENT ${CID_COMPONENT})
-
-if(WIN32)
-    install(
-            FILES $<TARGET_PDB_FILE:vpuxCompilerL0Test>
-            DESTINATION cid/pdb
-            COMPONENT ${CID_COMPONENT})
-endif()
+# Install functional test to component
+install_target_with_debug_files(vpuxCompilerL0Test ${INSTALL_DESTINATION} ${INSTALL_COMPONENT})

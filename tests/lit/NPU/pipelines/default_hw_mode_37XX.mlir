@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,7 +38,7 @@ module @Convolution {
 
         // CHECK-DAG:   const.Declare memref<1x1x1x2688xf16>
 
-        // CHECK:       VPURT.Task waits([[barrier_0:%.*]] : !VPURT.Barrier) updates([[barrier_1:%.*]] : !VPURT.Barrier)
+        // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier)
         // CHECK:       VPUIP.NCEClusterTask
         // CHECK-SAME:          task_type = #VPUIP.nce_task_type<ELTWISE>
         // CHECK:       VPUIP.NCEClusterTask
@@ -46,25 +46,25 @@ module @Convolution {
 
         // CHECK:       VPUIP.NCEClusterTask
         // CHECK-SAME:          task_type = #VPUIP.nce_task_type<CONV>
-        // CHECK-SAME:      [[input_0:%.*]] : memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]>)
-        // CHECK-SAME:      [[weight_0:%.*]] : memref<48x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<27> : tensor<48xi64>, alignment = 16 : i64>}, [@CMX_NN, 0]>)
-        // CHECK-SAME:      [[weight_sm_0:%.*]] : memref<48x1x1x256xi1, [@CMX_NN, 0]>)
-        // CHECK-SAME:      [[weight_table_0:%.*]] : memref<48x1x1x4xsi32, [@CMX_NN, 0]>)
-        // CHECK-SAME:      [[parent_input_0:%.*]] : !VPUIP.DistributedBuffer<1x16x62x62xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>)
-        // CHECK-SAME:      [[parent_output_0:%.*]] : !VPUIP.DistributedBuffer<1x48x60x60xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      [[output_0:%.*]] : memref<1x48x30x60xf16, [@CMX_NN, 0]>)
+        // CHECK-SAME:      [[input_0:%.+]] : memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]>)
+        // CHECK-SAME:      [[weight_0:%.+]] : memref<48x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<27> : tensor<48xi64>, alignment = 16 : i64>}, [@CMX_NN, 0]>)
+        // CHECK-SAME:      [[weight_sm_0:%.+]] : memref<48x1x1x256xi1, [@CMX_NN, 0]>)
+        // CHECK-SAME:      [[weight_table_0:%.+]] : memref<48x1x1x4xsi32, [@CMX_NN, 0]>)
+        // CHECK-SAME:      [[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x16x62x62xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>)
+        // CHECK-SAME:      [[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x48x60x60xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      [[output_0:%.+]] : memref<1x48x30x60xf16, [@CMX_NN, 0]>)
         // CHECK:               DPUTask
 
-        // CHECK:       VPURT.Task waits([[barrier_0:%.*]] : !VPURT.Barrier) updates([[barrier_1:%.*]] : !VPURT.Barrier)
+        // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier)
         // CHECK:       VPUIP.NCEClusterTask
         // CHECK-SAME:          task_type = #VPUIP.nce_task_type<CONV>
-        // CHECK-SAME:      [[input_1:%.*]] : memref<1x16x30x62xf16, #NHWC, [@CMX_NN, 1]>)
-        // CHECK-SAME:      [[weight_1:%.*]] : memref<48x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<27> : tensor<48xi64>, alignment = 16 : i64>}, [@CMX_NN, 1]>)
-        // CHECK-SAME:      [[weight_sm_1:%.*]] : memref<48x1x1x256xi1, [@CMX_NN, 1]>
-        // CHECK-SAME:      [[weight_table_1:%.*]] : memref<48x1x1x4xsi32, [@CMX_NN, 1]>)
-        // CHECK-SAME:      [[parent_input_1:%.*]] : !VPUIP.DistributedBuffer<1x16x62x62xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>)
-        // CHECK-SAME:      [[parent_output_1:%.*]] : !VPUIP.DistributedBuffer<1x48x60x60xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      [[output_1:%.*]] : memref<1x48x30x60xf16, [@CMX_NN, 1]>)
+        // CHECK-SAME:      [[input_1:%.+]] : memref<1x16x30x62xf16, #NHWC, [@CMX_NN, 1]>)
+        // CHECK-SAME:      [[weight_1:%.+]] : memref<48x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<27> : tensor<48xi64>, alignment = 16 : i64>}, [@CMX_NN, 1]>)
+        // CHECK-SAME:      [[weight_sm_1:%.+]] : memref<48x1x1x256xi1, [@CMX_NN, 1]>
+        // CHECK-SAME:      [[weight_table_1:%.+]] : memref<48x1x1x4xsi32, [@CMX_NN, 1]>)
+        // CHECK-SAME:      [[parent_input_1:%.+]] : !VPUIP.DistributedBuffer<1x16x62x62xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>)
+        // CHECK-SAME:      [[parent_output_1:%.+]] : !VPUIP.DistributedBuffer<1x48x60x60xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      [[output_1:%.+]] : memref<1x48x30x60xf16, [@CMX_NN, 1]>)
         // CHECK:               DPUTask
   }
 }
@@ -121,14 +121,14 @@ module @ScaleShiftSubgraph {
 
         // CHECK-DAG:   const.Declare memref<1x1x1x12288xf16>
 
-        // CHECK:       VPURT.Task waits([[barrier_0:%.*]] : !VPURT.Barrier) updates([[barrier_1:%.*]] : !VPURT.Barrier)
+        // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier)
         // CHECK:       VPUIP.NCEClusterTask {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}
-        // CHECK-SAME:      input([[input_0:%.*]] : memref<1x512x10x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
-        // CHECK-SAME:      weights([[weight_0:%.*]] : memref<512x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
-        // CHECK-SAME:      weight_table([[weight_table_0:%.*]] : memref<512x1x1x4xsi32, [@CMX_NN, 0]>)
-        // CHECK-SAME:      parent_input([[parent_input_0:%.*]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      parent_output([[parent_output_0:%.*]] : !VPUIP.DistributedBuffer<1x512x20x20x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      outputs([[output_0:%.*]] : memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 0]> variants : {
+        // CHECK-SAME:      input([[input_0:%.+]] : memref<1x512x10x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+        // CHECK-SAME:      weights([[weight_0:%.+]] : memref<512x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
+        // CHECK-SAME:      weight_table([[weight_table_0:%.+]] : memref<512x1x1x4xsi32, [@CMX_NN, 0]>)
+        // CHECK-SAME:      parent_input([[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      parent_output([[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      outputs([[output_0:%.+]] : memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 0]> variants : {
         // CHECK:               DPUTask
         // CHECK:               DPUTask
         // CHECK:               DPUTask
@@ -140,14 +140,14 @@ module @ScaleShiftSubgraph {
         // CHECK:       } PPE : {
         // CHECK:               PPETask {ppe = #VPU.PPEInt<mode = <LPRELU>
 
-        // CHECK:       VPURT.Task waits([[barrier_0:%.*]] : !VPURT.Barrier) updates([[barrier_1:%.*]] : !VPURT.Barrier)
+        // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier)
         // CHECK:       VPUIP.NCEClusterTask {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}
-        // CHECK-SAME:      input([[input_1:%.*]] : memref<1x512x10x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>)
-        // CHECK-SAME:      weights([[weight_1:%.*]] : memref<512x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
-        // CHECK-SAME:      weight_table([[weight_table_1:%.*]] : memref<512x1x1x4xsi32, [@CMX_NN, 1]>)
-        // CHECK-SAME:      parent_input([[parent_input_0:%.*]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      parent_output([[parent_output_0:%.*]] : !VPUIP.DistributedBuffer<1x512x20x20x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      outputs([[output_1:%.*]] : memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 1]>) -> memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 1]> variants : {
+        // CHECK-SAME:      input([[input_1:%.+]] : memref<1x512x10x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>)
+        // CHECK-SAME:      weights([[weight_1:%.+]] : memref<512x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
+        // CHECK-SAME:      weight_table([[weight_table_1:%.+]] : memref<512x1x1x4xsi32, [@CMX_NN, 1]>)
+        // CHECK-SAME:      parent_input([[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      parent_output([[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      outputs([[output_1:%.+]] : memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 1]>) -> memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 1]> variants : {
         // CHECK:               DPUTask
         // CHECK:               DPUTask
         // CHECK:               DPUTask

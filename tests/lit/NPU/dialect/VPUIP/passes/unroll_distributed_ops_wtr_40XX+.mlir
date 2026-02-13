@@ -77,17 +77,17 @@ func.func @OptimizeWeightTableDMAsNCETask(%input: !Input_DDR, %output: !Output_D
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weight table
     VPURT.Task updates(%bar1 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64} inputs(%weight_table : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weight_table : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64} inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Cluster task
@@ -115,7 +115,7 @@ func.func @OptimizeWeightTableDMAsNCETask(%input: !Input_DDR, %output: !Output_D
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -136,7 +136,7 @@ func.func @OptimizeWeightTableDMAsNCETask(%input: !Input_DDR, %output: !Output_D
     //CHECK-SAME{LITERAL}:      memory_shapes = [[32, 1, 1, 4], [32, 1, 1, 4]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
 
     //CHECK:    VPURT.Task updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 0 : i64} inputs([[WT]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 0 : i64}> inputs([[WT]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_CMX]] : !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NCHW, @CMX_NN,
     //CHECK-SAME:               {mode = "DUPLICATED", num_tiles = [2, 1, 1, 1], num_clusters = 2 : i64, alignment = [16, 1, 1, 1], uniform_distributed_segments,
     //CHECK-SAME{LITERAL}:               compute_shapes = [[32, 1, 1, 4], [32, 1, 1, 4]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
@@ -267,23 +267,23 @@ func.func @DoNotOptimizeDMAsForWTSpill(%input: !Input_DDR, %output: !Output_DDR)
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar1 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64} inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weight table
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64} inputs(%weight_table : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weight_table : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
     }
     VPURT.Task waits(%bar2 : !VPURT.Barrier) updates(%bar3 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64, spillId = 1 : i64} inputs(%wt_cmx : !WeightsTableDistributed) outputs(%wt_ddr : !WeightsTable_DDR) -> !WeightsTable_DDR
+      %49 = VPUIP.NNDMA <{port = 0 : i64, spillId = 1 : i64}> inputs(%wt_cmx : !WeightsTableDistributed) outputs(%wt_ddr : !WeightsTable_DDR) -> !WeightsTable_DDR
     }
     VPURT.Task waits(%bar3 : !VPURT.Barrier) updates(%bar4 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64, spillId = 1 : i64} inputs(%wt_ddr : !WeightsTable_DDR) outputs(%wt_cmx1 : !WeightsTableDistributed) -> !WeightsTableDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64, spillId = 1 : i64}> inputs(%wt_ddr : !WeightsTable_DDR) outputs(%wt_cmx1 : !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Cluster task
@@ -311,7 +311,7 @@ func.func @DoNotOptimizeDMAsForWTSpill(%input: !Input_DDR, %output: !Output_DDR)
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -339,27 +339,27 @@ func.func @DoNotOptimizeDMAsForWTSpill(%input: !Input_DDR, %output: !Output_DDR)
     //CHECK:    [[WT_DDR_1:%.+]] = VPURT.DeclareBuffer <DDR> <512> -> memref<32x1x1x4xsi32, @DDR>
 
     //CHECK:    VPURT.Task updates([[BAR_2]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 0 : i64} inputs([[WT0]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 0 : i64}> inputs([[WT0]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_SPILL_BUFF_0_CMX_0]] : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<32x1x1x4xsi32, [@CMX_NN, 0]>
     //CHECK:    }
     //CHECK:    VPURT.Task updates([[BAR_2]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 1 : i64} inputs([[WT1]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 1 : i64}> inputs([[WT1]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_SPILL_BUFF_0_CMX_1]] : memref<32x1x1x4xsi32, [@CMX_NN, 1]>) -> memref<32x1x1x4xsi32, [@CMX_NN, 1]>
     //CHECK:    }
     //CHECK:    VPURT.Task waits([[BAR_2]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 0 : i64, spillId = 1 : i64} inputs([[WT_SPILL_BUFF_1_CMX_0]] : memref<32x1x1x4xsi32, [@CMX_NN, 0]>)
+    //CHECK:        VPUIP.NNDMA <{port = 0 : i64, spillId = 1 : i64}> inputs([[WT_SPILL_BUFF_1_CMX_0]] : memref<32x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           outputs([[WT_DDR_0]] : memref<32x1x1x4xsi32, @DDR>) -> memref<32x1x1x4xsi32, @DDR>
     //CHECK:    }
     //CHECK:    VPURT.Task waits([[BAR_2]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 1 : i64, spillId = 1 : i64} inputs([[WT_SPILL_BUFF_1_CMX_1]] : memref<32x1x1x4xsi32, [@CMX_NN, 1]>)
+    //CHECK:        VPUIP.NNDMA <{port = 1 : i64, spillId = 1 : i64}> inputs([[WT_SPILL_BUFF_1_CMX_1]] : memref<32x1x1x4xsi32, [@CMX_NN, 1]>)
     //CHECK-SAME:           outputs([[WT_DDR_1]] : memref<32x1x1x4xsi32, @DDR>) -> memref<32x1x1x4xsi32, @DDR>
     //CHECK:    }
     //CHECK:    VPURT.Task waits([[BAR_3]] : !VPURT.Barrier) updates([[BAR_4]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 0 : i64, spillId = 1 : i64} inputs([[WT_SPILL_BUFF_DDR_0]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 0 : i64, spillId = 1 : i64}> inputs([[WT_SPILL_BUFF_DDR_0]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_SPILL_BUFF_2_CMX_0]] : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<32x1x1x4xsi32, [@CMX_NN, 0]>
     //CHECK:    }
     //CHECK:    VPURT.Task waits([[BAR_3]] : !VPURT.Barrier) updates([[BAR_4]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 1 : i64, spillId = 1 : i64} inputs([[WT_SPILL_BUFF_DDR_1]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 1 : i64, spillId = 1 : i64}> inputs([[WT_SPILL_BUFF_DDR_1]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_SPILL_BUFF_2_CMX_1]] : memref<32x1x1x4xsi32, [@CMX_NN, 1]>) -> memref<32x1x1x4xsi32, [@CMX_NN, 1]>
     //CHECK:    }
 
@@ -479,15 +479,15 @@ func.func @DoNotOptimizeDMAsFor5DTensorUnevenSplitSizes(%input: !Input_DDR, %out
     %parent_out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> !Output_DDR
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-        %97 = VPUIP.NNDMA {port = 0 : i64} inputs(%wt : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%wt : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     VPURT.Task updates(%bar1 : !VPURT.Barrier) {
-        %97 = VPUIP.NNDMA {port = 0 : i64} inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
     }
 
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-        %97 = VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in : !Input_DDR) outputs(%parent_input_cmx : !ParentInputDistributed) -> !ParentInputDistributed
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in : !Input_DDR) outputs(%parent_input_cmx : !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     VPURT.Task waits(%bar2, %bar1, %bar0 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%bar3 : !VPURT.Barrier) {
@@ -515,7 +515,7 @@ func.func @DoNotOptimizeDMAsFor5DTensorUnevenSplitSizes(%input: !Input_DDR, %out
     }
 
     VPURT.Task waits(%bar3 : !VPURT.Barrier) {
-        %97 = VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx : !ParentOutputDistributed) outputs(%parent_out : !Output_DDR) -> !Output_DDR
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx : !ParentOutputDistributed) outputs(%parent_out : !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -525,15 +525,15 @@ func.func @DoNotOptimizeDMAsFor5DTensorUnevenSplitSizes(%input: !Input_DDR, %out
     //CHECK:    [[WT2:%.+]] = const.Declare memref<6x16x1x1x4xsi32> = dense<1> : tensor<20x16x1x1x4xsi32>, [#const.SubView<[14, 0, 0, 0, 0], [6, 16, 1, 1, 4]>]
 
     //CHECK:    VPURT.Task
-    //CHECK:      VPUIP.NNDMA {port = 0 : i64} inputs([[WT0]] : memref<7x16x1x1x4xsi32>)
+    //CHECK:      VPUIP.NNDMA <{port = 0 : i64}> inputs([[WT0]] : memref<7x16x1x1x4xsi32>)
     //CHECK-SAME:   outputs({{[^:]+}} : memref<7x16x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<7x16x1x1x4xsi32, [@CMX_NN, 0]>
     //CHECK:    }
     //CHECK:    VPURT.Task
-    //CHECK:      VPUIP.NNDMA {port = 1 : i64} inputs([[WT1]] : memref<7x16x1x1x4xsi32>)
+    //CHECK:      VPUIP.NNDMA <{port = 1 : i64}> inputs([[WT1]] : memref<7x16x1x1x4xsi32>)
     //CHECK-SAME:   outputs({{[^:]+}} : memref<7x16x1x1x4xsi32, [@CMX_NN, 1]>) -> memref<7x16x1x1x4xsi32, [@CMX_NN, 1]>
     //CHECK:    }
     //CHECK:    VPURT.Task
-    //CHECK:      VPUIP.NNDMA {port = 0 : i64, split_candidate} inputs([[WT2]] : memref<6x16x1x1x4xsi32>)
+    //CHECK:      VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs([[WT2]] : memref<6x16x1x1x4xsi32>)
     //CHECK-SAME:   outputs({{[^:]+}} : memref<6x16x1x1x4xsi32, [@CMX_NN, 2]>) -> memref<6x16x1x1x4xsi32, [@CMX_NN, 2]>
     //CHECK:    }
 
@@ -654,17 +654,17 @@ func.func @DoNotOptimizeDMAsForDifferentValuesPerCluster(%input: !Input_DDR, %ou
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weight table
     VPURT.Task updates(%bar1 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64} inputs(%weight_table : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weight_table : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar2 : !VPURT.Barrier) {
-      %49 = VPUIP.NNDMA {port = 0 : i64} inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
+      %49 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Cluster task
@@ -692,7 +692,7 @@ func.func @DoNotOptimizeDMAsForDifferentValuesPerCluster(%input: !Input_DDR, %ou
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -712,11 +712,11 @@ func.func @DoNotOptimizeDMAsForDifferentValuesPerCluster(%input: !Input_DDR, %ou
     //CHECK:    [[WT_BUFF_1_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<32x1x1x4xsi32, [@CMX_NN, 1]>
 
     //CHECK:    VPURT.Task updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 0 : i64} inputs([[WT_DDR_0]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 0 : i64}> inputs([[WT_DDR_0]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_BUFF_1_CMX_0]] : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<32x1x1x4xsi32, [@CMX_NN, 0]>
 
     //CHECK:    VPURT.Task updates([[BAR_1]] : !VPURT.Barrier) {
-    //CHECK:        VPUIP.NNDMA {port = 1 : i64} inputs([[WT_DDR_1]] : memref<32x1x1x4xsi32, @DDR>)
+    //CHECK:        VPUIP.NNDMA <{port = 1 : i64}> inputs([[WT_DDR_1]] : memref<32x1x1x4xsi32, @DDR>)
     //CHECK-SAME:           outputs([[WT_BUFF_1_CMX_1]] : memref<32x1x1x4xsi32, [@CMX_NN, 1]>) -> memref<32x1x1x4xsi32, [@CMX_NN, 1]>
 
     //CHECK:    VPURT.Task waits([[BAR_2]], [[BAR_1]], [[BAR_0]] : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) {
@@ -757,6 +757,182 @@ func.func @DoNotOptimizeDMAsForDifferentValuesPerCluster(%input: !Input_DDR, %ou
     //CHECK:        ]>) -> !VPUIP.ITIBuffer<
     //CHECK:        1x64x4x1xf16, #NHWC, [@CMX_NN, 1],
     //CHECK:    variants : {
+    //CHECK:      } PPE : {
+    //CHECK:      }
+    //CHECK:    }
+}
+
+// -----
+
+#GNHWC = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4, d2)>
+#NCDHW = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+
+!ParentInputDistributed = !VPUIP.DistributedBuffer<
+    18x1x64x1x4xf16, #GNHWC, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [3, 1, 1, 1, 1],
+    num_clusters = 3 : i64, uniform_distributed_segments,
+    compute_shapes = [[6, 1, 64, 1, 4], [6, 1, 64, 1, 4], [6, 1, 64, 1, 4]],
+    compute_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]],
+    memory_shapes = [[6, 1, 64, 1, 4], [6, 1, 64, 1, 4], [6, 1, 64, 1, 4]],
+    memory_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]]
+}>
+
+!ParentOutputDistributed = !VPUIP.DistributedBuffer<
+    18x1x16x1x4xf16, #GNHWC, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [3, 1, 1, 1, 1],
+    num_clusters = 3 : i64, uniform_distributed_segments,
+    compute_shapes = [[6, 1, 16, 1, 4], [6, 1, 16, 1, 4], [6, 1, 16, 1, 4]],
+    compute_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]],
+    memory_shapes = [[6, 1, 16, 1, 4], [6, 1, 16, 1, 4], [6, 1, 16, 1, 4]],
+    memory_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]]
+}>
+
+!WeightsDistributed = !VPUIP.DistributedBuffer<
+    18x16x64x1x1xf16, #GNHWC, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [3, 1, 1, 1, 1],
+    num_clusters = 3 : i64, uniform_distributed_segments,
+    compute_shapes = [[6, 16, 64, 1, 1], [6, 16, 64, 1, 1], [6, 16, 64, 1, 1]],
+    compute_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]],
+    memory_shapes = [[6, 16, 64, 1, 1], [6, 16, 64, 1, 1], [6, 16, 64, 1, 1]],
+    memory_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]]
+}>
+
+!WeightsTableDistributed = !VPUIP.DistributedBuffer<
+    18x16x1x1x4xsi32, #NCDHW, @CMX_NN, {
+    mode = "SEGMENTED", num_tiles = [3, 1, 1, 1, 1],
+    num_clusters = 3 : i64, uniform_distributed_segments,
+    compute_shapes = [[6, 16, 1, 1, 4], [6, 16, 1, 1, 4], [6, 16, 1, 1, 4]],
+    compute_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]],
+    memory_shapes = [[6, 16, 1, 1, 4], [6, 16, 1, 1, 4], [6, 16, 1, 1, 4]],
+    memory_offsets = [[0, 0, 0, 0, 0], [6, 0, 0, 0, 0], [12, 0, 0, 0, 0]]
+}>
+
+!Input_DDR =  memref<18x1x64x1x4xf16, #GNHWC, @DDR>
+!Output_DDR = memref<18x1x16x1x4xf16, #GNHWC, @DDR>
+!Weights_DDR = memref<18x16x64x1x1xf16, #GNHWC, @DDR>
+!WeightsTable_DDR = memref<18x16x1x1x4xsi32>
+
+//CHECK-LABEL: @OptimizeDMAsFor5DTensorEvenSplitSizes
+func.func @OptimizeDMAsFor5DTensorEvenSplitSizes(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
+    // Barriers
+    %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar2 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %bar3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+
+    //Constants
+    %wt = const.Declare !WeightsTable_DDR = dense<1> : tensor<18x16x1x1x4xsi32>
+
+    // CMX Buffers
+    %parent_input_cmx = VPURT.DeclareBuffer <CMX_NN> <1170944> -> !ParentInputDistributed
+    %weights_cmx = VPURT.DeclareBuffer <CMX_NN> <10240> -> !WeightsDistributed
+    %wt_cmx = VPURT.DeclareBuffer <CMX_NN> <1174528> -> !WeightsTableDistributed
+    %parent_out_cmx = VPURT.DeclareBuffer <CMX_NN> <24576> -> !ParentOutputDistributed
+
+    // DDR buffers
+    %weights = VPURT.DeclareBuffer <DDR> <0> -> !Weights_DDR
+    %parent_in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> !Input_DDR
+    %parent_out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> !Output_DDR
+
+    VPURT.Task updates(%bar0 : !VPURT.Barrier) {
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%wt : !WeightsTable_DDR) outputs(%wt_cmx : !WeightsTableDistributed) -> !WeightsTableDistributed
+    }
+
+    VPURT.Task updates(%bar1 : !VPURT.Barrier) {
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights : !Weights_DDR) outputs(%weights_cmx : !WeightsDistributed) -> !WeightsDistributed
+    }
+
+    VPURT.Task updates(%bar2 : !VPURT.Barrier) {
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in : !Input_DDR) outputs(%parent_input_cmx : !ParentInputDistributed) -> !ParentInputDistributed
+    }
+
+    VPURT.Task waits(%bar2, %bar1, %bar0 : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%bar3 : !VPURT.Barrier) {
+        %97 = VPUIP.NCEClusterTask {is_zero_offset_weights_table,
+                kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+                kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+        input(%parent_input_cmx : !ParentInputDistributed)
+        weights(%weights_cmx : !WeightsDistributed)
+        weight_table(%wt_cmx : !WeightsTableDistributed)
+        parent_input(%parent_input_cmx : !ParentInputDistributed)
+        parent_output(%parent_out_cmx : !ParentOutputDistributed)
+        outputs(%parent_out_cmx : !ParentOutputDistributed)
+        -> !ParentOutputDistributed variants : {
+            DPUTask {cluster_id = 0 : i64, inEnd = [3, 0, 63], inStart = [0, 0, 0],
+                mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [3, 0, 15], outStart = [0, 0, 0],
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+            DPUTask {cluster_id = 1 : i64, inEnd = [3, 0, 63], inStart = [0, 0, 0],
+                mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [3, 0, 15], outStart = [0, 0, 0],
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+            DPUTask {cluster_id = 2 : i64, inEnd = [3, 0, 63], inStart = [0, 0, 0],
+                mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [3, 0, 15], outStart = [0, 0, 0],
+                pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+        } PPE : {
+        }
+    }
+
+    VPURT.Task waits(%bar3 : !VPURT.Barrier) {
+        %97 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx : !ParentOutputDistributed) outputs(%parent_out : !Output_DDR) -> !Output_DDR
+    }
+
+    return %output: !Output_DDR
+
+    //CHECK:    [[WT:%.+]] = const.Declare memref<6x16x1x1x4xsi32> = dense<1> : tensor<18x16x1x1x4xsi32>, [#const.SubView<[0, 0, 0, 0, 0], [6, 16, 1, 1, 4]>]
+
+    //CHECK:    VPURT.Task
+    //CHECK:      VPUIP.NNDMA <{port = 0 : i64}> inputs([[WT]] : memref<6x16x1x1x4xsi32>)
+    //CHECK-SAME:   outputs({{[^:]+}} : !VPUIP.DistributedBuffer<6x16x1x1x4xsi32, #NCDHW, @CMX_NN,
+    //CHECK-SAME:     {mode = "DUPLICATED", num_tiles = [3, 1, 1, 1, 1], num_clusters = 3 : i64, uniform_distributed_segments,
+    //CHECK-SAME{LITERAL}:     compute_shapes = [[6, 16, 1, 1, 4], [6, 16, 1, 1, 4], [6, 16, 1, 1, 4]],
+    //CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+    //CHECK-SAME{LITERAL}:     memory_shapes = [[6, 16, 1, 1, 4], [6, 16, 1, 1, 4], [6, 16, 1, 1, 4]],
+    //CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]}>)
+    //CHECK-SAME:     -> !VPUIP.DistributedBuffer<6x16x1x1x4xsi32, #NCDHW, @CMX_NN,
+    //CHECK-SAME:     {mode = "DUPLICATED", num_tiles = [3, 1, 1, 1, 1], num_clusters = 3 : i64, uniform_distributed_segments,
+    //CHECK-SAME{LITERAL}:     compute_shapes = [[6, 16, 1, 1, 4], [6, 16, 1, 1, 4], [6, 16, 1, 1, 4]],
+    //CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+    //CHECK-SAME{LITERAL}:     memory_shapes = [[6, 16, 1, 1, 4], [6, 16, 1, 1, 4], [6, 16, 1, 1, 4]],
+    //CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]}>
+    //CHECK:    }
+
+    //CHECK:    VPURT.Task
+    //CHECK:      VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    //CHECK-SAME:       kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:   input({{[^:]+}} : memref<6x1x64x1x4xf16, #GNHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:   weights({{[^:]+}} : memref<6x16x64x1x1xf16, #GNHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:   weight_table({{[^:]+}} : memref<6x16x1x1x4xsi32, [@CMX_NN, 0]>)
+    //CHECK-SAME:   parent_input({{[^:]+}} : memref<6x1x64x1x4xf16, #GNHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:   parent_output({{[^:]+}} : memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:   outputs({{[^:]+}} : memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 0]>) -> memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 0]> variants : {
+    //CHECK:        DPUTask {cluster_id = 0 : i64, inEnd = [3, 0, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>,
+    //CHECK-SAME:       outEnd = [3, 0, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+    //CHECK:      } PPE : {
+    //CHECK:      }
+    //CHECK:    }
+    //CHECK:    VPURT.Task
+    //CHECK:      VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    //CHECK-SAME:       kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:   input({{[^:]+}} : memref<6x1x64x1x4xf16, #GNHWC, [@CMX_NN, 1]>)
+    //CHECK-SAME:   weights({{[^:]+}} : memref<6x16x64x1x1xf16, #GNHWC, [@CMX_NN, 1]>)
+    //CHECK-SAME:   weight_table({{[^:]+}} : memref<6x16x1x1x4xsi32, [@CMX_NN, 1]>)
+    //CHECK-SAME:   parent_input({{[^:]+}} : memref<6x1x64x1x4xf16, #GNHWC, [@CMX_NN, 1]>)
+    //CHECK-SAME:   parent_output({{[^:]+}} : memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 1]>)
+    //CHECK-SAME:   outputs({{[^:]+}} : memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 1]>) -> memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 1]> variants : {
+    //CHECK:        DPUTask {cluster_id = 1 : i64, inEnd = [3, 0, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>,
+    //CHECK-SAME:       outEnd = [3, 0, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
+    //CHECK:      } PPE : {
+    //CHECK:      }
+    //CHECK:    }
+    //CHECK:    VPURT.Task
+    //CHECK:      VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    //CHECK-SAME:       kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:   input({{[^:]+}} : memref<6x1x64x1x4xf16, #GNHWC, [@CMX_NN, 2]>)
+    //CHECK-SAME:   weights({{[^:]+}} : memref<6x16x64x1x1xf16, #GNHWC, [@CMX_NN, 2]>)
+    //CHECK-SAME:   weight_table({{[^:]+}} : memref<6x16x1x1x4xsi32, [@CMX_NN, 2]>)
+    //CHECK-SAME:   parent_input({{[^:]+}} : memref<6x1x64x1x4xf16, #GNHWC, [@CMX_NN, 2]>)
+    //CHECK-SAME:   parent_output({{[^:]+}} : memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 2]>)
+    //CHECK-SAME:   outputs({{[^:]+}} : memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 2]>) -> memref<6x1x16x1x4xf16, #GNHWC, [@CMX_NN, 2]> variants : {
+    //CHECK:        DPUTask {cluster_id = 2 : i64, inEnd = [3, 0, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>,
+    //CHECK-SAME:       outEnd = [3, 0, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     //CHECK:      } PPE : {
     //CHECK:      }
     //CHECK:    }

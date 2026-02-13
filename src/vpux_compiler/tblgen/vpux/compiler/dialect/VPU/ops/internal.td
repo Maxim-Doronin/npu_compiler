@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -103,8 +103,33 @@ def VPU_UnrolledTypeOp :
     let hasFolder = 1;
 }
 
+def VPU_EmptyOp :
+        VPU_Op<
+            "Empty",
+            [
+                Pure
+            ]
+        > {
+    let summary = "Empty tensor operation";
+
+    let description = [{
+        `VPU.empty` is an operation that defines a tensor of a particular shape.
+        The contents of the tensor are unspecified and the only purpose of the
+        op result is to materialize the specified shape in IR.
+
+        The operation can be lowered to a buffer allocation operation, such as
+        `memref.alloc` or `VPURT.AllocDistributed`.
+    }];
 
 
+    let results = (outs
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$result
+    );
+
+    let assemblyFormat = "attr-dict `:` type($result)";
+
+    let hasCanonicalizer = 1;
+}
 
 def VPU_VerticalFusionOp :
         VPU_Op<
@@ -122,7 +147,8 @@ def VPU_VerticalFusionOp :
     let arguments = (ins
         Variadic<AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor, VPU_SparseTensor]>>:$operands,
         I64ArrayAttr:$tilingStrategy,
-        OptionalAttr<VPU_VFScenarioAttr>:$scenario
+        OptionalAttr<VPU_VFScenarioAttr>:$scenario,
+        UnitAttr:$isManualConfigured
     );
 
     let results = (outs
@@ -138,6 +164,9 @@ def VPU_VerticalFusionOp :
         OpBuilder<(ins "mlir::TypeRange":$resultTypes, "mlir::ValueRange":$operands,
             "llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange)>":$bodyBuilder,
             "mlir::ArrayAttr":$tilingInfo)>,
+        OpBuilder<(ins "mlir::TypeRange":$resultTypes, "mlir::ValueRange":$operands,
+            "llvm::function_ref<void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange)>":$bodyBuilder,
+            "mlir::ArrayAttr":$tilingInfo, "mlir::UnitAttr":$isManualConfigured)>
     ];
 
     let extraClassDeclaration = [{
@@ -211,7 +240,7 @@ def VPU_GroupSparseTensorOp :
         UnitAttr:$is_weights,
         OptionalAttr<VPU_SparsityCompressionAttr>:$sparsity_compression,
 
-        OptionalAttr<VPU_SEAttr>:$seAttr
+        OptionalAttr<VPU_SEAttrInterface>:$seAttr
     );
 
     let results = (outs

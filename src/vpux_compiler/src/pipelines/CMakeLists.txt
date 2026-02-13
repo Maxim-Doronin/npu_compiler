@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2025 Intel Corporation.
+# Copyright (C) 2025-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -16,6 +16,7 @@ add_npu_library(${TARGET_NAME}
         npu_compiler_dialect_vpu_utils
         npu_compiler_dialect_vpu_transforms
         npu_compiler_dialect_hostexec_transforms
+        npu_compiler_locverif
     PUBLIC
         mlir-dependencies
     SYSTEM_INCLUDES

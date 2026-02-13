@@ -5,8 +5,12 @@
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -31,6 +35,7 @@ public:
 
 public:
     class GenericSliceUpstreaming;
+    class SliceUpstreamWithAffineReshape;
 
 private:
     void safeRunOnFunc() final;
@@ -179,12 +184,12 @@ mlir::LogicalResult UpstreamSlicePass::GenericSliceUpstreaming::matchAndRewrite(
         for (auto& operand : opOperands) {
             operand.set(newSlice->getResult(0));
         }
-        extendOpLoc(newSlice, llvm::formatv("_{0}", opOperands[0].getOperandNumber()));
+        extendOpLoc(newSlice, "{0}", opOperands[0].getOperandNumber());
     } else {
         for (auto& operand : opOperands) {
             auto newSlice = mlir::cast<mlir::InferTypeOpInterface>(rewriter.clone(*origOp));
             newSlice->setOperand(0, operand.get());
-            extendOpLoc(newSlice, llvm::formatv("_{0}", operand.getOperandNumber()));
+            extendOpLoc(newSlice, "{0}", operand.getOperandNumber());
             inferReturnTypes(newSlice, InferShapedTypeMode::ALL);
             operand.set(newSlice->getResult(0));
             // For FakeQuantize the activation input is represented by first operand
@@ -202,6 +207,159 @@ mlir::LogicalResult UpstreamSlicePass::GenericSliceUpstreaming::matchAndRewrite(
     return mlir::success();
 }
 
+// the GenericSliceUpstreaming pattern only matches SliceOp adjacent to Eltwise-like ops.
+// propagating SliceOp forward could be generalized to cast-like ops and reshape-like ops, to enable further
+// optimization, E#197021.
+//              parentOp                           parentOp
+//                | |                                 |
+//             EltwiseOp                       AffineReshapeOp (optional)
+//                 |                                  |
+//          AffineReshapeOp (optional)    ==>       SliceOp
+//                 |                                  |
+//          QuantizeCastOp  (optional)         AffineReshapeOp (optional)
+//                 |                                 | |
+//              SliceOp                           EltwiseOp
+//                                                    |
+//                                              QuantizeCastOp (optional)
+//                                                    |
+//                                              AffineReshapeOp (optional)
+//
+
+class UpstreamSlicePass::SliceUpstreamWithAffineReshape final : public mlir::OpRewritePattern<IE::SliceOp> {
+public:
+    SliceUpstreamWithAffineReshape(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::SliceOp>(ctx), _log(log) {
+        this->setDebugName("SliceUpstreamWithAffineReshape");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::SliceOp op, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult UpstreamSlicePass::SliceUpstreamWithAffineReshape::matchAndRewrite(
+        IE::SliceOp origOp, mlir::PatternRewriter& rewriter) const {
+    auto input = origOp.getInput();
+    auto nextParentOp = input.getDefiningOp();
+    if (nextParentOp == nullptr || !nextParentOp->hasOneUse()) {
+        return mlir::failure();
+    }
+    auto output = origOp.getOutput();
+
+    auto quantCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(nextParentOp);
+    if (quantCastOp) {
+        if (!quantCastOp->hasOneUse()) {
+            return mlir::failure();
+        }
+        nextParentOp = quantCastOp.getInput().getDefiningOp();
+    }
+
+    auto affineReshapeOp = mlir::dyn_cast<IE::AffineReshapeOp>(nextParentOp);
+    if (affineReshapeOp) {
+        if (!affineReshapeOp->hasOneUse()) {
+            return mlir::failure();
+        }
+        nextParentOp = affineReshapeOp.getInput().getDefiningOp();
+    }
+
+    auto eltwiseOp = nextParentOp;
+    if (eltwiseOp == nullptr || !eltwiseOp->hasTrait<IE::EltwiseOp>() || !eltwiseOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto lhs = eltwiseOp->getOperand(0);
+    if (llvm::any_of(eltwiseOp->getOperands(), [&lhs](mlir::Value operand) {
+            return operand != lhs;
+        })) {
+        return mlir::failure();
+    }
+
+    auto origEltwiseShape = getShape(eltwiseOp->getResult(0));
+    auto sliceInShape = getShape(input);
+    auto sliceOutShape = getShape(output);
+    // infer the dim order for the second AffineReshapeOp in the post-transformation op chain
+    // this reshape aims to recover the shape for the EltwiseOp
+    auto reshapeBackDim = IE::getReassociationMap(sliceInShape, origEltwiseShape);
+    if (mlir::failed(reshapeBackDim)) {
+        return mlir::failure();
+    }
+
+    // infer the output shape for the second AffineReshapeOp in the post-transformation op chain
+    auto sliceAxes = IE::getDiffInOutSizeDims(sliceInShape, sliceOutShape);
+    if (sliceAxes.empty() || sliceAxes.size() != 1) {
+        return mlir::failure();
+    }
+    auto sliceAxis = sliceAxes[0];
+    auto dstAxis = reshapeBackDim.value()[sliceAxis.ind()];
+    if (dstAxis.size() != 1) {
+        return mlir::failure();
+    }
+    auto sliceInShapeOnAxis = sliceInShape[sliceAxis];
+    auto sliceOutShapeOnAxis = sliceOutShape[sliceAxis];
+    auto origEltwiseShapeOnDstAxis = origEltwiseShape[Dim(dstAxis[0])];
+    auto newAddShapeOnDstAxis = origEltwiseShapeOnDstAxis / (sliceInShapeOnAxis / sliceOutShapeOnAxis);
+    SmallVector<int64_t> newOutShape = to_small_vector(origEltwiseShape);
+    newOutShape[dstAxis[0]] = newAddShapeOnDstAxis;
+    auto newOutShapeAttr = getIntArrayAttr(getContext(), newOutShape);
+
+    // infer the dim order for the last AffineReshapeOp in the post-transformation op chain
+    auto newLastAffineReshapeDim = IE::getReassociationMap(ShapeRef(newOutShape), sliceOutShape);
+    if (mlir::failed(newLastAffineReshapeDim)) {
+        return mlir::failure();
+    }
+    mlir::Value currentValue = lhs;
+    if (affineReshapeOp) {
+        auto lhsReshape = rewriter.create<IE::AffineReshapeOp>(affineReshapeOp->getLoc(), lhs,
+                                                               affineReshapeOp.getDimMappingAttr(),
+                                                               affineReshapeOp.getShapeValueAttr());
+        currentValue = lhsReshape.getResult();
+    }
+    auto lhsSlice = rewriter.create<IE::SliceOp>(origOp.getLoc(), currentValue, origOp.getStaticOffsetsAttr(),
+                                                 origOp.getStaticSizesAttr());
+    currentValue = lhsSlice.getResult();
+    if (affineReshapeOp) {
+        auto lhsReshapeBack = rewriter.create<IE::AffineReshapeOp>(
+                origOp.getLoc(), currentValue, getIntArrayOfArray(getContext(), reshapeBackDim.value()),
+                newOutShapeAttr);
+        currentValue = lhsReshapeBack.getResult();
+    }
+
+    auto newEltwiseInput = currentValue;
+    auto newEltwise = rewriter.clone(*eltwiseOp);
+    auto newEltwiseOperands = newEltwise->getOpOperands();
+    for (auto& operand : newEltwiseOperands) {
+        operand.set(newEltwiseInput);
+    }
+    inferReturnTypes(newEltwise, InferShapedTypeMode::SHAPE);
+
+    currentValue = newEltwise->getResult(0);
+    if (quantCastOp) {
+        auto newQuantCast =
+                rewriter.create<IE::QuantizeCastOp>(quantCastOp->getLoc(),
+                                                    mlir::cast<vpux::NDTypeInterface>(quantCastOp.getOutput().getType())
+                                                            .changeShape(getShape(currentValue)),
+                                                    currentValue, quantCastOp.getDstElemTypeAttr());
+        currentValue = newQuantCast->getResult(0);
+    }
+    if (affineReshapeOp) {
+        auto newLastAffineReshapeOp = rewriter.create<IE::AffineReshapeOp>(
+                origOp.getLoc(), currentValue, getIntArrayOfArray(getContext(), newLastAffineReshapeDim.value()),
+                getIntArrayAttr(getContext(), sliceOutShape));
+        currentValue = newLastAffineReshapeOp.getResult();
+    }
+
+    rewriter.replaceOp(origOp, currentValue);
+    if (quantCastOp) {
+        rewriter.eraseOp(quantCastOp);
+    }
+    if (affineReshapeOp) {
+        rewriter.eraseOp(affineReshapeOp);
+    }
+    rewriter.eraseOp(eltwiseOp);
+    return mlir::success();
+}
+
 //
 // safeRunOnFunc
 //
@@ -211,6 +369,7 @@ void UpstreamSlicePass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<GenericSliceUpstreaming>(&ctx, _log);
+    patterns.add<SliceUpstreamWithAffineReshape>(&ctx, _log);
 
     IE::SliceOp::getCanonicalizationPatterns(patterns, &ctx);
     IE::StridedSliceOp::getCanonicalizationPatterns(patterns, &ctx);

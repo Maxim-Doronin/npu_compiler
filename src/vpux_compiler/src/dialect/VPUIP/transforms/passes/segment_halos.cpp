@@ -230,7 +230,7 @@ void updateNceOps(NCEClusterTaskOp nceOp, DenseMap<NCEClusterTaskOp, NceOpOutput
             nceOp.getIsZeroOffsetWeightsTableAttr(), nceOp.getIsSuperdenseAttr(), nceOp.getIsInplaceAttr(),
             nceOp.getInputSeSizeAttr(), nceOp.getOutputSeSizeAttr(), nceOp.getIsPermuteQuantizeAttr(),
             nceOp.getIsSmallKernelOptimizedAttr(), nceOp.getMpeEngineAttr(), nceOp.getEltwiseTypeAttr(),
-            nceOp.getDynamicScaleConfigAttr());
+            nceOp.getSparsityConfigAttr(), nceOp.getDynamicScaleConfigAttr(), nceOp.getLocalRegionAttr());
     if (auto profMetadata = nceOp.getProfilingMetadataAttr()) {
         updatedNceOp.setProfilingMetadataAttr(profMetadata);
     }

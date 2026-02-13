@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,6 +32,9 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+const uint32_t levelCount = 2;
+SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
 
 struct PoolingAttr {
     mlir::ArrayAttr kernelAttr;
@@ -285,13 +288,86 @@ mlir::LogicalResult generalReduceRewrite(
     return mlir::success();
 }
 
+bool isValidOperationForConversion(mlir::Operation* op, Logger log) {
+    const auto isLegalOp = [&](mlir::Operation* op) {
+        const auto logCb = [&](const formatv_object_base& msg) {
+            log.trace("{0}", msg.str());
+        };
+
+        if (!mlir::isa<IE::ReduceMeanOp, IE::ReduceSumOp, IE::ReduceMinOp, IE::ReduceMaxOp>(op)) {
+            return false;
+        }
+        /*To do: remove this check and implement E#129361*/
+        if (mlir::isa<IE::ReduceMeanOp, IE::ReduceSumOp>(op)) {
+            if (config::isReduceOpSupportedOnNCE(op) && VPU::isNCEReduceSupported(op, logCb)) {
+                return false;
+            }
+        }
+
+        const auto inputShape = getShape(op->getOperand(0)).raw();
+        int64_t mergedDim = 1;
+
+        // Check that axes are consecutive otherwise this conversion is not applicable
+        llvm::SmallVector<int64_t> axes = {0};
+        if (op->hasAttr("axes_value")) {
+            if (auto axesValue = mlir::dyn_cast_or_null<mlir::ArrayAttr>(op->getAttr("axes_value"))) {
+                axes = parseIntArrayAttr<int64_t>(axesValue);
+            }
+        } else {
+            VPUX_THROW("Operator has no axes_value attribute");
+        }
+
+        for (size_t i = 0; i < axes.size(); i++) {
+            if (axes[i] < 0) {
+                axes[i] += inputShape.size();
+            }
+            mergedDim *= inputShape[axes[i]];
+        }
+
+        std::sort(axes.begin(), axes.end());
+        for (size_t i = 1; i < axes.size(); i++) {
+            if (axes[i] - axes[i - 1] != 1) {
+                return false;
+            }
+        }
+
+        const auto inputElementType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
+        const auto outputElementType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
+        const auto isDataTypeDpuCompatible = inputElementType.isF16() && outputElementType.isF16();
+
+        const auto maxKernelSize = config::getMaxKernelSize(op);
+        // Check that handleLargeKernels supports this op
+        const auto isKernelSizeDpuCompatible =
+                (axes.size() == 2) ? (vpux::IE::isPoolingKernelSizeValid(inputShape[axes[0]], maxKernelSize) &&
+                                      vpux::IE::isPoolingKernelSizeValid(inputShape[axes[1]], maxKernelSize))
+                                   : vpux::IE::isPoolingKernelSizeValid(mergedDim, maxKernelSize);
+        const auto dpuCompatible = isKernelSizeDpuCompatible && isDataTypeDpuCompatible;
+
+        const bool isHWCompilationMode = config::getCompilationMode(op) != config::CompilationMode::ReferenceSW;
+
+        // Apply the conversion only if the resulting Pooling operation can run on DPU
+        return dpuCompatible && isHWCompilationMode;
+    };
+
+    if (mlir::isa<IE::ReduceMinOp>(op)) {
+        const auto maxKernelSize = config::getMaxKernelSize(op);
+        if ((getShape(op->getResult(0)).totalSize() == 1) &&
+            (getShape(op->getOperand(0)).totalSize() > std::pow(maxKernelSize, 2))) {
+            return false;
+        }
+    }
+
+    return isLegalOp(op);
+}
+
 //
 // ReduceMeanRewriter
 //
 
 class ReduceMeanRewriter final : public mlir::OpRewritePattern<IE::ReduceMeanOp> {
 public:
-    ReduceMeanRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ReduceMeanOp>(ctx), _log(log) {
+    ReduceMeanRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceMeanOp>(ctx, benefit), _log(log) {
         setDebugName("ReduceMeanRewriter");
     }
 
@@ -305,6 +381,9 @@ mlir::LogicalResult ReduceMeanRewriter::matchAndRewrite(IE::ReduceMeanOp origOp,
                                                         mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got ReduceMean layer at '{1}'", getDebugName(), origOp->getLoc());
     auto axes = parseIntArrayAttr<int64_t>(origOp.getAxesValue().value());
+    if (!isValidOperationForConversion(origOp, _log)) {
+        return mlir::failure();
+    }
     return generalReduceRewrite(origOp, rewriter, std::move(axes),
                                 [&](mlir::Location loc, mlir::Value input, PoolingAttr attr) -> mlir::Operation* {
                                     return rewriter.create<IE::AvgPoolOp>(
@@ -320,7 +399,8 @@ mlir::LogicalResult ReduceMeanRewriter::matchAndRewrite(IE::ReduceMeanOp origOp,
 
 class ReduceMaxRewriter final : public mlir::OpRewritePattern<IE::ReduceMaxOp> {
 public:
-    ReduceMaxRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ReduceMaxOp>(ctx), _log(log) {
+    ReduceMaxRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceMaxOp>(ctx, benefit), _log(log) {
         setDebugName("ReduceMaxRewriter");
     }
 
@@ -332,6 +412,9 @@ private:
 
 mlir::LogicalResult ReduceMaxRewriter::matchAndRewrite(IE::ReduceMaxOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got ReduceMax layer at '{1}'", getDebugName(), origOp->getLoc());
+    if (!isValidOperationForConversion(origOp, _log)) {
+        return mlir::failure();
+    }
     auto axes = parseIntArrayAttr<int64_t>(origOp.getAxesValue().value());
     return generalReduceRewrite(origOp, rewriter, std::move(axes),
                                 [&](mlir::Location loc, mlir::Value input, PoolingAttr attr) -> mlir::Operation* {
@@ -348,7 +431,8 @@ mlir::LogicalResult ReduceMaxRewriter::matchAndRewrite(IE::ReduceMaxOp origOp, m
 
 class ReduceSumRewriter final : public mlir::OpRewritePattern<IE::ReduceSumOp> {
 public:
-    ReduceSumRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ReduceSumOp>(ctx), _log(log) {
+    ReduceSumRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceSumOp>(ctx, benefit), _log(log) {
         setDebugName("ReduceSumRewriter");
     }
 
@@ -361,6 +445,10 @@ private:
 mlir::LogicalResult ReduceSumRewriter::matchAndRewrite(IE::ReduceSumOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got ReduceSum layer at '{1}'", getDebugName(), origOp->getLoc());
     auto axes = parseIntArrayAttr<int64_t>(origOp.getAxesValue().value());
+    if (!isValidOperationForConversion(origOp, _log)) {
+        return mlir::failure();
+    }
+
     return generalReduceRewrite(
             origOp, rewriter, std::move(axes),
             [&](mlir::Location loc, mlir::Value input, PoolingAttr attr) -> mlir::Operation* {
@@ -399,7 +487,8 @@ mlir::LogicalResult ReduceSumRewriter::matchAndRewrite(IE::ReduceSumOp origOp, m
 
 class ReduceMinRewriter final : public mlir::OpRewritePattern<IE::ReduceMinOp> {
 public:
-    ReduceMinRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ReduceMinOp>(ctx), _log(log) {
+    ReduceMinRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceMinOp>(ctx, benefit), _log(log) {
         setDebugName("ReduceMinRewriter");
     }
 
@@ -411,6 +500,9 @@ private:
 
 mlir::LogicalResult ReduceMinRewriter::matchAndRewrite(IE::ReduceMinOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got ReduceMin layer at '{1}'", getDebugName(), origOp->getLoc());
+    if (!isValidOperationForConversion(origOp, _log)) {
+        return mlir::failure();
+    }
     auto axes = parseIntArrayAttr<int64_t>(origOp.getAxesValue().value());
     return generalReduceRewrite(
             origOp, rewriter, std::move(axes),
@@ -422,6 +514,56 @@ mlir::LogicalResult ReduceMinRewriter::matchAndRewrite(IE::ReduceMinOp origOp, m
                 return rewriter.create<IE::NegativeOp>(appendLoc(loc, "inv_out"), maxPool.getOutput().getType(),
                                                        maxPool.getOutput());
             });
+}
+
+//
+// ReduceSumBatchToChannelRewriter
+//
+
+class ReduceSumBatchToChannelRewriter final : public mlir::OpRewritePattern<IE::ReduceSumOp> {
+public:
+    ReduceSumBatchToChannelRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceSumOp>(ctx, benefit), _log(log) {
+        setDebugName("ReduceSumBatchToChannelRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::ReduceSumOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult ReduceSumBatchToChannelRewriter::matchAndRewrite(IE::ReduceSumOp origOp,
+                                                                     mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got ReduceSum layer at '{1}'", getDebugName(), origOp->getLoc());
+    auto axes = parseIntArrayAttr<int64_t>(origOp.getAxesValue().value());
+    const auto inputShape = getShape(origOp.getInput());
+
+    if (inputShape.size() != 4) {
+        return mlir::failure();
+    }
+
+    // Only handle reduce sum on batch dim
+    if (axes.size() != 1 || axes[0] != Dims4D::Act::N.ind()) {
+        return mlir::failure();
+    }
+
+    if (inputShape[Dims4D::Act::C] != 1 || inputShape[Dims4D::Act::N] == 1) {
+        return mlir::failure();
+    }
+
+    // Swap N and C dims
+    const auto newShape = SmallVector<int64_t>{inputShape[Dims4D::Act::C], inputShape[Dims4D::Act::N],
+                                               inputShape[Dims4D::Act::H], inputShape[Dims4D::Act::W]};
+    const auto newShapeAttr = getIntArrayAttr(getContext(), newShape);
+    auto reshapeOp = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), origOp.getInput(), nullptr, false, newShapeAttr);
+
+    const auto newAxesAttr = getIntArrayAttr(getContext(), SmallVector<int64_t>{Dims4D::Act::C.ind()});
+    auto newReduceOp = rewriter.create<IE::ReduceSumOp>(origOp->getLoc(), reshapeOp.getOutput(), nullptr, newAxesAttr,
+                                                        origOp.getKeepDimsAttr());
+
+    rewriter.replaceOp(origOp, newReduceOp.getOutput());
+    return mlir::success();
 }
 
 //
@@ -442,101 +584,14 @@ void ConvertReduceToPoolingPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    const auto isLegalOp = [&](mlir::Operation* op) {
-        const auto logCb = [&](const formatv_object_base& msg) {
-            _log.trace("{0}", msg.str());
-        };
-
-        /*To do: remove this check and implement E#129361*/
-        if (mlir::isa<IE::ReduceMeanOp, IE::ReduceSumOp>(op)) {
-            if (config::isReduceOpSupportedOnNCE(op) && VPU::isNCEReduceSupported(op, logCb)) {
-                return true;
-            }
-        }
-
-        const auto inputShape = getShape(op->getOperand(0)).raw();
-        int64_t mergedDim = 1;
-
-        // Check that axes are consecutive otherwise this conversion is not applicable
-        llvm::SmallVector<int64_t> axes = {0};
-        if (op->hasAttr("axes_value")) {
-            if (auto axesValue = mlir::dyn_cast_or_null<mlir::ArrayAttr>(op->getAttr("axes_value"))) {
-                axes = parseIntArrayAttr<int64_t>(axesValue);
-            }
-        } else {
-            VPUX_THROW("Operator has no axes_value attribute");
-        }
-
-        for (size_t i = 0; i < axes.size(); i++) {
-            if (axes[i] < 0) {
-                axes[i] += inputShape.size();
-            }
-            mergedDim *= inputShape[axes[i]];
-        }
-
-        std::sort(axes.begin(), axes.end());
-        for (size_t i = 1; i < axes.size(); i++) {
-            if (axes[i] - axes[i - 1] != 1) {
-                return true;
-            }
-        }
-
-        const auto inputElementType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
-        const auto outputElementType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
-        const auto isDataTypeDpuCompatible = inputElementType.isF16() && outputElementType.isF16();
-
-        const auto maxKernelSize = config::getMaxKernelSize(op);
-        // Check that handleLargeKernels supports this op
-        const auto isKernelSizeDpuCompatible =
-                (axes.size() == 2) ? (vpux::IE::isPoolingKernelSizeValid(inputShape[axes[0]], maxKernelSize) &&
-                                      vpux::IE::isPoolingKernelSizeValid(inputShape[axes[1]], maxKernelSize))
-                                   : vpux::IE::isPoolingKernelSizeValid(mergedDim, maxKernelSize);
-        const auto dpuCompatible = isKernelSizeDpuCompatible && isDataTypeDpuCompatible;
-
-        const bool isHWCompilationMode = config::getCompilationMode(op) != config::CompilationMode::ReferenceSW;
-
-        // Apply the conversion only if the resulting Pooling operation can run on DPU
-        return !(dpuCompatible && isHWCompilationMode);
-    };
-
-    // For ReduceMin, in case all axes are reduced and the kernel size exceeds maxKernelSize, the
-    // SHAVE kernel offers more performance since the NCE solution generates pyramidal MaxPool operations based on the
-    // kernel size restriction
-    const auto isLegalReduceMin = [&](IE::ReduceMinOp op) {
-        if (isLegalOp(op)) {
-            return true;
-        }
-
-        const auto maxKernelSize = config::getMaxKernelSize(op);
-
-        if ((getShape(op->getResult(0)).totalSize() == 1) &&
-            (getShape(op->getOperand(0)).totalSize() > std::pow(maxKernelSize, 2))) {
-            return true;
-        }
-
-        return false;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addLegalOp<IE::AvgPoolOp>();
-    target.addLegalOp<IE::MaxPoolOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::MultiplyOp>();
-    target.addLegalOp<IE::NegativeOp>();
-    target.addLegalOp<IE::TransposeOp>();
-    target.addDynamicallyLegalOp<IE::ReduceMeanOp>(isLegalOp);
-    target.addDynamicallyLegalOp<IE::ReduceMaxOp>(isLegalOp);
-    target.addDynamicallyLegalOp<IE::ReduceSumOp>(isLegalOp);
-    target.addDynamicallyLegalOp<IE::ReduceMinOp>(isLegalReduceMin);
-
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<ReduceMeanRewriter>(&ctx, _log);
-    patterns.add<ReduceMaxRewriter>(&ctx, _log);
-    patterns.add<ReduceSumRewriter>(&ctx, _log);
-    patterns.add<ReduceMinRewriter>(&ctx, _log);
+    patterns.add<ReduceSumBatchToChannelRewriter>(&ctx, benefitLevels[0], _log);
+    patterns.add<ReduceMeanRewriter>(&ctx, benefitLevels[1], _log);
+    patterns.add<ReduceMaxRewriter>(&ctx, benefitLevels[1], _log);
+    patterns.add<ReduceSumRewriter>(&ctx, benefitLevels[1], _log);
+    patterns.add<ReduceMinRewriter>(&ctx, benefitLevels[1], _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
+    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
 }

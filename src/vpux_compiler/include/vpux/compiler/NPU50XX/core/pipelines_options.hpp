@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,10 +18,7 @@ namespace arch50xx {
 // to avoid confusion when we have the same option for IE and the VPU dialect, but with a different value
 //
 
-struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, public vpux::BatchCompileOptionsAdapter {
-    DefaultHWOptionsDeviceBase(): vpux::BatchCompileOptionsAdapter(static_cast<mlir::detail::PassOptions&>(*this)) {
-    }
-
+struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
     BoolOption enableExperimentalSEPtrsOperations{*this, "enable-experimental-se-ptrs-operations",
                                                   llvm::cl::desc("Enable the experimental operation of SEP"),
                                                   llvm::cl::init(false)};
@@ -100,8 +97,10 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
                                        "INITIAL_BARRIER_DMAS_SCHEDULED",
                                        "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
-                                       "ALL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMAs to program all barriers"))};
+                                       "ALL_BARRIER_DMAS_SCHEDULED", "Compiler generates DMAs to program all barriers"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K,
+                                       "ALL_BARRIER_DMAS_SCHEDULED_4K",
+                                       "Compiler generates DMAs to program all barriers leveraging 4K barrier block"))};
 
     IntOption modelIdentifier{
             *this, "model-identifier",
@@ -109,6 +108,10 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase, p
             llvm::cl::init(0)};
     BoolOption enableDpuFromShaveControl{*this, "enable-dpu-from-shave-control",
                                          llvm::cl::desc("Enable Dpu from shave control"), llvm::cl::init(true)};
+
+    BoolOption enableRunMVNNormalizeOnDPU{*this, "enable-run-mvn-normalize-on-dpu",
+                                          llvm::cl::desc("Enable RunMVNNormalizeOnDPU pass on DPU"),
+                                          llvm::cl::init(false)};
 };
 
 }  // namespace arch50xx

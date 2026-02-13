@@ -1,13 +1,14 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/compression_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/memref_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
-#include "vpux/compiler/utils/memref_attr_utils.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 
@@ -79,8 +80,8 @@ void AdjustSpillSizePass::updateSpillWrite(VPUIP::NNDMAOp dmaOp) {
 
     auto spillType = mlir::cast<vpux::NDTypeInterface>(spillAllocOpResult.getType());
 
-    auto newSpillType = vpux::setAllocSizeAttr(spillType, getAdjustedSpillBufferSize(spillSourceBufferType));
-    newSpillType = vpux::setCompressionState(newSpillType, VPUIP::CompressionState::CompressionCandidate);
+    auto newSpillType = VPUIP::setAllocSizeAttr(spillType, getAdjustedSpillBufferSize(spillSourceBufferType));
+    newSpillType = VPUIP::setCompressionState(newSpillType, VPUIP::CompressionState::CompressionCandidate);
 
     _log.nest().trace("New spilled buffer type - '{0}'", newSpillType);
 
@@ -132,12 +133,12 @@ void AdjustSpillSizePass::safeRunOnFunc() {
         const auto outType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutput().getType());
 
         if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN && outType.getMemoryKind() == VPU::MemoryKind::DDR) {
-            if (isSupportedBufferSizeForCompression(inType)) {
+            if (VPUIP::isSupportedBufferSizeForCompression(inType)) {
                 updateSpillWrite(dmaOp);
             }
         } else if (inType.getMemoryKind() == VPU::MemoryKind::DDR &&
                    outType.getMemoryKind() == VPU::MemoryKind::CMX_NN) {
-            if (isSupportedBufferSizeForCompression(outType)) {
+            if (VPUIP::isSupportedBufferSizeForCompression(outType)) {
                 updateSpillRead(dmaOp);
             }
         }

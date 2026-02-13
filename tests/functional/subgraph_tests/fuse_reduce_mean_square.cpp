@@ -1,10 +1,11 @@
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
+#include "openvino/op/add.hpp"
 #include "openvino/op/power.hpp"
 #include "openvino/op/reduce_mean.hpp"
 #include "openvino/op/sqrt.hpp"
@@ -15,6 +16,7 @@ namespace ov::test {
 
 struct ReduceMeanSquareParams {
     ov::Shape inputShape;
+    bool hasEpsilon;
 };
 
 class FuseReduceMeanSquareTestCommon :
@@ -40,6 +42,7 @@ public:
     void SetUp() override {
         inType = outType = ov::element::f32;
         const auto testParams = GetParam();
+        const auto hasEpsilon = testParams.hasEpsilon;
         const auto inputShape = testParams.inputShape;
 
         init_input_shapes(ov::test::static_shapes_to_test_representation({inputShape}));
@@ -54,9 +57,16 @@ public:
         auto axesConst = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {-1});
         const auto reduceMean = std::make_shared<ov::op::v1::ReduceMean>(power, axesConst, true);
 
-        // Sqrt(ReduceMean(x^2, axes, keep_dims))
-        const auto sqrt = std::make_shared<ov::op::v0::Sqrt>(reduceMean);
+        // Sqrt(ReduceMean(x^2, axes, keep_dims)
+        auto sqrt = std::make_shared<ov::op::v0::Sqrt>(reduceMean);
+        if (hasEpsilon) {
+            // ReduceMean(x^2,axes, keep_dims)+eps
+            auto eps = ov::op::v0::Constant::create(inType, {}, {3.5});
+            auto addEps = std::make_shared<ov::op::v1::Add>(reduceMean, eps);
 
+            // Sqrt(ReduceMean(x^2, axes, keep_dims)+eps)
+            sqrt = std::make_shared<ov::op::v0::Sqrt>(addEps);
+        }
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(sqrt)};
         function = std::make_shared<ov::Model>(results, ov::ParameterVector{input}, "FuseReduceMeanSquareTest");
     }
@@ -72,7 +82,10 @@ TEST_P(FuseReduceMeanSquareTestCommon, NPU5010_HW) {
     run(Platform::NPU5010);
 }
 
-const std::vector<ReduceMeanSquareParams> testValues = {{{1, 32, 32, 96}}, {{1, 512, 18, 80}}};
+const std::vector<ReduceMeanSquareParams> testValues = {{{1, 32, 32, 96}, false},  // without epsilon
+                                                        {{1, 32, 32, 96}, true},   // with epsilon
+                                                        {{1, 512, 18, 80}, false},
+                                                        {{1, 512, 18, 80}, true}};
 
 INSTANTIATE_TEST_SUITE_P(precommit_FuseReduceMeanSquare, FuseReduceMeanSquareTestCommon,
                          ::testing::ValuesIn(testValues), FuseReduceMeanSquareTestCommon::getTestCaseName);

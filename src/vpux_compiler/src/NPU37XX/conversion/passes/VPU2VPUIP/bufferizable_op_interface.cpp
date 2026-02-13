@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 
+#include <mlir/Dialect/Bufferization/Transforms/FuncBufferizableOpInterfaceImpl.h>
 #include <mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h>
 #include <mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h>
 
@@ -20,11 +21,11 @@ using namespace vpux;
 void vpux::arch37xx::registerBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
     vpux::registerConstDeclareBufferizableOpInterfaces(registry);
     vpux::registerCoreBufferizableOpInterfaces(registry);
-    vpux::registerFuncAndReturnBufferizableOpInterfaces(registry);
     vpux::registerSoftwareLayerBufferizableOpInterfaces(registry);
     vpux::registerVpuNceBufferizableOpInterfaces(registry);
     vpux::registerVPUBufferizableOpInterfaces(registry);
 
+    mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
 }

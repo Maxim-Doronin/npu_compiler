@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -616,40 +616,40 @@ func.func @OutputTypeMismatch(%conv0: !DistributedBuffer3, %conv1: !DistributedB
     }
     return %6 : !DistributedBuffer
 
-    // CHECK: [[ELTWISE_INPUT0_BUFFER:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
-    // CHECK: [[OUTPUT_BUFFER:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
+    // CHECK: [[ELTWISE_INPUT0_BUFFER:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
+    // CHECK: [[OUTPUT_BUFFER:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
 
     // After inserting copies for eltwise inputs, viewOp was not being used anymore.
 
-    // CHECK: [[DISABLE_VIEWOP0:%.*]] = VPUIP.ViewOp [[OUTPUT_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
+    // CHECK: [[DISABLE_VIEWOP0:%.+]] = VPUIP.ViewOp [[OUTPUT_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK-SAME:  to !VPUIP.DistributedBuffer<1x160x65x65x!qElemType1
-    // CHECK: [[DISABLE_VIEWOP1:%.*]] = VPUIP.ViewOp [[OUTPUT_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
+    // CHECK: [[DISABLE_VIEWOP1:%.+]] = VPUIP.ViewOp [[OUTPUT_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK-SAME: to !VPUIP.DistributedBuffer<1x160x65x65x!qElemType1
 
     // ConcatView as Input1
 
-    // CHECK: [[OUTPUT_BUFFER_CONCATVIEW:%.*]] = VPUIP.ConcatView inputs([[CONV0:%.*]], [[CONV1:%.*]]
+    // CHECK: [[OUTPUT_BUFFER_CONCATVIEW:%.+]] = VPUIP.ConcatView inputs([[CONV0:%.+]], [[CONV1:%.+]]
 
     // Copy0
 
-    // CHECK: [[OUTPUT_COPY0_BUFFER:%.*]] = memref.alloc() : memref<1x160x65x65x!qElemType, #NHWC, @DDR>
-    // CHECK: [[OUTPUT_BUFFER_COPY0:%.*]] = VPUIP.Copy
+    // CHECK: [[OUTPUT_COPY0_BUFFER:%.+]] = memref.alloc() : memref<1x160x65x65x!qElemType, #NHWC, @DDR>
+    // CHECK: [[OUTPUT_BUFFER_COPY0:%.+]] = VPUIP.Copy
     // CHECK:   inputs([[OUTPUT_BUFFER_CONCATVIEW]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK:   outputs([[OUTPUT_COPY0_BUFFER]] : memref<1x160x65x65x!qElemType, #NHWC, @DDR>)
-    // CHECK: [[ELTWISE_OUTPUT_BUFFER0:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
-    // CHECK: [[ELTWISE_INPUT1_BUFFER_COPY0:%.*]] = VPUIP.Copy
+    // CHECK: [[ELTWISE_OUTPUT_BUFFER0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
+    // CHECK: [[ELTWISE_INPUT1_BUFFER_COPY0:%.+]] = VPUIP.Copy
     // CHECK:    inputs([[OUTPUT_BUFFER_COPY0]]
     // CHECK:    outputs([[ELTWISE_OUTPUT_BUFFER0]]
 
     // QuantizeCast
 
-    // CHECK: [[ELTWISE_OUTPUT_BUFFER0_CAST:%.*]] = VPUIP.QuantizeCast
+    // CHECK: [[ELTWISE_OUTPUT_BUFFER0_CAST:%.+]] = VPUIP.QuantizeCast
     // CHECK:   inputs([[ELTWISE_OUTPUT_BUFFER0]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK:   -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType1
 
     // Eltwise Add0
 
-    // CHECK: [[ELTWISE_ADD0:%.*]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK: [[ELTWISE_ADD0:%.+]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
     // CHECK:    input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
     // CHECK:    weights([[ELTWISE_INPUT1_BUFFER_COPY0]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK:    parent_input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
@@ -660,24 +660,24 @@ func.func @OutputTypeMismatch(%conv0: !DistributedBuffer3, %conv1: !DistributedB
 
     // Copy1
 
-    // CHECK: [[OUTPUT_COPY1_BUFFER:%.*]] = memref.alloc() : memref<1x160x65x65x!qElemType, #NHWC, @DDR>
-    // CHECK: [[OUTPUT_BUFFER_COPY1:%.*]] = VPUIP.Copy
+    // CHECK: [[OUTPUT_COPY1_BUFFER:%.+]] = memref.alloc() : memref<1x160x65x65x!qElemType, #NHWC, @DDR>
+    // CHECK: [[OUTPUT_BUFFER_COPY1:%.+]] = VPUIP.Copy
     // CHECK:    inputs([[OUTPUT_BUFFER_CONCATVIEW]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK:    outputs([[OUTPUT_COPY1_BUFFER]] : memref<1x160x65x65x!qElemType, #NHWC, @DDR>)
-    // CHECK: [[ELTWISE_OUTPUT_BUFFER1:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
-    // CHECK: [[ELTWISE_INPUT1_BUFFER_COPY1:%.*]] = VPUIP.Copy
+    // CHECK: [[ELTWISE_OUTPUT_BUFFER1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
+    // CHECK: [[ELTWISE_INPUT1_BUFFER_COPY1:%.+]] = VPUIP.Copy
     // CHECK:    inputs([[OUTPUT_BUFFER_COPY1]]
     // CHECK:    outputs([[ELTWISE_OUTPUT_BUFFER1]]
 
     // QuantizeCast
 
-    // CHECK: [[ELTWISE_OUTPUT_BUFFER1_CAST:%.*]] = VPUIP.QuantizeCast
+    // CHECK: [[ELTWISE_OUTPUT_BUFFER1_CAST:%.+]] = VPUIP.QuantizeCast
     // CHECK:   inputs([[ELTWISE_OUTPUT_BUFFER1]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK:   -> !VPUIP.DistributedBuffer<1x160x65x65x!qElemType1
 
     // Eltwise Add1
 
-    // CHECK: [[ELTWISE_ADD1:%.*]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK: [[ELTWISE_ADD1:%.+]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
     // CHECK:    input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
     // CHECK:    weights([[ELTWISE_INPUT1_BUFFER_COPY1]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType
     // CHECK:    parent_input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2

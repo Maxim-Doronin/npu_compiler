@@ -119,6 +119,8 @@ private:  // methods
 
     // build attribute for Eltwise ops: Add
     AttrBuilder retrieveEltwisePPEAttribute(mlir::Operation* operation) const;
+    // build attribute for PermuteQuantize op
+    AttrBuilder retrievePermuteQuantizePPEAttribute(mlir::Operation* operation) const;
     // build attribute for Non-Eltwise ops: MaxPool, AvgPool, Convolution
     AttrBuilder retrieveNonEltwisePPEAttribute(mlir::Operation* operation) const;
 

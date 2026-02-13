@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -177,6 +177,12 @@ MemRefAttr::HwFields MemRefAttr::hwSpecificFields() const {
 
 mlir::Attribute MemRefAttr::hwSpecificField(mlir::StringRef rawKey) const {
     return DictionaryAttr::get(standardizeMemRefKey(rawKey));
+}
+
+mlir::AffineMap MemRefAttr::getAffineMap() const {
+    // Delegate to the external model (MemRefAttrLayout)
+    auto iface = mlir::cast<mlir::MemRefLayoutAttrInterface>(*this);
+    return iface.getAffineMap();
 }
 
 //

@@ -80,7 +80,13 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::ScatterElementsUpdat
     }
 
     const auto axisContent = axisConst.getContent();
-    const auto axisValue = static_cast<int64_t>(axisContent.getSplatValue<int32_t>());
+    auto axisValue = static_cast<int64_t>(axisContent.getSplatValue<int32_t>());
+    const auto inputShape = getShape(scatterElementsUpdateOp.getInput());
+    const auto rank = inputShape.size();
+    // convert negative axis to positive
+    if (axisValue < 0) {
+        axisValue += static_cast<int64_t>(rank);
+    }
     rewriter.replaceOpWithNewOp<IE::ScatterElementsUpdateOp>(
             scatterElementsUpdateOp, scatterElementsUpdateOp.getType(), scatterElementsUpdateOp.getInput(),
             scatterElementsUpdateOp.getIndices(), scatterElementsUpdateOp.getUpdates(), nullptr,

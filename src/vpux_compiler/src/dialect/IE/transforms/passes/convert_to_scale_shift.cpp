@@ -503,6 +503,15 @@ mlir::LogicalResult ConvertMultiplyToScaleShift::matchAndRewrite(IE::MultiplyOp 
         return mlir::failure();
     }
 
+    // Skip conversion for operations with dynamic shapes in DefaultHW mode
+    const auto compilationMode = config::getCompilationMode(mulOp);
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(mulOp.getOutput().getType());
+    if (!outputType.getShape().isStatic() && compilationMode != config::CompilationMode::HostCompile) {
+        _log.trace("op {0} has dynamic dimensions, skipping ScaleShift conversion in {1} mode", mulOp->getName(),
+                   compilationMode);
+        return mlir::failure();
+    }
+
     mlir::Value activationInput = lhsIsActivation ? mulOp.getInput1() : mulOp.getInput2();
     mlir::Value weightsInput = lhsIsActivation ? mulOp.getInput2() : mulOp.getInput1();
 

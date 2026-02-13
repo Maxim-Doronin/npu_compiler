@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2025 Intel Corporation
+// Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -450,8 +450,8 @@ private:
         auto num_directions = actualOutputs[i].get_shape()[1];
         auto seq_len = actualOutputs[i].get_shape()[2];
         auto hidden_size = actualOutputs[i].get_shape()[3];
-        auto* expectedBuffer = reinterpret_cast<T*>(expectedOutputs[i].data());
-        auto* actualBuffer = reinterpret_cast<T*>(actualOutputs[i].data());
+        auto* expectedBuffer = expectedOutputs[i].data<T>();
+        auto* actualBuffer = actualOutputs[i].data<T>();
         std::vector<std::string> errors;
 #ifdef LSTM_PRINT_DEBUG_STATISTICS
         std::cout << "[ COMPARATION Y] [  b,   d,   s] :         mse | max abs val | cos similarity |   min value |    "
@@ -523,8 +523,8 @@ private:
 
         i = 1;  // Ho[batch_size, num_directions, hidden_size]
         // auto total_size = ov::shape_size(actualOutputs[i].get_shape());
-        expectedBuffer = reinterpret_cast<T*>(expectedOutputs[i].data());
-        actualBuffer = reinterpret_cast<T*>(actualOutputs[i].data());
+        expectedBuffer = expectedOutputs[i].data<T>();
+        actualBuffer = actualOutputs[i].data<T>();
 
         for (size_t b = 0; b < batch_size; b++) {
             for (size_t d = 0; d < num_directions; d++) {
@@ -556,8 +556,8 @@ private:
 
         i = 2;  // Co[batch_size, num_directions, hidden_size]
         // total_size = ov::shape_size(actualOutputs[i].get_shape());
-        expectedBuffer = reinterpret_cast<T*>(expectedOutputs[i].data());
-        actualBuffer = reinterpret_cast<T*>(actualOutputs[i].data());
+        expectedBuffer = expectedOutputs[i].data<T>();
+        actualBuffer = actualOutputs[i].data<T>();
 
         for (size_t b = 0; b < batch_size; b++) {
             for (size_t d = 0; d < num_directions; d++) {
@@ -628,6 +628,7 @@ TEST_P(LSTMSequenceLayerTestCommon, NPU5010_HW_SINGLE_CLUSTER) {
     setSingleClusterMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 

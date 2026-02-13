@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,12 +9,20 @@
 
 #include "vpux/utils/profiling/reports/ted.hpp"
 
+#include <flatbuffers/flatbuffers.h>
+#include "schema/profiling_generated.h"
+
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
 
 namespace vpux::profiling {
+
+using TensorShapeInfo = ProfilingFB::ShapeInfoT;
+using TensorInfo = ProfilingFB::TensorInfoT;
+using DPUVariantInfo = ProfilingFB::DPUVariantInfoT;
 
 struct LayerInfo {
     char name[256];
@@ -34,6 +42,8 @@ struct LayerInfo {
 // Size must match L0-ext ze_profiling_layer_info
 static_assert(sizeof(LayerInfo) == 368);
 
+using DMAChannelType = ProfilingFB::DMAChannelType;
+
 struct TaskInfo {
     std::string name;
     std::string layer_type;
@@ -45,7 +55,9 @@ struct TaskInfo {
     uint64_t duration_ns;
     uint32_t active_cycles;
     uint32_t stall_cycles;
-
+    std::optional<unsigned short> port_id;       // DMA task only
+    std::optional<DMAChannelType> channel_type;  // DMA task only
+    std::optional<unsigned> variant_id;          // DPU task only
     CustomArgsVector customArgs;
 };
 
@@ -64,6 +76,10 @@ struct ProfInfo {
 };
 
 const char* to_string(FreqStatus);
+std::string to_string(const std::vector<TensorShapeInfo>& shapeInfo, unsigned short gatherIndices, bool isDynamic);
+
+CustomArgsVector to_custom_args(const TensorInfo& tensorInfo);
+CustomArgsVector to_custom_args(const DPUVariantInfo& variantInfo);
 
 template <typename T>
 bool profilingTaskStartTimeComparator(const T& a, const T& b) {

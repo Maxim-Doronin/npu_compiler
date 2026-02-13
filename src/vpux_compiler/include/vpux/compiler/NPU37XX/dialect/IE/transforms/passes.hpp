@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,14 +22,8 @@ namespace arch37xx {
 struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::arch37xx::DefaultHWOptionsDeviceBase {
     BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
                                       llvm::cl::init(true)};
-    BoolOption enableConvertToSdpaExtended{*this, "convert-to-sdpa-extended",
-                                           llvm::cl::desc("Enable conversion to SDPA extended"), llvm::cl::init(false)};
     BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
                                           llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(true)};
-
-    BoolOption enableFusePermuteQuantize{*this, "fuse-permute-quantize",
-                                         llvm::cl::desc("Enable fuse-permute-quantize pass"), llvm::cl::init(true)};
-
     BoolOption enableFusePermuteQuantizeExpand{*this, "fuse-permute-quantize-expand",
                                                llvm::cl::desc("Enable fuse-permute-quantize-expand pass"),
                                                llvm::cl::init(true)};
@@ -50,6 +44,10 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
                            "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
             llvm::cl::init(250.0)};
 
+    BoolOption enableConvertToReduceMeanSquare{*this, "convert-to-reduce-mean-square",
+                                               llvm::cl::desc("Enable fuse-reduce-mean-square pass"),
+                                               llvm::cl::init(false)};
+
     BoolOption skipUnrollBatch{*this, "skip-unroll-batch", llvm::cl::desc("Skip unroll on batch dimension"),
                                llvm::cl::init(false)};
 };
@@ -64,6 +62,11 @@ void buildLowPrecisionPipeline(mlir::OpPassManager& pm, const LowPrecisionOption
 void buildInitialLowPrecisionTransformationsPipeline(mlir::OpPassManager& pm,
                                                      const IE::LowPrecisionTransformOptions& options,
                                                      Logger log = Logger::global());
+void buildOptimizeSliceOpPipeline(mlir::OpPassManager& pm, Logger log);
+void buildFinalTransformationPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options,
+                                      Logger log = Logger::global());
+
+void buildOutliningPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 

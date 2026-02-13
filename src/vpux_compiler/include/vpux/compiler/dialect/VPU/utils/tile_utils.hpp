@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,9 +22,10 @@ namespace VPU {
 
 template <typename NCEOp>
 SmallVector<vpux::NDTypeInterface> getTileTypes(NCEOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles) {
     auto siblingsAnalysis = SiblingOpsAnalysis(origOp.getOperation());
-    auto tileDistributions = getTileDistributions(origOp, siblingsAnalysis, outTile, inputTiles);
+    auto tileDistributions = getTileDistributions(origOp, siblingsAnalysis, outTile, strategy, inputTiles);
     SmallVector<vpux::NDTypeInterface> tileTypes;
     for (auto tileDistribution : tileDistributions) {
         auto tileType = getDistributedTypeFromDistributionMap(tileDistribution.first, tileDistribution.second);
@@ -37,9 +38,13 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(NCEOp origOp, const TileInfo& ou
 template <typename NCEOp>
 int64_t countElementsPerOutputChannelInWeightTable(NCEOp nceOp) {
     bool isNewWeightTable = nceOp.getWeightsTable() == nullptr;
-    int64_t numberOfNewWeightTables = isNewWeightTable ? (nceOp.getWeightTableScale() == nullptr ? 0 : 1) +
-                                                                 (nceOp.getWeightTableBias() == nullptr ? 0 : 1)
-                                                       : 0;
+    int64_t numberOfNewWeightTables =
+            isNewWeightTable
+                    ? (nceOp.getWeightTableScale() == nullptr ? 0 : 1) +
+                              (nceOp.getWeightTableBias() == nullptr ? 0 : 1) +
+                              0 /*Zero stands for zero-point table. Size will be
+                                calculated for it in VPU/utils/tile_utils.cpp : getRequiredCMXSizeForZeroPointTable() */
+                    : 0;
     int64_t elemsPerChannel =
             isNewWeightTable ? VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC * numberOfNewWeightTables
                              : VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC;
@@ -49,25 +54,31 @@ int64_t countElementsPerOutputChannelInWeightTable(NCEOp nceOp) {
 // Convolution
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::ConvolutionOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles = std::nullopt);
 
 // GroupConvolution
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::GroupConvolutionOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles = std::nullopt);
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::DequantizeOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles = std::nullopt);
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(mlir::Operation* op, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles = std::nullopt);
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         mlir::Operation* op, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
+        std::optional<VPU::MultiClusterStrategy> customStrategy,
         const std::optional<InputTiling>& inputTiles = std::nullopt);
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
-        mlir::Operation* op, const TileInfo& outTile, const std::optional<InputTiling>& inputTiles = std::nullopt);
+        mlir::Operation* op, const TileInfo& outTile, std::optional<VPU::MultiClusterStrategy> customStrategy,
+        const std::optional<InputTiling>& inputTiles = std::nullopt);
 
 Byte getRequiredCMXForWeight(VPU::ConvolutionOp convOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles = std::nullopt);
@@ -187,6 +198,8 @@ Byte getRequiredCMXSizeForNCEOps(ArrayRef<std::pair<NDTypeInterface, TensorDistr
                                  int64_t elemsPerOutputChannel = VPU::NCEInvariant::WEIGHT_TABLE_NUM_ELEMENTS_PER_OC);
 
 Byte getRequiredCMXSizeForDefaultOps(mlir::Operation* op);
+
+Byte getRequiredCMXSizeForZeroPointTable(mlir::Operation* op, int64_t OC, mlir::Value weightTableZeroPoints);
 
 Byte getRequiredCMX(mlir::Operation* op, const SmallVector<NDTypeInterface>& types);
 

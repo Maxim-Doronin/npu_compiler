@@ -28,7 +28,7 @@ bool addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log);
 using TaskOpQueues = std::map<VPURT::TaskQueueType, SmallVector<uint32_t>>;
 using TaskOpQueueIterator = std::map<VPURT::TaskQueueType, SmallVector<uint32_t>::iterator>;
 TaskOpQueues getTaskOpQueues(mlir::func::FuncOp funcOp, BarrierInfo& barrierInfo,
-                             std::optional<VPU::ExecutorKind> targetExecutorKind = std::nullopt);
+                             std::optional<config::ExecutorKind> targetExecutorKind = std::nullopt);
 TaskOpQueueIterator initializeTaskOpQueueIterators(TaskOpQueues& taskOpQueues);
 bool allQueuesReachedEnd(const TaskOpQueueIterator& frontTasks, const TaskOpQueues& taskOpQueues);
 bool allQueuesWaiting(const TaskOpQueueIterator& frontTasks, const TaskOpQueues& taskOpQueues,

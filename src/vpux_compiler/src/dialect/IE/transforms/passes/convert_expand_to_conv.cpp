@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
@@ -13,6 +14,7 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/strings.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -97,7 +99,7 @@ IE::AffineReshapeOp padHReshapeInput(mlir::Location loc, mlir::Value input, Shap
     auto padEnd = mlir::SmallVector<int64_t>(origShape.size(), 0);
     padEnd[vpux::Dims4D::Act::H.ind()] = totalPaddedElemSize - totalElemSize;
     const auto ctx = rewriter.getContext();
-    auto padExpand = rewriter.create<IE::ExpandOp>(appendLoc(loc, "_pad"), linearReshapeOp.getOutput(),
+    auto padExpand = rewriter.create<IE::ExpandOp>(appendLoc(loc, "pad"), linearReshapeOp.getOutput(),
                                                    getIntArrayAttr(ctx, padBegin), getIntArrayAttr(ctx, padEnd));
 
     const SmallVector<int64_t> targetPaddedShape = {origBatch, origChannels, origHeight, origWidthPadded};
@@ -111,7 +113,7 @@ IE::AffineReshapeOp padWReshapeInput(mlir::Location loc, mlir::Value input, Shap
     SmallVector<int64_t> padEnd(origShape.size(), 0);
     padEnd[Dims4D::Act::W.ind()] = channelAlignment - origShape[Dims4D::Act::W] % channelAlignment;
 
-    auto expandOp = rewriter.create<IE::ExpandOp>(appendLoc(loc, "_input_pad"), input,
+    auto expandOp = rewriter.create<IE::ExpandOp>(appendLoc(loc, "input_pad"), input,
                                                   getIntArrayAttr(rewriter.getContext(), ArrayRef(padBegin)),
                                                   getIntArrayAttr(rewriter.getContext(), ArrayRef(padEnd)));
 
@@ -148,7 +150,7 @@ IE::AffineReshapeOp unpadHReshapeOutput(mlir::Location loc, ShapeRef origOutShap
     auto staticSizes = mlir::SmallVector<int64_t>(origOutShape.size(), 1);
     staticSizes[vpux::Dims4D::Act::H.ind()] = totalElemSize;
     const auto ctx = rewriter.getContext();
-    auto sliceOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "_slice_out"), linearReshapeOp.getOutput(),
+    auto sliceOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_out"), linearReshapeOp.getOutput(),
                                                 getIntArrayAttr(ctx, staticOffsets), getIntArrayAttr(ctx, staticSizes));
 
     return reshapeOutput(loc, sliceOp.getResult(), origOutShape, rewriter);
@@ -284,10 +286,8 @@ IE::ConvolutionOp buildConvolution(IE::ExpandOp expandOp, mlir::Value activation
     const Shape convOutShape = {convInShape[Dims4D::Act::N], outChannels, convInShape[Dims4D::Act::H],
                                 convInShape[Dims4D::Act::W]};
     const auto convOutType = origOutType.changeShape(convOutShape).changeElemType(convOutElemType);
-    return rewriter.create<IE::ConvolutionOp>(takeOpLoc(expandOp, "_as_convolution"), convOutType, activation, weights,
-                                              /*bias=*/nullptr, strides, kernelPadsBegin, kernelPadsEnd, dilations,
-                                              /*postOp=*/nullptr, /*clamp=*/nullptr, /*staticScale=*/nullptr,
-                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
+    return rewriter.create<IE::ConvolutionOp>(takeOpLoc(expandOp, "as_convolution"), convOutType, activation, weights,
+                                              strides, kernelPadsBegin, kernelPadsEnd, dilations);
 }
 
 bool isDerivedFromQuantize(mlir::Operation* op) {
@@ -703,6 +703,79 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
 }
 
 //
+// ConvertExpandLayoutRewriter
+// For specific einsum pattern, convert ExpandOp to NHWC layout using PermuteCast
+//
+
+class ConvertExpandLayoutRewriter final : public mlir::OpRewritePattern<IE::ExpandOp> {
+public:
+    ConvertExpandLayoutRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ExpandOp>(ctx, benefitHigh), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ExpandOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult ConvertExpandLayoutRewriter::matchAndRewrite(IE::ExpandOp origOp,
+                                                                 mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got IE.ExpandOp at '{1}'", getDebugName(), origOp->getLoc());
+
+    auto expandInType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto expandInLayout = expandInType.getDimsOrder();
+    const auto supportedLayout = DimsOrder::NHWC;
+
+    if (expandInType.getShape().size() != 4) {
+        return mlir::failure();
+    }
+
+    // Only process non-NHWC layout
+    if (expandInLayout == supportedLayout) {
+        return mlir::failure();
+    }
+
+    auto expandOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    auto padsBegin = parseIntArrayAttr<int64_t>(origOp.getPadsBegin());
+    auto padsEnd = parseIntArrayAttr<int64_t>(origOp.getPadsEnd());
+    convertExpandTypesToSupportedLayout(origOp, supportedLayout, expandInType, expandOutType, padsBegin, padsEnd);
+
+    if (!IE::isEligibleConvertToConv(origOp.getOutput(), expandInType, expandOutType, padsBegin, padsEnd,
+                                     getModuleOp(origOp), origOp->getLoc(), _log, getDebugName())) {
+        return matchFailed(rewriter, origOp, "[{0}] Cannot convert IE.ExpandOp at '{1}'", getDebugName(),
+                           origOp->getLoc());
+    }
+
+    const auto ctx = rewriter.getContext();
+
+    // Create input PermuteCast: convert to NHWC layout
+    // PermuteCast changes the logical layout without moving data
+    // The memory layout (mem_perm) is always NCHW, we just reinterpret it as NHWC
+    auto inputPermuteCast =
+            rewriter.create<IE::PermuteCastOp>(appendLoc(origOp.getLoc(), "input_permute_to_nhwc"), origOp.getInput(),
+                                               mlir::AffineMapAttr::get(supportedLayout.toAffineMap(ctx)),
+                                               mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx)));
+
+    // Create new ExpandOp with NHWC layout
+    auto newExpandOp =
+            rewriter.create<IE::ExpandOp>(appendLoc(origOp.getLoc(), "expand_nhwc"), inputPermuteCast.getOutput(),
+                                          getIntArrayAttr(ctx, padsBegin), getIntArrayAttr(ctx, padsEnd));
+
+    // Create output PermuteCast: convert back to original layout
+    // mem_perm is always NCHW (memory layout doesn't change)
+    auto outputPermuteCast = rewriter.create<IE::PermuteCastOp>(
+            appendLoc(origOp.getLoc(), "output_permute_from_nhwc"), newExpandOp.getOutput(),
+            mlir::AffineMapAttr::get(expandInLayout.toAffineMap(ctx)),
+            mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx)));
+
+    rewriter.replaceOp(origOp, outputPermuteCast.getOutput());
+
+    return mlir::success();
+}
+
+//
 // ConvertExpandToConvPass
 //
 
@@ -719,6 +792,15 @@ private:
 void ConvertExpandToConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
+
+    // First, convert ExpandOp to NHWC layout
+    {
+        mlir::RewritePatternSet patterns(&ctx);
+        patterns.add<ConvertExpandLayoutRewriter>(&ctx, _log);
+
+        collectOpsAndApplyPatterns(func, std::move(patterns));
+    }
+
     {
         mlir::RewritePatternSet patterns(&ctx);
         patterns.add<ExpandQuantizeSliceRewriter>(&ctx, _log);

@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/json_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
@@ -166,4 +168,225 @@ TEST_F(MLIR_VPU_VFConfig, VF_GenericConfigPipelined) {
         EXPECT_EQ(config.getSubgraph(), vfOp);
         EXPECT_TRUE(config.isPipelined());
     });
+}
+
+TEST_F(MLIR_VPU_VFConfig, VF_ManualConfiguration) {
+    constexpr llvm::StringLiteral inputIR = R"(
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+#loc0 = loc(unknown)
+    module @main {
+    func.func @main(%arg0: tensor<1x48x1024x4xf16, {order = #NHWC}>, %arg1: tensor<4096x48x1x1xf16, {order = #NHWC}>) -> tensor<1x4096x1024x4xf16, {order = #NHWC}> {
+          %cst_0 = const.Declare tensor<4096x1x1x4xsi32> = dense<1> : tensor<4096x1x1x4xsi32>
+          %0 = VPU.VerticalFusion (%arg0 as %arg3: tensor<1x48x1024x4xf16, {order = #NHWC}>, %arg1 as %arg4: tensor<4096x48x1x1xf16, {order = #NHWC}>, %cst_0 as %arg5: tensor<4096x1x1x4xsi32>, %arg1 as %arg6: tensor<48x4096x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 24, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
+          {   %1 = VPU.NCE.Convolution(%arg3, %arg4, %arg5)
+              {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>,
+                  pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                  rawFilterShape = [4096, 48, 1, 1], strides = [1, 1]} : tensor<1x48x1024x4xf16, {order = #NHWC}>, tensor<4096x48x1x1xf16, {order = #NHWC}>, tensor<4096x1x1x4xsi32> -> tensor<1x4096x1024x4xf16, {order = #NHWC}> loc(fused<{name = "Conv", type = "Convolution"}>["Conv", "_1"])
+              VPU.Yield %1
+          }
+          %2 = VPU.VerticalFusion (%0 as %arg3: tensor<1x4096x1024x4xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 24, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>{
+              %1 = VPU.SoftMax(%arg3) {axisInd = 1 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x1024x4xf16, {order = #NHWC}> loc(fused<{name = "Softmax", type = "SoftMax"}>["Softmax", "_1"])
+              VPU.Yield %1
+          }
+          return %2 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
+       }
+    }
+    )";
+
+    constexpr llvm::StringLiteral manualStrategyJSON = R"(
+        {
+          "Conv?t_Convolution/_1": {
+            "layerType": "VPU.NCE.Convolution",
+            "multiClusterStrategy": "SplitOverHeight",
+            "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          },
+          "Softmax?t_SoftMax/_1": {
+            "layerType": "VPU.SoftMax",
+            "multiClusterStrategy": "SplitOverHeight",
+             "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          }
+        }
+    )";
+
+    constexpr llvm::StringLiteral diableVFManualStrategyJSON = R"(
+        {
+          "Conv?t_Convolution/_1": {
+            "layerType": "VPU.NCE.Convolution",
+            "multiClusterStrategy": "SplitOverHeight",
+            "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "False"
+          },
+          "Softmax?t_SoftMax/_1": {
+            "layerType": "VPU.SoftMax",
+            "multiClusterStrategy": "SplitOverHeight",
+             "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "False"
+          }
+        }
+    )";
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+
+    VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
+
+    ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
+
+    llvm::MapVector<mlir::Location, mlir::Operation*> operations;
+    llvm::MapVector<mlir::Location, mlir::Operation*> outputPipeliningOps;
+    collectAllComputeOps(func, operations, outputPipeliningOps, true);
+
+    auto manualStrategy = llvm::json::parse(manualStrategyJSON);
+    ASSERT_TRUE(manualStrategy.operator bool());
+    VPU::overwriteManualStrategy(manualStrategy.get(), operations);
+
+    auto vfOp = to_small_vector(func.getOps<VPU::VerticalFusionOp>());
+    ASSERT_EQ(vfOp.size(), 1);
+    auto tilingStrategy = parseIntArrayAttr<int64_t>(vfOp.front().getTilingStrategyAttr());
+    ASSERT_EQ(tilingStrategy[Dims4D::Act::H.ind()], 32);
+
+    // reload IR
+    module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+    ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
+
+    operations.clear();
+    outputPipeliningOps.clear();
+    collectAllComputeOps(func, operations, outputPipeliningOps, true);
+
+    manualStrategy = llvm::json::parse(diableVFManualStrategyJSON);
+    ASSERT_TRUE(manualStrategy.operator bool());
+    VPU::overwriteManualStrategy(manualStrategy.get(), operations);
+    vfOp = to_small_vector(func.getOps<VPU::VerticalFusionOp>());
+    ASSERT_EQ(vfOp.size(), 2);
+}
+
+TEST_F(MLIR_VPU_VFConfig, VF_ManualConfigurationForDuplicatedLoc) {
+    constexpr llvm::StringLiteral inputIR = R"(
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+#loc0 = loc(unknown)
+    module @main {
+    func.func @main(%arg0: tensor<1x48x1024x4xf16, {order = #NHWC}>, %arg1: tensor<4096x48x1x1xf16, {order = #NHWC}>) -> tensor<1x4096x1024x4xf16, {order = #NHWC}> {
+          %cst_0 = const.Declare tensor<4096x1x1x4xsi32> = dense<1> : tensor<4096x1x1x4xsi32>
+          %0 = VPU.VerticalFusion (%arg0 as %arg3: tensor<1x48x1024x4xf16, {order = #NHWC}>, %arg1 as %arg4: tensor<4096x48x1x1xf16, {order = #NHWC}>, %cst_0 as %arg5: tensor<4096x1x1x4xsi32>, %arg1 as %arg6: tensor<48x4096x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 24, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>
+          {   %1 = VPU.NCE.Convolution(%arg3, %arg4, %arg5)
+              {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>,
+                  pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                  rawFilterShape = [4096, 48, 1, 1], strides = [1, 1]} : tensor<1x48x1024x4xf16, {order = #NHWC}>, tensor<4096x48x1x1xf16, {order = #NHWC}>, tensor<4096x1x1x4xsi32> -> tensor<1x4096x1024x4xf16, {order = #NHWC}> loc(fused<{name = "Conv", type = "Convolution"}>["Conv", "_1"])
+              VPU.Yield %1
+          }
+          %2 = VPU.VerticalFusion (%0 as %arg3: tensor<1x4096x1024x4xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 24, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>{
+              %1 = VPU.SoftMax(%arg3) {axisInd = 1 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x1024x4xf16, {order = #NHWC}> loc(fused<{name = "Conv", type = "Convolution"}>["Conv", "_1"])
+              VPU.Yield %1
+          }
+          %3 = VPU.VerticalFusion (%2 as %arg3: tensor<1x4096x1024x4xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 24, 1]} -> tensor<1x4096x1024x4xf16, {order = #NHWC}>{
+              %1 = VPU.SoftMax(%arg3) {axisInd = 1 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x1024x4xf16, {order = #NHWC}> loc(fused<{name = "Conv", type = "Convolution"}>["Conv", "_1"])
+              VPU.Yield %1
+          }
+          return %3 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
+       }
+    }
+    )";
+
+    // when enable stratey dump, the duplicated loc will add suffix "_unique_[N]" in saved json
+    constexpr llvm::StringLiteral manualStrategyJSON = R"(
+        {
+          "Conv?t_Convolution/_1": {
+            "layerType": "VPU.NCE.Convolution",
+            "multiClusterStrategy": "SplitOverHeight",
+            "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          },
+          "Conv?t_Convolution/_1/unique_0": {
+            "layerType": "VPU.SoftMax",
+            "multiClusterStrategy": "SplitOverHeight",
+             "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          },
+          "Conv?t_Convolution/_1/unique_1": {
+            "layerType": "VPU.SoftMax",
+            "multiClusterStrategy": "SplitOverHeight",
+             "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+
+    VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
+
+    ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
+
+    llvm::MapVector<mlir::Location, mlir::Operation*> operations;
+    llvm::MapVector<mlir::Location, mlir::Operation*> outputPipeliningOps;
+    collectAllComputeOps(func, operations, outputPipeliningOps, true);
+
+    auto manualStrategy = llvm::json::parse(manualStrategyJSON);
+    ASSERT_TRUE(manualStrategy.operator bool());
+    VPU::overwriteManualStrategy(manualStrategy.get(), operations);
+
+    auto vfOp = to_small_vector(func.getOps<VPU::VerticalFusionOp>());
+    ASSERT_EQ(vfOp.size(), 1);
+    auto tilingStrategy = parseIntArrayAttr<int64_t>(vfOp.front().getTilingStrategyAttr());
+    ASSERT_EQ(tilingStrategy[Dims4D::Act::H.ind()], 32);
 }

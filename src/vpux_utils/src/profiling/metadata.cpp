@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,7 +35,7 @@ constexpr size_t HEADER_SIZE_V1 = /*version_size*/ sizeof(uint32_t) + /*pad_size
 
 const SchemaAndPtrType getProfilingMetaBufferVerified(const uint8_t* buffer, size_t size) {
     auto verifier = flatbuffers::Verifier(buffer, size);
-    VPUX_THROW_UNLESS(ProfilingFB::VerifyProfilingMetaBuffer(verifier), "Cannot verify profiling metadata integrity");
+    VPUX_THROW_UNLESS(ProfilingFB::VerifyProfilingMetaBuffer(verifier), "Corrupted profiling metadata");
     return {ProfilingFB::GetProfilingMeta(buffer), buffer};
 }
 
@@ -54,7 +54,7 @@ const SchemaAndPtrType extractProfilingMetadata(const uint8_t* data, size_t size
     if (schemaMinorVersion != PROFILING_METADATA_VERSION_MINOR) {
         vpux::Logger::global().warning(
                 "Trying to parse blob with profiling metadata version v{0}.{1} with v{2}.{3} parser. Some information "
-                "may be unavailable, re-compile blob to get all features",
+                "may be unavailable",
                 schemaMajorVersion, schemaMinorVersion, PROFILING_METADATA_VERSION_MAJOR,
                 PROFILING_METADATA_VERSION_MINOR);
     }

@@ -5,17 +5,12 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image_fwd.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/normalization_fwd.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
-
-namespace vpux::IE {
-class InterpolateOp;
-class YuvToRgbOp;
-class BatchNormInferenceOp;
-}  // namespace vpux::IE
 
 //
 // Generated

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,7 +37,7 @@ func.func @FuseReshapes(%arg0: tensor<16x1xf32>) -> tensor<4x4xf32> {
     %1 = IE.Reshape(%0) { shape_value = [4, 4] } : tensor<1x1x4x4xf32> -> tensor<4x4xf32>
     return %1 : tensor<4x4xf32>
 
-    // CHECK: [[VAL0:%.*]] = IE.Reshape(%arg0) {shape_value = [4, 4]} : tensor<16x1xf32> -> tensor<4x4xf32>
+    // CHECK: [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [4, 4]} : tensor<16x1xf32> -> tensor<4x4xf32>
     // CHECK: return [[VAL0]] : tensor<4x4xf32>
 }
 
@@ -60,7 +60,7 @@ func.func @ConvertToAffineReshape(%arg0: tensor<1x1x9x16x2xf32>) -> tensor<1x3x3
     %0 = IE.Reshape(%arg0) { shape_value = [1, 3, 3, 32] } : tensor<1x1x9x16x2xf32> -> tensor<1x3x3x32xf32>
     return %0 : tensor<1x3x3x32xf32>
 
-    // CHECK: [[VAL0:%.*]] = IE.AffineReshape(%arg0)
+    // CHECK: [[VAL0:%.+]] = IE.AffineReshape(%arg0)
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1, 2], [3], [3]], shape_value = [1, 3, 3, 32]} : tensor<1x1x9x16x2xf32> -> tensor<1x3x3x32xf32>
     // CHECK: return [[VAL0]] : tensor<1x3x3x32xf32>
 }
@@ -74,7 +74,7 @@ func.func @DontConvertToAffineReshape(%arg0: tensor<1x1x1x160000xf16, {order = #
     %0 = IE.Reshape(%arg0) {shape_value = [1, 2500, 1, 64]} : tensor<1x1x1x160000xf16, {order = #NHWC}> -> tensor<1x2500x1x64xf16>
     return %0 : tensor<1x2500x1x64xf16>
 
-    // CHECK: [[VAL0:%.*]] = IE.Reshape(%arg0)
+    // CHECK: [[VAL0:%.+]] = IE.Reshape(%arg0)
     // CHECK-SAME{LITERAL}: {shape_value = [1, 2500, 1, 64]} : tensor<1x1x1x160000xf16, {order = #NHWC}> -> tensor<1x2500x1x64xf16>
     // CHECK: return [[VAL0]] : tensor<1x2500x1x64xf16>
 }

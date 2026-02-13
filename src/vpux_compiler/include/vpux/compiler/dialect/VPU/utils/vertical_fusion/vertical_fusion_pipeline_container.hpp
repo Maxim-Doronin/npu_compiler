@@ -24,7 +24,7 @@ struct TimelineInterval {
     mlir::Location _mLoc = nullptr;
     mlir::Operation* _mOperation = nullptr;
     int64_t _mIndex = 0;
-    VPU::ExecutorKind _mExecutor;
+    config::ExecutorKind _mExecutor;
     bool _mIsLastInPipeline = false;
 };
 

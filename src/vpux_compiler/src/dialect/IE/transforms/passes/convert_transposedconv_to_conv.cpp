@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -76,8 +76,8 @@ mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::Transpo
     auto dilations = getIntArrayAttr(getContext(), SmallVector<int64_t>{1, 1});
 
     auto resultOP = rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), paddingOutput, origOp.getFilter(),
-                                                       origOp.getBias(), strides, padsBegin, padsEnd, dilations,
-                                                       origOp.getPostOpAttr(), origOp.getClampAttr(),
+                                                       origOp.getBias(), /*scale*/ nullptr, strides, padsBegin, padsEnd,
+                                                       dilations, origOp.getPostOpAttr(), origOp.getClampAttr(),
                                                        /*staticScale=*/nullptr, origOp.getOutputPaddingAttr(),
                                                        origOp.getInputPaddingAttr())
                             .getOutput();

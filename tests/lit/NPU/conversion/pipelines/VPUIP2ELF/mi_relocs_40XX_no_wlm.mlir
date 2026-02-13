@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -63,7 +63,7 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     %b1 = VPURT.ConfigureBarrier<1> -> !VPURT.Barrier
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%1 : memref<1x1x1x1000xf16>) outputs(%in_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%1 : memref<1x1x1x1000xf16>) outputs(%in_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
     }
 
     // Genetic Kernel information for the scheduler.
@@ -84,12 +84,12 @@ func.func @main(%1: memref<1x1x1x1000xf16>, %2: memref<1x1x1x1000xf16>) -> memre
     }
 
     VPURT.Task waits(%b1 : !VPURT.Barrier) {
-        %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%out_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16>
+        %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%out_tile0_cmx : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%2 : memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16>
     }
     return %2: memref<1x1x1x1000xf16>
 
 }
-  // CHECK:       ELF.CreateRelocationSection{{.*}}mapped_inference
+  // CHECK:       ELF.CreateRelocationSection{{.+}}mapped_inference
   // CHECK:       ELF.Reloc offset(88) sourceSym(@symtab::@elfsym.task.dma.0.0) relocType(<R_VPU_64>) addend(0)
   // CHECK:       ELF.Reloc offset(328) sourceSym(@symtab::@elfsym.task.dma.0.1) relocType(<R_VPU_64>) addend(0)
   // CHECK:       ELF.Reloc offset(1048) sourceSym(@symtab::@elfsym.task.shave.range.0.0) relocType(<R_VPU_64>) addend(0)

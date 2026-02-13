@@ -284,7 +284,7 @@ private:
                                  VPU::SparseTensorType sparseType) {
         VPUX_THROW_WHEN(sparseValues.empty(), "Empty sparse values for type {0}", sparseType);
         auto producerOp = sparseValues.front().getDefiningOp();
-        const auto loc = (producerOp != nullptr) ? appendLoc(producerOp->getLoc(), "_group")
+        const auto loc = (producerOp != nullptr) ? appendLoc(producerOp->getLoc(), "group")
                                                  : mlir::UnknownLoc::get(&getContext());
         const auto data = sparseValues.front();
         mlir::Value sparsityMap = nullptr;
@@ -310,7 +310,7 @@ private:
 
     mlir::ResultRange ungroupSparseValue(mlir::OpBuilder& builder, mlir::Value sparseValue) {
         auto producerOp = sparseValue.getDefiningOp();
-        const auto loc = (producerOp != nullptr) ? appendLoc(producerOp->getLoc(), "_ungroup")
+        const auto loc = (producerOp != nullptr) ? appendLoc(producerOp->getLoc(), "ungroup")
                                                  : mlir::UnknownLoc::get(&getContext());
         auto sparseType = mlir::dyn_cast<VPU::SparseTensorType>(sparseValue.getType());
         VPUX_THROW_WHEN(sparseType == nullptr, "Expected value to have sparse type, but got type {0}",
@@ -354,7 +354,7 @@ private:
             const auto& outputTypes = funcsInfo[instance.index()].outputTypes;
 
             auto builder = mlir::OpBuilder(mainFuncOp);
-            const auto funcLoc = appendLoc(mainFuncOp.getLoc(), "_outline{0}", instance.index() + 1);
+            const auto funcLoc = appendLoc(mainFuncOp.getLoc(), "outline{0}", instance.index() + 1);
             const auto funcType = mlir::FunctionType::get(&getContext(), inputTypes, outputTypes);
             auto funcOp = builder.create<mlir::func::FuncOp>(funcLoc, funcName, funcType);
             funcOp.setPrivate();
@@ -396,7 +396,7 @@ private:
                     mapper.map(operand, oldToNewMap[operand]);
                 }
                 auto clonedOp = builder.clone(*op, mapper);
-                clonedOp->setLoc(appendLoc(clonedOp->getLoc(), formatv("_outline{0}", instance.index() + 1).str()));
+                extendOpLoc(clonedOp, "outline{0}", instance.index() + 1);
                 for (size_t i = 0; i < clonedOp->getResults().size(); i++) {
                     oldToNewMap[op->getResult(i)] = clonedOp->getResult(i);
                 }
@@ -428,7 +428,7 @@ private:
                 funcOutputFromSlices.push_back(newOutput);
                 ++newIdx;
             }
-            const auto returnLoc = appendLoc(mainFuncOp.getLoc(), "_outline{0}_return", instance.index() + 1);
+            const auto returnLoc = appendLoc(mainFuncOp.getLoc(), "outline{0}_return", instance.index() + 1);
             builder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromSlices);
         }
     }
@@ -464,7 +464,7 @@ private:
                 }
             }
 
-            const auto callLoc = appendLoc(funcInfo.funcOp->getLoc(), "_call");
+            const auto callLoc = appendLoc(funcInfo.funcOp->getLoc(), "call");
             auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcInfo.funcOp, newInputs);
 
             for (size_t origIdx = 0, newIdx = 0; origIdx < funcInfo.outputs.size();) {

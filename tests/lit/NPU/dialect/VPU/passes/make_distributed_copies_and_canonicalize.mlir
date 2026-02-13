@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -205,4 +205,49 @@ func.func @NotOptimizeShapeCastCopies(%eltwise_input1: !EltwiseTensorType, %eltw
     // CHECK:               [[COPY1:%.+]] = VPU.Copy([[ELTWISE]]
     // CHECK:               [[SHAPE_CAST:%.+]] = VPU.ShapeCast {shape = [1, 32, 128, 128]} inputs([[COPY1]]
     // CHECK:               [[COPY2:%.+]] = VPU.Copy([[SHAPE_CAST]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!DistributedInput = !VPU.DistributedTensor<1x16x90x160xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 16, 23, 160], [1, 16, 23, 160], [1, 16, 22, 160], [1, 16, 22, 160]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 23, 0], [0, 0, 46, 0], [0, 0, 68, 0]],
+    memory_shapes = [[1, 16, 24, 160], [1, 16, 25, 160], [1, 16, 24, 160], [1, 16, 23, 160]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 22, 0], [0, 0, 45, 0], [0, 0, 67, 0]]}>
+!DistributedWeights = !VPU.DistributedTensor<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments,
+    compute_shapes = [[32, 16, 3, 3], [32, 16, 3, 3], [32, 16, 3, 3], [32, 16, 3, 3]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    memory_shapes = [[32, 16, 3, 3], [32, 16, 3, 3], [32, 16, 3, 3], [32, 16, 3, 3]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
+!DistributedOutput = !VPU.DistributedTensor<1x32x90x160xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 32, 23, 160], [1, 32, 23, 160], [1, 32, 22, 160], [1, 32, 22, 160]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 23, 0], [0, 0, 46, 0], [0, 0, 68, 0]],
+    memory_shapes = [[1, 32, 23, 160], [1, 32, 23, 160], [1, 32, 22, 160], [1, 32, 22, 160]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 23, 0], [0, 0, 46, 0], [0, 0, 68, 0]]}>
+!DistributedShapeCast = !VPU.DistributedTensor<1x128x90x40xf16, #NHWC, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64, uniform_distributed_segments,
+    compute_shapes = [[1, 128, 23, 40], [1, 128, 23, 40], [1, 128, 22, 40], [1, 128, 22, 40]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 23, 0], [0, 0, 46, 0], [0, 0, 68, 0]],
+    memory_shapes = [[1, 128, 24, 40], [1, 128, 25, 40], [1, 128, 24, 40], [1, 128, 23, 40]],
+    memory_offsets = [[0, 0, 0, 0], [0, 0, 22, 0], [0, 0, 45, 0], [0, 0, 67, 0]]}>
+
+// CHECK-LABEL: @DoNotOptimizeShapeCastCopiesForSiblingEltwise
+func.func @DoNotOptimizeShapeCastCopiesForSiblingEltwise(%input: !DistributedInput, %weights: !DistributedWeights, %eltwise_input : tensor<1x32x90x160xf16, {order = #NHWC}>) -> (!DistributedShapeCast, tensor<1x32x90x160xf16, {order = #NHWC}>) {
+    %conv = VPU.NCE.Convolution(%input, %weights) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [32, 16, 3, 3], strides = [1, 1]} : !DistributedInput, !DistributedWeights -> !DistributedOutput
+    %conv_to_ddr = VPU.UnrolledType(%conv : !DistributedOutput) -> tensor<1x32x90x160xf16, {order = #NHWC}>
+    %shape_cast = VPU.ShapeCast {shape = [1, 128, 90, 40]} inputs(%conv_to_ddr : tensor<1x32x90x160xf16, {order = #NHWC}>) -> tensor<1x128x90x40xf16, {order = #NHWC}>
+    %shape_cast_to_cmx = VPU.UnrolledType(%shape_cast : tensor<1x128x90x40xf16, {order = #NHWC}>) -> !DistributedShapeCast
+
+    %conv_to_cmx = VPU.UnrolledType(%conv_to_ddr : tensor<1x32x90x160xf16, {order = #NHWC}>) -> !DistributedOutput
+    %eltwise_input_to_cmx = VPU.UnrolledType(%eltwise_input : tensor<1x32x90x160xf16, {order = #NHWC}>) -> !DistributedOutput
+    %eltwise = VPU.NCE.Eltwise(%conv_to_cmx, %eltwise_input_to_cmx) {op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEStub<>} -> !DistributedOutput
+    %eltwise_to_ddr = VPU.UnrolledType(%eltwise : !DistributedOutput) -> tensor<1x32x90x160xf16, {order = #NHWC}>
+
+    return %shape_cast_to_cmx, %eltwise_to_ddr : !DistributedShapeCast, tensor<1x32x90x160xf16, {order = #NHWC}>
+
+    // The eltwise should not have distributed types
+    // CHECK:       VPU.ShapeCast
+    // CHECK-SAME:    inputs({{.+}} : tensor<1x32x90x160xf16, {order = #NHWC}>)
+    // CHECK-SAME:    -> tensor<1x128x90x40xf16, {order = #NHWC}>
 }

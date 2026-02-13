@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -183,6 +183,7 @@ mlir::LogicalResult AdjustShapeForSoftmax::matchAndRewrite(VPU::SoftMaxOp softma
     const auto ctx = getContext();
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(softmaxOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(softmaxOp.getOutput().getType());
     const auto inOrder = inType.getDimsOrder();
     const auto inShape = inType.getShape();
 
@@ -194,7 +195,7 @@ mlir::LogicalResult AdjustShapeForSoftmax::matchAndRewrite(VPU::SoftMaxOp softma
         _log.nest(1).trace("Adjusted shape to {0} and axisInd to {1} for AxisZeroOpt", shape, axisInd);
     }
 
-    const auto numActShaves = config::getTotalNumOfEngines(softmaxOp, VPU::ExecutorKind::SHAVE_ACT);
+    const auto numActShaves = config::getTotalNumOfEngines(softmaxOp, config::ExecutorKind::SHAVE_ACT);
     const auto multiShaveOpt = adjustForMultiShaveOpt(shape, axisInd, inOrder, numActShaves);
     if (mlir::succeeded(multiShaveOpt)) {
         _log.nest(1).trace("Adjusted shape to {0} and axisInd to {1} for MultiShaveOpt", shape, axisInd);
@@ -206,9 +207,10 @@ mlir::LogicalResult AdjustShapeForSoftmax::matchAndRewrite(VPU::SoftMaxOp softma
 
     auto reshapeInOp = rewriter.create<VPU::ShapeCastOp>(softmaxOp.getLoc(), inType.changeShape(shape),
                                                          softmaxOp.getInput(), getIntArrayAttr(ctx, shape));
-    auto newSoftmaxOp = rewriter.create<VPU::SoftMaxOp>(softmaxOp.getLoc(), reshapeInOp.getResult(),
-                                                        getIntAttr(ctx, axisInd), softmaxOp.getPadSizeAttr(), nullptr);
-    auto reshapeOutOp = rewriter.create<VPU::ShapeCastOp>(softmaxOp.getLoc(), inType, newSoftmaxOp.getOutput(),
+    auto newSoftmaxOp =
+            rewriter.create<VPU::SoftMaxOp>(softmaxOp.getLoc(), reshapeInOp.getResult(), getIntAttr(ctx, axisInd),
+                                            softmaxOp.getPadSizeAttr(), softmaxOp.getDstElemTypeAttr());
+    auto reshapeOutOp = rewriter.create<VPU::ShapeCastOp>(softmaxOp.getLoc(), outType, newSoftmaxOp.getOutput(),
                                                           getIntArrayAttr(ctx, inShape));
 
     softmaxOp.replaceAllUsesWith(reshapeOutOp.getResult());
@@ -220,6 +222,10 @@ mlir::LogicalResult AdjustShapeForSoftmax::matchAndRewrite(VPU::SoftMaxOp softma
 mlir::LogicalResult adjustForMultiShaveOptGeneric(Shape& shape, const DimsOrder& order, const int64_t numActShaves) {
     // only support NCHW and NHWC layout
     if (order != DimsOrder::NCHW && order != DimsOrder::NHWC) {
+        return mlir::failure();
+    }
+
+    if (shape.isDynamic()) {
         return mlir::failure();
     }
 
@@ -293,7 +299,7 @@ mlir::LogicalResult AdjustShapeForGelu::matchAndRewrite(VPU::GeluOp geluOp, mlir
         return mlir::failure();
     }
 
-    const auto numActShaves = config::getTotalNumOfEngines(geluOp, VPU::ExecutorKind::SHAVE_ACT);
+    const auto numActShaves = config::getTotalNumOfEngines(geluOp, config::ExecutorKind::SHAVE_ACT);
     const auto multiShaveOpt = adjustForMultiShaveOpt(shape, origIOOrder, numActShaves);
     if (mlir::failed(multiShaveOpt)) {
         _log.trace("MultiShaveOpt is not required at {0}", geluOp->getLoc());
@@ -377,7 +383,7 @@ mlir::LogicalResult AdjustShapeForMultiply::matchAndRewrite(VPU::MultiplyOp mult
 
     auto shape = origIOShape.toValues();
 
-    const auto numActShaves = config::getTotalNumOfEngines(multiplyOp, VPU::ExecutorKind::SHAVE_ACT);
+    const auto numActShaves = config::getTotalNumOfEngines(multiplyOp, config::ExecutorKind::SHAVE_ACT);
     const auto multiShaveOpt = adjustForMultiShaveOpt(shape, origIOOrder, numActShaves);
     if (mlir::failed(multiShaveOpt)) {
         return mlir::failure();

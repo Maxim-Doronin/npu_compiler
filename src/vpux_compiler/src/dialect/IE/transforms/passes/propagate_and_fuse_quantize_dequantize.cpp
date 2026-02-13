@@ -151,9 +151,9 @@ mlir::LogicalResult FuseDequantizeWithMultiplier::matchAndRewrite(IE::Dequantize
         return matchFailed(_log, rewriter, dequantizeOp, "unsupported quantize type");
     }
 
-    auto quantizeCastOp = rewriter.create<IE::QuantizeCastOp>(appendLoc(dequantizeOp.getLoc(), "_quantizecast"),
+    auto quantizeCastOp = rewriter.create<IE::QuantizeCastOp>(appendLoc(dequantizeOp.getLoc(), "quantizecast"),
                                                               dequantizeOp.getInput(), dstType);
-    auto newDequantizeOp = rewriter.create<IE::DequantizeOp>(appendLoc(dequantizeOp.getLoc(), "_dequantize"),
+    auto newDequantizeOp = rewriter.create<IE::DequantizeOp>(appendLoc(dequantizeOp.getLoc(), "dequantize"),
                                                              quantizeCastOp.getOutput(), dequantizeOp.getDstElemType());
     auto userOp = *dequantizeOp.getOutput().getUsers().begin();
     rewriter.replaceOp(userOp, newDequantizeOp.getOutput());
@@ -276,7 +276,7 @@ mlir::LogicalResult PropagateQuantize::matchAndRewrite(IE::QuantizeOp origOp, ml
     // 1. Create new Quantize ops, place them on each input of current operation.
     auto firstElemTypeInfoOp = mlir::dyn_cast<IE::ElemTypeInfoOpInterface>(firstUser);
     for (auto [idx, operand] : llvm::enumerate(firstElemTypeInfoOp->getOpOperands())) {
-        auto newLoc = appendLoc(firstElemTypeInfoOp->getLoc(), "_propagated_Quantize '{0}'", idx);
+        auto newLoc = appendLoc(firstElemTypeInfoOp->getLoc(), "propagated_Quantize '{0}'", idx);
         auto newQuantize = rewriter.create<IE::QuantizeOp>(newLoc, operand.get(), quantizedElemType);
         // Update input of Operation. NewQuant -> current Op.
         operand.set(newQuantize.getOutput());
@@ -487,7 +487,7 @@ mlir::LogicalResult PropagateDequantize::matchAndRewrite(IE::DequantizeOp origOp
                 if (isToInsert) {
                     auto output = currentUser->getOpResult(outputInd);
                     rewriter.setInsertionPointAfter(currentUser);
-                    auto newLoc = appendLoc(currentUser->getLoc(), "_propagated_Dequantize '{0}'", outputInd);
+                    auto newLoc = appendLoc(currentUser->getLoc(), "propagated_Dequantize '{0}'", outputInd);
                     auto newDequant = rewriter.create<IE::DequantizeOp>(newLoc, output, dstElemType);
                     _log.trace("Added new Dequantize op: '{0}' at index '{1}'", newDequant, outputInd);
                     output.replaceAllUsesExcept(newDequant.getOutput(),

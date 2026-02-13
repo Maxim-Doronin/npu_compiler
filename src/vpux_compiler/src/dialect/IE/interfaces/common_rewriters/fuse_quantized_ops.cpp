@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/matmul.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 
 using namespace vpux;
@@ -23,12 +25,8 @@ IE::ConvolutionOp FuseWithConv::createNewConvBasedOp(IE::QuantizeOp quantizeOp, 
                                                      mlir::PatternRewriter& rewriter) const {
     auto users = conv.getResult().getUsers();
     auto userSize = std::distance(users.begin(), users.end());
-    auto newLoc = takeOpLoc(conv, llvm::formatv("_{0}", userSize));
-    auto newConv = rewriter.create<IE::ConvolutionOp>(
-            newLoc, quantizeOp.getType(), newInput, newWeights, conv.getBias(), conv.getStrides(), conv.getPadsBegin(),
-            conv.getPadsEnd(), conv.getDilations(), conv.getPostOpAttr(), conv.getClampAttr(),
-            conv.getStaticScaleAttr(), conv.getOutputPaddingAttr(), conv.getInputPaddingAttr());
-
+    auto newLoc = takeOpLoc(conv, "{0}", userSize);
+    auto newConv = cloneConvolutionOp(rewriter, conv, quantizeOp.getType(), newInput, newWeights, newLoc);
     return newConv;
 }
 
@@ -42,7 +40,7 @@ IE::GroupConvolutionOp FuseWithGroupConv::createNewConvBasedOp(IE::QuantizeOp qu
                                                                mlir::PatternRewriter& rewriter) const {
     auto users = grConvOp.getResult().getUsers();
     auto userSize = std::distance(users.begin(), users.end());
-    auto newLoc = takeOpLoc(grConvOp, llvm::formatv("_{0}", userSize));
+    auto newLoc = takeOpLoc(grConvOp, "{0}", userSize);
 
     auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
             newLoc, quantizeOp.getType(), newInput, newWeights, grConvOp.getBias(), grConvOp.getStrides(),
@@ -67,7 +65,7 @@ IE::TransposedConvolutionOp FuseWithTransposedConv::createNewConvBasedOp(IE::Qua
                                                                          mlir::PatternRewriter& rewriter) const {
     auto users = transposedConvOp.getResult().getUsers();
     auto userSize = std::distance(users.begin(), users.end());
-    auto newLoc = takeOpLoc(transposedConvOp, llvm::formatv("_{0}", userSize));
+    auto newLoc = takeOpLoc(transposedConvOp, "{0}", userSize);
 
     auto newTransposedConv = rewriter.create<IE::TransposedConvolutionOp>(
             newLoc, quantizeOp.getType(), newInput, newWeights, transposedConvOp.getOutputShape(),
@@ -91,6 +89,10 @@ mlir::LogicalResult FuseWithMaxPool::matchAndRewrite(IE::QuantizeOp quantizeOp, 
     }
 
     if (!areAllUsersQuantized(maxPoolOp)) {
+        return mlir::failure();
+    }
+
+    if (!isQuantizationSupported(quantizeOp, maxPoolOp, IE::TypeComparisonMode::ALLOW_DIFFERENT_QUANT)) {
         return mlir::failure();
     }
 
@@ -140,6 +142,10 @@ mlir::LogicalResult FuseWithAveragePool::matchAndRewrite(IE::QuantizeOp quantize
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, avgPoolOp, IE::TypeComparisonMode::ALLOW_DIFFERENT_QUANT)) {
+        return mlir::failure();
+    }
+
     if (VPU::NCEAveragePoolOp::verifyKernel(avgPoolOp, _log).failed()) {
         return mlir::failure();
     }
@@ -162,7 +168,7 @@ mlir::LogicalResult FuseWithAveragePool::matchAndRewrite(IE::QuantizeOp quantize
     }
     auto users = avgPoolOp.getResult().getUsers();
     auto userSize = std::distance(users.begin(), users.end());
-    auto newLoc = takeOpLoc(avgPoolOp, llvm::formatv("_{0}", userSize));
+    auto newLoc = takeOpLoc(avgPoolOp, "{0}", userSize);
     rewriter.replaceOpWithNewOp<IE::AvgPoolOp>(
                     quantizeOp, quantizeOp.getType(), inputDequantizeOp.getInput(), avgPoolOp.getKernelSize(),
                     avgPoolOp.getStrides(), avgPoolOp.getPadsBegin(), avgPoolOp.getPadsEnd(),
@@ -202,6 +208,10 @@ mlir::LogicalResult FuseWithSlice::matchAndRewrite(IE::QuantizeOp quantizeOp, ml
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, sliceOp, IE::TypeComparisonMode::STRICT_EQUAL)) {
+        return mlir::failure();
+    }
+
     if (!isLegalFuseOp(sliceOp, quantizeOp)) {
         return matchFailed(rewriter, sliceOp, "Quantize op cannot fuse into op {0} at {1}", sliceOp->getName(),
                            sliceOp->getLoc());
@@ -231,6 +241,10 @@ mlir::LogicalResult FuseWithTile::matchAndRewrite(IE::QuantizeOp quantizeOp, mli
 
     auto tileOp = quantizeOp.getInput().getDefiningOp<IE::TileOp>();
     if (tileOp == nullptr) {
+        return mlir::failure();
+    }
+
+    if (!isQuantizationSupported(quantizeOp, tileOp, IE::TypeComparisonMode::STRICT_EQUAL)) {
         return mlir::failure();
     }
 
@@ -266,6 +280,10 @@ mlir::LogicalResult FuseWithConcat::matchAndRewrite(IE::QuantizeOp quantizeOp, m
     }
 
     if (!areAllUsersQuantized(concatOp)) {
+        return mlir::failure();
+    }
+
+    if (!isQuantizationSupported(quantizeOp, concatOp, IE::TypeComparisonMode::STRICT_EQUAL)) {
         return mlir::failure();
     }
 
@@ -327,6 +345,10 @@ mlir::LogicalResult FuseWithInterpolate::matchAndRewrite(IE::QuantizeOp quantize
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, interpOp, IE::TypeComparisonMode::ALLOW_DIFFERENT_QUANT)) {
+        return mlir::failure();
+    }
+
     auto isNCESupported = VPU::NCEInvariant::isSupported(interpOp.getOperation(), _log);
     if (isNCESupported.failed()) {
         return mlir::failure();
@@ -365,6 +387,10 @@ mlir::LogicalResult FuseWithMatMul::matchAndRewrite(IE::QuantizeOp quantizeOp, m
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, matMulOp, IE::TypeComparisonMode::STRICT_EQUAL)) {
+        return mlir::failure();
+    }
+
     auto input1DequantizeOp = matMulOp.getInput1().getDefiningOp<IE::DequantizeOp>();
     if (input1DequantizeOp == nullptr) {
         return mlir::failure();
@@ -379,9 +405,8 @@ mlir::LogicalResult FuseWithMatMul::matchAndRewrite(IE::QuantizeOp quantizeOp, m
         return mlir::failure();
     }
 
-    rewriter.replaceOpWithNewOp<IE::MatMulOp>(quantizeOp, quantizeOp.getType(), input1DequantizeOp.getInput(),
-                                              input2DequantizeOp.getInput(), matMulOp.getTransposeA(),
-                                              matMulOp.getTransposeB(), matMulOp.getPostOpAttr())
-            ->setLoc(matMulOp->getLoc());
+    rewriter.replaceOp(quantizeOp, cloneMatMulOp(rewriter, matMulOp, quantizeOp.getType(),
+                                                 input1DequantizeOp.getInput(), input2DequantizeOp.getInput()));
+
     return mlir::success();
 }

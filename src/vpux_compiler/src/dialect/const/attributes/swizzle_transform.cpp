@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -239,7 +239,5 @@ bool Const::SwizzleConstantAttr::supportsSubByteStorageType() const {
 //
 
 llvm::hash_code vpux::Const::SwizzleConstantAttr::getStableHashValue() const {
-    const auto arch = getArch().getValue();
-    const auto swizzleKey = getSwizzleKey().getValue();
-    return llvm::hash_combine(getMnemonic(), arch, swizzleKey);
+    VPUX_THROW("Not implemented. It requires an equivalent representation in IE dialect.");
 }

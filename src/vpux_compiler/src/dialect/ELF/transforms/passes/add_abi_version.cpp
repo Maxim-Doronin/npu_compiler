@@ -1,9 +1,9 @@
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/ELF/transforms/passes.hpp"
 
 #include <cstdint>
@@ -23,22 +23,18 @@ namespace {
 
 class AddABIVersionPass : public ELF::impl::AddABIVersionBase<AddABIVersionPass> {
 public:
-    AddABIVersionPass(Logger log, uint32_t versionMajor, uint32_t versionMinor, uint32_t versionPatch)
-            : _versionMajor(versionMajor), _versionMinor(versionMinor), _versionPatch(versionPatch) {
+    AddABIVersionPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnFunc() final;
-    uint32_t _versionMajor;
-    uint32_t _versionMinor;
-    uint32_t _versionPatch;
 };
 
 void AddABIVersionPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     mlir::OpBuilder builder(&(funcOp.getBody().front().back()));
-    builder.create<ELF::ABIVersionOp>(builder.getUnknownLoc(), _versionMajor, _versionMinor, _versionPatch);
+    builder.create<ELF::ABIVersionOp>(builder.getUnknownLoc());
 }
 
 }  // namespace
@@ -47,7 +43,6 @@ void AddABIVersionPass::safeRunOnFunc() {
 // createAddABIVersionPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::ELF::createAddABIVersionPass(Logger log, uint32_t versionMajor, uint32_t versionMinor,
-                                                               uint32_t versionPatch) {
-    return std::make_unique<AddABIVersionPass>(log, versionMajor, versionMinor, versionPatch);
+std::unique_ptr<mlir::Pass> vpux::ELF::createAddABIVersionPass(Logger log) {
+    return std::make_unique<AddABIVersionPass>(log);
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,14 @@ class SoftMaxLayerTestCommon : public subgraph::SoftMaxLayerTest, virtual public
         configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
     }
 };
+class ShaveCodeGenSoftMaxLayerTestCommon : public subgraph::SoftMaxLayerTest, virtual public VpuOv2LayerTest {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-shave-code-gen=true convert-precision-to-fp16=false";
+    }
+};
+
+class SoftMaxConvertFP32LayerTest : public subgraph::SoftMaxLayerTest, virtual public VpuOv2LayerTest {};
 
 struct SkipDynamicShapes {
     SkipDynamicShapes(SoftMaxLayerTestCommon::ParamType params): params(std::move(params)) {
@@ -59,6 +67,21 @@ TEST_P(SoftMaxLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(ShaveCodeGenSoftMaxLayerTestCommon, NPU4000_SW) {
+    abs_threshold = 1e-3;
+    setPluginCompilerType();
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ShaveCodeGenSoftMaxLayerTestCommon, NPU4000_HW) {
+    abs_threshold = 1e-3;
+    setPluginCompilerType();
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(SoftMaxLayerTestCommon, NPU5010_SW) {
     setSkipCompilationCallback(SkipDynamicShapes(GetParam()));
 
@@ -74,8 +97,32 @@ TEST_P(SoftMaxLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
+TEST_P(ShaveCodeGenSoftMaxLayerTestCommon, NPU5010_SW) {
+    abs_threshold = 1e-3;
+    setPluginCompilerType();
+    setReferenceSoftwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(ShaveCodeGenSoftMaxLayerTestCommon, NPU5010_HW) {
+    abs_threshold = 1e-3;
+    setPluginCompilerType();
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(SoftMaxConvertFP32LayerTest, NPU5010_HW) {
+    setSkipCompilationCallback(SkipDynamicShapes(GetParam()));
+
+    abs_threshold = 1e-3;
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 }  // namespace ov::test
 
+using ov::test::ShaveCodeGenSoftMaxLayerTestCommon;
 using ov::test::SoftMaxLayerTestCommon;
 
 namespace {
@@ -100,6 +147,16 @@ INSTANTIATE_TEST_SUITE_P(
                          testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
         SoftMaxLayerTestCommon::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(
+        smoke_SoftMax2D, ShaveCodeGenSoftMaxLayerTestCommon,
+        testing::Combine(testing::Values(ov::element::f16),                                              // Model type
+                         testing::Values(ov::element::f16),                                              // In type
+                         testing::Values(ov::element::f16),                                              // Out type
+                         testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes2D)),  // Shape
+                         testing::ValuesIn(axis2D),                                                      // Axis
+                         testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
+        ShaveCodeGenSoftMaxLayerTestCommon::getTestCaseName);
+
 //
 // Input 3D
 //
@@ -117,6 +174,16 @@ INSTANTIATE_TEST_SUITE_P(
                          testing::ValuesIn(axis3D),                                                      // Axis
                          testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
         SoftMaxLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_SoftMax3D, ShaveCodeGenSoftMaxLayerTestCommon,
+        testing::Combine(testing::Values(ov::element::f16),                                              // Model type
+                         testing::Values(ov::element::f16),                                              // In type
+                         testing::Values(ov::element::f16),                                              // Out type
+                         testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes3D)),  // Shape
+                         testing::ValuesIn(axis3D),                                                      // Axis
+                         testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
+        ShaveCodeGenSoftMaxLayerTestCommon::getTestCaseName);
 
 //
 // Input 4D
@@ -146,6 +213,26 @@ INSTANTIATE_TEST_SUITE_P(
                          testing::ValuesIn(axis4D),                                                            // Axis
                          testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
         SoftMaxLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_SoftMax4D, ShaveCodeGenSoftMaxLayerTestCommon,
+        testing::Combine(testing::Values(ov::element::f16),                                              // Model type
+                         testing::Values(ov::element::f16),                                              // In type
+                         testing::Values(ov::element::f16),                                              // Out type
+                         testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes4D)),  // Shape
+                         testing::ValuesIn(axis4D),                                                      // Axis
+                         testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
+        ShaveCodeGenSoftMaxLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_precommit_SoftMax4D, ShaveCodeGenSoftMaxLayerTestCommon,
+        testing::Combine(testing::Values(ov::element::f16),  // Model type
+                         testing::Values(ov::element::f16),  // In type
+                         testing::Values(ov::element::f16),  // Out type
+                         testing::ValuesIn(ov::test::static_shapes_to_test_representation({{1, 2, 72, 10}})),  // Shape
+                         testing::ValuesIn(axis4D),                                                            // Axis
+                         testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
+        ShaveCodeGenSoftMaxLayerTestCommon::getTestCaseName);
 
 //
 // Input 5D
@@ -177,6 +264,16 @@ INSTANTIATE_TEST_SUITE_P(
                          testing::Values(2),                                                                   // Axis
                          testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
         SoftMaxLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_precommit_SoftMaxFP32, ShaveCodeGenSoftMaxLayerTestCommon,
+        testing::Combine(testing::Values(ov::element::f32),  // Model type
+                         testing::Values(ov::element::f32),  // In type
+                         testing::Values(ov::element::f32),  // Out type
+                         testing::ValuesIn(ov::test::static_shapes_to_test_representation({{1, 2, 72, 10}})),  // Shape
+                         testing::Values(2),                                                                   // Axis
+                         testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
+        ShaveCodeGenSoftMaxLayerTestCommon::getTestCaseName);
 
 //
 // Test tiling functionality

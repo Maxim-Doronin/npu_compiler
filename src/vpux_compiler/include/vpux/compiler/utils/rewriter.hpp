@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,13 +52,13 @@ mlir::GreedyRewriteConfig getDefaultGreedyRewriteConfig();
 // appendLoc
 //
 
-mlir::Location appendLoc(mlir::Location baseLoc, StringRef suffix);
-mlir::Location appendLoc(mlir::Location baseLoc, const formatv_object_base& suffix);
+mlir::Location appendLoc(mlir::Location baseLoc, llvm::StringRef suffix);
+mlir::Location appendLoc(mlir::Location baseLoc, const llvm::formatv_object_base& suffix);
 mlir::Location appendLoc(mlir::Location baseLoc, mlir::StringAttr suffix);
 
-template <typename Arg0, typename... Args>
-mlir::Location appendLoc(mlir::Location baseLoc, StringLiteral format, Arg0&& arg0, Args&&... args) {
-    return appendLoc(baseLoc, formatv(format.data(), std::forward<Arg0>(arg0), std::forward<Args>(args)...));
+template <typename... Args>
+mlir::Location appendLoc(mlir::Location baseLoc, llvm::StringLiteral format, Args&&... args) {
+    return appendLoc(baseLoc, llvm::formatv(format.data(), std::forward<Args>(args)...));
 }
 
 //
@@ -67,8 +67,11 @@ mlir::Location appendLoc(mlir::Location baseLoc, StringLiteral format, Arg0&& ar
 
 // Equivalent to appendLoc(op->getLoc(), ...)
 template <typename... Args>
-mlir::Location takeOpLoc(mlir::Operation* op, Args&&... args) {
-    return appendLoc(op->getLoc(), std::forward<Args>(args)...);
+mlir::Location takeOpLoc(mlir::Operation* op, llvm::StringLiteral format, Args&&... args) {
+    return appendLoc(op->getLoc(), llvm::formatv(format.data(), std::forward<Args>(args)...));
+}
+inline mlir::Location takeOpLoc(mlir::Operation* op, llvm::StringRef suffix) {
+    return appendLoc(op->getLoc(), suffix);
 }
 
 //
@@ -77,8 +80,12 @@ mlir::Location takeOpLoc(mlir::Operation* op, Args&&... args) {
 
 // Equivalent to op->setLoc(appendLoc(op->getLoc(), ...))
 template <typename... Args>
-void extendOpLoc(mlir::Operation* op, Args&&... args) {
-    const mlir::Location newLoc = takeOpLoc(op, std::forward<Args>(args)...);
+void extendOpLoc(mlir::Operation* op, llvm::StringLiteral format, Args&&... args) {
+    auto newLoc = appendLoc(op->getLoc(), llvm::formatv(format.data(), std::forward<Args>(args)...));
+    op->setLoc(newLoc);
+}
+inline void extendOpLoc(mlir::Operation* op, llvm::StringRef suffix) {
+    auto newLoc = appendLoc(op->getLoc(), suffix);
     op->setLoc(newLoc);
 }
 
@@ -139,17 +146,12 @@ vpux::NDTypeInterface getBufferType(mlir::Value value);
 mlir::Type reconstructTensorType(mlir::Type memrefType);
 
 //
-// getBuffer
-//
-
-mlir::Value getBuffer(mlir::RewriterBase& rewriter, mlir::Value value);
-
-//
 // bufferizeOperands
 //
 
 // Converts tensor operands to memrefs (One-Shot Bufferization).
-SmallVector<mlir::Value> bufferizeOperands(mlir::RewriterBase& rewriter, mlir::OperandRange operands);
+SmallVector<mlir::Value> bufferizeOperands(mlir::RewriterBase& rewriter, mlir::OperandRange operands,
+                                           mlir::bufferization::BufferizationState& state);
 
 //
 // populateBufferizeMaterializationLegality

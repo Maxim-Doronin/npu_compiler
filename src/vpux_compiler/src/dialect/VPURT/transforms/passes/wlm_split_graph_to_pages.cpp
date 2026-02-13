@@ -43,12 +43,6 @@ void WlmSplitGraphToPagesPass::safeRunOnFunc() {
         return;
     }
 
-    if (!VPURT::verifyOneWaitBarrierPerTask(func, _log)) {
-        _log.warning("WLM cannot be enabled as not all tasks have 1 wait barrier");
-        config::setWorkloadManagementStatus(module, WorkloadManagementStatus::FAILED);
-        return;
-    }
-
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
 
@@ -71,7 +65,7 @@ void WlmSplitGraphToPagesPass::safeRunOnFunc() {
         auto outBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
 
         const size_t port = 0;
-        const VPURT::TaskQueueType dummyDmaQueueType = {VPU::ExecutorKind::DMA_NN,
+        const VPURT::TaskQueueType dummyDmaQueueType = {config::ExecutorKind::DMA_NN,
                                                         getDMAQueueIdEncoding(port, VPUIP::DmaChannelType::DDR)};
 
         DenseMap<size_t, VPURT::TaskOp> newDummyDmaOpsPerPage;
@@ -113,6 +107,20 @@ void WlmSplitGraphToPagesPass::safeRunOnFunc() {
 
         VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
     }
+
+    // In case of SHV tasks make sure that SHV tasks on same tile do not have decreasing page number
+    // for consecutive tasks in IR. This is already guaranteed if there are dedicated SHV FIFOs, but
+    // in case its not then dedicated handling is needed.
+    if (!config::isFifoPerShaveEngineEnabled(func)) {
+        _log.trace("Separate SHV FIFOs not supported - check SHV tasks on same cluster never have decreasing pages");
+        VPURT::BarrierPagesSplitHandler barrierPagesSplitHandler(func, barrierInfo, numBarriers, _log);
+        barrierPagesSplitHandler.initializeForLegalization();
+        barrierPagesSplitHandler.initializeTaskQueueTypeMap(func);
+        barrierPagesSplitHandler.updateTaskPageAssignmentForShvInCaseOfNoDedicatedShvFifos();
+        barrierInfo = barrierPagesSplitHandler.getUpdatedBarrierInfo();
+        VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
+    }
+
     barrierInfo.clearAttributes();
 }
 }  // namespace

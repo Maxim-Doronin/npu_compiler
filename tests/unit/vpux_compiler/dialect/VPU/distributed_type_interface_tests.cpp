@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
@@ -67,7 +68,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedBufferT
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto distributedTypeIf = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
             VPUIP::DistributedBufferType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
@@ -85,7 +86,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedBufferT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -111,7 +112,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedBufferT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -138,7 +139,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedBufferT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -165,7 +166,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedBufferT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -193,7 +194,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedBufferT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractViewTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -230,7 +231,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto distributedTypeIf = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
             VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
@@ -248,7 +249,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -274,7 +275,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -301,7 +302,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -328,7 +329,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -356,7 +357,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         EXPECT_ANY_THROW(distributedTypeIf.extractViewTileForExplicitDistribution(
                 ShapeRef(tileOffset), ShapeRef(tileShape), ShapeRef(tileElemStrides), distributedAttrForNewShape));
@@ -385,7 +386,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto distributedTypeIf = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
             VPU::DistributedTensorType::get(&ctx, shape, elemType, dimsOrder, dimsSpace, distributedAttr));
@@ -403,7 +404,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, DistributedTensorT
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -440,7 +441,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeDa
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto data =
             VPUIP::DistributedBufferType::get(&ctx, shape, dataElemType, dimsOrder, dimsSpace, distributedAttr);
@@ -463,7 +464,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -486,7 +487,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -510,7 +511,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -534,7 +535,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -559,7 +560,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractViewTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -597,7 +598,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
     const auto dataDistrAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterDataShapesAttr, perClusterDataOffsetsAttr,
-                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr);
+                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr, nullptr);
 
     const PerClusterShapesOffsetsVec perClusterSMapShapes(
             {SmallVector<int64_t>{48, 1, 1, 256}, SmallVector<int64_t>{16, 1, 1, 256}});
@@ -609,7 +610,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
     const auto smapDistrAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterSMapShapesAttr, perClusterSMapOffsetsAttr,
-                                           perClusterSMapShapesAttr, perClusterSMapOffsetsAttr, nullptr);
+                                           perClusterSMapShapesAttr, perClusterSMapOffsetsAttr, nullptr, nullptr);
 
     const auto data = VPUIP::DistributedBufferType::get(&ctx, shape, dataElemType, dimsOrder, dimsSpace, dataDistrAttr);
     const auto sparsityMap = VPUIP::DistributedBufferType::get(&ctx, sparseMapShape, sparsityMapElemType, dimsOrder,
@@ -641,7 +642,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForNewDataShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape),
@@ -658,7 +659,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForNewSMapShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForNewDataShape,
                                                                                  distributedAttrForNewSMapShape};
@@ -680,7 +681,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForNewDataShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -697,7 +698,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForNewSMapShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         ASSERT_NE(newType, nullptr);
 
@@ -721,7 +722,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForNewDataShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -738,7 +739,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForNewSMapShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForNewDataShape,
                                                                                  distributedAttrForNewSMapShape};
@@ -760,7 +761,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForDataTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -777,7 +778,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForSMapTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForDataTile,
                                                                                  distributedAttrForSMapTile};
@@ -800,7 +801,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForDataTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractViewTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -818,7 +819,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWe
         const auto distributedAttrForSMapTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForDataTile,
                                                                                  distributedAttrForSMapTile};
@@ -888,7 +889,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
     const auto distributedDataAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterDataShapesAttr, perClusterDataOffsetsAttr,
-                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr);
+                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr, nullptr);
 
     const PerClusterShapesOffsetsVec perClusterSeTableShapes(
             {SmallVector<int64_t>{1, 1, 36, 64}, SmallVector<int64_t>{1, 1, 34, 64}});
@@ -899,7 +900,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
     const auto distributedSeTableAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterSeTableShapesAttr, perClusterSeTableOffsetsAttr,
-                                           perClusterSeTableShapesAttr, perClusterSeTableOffsetsAttr, nullptr);
+                                           perClusterSeTableShapesAttr, perClusterSeTableOffsetsAttr, nullptr, nullptr);
 
     const auto data = VPUIP::DistributedBufferType::get(&ctx, shape.raw(), dataElemType, dimsOrder, dimsSpace,
                                                         distributedDataAttr);
@@ -942,7 +943,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto distributedAttrForNewShape =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -958,7 +959,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 64, 36, 32}, SmallVector<int64_t>{1, 64, 34, 32}});
@@ -971,7 +972,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 36, 32}, SmallVector<int64_t>{1, 1, 34, 32}});
@@ -984,7 +985,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1008,7 +1009,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto distributedAttrForNewShape =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -1025,7 +1026,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 64, 36, 32}, SmallVector<int64_t>{1, 64, 34, 32}});
@@ -1038,7 +1039,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 36, 32}, SmallVector<int64_t>{1, 1, 34, 32}});
@@ -1051,7 +1052,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1075,7 +1076,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto distributedAttrForNewShape =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -1092,7 +1093,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 64, 36, 32}, SmallVector<int64_t>{1, 64, 34, 32}});
@@ -1105,7 +1106,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 36, 32}, SmallVector<int64_t>{1, 1, 34, 32}});
@@ -1118,7 +1119,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1160,7 +1161,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto distributedAttrForTile =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -1186,7 +1187,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 64, 20, 64}, SmallVector<int64_t>{1, 64, 17, 64}});
@@ -1199,7 +1200,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 20, 64}, SmallVector<int64_t>{1, 1, 17, 64}});
@@ -1212,7 +1213,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1256,7 +1257,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto distributedAttrForTile =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractViewTileForExplicitDistribution(
@@ -1282,7 +1283,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 64, 20, 64}, SmallVector<int64_t>{1, 64, 18, 64}});
@@ -1295,7 +1296,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 20, 64}, SmallVector<int64_t>{1, 1, 18, 64}});
@@ -1308,7 +1309,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseBufferTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1340,7 +1341,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeDa
 
     const auto distributedAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
-            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr);
+            perClusterShapesAttr, perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr, nullptr, nullptr);
 
     const auto data = VPU::DistributedTensorType::get(&ctx, shape, dataElemType, dimsOrder, dimsSpace, distributedAttr);
     const auto sparsityMap =
@@ -1362,7 +1363,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -1385,7 +1386,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -1409,7 +1410,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -1433,7 +1434,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -1458,7 +1459,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeDa
         const auto distributedAttrForNewShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 expectedPerClusterShapesAttr, expectedPerClusterOffsetsAttr, expectedPerClusterShapesAttr,
-                expectedPerClusterOffsetsAttr, nullptr);
+                expectedPerClusterOffsetsAttr, nullptr, nullptr);
 
         EXPECT_ANY_THROW(distributedTypeIf.extractViewTileForExplicitDistribution(
                 ShapeRef(tileOffset), ShapeRef(tileShape), ShapeRef(tileElemStrides), distributedAttrForNewShape));
@@ -1488,7 +1489,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
     const auto dataDistrAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr,
                                            nullptr, nullptr, perClusterDataShapesAttr, perClusterDataOffsetsAttr,
-                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr);
+                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr, nullptr);
 
     const PerClusterShapesOffsetsVec perClusterSMapShapes(numClusters, SmallVector<int64_t>{64, 1, 1, 256});
     const PerClusterShapesOffsetsVec perClusterSMapOffsets(numClusters, SmallVector<int64_t>{0, 0, 0, 0});
@@ -1498,7 +1499,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
     const auto smapDistrAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr,
                                            nullptr, nullptr, perClusterSMapShapesAttr, perClusterSMapOffsetsAttr,
-                                           perClusterSMapShapesAttr, perClusterSMapOffsetsAttr, nullptr);
+                                           perClusterSMapShapesAttr, perClusterSMapOffsetsAttr, nullptr, nullptr);
 
     const auto data = VPU::DistributedTensorType::get(&ctx, shape, dataElemType, dimsOrder, dimsSpace, dataDistrAttr);
     const auto sparsityMap = VPU::DistributedTensorType::get(&ctx, sparseMapShape, sparsityMapElemType, dimsOrder,
@@ -1529,7 +1530,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForNewDataShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape),
@@ -1544,7 +1545,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForNewSMapShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForNewDataShape,
                                                                                  distributedAttrForNewSMapShape};
@@ -1565,7 +1566,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForNewDataShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -1580,7 +1581,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForNewSMapShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         ASSERT_NE(newType, nullptr);
 
@@ -1608,7 +1609,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForNewDataShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -1623,7 +1624,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForNewSMapShape = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForNewDataShape,
                                                                                  distributedAttrForNewSMapShape};
@@ -1643,7 +1644,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForDataTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -1658,7 +1659,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForSMapTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterSMapShapesAttr, expectedPerClusterSMapOffsetsAttr, expectedPerClusterSMapShapesAttr,
-                expectedPerClusterSMapOffsetsAttr, nullptr);
+                expectedPerClusterSMapOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributedAttrs = {distributedAttrForDataTile,
                                                                                  distributedAttrForSMapTile};
@@ -1679,7 +1680,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWe
         const auto distributedAttrForDataTile = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, nullptr, nullptr, nullptr, nullptr, numClustersAttr, nullptr, nullptr,
                 expectedPerClusterDataShapesAttr, expectedPerClusterDataOffsetsAttr, expectedPerClusterDataShapesAttr,
-                expectedPerClusterDataOffsetsAttr, nullptr);
+                expectedPerClusterDataOffsetsAttr, nullptr, nullptr);
 
         EXPECT_ANY_THROW(distributedTypeIf.extractViewTileForExplicitDistribution(
                 ShapeRef(tileOffset), ShapeRef(tileShape), ShapeRef(tileElemStrides), distributedAttrForDataTile));
@@ -1746,7 +1747,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
     const auto distributedDataAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterDataShapesAttr, perClusterDataOffsetsAttr,
-                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr);
+                                           perClusterDataShapesAttr, perClusterDataOffsetsAttr, nullptr, nullptr);
 
     const PerClusterShapesOffsetsVec perClusterSeTableShapes(
             {SmallVector<int64_t>{1, 1, 64, 64}, SmallVector<int64_t>{1, 1, 64, 64}});
@@ -1757,7 +1758,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
     const auto distributedSeTableAttr =
             VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                            nullptr, nullptr, perClusterSeTableShapesAttr, perClusterSeTableOffsetsAttr,
-                                           perClusterSeTableShapesAttr, perClusterSeTableOffsetsAttr, nullptr);
+                                           perClusterSeTableShapesAttr, perClusterSeTableOffsetsAttr, nullptr, nullptr);
 
     const auto data =
             VPU::DistributedTensorType::get(&ctx, shape.raw(), dataElemType, dimsOrder, dimsSpace, distributedDataAttr);
@@ -1800,7 +1801,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto distributedAttrForNewShape =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeForExplicitDistribution(ShapeRef(newShape), distributedAttrForNewShape));
@@ -1816,7 +1817,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 32, 64, 32}, SmallVector<int64_t>{1, 32, 64, 32}});
@@ -1829,7 +1830,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 64, 32}, SmallVector<int64_t>{1, 1, 64, 32}});
@@ -1842,7 +1843,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1866,7 +1867,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto distributedAttrForNewShape =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeShapeElemTypeForExplicitDistribution(ShapeRef(newShape), newElemType,
@@ -1883,7 +1884,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 32, 64, 32}, SmallVector<int64_t>{1, 32, 64, 32}});
@@ -1896,7 +1897,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 64, 32}, SmallVector<int64_t>{1, 1, 64, 32}});
@@ -1909,7 +1910,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -1933,7 +1934,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto distributedAttrForNewShape =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.changeTypeComponentsForExplicitDistribution(newTypeComponents,
@@ -1950,7 +1951,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 32, 64, 32}, SmallVector<int64_t>{1, 32, 64, 32}});
@@ -1963,7 +1964,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 64, 32}, SmallVector<int64_t>{1, 1, 64, 32}});
@@ -1976,7 +1977,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -2018,7 +2019,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto distributedAttrForTile =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         auto newType = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(
                 distributedTypeIf.extractDenseTileForExplicitDistribution(ShapeRef(tileOffset), ShapeRef(tileShape),
@@ -2044,7 +2045,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedDataDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, dataPerClusterShapesAttr, dataPerClusterOffsetsAttr,
-                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr);
+                                               dataPerClusterShapesAttr, dataPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec sMapPerClusterShapes(
                 {SmallVector<int64_t>{1, 32, 32, 64}, SmallVector<int64_t>{1, 32, 32, 64}});
@@ -2057,7 +2058,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSMapDistrAttr =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr,
-                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr);
+                                               sMapPerClusterShapesAttr, sMapPerClusterOffsetsAttr, nullptr, nullptr);
 
         const PerClusterShapesOffsetsVec seTablePerClusterShapes(
                 {SmallVector<int64_t>{1, 1, 32, 64}, SmallVector<int64_t>{1, 1, 32, 64}});
@@ -2070,7 +2071,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto expectedSeTableDistrAttr = VPU::DistributionInfoAttr::get(
                 &ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters, nullptr, nullptr,
                 seTablePerClusterShapesAttr, seTablePerClusterOffsetsAttr, seTablePerClusterShapesAttr,
-                seTablePerClusterOffsetsAttr, nullptr);
+                seTablePerClusterOffsetsAttr, nullptr, nullptr);
 
         const SmallVector<VPU::DistributionInfoAttr> expectedDistributions = {
                 expectedDataDistrAttr, expectedSMapDistrAttr, expectedSeTableDistrAttr};
@@ -2095,7 +2096,7 @@ TEST_F(MLIR_DistributedTypesIfMethodsForExplicitDistribution, SparseTensorTypeWi
         const auto distributedAttrForTile =
                 VPU::DistributionInfoAttr::get(&ctx, distributionMode, numTiles, nullptr, nullptr, nullptr, numClusters,
                                                nullptr, nullptr, newPerClusterShapesAttr, newPerClusterOffsetsAttr,
-                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr);
+                                               newPerClusterShapesAttr, newPerClusterOffsetsAttr, nullptr, nullptr);
 
         EXPECT_ANY_THROW(distributedTypeIf.extractViewTileForExplicitDistribution(
                 ShapeRef(tileOffset), ShapeRef(tileShape), ShapeRef(tileElemStrides), distributedAttrForTile));

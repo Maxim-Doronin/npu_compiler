@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="function-outlining=\"naive=''\"" --verify-diagnostics %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
-// expected-error@+1 {{The module attribute 'VPU.debatch' expects 'BatchingOptions' only}}
-module @ValidModuleWithAttrButIncorrectOptions attributes {VPU.debatch = 1 : i64} {
+// expected-error@+1 {{The module attribute 'config.debatch' expects 'BatchingOptions' only}}
+module @ValidModuleWithAttrButIncorrectOptions attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {

@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/export.hpp"
+#include "vpux/compiler/dialect/ELF/IR/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
 
 #include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
@@ -17,6 +18,8 @@
 #include "vpux/compiler/utils/passes.hpp"
 
 #include <mlir/IR/IRMapping.h>
+#include <filesystem>
+#include <fstream>
 #include <vpux_elf/types/vpu_extensions.hpp>
 
 namespace vpux::HostExec {
@@ -110,6 +113,21 @@ mlir::func::FuncOp SerializeELFToBinaryPass::serialize(vpux::Core::NestedCallOp 
     // Serialize ELF module to binary and construct a function type for the new func op.
     std::vector<uint8_t> binaryBuffer;
     getBinaryBuffer(moduleOp, arch, binaryBuffer);
+
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+    std::string dumpSerializedElfToFile;
+    parseEnv("IE_NPU_SERIALIZE_ELF_BINARIES_TO_FOLDER", dumpSerializedElfToFile);
+    if (!dumpSerializedElfToFile.empty()) {
+        if (!std::filesystem::exists(dumpSerializedElfToFile)) {
+            std::filesystem::create_directories(dumpSerializedElfToFile);
+        }
+        std::ofstream outFile(dumpSerializedElfToFile + "/serialized_kernel_" + funcOp.getName().str() + ".blob",
+                              std::ostream::binary);
+        VPUX_THROW_UNLESS(outFile.good(), "File with Serialzied Kernel File not created correctly");
+        outFile.write(reinterpret_cast<const char*>(binaryBuffer.data()), binaryBuffer.size());
+        outFile.close();
+    }
+#endif  // defined(VPUX_DEVELOPER_BUILD)
 
     // Store the serialized ELF data as binary data op
     auto object = moduleBuilder.getAttr<HostExec::ObjectAttr>(moduleBuilder.getStringAttr(

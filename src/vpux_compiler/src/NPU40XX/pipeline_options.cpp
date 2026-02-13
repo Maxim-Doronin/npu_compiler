@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,19 +57,14 @@ void setupParamsAccordingToOptimizationLevel(int optimizationLevel, DefaultHWOpt
 
         // we do not have default value for workloadManagementMode on NPU40XX. Need to set it explicitly
         // E166333
+        compilationOptions.workloadManagementEnable = true;
+        compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES;
+        compilationOptions.workloadManagementBarrierCountThreshold = std::numeric_limits<int>::max();
+
         switch (optimizationLevel) {
         case 0:
-            compilationOptions.workloadManagementEnable = false;
-            compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
-            break;
         case 1:
-            compilationOptions.workloadManagementEnable = true;
-            compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
-            break;
         case 2: {
-            compilationOptions.workloadManagementEnable = true;
-            compilationOptions.workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
-            compilationOptions.workloadManagementBarrierCountThreshold = std::numeric_limits<int>::max();
             break;
         }
         case 3: {
@@ -109,6 +104,7 @@ void setupPWLMParams(DefaultHWOptions40XX& compilationOptions, LogLevel logLevel
     if (!isWorkloadManagementBarrierProgrammingModeSet) {
         switch (compilationOptions.workloadManagementMode) {
         case WorkloadManagementMode::PWLM_V0_LCA:
+        case WorkloadManagementMode::PWLM_V0_1_PAGES:
             compilationOptions.workloadManagementBarrierProgrammingMode =
                     WorkloadManagementBarrierProgrammingMode::LEGACY;
             break;

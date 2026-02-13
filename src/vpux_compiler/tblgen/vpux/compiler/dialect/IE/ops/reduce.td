@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -278,7 +278,7 @@ def IE_ReduceMeanSquareOp :
     let arguments = (ins
         AnyRankedTensor:$input,
         Optional<TensorRankOf<[AnyInteger], [0, 1]>>:$axes,
-
+        OptionalAttr<F64Attr>:$epsilon,
         OptionalAttr<I64ArrayAttr>:$axes_value,
         UnitAttr:$keep_dims
     );
@@ -287,7 +287,6 @@ def IE_ReduceMeanSquareOp :
         AnyRankedTensor:$output
     );
 
-    let hasCanonicalizer = 1;
     let hasFolder = 1;
 }
 

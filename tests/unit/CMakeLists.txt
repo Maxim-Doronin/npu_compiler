@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -52,16 +52,20 @@ if(ENABLE_ZEROAPI_BACKEND)
    )
 endif()
 
-if(NOT ENABLE_MLIR_COMPILER)
-    list(APPEND EXCLUDED_UNIT_TESTS_DIR
-        "${CMAKE_CURRENT_SOURCE_DIR}/vpux_compiler"
+# TODO(E#200026): check whether the old usage of old conditions is still required for the separate build of test targets.
+list(APPEND MANDATORY_UNIT_TESTS_LIBS
+    "npu_mlir_compiler_static"
+)
+
+if(ENABLE_NPU_EXECUTION_ENGINE AND BUILD_SHARED_LIBS)
+    list(APPEND OPTIONAL_UNIT_TESTS_LIBS
+        openvino::npu_zero_utils
     )
 else()
-    list(APPEND MANDATORY_UNIT_TESTS_LIBS
-        "npu_mlir_compiler_static"
+    list(APPEND EXCLUDED_UNIT_TESTS_DIR
+     "${CMAKE_CURRENT_SOURCE_DIR}/mlir_runtime"
     )
 endif()
-
 
 ov_add_test_target(
     NAME ${TARGET_NAME}

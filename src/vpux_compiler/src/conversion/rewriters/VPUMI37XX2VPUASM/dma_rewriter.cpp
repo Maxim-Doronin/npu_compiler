@@ -156,8 +156,6 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI37XX::NNDMAOp
     auto accelerationMode = VPUIP::DMAAccModeAttr::get(ctx, op.getAccelerationMode());
     auto startAfter = op.getStartAfterAttr();
     auto cleanAfter = op.getCleanAfterAttr();
-    auto isOutOfOrder = op.getIsOutOfOrderAttr();
-    auto isCritical = op.getIsCriticalAttr();
     auto waitAttr = vectorizeBarriers(op.getWaitBarriers());
     auto updateAttr = vectorizeBarriers(op.getUpdateBarriers());
 
@@ -165,8 +163,8 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI37XX::NNDMAOp
 
     auto newOp = rewriter.create<VPUASM::NNDMAOp>(
             op.getLoc(), symName, taskIdx, taskLocation, nextLink, input, outputs, waitAttr, updateAttr, startAfter,
-            cleanAfter, accelerationMode, isOutOfOrder, isCritical,
-            /*enable_msc*/ nullptr,
+            cleanAfter, accelerationMode, op.getIsOutOfOrder(), op.getIsCritical(),
+            /*enable_msc*/ false,
             /*act_compression_size_entry*/ nullptr, /*act_compression_sparsity_map*/ nullptr,
             /*dma_transaction*/ nullptr, descriptor,
             /*dma_hwp_id*/ nullptr, /*tile_indexes*/ nullptr, /*indices*/ nullptr, /*addressing_mode*/ nullptr);

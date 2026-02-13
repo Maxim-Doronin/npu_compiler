@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -73,13 +73,13 @@ private:
     llvm::DenseMap<FetchDMAKey, VPUMI40XX::NNDMAOp> _placeHolderFetchDMAMap;
 };
 
-VPURegMapped::TaskType convertTargetToTaskType(VPU::ExecutorKind kind) {
+VPURegMapped::TaskType convertTargetToTaskType(config::ExecutorKind kind) {
     VPURegMapped::TaskType returnType;
     switch (kind) {
-    case VPU::ExecutorKind::DPU:
+    case config::ExecutorKind::DPU:
         returnType = VPURegMapped::TaskType::DPUInvariant;
         break;
-    case VPU::ExecutorKind::SHAVE_ACT:
+    case config::ExecutorKind::SHAVE_ACT:
         returnType = VPURegMapped::TaskType::ActKernelRange;
         break;
     default:
@@ -129,7 +129,7 @@ mlir::LogicalResult addFetchTasks(VPUMI40XX::MappedInferenceOp mpi, const VPUReg
                         insertionDma.getUpdateBarriers(), insertionDma.getPreviousTask(),
                         currentGroup.getStartIndexes()[0], currentGroup.getEndIndexes()[0],
                         currentGroup.getStartIndexes()[1], currentGroup.getEndIndexes()[1],
-                        VPURegMapped::TaskTypeAttr::get(ctx, taskType),
+                        insertionDma.getEnqueueBarrier(), VPURegMapped::TaskTypeAttr::get(ctx, taskType),
                         mlir::IntegerAttr::get(getUInt64Type(ctx), tileIdx),
                         mlir::IntegerAttr::get(getUInt64Type(ctx), groupIdx), wlmPageAttr);
 
@@ -154,7 +154,8 @@ void ConvertFetchDmasToFetchTaskOpsPass::safeRunOnFunc() {
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = config::getTileExecutor(parentModule).getCount();
-    const auto shavesCountPerTile = config::getAvailableExecutor(parentModule, VPU::ExecutorKind::SHAVE_ACT).getCount();
+    const auto shavesCountPerTile =
+            config::getAvailableExecutor(parentModule, config::ExecutorKind::SHAVE_ACT).getCount();
 
     auto mpi = VPUMI40XX::getMPI(netFunc);
 

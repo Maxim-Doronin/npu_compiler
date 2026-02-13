@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include "single_op_tests/select.hpp"
@@ -55,7 +55,7 @@ TEST_P(SelectLayerTestCommon, NPU4000_SW) {
 
 TEST_P(ShaveCodeGenSelectLayerTestCommon, NPU4000) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -66,9 +66,10 @@ TEST_P(SelectLayerTestCommon, NPU5010_SW) {
 
 TEST_P(ShaveCodeGenSelectLayerTestCommon, NPU5010) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
+
 }  // namespace test
 }  // namespace ov
 
@@ -79,19 +80,29 @@ namespace {
 const std::vector<ov::element::Type> inputTypes = {ov::element::f16, ov::element::i32, ov::element::i64};
 
 const std::vector<std::vector<ov::Shape>> inShapes = {
-        {{10, 2, 1, 1}, {10, 2, 1, 1}, {1, 2, 1, 1}},        {{1, 1, 1, 32}, {1, 1, 1, 1}, {1, 4, 16, 32}},
-        {{1, 1, 1, 32}, {1, 4, 16, 32}, {1, 1, 1, 1}},       {{1, 1, 1, 1024}, {1, 1, 1, 1}, {1, 1, 1, 1024}},
-        {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1}},    {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1024}},
-        {{1, 1, 2, 4, 4}, {1, 1, 1, 1, 1}, {1, 1, 2, 4, 4}},
+        {{10, 2, 1, 1}, {10, 2, 1, 1}, {1, 2, 1, 1}},       {{1, 1, 1, 32}, {1, 1, 1, 1}, {1, 4, 16, 32}},
+        {{1, 1, 1, 32}, {1, 4, 16, 32}, {1, 1, 1, 1}},      {{1, 1, 1, 1024}, {1, 1, 1, 1}, {1, 1, 1, 1024}},
+        {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1}},   {{1, 1, 1, 1024}, {1, 1, 1, 1024}, {1, 1, 1, 1024}},
+        {{1, 1, 2, 4, 4}, {1, 1, 1, 1, 1}, {1, 1, 2, 4, 4}}};
+
+auto genParams = [](std::vector<std::vector<ov::Shape>> inShapes, std::vector<ov::element::Type> inputTypes) {
+    return ::testing::Combine(
+            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes)),  // Input shapes
+            ::testing::ValuesIn(inputTypes),                                                // Input type
+            ::testing::Values(ov::op::AutoBroadcastType::NUMPY), ::testing::Values(test_utils::TARGET_DEVICE));
 };
 
-const auto selectTestParams = ::testing::Combine(
-        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes)), ::testing::ValuesIn(inputTypes),
-        ::testing::Values(ov::op::AutoBroadcastType::NUMPY), ::testing::Values(test_utils::TARGET_DEVICE));
+const auto selectTestParams = genParams(inShapes, inputTypes);
+const auto selectTestParamsF64 = genParams({{{201, 200, 26}, {}, {201, 200, 26}}}, {ov::element::f64});
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Select, SelectLayerTestCommon, selectTestParams,
                          SelectLayerTestCommon::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Select, ShaveCodeGenSelectLayerTestCommon, selectTestParams,
                          ShaveCodeGenSelectLayerTestCommon::getTestCaseName);
+
+// Tracking number [E#183149] - This test is to check Select operation with f64 data type in software mode,
+// because the two parametrized test suites above do not include f64 in their parameters (see `inputTypes` vector).
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_f64_Select, SelectLayerTestCommon, selectTestParamsF64,
+                         SelectLayerTestCommon::getTestCaseName);
 }  // namespace

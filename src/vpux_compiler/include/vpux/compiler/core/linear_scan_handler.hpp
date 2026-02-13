@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,6 +32,7 @@ public:
 
 public:
     bool isAlive(mlir::Value val) const;
+    bool isAllocated(mlir::Value val) const;
     bool isDynamicSpill(mlir::Value val) const;
     static bool isFixedAlloc(mlir::Value val);
     AddressType getSize(mlir::Value val);

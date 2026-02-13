@@ -52,7 +52,7 @@ mlir::LogicalResult ConvertPrecisionToFP16<ConcreteOp>::matchAndRewrite(Concrete
         auto index = inputIter.index();
         const auto inputElemType = mlir::dyn_cast<vpux::NDTypeInterface>(input.getType()).getElementType();
         const auto elemTypeFP16 = mlir::Float16Type::get(inputElemType.getContext());
-        auto inputLoc = appendLoc(origOp->getLoc(), "_Input_Convert_{0}", index);
+        auto inputLoc = appendLoc(origOp->getLoc(), "Input_Convert_{0}", index);
         const auto inputCvtToFP16 =
                 rewriter.createOrFold<IE::ConvertOp>(inputLoc, input, mlir::TypeAttr::get(elemTypeFP16));
         mapper.map(origOp->getOperand(index), inputCvtToFP16);
@@ -60,7 +60,7 @@ mlir::LogicalResult ConvertPrecisionToFP16<ConcreteOp>::matchAndRewrite(Concrete
 
     auto newOp = rewriter.clone(*origOp, mapper);
     vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ELEM_TYPE);
-    auto outputLoc = appendLoc(origOp->getLoc(), "_Output_Convert_0");
+    auto outputLoc = appendLoc(origOp->getLoc(), "Output_Convert_0");
     const auto outputCvtToOrig =
             rewriter.createOrFold<IE::ConvertOp>(outputLoc, newOp->getResult(0), mlir::TypeAttr::get(outputElemType));
     rewriter.replaceOp(origOp, outputCvtToOrig);

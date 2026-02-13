@@ -88,12 +88,3 @@ Const::Content vpux::Const::ReshapeAttr::transform(vpux::Const::Content& input) 
     const auto outputType = inferOutputType(input.getType());
     return Const::Content::moveBuffer(outputType, std::move(input));
 }
-
-//
-// ReshapeAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::ReshapeAttr::getStableHashValue() const {
-    const auto newShape = parseIntArrayAttr<int64_t>(getShape());
-    return llvm::hash_combine(getMnemonic(), llvm::hash_combine_range(newShape.begin(), newShape.end()));
-}

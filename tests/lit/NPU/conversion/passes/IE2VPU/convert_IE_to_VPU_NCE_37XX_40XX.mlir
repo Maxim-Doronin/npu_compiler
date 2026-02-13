@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -489,7 +489,7 @@ func.func @AddWithDifferentScales(%arg0: tensor<1x16x1x2xui8, {order = #NHWC}>) 
 
     return %1 : tensor<1x16x1x2xf16, {order = #NHWC}>
 
-    // CHECK-DAG:   [[ADD_WEIGHTS:%.*]] = const.Declare tensor<1x16x1x2x!qElemType, {order = #NHWC}> =
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x16x1x2x!qElemType, {order = #NHWC}> =
     // CHECK-SAME:  dense<1.000000e+00> : tensor<1x16x1x2xf32>, [
     // CHECK-SAME:    #const.CastElemType<f16>,
     // CHECK-SAME:    #const.CastElemType<ui8>,
@@ -497,11 +497,11 @@ func.func @AddWithDifferentScales(%arg0: tensor<1x16x1x2xui8, {order = #NHWC}>) 
     // CHECK-SAME:    #const.Reorder<#NHWC>
     // CHECK-SAME:  ]
 
-    // CHECK:   [[QUANT_CAST:%.*]] = IE.QuantizeCast([[INPUT]]) {
+    // CHECK:   [[QUANT_CAST:%.+]] = IE.QuantizeCast([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType1
     // CHECK-SAME:  } : tensor<1x16x1x2xui8, {order = #NHWC}> -> tensor<1x16x1x2x!qElemType1, {order = #NHWC}>
 
-    // CHECK:   [[NCE_ADD:%.*]] = VPU.NCE.Eltwise([[QUANT_CAST]], [[ADD_WEIGHTS]]) {
+    // CHECK:   [[NCE_ADD:%.+]] = VPU.NCE.Eltwise([[QUANT_CAST]], [[ADD_WEIGHTS]]) {
     // CHECK-SAME:     op_type = #VPU.eltwise_type<ADD>,
     // CHECK-SAME:     ppe = #VPU.PPEInt<mode = <NOOP>,
     // CHECK-SAME:         clamp_low = -2147483648 : i64
@@ -519,11 +519,46 @@ func.func @AddWithDifferentScales(%arg0: tensor<1x16x1x2xui8, {order = #NHWC}>) 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
-!qElemType = !quant.uniform<u8:f16, 1.000000e+00>
-
 // CHECK-LABEL: @ConvertPermuteQuantize
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x3x224x224xf16>)
-func.func @ConvertPermuteQuantize(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x4x224x224x!qElemType, {order = #NHWC}> {
+func.func @ConvertPermuteQuantize(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x4x224x224xf16, {order = #NHWC}> {
+    %0 = IE.PermuteQuantize(%arg0) {
+        dstElemType = f16,
+        dst_order = #NHWC,
+        mem_perm = #NHWC,
+        pads_begin = [0, 0, 0, 0],
+        pads_end = [0, 1, 0, 0]
+    } : tensor<1x3x224x224xf16> -> tensor<1x4x224x224xf16, {order = #NHWC}>
+
+    return %0 : tensor<1x4x224x224xf16, {order = #NHWC}>
+
+    // CHECK-NOT:   IE.PermuteQuantize
+
+    // CHECK:       [[NCE_PERMUTE:%.+]] = VPU.NCE.Permute([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16,
+    // CHECK-SAME:      dstOrder = #NHWC,
+    // CHECK-SAME:      expandedChannels = 4 : i64
+    // CHECK-SAME:    ppe = #VPU.PPEInt<mode = <NOOP>,
+    // CHECK-SAME:      clamp_low = -2147483648 : i64
+    // CHECK-SAME:      clamp_high = 2147483647 : i64
+    // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
+    // CHECK-SAME       quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>
+
+    // CHECK-SAME:  } -> tensor<1x4x224x224xf16, {order = #NHWC}>
+
+    // CHECK:       return [[NCE_PERMUTE]] : tensor<1x4x224x224xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+!qElemType = !quant.uniform<u8:f16, 1.000000e+00>
+
+// CHECK-LABEL: @ConvertPermuteQuantizeQuantOut
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x3x224x224xf16>)
+func.func @ConvertPermuteQuantizeQuantOut(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x4x224x224x!qElemType, {order = #NHWC}> {
     %0 = IE.PermuteQuantize(%arg0) {
         dstElemType = !qElemType,
         dst_order = #NHWC,
@@ -536,14 +571,50 @@ func.func @ConvertPermuteQuantize(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x4x
 
     // CHECK-NOT:   IE.PermuteQuantize
 
-    // CHECK:       [[NCE_PERMUTE:%.*]] = VPU.NCE.Permute([[INPUT]]) {
+    // CHECK:       [[NCE_PERMUTE:%.+]] = VPU.NCE.Permute([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dstOrder = #NHWC,
     // CHECK-SAME:      expandedChannels = 4 : i64
     // CHECK-SAME:    ppe = #VPU.PPEInt<mode = <NOOP>,
     // CHECK-SAME:      clamp_low = 0 : i64
     // CHECK-SAME:      clamp_high = 255 : i64
-    // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>
+    // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
+    // CHECK-SAME:      quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>
+
+    // CHECK-SAME:  } -> tensor<1x4x224x224x!qElemType, {order = #NHWC}>
+
+    // CHECK:       return [[NCE_PERMUTE]] : tensor<1x4x224x224x!qElemType, {order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607>
+
+// CHECK-LABEL: @ConvertPermuteQuantizeQuantInQuantOut
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x3x224x224x!qElemType>)
+func.func @ConvertPermuteQuantizeQuantInQuantOut(%arg0: tensor<1x3x224x224x!qElemType>) -> tensor<1x4x224x224x!qElemType, {order = #NHWC}> {
+    %0 = IE.PermuteQuantize(%arg0) {
+        dstElemType = !qElemType,
+        dst_order = #NHWC,
+        mem_perm = #NHWC,
+        pads_begin = [0, 0, 0, 0],
+        pads_end = [0, 1, 0, 0]
+    } : tensor<1x3x224x224x!qElemType> -> tensor<1x4x224x224x!qElemType, {order = #NHWC}>
+
+    return %0 : tensor<1x4x224x224x!qElemType, {order = #NHWC}>
+
+    // CHECK-NOT:   IE.PermuteQuantize
+    // CHECK:       [[NCE_PERMUTE:%.+]] = VPU.NCE.Permute([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = !qElemType,
+    // CHECK-SAME:      dstOrder = #NHWC,
+    // CHECK-SAME:      expandedChannels = 4 : i64,
+    // CHECK-SAME:      ppe = #VPU.PPEInt<mode = <NOOP>,
+    // CHECK-SAME:      clamp_low = 0 : i64,
+    // CHECK-SAME:      clamp_high = 255 : i64,
+    // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
+    // CHECK-SAME:      quant_mult = [16384], quant_shift = [29], quant_post_shift = 0 : i64, in1_quant_mult = [16384], in2_quant_mult = [16384], fp_prelu_alpha = 1.000000e+00 : f64>
 
     // CHECK-SAME:  } -> tensor<1x4x224x224x!qElemType, {order = #NHWC}>
 
@@ -571,14 +642,15 @@ func.func @PermuteQuantizeDoesNotFitCMX(%arg0: tensor<1x3x512x512xf16>) -> tenso
 
     // CHECK-NOT:   IE.PermuteQuantize
 
-    // CHECK:       [[NCE_PERMUTE:%.*]] = VPU.NCE.Permute([[INPUT]]) {
+    // CHECK:       [[NCE_PERMUTE:%.+]] = VPU.NCE.Permute([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dstOrder = #NHWC,
     // CHECK-SAME:      expandedChannels = 16 : i64
     // CHECK-SAME:    ppe = #VPU.PPEInt<mode = <NOOP>,
     // CHECK-SAME:      clamp_low = 0 : i64,
     // CHECK-SAME:      clamp_high = 255 : i64,
-    // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>
+    // CHECK-SAME:      lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
+    // CHECK-SAME:      quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>
 
     // CHECK-SAME:  } -> tensor<1x16x512x512x!qElemType, {order = #NHWC}>
 
@@ -608,7 +680,7 @@ func.func @PermuteQuantizeStartPadsOverHeight(%arg0: tensor<1x3x224x224xf16>) ->
     // CHECK-NOT:   VPU.Reshape
     // CHECK-NOT:   IE.AffineReshape
 
-    // CHECK:       [[PERMUTE_QUANTIZE:%.*]] = IE.PermuteQuantize([[INPUT]]) {
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -642,7 +714,7 @@ func.func @PermuteQuantizeEndPadsOverHeight(%arg0: tensor<1x3x224x224xf16>) -> t
     // CHECK-NOT:   VPU.Reshape
     // CHECK-NOT:   IE.AffineReshape
 
-    // CHECK:       [[PERMUTE_QUANTIZE:%.*]] = IE.PermuteQuantize([[INPUT]]) {
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -677,7 +749,7 @@ func.func @PermuteQuantizeUnsupportedInputLayout(%arg0: tensor<1x3x224x224xf16, 
     // CHECK-NOT:   VPU.Reshape
     // CHECK-NOT:   IE.AffineReshape
 
-    // CHECK:       [[PERMUTE_QUANTIZE:%.*]] = IE.PermuteQuantize([[INPUT]]) {
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -712,7 +784,7 @@ func.func @PermuteQuantizeUnsupportedOutputLayout(%arg0: tensor<1x3x224x224xf16>
     // CHECK-NOT:   VPU.Reshape
     // CHECK-NOT:   IE.AffineReshape
 
-    // CHECK:       [[PERMUTE_QUANTIZE:%.*]] = IE.PermuteQuantize([[INPUT]]) {
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NWCH,
     // CHECK-SAME:      mem_perm = #NWCH,
@@ -746,7 +818,7 @@ func.func @PermuteQuantizeUnsupportedShape(%arg0: tensor<1x3x225x225xf16>) -> te
     // CHECK-NOT:   VPU.Reshape
     // CHECK-NOT:   IE.AffineReshape
 
-    // CHECK:       [[PERMUTE_QUANTIZE:%.*]] = IE.PermuteQuantize([[INPUT]]) {
+    // CHECK:       [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -1351,30 +1423,3 @@ func.func @DontConvertAddToNCEIfMultiBatch(%arg0: tensor<2x64x28x28xf16, {order 
     // CHECK-NOT: VPU.NCE.Eltwise
     // CHECK: IE.Add
 }
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607:0>
-
-// CHECK-LABEL: @ConvertPermuteQuantizeWithQuantU8Input
-// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x3x224x224x!qElemType>)
-func.func @ConvertPermuteQuantizeWithQuantU8Input(%arg0: tensor<1x3x224x224x!qElemType>) -> tensor<1x4x224x224x!qElemType, {order = #NHWC}> {
-    %0 = IE.PermuteQuantize(%arg0) {
-        dstElemType = !qElemType,
-        dst_order = #NHWC,
-        mem_perm = #NHWC,
-        pads_begin = [0, 0, 0, 0],
-        pads_end = [0, 1, 0, 0]
-    } : tensor<1x3x224x224x!qElemType> -> tensor<1x4x224x224x!qElemType, {order = #NHWC}>
-
-    return %0 : tensor<1x4x224x224x!qElemType, {order = #NHWC}>
-
-    // CHECK-NOT:   IE.PermuteQuantize
-
-    // CHECK:       [[NCE_PERMUTE:%.+]] = VPU.NCE.Permute([[INPUT]]) {dstElemType = !qElemType, dstOrder = #NHWC, expandedChannels = 4 : i64, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x4x224x224x!qElemType, {order = #NHWC}>
-
-    // CHECK:       return [[NCE_PERMUTE]] : tensor<1x4x224x224x!qElemType, {order = #NHWC}>
-}
-

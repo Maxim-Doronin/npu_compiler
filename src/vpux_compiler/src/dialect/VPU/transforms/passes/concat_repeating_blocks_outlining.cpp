@@ -613,7 +613,7 @@ private:
         for (const auto& [targetIdx, slices] : outlinedTargets | indexed) {
             for (const auto& [sliceIdx, slice] : slices | indexed) {
                 _log.trace("Creating func target {0}, slice {1}", targetIdx, sliceIdx);
-                const auto funcLoc = appendLoc(mainFuncOp.getLoc(), "_concat{0}_input{1}", targetIdx + 1, sliceIdx + 1);
+                const auto funcLoc = appendLoc(mainFuncOp.getLoc(), "concat{0}_input{1}", targetIdx + 1, sliceIdx + 1);
                 const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                               ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
                 auto func =
@@ -644,7 +644,7 @@ private:
                     funcOutputFromSlices.push_back(oldToNewMap[output]);
                 }
                 const auto returnLoc =
-                        appendLoc(mainFuncOp.getLoc(), "_concat{0}_input{1}_return", targetIdx + 1, sliceIdx + 1);
+                        appendLoc(mainFuncOp.getLoc(), "concat{0}_input{1}_return", targetIdx + 1, sliceIdx + 1);
                 builder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromSlices);
             }
         }
@@ -680,7 +680,7 @@ private:
                     }
                 }
 
-                const auto callLoc = appendLoc(mainFuncOp.getLoc(), "_fn{0}_call{1}", targetIdx + 1, sliceIdx);
+                const auto callLoc = appendLoc(mainFuncOp.getLoc(), "fn{0}_call{1}", targetIdx + 1, sliceIdx);
                 auto newCall =
                         builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                            funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);

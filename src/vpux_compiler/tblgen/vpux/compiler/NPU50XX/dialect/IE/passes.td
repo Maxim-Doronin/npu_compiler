@@ -31,26 +31,4 @@ def ConvertFakeConvertToFakeQuantize : PassBase<"convert-fake-convert-to-fake-qu
     ];
 }
 
-//
-// ConsolidateActivationFP8Quantization
-//
-
-def ConsolidateActivationFP8Quantization : PassBase<"consolidate-activation-fp8-quantization", "vpux::FunctionPass"> {
-    let summary = "Replace activation FP8 quantization with explicit Multiplies";
-
-    let description = [{
-        The pass is a part of `LowPrecision` pipeline.
-
-        This pass targets FP8 quantized activation with 4-bit weights.
-        It identifies a MatMul / FullyConnected operation with FP8 input and INT4 weights, where both the weights and the quantization parameters are inputs.
-        This pattern then decomposes FakeConvert to GroupConv->Quantize->Dequantize->Divide, then move divide post MatMul/FC.
-    }];
-
-    let constructor = "vpux::IE::arch50xx::createConsolidateActivationFP8QuantizationPass()";
-
-    let dependentDialects = [
-        "vpux::IE::IEDialect"
-    ];
-}
-
 #endif

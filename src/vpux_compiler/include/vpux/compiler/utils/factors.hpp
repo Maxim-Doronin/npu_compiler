@@ -7,8 +7,6 @@
 
 #include "vpux/utils/core/small_vector.hpp"
 
-#include <mlir/IR/Block.h>
-
 namespace vpux {
 
 struct Factors final {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,7 +57,7 @@ func.func @NoSplitDepthConvOverCWithSOK(%arg0: tensor<1x80x3840x4xf16, {order = 
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<80x16x1x1xf16, {order = #NHWC}>
     // CHECK-DAG:       [[CST0:%.+]] = const.Declare tensor<80x1x1x4xsi32, {order = #NHWC}>
-    // CHECK: [[DWConv:%.*]] = VPU.NCE.DepthConvolution(%arg0, [[CST]], [[CST0]])
+    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[CST]], [[CST0]])
     // CHECK-SAME:              multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
     // CHECK-SAME:              pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:               rawFilterShape = [80, 1, 1, 1], strides = [1, 1],
@@ -319,7 +319,7 @@ func.func @NoTilingClusterNCEConv(%arg0: !DistributedTensor0) -> !DistributedTen
     // CHECK-DAG:        [[WEIGHTS:%.+]] = const.Declare tensor<128x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}>
     // CHECK-DAG:        [[WEIGHT_TABLE:%.+]] = const.Declare tensor<128x1x1x4xsi32, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:           [[NCE_CONV:%.*]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS]], [[WEIGHT_TABLE]])
+    // CHECK:           [[NCE_CONV:%.+]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS]], [[WEIGHT_TABLE]])
     // CHECK-SAME:              pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
     // CHECK-SAME:              strides = [1, 1]
     // CHECK-NOT:               tilingStrategy
@@ -1395,7 +1395,7 @@ func.func @SplitSparseDepthConvWithBigC(%arg0: tensor<1x4080x40x40xf16, {order =
     return %0 : !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
 
     // CHECK-DAG: [[INPUT:%.+]] = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
-    // CHECK-DAG: [[WT:%.*]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4080x1x1x4xsi32>, [#const.Reorder<#NHWC>]
+    // CHECK-DAG: [[WT:%.+]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4080x1x1x4xsi32>, [#const.Reorder<#NHWC>]
     // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[INPUT]], [[WT]]) {
     // CHECK:            tilingStrategy = [1, 14, 1, 1]
     // CHECK-SAME:     -> !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
@@ -1450,7 +1450,7 @@ func.func @SplitSparseDepthConvWithBigCWithSOK(%arg0: tensor<1x4112x40x40xf16, {
     return %0 : !VPU.SparseTensor<data=tensor<1x4112x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4112x37x37xi1, {order = #NHWC}>>
 
     // CHECK-DAG: [[INPUT:%.+]] = const.Declare tensor<4112x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4112x1x4x4xf16>, [#const.Reorder<#NHWC>]
-    // CHECK-DAG: [[WT:%.*]] = const.Declare tensor<4112x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4112x1x1x4xsi32>, [#const.Reorder<#NHWC>]
+    // CHECK-DAG: [[WT:%.+]] = const.Declare tensor<4112x1x1x4xsi32, {order = #NHWC}> = dense<10> : tensor<4112x1x1x4xsi32>, [#const.Reorder<#NHWC>]
     // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[INPUT]], [[WT]]) {
     // CHECK:            multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
     // CHECK:            tilingStrategy = [1, 7, 1, 1]
@@ -1582,33 +1582,6 @@ func.func @MVNTileOverCEvenly(%arg0: tensor<1x32x163840x1xf16>) -> tensor<1x32x1
     // CHECK-SAME:      } : tensor<1x32x163840x1xf16> -> tensor<1x32x163840x1xf16>
 
     // CHECK:    return [[MVN]] : tensor<1x32x163840x1xf16>
-
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: func.func @AccumulateSplitOverH
-// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x4096x1024x1xf16, {order = #NHWC}>,
-// CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x4096x1024x1xf16, {order = #NHWC}>
-func.func @AccumulateSplitOverH(%arg0: tensor<1x4096x1024x1xf16, {order = #NHWC}>, %arg1: tensor<1x4096x1024x1xf16, {order = #NHWC}>) -> tensor<1x4096x1024x1xf16, {order = #NHWC}> {
-    %cst = const.Declare tensor<1x4096x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x4096x1x1xf16>, [#const.Reorder<#NHWC>]
-    %cst_0 = const.Declare tensor<1x4096x1x1xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<1x4096x1x1xf16>, [#const.Reorder<#NHWC>]
-
-    %0 = VPU.Accumulate(%arg0, %arg1, %cst, %cst_0) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
-        } : tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}> -> tensor<1x4096x1024x1xf16, {order = #NHWC}>
-
-    return %0 : tensor<1x4096x1024x1xf16, {order = #NHWC}>
-
-    // CHECK: [[LHS_SCALE:%.*]] = const.Declare tensor<1x4096x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x4096x1x1xf16>, [#const.Reorder<#NHWC>]
-    // CHECK: [[RHS_SCALE:%.*]] = const.Declare tensor<1x4096x1x1xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<1x4096x1x1xf16>, [#const.Reorder<#NHWC>]
-    // CHECK: [[ACCUMULATE:%.+]] = VPU.Accumulate([[INPUT1]], [[INPUT2]], [[LHS_SCALE]], [[RHS_SCALE]]) {
-    // CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
-    // CHECK-SAME:    tilingStrategy = [1, 7, 1, 1]
-    // CHECK-SAME:    } : tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1024x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16, {order = #NHWC}> -> tensor<1x4096x1024x1xf16, {order = #NHWC}>
-    // CHECK: return [[ACCUMULATE]] : tensor<1x4096x1024x1xf16, {order = #NHWC}>
 
 }
 
@@ -1803,4 +1776,39 @@ func.func @SelectSplitAtOuterDim(%arg0: tensor<1x1x1x2048xf16>, %arg1: tensor<1x
 
     // CHECK:       [[SELECT:%.+]] = VPU.Select([[INPUT_0]], [[INPUT_1]], [[INPUT_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, tilingStrategy = [1, 1, 5, 1]} : tensor<1x1x1x2048xf16>, tensor<1x1x1024x2048xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x1024x2048xf16>
     // CHECK:       return [[SELECT]] : tensor<1x1x1024x2048xf16>
+}
+
+// -----
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SplitDepthConvByMinNumTiles
+// CHECK-SAME:    ([[ARG0:%.+]]: tensor<1x3x387072x1xf16, {order = #NHWC}>)
+
+func.func @SplitDepthConvByMinNumTiles(%arg0: tensor<1x3x387072x1xf16, {order = #NHWC}>) -> tensor<1x96768x4x3xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<96768x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<96768x1x1x1xf16, {order = #NHWC}>, [#const.PadWithZero<[0, 0, 0, 0], [0, 15, 0, 0]>]
+    %weights_table = const.Declare tensor<96768x1x1x4xsi32> = dense<10> : tensor<96768x1x1x4xsi32>
+    %shape_cast = VPU.ShapeCast {shape = [1, 96768, 4, 3]} inputs(%arg0: tensor<1x3x387072x1xf16, {order = #NHWC}>) -> tensor<1x96768x4x3xf16, {order = #NHWC}>
+    %0 = VPU.NCE.DepthConvolution(%shape_cast, %weights, %weights_table) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [96768, 1, 1, 1], strides = [1, 1]} -> tensor<1x96768x4x3xf16, {order = #NHWC}>
+    return %0 : tensor<1x96768x4x3xf16, {order = #NHWC}>
+
+    // CHECK-NOT:  tilingStrategy = [1, 6, 1, 1]
+    // CHECK:      tilingStrategy = [1, 12, 1, 1]
+}
+
+// -----
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SplitSmallDepthConvByMinNumTiles
+// CHECK-SAME:    ([[ARG0:%.+]]: tensor<1x2568x2x2xf16, {order = #NHWC}>)
+
+func.func @SplitSmallDepthConvByMinNumTiles(%arg0: tensor<1x2568x2x2xf16, {order = #NHWC}>) -> tensor<1x10272x1x1xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<10272x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<10272x1x1x1xf16, {order = #NHWC}>, [#const.PadWithZero<[0, 0, 0, 0], [0, 15, 0, 0]>]
+    %weights_table = const.Declare tensor<10272x1x1x4xsi32> = dense<10> : tensor<10272x1x1x4xsi32>
+    %shape_cast = VPU.ShapeCast {shape = [1, 10272, 1, 1]} inputs(%arg0: tensor<1x2568x2x2xf16, {order = #NHWC}>) -> tensor<1x10272x1x1xf16, {order = #NHWC}>
+    %0 = VPU.NCE.DepthConvolution(%shape_cast, %weights, %weights_table) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [10272, 1, 1, 1], strides = [1, 1]} -> tensor<1x10272x1x1xf16, {order = #NHWC}>
+    return %0 : tensor<1x10272x1x1xf16, {order = #NHWC}>
+
+    // CHECK:      tilingStrategy = [1, 2, 1, 1]
 }

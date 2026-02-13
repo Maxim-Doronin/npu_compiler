@@ -108,7 +108,7 @@ TEST_P(CompilationPipelineCfgConsistencyTests, CompilationMixDebatchWithBatchUnr
 
 const std::vector<ov::AnyMap> configs = {
         {{ov::intel_npu::platform(ov::test::utils::getTestsPlatformCompilerInPlugin())},
-         ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::MLIR)}};
+         ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::PLUGIN)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTest, CompilationPipelineCfgConsistencyTests,
                          ::testing::Combine(::testing::Values(test_utils::TARGET_DEVICE), ::testing::ValuesIn(configs)),

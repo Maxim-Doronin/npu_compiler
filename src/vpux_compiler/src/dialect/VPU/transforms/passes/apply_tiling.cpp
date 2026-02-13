@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_context.hpp"
+#include "vpux/compiler/dialect/VPU/utils/tiling_pass_config_utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -63,7 +65,8 @@ mlir::LogicalResult ApplyTiling::matchAndRewrite(VPU::TilingBuilderOpInterface o
 
     _log.nest().trace("Applying tiling for op {0} at {1}, tiles: {2}", op->getName(), op->getLoc(), strategy);
 
-    auto tilingContext = VPU::createTilingContext(op, _enableSCFTiling);
+    const auto options = VPU::TilingContextOptions(VPU::TilingContextOptions::ContextType::TILING, _enableSCFTiling);
+    auto tilingContext = VPU::createTilingContext(op, options);
     auto tilingResult = tilingContext.applyTiling(rewriter, _log);
 
     return tilingResult;
@@ -74,7 +77,8 @@ mlir::LogicalResult ApplyTiling::matchAndRewrite(VPU::TilingBuilderOpInterface o
 //
 class ApplyTilingPass final : public VPU::impl::ApplyTilingBase<ApplyTilingPass> {
 public:
-    explicit ApplyTilingPass(bool enableSCFTiling, Logger log): _enableSCFTiling(enableSCFTiling) {
+    ApplyTilingPass(bool enableSCFTiling, bool enableDynamicDimAlignment, Logger log)
+            : _enableSCFTiling(enableSCFTiling), _enableDynamicDimAlignment(enableDynamicDimAlignment) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -83,6 +87,7 @@ public:
 private:
     void safeRunOnFunc() final;
     bool _enableSCFTiling = false;
+    bool _enableDynamicDimAlignment = false;
 };
 
 mlir::LogicalResult ApplyTilingPass::initialize(mlir::MLIRContext* ctx) {
@@ -93,6 +98,10 @@ mlir::LogicalResult ApplyTilingPass::initialize(mlir::MLIRContext* ctx) {
         _log.trace("Overloading ApplyTilingPass argument by MLIR variable");
         _enableSCFTiling = enableSCFTiling;
     }
+    if (enableDynamicDimAlignment.hasValue()) {
+        _log.trace("Overloading ApplyTilingPass argument by MLIR variable");
+        _enableDynamicDimAlignment = enableDynamicDimAlignment.getValue();
+    }
     return mlir::success();
 }
 
@@ -101,6 +110,18 @@ mlir::LogicalResult ApplyTilingPass::initialize(mlir::MLIRContext* ctx) {
 //
 void ApplyTilingPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto funcOp = getOperation();
+
+    if (_enableDynamicDimAlignment) {
+        VPU::setDynamicDimAlignment(funcOp);
+    }
+
+    funcOp->walk([tilingIndex = 0ll](VPU::TilingInfoOpInterface iface) mutable {
+        if (iface->hasAttr(tilingStrategy)) {
+            iface->setAttr(TILING_LOOP_INDEX_ATTR_NAME, TilingLoopIndexAttr::get(iface->getContext(), tilingIndex));
+            ++tilingIndex;
+        }
+    });
 
     mlir::ConversionTarget target(ctx);
     target.addLegalOp<VPU::SliceOp, VPU::ConcatOp>();
@@ -120,9 +141,12 @@ void ApplyTilingPass::safeRunOnFunc() {
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target, std::move(patterns)))) {
         signalPassFailure();
     }
+
+    VPU::removeDynamicDimAlignment(funcOp);
 }
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createApplyTilingPass(bool enableSCFTiling, Logger log) {
-    return std::make_unique<ApplyTilingPass>(enableSCFTiling, log);
+std::unique_ptr<mlir::Pass> vpux::VPU::createApplyTilingPass(bool enableSCFTiling, bool enableDynamicDimAlignment,
+                                                             Logger log) {
+    return std::make_unique<ApplyTilingPass>(enableSCFTiling, enableDynamicDimAlignment, log);
 }

@@ -1,16 +1,16 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/NPU37XX/dialect/NPUReg37XX/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/dialect.hpp"
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
 #include "vpux/compiler/core/types/quantile_float/dialect.hpp"
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/dialect.hpp"
 #include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
 #include "vpux/compiler/dialect/HostExec/IR/ops.hpp"
@@ -103,7 +103,8 @@ void registerDialects(mlir::DialectRegistry& registry) {
                     mlir::cf::ControlFlowDialect,  //
                     mlir::LLVM::LLVMDialect,       //
                     mlir::linalg::LinalgDialect,   //
-                    mlir::index::IndexDialect>();
+                    mlir::index::IndexDialect,     //
+                    mlir::bufferization::BufferizationDialect>();
 }
 
 }  // namespace

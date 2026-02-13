@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,7 @@ func.func @ConvertConvertLikeToConvertF16ToF32(%arg0: tensor<2x2xf16>) -> tensor
     %0 = IE.ConvertLike(%arg0, %cst) : tensor<2x2xf16>, tensor<2xf32> -> tensor<2x2xf32>
     return %0 : tensor<2x2xf32>
 
-    //CHECK:   [[CONVERT:%.*]] = IE.Convert(%arg0) {dstElemType = f32} : tensor<2x2xf16> -> tensor<2x2xf32>
+    //CHECK:   [[CONVERT:%.+]] = IE.Convert(%arg0) {dstElemType = f32} : tensor<2x2xf16> -> tensor<2x2xf32>
     //CHECK:   return [[CONVERT]] : tensor<2x2xf32>
 }
 
@@ -22,7 +22,7 @@ func.func @ConvertConvertLikeToConvertI8ToI32(%arg0: tensor<2x2xsi8>) -> tensor<
     %0 = IE.ConvertLike(%arg0, %cst) : tensor<2x2xsi8>, tensor<2xsi32> -> tensor<2x2xsi32>
     return %0 : tensor<2x2xsi32>
 
-    //CHECK:   [[CONVERT:%.*]] = IE.Convert(%arg0) {dstElemType = si32} : tensor<2x2xsi8> -> tensor<2x2xsi32>
+    //CHECK:   [[CONVERT:%.+]] = IE.Convert(%arg0) {dstElemType = si32} : tensor<2x2xsi8> -> tensor<2x2xsi32>
     //CHECK:   return [[CONVERT]] : tensor<2x2xsi32>
 }
 
@@ -32,7 +32,7 @@ func.func @ConvertConvertLikeToConvertF32ToUI8(%arg0: tensor<2x2xf32>) -> tensor
     %0 = IE.ConvertLike(%arg0, %cst) : tensor<2x2xf32>, tensor<2xui8> -> tensor<2x2xui8>
     return %0 : tensor<2x2xui8>
 
-    //CHECK:   [[CONVERT:%.*]] = IE.Convert(%arg0) {dstElemType = ui8} : tensor<2x2xf32> -> tensor<2x2xui8>
+    //CHECK:   [[CONVERT:%.+]] = IE.Convert(%arg0) {dstElemType = ui8} : tensor<2x2xf32> -> tensor<2x2xui8>
     //CHECK:   return [[CONVERT]] : tensor<2x2xui8>
 }
 

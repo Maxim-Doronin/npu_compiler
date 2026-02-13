@@ -1888,7 +1888,7 @@ TEST_F(MLIR_ConstContentAttrTest, Sparsify) {
 
     EXPECT_TRUE(std::equal(actVals.begin(), actVals.end(), expectedResult.begin()));
 
-    EXPECT_NO_THROW(contentAttr.getTransformationHash());
+    EXPECT_ANY_THROW(contentAttr.getTransformationHash());
 }
 
 TEST_F(MLIR_ConstContentAttrTest, Sparsify_True) {
@@ -1923,7 +1923,7 @@ TEST_F(MLIR_ConstContentAttrTest, Sparsify_True) {
 
     EXPECT_TRUE(std::equal(actVals.begin(), actVals.end(), expectedResult.begin()));
 
-    EXPECT_NO_THROW(contentAttr.getTransformationHash());
+    EXPECT_ANY_THROW(contentAttr.getTransformationHash());
 }
 
 TEST_F(MLIR_ConstContentAttrTest, SparsifyQuantized) {

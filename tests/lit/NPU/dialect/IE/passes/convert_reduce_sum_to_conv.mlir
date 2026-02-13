@@ -51,8 +51,8 @@ func.func @ConvetWithNCEParent(%arg0: tensor<1x4x34x34xf16>) -> tensor<1x1x32x32
   %1 = IE.ReduceSum(%0) {axes_value = [1], keep_dims} : tensor<1x4x32x32xf16> -> tensor<1x1x32x32xf16>
   return %1 : tensor<1x1x32x32xf16>
 
-  // CHECK-DAG:[[CST:%.+]] = const.Declare tensor<1x4x1x1xf16> = dense<1.000000e+00> : tensor<1x4x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK:    [[POOL:%.+]] = IE.AvgPool([[INPUT]]) {exclude_pads, kernel_size = [3, 3], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x4x34x34xf16> -> tensor<1x4x32x32xf16>
+  // CHECK:    [[CST:%.+]] = const.Declare tensor<1x4x1x1xf16> = dense<1.000000e+00> : tensor<1x4x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK:    [[CONV:%.+]] = IE.Convolution([[POOL]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x4x32x32xf16>, tensor<1x4x1x1xf16> -> tensor<1x1x32x32xf16>
   // CHECK:    return [[CONV]] : tensor<1x1x32x32xf16>
 }
@@ -77,9 +77,9 @@ func.func @ConvertInnerDimReduceSumToConv(%arg0: tensor<1x1x8x4096x4096xf16>) ->
   %0 = IE.ReduceSum(%arg0) {axes_value = [4], keep_dims} : tensor<1x1x8x4096x4096xf16> -> tensor<1x1x8x4096x1xf16>
   return %0 : tensor<1x1x8x4096x1xf16>
 
-  // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x4096x1x1xf16> = dense<1.000000e+00> : tensor<1x4096x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK:     [[IN_RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 32768, 1, 4096]} : tensor<1x1x8x4096x4096xf16> -> tensor<1x32768x1x4096xf16>
   // CHECK:     [[IN_CAST:%.+]] = IE.PermuteCast([[IN_RESHAPE]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x32768x1x4096xf16> -> tensor<1x4096x32768x1xf16, {order = #NHWC}>
+  // CHECK:     [[CST:%.+]] = const.Declare tensor<1x4096x1x1xf16> = dense<1.000000e+00> : tensor<1x4096x1x1xf32>, [#const.CastElemType<f16>]
 
   // CHECK:     [[CONV:%.+]] = IE.Convolution([[IN_CAST]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x4096x32768x1xf16, {order = #NHWC}>, tensor<1x4096x1x1xf16> -> tensor<1x1x32768x1xf16, {order = #NHWC}>
 

@@ -1,20 +1,25 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/core/cycle_cost_info.hpp"
+#include "vpux/compiler/core/profiling_metadata.hpp"
+#include "vpux/compiler/core/profiling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/reports/api.hpp"
 
 #include <fstream>
+#include <string>
 
 namespace vpux::VPURT {
 #define GEN_PASS_DECL_INFERENCEEXECUTIONANALYSIS
@@ -39,36 +44,103 @@ size_t getClusterId(VPUIP::NCEClusterTaskOp nceOp) {
     return dpuTasks.empty() ? 0 : getClusterId(*dpuTasks.begin());
 }
 
+ProfilingFB::DMAChannelType getDmaChannelType(VPUIP::DMATypeOpInterface dmaOp) {
+    // \ref dmaOp.getChannelType
+    auto srcMemKind = mlir::cast<vpux::NDTypeInterface>(dmaOp->getOperand(0).getType()).getMemoryKind();
+
+    switch (srcMemKind) {
+    case VPU::MemoryKind::DDR:
+        return ProfilingFB::DMAChannelType::DDR;
+    case VPU::MemoryKind::CMX_NN:
+    case VPU::MemoryKind::Register:
+        return ProfilingFB::DMAChannelType::CMX;
+    default:
+        VPUX_THROW("Unknown DMA channel type");
+    }
+}
+
+std::string getMemKind(mlir::Value value) {
+    auto memKind = mlir::cast<vpux::NDTypeInterface>(value.getType()).getMemoryKind();
+    switch (memKind) {
+    case VPU::MemoryKind::DDR:
+        return "DDR";
+    case VPU::MemoryKind::CMX_NN:
+        return "CMX";
+    default:
+        break;
+    }
+    return "Other";
+}
+
 profiling::TaskInfo makeTaskInfo(VPURT::TaskOp taskOp, double startTimeNs, double durationNs, Logger log,
-                                 std::string suffix = "") {
+                                 std::optional<unsigned> maybeVariantId = {}) {
     profiling::TaskInfo taskInfo = {};
     auto execKind = taskOp.getExecutorKind();
+
+    auto op = taskOp.getInnerTaskOp();
+    auto loc = op->getLoc();
+    taskInfo.name = stringifyPrimaryLocation(loc);
+    taskInfo.layer_type = getLayerTypeFromLocation(loc);
+
     switch (execKind) {
-    case VPU::ExecutorKind::DMA_NN:
+    case config::ExecutorKind::DMA_NN: {
         taskInfo.exec_type = profiling::TaskInfo::ExecType::DMA;
+        auto dmaOp = mlir::cast<VPUIP::DMATypeOpInterface>(op);
+        taskInfo.port_id = dmaOp.getPortVal();
+        taskInfo.channel_type = getDmaChannelType(dmaOp);
+        taskInfo.customArgs.push_back({"Source memory:", getMemKind(dmaOp.getInput())});
+        taskInfo.customArgs.push_back({"Destination memory:", getMemKind(dmaOp.getOutput())});
+        auto [tensorShapeInfo, tensorStrideInfo] = extractTensorInfoFromOp(dmaOp);
+        unsigned short gatherIndices = 0;
+        if (auto gatherDma = mlir::dyn_cast<VPUIP::GatherDMAOp>(op)) {
+            gatherIndices = mlir::cast<NDTypeInterface>(gatherDma.getIndices().getType()).getShape().front();
+        }
+        auto& [shapeInputs, shapeOutputs] = tensorShapeInfo;
+        auto& [strideInputs, strideOutputs] = tensorStrideInfo;
+        auto dynamicStridesInput = op->hasAttr(vpux::stridedInputAttrName);
+        auto dynamicStridesOutput = op->hasAttr(vpux::stridedOutputAttrName);
+        taskInfo.customArgs.push_back(
+                {"Input tensor shape", profiling::to_string(shapeInputs, gatherIndices, dynamicStridesInput)});
+        taskInfo.customArgs.push_back(
+                {"Output tensor shape", profiling::to_string(shapeOutputs, 0, dynamicStridesOutput)});
+        taskInfo.customArgs.push_back(
+                {"Input tensor strides", profiling::to_string(strideInputs, 0, dynamicStridesInput)});
+        taskInfo.customArgs.push_back(
+                {"Output tensor strides", profiling::to_string(strideOutputs, 0, dynamicStridesOutput)});
         break;
-    case VPU::ExecutorKind::DPU:
+    }
+    case config::ExecutorKind::DPU: {
+        VPUIP::NCEClusterTaskOp dpuTask = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(op);
+        unsigned variantId = 0;
+        taskInfo.variant_id = maybeVariantId;
         taskInfo.exec_type = profiling::TaskInfo::ExecType::DPU;
-        taskInfo.clusterId = getClusterId(mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(taskOp.getInnerTaskOp()));
-        taskInfo.isSubtask = !suffix.empty();  // variant
+        taskInfo.clusterId = getClusterId(dpuTask);
+        taskInfo.isSubtask = maybeVariantId.has_value();
+        if (taskInfo.isSubtask) {
+            variantId = maybeVariantId.value();
+            taskInfo.name += formatv("/variant_{0}", variantId);
+            auto variantInfo = extractVariantInfoFromOp(dpuTask)[variantId];
+            taskInfo.customArgs = profiling::to_custom_args(variantInfo);
+        } else {
+            auto tensorInfo = extractTensorInfoFromOp(dpuTask);
+            taskInfo.customArgs = profiling::to_custom_args(tensorInfo);
+        }
         break;
-    case VPU::ExecutorKind::SHAVE_ACT:
+    }
+    case config::ExecutorKind::SHAVE_ACT: {
+        VPUIP::SwKernelOp swTask = mlir::dyn_cast<VPUIP::SwKernelOp>(op);
         taskInfo.exec_type = profiling::TaskInfo::ExecType::SW;
-        taskInfo.clusterId = getClusterId(mlir::dyn_cast<VPUIP::SwKernelOp>(taskOp.getInnerTaskOp()));
+        taskInfo.clusterId = getClusterId(swTask);
+        auto tensorInfo = extractTensorInfoFromOp(swTask);
+        taskInfo.customArgs = profiling::to_custom_args(tensorInfo);
         break;
+    }
 
     default:
         log.warning("Not supported executor type - '{0}", execKind);
         taskInfo.exec_type = profiling::TaskInfo::ExecType::NONE;
         break;
     }
-
-    auto op = taskOp.getInnerTaskOp();
-    VPUX_THROW_WHEN(op == nullptr, "TaskOp with no op inside - '{0}'", taskOp->getLoc());
-    auto loc = op->getLoc();
-
-    taskInfo.name = stringifyPrimaryLocation(loc) + suffix;
-    taskInfo.layer_type = getLayerTypeFromLocation(loc);
 
     taskInfo.start_time_ns = startTimeNs;
     taskInfo.duration_ns = durationNs;
@@ -117,15 +189,13 @@ void createScheduleTraceEventFile(const SmallVector<VPURT::TaskConfig, 1>& tasks
                                      convertCyclesToNanoSeconds(cycleCost, freqInMHz), log));
 
         // Represent in trace file DPU tasks per variant
-        if (taskOp.getExecutorKind() == VPU::ExecutorKind::DPU) {
+        if (taskOp.getExecutorKind() == config::ExecutorKind::DPU) {
             VPUX_THROW_WHEN(taskConfig.subTasksCycleCost.size() != taskConfig.subTasksCycleStart.size(),
                             "Incorrect config of sub task cycle start and cost");
             for (size_t i = 0; i < taskConfig.subTasksCycleStart.size(); i++) {
-                std::string suffix = "/variant_" + std::to_string(i);
-                tasks.push_back(makeTaskInfo(taskOp,
-                                             convertCyclesToNanoSeconds(taskConfig.subTasksCycleStart[i], freqInMHz),
-                                             convertCyclesToNanoSeconds(taskConfig.subTasksCycleCost[i], freqInMHz),
-                                             log, std::move(suffix)));
+                tasks.push_back(
+                        makeTaskInfo(taskOp, convertCyclesToNanoSeconds(taskConfig.subTasksCycleStart[i], freqInMHz),
+                                     convertCyclesToNanoSeconds(taskConfig.subTasksCycleCost[i], freqInMHz), log, i));
             }
         }
     }
@@ -137,11 +207,8 @@ void createScheduleTraceEventFile(const SmallVector<VPURT::TaskConfig, 1>& tasks
 class InferenceExecutionAnalysisPass final :
         public VPURT::impl::InferenceExecutionAnalysisBase<InferenceExecutionAnalysisPass> {
 public:
-    explicit InferenceExecutionAnalysisPass(const std::string& compileSchedTraceFileName, bool dumpToJson,
-                                            bool enableActivityFactor, Logger log)
-            : _compileSchedTraceFileName(compileSchedTraceFileName),
-              _dumpToJson(dumpToJson),
-              _enableActivityFactor(enableActivityFactor) {
+    explicit InferenceExecutionAnalysisPass(const std::string& compileSchedTraceFileName, bool dumpToJson, Logger log)
+            : _compileSchedTraceFileName(compileSchedTraceFileName), _dumpToJson(dumpToJson) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -149,15 +216,13 @@ private:
     void safeRunOnFunc() final;
     std::string _compileSchedTraceFileName;
     bool _dumpToJson;
-    bool _enableActivityFactor;
 };
 
 void InferenceExecutionAnalysisPass::safeRunOnFunc() {
     auto funcOp = getOperation();
     auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(moduleOp);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(moduleOp);
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
     CycleCostInfo cycleCostInfo(std::move(costModel), funcOp);
 
     VPURT::InferenceExecutionSimulator infSim(_log, funcOp, cycleCostInfo);
@@ -191,33 +256,32 @@ void InferenceExecutionAnalysisPass::safeRunOnFunc() {
     }
 
     // Calculate AF & inference time and store them into attributes
-    if (_enableActivityFactor) {
-        // Get dpu total energy for all dpuTasks
-        auto dpuTotalEnergy = infSim.getDPUTotalEnergy();
-        _log.trace("[Energy] dpu total energy - {0}", dpuTotalEnergy);
+    // Get dpu total energy for all dpuTasks
+    auto dpuTotalEnergy = infSim.getDPUTotalEnergy();
+    _log.trace("[Energy] dpu total energy - {0}", dpuTotalEnergy);
 
-        // Get shave total energy for sw ops
-        auto shaveTotalEnergy = infSim.getSHAVETotalEnergy();
-        _log.trace("[Energy] shave total energy - {0}", shaveTotalEnergy);
+    // Get shave total energy for sw ops
+    auto shaveTotalEnergy = infSim.getSHAVETotalEnergy();
+    _log.trace("[Energy] shave total energy - {0}", shaveTotalEnergy);
 
-        // Set compiled Activity Factor (AF) attribute to TileResource op for NPU Energy feature
-        if (tileOp != nullptr) {
-            auto numTiles = tileOp.getCount();
-            auto activityFactor = getActivityFactor(dpuTotalEnergy + shaveTotalEnergy, totalCycles, numTiles, arch);
-            auto activityFactorAttr = mlir::FloatAttr::get(mlir::Float64Type::get(funcOp.getContext()), activityFactor);
-            tileOp.setActivityFactorAttr(activityFactorAttr);
-            _log.info("[Energy] compiled Activity Factor - {0}", activityFactor);
-        }
-
-        // Set inferenceTiming attribute to NetworkInfoOp for NPU Energy feature
-        auto netInfoOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
-        VPUX_THROW_UNLESS(netInfoOps.size() == 1,
-                          "Can't have more than one 'net::NetworkInfoOp' Operation in Module, got '{0}'",
-                          netInfoOps.size());
-        auto netInfo = netInfoOps.front();
-        netInfo.setInferenceTiming(std::optional<int64_t>(totalCycles));
-        _log.info("[Energy] inferenceTiming {0} cycles (DPU cycle unit)", totalCycles);
+    // Set compiled Activity Factor (AF) attribute to TileResource op for NPU Energy feature
+    if (tileOp != nullptr) {
+        auto numTiles = tileOp.getCount();
+        auto activityFactor =
+                getActivityFactor(dpuTotalEnergy + shaveTotalEnergy, totalCycles, numTiles, config::getArch(moduleOp));
+        auto activityFactorAttr = mlir::FloatAttr::get(mlir::Float64Type::get(funcOp.getContext()), activityFactor);
+        tileOp.setActivityFactorAttr(activityFactorAttr);
+        _log.info("[Energy] compiled Activity Factor - {0}", activityFactor);
     }
+
+    // Set inferenceTiming attribute to NetworkInfoOp for NPU Energy feature
+    auto netInfoOps = to_small_vector(moduleOp.getOps<net::NetworkInfoOp>());
+    VPUX_THROW_UNLESS(netInfoOps.size() == 1,
+                      "Can't have more than one 'net::NetworkInfoOp' Operation in Module, got '{0}'",
+                      netInfoOps.size());
+    auto netInfo = netInfoOps.front();
+    netInfo.setInferenceTiming(std::optional<int64_t>(totalCycles));
+    _log.info("[Energy] inferenceTiming {0} cycles (DPU cycle unit)", totalCycles);
 
     if (_dumpToJson) {
         VPUX_THROW_WHEN(_compileSchedTraceFileName.empty(), "Empty compile time schedule trace file");
@@ -233,8 +297,6 @@ void InferenceExecutionAnalysisPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPURT::createInferenceExecutionAnalysisPass(std::string compileSchedTraceFileName,
-                                                                              bool dumpToJson,
-                                                                              bool enableActivityFactor, Logger log) {
-    return std::make_unique<InferenceExecutionAnalysisPass>(compileSchedTraceFileName, dumpToJson, enableActivityFactor,
-                                                            log);
+                                                                              bool dumpToJson, Logger log) {
+    return std::make_unique<InferenceExecutionAnalysisPass>(compileSchedTraceFileName, dumpToJson, log);
 }

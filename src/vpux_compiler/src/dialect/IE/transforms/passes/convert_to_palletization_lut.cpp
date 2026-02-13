@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/convert_to_palletization_lut_strategy_getter.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
 namespace vpux::IE {
@@ -38,7 +38,8 @@ void ConvertToPalletizationLUT::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     mlir::ConversionTarget target(ctx);
     // register platform specific rewriters using the platform specific strategy
-    auto strategy = vpux::IE::createConvertToPalletizationLUTStrategy(func);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getConvertToPalletizationLUTStrategy();
     strategy->addPatterns(patterns, _log);
     strategy->markOpLegality(target, _log);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,7 +26,7 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
     %0 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
     %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<2x2x2x2xf16, {order = #NCHW, strides = [256, 64, 16, 1]}, @DDR>
     %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<2x2x2x2xf16, {order = #NCHW, strides = [256, 64, 16, 1]}, @DDR>
-    %3 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>)
+    %3 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%0 : !VPURegMapped.Index<0:0:0>)
         inputs(%1 : memref<2x2x2x2xf16, {order = #NCHW, strides = [256, 64, 16, 1]}, @DDR>)
         outputs(%2 : memref<2x2x2x2xf16, {order = #NCHW, strides = [256, 64, 16, 1]}, @DDR>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>)
         dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<2x2x2x2xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [256, 64, 16, 1]}, @DDR>, outputType = memref<2x2x2x2xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [256, 64, 16, 1]}, @DDR>>)
@@ -37,7 +37,7 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
       // CHECK-SAME:  dma_transaction
       // CHECK-NOT:   dma_descriptor
 
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
   }
 }
@@ -67,11 +67,11 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
     %1 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x320x3x103xf32, {order = #NHWC, strides = [2764800, 1, 921600, 1280]}, @DDR>
     %2 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x320x3x103xf16, #NHWC, [@CMX_NN, 0]>
 
-    %3 = VPUMI40XX.NNDMA {port = 0 : i64} taskLocation(%0 : !VPURegMapped.Index<0:0:0>)
+    %3 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%0 : !VPURegMapped.Index<0:0:0>)
          inputs(%1 : memref<1x320x3x103xf32, {order = #NHWC, strides = [2764800, 1, 921600, 1280]}, @DDR>)
          outputs(%2 : memref<1x320x3x103xf16, #NHWC, [@CMX_NN, 0]>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 
-    ELF.ABIVersion(1 _ 0 _ 0) {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges
 
     // CHECK:       ELF.CreateSection @task.dma.0.0

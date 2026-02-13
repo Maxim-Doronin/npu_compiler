@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,7 +41,7 @@ private:
     void safeRunOnFunc() final;
     bool _enableVerticalFusionPipelining = false;
     bool _enablePrefetchTiling = true;
-    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA;
+    WorkloadManagementMode _workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES;
 };
 
 mlir::LogicalResult MergeVfSubgraphsPass::initialize(mlir::MLIRContext* ctx) {
@@ -73,10 +73,9 @@ void MergeVfSubgraphsPass::safeRunOnFunc() {
     auto func = getOperation();
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    const auto arch = config::getArch(module);
     auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
     auto layerCostModel =
-            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+            VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, &ctx, _log);
 
     const auto costFunction = std::make_unique<VPU::LayerVPUNNCost>(func, layerCostModel, _log);
 
@@ -93,7 +92,7 @@ void MergeVfSubgraphsPass::safeRunOnFunc() {
     auto maxTilingOp = std::max_element(maxTiling.begin(), maxTiling.end());
 
     mlir::RewritePatternSet patterns(&ctx);
-    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_LCA) {
+    if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_1_PAGES) {
         patterns.add<VPU::VF::v1::MergeVFRegionRewriter>(&ctx, _enableVerticalFusionPipelining, _enablePrefetchTiling,
                                                          costFunction, _log);
     } else {
@@ -107,8 +106,8 @@ void MergeVfSubgraphsPass::safeRunOnFunc() {
     // In the worst case, this can exceed the default maxIterations limit.
     // Therefore, we increase maxIterations to ensure all possible merges are performed.
     // TODO: #192550 Refactor the pass to avoid iteration-related issues.
-    config.maxIterations *= 10;
-    config.useTopDownTraversal = maxTilingOp == maxTiling.end() || maxTilingOp != std::prev(maxTiling.end());
+    config.setMaxIterations(config.getMaxIterations() * 10);
+    config.setUseTopDownTraversal(maxTilingOp == maxTiling.end() || maxTilingOp != std::prev(maxTiling.end()));
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), config))) {
         signalPassFailure();
     }

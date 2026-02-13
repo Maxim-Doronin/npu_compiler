@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/NPU37XX/dialect/VPU/impl/singleton_initializer.hpp"
+#include "vpux/compiler/NPU40XX/dialect/VPU/impl/singleton_initializer.hpp"
 #include "vpux/compiler/core/cycle_cost_info.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
@@ -19,7 +20,13 @@
 
 using namespace vpux;
 
-using MLIR_InferenceExecutionAnalysis = MLIR_UnitBase;
+class MLIR_InferenceExecutionAnalysis : public MLIR_UnitBase {
+public:
+    MLIR_InferenceExecutionAnalysis(): MLIR_UnitBase() {
+        ctx.loadDialect<vpux::VPU::VPUDialect>();
+    }
+    mlir::MLIRContext ctx;
+};
 
 void verifyCorrectCycles(SmallVector<vpux::VPURT::TaskConfig, 1>& tasks,
                          SmallVector<std::pair<size_t, size_t>>& cycleBeginEndPairs) {
@@ -102,7 +109,7 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith1ActShaveEngineOn1Cl
     ASSERT_TRUE(funcOp != nullptr);
 
     // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
+    vpux::VPU::arch40xx::initializeSingletonCache(&ctx, std::nullopt);
 
     CycleCostInfo cycleCostInfo(funcOp);
     VPURT::InferenceExecutionSimulator infSim(log, funcOp, cycleCostInfo);
@@ -116,7 +123,7 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith1ActShaveEngineOn1Cl
 
     ASSERT_EQ(tasksCost.size(), 2);
 
-    auto tasksAndCycles = infSim.getTaskCycleConfig(VPU::ExecutorKind::SHAVE_ACT);
+    auto tasksAndCycles = infSim.getTaskCycleConfig(config::ExecutorKind::SHAVE_ACT);
 
     // Tasks execute sequentially so start time of second task is equal to cost of first task
     SmallVector<std::pair<size_t, size_t>> actShaveTasksCycleBeginEndPairs = {
@@ -199,7 +206,7 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith2ActShaveEngineOn1Cl
     ASSERT_TRUE(funcOp != nullptr);
 
     // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU40XX);
+    vpux::VPU::arch40xx::initializeSingletonCache(&ctx, std::nullopt);
 
     CycleCostInfo cycleCostInfo(funcOp);
     VPURT::InferenceExecutionSimulator infSim(log, funcOp, cycleCostInfo);
@@ -213,7 +220,7 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateWith2ActShaveEngineOn1Cl
 
     ASSERT_EQ(tasksCost.size(), 2);
 
-    auto tasksAndCycles = infSim.getTaskCycleConfig(VPU::ExecutorKind::SHAVE_ACT);
+    auto tasksAndCycles = infSim.getTaskCycleConfig(config::ExecutorKind::SHAVE_ACT);
 
     // Tasks execute in parallel so start time is 0 for both and their end time equal to their cost
     SmallVector<std::pair<size_t, size_t>> actShaveTasksCycleBeginEndPairs = {{0, tasksCost[0]}, {0, tasksCost[1]}};
@@ -294,27 +301,27 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateOnMultiQueueIR) {
                 %buf_cmx1_2_Part1 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x12x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 1]>
 
                 VPURT.Task {
-                    %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%netin : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_ddr_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>
+                    %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%netin : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_ddr_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>
                 }
 
                 VPURT.Task {
-                    %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%netin : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_ddr_1 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>
+                    %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%netin : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_ddr_1 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>
                 }
 
                 VPURT.Task {
-                    %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%cst_WT : memref<16x1x1x4xsi32>) outputs(%buf_cmx0_WT : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
+                    %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_WT : memref<16x1x1x4xsi32>) outputs(%buf_cmx0_WT : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
                 }
 
                 VPURT.Task {
-                    %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%cst_WT : memref<16x1x1x4xsi32>) outputs(%buf_cmx1_WT : memref<16x1x1x4xsi32, [@CMX_NN, 1]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
+                    %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%cst_WT : memref<16x1x1x4xsi32>) outputs(%buf_cmx1_WT : memref<16x1x1x4xsi32, [@CMX_NN, 1]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 1]>
                 }
 
                 VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-                    %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%buf_ddr_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_cmx0_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>
+                    %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf_ddr_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_cmx0_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>
                 }
 
                 VPURT.Task updates(%bar1 : !VPURT.Barrier) {
-                    %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%buf_ddr_1 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_cmx1_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 1]>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 1]>
+                    %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf_ddr_1 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, @DDR>) outputs(%buf_cmx1_0 : memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 1]>) -> memref<1x16x24x24xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 1]>
                 }
 
                 VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar2 : !VPURT.Barrier) {
@@ -379,7 +386,7 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateOnMultiQueueIR) {
     ASSERT_TRUE(funcOp != nullptr);
 
     // set cost model factory
-    VPU::CostModelConfig::setFactory(config::ArchKind::NPU37XX);
+    vpux::VPU::arch37xx::initializeSingletonCache(&ctx, std::nullopt);
 
     CycleCostInfo cycleCostInfo(funcOp);
     VPURT::InferenceExecutionSimulator infSim(log, funcOp, cycleCostInfo);
@@ -454,9 +461,9 @@ TEST_F(MLIR_InferenceExecutionAnalysis, CheckCycleUpdateOnMultiQueueIR) {
             {actShaveCycleBegin, actShaveCycleBegin + tasksCostSwKernel[2]},
             {actShaveCycleBegin, actShaveCycleBegin + tasksCostSwKernel[3]}};
 
-    auto dmaTasks = infSim.getTaskCycleConfig(VPU::ExecutorKind::DMA_NN);
-    auto nceTasks = infSim.getTaskCycleConfig(VPU::ExecutorKind::DPU);
-    auto actShaveTasks = infSim.getTaskCycleConfig(VPU::ExecutorKind::SHAVE_ACT);
+    auto dmaTasks = infSim.getTaskCycleConfig(config::ExecutorKind::DMA_NN);
+    auto nceTasks = infSim.getTaskCycleConfig(config::ExecutorKind::DPU);
+    auto actShaveTasks = infSim.getTaskCycleConfig(config::ExecutorKind::SHAVE_ACT);
 
     ASSERT_EQ(dmaTasks.size(), dmaTasksCycleBeginEndPairs.size());
     ASSERT_EQ(nceTasks.size(), nceTasksCycleBeginEndPairs.size());

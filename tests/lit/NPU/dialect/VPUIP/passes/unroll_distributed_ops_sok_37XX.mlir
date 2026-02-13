@@ -71,27 +71,27 @@ func.func @UnrollNNDMA(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR 
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Simulate 1st task
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%input1: !InputStub_CMX0) outputs(%out_cmx1 : !OutputDistributed) -> !OutputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%input1: !InputStub_CMX0) outputs(%out_cmx1 : !OutputDistributed) -> !OutputDistributed
     }
 
     // Simulate 2st task
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%input2: !InputStub_CMX1) outputs(%out_cmx2 : !OutputDistributed) -> !OutputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%input2: !InputStub_CMX1) outputs(%out_cmx2 : !OutputDistributed) -> !OutputDistributed
     }
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -129,7 +129,7 @@ func.func @UnrollNNDMA(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR 
 
     // Upload 2nd part of weights
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS2_CST]] : memref<16x16x1x1xf16, #NHWC>)
     // CHECK-SAME:       outputs([[WEIGHTS2_CMX]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -207,17 +207,17 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weights table
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Cluster tiling
@@ -252,7 +252,7 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -302,7 +302,7 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Upload 2nd part of weight    %12 = VPURT.DeclareBuffer <CMX_NN> [0] <33280> -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS2_CST]] : memref<16x16x1x1xf16, #NHWC>)
     // CHECK-SAME:       outputs([[WEIGHTS2_CMX_COPY]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -316,7 +316,7 @@ func.func @UnrollNCE(%input: !Input_DDR, %output: !Output_DDR) -> !Output_DDR {
 
     // Upload 2nd part of weights table
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS_TABLE2_CST]] : memref<16x1x1x4xsi32>)
     // CHECK-SAME:       outputs([[WEIGHTS_TABLE2_CMX_COPY]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -477,17 +477,17 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input1_cmx: !ParentInputDistributed_1) -> !ParentInputDistributed_1
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input1_cmx: !ParentInputDistributed_1) -> !ParentInputDistributed_1
     }
 
     // Upload weights/ 1st task
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights1_cst: !Weights1_DDR) outputs(%weights1: !WeightsDistributed_1) -> !WeightsDistributed_1
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights1_cst: !Weights1_DDR) outputs(%weights1: !WeightsDistributed_1) -> !WeightsDistributed_1
     }
 
     // Upload weights table/ 1st task
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table1_cst: !WeightsTable1_DDR) outputs(%weights_table1: !WeightsTableDistributed_1) -> !WeightsTableDistributed_1
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table1_cst: !WeightsTable1_DDR) outputs(%weights_table1: !WeightsTableDistributed_1) -> !WeightsTableDistributed_1
     }
 
     // Cluster tiling/ 1st task
@@ -522,12 +522,12 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Upload weights/ 2nd task
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights2_cst: !Weights2_DDR) outputs(%weights2: !WeightsDistributed_2) -> !WeightsDistributed_2
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights2_cst: !Weights2_DDR) outputs(%weights2: !WeightsDistributed_2) -> !WeightsDistributed_2
     }
 
     // Upload weights table/ 2nd task
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table2_cst: !WeightsTable2_DDR) outputs(%weights_table2: !WeightsTableDistributed_2) -> !WeightsTableDistributed_2
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table2_cst: !WeightsTable2_DDR) outputs(%weights_table2: !WeightsTableDistributed_2) -> !WeightsTableDistributed_2
     }
 
     // Cluster tiling/ 2nd task
@@ -562,7 +562,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Copyback output
     VPURT.Task waits(%bar2: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out2_cmx: !ParentOutputDistributed_2) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out2_cmx: !ParentOutputDistributed_2) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -633,7 +633,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Upload 2nd part of weights/ 1st task
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS2_CST_1ST_TASK]] : memref<16x16x1x1xf16, #NHWC>)
     // CHECK-SAME:       outputs([[WEIGHTS2_CMX_COPY_1ST_TASK]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -647,7 +647,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Upload 2nd part of weights table/ 1st task
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS_TABLE2_CST_1ST_TASK]] : memref<16x1x1x4xsi32>)
     // CHECK-SAME:       outputs([[WEIGHTS_TABLE2_CMX_COPY_1ST_TASK]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -697,7 +697,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Upload 2nd part of weights/ 2nd task
     // CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS2_CST_2ND_TASK]] : memref<8x32x1x1xf16, #NHWC>)
     // CHECK-SAME:       outputs([[WEIGHTS2_CMX_COPY_2ND_TASK]] : memref<8x32x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -711,7 +711,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Upload 2nd part of weights table/ 2nd task
     // CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS_TABLE2_CST_2ND_TASK]] : memref<8x1x1x4xsi32>)
     // CHECK-SAME:       outputs([[WEIGHTS_TABLE2_CMX_COPY_2ND_TASK]] : memref<8x1x1x4xsi32, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -828,17 +828,17 @@ func.func @UnrollNCENonContiguousOutput(%input: !Input_DDR, %output: !Output_DDR
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weights table
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Cluster tiling
@@ -873,7 +873,7 @@ func.func @UnrollNCENonContiguousOutput(%input: !Input_DDR, %output: !Output_DDR
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -923,7 +923,7 @@ func.func @UnrollNCENonContiguousOutput(%input: !Input_DDR, %output: !Output_DDR
 
     // Upload 2nd part of weights
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS2_CST]] : memref<8x16x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:       outputs([[WEIGHTS2_CMX_COPY]] : memref<8x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -937,7 +937,7 @@ func.func @UnrollNCENonContiguousOutput(%input: !Input_DDR, %output: !Output_DDR
 
     // Upload 2nd part of weights table
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS_TABLE2_CST]] : memref<8x1x1x4xsi32, @DDR>)
     // CHECK-SAME:       outputs([[WEIGHTS_TABLE2_CMX_COPY]] : memref<8x1x1x4xsi32, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -1025,7 +1025,7 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
 
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !typeCmxDistributed) -> !typeCmxDistributed
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !typeCmxDistributed) -> !typeCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -1035,7 +1035,7 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
         }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !typeCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !typeCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
 
@@ -1068,7 +1068,7 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
 
     // Upload 2nd part of input
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[IN2_DDR]] : memref<1x2x512x1xf16, #NCWH, @DDR>)
     // CHECK-SAME:       outputs([[IN2_CMX_COPY]] : memref<1x2x512x1xf16, #NCWH, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -1095,7 +1095,7 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
 
     // Copyback 2nd part of output
     // CHECK:        VPURT.Task waits([[BAR1]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[OUT2_CMX_COPY]] : memref<1x2x512x1xf16, #NCWH, [@CMX_NN, 1]>)
     // CHECK-SAME:       outputs([[OUT2_DDR]] : memref<1x2x512x1xf16, #NCWH, @DDR>)
     // CHECK:        }
@@ -1166,17 +1166,17 @@ func.func @UnrollNCEWithDuplicatedAndSegmentedWeights(%input: !Input_DDR, %outpu
 
     // Upload input
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !ParentInputDistributed) -> !ParentInputDistributed
     }
 
     // Upload weights
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_cst: !Weights_DDR) outputs(%weights: !WeightsDistributed) -> !WeightsDistributed
     }
 
     // Upload weights table
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%weights_table_cst: !WeightsTable_DDR) outputs(%weights_table: !WeightsTableDistributed) -> !WeightsTableDistributed
     }
 
     // Cluster tiling
@@ -1211,7 +1211,7 @@ func.func @UnrollNCEWithDuplicatedAndSegmentedWeights(%input: !Input_DDR, %outpu
 
     // Copyback output
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !ParentOutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR
@@ -1270,7 +1270,7 @@ func.func @UnrollNCEWithDuplicatedAndSegmentedWeights(%input: !Input_DDR, %outpu
 
     // Upload 2nd part of weights table
     // CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    // CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK-SAME:       inputs([[WEIGHTS_TABLE2_CST]] : memref<16x1x1x4xsi32>)
     // CHECK-SAME:       outputs([[WEIGHTS_TABLE2_CMX_COPY]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
     // CHECK:        }
@@ -1463,7 +1463,7 @@ func.func @UnrollSWOpInterfaceSegDup_NCWH(%input0: !Input_DDR, %output: !Output_
 
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -1473,7 +1473,7 @@ func.func @UnrollSWOpInterfaceSegDup_NCWH(%input0: !Input_DDR, %output: !Output_
         }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
 
@@ -1504,7 +1504,7 @@ func.func @UnrollSWOpInterfaceSegDup_NCWH(%input0: !Input_DDR, %output: !Output_
 
     // Upload 2nd part of input
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[IN2_DDR]] : memref<1x2x512x1xf16, #NCWH, @DDR>)
     //CHECK-SAME:       outputs([[IN2_CMX_COPY]] : memref<1x2x512x1xf16, #NCWH, [@CMX_NN, 1]>)
     //CHECK:        }
@@ -1579,7 +1579,7 @@ func.func @UnrollSWOpInterfaceSegDup_NCHW(%input0: !Input_DDR, %output: !Output_
 
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -1589,7 +1589,7 @@ func.func @UnrollSWOpInterfaceSegDup_NCHW(%input0: !Input_DDR, %output: !Output_
         }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
 
@@ -1620,7 +1620,7 @@ func.func @UnrollSWOpInterfaceSegDup_NCHW(%input0: !Input_DDR, %output: !Output_
 
     // Upload 2nd part of input
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[IN2_DDR]] : memref<1x2x512x1xf16, @DDR>)
     //CHECK-SAME:       outputs([[IN2_CMX_COPY]] : memref<1x2x512x1xf16, [@CMX_NN, 1]>)
     //CHECK:        }
@@ -1695,7 +1695,7 @@ func.func @UnrollSWOpInterfaceSegDup_NHWC(%input0: !Input_DDR, %output: !Output_
 
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -1705,7 +1705,7 @@ func.func @UnrollSWOpInterfaceSegDup_NHWC(%input0: !Input_DDR, %output: !Output_
         }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
 
@@ -1736,7 +1736,7 @@ func.func @UnrollSWOpInterfaceSegDup_NHWC(%input0: !Input_DDR, %output: !Output_
 
     // Upload 2nd part of input
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[IN2_DDR]] : memref<1x2x512x1xf16, {order = #NHWC, strides = [2048, 1, 4, 4]}, @DDR>)
     //CHECK-SAME:       outputs([[IN2_CMX_COPY]] : memref<1x2x512x1xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK:        }
@@ -1813,7 +1813,7 @@ func.func @UnrollSWOpInterfaceSegDup2Outputs(%input0: !Input_DDR, %output: !Outp
 
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>}
@@ -1823,7 +1823,7 @@ func.func @UnrollSWOpInterfaceSegDup2Outputs(%input0: !Input_DDR, %output: !Outp
         }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
 
@@ -1856,7 +1856,7 @@ func.func @UnrollSWOpInterfaceSegDup2Outputs(%input0: !Input_DDR, %output: !Outp
 
     // Upload 2nd part of input
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[IN2_DDR]] : memref<1x2x512x1xf16, {order = #NHWC, strides = [2048, 1, 4, 4]}, @DDR>)
     //CHECK-SAME:       outputs([[IN2_CMX_COPY]] : memref<1x2x512x1xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK:        }
@@ -1936,7 +1936,7 @@ func.func @UnrollSWOpInterfaceSegDup2Outputs(%input0: !Input_DDR, %output: !Outp
 
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !inputCmxDistributed) -> !inputCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
         %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>}
@@ -1946,7 +1946,7 @@ func.func @UnrollSWOpInterfaceSegDup2Outputs(%input0: !Input_DDR, %output: !Outp
         }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-        %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+        %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !outputCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
 
@@ -1979,7 +1979,7 @@ func.func @UnrollSWOpInterfaceSegDup2Outputs(%input0: !Input_DDR, %output: !Outp
 
     // Upload 2nd part of input
     //CHECK:        VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-    //CHECK:          VPUIP.NNDMA {port = 1 : i64}
+    //CHECK:          VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK-SAME:       inputs([[IN2_DDR]] : memref<1x2x512x1xf16, {order = #NHWC, strides = [2048, 1, 4, 4]}, @DDR>)
     //CHECK-SAME:       outputs([[IN2_CMX_COPY]] : memref<1x2x512x1xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK:        }

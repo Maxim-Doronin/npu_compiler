@@ -7,11 +7,14 @@
 #include <vpux_elf/types/vpu_extensions.hpp>
 #include <vpux_elf/writer.hpp>
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
+#include "vpux/compiler/dialect/config/constraints.hpp"
 
 #include <npu_40xx_nnrt.hpp>
 
 using namespace vpux;
 using MIVersionNote = elf::elf_note::VersionNote;
+using MappedInferenceFormat = config::NPUConstraints::MappedInferenceFormat;
+using VpuMmiAccessMode = npu40xx::nn_public::VpuHostParsedInference::VpuMmiAccessMode;
 
 void vpux::NPUReg50XX::MappedInferenceVersionOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
     MIVersionNote MIVersionStruct;
@@ -27,7 +30,12 @@ void vpux::NPUReg50XX::MappedInferenceVersionOp::serialize(elf::writer::BinaryDa
     static_assert(sizeof(name) == 4);
     std::memcpy(MIVersionStruct.n_name, name, nameSize);
 
-    uint32_t desc[descSize] = {0, getMajor(), getMinor(), getPatch()};
+    auto ctx = this->getContext();
+    bool useDirectMmi =
+            (config::getNPUConstraints(ctx).mappedInferenceFormat == MappedInferenceFormat::ManagedMappedInference);
+    uint32_t miFormat = useDirectMmi ? VpuMmiAccessMode::DIRECT : VpuMmiAccessMode::INDIRECT;
+
+    uint32_t desc[descSize] = {miFormat, getMajor(), getMinor(), getPatch()};
     static_assert(sizeof(desc) == 64);
     std::memcpy(MIVersionStruct.n_desc, desc, descSize);
 

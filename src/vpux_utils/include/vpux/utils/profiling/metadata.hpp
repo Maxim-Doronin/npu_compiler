@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,9 +14,6 @@
 namespace ProfilingFB {
 struct ProfilingMeta;
 }
-namespace MVCNN {
-struct GraphFile;
-}
 
 namespace vpux::profiling {
 
@@ -24,7 +21,7 @@ constexpr uint32_t PROFILING_SECTION_ENCODING = 1;  // Profiling metadata encode
 
 constexpr uint32_t PROFILING_METADATA_VERSION_MAJOR = 2;  // Initial major version of FB schema
 
-constexpr uint32_t PROFILING_METADATA_VERSION_MINOR = 0;  // Initial minor version of FB schema
+constexpr uint32_t PROFILING_METADATA_VERSION_MINOR = 3;
 
 // The layout is:
 // +----------------------------+-----------------------

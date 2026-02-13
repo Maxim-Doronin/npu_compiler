@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -157,6 +157,12 @@ mlir::LogicalResult UnrolledTypeToCopyConversion::matchAndRewrite(VPU::UnrolledT
 
     IndexedSymbolAttr memSpace = nullptr;
     if (!isDistributedInput && isDistributedOutput) {
+        // Empty operations represent direct tensor allocations. They can produce distributed types directly
+        if (auto emptyOp = mlir::dyn_cast_if_present<VPU::EmptyOp>(origOp.getInput().getDefiningOp())) {
+            rewriter.replaceOpWithNewOp<VPU::EmptyOp>(origOp, origOp.getOutput().getType());
+            return mlir::success();
+        }
+
         memSpace = IndexedSymbolAttr::get(rewriter.getContext(), stringifyEnum(MemoryKind::CMX_NN));
     }
 
@@ -206,12 +212,10 @@ void MakeDistributedCopiesPass::safeRunOnFunc() {
     target.addLegalDialect<mlir::arith::ArithDialect>();
     target.addLegalDialect<mlir::scf::SCFDialect>();
     target.addLegalDialect<mlir::affine::AffineDialect>();
+    target.addLegalDialect<mlir::tensor::TensorDialect>();
     target.addLegalDialect<mlir::cf::ControlFlowDialect>();
-    target.addLegalOp<mlir::tensor::ExtractSliceOp>();
-    target.addLegalOp<mlir::tensor::InsertSliceOp>();
-    target.addLegalOp<mlir::tensor::EmptyOp>();
     target.addLegalOp<mlir::cf::AssertOp>();
-    target.addLegalOp<mlir::tensor::CastOp>();
+    target.addLegalOp<mlir::UnrealizedConversionCastOp>();
 
     target.addDynamicallyLegalOp<VPU::ShapeCastOp>([&](VPU::ShapeCastOp shapeCast) -> bool {
         if (isDistributedType(shapeCast.getSource())) {
@@ -262,6 +266,28 @@ void MakeDistributedCopiesPass::safeRunOnFunc() {
         auto prevEltwiseOp = prevUTOp.getInput().getDefiningOp<VPU::NCEEltwiseOp>();
         if ((prevEltwiseOp != nullptr) && (prevEltwiseOp.getIsInplace().value_or(false))) {
             return true;
+        }
+
+        // Skip the case where the parent UnrolledType operation has multiple users and any of these users is an
+        // NCEEltwise operation. This scenario would need to also ensure that the other operand of the eltwise operation
+        // is compatible with the new distribution
+        if (!prevUTOp->hasOneUse()) {
+            for (auto& use : prevUTOp->getUses()) {
+                auto userOp = use.getOwner();
+                if (userOp == shapeCast.getOperation()) {
+                    continue;
+                }
+                auto userUTOp = mlir::dyn_cast<VPU::UnrolledTypeOp>(userOp);
+                if (userUTOp != nullptr) {
+                    if (!userUTOp->hasOneUse()) {
+                        return true;
+                    }
+                    userOp = *userUTOp.getOutput().getUsers().begin();
+                }
+                if (mlir::isa<VPU::NCEEltwiseOp>(userOp)) {
+                    return true;
+                }
+            }
         }
 
         // Skip the optimization in case the prevClusteredOp with updated distribution could not fit into CMX

@@ -11,7 +11,7 @@
 // CHECK-LABEL: @ClearDynGarbageAfterDynamicAdd
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>
 func.func @ClearDynGarbageAfterDynamicAdd(%arg0: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>) -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}> {
-    %cst_0 = const.Declare tensor<1x3x1x1xf32> = dense<10.000000e+00> : tensor<1x3x1x1xf32> isSplat
+    %cst_0 = const.Declare tensor<1x3x1x1xf32> = dense<10.000000e+00> : tensor<1x3x1x1xf32>
     %cst_1 = const.Declare tensor<3x3x3x3xf32> = dense<3.000000e+00> : tensor<3x3x3x3xf32>
     %1 = IE.Add(%arg0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>, tensor<1x3x1x1xf32> -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>
     // CHECK: [[CST:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<1.000000e+01> : tensor<1x3x1x1xf32>
@@ -43,7 +43,7 @@ func.func @ClearDynGarbageAfterDynamicAdd(%arg0: tensor<1x3x16x?xf32, {bounds = 
 // CHECK-LABEL: @ClearDynGarbageIsNotNeeded
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>
 func.func @ClearDynGarbageIsNotNeeded(%arg0: tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>) -> tensor<1x3x18x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 18, 34]> : tensor<4xsi64>}> {
-    %cst_0 = const.Declare tensor<1x3x1x1xf32> = dense<10.000000e+00> : tensor<1x3x1x1xf32> isSplat
+    %cst_0 = const.Declare tensor<1x3x1x1xf32> = dense<10.000000e+00> : tensor<1x3x1x1xf32>
     %cst_1 = const.Declare tensor<3x3x1x1xf32> = dense<3.000000e+00> : tensor<3x3x1x1xf32>
 
     %1 = IE.Add(%arg0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>, tensor<1x3x1x1xf32> -> tensor<1x3x16x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 16, 32]> : tensor<4xsi64>}>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -814,9 +814,9 @@ module @UniqueArgumentChains {
     }
 
     // CHECK-INIT:  func.func @init([[OV_CONST0:%.+]]: tensor<2x2xf16>) -> (tensor<2x2xf16>, tensor<2x2xf16>)
-    // CHECK-INIT:      [[CST2:%.+]] = const.Declare {{.*}} dense<2.000000e+00>
+    // CHECK-INIT:      [[CST2:%.+]] = const.Declare {{.+}} dense<2.000000e+00>
     // CHECK-INIT:      [[ADD2:%.+]] = IE.Add([[OV_CONST0]], [[CST2]])
-    // CHECK-INIT:      [[CST1:%.+]] = const.Declare {{.*}} dense<1.000000e+00>
+    // CHECK-INIT:      [[CST1:%.+]] = const.Declare {{.+}} dense<1.000000e+00>
     // CHECK-INIT:      [[ADD1:%.+]] = IE.Add([[OV_CONST0]], [[CST1]])
     // CHECK-INIT:      return [[ADD2]], [[ADD1]]
 
@@ -909,17 +909,17 @@ module @OutlinedConstants {
     // foo1: dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>]
     // foo2: dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>]
 
-    // CHECK-INIT:      [[CST1:%.+]] = const.Declare {{.*}} dense<1.500000e+01>
+    // CHECK-INIT:      [[CST1:%.+]] = const.Declare {{.+}} dense<1.500000e+01>
     // CHECK-INIT:      [[CST_ADD15:%.+]] = IE.Add([[OV_CONST0]], [[CST1]])
 
     // foo2 && bar:  dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Rescale<2.0>]
 
-    // CHECK-INIT:      [[CST2:%.+]] = const.Declare {{.*}} dense<2.000000e+00>
+    // CHECK-INIT:      [[CST2:%.+]] = const.Declare {{.+}} dense<2.000000e+00>
     // CHECK-INIT:      [[CST_RESCALE2:%.+]] = IE.Multiply([[OV_CONST0]], [[CST2]])
 
     // foo2 && main: dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<10.0>]
 
-    // CHECK-INIT:      [[CST3:%.+]] = const.Declare {{.*}} dense<1.000000e+01>
+    // CHECK-INIT:      [[CST3:%.+]] = const.Declare {{.+}} dense<1.000000e+01>
     // CHECK-INIT:      [[CST_ADD10:%.+]] = IE.Add([[OV_CONST0]], [[CST3]])
 
     // bar:  dense_resource<vpux_ow_0> : tensor<2x2xf16>, [#const.Add<15.0>, #const.Reshape<[4, 1]>]
@@ -1011,9 +1011,9 @@ module @OutlinedConstants_MultiCall {
 
     // CHECK-INIT:  func.func @init([[OV_CONST0:%.+]]: tensor<2x2xf16>, [[OV_CONST1:%.+]]: tensor<2x2xf16>)
     // CHECK-INIT-SAME:      -> (tensor<2x2xf16>, tensor<2x2xf16>)
-    // CHECK-INIT:      [[CST1:%.+]] = const.Declare {{.*}} dense<4.200000e+01>
+    // CHECK-INIT:      [[CST1:%.+]] = const.Declare {{.+}} dense<4.200000e+01>
     // CHECK-INIT:      [[CST_RESCALE_42:%.+]] = IE.Multiply([[OV_CONST0]], [[CST1]])
-    // CHECK-INIT:      [[CST2:%.+]] = const.Declare {{.*}} dense<1.500000e+01>
+    // CHECK-INIT:      [[CST2:%.+]] = const.Declare {{.+}} dense<1.500000e+01>
     // CHECK-INIT:      [[CST_ADD15:%.+]] = IE.Add([[OV_CONST1]], [[CST2]])
     // CHECK-INIT:      return [[CST_RESCALE_42]], [[CST_ADD15]]
 
@@ -1165,7 +1165,7 @@ module @OutlinedConstants_PostInitTransformations {
 
 
     // CHECK-INIT:  func.func @init([[OV_CONST0:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16
-    // CHECK-INIT:      [[CST:%.+]] = const.Declare {{.*}} dense<4.200000e+01>
+    // CHECK-INIT:      [[CST:%.+]] = const.Declare {{.+}} dense<4.200000e+01>
     // CHECK-INIT:      [[CST_ADD42:%.+]] = IE.Add([[OV_CONST0]], [[CST]])
     // CHECK-INIT:      return [[CST_ADD42]]
 
@@ -1225,7 +1225,7 @@ module @DoNotNestFunctions {
     // CHECK-MAIN:  func.func private @subview_cst([[DUMMY:%.+]]: tensor<2x2xf16>, [[CST:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16>
 
     // CHECK-INIT:  func.func @init([[OV_CONST0:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16
-    // CHECK-INIT:      [[CST:%.+]] = const.Declare {{.*}} dense<4.200000e+01>
+    // CHECK-INIT:      [[CST:%.+]] = const.Declare {{.+}} dense<4.200000e+01>
     // CHECK-INIT:      [[CST_ADD42:%.+]] = IE.Add([[OV_CONST0]], [[CST]])
     // CHECK-INIT:      return [[CST_ADD42]]
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @UnrollUpsamplingDMAWithNCHW() -> memref<1x32x32x64xf16, #NCHW, @DDR> 
     %input = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x32x16x32xf16, #NCHW, @DDR>
     %output = VPURT.DeclareBuffer <DDR> <262144> -> memref<1x32x32x64xf16, #NCHW, @DDR>
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %111 = VPUIP.UpsamplingDMAOp {port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}
+        %111 = VPUIP.UpsamplingDMAOp <{port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}>
                         inputs(%input : memref<1x32x16x32xf16, #NCHW, @DDR>)
                         outputs(%output : memref<1x32x32x64xf16, #NCHW, @DDR>) -> memref<1x32x32x64xf16, #NCHW, @DDR>
     }
@@ -29,7 +29,7 @@ func.func @UnrollUpsamplingDMAWithNCHW() -> memref<1x32x32x64xf16, #NCHW, @DDR> 
     // CHECK-DAG:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <327680> -> memref<1x1x512x64xf16, @DDR>
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:              numPlanes = 256 : i64
     // CHECK-SAME:              len = 64 : i64
@@ -49,7 +49,7 @@ func.func @UnrollUpsamplingDMAWithNCHW() -> memref<1x32x32x64xf16, #NCHW, @DDR> 
 
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:        VPUIP.UpsamplingDMAOp {
+    // CHECK:        VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:              numPlanes = 256 : i64
     // CHECK-SAME:              len = 64 : i64
@@ -79,7 +79,7 @@ func.func @UnrollUpsamplingDMAWithNHWC() -> memref<1x16x1024x32xf16, #NHWC, @DDR
     %input = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x16x512x32xf16, #NHWC, @DDR>
     %output = VPURT.DeclareBuffer <DDR> <524288> -> memref<1x16x1024x32xf16, #NHWC, @DDR>
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %111 = VPUIP.UpsamplingDMAOp {port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}
+        %111 = VPUIP.UpsamplingDMAOp <{port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}>
                         inputs(%input : memref<1x16x512x32xf16, #NHWC, @DDR>)
                         outputs(%output : memref<1x16x1024x32xf16, #NHWC, @DDR>) -> memref<1x16x1024x32xf16, #NHWC, @DDR>
     }
@@ -95,7 +95,7 @@ func.func @UnrollUpsamplingDMAWithNHWC() -> memref<1x16x1024x32xf16, #NHWC, @DDR
     // CHECK-DAG:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <1572864> -> memref<1x16x512x64xf16, #NHWC, @DDR>
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:              numPlanes = 256 : i64
     // CHECK-SAME:              len = 1024 : i64
@@ -115,7 +115,7 @@ func.func @UnrollUpsamplingDMAWithNHWC() -> memref<1x16x1024x32xf16, #NHWC, @DDR
 
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:        VPUIP.UpsamplingDMAOp {
+    // CHECK:        VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:              numPlanes = 256 : i64
     // CHECK-SAME:              len = 1024 : i64
@@ -145,7 +145,7 @@ func.func @UnrollUpsamplingDMAWithNHWCWithSizeBiggerThan16MB() -> memref<1x1024x
     %input = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1024x128x192xf16, #NHWC, @DDR>
     %output = VPURT.DeclareBuffer <DDR> <33554432> -> memref<1x1024x256x384xf16, #NHWC, @DDR>
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %111 = VPUIP.UpsamplingDMAOp {port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}
+        %111 = VPUIP.UpsamplingDMAOp <{port = 0 : i64, upsampling_factor = [1, 1, 2, 2]}>
                         inputs(%input : memref<1x1024x128x192xf16, #NHWC, @DDR>)
                         outputs(%output : memref<1x1024x256x384xf16, #NHWC, @DDR>) -> memref<1x1024x256x384xf16, #NHWC, @DDR>
     }
@@ -164,7 +164,7 @@ func.func @UnrollUpsamplingDMAWithNHWCWithSizeBiggerThan16MB() -> memref<1x1024x
     // CHECK-DAG:    [[OUTPUT3:%.+]] = VPURT.DeclareBuffer <DDR> <33554432> -> memref<1x1024x84x384xf16, #NHWC, @DDR>
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:         VPUIP.UpsamplingDMAOp {
+    // CHECK:         VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:           dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:               numPlanes = 42 : i64
     // CHECK-SAME:               len = 393216 : i64
@@ -182,7 +182,7 @@ func.func @UnrollUpsamplingDMAWithNHWCWithSizeBiggerThan16MB() -> memref<1x1024x
     // CHECK:  }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:           dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:               numPlanes = 42 : i64,
     // CHECK-SAME:               len = 393216 : i64
@@ -201,7 +201,7 @@ func.func @UnrollUpsamplingDMAWithNHWCWithSizeBiggerThan16MB() -> memref<1x1024x
     // CHECK:  }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:           dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:               numPlanes = 42 : i64
     // CHECK-SAME:               len = 393216 : i64
@@ -213,13 +213,13 @@ func.func @UnrollUpsamplingDMAWithNHWCWithSizeBiggerThan16MB() -> memref<1x1024x
     // CHECK-SAME:               dstPlaneStride = 1572864 : i64
     // CHECK-SAME:           >
     // CHECK-SAME:           upsampling_factor = [1, 1, 2, 2]
-    // CHECK-SAME:    }
+    // CHECK-SAME:    }>
     // CHECK-SAME:    inputs([[INPUT1]] : memref<1x1024x42x192xf16, #NHWC, [@DDR, 0]>)
     // CHECK-SAME:    outputs([[OUTPUT1]] : memref<1x1024x84x384xf16, #NHWC, @DDR>) -> memref<1x1024x84x384xf16, #NHWC, @DDR>
     // CHECK:  }
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:           dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:               numPlanes = 2 : i64
     // CHECK-SAME:               len = 393216 : i64
@@ -250,7 +250,7 @@ func.func @UnrollUpsamplingDMAWithExpandAttr() -> memref<1x32x640x640xf16, #NHWC
     %output = VPURT.DeclareBuffer <DDR> <524288> -> memref<1x32x640x640xf16, #NHWC, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %3 = VPUIP.UpsamplingDMAOp {expand = [0, 8, 0, 0], port = 1 : i64, upsampling_factor = [1, 1, 2, 2]}
+        %3 = VPUIP.UpsamplingDMAOp <{expand = [0, 8, 0, 0], port = 1 : i64, upsampling_factor = [1, 1, 2, 2]}>
         inputs(%input : memref<1x24x320x320xf16, #NHWC, @DDR>)
         outputs(%output : memref<1x32x640x640xf16, #NHWC, @DDR>) -> memref<1x32x640x640xf16, #NHWC, @DDR>
     }
@@ -266,7 +266,7 @@ func.func @UnrollUpsamplingDMAWithExpandAttr() -> memref<1x32x640x640xf16, #NHWC
     // CHECK-DAG:    [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <DDR> <524288> -> memref<1x32x512x640xf16, #NHWC, @DDR>
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:              numPlanes = 256 : i64
     // CHECK-SAME:              len = 15360 : i64
@@ -287,7 +287,7 @@ func.func @UnrollUpsamplingDMAWithExpandAttr() -> memref<1x32x640x640xf16, #NHWC
 
     // CHECK:    VPURT.Task updates([[BARRIER]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:        VPUIP.UpsamplingDMAOp {
+    // CHECK:        VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:              numPlanes = 64 : i64
     // CHECK-SAME:              len = 15360 : i64
@@ -323,7 +323,7 @@ func.func @UnrollUpsamplingDMAWithCstInputNHWC() -> memref<1x96x1024x32xf16, #NH
     %cst = const.Declare memref<1x96x512x16xf16, #NHWC> = dense<1.0> : tensor<1x96x512x16xf16>, [#const.Reorder<#NHWC>]
     %output  = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x96x1024x32xf16, #NHWC, [@CMX_NN, 0]>
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-        %3 = VPUIP.UpsamplingDMAOp {upsampling_factor = [1, 1, 2, 2]} inputs(%cst : memref<1x96x512x16xf16, #NHWC>)
+        %3 = VPUIP.UpsamplingDMAOp <{upsampling_factor = [1, 1, 2, 2]}> inputs(%cst : memref<1x96x512x16xf16, #NHWC>)
         outputs(%output : memref<1x96x1024x32xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x96x1024x32xf16, #NHWC, [@CMX_NN, 0]>
     }
     return %output: memref<1x96x1024x32xf16, #NHWC, [@CMX_NN, 0]>
@@ -338,7 +338,7 @@ func.func @UnrollUpsamplingDMAWithCstInputNHWC() -> memref<1x96x1024x32xf16, #NH
 
     // CHECK:     VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:        dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:            numPlanes = 256 : i64,
     // CHECK-SAME:            len = 3072 : i64,
@@ -358,7 +358,7 @@ func.func @UnrollUpsamplingDMAWithCstInputNHWC() -> memref<1x96x1024x32xf16, #NH
     // CHECK:    [[SUBVIEW_1:%.+]] = VPUIP.SubView [[CST]]  [0, 0, 256, 0] [1, 96, 256, 16] : memref<1x96x512x16xf16, #NHWC> to memref<1x96x256x16xf16, {order = #NHWC, strides = [786432, 1, 1536, 96]}>
     // CHECK:       VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:      dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:          numPlanes = 256 : i64,
     // CHECK-SAME:          len = 3072 : i64,
@@ -391,7 +391,7 @@ func.func @UnrollUpsamplingDMAWithCstInputNCHW() -> memref<1x96x10x10xf16, #NCHW
     %cst = const.Declare memref<1x96x5x5xf16> = dense<1.0> : tensor<1x96x5x5xf32>, [#const.CastElemType<f16>]
     %output  = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x96x10x10xf16, [@CMX_NN, 0]>
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-        %3 = VPUIP.UpsamplingDMAOp {upsampling_factor = [1, 1, 2, 2]} inputs(%cst : memref<1x96x5x5xf16>)
+        %3 = VPUIP.UpsamplingDMAOp <{upsampling_factor = [1, 1, 2, 2]}> inputs(%cst : memref<1x96x5x5xf16>)
         outputs(%output : memref<1x96x10x10xf16, [@CMX_NN, 0]>) -> memref<1x96x10x10xf16, [@CMX_NN, 0]>
     }
     return %output: memref<1x96x10x10xf16, #NCHW, [@CMX_NN, 0]>
@@ -406,7 +406,7 @@ func.func @UnrollUpsamplingDMAWithCstInputNCHW() -> memref<1x96x10x10xf16, #NCHW
 
     // CHECK:     VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:            VPUIP.UpsamplingDMAOp {
+    // CHECK:            VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:            dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:            numPlanes = 256 : i64,
     // CHECK-SAME:            len = 10 : i64,
@@ -426,7 +426,7 @@ func.func @UnrollUpsamplingDMAWithCstInputNCHW() -> memref<1x96x10x10xf16, #NCHW
     // CHECK:    [[SUBVIEW_1:%.+]] = VPUIP.SubView [[CST]] [0, 0, 256, 0] [1, 1, 224, 5] : memref<1x1x480x5xf16> to memref<1x1x224x5xf16, {order = #NCHW, strides = [2400, 2400, 5, 1]}>
     // CHECK:     VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:          numPlanes = 224 : i64,
     // CHECK-SAME:          len = 10 : i64,
@@ -456,7 +456,7 @@ func.func @UnrollUpsamplingDMANCHWWithExpandAttr() -> memref<1x16x60x1xf16, @DDR
     %input = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x3x30x1xf16, @DDR>
     %output = VPURT.DeclareBuffer <DDR> <0> -> memref<1x16x60x1xf16, @DDR>
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-        %upsDMA = VPUIP.UpsamplingDMAOp {expand = [0, 13, 0, 0], port = 1 : i64, upsampling_factor = [1, 1, 2, 1]}
+        %upsDMA = VPUIP.UpsamplingDMAOp <{expand = [0, 13, 0, 0], port = 1 : i64, upsampling_factor = [1, 1, 2, 1]}>
           inputs(%input : memref<1x3x30x1xf16, @DDR>)
           outputs(%output : memref<1x16x60x1xf16, @DDR>) -> memref<1x16x60x1xf16, @DDR>
     }
@@ -470,7 +470,7 @@ func.func @UnrollUpsamplingDMANCHWWithExpandAttr() -> memref<1x16x60x1xf16, @DDR
     // CHECK:   [[OUTPUT0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x16x60x1xf16, @DDR>
     // CHECK:       VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
     // CHECK-SAME:  {
-    // CHECK:           VPUIP.UpsamplingDMAOp {
+    // CHECK:           VPUIP.UpsamplingDMAOp <{
     // CHECK-SAME:          dma_descriptor = #VPUIP.DMADescriptorAttr<
     // CHECK-SAME:          numPlanes = 90 : i64,
     // CHECK-SAME:          len = 2 : i64,

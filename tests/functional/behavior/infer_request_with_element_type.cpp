@@ -20,7 +20,7 @@ using namespace ov::test::behavior;
 
 namespace {
 auto configs = []() {
-    return std::vector<ov::AnyMap>{{{ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::MLIR),
+    return std::vector<ov::AnyMap>{{{ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::PLUGIN),
                                      ov::intel_npu::platform(ov::test::utils::getTestsPlatformCompilerInPlugin()),
                                      {"NPU_COMPILATION_MODE", "DefaultHW"}}},
                                    {{ov::intel_npu::compiler_type(ov::intel_npu::CompilerType::DRIVER),

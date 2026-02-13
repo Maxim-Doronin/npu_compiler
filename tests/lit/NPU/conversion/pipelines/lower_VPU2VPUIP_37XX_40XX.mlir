@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,7 +28,7 @@ module {
 // CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 // CHECK:       }
 
-// CHECK: func.func @SingleLayer([[ARG0:%.*]]: memref<1x1000xf16>, [[ARG1:%.*]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
+// CHECK: func.func @SingleLayer([[ARG0:%.+]]: memref<1x1000xf16>, [[ARG1:%.+]]: memref<1x1000xf16>) -> memref<1x1000xf16> {
 func.func @SingleLayer(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
     %0 = VPU.SoftMax(%arg0) {axisInd = 1} : tensor<1x1000xf16> -> tensor<1x1000xf16>
     return %0 : tensor<1x1000xf16>
@@ -59,7 +59,7 @@ module {
 // CHECK:           func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 // CHECK:       }
 
-// CHECK: func.func @ReshapeInGraph([[ARG0:%.*]]: memref<1x512x1x1xf16>, [[ARG1:%.*]]: memref<1x512x1x1xf16>) -> memref<1x512x1x1xf16> {
+// CHECK: func.func @ReshapeInGraph([[ARG0:%.+]]: memref<1x512x1x1xf16>, [[ARG1:%.+]]: memref<1x512x1x1xf16>) -> memref<1x512x1x1xf16> {
 func.func @ReshapeInGraph(%arg0 : tensor<1x512x1x1xf16>) -> tensor<1x512x1x1xf16> {
     %0 = VPU.Reshape(%arg0) {shape_value = [1, 512]} : tensor<1x512x1x1xf16> -> tensor<1x512xf16>
     %1 = VPU.SoftMax(%0) {axisInd = 1} : tensor<1x512xf16> -> tensor<1x512xf16>
@@ -87,13 +87,13 @@ module {
   } outputsInfo : {
     DataInfo "Result" : tensor<1x2x2x2xf16>
   }
-// CHECK: func.func @ConstantLayer([[ARG0:%.*]]: memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16> {
+// CHECK: func.func @ConstantLayer([[ARG0:%.+]]: memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16> {
 func.func @ConstantLayer() -> tensor<1x2x2x2xf16> {
     %0 = const.Declare tensor<1x2x2x2xf16> = dense<1.0> : tensor<1x2x2x2xf16>
     return %0 : tensor<1x2x2x2xf16>
 
-    // CHECK-DAG:  [[VAR0:%.*]] = const.Declare memref<1x2x2x2xf16> = dense<1.000000e+00> : tensor<1x2x2x2xf16>
-    // CHECK:  [[VAR1:%.*]] = VPUIP.Copy inputs([[VAR0]] : memref<1x2x2x2xf16>) outputs([[ARG0]] : memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16>
+    // CHECK-DAG:  [[VAR0:%.+]] = const.Declare memref<1x2x2x2xf16> = dense<1.000000e+00> : tensor<1x2x2x2xf16>
+    // CHECK:  [[VAR1:%.+]] = VPUIP.Copy inputs([[VAR0]] : memref<1x2x2x2xf16>) outputs([[ARG0]] : memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16>
     // CHECK:  return [[VAR1]] : memref<1x2x2x2xf16>
 }
 }
@@ -104,13 +104,13 @@ module {
   } outputsInfo : {
     DataInfo "Result" : tensor<1x512xf32>
   }
-// CHECK: func.func @Reshape([[ARG0:%.*]]: memref<1x512x1x1xf32>, [[ARG1:%.*]]: memref<1x512xf32>) -> memref<1x512xf32> {
+// CHECK: func.func @Reshape([[ARG0:%.+]]: memref<1x512x1x1xf32>, [[ARG1:%.+]]: memref<1x512xf32>) -> memref<1x512xf32> {
 func.func @Reshape(%arg0 : tensor<1x512x1x1xf32>) -> tensor<1x512xf32> {
     %0 = VPU.Reshape(%arg0) {shape_value = [1, 512]} : tensor<1x512x1x1xf32> -> tensor<1x512xf32>
     return %0 : tensor<1x512xf32>
 
-    // CHECK: [[VAR0:%.*]] = VPUIP.GenericReshape inputs([[ARG0]] : memref<1x512x1x1xf32>) -> memref<1x512xf32>
-    // CHECK: [[VAR1:%.*]] = VPUIP.Copy inputs([[VAR0]] : memref<1x512xf32>) outputs([[ARG1]] : memref<1x512xf32>) -> memref<1x512xf32>
+    // CHECK: [[VAR0:%.+]] = VPUIP.GenericReshape inputs([[ARG0]] : memref<1x512x1x1xf32>) -> memref<1x512xf32>
+    // CHECK: [[VAR1:%.+]] = VPUIP.Copy inputs([[VAR0]] : memref<1x512xf32>) outputs([[ARG1]] : memref<1x512xf32>) -> memref<1x512xf32>
     // CHECK: return [[VAR1]] : memref<1x512xf32>
 }
 }
@@ -123,7 +123,7 @@ module {
   } outputsInfo : {
     DataInfo "Result" : tensor<1x64x14x14xf16>
   }
-// CHECK: func.func @NCEConv([[ARG0:%.*]]: memref<1x32x16x16xf16, #NHWC, @CMX_NN>, [[ARG1:%.*]]: memref<1x64x14x14xf16, #NHWC, @CMX_NN>) -> memref<1x64x14x14xf16, #NHWC, @CMX_NN> {
+// CHECK: func.func @NCEConv([[ARG0:%.+]]: memref<1x32x16x16xf16, #NHWC, @CMX_NN>, [[ARG1:%.+]]: memref<1x64x14x14xf16, #NHWC, @CMX_NN>) -> memref<1x64x14x14xf16, #NHWC, @CMX_NN> {
 func.func @NCEConv(%arg0 : tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>) -> tensor<1x64x14x14xf16, {mem_space = @CMX_NN, order = #NHWC}> {
     %weights = const.Declare tensor<64x32x3x3xf16, {mem_space = @CMX_NN, order = #NHWC}> = dense<1.000000e+00> : tensor<64x32x3x3xf16, {mem_space = @CMX_NN}>, [#const.Reorder<#NHWC>]
     %weights_table = const.Declare tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}> = dense<1> : tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}>
@@ -240,7 +240,7 @@ func.func @SparseNCEConv(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>, %arg1 
     // CHECK:       [[IN_SPARSE:%.+]] = VPUIP.Copy inputs([[IN_SPARSE_DDR]]
     // CHECK-SAME:                                 outputs([[IN_SPARSE_CMX]]
 
-    // CHECK:       [[WEIGHTS_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) {is_weights}
+    // CHECK:       [[WEIGHTS_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) <{is_weights}>
     // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<64x32x3x3xf16, #NHWC>,
     // CHECK-SAME:                             sparsity_map=memref<64x1x1x384xi1>, is_weights>
     // CHECK:       [[WEIGHTS_DATA_CMX:%.+]] = memref.alloc() : memref<64x32x3x3xf16, #NHWC, @CMX_NN>
@@ -419,7 +419,7 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
     // CHECK:       [[INPUT_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[ARG0]], [[ARG1]])
     // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<1x32x16x16xf16, #NHWC, @DDR>,
     // CHECK-SAME:                             sparsity_map=memref<1x32x16x16xi1, #NHWC, @DDR>>
-    // CHECK:       [[WEIGHTS_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) {is_weights}
+    // CHECK:       [[WEIGHTS_SPARSE_DDR:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) <{is_weights}>
     // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<64x32x3x3xf16, #NHWC, @DDR>,
     // CHECK-SAME:                             sparsity_map=memref<64x1x1x384xi1, @DDR>, is_weights>
 

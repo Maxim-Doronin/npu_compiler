@@ -22,9 +22,9 @@ func.func @RescaleForF8E4M3FNWeightsAsInputs(%arg0: tensor<1024x8960xf16>, %arg1
 
     return %2 : tensor<1024x1536xf16>
 
-    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<6.400000e+01> : tensor<1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.Reshape([[INPUT_2]]) {shape_value = [1, 1536]} : tensor<1536x1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = [[QELEMTYPE_OUT]]} : tensor<1536x8960xf8E4M3FN> -> tensor<1536x8960x[[QELEMTYPE_OUT]]>
+    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<6.400000e+01> : tensor<1xf16>
     // CHECK:       [[MULTIPLY0:%.+]] = IE.Multiply([[RESHAPE0]], [[CONST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536xf16>, tensor<1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[DEQUANTIZE0:%.+]] = IE.Dequantize([[QUANTIZECAST0]]) {dstElemType = f16} : tensor<1536x8960x[[QELEMTYPE_OUT]]> -> tensor<1536x8960xf16>
     // CHECK:       [[FULLYCONNECTED0:%.+]] = IE.FullyConnected([[INPUT_0]], [[DEQUANTIZE0]]) : tensor<1024x8960xf16>, tensor<1536x8960xf16> -> tensor<1024x1536xf16>
@@ -49,9 +49,9 @@ func.func @RescaleForF8E5M2WeightsAsInputs(%arg0: tensor<1024x8960xf16>, %arg1: 
 
     return %2 : tensor<1024x1536xf16>
 
-    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<8.192000e+03> : tensor<1xf16>
     // CHECK:       [[RESHAPE0:%.+]] = IE.Reshape([[INPUT_2]]) {shape_value = [1, 1536]} : tensor<1536x1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[QUANTIZECAST0:%.+]] = IE.QuantizeCast([[INPUT_1]]) {dstElemType = [[QELEMTYPE_OUT]]} : tensor<1536x8960xf8E5M2> -> tensor<1536x8960x[[QELEMTYPE_OUT]]>
+    // CHECK:       [[CONST0:%.+]] = const.Declare tensor<1xf16> = dense<8.192000e+03> : tensor<1xf16>
     // CHECK:       [[MULTIPLY0:%.+]] = IE.Multiply([[RESHAPE0]], [[CONST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1536xf16>, tensor<1xf16> -> tensor<1x1536xf16>
     // CHECK:       [[DEQUANTIZE0:%.+]] = IE.Dequantize([[QUANTIZECAST0]]) {dstElemType = f16} : tensor<1536x8960x[[QELEMTYPE_OUT]]> -> tensor<1536x8960xf16>
     // CHECK:       [[FULLYCONNECTED0:%.+]] = IE.FullyConnected([[INPUT_0]], [[DEQUANTIZE0]]) : tensor<1024x8960xf16>, tensor<1536x8960xf16> -> tensor<1024x1536xf16>

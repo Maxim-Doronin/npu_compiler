@@ -1,16 +1,12 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion/passes/VPU2VPUIP/bufferizable_ops_interface.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/data_movement_fwd.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/specialized_fwd.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
-
-namespace vpux::VPU {
-class Concat;
-class PermuteCastOp;
-class StridedSliceOp;
-}  // namespace vpux::VPU
 
 namespace vpux {
 
@@ -34,6 +30,7 @@ class SoftwareLayerOpBufferizeModel :
 public:
     mlir::LogicalResult bufferizeImpl(MainOpType origOp, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions&,
+                                      mlir::bufferization::BufferizationState&,
                                       typename MainOpType::Adaptor& adaptor) const {
         auto log = Logger::global().nest("one-shot-bufferize-SoftwareLayerOp", 0);
         log.trace("Got {0} at {1}", origOp->getName(), origOp->getLoc());

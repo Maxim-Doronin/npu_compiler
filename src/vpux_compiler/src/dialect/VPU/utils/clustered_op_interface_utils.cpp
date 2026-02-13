@@ -71,7 +71,8 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
                             ? distributions.at(mlir::cast<vpux::VPU::SparseTensorType>(outputTileType).getData())
                             : distributions.at(outputTileType);
             if (distribution.getMemoryShapes().empty()) {
-                auto optionalPerClusterMemoryShapes = VPU::getPerClusterMemoryShapes(outputShape, distribution);
+                auto optionalPerClusterMemoryShapes =
+                        VPU::getPerClusterMemoryShapes(outputShape, distribution, outputTileType.getElementType());
                 if (!optionalPerClusterMemoryShapes.has_value()) {
                     return false;
                 }
@@ -99,8 +100,8 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
                             ? distributions.at(mlir::cast<vpux::VPU::SparseTensorType>(inputTileType).getData())
                             : distributions.at(inputTileType);
             if (distribution.getMemoryShapes().empty()) {
-                auto optionalPerClusterMemoryShapes =
-                        VPU::getPerClusterMemoryShapes(inputTileType.getShape(), distribution);
+                auto optionalPerClusterMemoryShapes = VPU::getPerClusterMemoryShapes(
+                        inputTileType.getShape(), distribution, inputTileType.getElementType());
                 if (!optionalPerClusterMemoryShapes.has_value()) {
                     return false;
                 }
@@ -124,6 +125,23 @@ bool VPU::isOperationSplitOverWidthCompatible(mlir::Operation* op, ShapeRef outp
     const auto arch = config::getArch(clusteredOp);
     if (outputShape == ShapeRef()) {
         outputShape = getBoundedShape(clusteredOp->getResult(0));
+    }
+
+    // For elementwise SW operations that do not support cycle cost calculation,
+    // SOW (Split Over Width) is only allowed if the output width is sufficiently large.
+    // This is because accurate cost modeling is not available for these ops, so clustering is preferred
+    // for small widths to avoid potential performance issues.
+    auto swOp = mlir::dyn_cast<VPU::SWOpInterface>(op);
+    if (swOp != nullptr && op->hasTrait<VPU::EltwiseOp>() && !swOp.supportCycleCostCalculation()) {
+        // The threshold of 128 for MIN_WIDTH_FOR_SOW was chosen based on empirical benchmarking results.
+        // Below this threshold, clustering yields better performance.
+        // This value may be adjusted in the future if performance data change.
+        constexpr int64_t MIN_WIDTH_FOR_SOW = 128;
+        const bool isTensorEffectively1D = outputShape[Dims4D::Act::W] == outputShape.totalSize();
+        if (isTensorEffectively1D && outputShape[Dims4D::Act::W] < MIN_WIDTH_FOR_SOW) {
+            // Clustering is a preferred strategy
+            return false;
+        }
     }
 
     auto widthCompatibleCheck = [&](ShapeRef outputShape) {
@@ -292,7 +310,7 @@ bool VPU::isOperationSplitOverGroupCompatible(mlir::Operation* op, const vpux::T
 
 bool VPU::checkMCRestrictions(mlir::Operation* op) {
     auto module = op->getParentOfType<mlir::ModuleOp>();
-    if (config::getAvailableExecutor(module, VPU::ExecutorKind::SHAVE_ACT) == nullptr) {
+    if (config::getAvailableExecutor(module, config::ExecutorKind::SHAVE_ACT) == nullptr) {
         return false;
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,9 +8,11 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_FUSECONVWITHSLICE
@@ -178,7 +180,7 @@ mlir::LogicalResult FuseConvWithSlice::matchAndRewrite(IE::ConvolutionOp origOp,
 
     auto filter = origOp.getFilter();
     auto filterShape = getShape(filter);
-    auto bias = origOp.getBias();
+    auto origBias = origOp.getBias();
     for (auto& slice : sliceUsers) {
         const auto sliceOffsets = Shape(parseIntArrayAttr<int64_t>(slice.getStaticOffsets()));
         const auto sliceSizes = Shape(parseIntArrayAttr<int64_t>(slice.getStaticSizes()));
@@ -188,26 +190,21 @@ mlir::LogicalResult FuseConvWithSlice::matchAndRewrite(IE::ConvolutionOp origOp,
         filterOffsets[Dims4D::Act::N] = sliceOffsets[Dims4D::Act::C];
         SmallVector<int64_t> filterSizes{sliceSizes[Dims4D::Act::C], filterShape[Dims4D::Act::C],
                                          filterShape[Dims4D::Act::H], filterShape[Dims4D::Act::W]};
-        auto filterslice =
-                rewriter.create<IE::SliceOp>(origOp->getLoc(), filter, getIntArrayAttr(ctx, filterOffsets.raw()),
-                                             getIntArrayAttr(ctx, filterSizes))
-                        .getResult();
+        auto filterslice = rewriter.createOrFold<IE::SliceOp>(
+                origOp->getLoc(), filter, getIntArrayAttr(ctx, filterOffsets.raw()), getIntArrayAttr(ctx, filterSizes));
 
         // slice bias
-        if (bias != nullptr) {
-            auto biasShape = getShape(bias);
+        mlir::Value biasSlice = nullptr;
+        if (origBias != nullptr) {
+            auto biasShape = getShape(origBias);
             SmallVector<int64_t> biasSizes{biasShape[Dims4D::Act::N], sliceSizes[Dims4D::Act::C],
                                            biasShape[Dims4D::Act::H], biasShape[Dims4D::Act::W]};
-            bias = rewriter.create<IE::SliceOp>(origOp->getLoc(), origOp.getBias(),
-                                                getIntArrayAttr(ctx, sliceOffsets.raw()),
-                                                getIntArrayAttr(ctx, biasSizes))
-                           .getResult();
+            biasSlice = rewriter.createOrFold<IE::SliceOp>(origOp->getLoc(), origBias,
+                                                           getIntArrayAttr(ctx, sliceOffsets.raw()),
+                                                           getIntArrayAttr(ctx, biasSizes));
         }
-        rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
-                slice, slice.getResult().getType(), origOp.getInput(), filterslice, bias, origOp.getStrides(),
-                origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(),
-                origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
-                origOp.getInputPaddingAttr());
+        rewriter.replaceOp(slice, cloneConvolutionOp(rewriter, origOp, slice.getResult().getType(), origOp.getInput(),
+                                                     filterslice, biasSlice, origOp.getScale()));
     }
     nestedLogger.trace("fuse conv with slice success");
     return mlir::success();
@@ -238,9 +235,7 @@ void FuseConvWithSlicePass::safeRunOnFunc() {
     patterns.add<FuseConvWithSlice>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

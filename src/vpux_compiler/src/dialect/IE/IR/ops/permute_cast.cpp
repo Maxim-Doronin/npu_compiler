@@ -1,5 +1,5 @@
 ///
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,6 +40,18 @@ mlir::LogicalResult vpux::IE::PermuteCastOp::inferReturnTypeComponents(
                                      inferredReturnShapes, true);
 
     return mlir::success();
+}
+
+//
+// ShaveCodeGenSupportedOpInterface
+//
+
+bool vpux::IE::PermuteCastOp::shouldJITCompile() {
+    return false;
+}
+
+bool vpux::IE::PermuteCastOp::shouldJITCompileToEnableFusion() {
+    return vpux::ShaveCodeGen::hasOnlySupportedTypes(*this);
 }
 
 namespace {

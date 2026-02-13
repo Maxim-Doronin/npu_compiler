@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -491,7 +491,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
         > {actKernelInvocationsCount = [0, 0, 0, 0, 0, 0], actKernelRangesCount = [0, 0, 0, 0, 0, 0], barrierCount = 0 : i64, dmaCMXCount = [0, 0], dmaCount = [[1, 0], [0, 0]], dmaDDRCount = [1, 0], dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer2, dmaTasks = [[@task.dma.0.0::@NNDMA_0_0_0]], elfMemOffsetAttrKey = 0 : ui64, invariantCount = [0, 0, 0, 0, 0, 0], mappedInferenceVersion = @note.MappedInferenceVersion::@MappedInferenceVersion_0_0, mediaCount = 0 : i64, sym_name = "MappedInference", variantCount = [0, 0, 0, 0, 0, 0]}
       }
       ELF.CreateSection @note.LoaderABIVersion aligned(4) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
-        ELF.ABIVersion(1 _ 2 _ 2) {elfMemOffsetAttrKey = 0 : ui64, sym_name = "LoaderABIVersion"}
+        ELF.ABIVersion {elfMemOffsetAttrKey = 0 : ui64, sym_name = "LoaderABIVersion"}
       }
       ELF.CreateSection @perf.metrics aligned(8) secType(VPU_SHT_PERF_METRICS) secFlags("SHF_NONE") secLocation(<DDR>) {
         ELF.PerformanceMetricsSection {elfMemOffsetAttrKey = 0 : ui64} @PerfMetrics

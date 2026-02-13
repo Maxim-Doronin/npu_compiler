@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,12 +8,12 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/abstract_tree.hpp"
 #include "vpux/compiler/utils/statistics_collection.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
 #include <functional>
@@ -544,7 +544,7 @@ public:
             auto cstOpType = mlir::cast<vpux::NDTypeInterface>(cstOp.getType());
             auto size = cstOpType.getTotalAllocSize().count();
 
-            if (vpux::getSwizzlingSchemeAttr(cstOpType)) {
+            if (VPUIP::getSwizzlingSchemeAttr(cstOpType)) {
                 numOfSwizzledConsts_++;
                 totalSizeOfSwizzledConsts_ += size;
             } else {

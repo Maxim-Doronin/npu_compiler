@@ -4,9 +4,9 @@
 //
 
 #include "vpux/compiler/utils/memory_usage_collector.hpp"
-#include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/utils/core/memory_usage.hpp"
 
+#include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassInstrumentation.h>
 
 using namespace vpux;

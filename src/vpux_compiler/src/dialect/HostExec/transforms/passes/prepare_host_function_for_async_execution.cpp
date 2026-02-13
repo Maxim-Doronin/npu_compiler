@@ -28,7 +28,7 @@ using namespace vpux;
 namespace {
 
 void wrapIntoAsyncRegion(mlir::Operation* op,
-                         std::unordered_map<mlir::Operation*, mlir::async::CreateGroupOp> forOpToAsyncGroupMap,
+                         std::unordered_map<mlir::Operation*, mlir::async::CreateGroupOp>& forOpToAsyncGroupMap,
                          const Logger& log) {
     if (op->getParentOfType<mlir::async::ExecuteOp>() != nullptr) {
         log.trace("[SKIP] The Operation already wrapped into asynchronous region");
@@ -46,9 +46,17 @@ void wrapIntoAsyncRegion(mlir::Operation* op,
         auto numberOfIterations = builder.create<mlir::arith::SubIOp>(forOp.getLoc(), ub, lb);
         auto numberOfIterationsDivStep = builder.create<mlir::arith::DivSIOp>(forOp.getLoc(), numberOfIterations, step);
         auto group = builder.create<mlir::async::CreateGroupOp>(forOp.getLoc(), numberOfIterationsDivStep);
-
         builder.setInsertionPointAfter(forOp);
-        builder.create<mlir::async::AwaitAllOp>(forOp.getLoc(), group);
+
+        if (forOp->hasAttr("no_await_all") == false) {
+            builder.create<mlir::async::AwaitAllOp>(forOp.getLoc(), group);
+        }
+
+        if (forOp->hasAttr("no_reset_cmdlist")) {
+            // The following attributes will be referred in ConvertToLLVMUMD pass
+            group->setAttr("no_reset_cmdlist", builder.getBoolAttr(true));
+        }
+
         forOpToAsyncGroupMap[forOp.getOperation()] = group;
     }
 

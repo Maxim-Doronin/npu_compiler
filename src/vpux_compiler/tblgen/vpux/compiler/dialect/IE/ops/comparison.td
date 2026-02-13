@@ -19,9 +19,10 @@ def IE_EqualOp :
         IE_LayerOp<
             "Equal",
             [
-                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                IE_EltwiseOp,
                 Commutative,
-                IE_EltwiseOp
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine Equal layer";
@@ -42,8 +43,9 @@ def IE_GreaterOp :
         IE_LayerOp<
             "Greater",
             [
+                IE_EltwiseOp,
                 DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
-                IE_EltwiseOp
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine Greater layer";
@@ -64,8 +66,10 @@ def IE_GreaterEqualOp :
         IE_LayerOp<
             "GreaterEqual",
             [
+                IE_EltwiseOp,
                 DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
-                IE_EltwiseOp
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
+
             ]
         > {
     let summary = "InferenceEngine GreaterEqual layer";
@@ -144,6 +148,24 @@ def IE_NotEqualOp :
         RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast
+    );
+
+    let results = (outs
+        RankedTensorOf<[Bool8]>:$output
+    );
+}
+
+def IE_IsInfOp :
+        IE_LayerOp<
+            "IsInf",
+            [
+                IE_EltwiseOp
+            ]
+        > {
+    let summary = "InferenceEngine IsInf layer";
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32, F64]>:$input
     );
 
     let results = (outs

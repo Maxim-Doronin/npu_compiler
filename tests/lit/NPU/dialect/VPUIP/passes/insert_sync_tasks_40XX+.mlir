@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,10 +68,10 @@ module @TwoFunctions {
 
         %3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%3 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%3 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%2 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
     }
@@ -91,11 +91,11 @@ module @TwoFunctions {
     }
 
     // CHECK: func.func private @foo1
-    // CHECK: [[BAR0:%.*]] = VPURT.DeclareVirtualBarrier
-    // CHECK: [[BAR1:%.*]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier
 
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.SyncDMA <{port = 0 : i64}>
     // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
     // CHECK-NEXT: VPUIP.SW.Kernel
     // CHECK-SAME:    on tile 0
@@ -103,33 +103,33 @@ module @TwoFunctions {
     // CHECK-NEXT: VPUIP.SW.Kernel
     // CHECK-SAME:    on tile 1
     // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.SyncDMA <{port = 0 : i64}>
 
     // CHECK: func.func private @foo2
-    // CHECK: [[BAR3:%.*]] = VPURT.DeclareVirtualBarrier
-    // CHECK: [[BAR4:%.*]] = VPURT.DeclareVirtualBarrier
-    // CHECK: [[BAR5:%.*]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR5:%.+]] = VPURT.DeclareVirtualBarrier
 
     // CHECK: VPURT.Task updates([[BAR3]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.SyncDMA <{port = 0 : i64}>
     // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.NNDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 0 : i64}>
     // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.NNDMA {port = 1 : i64}
+    // CHECK-NEXT: VPUIP.NNDMA <{port = 1 : i64}>
     // CHECK: VPURT.Task waits([[BAR5]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.SyncDMA <{port = 0 : i64}>
 
     // CHECK: func.func @main
-    // CHECK: [[BAR6:%.*]] = VPURT.DeclareVirtualBarrier
-    // CHECK: [[BAR7:%.*]] = VPURT.DeclareVirtualBarrier
-    // CHECK: [[BAR8:%.*]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR6:%.+]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR7:%.+]] = VPURT.DeclareVirtualBarrier
+    // CHECK: [[BAR8:%.+]] = VPURT.DeclareVirtualBarrier
 
     // CHECK: VPURT.Task updates([[BAR6]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.SyncDMA <{port = 0 : i64}>
     // CHECK: VPURT.Task waits([[BAR6]] : !VPURT.Barrier) updates([[BAR7]] : !VPURT.Barrier)
     // CHECK-NEXT: func.call @foo1
     // CHECK: VPURT.Task waits([[BAR7]] : !VPURT.Barrier) updates([[BAR8]] : !VPURT.Barrier)
     // CHECK-NEXT: func.call @foo2
     // CHECK: VPURT.Task waits([[BAR8]] : !VPURT.Barrier)
-    // CHECK-NEXT: VPUIP.SyncDMA {port = 0 : i64}
+    // CHECK-NEXT: VPUIP.SyncDMA <{port = 0 : i64}>
 }

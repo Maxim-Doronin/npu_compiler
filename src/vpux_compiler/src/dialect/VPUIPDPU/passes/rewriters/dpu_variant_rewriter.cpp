@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,6 +18,7 @@ DPUVariantRewriter::DPUVariantRewriter(
           _npu5PPEBackwardsCompatibilityMode(npu5PPEBackwardsCompatibilityMode) {
     setDebugName("DPUInvariant_VPUIPDPURewriter");
 }
+
 mlir::LogicalResult DPUVariantRewriter::matchAndRewrite(VPUASM::DPUVariantOp op,
                                                         mlir::PatternRewriter& rewriter) const {
     auto variant = rewriter.create<VPUIPDPU::DPUVariantOp>(
@@ -43,6 +44,7 @@ mlir::LogicalResult DPUVariantRewriter::matchAndRewrite(VPUASM::DPUVariantOp op,
         if (dpuVariantExpandIface.expandGeneralConfig(rewriter, _log).failed()) {
             return mlir::failure();
         }
+
         if (dpuVariantExpandIface.expandIDUConfig(rewriter, _log, _symRefMap, _npu5PPEBackwardsCompatibilityMode)
                     .failed()) {
             return mlir::failure();
@@ -52,6 +54,7 @@ mlir::LogicalResult DPUVariantRewriter::matchAndRewrite(VPUASM::DPUVariantOp op,
                     .failed()) {
             return mlir::failure();
         }
+
         if (dpuVariantExpandIface.expandODUConfig(rewriter, _log, varBlock, _symRefMap).failed()) {
             return mlir::failure();
         }

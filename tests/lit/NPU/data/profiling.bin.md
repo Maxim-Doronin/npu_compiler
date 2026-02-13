@@ -2,7 +2,8 @@
 
 To prepare IR for [LIT test](tests/lit/utils/profiling-*.mlir.txt)
 
-- choose any model(prefarable tiny), for example age-gender-recognition-retail-0013 and import IE IR using
+- choose a minimal model containing a single convolution, generated with multiple input/output precision options, to ensure we get a SHV layer for profiling evaluation
+- or any other model (preferable tiny) can be used for broader tests, for example age-gender-recognition-retail-0013 and import IE IR using
 
 ```sh
 vpux-translate --import-IE --mlir-print-debuginfo --vpux-profiling $PATH_TO_XML -o tmp.mlir

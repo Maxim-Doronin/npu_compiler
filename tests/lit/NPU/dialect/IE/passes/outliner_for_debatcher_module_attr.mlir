@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
-module @SimpleModuleForOutlining attributes {VPU.debatch = 1 : i64} {
+module @SimpleModuleForOutlining attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {

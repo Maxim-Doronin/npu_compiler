@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -113,9 +113,9 @@ SmallVector<mlir::Value> createLoopCapturedVariablesBoundToCallerOutputs(mlir::f
                         if (argShape[Dim{i}] == mlir::ShapedType::kDynamic) {
                             mlir::Location dimLoc = loc;
                             if (debatchCoefficient.value().batchPositionIndex == Dim{i}) {
-                                dimLoc = appendLoc(dimLoc, "_batchFromOutTensor_{0}_{1}", resIndex, i);
+                                dimLoc = appendLoc(dimLoc, "batchFromOutTensor_{0}_{1}", resIndex, i);
                             } else {
-                                dimLoc = appendLoc(dimLoc, "_dynOutTensor_{0}_{1}", resIndex, i);
+                                dimLoc = appendLoc(dimLoc, "dynOutTensor_{0}_{1}", resIndex, i);
                             }
                             auto batchFromOutTensor = builder.create<mlir::tensor::DimOp>(dimLoc, pivotArg, i);
                             outShape.push_back(batchFromOutTensor);
@@ -124,7 +124,7 @@ SmallVector<mlir::Value> createLoopCapturedVariablesBoundToCallerOutputs(mlir::f
                     auto outType = mlir::cast<mlir::ShapedType>(res.getType());
                     log.debug("Capture a result: {0} with the debatch coefficient: {1}", resIndex,
                               debatchCoefficient.value().to_string());
-                    loopResults.push_back(builder.create<mlir::tensor::EmptyOp>(appendLoc(loc, "_output_{0}", resIndex),
+                    loopResults.push_back(builder.create<mlir::tensor::EmptyOp>(appendLoc(loc, "output_{0}", resIndex),
                                                                                 outType, outShape));
                 }
             }
@@ -145,7 +145,7 @@ SmallVector<mlir::OpFoldResult> collectMixedSizesForSliceOp(mlir::OpBuilder& for
             // Instead we must create DimOp to get the dynamic dimension value,
             // fold it and use that value as a dynamic size representation
             auto dynamicOpRes = mlir::getAsOpFoldResult(forBodyBuilder.create<mlir::tensor::DimOp>(
-                    appendLoc(loc, "_dynExtractSliceDim_{0}_{1}", argIndex, i), arg, i));
+                    appendLoc(loc, "dynExtractSliceDim_{0}_{1}", argIndex, i), arg, i));
             sizes.push_back(dynamicOpRes);
         } else {
             sizes.push_back(forBodyBuilder.getIndexAttr(argType.getDimSize(i)));
@@ -176,7 +176,7 @@ SmallVector<mlir::Value> generateCalleeInputSlicesFromCallerInputs(mlir::func::F
         SmallVector<mlir::OpFoldResult> sizes =
                 collectMixedSizesForSliceOp(forBodyBuilder, loc, forStep.value(), arg, argIndex);
         SmallVector<mlir::OpFoldResult> strides(argType.getRank(), forBodyBuilder.getIndexAttr(1));
-        auto slice = forBodyBuilder.create<mlir::tensor::ExtractSliceOp>(appendLoc(loc, "_slice_{0}", argIndex), arg,
+        auto slice = forBodyBuilder.create<mlir::tensor::ExtractSliceOp>(appendLoc(loc, "slice_{0}", argIndex), arg,
                                                                          offsets, sizes, strides);
         log.debug("Slice: {0} created, sizes: {1}", argIndex, sizes);
         slice.getResult().setType(mlir::cast<mlir::RankedTensorType>(callee.getArgument(argIndex).getType()));
@@ -206,7 +206,7 @@ void generateCalleeResultSlicesInForCtx(mlir::scf::ForOp forCtx, mlir::OpBuilder
         SmallVector<mlir::OpFoldResult> outSizes =
                 collectMixedSizesForSliceOp(forBodyBuilder, loc, forStep.value(), result, argIndex);
         SmallVector<mlir::OpFoldResult> outStrides(outType.getRank(), forBodyBuilder.getIndexAttr(1));
-        auto inserted = forBodyBuilder.create<mlir::tensor::InsertSliceOp>(appendLoc(loc, "_insert_{0}", argIndex),
+        auto inserted = forBodyBuilder.create<mlir::tensor::InsertSliceOp>(appendLoc(loc, "insert_{0}", argIndex),
                                                                            result, forCtx.getRegionIterArg(argIndex),
                                                                            outOffsets, outSizes, outStrides);
         log.debug("Slice: {0} created, sizes: {1}", argIndex, outSizes);
@@ -215,7 +215,7 @@ void generateCalleeResultSlicesInForCtx(mlir::scf::ForOp forCtx, mlir::OpBuilder
     }
 
     log.debug("Finalize loop creation by yielding given slices count: {0}", yieldResults.size());
-    forBodyBuilder.create<mlir::scf::YieldOp>(appendLoc(loc, "_yield"), yieldResults);
+    forBodyBuilder.create<mlir::scf::YieldOp>(appendLoc(loc, "yield"), yieldResults);
 }
 
 void injectHostPipelineStage(mlir::func::FuncOp main, mlir::func::CallOp callOp, int64_t ratio,
@@ -267,24 +267,24 @@ void injectHostPipelineStage(mlir::func::FuncOp main, mlir::func::CallOp callOp,
     VPUX_THROW_UNLESS(pivotArg.has_value(), "injectHostPipelineStage failed because there is nothing to iterate");
 
     // initialize loop arguments
-    auto batchIterBegin = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "_batchIterBegin"), loopBegin);
+    auto batchIterBegin = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "batchIterBegin"), loopBegin);
     auto batchDimIndex =
-            builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "_batchIndex"), pivotTensorBatchDimIndex.ind());
+            builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "batchIndex"), pivotTensorBatchDimIndex.ind());
     auto batchFromTensor =
-            builder.create<mlir::tensor::DimOp>(appendLoc(loc, "_batchFromTensor"), *pivotArg, batchDimIndex);
-    auto batchStep = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "_batchStep"), step);
+            builder.create<mlir::tensor::DimOp>(appendLoc(loc, "batchFromTensor"), *pivotArg, batchDimIndex);
+    auto batchStep = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "batchStep"), step);
 
     auto loopCapturedResults = createLoopCapturedVariablesBoundToCallerOutputs(main, builder, *pivotArg, log);
 
     log.debug("Insert a forOp over batch dimension using captured variables count: {0}", loopCapturedResults.size());
-    auto forOp = builder.create<mlir::scf::ForOp>(appendLoc(loc, "_for"), batchIterBegin, batchFromTensor, batchStep,
+    auto forOp = builder.create<mlir::scf::ForOp>(appendLoc(loc, "for"), batchIterBegin, batchFromTensor, batchStep,
                                                   mlir::ValueRange{loopCapturedResults});
     mlir::func::FuncOp batchingFunc = getCalledFunction(callOp);
     auto loopBodyBuilder = mlir::OpBuilder(forOp.getBody(), forOp.getBody()->begin());
     auto inputArgSlices = generateCalleeInputSlicesFromCallerInputs(main, loopBodyBuilder, forOp, batchingFunc, log);
 
     log.debug("Insert a batching function call on given slices count: {0}", inputArgSlices.size());
-    auto call = loopBodyBuilder.create<mlir::func::CallOp>(appendLoc(loc, "_call"), batchingFunc,
+    auto call = loopBodyBuilder.create<mlir::func::CallOp>(appendLoc(loc, "call"), batchingFunc,
                                                            mlir::ValueRange{inputArgSlices});
     generateCalleeResultSlicesInForCtx(forOp, loopBodyBuilder, call, log);
 
@@ -380,7 +380,7 @@ void concatenateCallOps(mlir::OpBuilder& builder, mlir::func::CallOp callOp, Sma
             newCallResults.push_back(res);
         }
 
-        const auto concatCallLoc = appendLoc(callLoc, "_" + std::to_string(i));
+        const auto concatCallLoc = appendLoc(callLoc, "" + std::to_string(i));
         auto newConcatResult = builder.create<IE::ConcatOp>(concatCallLoc, newCallResults, 0);
         auto origCallResUsers = callOp.getResult(i).getUsers();
         for (auto usr : origCallResUsers) {
@@ -457,6 +457,7 @@ void DeDebatcherPass::safeRunOnFunc() {
 
         if (generateHostPipeline) {
             injectHostPipelineStage(main, callOp, dedebatchNum, debatchCoefficients, builder, _log);
+            config::setPureHostCompileFuncAttribute(main);
             return;
         }
         // Get multi-batch sliced private function calls

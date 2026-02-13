@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -73,12 +73,13 @@ static SmallVector<uint64_t> generateVpuipSoftmaxAttr(mlir::Value input, mlir::V
         inDims.push_back(dim);
     }
 
-    auto bitTypeSize = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElemTypeSize();
+    auto inBitTypeSize = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElemTypeSize();
     for (auto& stride : inMemStrides | reversed) {
-        inStrides.push_back(stride.count() / bitTypeSize.count());
+        inStrides.push_back(stride.count() / inBitTypeSize.count());
     }
+    auto outBitTypeSize = mlir::cast<vpux::NDTypeInterface>(output.getType()).getElemTypeSize();
     for (auto& stride : outMemStrides | reversed) {
-        outStrides.push_back(stride.count() / bitTypeSize.count());
+        outStrides.push_back(stride.count() / outBitTypeSize.count());
     }
 
     inDims.resize(MAX_NUM_DIMS, 0);
@@ -126,6 +127,7 @@ static SmallVector<uint64_t> generateVpuipSoftmaxAttr(mlir::Value input, mlir::V
         ndims++;
         axis = 1;
     }
+
     // works only with ndims >= 3 to simplicity and for speed increase if stride requested
     if (ndims < 3) {
         for (int64_t i = ndims; i < 3 && i >= 0; i++) {
@@ -189,12 +191,12 @@ mlir::LogicalResult UpdateSwKernelParamsRewriter::matchAndRewrite(VPUIP::SwKerne
 
     auto kernelEntryName = getSwKernelEntryName(swKernelOp);
 
-    // Only SoftMax and LogSoftMax need params updated as of now
-    if (kernelEntryName != "softmax" && kernelEntryName != "log_softmax") {
+    // Only SoftMax and LogSoftMax variations need params updated as of now
+    if (kernelEntryName != "softmax" && kernelEntryName != "log_softmax" && kernelEntryName != "log_softmax_topk" &&
+        kernelEntryName != "log_softmax_peak") {
         return mlir::failure();
     }
 
-    _log.trace("Try apply params update '{0}' at '{1}'", kernelEntryName, swKernelOp->getLoc());
     for (auto&& kernelRun : swKernelOp.getBody().getOps<VPUIP::SwKernelRun>()) {
         if (!kernelRun.getAttrs().has_value()) {
             return mlir::failure();
@@ -211,8 +213,11 @@ mlir::LogicalResult UpdateSwKernelParamsRewriter::matchAndRewrite(VPUIP::SwKerne
         const auto padSize = mlir::dyn_cast<mlir::IntegerAttr>(attrs[1]).getInt();
         const auto hasDynamicShape = VPUIP::hasBoundedBuffers(swKernelOp);
 
-        const auto params = generateVpuipSoftmaxAttr(kernelRun.getOperand(0), swKernelOp.getResult(0), axis, padSize,
-                                                     hasDynamicShape);
+        const auto outputValue = (kernelEntryName == "log_softmax_peak") ? kernelRun.getOperand(0)  // Use input shape
+                                                                         : swKernelOp.getResult(0);
+
+        const auto params =
+                generateVpuipSoftmaxAttr(kernelRun.getOperand(0), outputValue, axis, padSize, hasDynamicShape);
         const auto paramsAttr = getIntArrayAttr(kernelRun->getContext(), params);
 
         const auto newAttrs = SmallVector<mlir::Attribute>{paramsAttr};

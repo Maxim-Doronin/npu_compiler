@@ -113,14 +113,3 @@ void vpux::Const::AffineReshapeAttr::print(mlir::AsmPrinter& printer) const {
     printer.printAttribute(getShapeValue());
     printer << ">";
 }
-
-llvm::hash_code vpux::Const::AffineReshapeAttr::getStableHashValue() const {
-    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(getDimMapping());
-    const auto dimMappingRefs = llvm::map_range(dimMapping, [](const auto& array) {
-        return ArrayRef<int64_t>(array);
-    });
-    const auto shapeValue = parseIntArrayAttr<int64_t>(getShapeValue());
-
-    return llvm::hash_combine(getMnemonic(), llvm::hash_combine_range(dimMappingRefs.begin(), dimMappingRefs.end()),
-                              llvm::hash_value(ArrayRef<int64_t>(shapeValue)));
-}

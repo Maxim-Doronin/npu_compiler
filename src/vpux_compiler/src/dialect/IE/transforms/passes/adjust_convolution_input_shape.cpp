@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -351,10 +351,8 @@ private:
 
 mlir::Operation* buildCustomOp(IE::ConvolutionOp op, mlir::PatternRewriter& rewriter, mlir::Value input,
                                vpux::NDTypeInterface outType) {
-    return rewriter.create<IE::ConvolutionOp>(
-            appendLoc(op->getLoc(), "aligned"), outType, input, op.getFilter(), op.getBias(), op.getStrides(),
-            op.getPadsBegin(), op.getPadsEnd(), op.getDilations(), op.getPostOpAttr(), op.getClampAttr(),
-            op.getStaticScaleAttr(), op.getOutputPaddingAttr(), op.getInputPaddingAttr());
+    auto newConv = cloneConvolutionOp(rewriter, op, outType, input, op.getFilter(), appendLoc(op->getLoc(), "aligned"));
+    return newConv;
 }
 
 mlir::Operation* buildCustomOp(IE::GroupConvolutionOp op, mlir::PatternRewriter& rewriter, mlir::Value input,
@@ -366,11 +364,12 @@ mlir::Operation* buildCustomOp(IE::GroupConvolutionOp op, mlir::PatternRewriter&
 }
 
 template <typename ConcreteOp>
-ConcreteOp expandDimToReshape(ConcreteOp op, mlir::PatternRewriter& rewriter, Dim dimToExpand, Logger log) {
+ConcreteOp expandDimToReshape(ConcreteOp op, mlir::PatternRewriter& rewriter, Dim dimToExpand, int64_t divide,
+                              Logger log) {
     // Expand H or W to support shape balancing for better DPU efficiency
     auto inputShape = getShape(op.getInput());
     auto outputShape = getShape(op.getOutput());
-    auto newSizeDimToExpand = alignValUp(inputShape[dimToExpand], VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT);
+    auto newSizeDimToExpand = alignValUp(inputShape[dimToExpand], divide);
     auto targetShape = Shape(inputShape);
     targetShape[dimToExpand] = newSizeDimToExpand;
     log.debug("Expanding shape for op {0} {1} from {2} to {3}", op->getName(), op->getLoc(), inputShape, targetShape);
@@ -472,8 +471,19 @@ mlir::LogicalResult ReshapeConvInput<ConcreteOp>::matchAndRewrite(ConcreteOp con
                            "Adjusting conv inputs is not beneficial: shape to align is too small.");
     }
 
+    if (inputShapeToAlign > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
+        convolutionInputShapeAlignment = inputShapeToAlign / VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
+        convolutionInputShapeAlignment =
+                ((convolutionInputShapeAlignment + VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT - 1) /
+                 VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT) *
+                VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT;
+        if (convolutionInputShapeAlignment > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
+            convolutionInputShapeAlignment = VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
+        }
+    }
+
     // Find another factor if input height is not divisible by 4
-    if (inputShapeToAlign % VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT != 0) {
+    if (inputShapeToAlign % convolutionInputShapeAlignment != 0) {
         const int64_t val = inputShapeToAlign;
         auto factor = static_cast<int64_t>(sqrt(static_cast<double>(val)));
         for (; factor > 1; factor--) {
@@ -491,8 +501,8 @@ mlir::LogicalResult ReshapeConvInput<ConcreteOp>::matchAndRewrite(ConcreteOp con
                 return matchFailed(nestedLog, rewriter, convOp, "Could not find factor for shape adjustment.");
             }
             nestedLog.debug("Need to align H or W first for {0}", convOp->getLoc());
-            auto alignedNewConv =
-                    expandDimToReshape(convOp, rewriter, alignOnH ? Dims4D::Act::W : Dims4D::Act::H, nestedLog);
+            auto alignedNewConv = expandDimToReshape(convOp, rewriter, alignOnH ? Dims4D::Act::W : Dims4D::Act::H,
+                                                     convolutionInputShapeAlignment, nestedLog);
             VPUX_THROW_WHEN(alignedNewConv == nullptr, "Failed to expand and reshape convolution input");
             convOp = alignedNewConv;
         }
@@ -539,7 +549,7 @@ mlir::LogicalResult ReshapeConvInput<ConcreteOp>::matchAndRewrite(ConcreteOp con
                                                       {Dims4D::Act::H.ind(), Dims4D::Act::W.ind()}};
     auto inDimMapping = alignOnH ? inDimMappingOnH : inDimMappingOnW;
     auto newInput =
-            rewriter.create<IE::AffineReshapeOp>(appendLoc(convOp->getLoc(), "_balance_reshape_in"), convOp.getInput(),
+            rewriter.create<IE::AffineReshapeOp>(appendLoc(convOp->getLoc(), "balance_reshape_in"), convOp.getInput(),
                                                  getIntArrayOfArray(ctx, inDimMapping), inputShapeAttr);
     mlir::IRMapping mapper;
     mapper.map(convOp.getInput(), newInput.getOutput());

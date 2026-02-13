@@ -4,8 +4,6 @@
 //
 
 #include "vpux/compiler/utils/shave.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
-#include "vpux/compiler/dialect/config/utils/setup_pipeline_options_utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
 using namespace vpux;

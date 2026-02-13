@@ -15,7 +15,7 @@ on:
         type: string
         required: true
       compiler-type:
-        description: 'MLIR or DRIVER'
+        description: 'PLUGIN or DRIVER'
         type: string
         required: true
       export-blobs:

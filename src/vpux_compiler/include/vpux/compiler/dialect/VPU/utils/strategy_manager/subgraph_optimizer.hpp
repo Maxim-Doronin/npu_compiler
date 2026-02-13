@@ -23,6 +23,7 @@ public:
     SubgraphOptimizer(mlir::func::FuncOp func, bool enablePrefetchTiling, SiblingOpsAnalysis& siblingsOpsAnalysis,
                       std::shared_ptr<VPUNN::VPULayerCostModel> layerCostModelPtr, Logger log);
     void optimizeStrategyAvoidSpillingOnModel();
+    void optimizeStrategyPairsOnModel();
 
 private:
     struct SubgraphOptConfig {

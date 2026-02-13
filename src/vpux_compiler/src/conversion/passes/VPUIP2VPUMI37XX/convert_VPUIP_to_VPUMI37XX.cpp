@@ -145,7 +145,7 @@ private:
                                        Logger _log) {
         _log.trace("VPUIP_VPUMI37XX pass: replaceVPURTTaskOpWithNNDMAOp()");
 
-        const auto dmaExecCount = config::getAvailableExecutor(moduleOp, VPU::ExecutorKind::DMA_NN).getCount();
+        const auto dmaExecCount = config::getAvailableExecutor(moduleOp, config::ExecutorKind::DMA_NN).getCount();
         const auto& dmaEngineLimits = VPUIP::DMA::getEngineLimits(config::getArch(moduleOp));
         const auto dmaMaxNumPlanes = dmaEngineLimits.getMaxNumPlanes();
 
@@ -636,11 +636,11 @@ private:
                         op.getParentInputStorageElementTable(), op.getParentOutput(), op.getParentOutputSparsityMap(),
                         dpuResults, op.getOutputSparsityMapBuff(), op.getProfilingData(), op.getTaskTypeAttr(),
                         op.getEltwiseTypeAttr(), mpe_freq_mode, op.getKernelSizeAttr(), op.getKernelStridesAttr(),
-                        op.getKernelPaddingAttr(), op.getIsContinuedAttr(), op.getCmSpPatternAttr(),
-                        op.getIsSegmentedAttr(), op.getInputChannelsCompressionAttr(),
-                        op.getIsZeroOffsetWeightsTableAttr(), op.getOutChannelOffsetAttr(), op.getIsSuperdenseAttr(),
-                        op.getIsInplaceAttr(), op.getInputSeSizeAttr(), op.getOutputSeSizeAttr(),
-                        op.getIsPermuteQuantizeAttr(), wait_barriers, update_barriers, startAfterAttr, cleanAfterAttr);
+                        op.getKernelPaddingAttr(), op.getIsContinued(), op.getCmSpPatternAttr(), op.getIsSegmented(),
+                        op.getInputChannelsCompression(), op.getIsZeroOffsetWeightsTable(),
+                        op.getOutChannelOffsetAttr(), op.getIsSuperdense(), op.getIsInplaceAttr(),
+                        op.getInputSeSizeAttr(), op.getOutputSeSizeAttr(), op.getIsPermuteQuantize(), wait_barriers,
+                        update_barriers, startAfterAttr, cleanAfterAttr);
 
                 invariant_task_count++;
 
@@ -711,7 +711,7 @@ private:
                                  Logger _log) {
         _log.trace("VPUIP_VPUMI37XX pass: createMappedInferenceOp()");
 
-        const auto dmaExecCount = config::getAvailableExecutor(moduleOp, VPU::ExecutorKind::DMA_NN).getCount();
+        const auto dmaExecCount = config::getAvailableExecutor(moduleOp, config::ExecutorKind::DMA_NN).getCount();
 
         mlir::Value invariantTasks;
         mlir::Value variantTasks;

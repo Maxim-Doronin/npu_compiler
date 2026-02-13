@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,6 +18,7 @@ namespace arch50xx {
 //
 
 std::unique_ptr<mlir::Pass> createInsertDelayDPUVariantPass(bool dpuProfilingEnabled = false,
+                                                            bool fwPdecDelayEnabled = false,
                                                             Logger log = Logger::global());
 
 //

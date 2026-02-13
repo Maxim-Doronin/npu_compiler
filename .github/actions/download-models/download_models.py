@@ -11,7 +11,7 @@ Downloading AI models from different sources specified in json config with the f
       "repository_path": "path/to/model/in/repo",
       "framework": "pytorch|onnx",
       "extra_config": {
-        "NPU_COMPILER_TYPE": "MLIR|DRIVER"
+        "NPU_COMPILER_TYPE": "PLUGIN|DRIVER"
       }
     }
   ]

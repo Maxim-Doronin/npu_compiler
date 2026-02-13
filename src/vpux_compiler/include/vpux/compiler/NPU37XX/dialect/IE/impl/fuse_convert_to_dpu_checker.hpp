@@ -15,6 +15,7 @@ namespace vpux::IE::arch37xx {
 class FuseConvertToDPUChecker : public FuseConvertToDPUCheckerBase {
 public:
     bool isFusionToParentDPUOpSupported(mlir::Operation* dpuOp, Logger log) const override;
+    bool isConvertOnDPUBeneficial() const override;
 };
 
 }  // namespace vpux::IE::arch37xx

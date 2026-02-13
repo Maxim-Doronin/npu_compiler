@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,8 +12,6 @@
 
 #include "vcl_common.hpp"
 
-using intel_npu::NetworkDescription;
-
 namespace VPUXDriverCompiler {
 
 /**
@@ -22,7 +20,7 @@ namespace VPUXDriverCompiler {
  */
 class VPUXExecutableL0 final {
 public:
-    VPUXExecutableL0(const std::shared_ptr<const NetworkDescription>& networkDesc, bool enableProfiling,
+    VPUXExecutableL0(const std::shared_ptr<const vpux::NetworkDescription>& networkDesc, bool enableProfiling,
                      VCLLogger* vclLogger);
     /**
      * @brief Get compiled blob from net description
@@ -53,8 +51,8 @@ public:
     }
 
 private:
-    std::shared_ptr<const NetworkDescription> _networkDesc;  ///< The compilation result of MLIR compiler
-    bool enableProfiling;                                    ///< Calc time cost on VCL level
+    std::shared_ptr<const vpux::NetworkDescription> _networkDesc;  ///< The compilation result of MLIR compiler
+    bool enableProfiling;                                          ///< Calc time cost on VCL level
     VCLLogger* _logger;
 };
 

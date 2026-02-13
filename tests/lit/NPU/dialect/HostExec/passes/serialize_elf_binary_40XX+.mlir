@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,7 +9,7 @@
 // CHECK-LABEL: @StaticEltwiseNHWC
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>, config.elf_version = #config.version<1:0:0>} {
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
     config.Option @config.EnableAdaptiveStripping : false
@@ -48,7 +48,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x720x1000xf16>
   }
-  module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.elf_version = #config.version<1:0:0>} {
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
     config.Option @config.EnableAdaptiveStripping : false
@@ -495,7 +495,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
         > {actKernelInvocationsCount = [0, 0, 0, 0, 0, 0], actKernelRangesCount = [0, 0, 0, 0, 0, 0], barrierCount = 0 : i64, dmaCMXCount = [0, 0], dmaCount = [[1, 0], [0, 0]], dmaDDRCount = [1, 0], dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer2, dmaTasks = [[@task.dma.0.0::@NNDMA_0_0_0]], elfMemOffsetAttrKey = 0 : ui64, invariantCount = [0, 0, 0, 0, 0, 0], mappedInferenceVersion = @note.MappedInferenceVersion::@MappedInferenceVersion_0_0, mediaCount = 0 : i64, sym_name = "MappedInference", variantCount = [0, 0, 0, 0, 0, 0]}
       }
       ELF.CreateSection @note.LoaderABIVersion aligned(4) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
-        ELF.ABIVersion(1 _ 2 _ 2) {elfMemOffsetAttrKey = 0 : ui64, sym_name = "LoaderABIVersion"}
+        ELF.ABIVersion {elfMemOffsetAttrKey = 0 : ui64, sym_name = "LoaderABIVersion"}
       }
       ELF.CreateSection @perf.metrics aligned(8) secType(VPU_SHT_PERF_METRICS) secFlags("SHF_NONE") secLocation(<DDR>) {
         ELF.PerformanceMetricsSection {elfMemOffsetAttrKey = 0 : ui64} @PerfMetrics
@@ -560,12 +560,12 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
 
   // CHECK:   HostExec.Binary @OneDMAWithoutAttributes {
   // CHECK:   HostExec.BinaryData @serialized_main
-  // CHECK-SAME:   <object = "\7FELF\02\01\00\00\00\{{.*}}">
+  // CHECK-SAME:   <object = "\7FELF\02\01\00\00\00\{{.+}}">
   // CHECK:   func.func private @main1(memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
   // CHECK:   }
   // CHECK:   func.func @main(%arg0: memref<1x720x1000x16xf16>, %arg1: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16> {
-  // CHECK:   [[IN0:%.*]] = builtin.unrealized_conversion_cast %subview : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
-  // CHECK:   [[OUT0:%.*]] = builtin.unrealized_conversion_cast %subview_0 : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
-  // CHECK:   [[RESULT:%.*]] = Core.NestedCall @OneDMAWithoutAttributes::@main1([[IN0]], %4) : (memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
+  // CHECK:   [[IN0:%.+]] = builtin.unrealized_conversion_cast %subview : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
+  // CHECK:   [[OUT0:%.+]] = builtin.unrealized_conversion_cast %subview_0 : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
+  // CHECK:   [[RESULT:%.+]] = Core.NestedCall @OneDMAWithoutAttributes::@main1([[IN0]], %4) : (memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
   // CHECK:   async.yield [[OUT0]] : memref<1x90x1000x16xf16>
 }

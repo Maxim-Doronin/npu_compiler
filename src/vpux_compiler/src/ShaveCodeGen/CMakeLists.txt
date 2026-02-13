@@ -13,6 +13,7 @@ add_npu_library(npu_compiler_shave_code_gen
         npu_ov_utils
         npu_llvm_utils
         npu_profiling_utils
+        MLIRTensorInferTypeOpInterfaceImpl
     PUBLIC
         mlir-dependencies
     )

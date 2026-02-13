@@ -13,7 +13,6 @@
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -195,7 +194,7 @@ mlir::LogicalResult MoveThroughSlice::matchAndRewrite(IE::SliceOp origOp, mlir::
             auto newTranspose = rewriter.replaceOpWithNewOp<IE::TransposeOp>(slice, newSliceOp.getResult(), nullptr,
                                                                              origTransposeOp.getOrderValueAttr());
 
-            extendOpLoc(newTranspose, "_transpose");
+            extendOpLoc(newTranspose, "transpose");
         }
     }
 
@@ -396,7 +395,7 @@ mlir::LogicalResult MoveTransposeThroughMultiply::matchAndRewrite(IE::MultiplyOp
 
     auto newTranspose = rewriter.replaceOpWithNewOp<IE::TransposeOp>(
             origOp, newMultiplyOp.getOutput(), transpose1Op.getOrder(), transpose1Op.getOrderValueAttr());
-    extendOpLoc(newTranspose, "_transpose");
+    extendOpLoc(newTranspose, "transpose");
 
     rewriter.eraseOp(transpose1Op);
     rewriter.eraseOp(transpose2Op);

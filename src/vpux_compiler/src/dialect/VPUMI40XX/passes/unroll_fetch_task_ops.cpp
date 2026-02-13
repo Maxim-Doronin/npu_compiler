@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -115,16 +115,16 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             true, true, false,  // is_out_of_order  and is_critical, enable_msc
             0,                  // port has no meaning
             VPUIP::DMAAccMode::DISABLE,
-            nullptr,                      // dma_transaction
-            nullptr,                      // no descriptor attr required
-            nullptr,                      // no act_compression_sparsity_map required
-            nullptr,                      // no descriptor attr required
-            nullptr,                      // dma_hwp_id 0 s nullptr
-            nullptr,                      //  profilingMetadata
-            0,                            // allow_different_in_out_shapes
-            nullptr,                      // indices
-            nullptr,                      // enqueueBarrier
-            fetchTaskOp.getWlmPageAttr()  // wlmPageAttr
+            nullptr,                          // dma_transaction
+            nullptr,                          // no descriptor attr required
+            nullptr,                          // no act_compression_sparsity_map required
+            nullptr,                          // no descriptor attr required
+            nullptr,                          // dma_hwp_id 0 s nullptr
+            nullptr,                          //  profilingMetadata
+            0,                                // allow_different_in_out_shapes
+            nullptr,                          // indices
+            fetchTaskOp.getEnqueueBarrier(),  // enqueueBarrier
+            fetchTaskOp.getWlmPageAttr()      // wlmPageAttr
     );
     auto secondaryDma = rewriter.create<VPUMI40XX::NNDMAOp>(
             fetchTaskOp.getLoc(), fetchTaskOp.getIndexType(),
@@ -135,16 +135,16 @@ mlir::LogicalResult RewriteFetchTaskToDma::matchAndRewrite(VPURegMapped::FetchTa
             true, true, false,  // is_out_of_order  and is_critical, enable_msc
             0,                  // port has no meaning
             VPUIP::DMAAccMode::DISABLE,
-            nullptr,                      // dma_transaction
-            nullptr,                      // no descriptor attr required
-            nullptr,                      // no act_compression_sparsity_map required
-            nullptr,                      // no descriptor attr required
-            nullptr,                      // dma_hwp_id 0 s nullptr
-            nullptr,                      // profilingMetadata
-            0,                            // allow_different_in_out_shapes
-            nullptr,                      // indices
-            nullptr,                      // enqueueBarrier
-            fetchTaskOp.getWlmPageAttr()  // wlmPageAttr
+            nullptr,                          // dma_transaction
+            nullptr,                          // no descriptor attr required
+            nullptr,                          // no act_compression_sparsity_map required
+            nullptr,                          // no descriptor attr required
+            nullptr,                          // dma_hwp_id 0 s nullptr
+            nullptr,                          // profilingMetadata
+            0,                                // allow_different_in_out_shapes
+            nullptr,                          // indices
+            fetchTaskOp.getEnqueueBarrier(),  // enqueueBarrier
+            fetchTaskOp.getWlmPageAttr()      // wlmPageAttr
     );
 
     // the use of mapped inference is to be replaced with the FIRST dma.

@@ -64,7 +64,8 @@ VPU::DistributionInfoAttr updateExplicitDistributedAttrWithSpecificDim(VPU::Dist
             dataDistributedAttr.getNumClusters(), dataDistributedAttr.getAlignment(),
             dataDistributedAttr.getUniformDistributedSegments(), getIntArrayOfArray(ctx, newComputeShapes),
             getIntArrayOfArray(ctx, newComputeOffsets), getIntArrayOfArray(ctx, newMemoryShapes),
-            getIntArrayOfArray(ctx, newMemoryOffsets), dataDistributedAttr.getEqualMemoryAndComputeView());
+            getIntArrayOfArray(ctx, newMemoryOffsets), dataDistributedAttr.getEqualMemoryAndComputeView(),
+            dataDistributedAttr.getMemoryNumTiles());
 }
 
 void AdjustInputDataForExplicitSETablePass::safeRunOnFunc() {

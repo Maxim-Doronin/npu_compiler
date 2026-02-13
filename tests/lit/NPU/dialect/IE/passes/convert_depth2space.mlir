@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,6 @@ func.func @Depth2SpaceConvertToNNDMAs(%arg0: tensor<1x4x512x8xf16>) -> tensor<1x
     return %0 : tensor<1x1x1024x16xf16>
 
     // CHECK-NOT:   IE.DepthToSpace
-    // CHECK:       [[VAL0:%.*]] = IE.DepthToSpace(%arg0) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x512x8xf16> -> tensor<1x1x1024x16xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.DepthToSpace(%arg0) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x512x8xf16> -> tensor<1x1x1024x16xf16>
     // CHECK:       return [[VAL0]] : tensor<1x1x1024x16xf16>
 }

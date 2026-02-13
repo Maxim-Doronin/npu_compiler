@@ -89,11 +89,12 @@ void InputsTo2D(IE::MatMulOp origOp) {
     auto reshapeRhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(rhs.getLoc(), "reshape_rhs"), rhs,
                                                           /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newRhsShape));
-    auto newMatMul = builder.create<IE::MatMulOp>(origOp.getLoc(), reshapeLhs, reshapeRhs, origOp.getTransposeA(),
-                                                  origOp.getTransposeB(), origOp.getPostOpAttr());
-    auto reshapeOut = builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newMatMul.getOutput(),
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
-                                                          /*shape_value=*/getIntArrayAttr(ctx, outShape));
+
+    auto newMatMul = cloneMatMulOp(builder, origOp, reshapeLhs, reshapeRhs);
+    auto reshapeOut =
+            builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newMatMul->getResult(0),
+                                                /*shape=*/nullptr, /*special_zero=*/false,
+                                                /*shape_value=*/getIntArrayAttr(ctx, outShape));
 
     origOp.getOutput().replaceAllUsesWith(reshapeOut);
     origOp.erase();
@@ -142,9 +143,9 @@ void TransposeInputs(IE::MatMulOp matmulOp) {
         return;
     }
 
-    auto newMatMul = builder.create<IE::MatMulOp>(matmulOp.getLoc(), input1, input2, /*transpose_a=*/false,
-                                                  /*transpose_b=*/true, matmulOp.getPostOpAttr());
-    matmulOp.getOutput().replaceAllUsesWith(newMatMul.getOutput());
+    auto newMatMul = cloneMatMulOp(builder, matmulOp, input1, input2, /*transpose_a=*/false,
+                                   /*transpose_b=*/true);
+    matmulOp.getOutput().replaceAllUsesWith(newMatMul->getResult(0));
     matmulOp.erase();
 }
 
@@ -259,11 +260,11 @@ void To4D(IE::MatMulOp origOp) {
     auto reshapeRhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(rhs.getLoc(), "reshape_rhs"), rhs,
                                                           /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newRhsShape));
-    auto newMatMul = builder.create<IE::MatMulOp>(origOp.getLoc(), reshapeLhs, reshapeRhs, origOp.getTransposeA(),
-                                                  origOp.getTransposeB(), origOp.getPostOpAttr());
-    auto reshapeOut = builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newMatMul.getOutput(),
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
-                                                          /*shape_value=*/getIntArrayAttr(ctx, outShape));
+    auto newMatMul = cloneMatMulOp(builder, origOp, reshapeLhs, reshapeRhs);
+    auto reshapeOut =
+            builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newMatMul->getResult(0),
+                                                /*shape=*/nullptr, /*special_zero=*/false,
+                                                /*shape_value=*/getIntArrayAttr(ctx, outShape));
 
     origOp.getOutput().replaceAllUsesWith(reshapeOut);
     origOp.erase();

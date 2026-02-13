@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -81,29 +81,6 @@ def PrintDot : PassBase<"print-dot", "vpux::ModulePass"> {
     let constructor = "vpux::Core::createPrintDotPass()";
 }
 
-
-//
-// SetupLocationVerifier
-//
-
-def SetupLocationVerifier : PassBase<"setup-location-verifier", "vpux::ModulePass"> {
-    let summary = "Set location names verifier state to enabled or disabled";
-
-    let description = [{
-        This pass attaches or detaches attribute to mark verifier state
-    }];
-
-    let options = [
-        Option<
-            "mode", "mode",
-            "std::string", "",
-            "Enable location verification"
-        >
-    ];
-
-    let constructor = "vpux::Core::createSetupLocationVerifierPass()";
-}
-
 //
 // PackNestedModules
 //
@@ -113,16 +90,19 @@ def PackNestedModules : PassBase<"pack-nested-modules", "vpux::ModulePass"> {
 
     let description = [{
         This pass collects all functions that sit in the module on which the pass is executed. It then performs an
-         analysis to determine which functions can be nested inside sub modules. A function is nested in a submodule if
+        analysis to determine which functions can be nested inside sub modules. The pass has 2 modes: `default` and `entry-point`.
+        When the `default` mode is on a function is nested in a submodule if
           1. It does not contain a unit attribute named "do_not_nest"
           2. It is not the network entry point
           3. All its callees can be nested in the *same* submodule
 
         The third rule ensures that no nested function calls another function outside its own submodule as this is prohibited by
-         `ModuleOp`'s `IsolatedFromAbove` property.
+        `ModuleOp`'s `IsolatedFromAbove` property.
         This pass will try to separate nested functions into different submodules as much as possible.
+        It will also add Attributes, PipelineOptions and Resources from the Main Module and NetworkInfoOp specific to the function
+        present to subModules that contain a single functions.
 
-        For example the following pseudo IR
+        For example the following pseudo IR (`default` mode)
 
         ```MLIR
             module {
@@ -156,11 +136,57 @@ def PackNestedModules : PassBase<"pack-nested-modules", "vpux::ModulePass"> {
             }
         ```
 
+        When the `entry-point` mode is on entryPoint function with all its callees are nested to
+        one module called `NPUModule`.
+
+        For example the following IR
+
+        ```MLIR
+            module @main_graph {
+                net.NetworkInfo entryPoint @main
+                func.func @func1() {...}
+                func.func @func2() {...}
+                func.func @main() {
+                    call @func2
+                }
+            }
+        ```
+
+        would produce
+
+        ```MLIR
+            module @main_graph {
+                func.func @func1() {...}
+                module @NPUModule {
+                    net.NetworkInfo entryPoint @main
+                    func.func @func2() {...}
+                    func.func @main() {
+                        call @func2
+                    }
+                }
+            }
+        ```
+
         More involved examples can be found in the pass's LIT test files.
+
     }];
+
+    let options = [
+        Option<
+            "mode", "mode",
+            "std::string", "\"default\"",
+            "Nesting functions mode"
+        >,
+        Option<
+            "enableProfiling", "enable-profiling",
+            "bool", "false",
+            "Enable profiling in nested modules' NetworkInfo"
+        >
+    ];
 
     let constructor = "vpux::Core::createPackNestedModulesPass()";
 }
+
 
 //
 // UnpackNestedModules
@@ -169,15 +195,14 @@ def PackNestedModules : PassBase<"pack-nested-modules", "vpux::ModulePass"> {
 def UnpackNestedModules : PassBase<"unpack-nested-modules", "vpux::ModulePass"> {
     let summary = "Eliminate any nested module, moving all functions into the main module";
     let constructor = "vpux::Core::createUnpackNestedModulesPass()";
-    let options = [
-    ];
 
     let description = [{
         This pass collects functions from any nested modules and moves them
         outside these modules into the main module. Any affected call-sites are
-        updated accordingly. Thus:
+        updated accordingly. The pass has 2 modes: `default` and `entry-point`. With `default` mode all functions are recursively
+        unpacked from nested modules and moved to the top one. Thus:
 
-        ```mlir
+        ```MLIR
         module {
             module @initModule {
                 func.func private @init() { ... }
@@ -191,7 +216,7 @@ def UnpackNestedModules : PassBase<"unpack-nested-modules", "vpux::ModulePass"> 
 
         Becomes:
 
-        ```mlir
+        ```MLIR
         module {
             func.func private @init() { ... }
             func.func @main() {
@@ -201,31 +226,59 @@ def UnpackNestedModules : PassBase<"unpack-nested-modules", "vpux::ModulePass"> 
         }
         ````
 
-        Note: This pass additionally replaces all 'Core.Call' operations with
-        'func.call'.
-    }];
-}
+        With `entry-point` mode the pass collects all functions and modules from a nested module (`NPUModule`), moves
+        them to the top parent module and updates call ops. Thus:
 
-//
-// AddNetInfoToModule
-//
+        ```MLIR
+            module @main_graph {
+                func.func @func1() {
+                    Core.Call @Module0::@func2
+                    Core.Call @NPUModule::@nestedModule::func3
+                }
+                module @Module0 {
+                    func.func @func2() {...}
+                }
+                module @NPUModule {
+                    net.NetworkInfo entryPoint @main
+                    module @nestedModule {
+                        func.func @func3() {...}
+                    }
+                    func.func @main() {
+                        Core.Call @nestedModule::@func3
+                    }
+                }
+            }
+        ```
 
-def AddNetInfoToModule : PassBase<"add-netinfo-to-module", "vpux::ModulePass"> {
-    let summary = "add net::NetInfoOp to a nested module based on function argument and results inside the module";
+        Becomes:
 
-    let description = [{
-        This pass adds NetInfo to nested ModuleOp for vpux passes that require the inputInfos and outputInfos information.
+        ```MLIR
+            module @main_graph {
+                net.NetworkInfo entryPoint @main
+                func.func @func1() {
+                    Core.Call @Module0::@func2      // remains unchanged
+                    Core.Call @nestedModule::func3  // changed
+                }
+                module @Module0 {
+                    func.func @func2() {...}
+                }
+                module @nestedModule {
+                    func.func @func3() {...}
+                }
+                func.func @main() {
+                    Core.Call @nestedModule::@func3
+                }
+            }
+        ```
     }];
 
     let options = [
         Option<
-            "hasTensorSemantics", "has-tensor-semantics",
-            "bool", "false",
-            "Specifies if outputs come as inputs, to accommodate the usage for VPUIP or IE-VPU"
-        >,
+            "mode", "mode",
+            "std::string", "\"default\"",
+            "Nesting functions mode"
+        >
     ];
-
-    let constructor = "vpux::Core::createAddNetInfoToModulePass()";
 }
 
 #endif

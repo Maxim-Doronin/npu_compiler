@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -218,16 +218,16 @@ module {
 #map9 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
 #map10 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12) -> (-d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 - d9 + d10 - d11 - d12 + 12)>
 
-//CHECK: #[[$MAP0:.*]] = affine_map<(d0) -> (-d0 + 960, 26)>
-//CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (0, d0 - 1)>
-//CHECK: #[[$MAP2:.*]] = affine_map<(d0) -> (-d0 + 1, 0)>
-//CHECK: #[[$MAP3:.*]] = affine_map<()[s0] -> (1, s0)>
-//CHECK: #[[$MAP4:.*]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
-//CHECK: #[[$MAP5:.*]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
-//CHECK: #[[$MAP6:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (0, d0 - d1 - d2 + d3 - d4 - d5 - 954)>
-//CHECK: #[[$MAP7:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (0, d0 - d1 - d2 - d3 - d4 + d5 - d6 - d7 - 952)>
-//CHECK: #[[$MAP8:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 + d7 - d8 - d9 - 950)>
-//CHECK: #[[$MAP9:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
+//CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> (-d0 + 960, 26)>
+//CHECK: #[[$MAP1:.+]] = affine_map<(d0) -> (0, d0 - 1)>
+//CHECK: #[[$MAP2:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
+//CHECK: #[[$MAP3:.+]] = affine_map<()[s0] -> (1, s0)>
+//CHECK: #[[$MAP4:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
+//CHECK: #[[$MAP5:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
+//CHECK: #[[$MAP6:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (0, d0 - d1 - d2 + d3 - d4 - d5 - 954)>
+//CHECK: #[[$MAP7:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (0, d0 - d1 - d2 - d3 - d4 + d5 - d6 - d7 - 952)>
+//CHECK: #[[$MAP8:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 + d7 - d8 - d9 - 950)>
+//CHECK: #[[$MAP9:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
 
 // CHECK-LABEL: @MergeVFChain3Tiles
 // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x256x540x120xf16, {order = #NHWC}>)

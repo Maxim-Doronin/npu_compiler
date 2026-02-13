@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -158,7 +158,7 @@ func.func @EraseSOKCopySequence(%arg0: !CopyOutTensorDistributed) -> !CopyInTens
 
     return %output: !CopyInTensorDistributed
 
-// CHECK:    [[CAST:%.*]] = VPU.DistributedCast([[ARG0]] : !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>) ->
+// CHECK:    [[CAST:%.+]] = VPU.DistributedCast([[ARG0]] : !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>) ->
 // CHECK-SAME:  !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 // CHECK:    return [[CAST]] : !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 }
@@ -197,7 +197,7 @@ func.func @OptimizeCMXDDRCMXCopiesSparseType(%input: !InputDistributedType) -> !
     return %1: !OutputDistributedType
 
 
-    // CHECK:       [[DISTRIBUTED_CAST:%.*]] = VPU.DistributedCast
+    // CHECK:       [[DISTRIBUTED_CAST:%.+]] = VPU.DistributedCast
     // CHECK-SAME:    ([[ARG0]] : !VPU.SparseTensor<data=!VPU.DistributedTensor<1x64x52x52xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
     // CHECK-SAME:                               sparsity_map=!VPU.DistributedTensor<1x64x52x52xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>>)
     // CHECK-SAME:    -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x64x52x52xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>,
@@ -239,7 +239,7 @@ func.func @EraseExtraCopys(%arg0: !CopyOutTensorDistributed) -> !CopyInTensorDis
 
     return %output: !CopyInTensorDistributed
 
-// CHECK:    [[CAST:%.*]] = VPU.DistributedCast([[ARG0]] : !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>) ->
+// CHECK:    [[CAST:%.+]] = VPU.DistributedCast([[ARG0]] : !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64}>) ->
 // CHECK-SAME:  !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 // CHECK:    return [[CAST]] : !VPU.DistributedTensor<1x64x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 

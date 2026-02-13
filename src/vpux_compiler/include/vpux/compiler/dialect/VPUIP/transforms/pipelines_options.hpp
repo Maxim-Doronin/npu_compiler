@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,27 +24,30 @@ struct OptimizeCopiesOptionsBase : mlir::PassPipelineOptions<OptimizeCopiesOptio
             *this, "workload-management-mode",
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
-            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_LCA),
+            ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
             ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
                                           "WLM with split into subgraphs (pages)"),
                                clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
                                           "WLM enqueue barriers search algorithm at VPURT ENABLED"),
+                               clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                                          "PWLM with split into subgraphs (pages)"),
                                clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
                                           "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
                                           "enqueue algorithm at VPUMI"))};
 
     template <class OtherOptions>
     explicit OptimizeCopiesOptionsBase(const OtherOptions& options) {
-        enableOptimizeCopies = options.enableOptimizeCopies;
-        enableOptimizeConstCopies = options.enableOptimizeConstCopies;
-        enableOpsAsDMA = options.enableOpsAsDMA;
-        workloadManagementMode = options.workloadManagementMode;
+        this->matchAndCopyOptionValuesFrom(options);
     }
 };
 
 struct MemoryAllocationOptionsBase : mlir::PassPipelineOptions<MemoryAllocationOptionsBase> {
     BoolOption linearizeSchedule{*this, "linearize-schedule", llvm::cl::desc("Linearize tasks on all engines"),
                                  llvm::cl::init(false)};
+
+    BoolOption enableLoopAllocation{*this, "enable-loop-allocation",
+                                    ::llvm::cl::desc("Enables loop allocation for tiling and vertical fusion regions"),
+                                    ::llvm::cl::init(false)};
 
     BoolOption enablePrefetching{*this, "prefetching",
                                  llvm::cl::desc("Enable prefetch tiling pass and prefetch scheduling"),
@@ -67,9 +70,6 @@ struct MemoryAllocationOptionsBase : mlir::PassPipelineOptions<MemoryAllocationO
             ::llvm::cl::desc("Enables compiler to schedule with different heuristic logics and compare costs"),
             ::llvm::cl::init(false)};
 
-    BoolOption enableGroupAsyncExecuteOps{*this, "group-async-execute-ops",
-                                          llvm::cl::desc("Enable group-async-execute-ops pass"), llvm::cl::init(false)};
-
     BoolOption enablePrintStatistics{*this, "enable-print-statistics", ::llvm::cl::desc("Enable print statistics"),
                                      ::llvm::cl::init(vpux::isDeveloperBuild())};
 
@@ -77,12 +77,7 @@ struct MemoryAllocationOptionsBase : mlir::PassPipelineOptions<MemoryAllocationO
 
     template <class OtherOptions>
     explicit MemoryAllocationOptionsBase(const OtherOptions& options) {
-        linearizeSchedule = options.linearizeSchedule;
-        enablePrefetching = options.enablePrefetching;
-        enablePipelining = options.enablePipelining;
-        optimizeDynamicSpilling = options.optimizeDynamicSpilling;
-        enableMultiScheduleHeuristic = options.enableMultiScheduleHeuristic;
-        enableGroupAsyncExecuteOps = options.enableGroupAsyncExecuteOps;
+        this->matchAndCopyOptionValuesFrom(options);
     }
 };
 

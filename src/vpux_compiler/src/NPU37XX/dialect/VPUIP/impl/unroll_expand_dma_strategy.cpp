@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/impl/unroll_expand_dma_strategy.hpp"
@@ -181,14 +181,14 @@ void MultiClusterExpandDMARewriter::unrollSegmentedOrOverlapped(
         outputInsertionPoint = outBuffer.getDefiningOp();
         _log.trace("Insert new output buffer declaration: '{0}'", outBuffer);
 
-        const auto newLoc = appendLoc(loc, "_cluster_{0}", clusterId);
+        const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
         auto dmaDescriptor = dmaDescriptorGenerator.generate(newInputType, newOutType, expandDmaOp.getPadsBeginAttr(),
                                                              expandDmaOp.getPadsEndAttr(), elemTypeSize.count());
         auto newDMAPort = clusterId % _dmaPortCount;
         auto newExpandDMAOp = VPURT::wrapIntoTaskOp<VPUIP::ExpandDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffer, outBuffer,
                 expandDmaOp.getPadsBeginAttr(), expandDmaOp.getPadsEndAttr(), dmaDescriptor,
-                getIntAttr(_ctx, newDMAPort), expandDmaOp.getIsOutOfOrderAttr(), expandDmaOp.getIsCriticalAttr(),
+                getIntAttr(_ctx, newDMAPort), expandDmaOp.getIsOutOfOrder(), expandDmaOp.getIsCritical(),
                 expandDmaOp.getDmaHwpIdAttr(), expandDmaOp.getProfilingMetadataAttr());
 
         _log.trace("Insert new Expand dma : '{0}'", newExpandDMAOp);
@@ -217,7 +217,7 @@ void MultiClusterExpandDMARewriter::unrollDuplicated(mlir::Location loc, VPUIP::
 
     _log.trace("Insert new CMX buffer declaration: '{0}'", newCMXBuffer);
 
-    const auto newLoc = appendLoc(loc, "_broadcast_copy_to_CMX[{0},{1}]", clusters.front(), clusters.back());
+    const auto newLoc = appendLoc(loc, "broadcast_copy_to_CMX[{0},{1}]", clusters.front(), clusters.back());
     auto expandInType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDmaOp.getInput().getType());
     auto expandOutType = mlir::dyn_cast<vpux::NDTypeInterface>(expandDmaOp.getOutput().getType());
     Byte elemTypeSize = expandInType.getElemTypeSize();
@@ -226,7 +226,7 @@ void MultiClusterExpandDMARewriter::unrollDuplicated(mlir::Location loc, VPUIP::
     const auto newExpandDMA = VPURT::wrapIntoTaskOp<VPUIP::ExpandDMAOp>(
             rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, input, newCMXBuffer,
             expandDmaOp.getPadsBeginAttr(), expandDmaOp.getPadsEndAttr(), dmaDescriptor,
-            /*port=*/vpux::getIntAttr(rewriter, 0), expandDmaOp.getIsOutOfOrderAttr(), expandDmaOp.getIsCriticalAttr(),
+            /*port=*/vpux::getIntAttr(rewriter, 0), expandDmaOp.getIsOutOfOrder(), expandDmaOp.getIsCritical(),
             expandDmaOp.getDmaHwpIdAttr(), expandDmaOp.getProfilingMetadataAttr());
     _log.trace("Insert new ExpandDMA op: '{0}'", newExpandDMA);
 }
@@ -324,7 +324,7 @@ void SingleClusterExpandDMARewriter::createTilesForLargeSize(VPUIP::ExpandDMAOp 
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), tileLoc, inputNewBuffer,
                 outputNewBuffer, origOp.getPadsBeginAttr(),
                 isPadOnTileDim ? getIntArrayAttr(_ctx, newPadEnd) : origOp.getPadsEndAttr(), dmaDescriptor,
-                getIntAttr(_ctx, newDMAPort), origOp.getIsOutOfOrderAttr(), origOp.getIsCriticalAttr(),
+                getIntAttr(_ctx, newDMAPort), origOp.getIsOutOfOrder(), origOp.getIsCritical(),
                 origOp.getDmaHwpIdAttr(), origOp.getProfilingMetadataAttr());
 
         _log.trace("New tile '{0}' Expand dma : '{1}'", tileIdx, newExpandDMAOp);
@@ -360,9 +360,8 @@ mlir::LogicalResult SingleClusterExpandDMARewriter::unrollSingleTile(
                                                          expandDmaOp.getPadsEndAttr(), elemTypeSize.count());
     rewriter.replaceOpWithNewOp<VPUIP::ExpandDMAOp>(
             expandDmaOp, expandDmaOp.getInput(), expandDmaOp.getOutputBuff(), expandDmaOp.getPadsBeginAttr(),
-            expandDmaOp.getPadsEndAttr(), dmaDescriptor, vpux::getIntAttr(rewriter, 0),
-            expandDmaOp.getIsOutOfOrderAttr(), expandDmaOp.getIsCriticalAttr(), expandDmaOp.getDmaHwpIdAttr(),
-            expandDmaOp.getProfilingMetadataAttr());
+            expandDmaOp.getPadsEndAttr(), dmaDescriptor, vpux::getIntAttr(rewriter, 0), expandDmaOp.getIsOutOfOrder(),
+            expandDmaOp.getIsCritical(), expandDmaOp.getDmaHwpIdAttr(), expandDmaOp.getProfilingMetadataAttr());
 
     return mlir::success();
 }

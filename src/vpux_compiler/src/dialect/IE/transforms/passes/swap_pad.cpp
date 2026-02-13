@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -55,8 +56,8 @@ mlir::LogicalResult SwapWithTranspose::matchAndRewrite(IE::TransposeOp originOp,
         return matchFailed(rewriter, originOp, "Pad has mode REFLECT");
     }
 
-    auto newTranspose = rewriter.create<IE::TransposeOp>(takeOpLoc(originOp, "transpose_in"), padLayer.getInput(),
-                                                         nullptr, originOp.getOrderValueAttr());
+    auto newTransposeResult = rewriter.createOrFold<IE::TransposeOp>(
+            takeOpLoc(originOp, "transpose_in"), padLayer.getInput(), nullptr, originOp.getOrderValueAttr());
 
     const auto orderAttr = originOp.getOrderValueAttr();
     const auto order = DimsOrder::fromAffineMap(orderAttr.getValue());
@@ -87,11 +88,12 @@ mlir::LogicalResult SwapWithTranspose::matchAndRewrite(IE::TransposeOp originOp,
         endTransposed[p.index()] = padsEndValue[p.value().ind()];
     }
 
-    rewriter.replaceOpWithNewOp<IE::PadOp>(originOp, newTranspose, nullptr, nullptr, nullptr,
-                                           getIntArrayAttr(originOp.getContext(), ArrayRef(beginTransposed)),
-                                           getIntArrayAttr(originOp.getContext(), ArrayRef(endTransposed)),
-                                           padLayer.getPadValueAttrAttr(), padLayer.getMode(),
-                                           padLayer.getOutputPaddingAttr(), padLayer.getInputPaddingAttr());
+    rewriter.replaceOpWithNewOp<IE::PadOp>(
+            originOp, newTransposeResult, padLayer.getPadsBegin(), padLayer.getPadsEnd(), padLayer.getPadValue(),
+            getIntArrayAttr(originOp.getContext(), ArrayRef(beginTransposed)),
+            getIntArrayAttr(originOp.getContext(), ArrayRef(endTransposed)), padLayer.getPadValueAttrAttr(),
+            padLayer.getMode(), padLayer.getOutputPaddingAttr(), padLayer.getInputPaddingAttr(),
+            padLayer.getOutputShapeAttr(), padLayer.getOutputBoundsAttr());
 
     return mlir::success();
 }
@@ -120,9 +122,7 @@ void SwapPadLayer::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SwapWithTranspose>(&ctx, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

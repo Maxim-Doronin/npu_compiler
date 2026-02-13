@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -48,7 +50,7 @@ mlir::LogicalResult DequantizeConverter::matchAndRewrite(IE::DequantizeOp origOp
 
     auto newDequantizeOp = rewriter.create<IE::DequantizeOp>(origOp->getLoc(), origOp.getInput(), cvtElemType);
     const auto outputCvtToOrig = rewriter.createOrFold<IE::ConvertOp>(
-            takeOpLoc(origOp, "_outCvt"), newDequantizeOp.getOutput(), mlir::TypeAttr::get(origElemType));
+            takeOpLoc(origOp, "outCvt"), newDequantizeOp.getOutput(), mlir::TypeAttr::get(origElemType));
     rewriter.replaceOp(origOp, outputCvtToOrig);
     return mlir::success();
 }
@@ -77,12 +79,12 @@ mlir::LogicalResult DynamicDequantizeConverter::matchAndRewrite(IE::DynamicDequa
     auto origElemType = origOp.getDstElemType();
     auto cvtElemType = mlir::Float16Type::get(ctx);
 
-    auto scaleCvt = rewriter.createOrFold<IE::ConvertOp>(takeOpLoc(origOp, "_inCvt"), origOp.getScale(),
+    auto scaleCvt = rewriter.createOrFold<IE::ConvertOp>(takeOpLoc(origOp, "inCvt"), origOp.getScale(),
                                                          mlir::TypeAttr::get(cvtElemType));
     auto newDynamicDequantizeOp = rewriter.create<IE::DynamicDequantizeOp>(origOp->getLoc(), origOp.getInput(),
                                                                            scaleCvt, origOp.getZp(), cvtElemType);
     const auto outputCvtToOrig = rewriter.createOrFold<IE::ConvertOp>(
-            takeOpLoc(origOp, "_outCvt"), newDynamicDequantizeOp.getOutput(), mlir::TypeAttr::get(origElemType));
+            takeOpLoc(origOp, "outCvt"), newDynamicDequantizeOp.getOutput(), mlir::TypeAttr::get(origElemType));
     rewriter.replaceOp(origOp, outputCvtToOrig);
     return mlir::success();
 }
@@ -125,6 +127,45 @@ mlir::LogicalResult TopKConverter::matchAndRewrite(IE::TopKOp origOp, mlir::Patt
     return mlir::success();
 }
 
+class FlashSDPAConverter final : public mlir::OpRewritePattern<IE::FlashSDPAOp> {
+public:
+    FlashSDPAConverter(mlir::MLIRContext* ctx, vpux::Logger log)
+            : mlir::OpRewritePattern<IE::FlashSDPAOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::FlashSDPAOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult FlashSDPAConverter::matchAndRewrite(IE::FlashSDPAOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found '{0}' Operation at '{1}'", origOp->getName(), origOp->getLoc());
+    auto ctx = origOp->getContext();
+
+    auto elemTypeFP32Attr = mlir::TypeAttr::get(mlir::Float32Type::get(ctx));
+    auto inputRunningSum = origOp.getInputRunningSum();
+    auto inputRunningSumF32 = rewriter.create<IE::ConvertOp>(appendLoc(inputRunningSum.getLoc(), "convert_to_f32"),
+                                                             inputRunningSum, elemTypeFP32Attr);
+
+    mlir::IRMapping mapper;
+    mapper.map(inputRunningSum, inputRunningSumF32);
+    auto newOp = rewriter.clone(*origOp, mapper);
+    vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::ELEM_TYPE);
+
+    auto elemTypeFP16Attr = mlir::TypeAttr::get(mlir::Float16Type::get(ctx));
+    auto newFlashSdpaOp = mlir::cast<IE::FlashSDPAOp>(newOp);
+    auto resultRunningSum = newFlashSdpaOp.getResultRunningSum();
+    auto resultRunningSumF16 =
+            rewriter.create<IE::ConvertOp>(takeOpLoc(origOp, "convert_to_f16"), resultRunningSum, elemTypeFP16Attr);
+
+    rewriter.replaceOp(origOp, mlir::ValueRange{newFlashSdpaOp.getResultRunningOutput(),
+                                                newFlashSdpaOp.getResultRunningMax(), resultRunningSumF16});
+
+    return mlir::success();
+}
+
 //
 // AdjustSoftwareOpsPrecisionPass
 //
@@ -156,11 +197,17 @@ void AdjustSoftwareOpsPrecisionPass::safeRunOnModule() {
         return !op.getDstElemType().isF32();
     };
 
+    const auto isLegalFlashSDPAOp = [](IE::FlashSDPAOp op) {
+        auto runningSumNdType = mlir::cast<NDTypeInterface>(op.getInputRunningSum().getType());
+        return runningSumNdType.getElementType().isF32();
+    };
+
     mlir::ConversionTarget target(ctx);
     target.addLegalOp<IE::ConvertOp>();
     target.addDynamicallyLegalOp<IE::TopKOp>(isLegalTopKOp);
     target.addDynamicallyLegalOp<IE::DynamicDequantizeOp>(isLegalDynamicDequantizeOp);
     target.addDynamicallyLegalOp<IE::DequantizeOp>(isLegalDequantizeOp);
+    target.addDynamicallyLegalOp<IE::FlashSDPAOp>(isLegalFlashSDPAOp);
     target.markUnknownOpDynamicallyLegal([](mlir::Operation*) {
         return true;
     });
@@ -169,6 +216,7 @@ void AdjustSoftwareOpsPrecisionPass::safeRunOnModule() {
     patterns.add<TopKConverter>(&ctx, _log);
     patterns.add<DynamicDequantizeConverter>(&ctx, _log);
     patterns.add<DequantizeConverter>(&ctx, _log);
+    patterns.add<FlashSDPAConverter>(&ctx, _log);
     auto module = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(module, target, std::move(patterns)))) {
         signalPassFailure();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,14 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_quantize_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -189,6 +193,41 @@ bool isSplatConstant(Const::DeclareOp constOp) {
     return (constOp != nullptr) && constOp.getContentAttr().isSplat();
 }
 
+// Below case is actually not efficient to move permute after eltwise, originally the mempermute could fuse
+// with parent, but after moving permute down, two mempermutes are needed, not matter it could fuse the avgpool
+// or not, it is not beneficial as the original one.
+//         AvgPool
+//           |
+//      MemPermute
+//       |     |
+//   AvgPool  AvgPool
+//
+
+template <class EltwiseOp>
+bool isBeneficialToMovePermute(EltwiseOp eltwiseOp) {
+    // Don't handle eltwise with more than 2 inputs for it is not clear beneficial or not.
+    if (eltwiseOp->getNumOperands() > 1) {
+        return true;
+    }
+
+    auto permuteOp = eltwiseOp->getOperand(0).getDefiningOp();
+    if (permuteOp == nullptr || permuteOp->hasOneUse()) {
+        return true;
+    }
+
+    auto permuteInputOp = permuteOp->getOperand(0).getDefiningOp();
+    if (permuteInputOp == nullptr) {
+        return true;
+    }
+
+    auto layerWithPermute = mlir::dyn_cast_or_null<IE::LayerWithPermuteInterface>(permuteInputOp);
+    if (layerWithPermute == nullptr) {
+        return true;
+    }
+
+    return !layerWithPermute.isSupportedPermutation(permuteOp);
+}
+
 /* Rewrite the pattern from:
 
    Permute      Permute
@@ -245,6 +284,11 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
     if (!allInputsArePermutes) {
         return mlir::failure();
     }
+
+    if (!isBeneficialToMovePermute<EltwiseOp>(eltwiseOp)) {
+        return mlir::failure();
+    }
+
     SmallVector<vpux::NDTypeInterface> permuteInputTypes;
     const auto getInputType = [](mlir::Operation* permute) -> vpux::NDTypeInterface {
         return mlir::cast<vpux::NDTypeInterface>(permute->getOperand(0).getType());
@@ -271,14 +315,27 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
                    getMemPermLayout);
 
     auto eltwiseOutElemType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getOutput().getType()).getElementType();
+
     SmallVector<bool> isPermuteElemTypeEquals;
-    const auto getElemTypeEqual = [eltwiseOutElemType](mlir::Operation* op) -> bool {
+    const auto getElemTypeEqual = [eltwiseOutElemType, &eltwiseOp](mlir::Operation* op) -> bool {
         if (mlir::isa<IE::MemPermuteOp>(op)) {
             return true;
         }
+        auto userop = *eltwiseOp->getUsers().begin();
+        while (mlir::isa_and_nonnull<IE::ViewLikeOpInterface>(userop) && userop->getResult(0).hasOneUse()) {
+            if (auto quantCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(userop)) {
+                auto dstElemType = quantCastOp.getDstElemType();
+                if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(dstElemType)) {
+                    return false;
+                }
+            }
+            userop = *userop->getUsers().begin();
+        }
+
         auto srcElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
         auto dstElemType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getElementType();
-        return (srcElemType == dstElemType) && (eltwiseOutElemType.isF16() || eltwiseOutElemType.isF32());
+        return (srcElemType == dstElemType) &&
+               (IE::isPurePermuteCompatiblePrecision(eltwiseOutElemType, eltwiseOutElemType));
     };
     std::transform(inputPermutes.begin(), inputPermutes.end(), std::back_inserter(isPermuteElemTypeEquals),
                    getElemTypeEqual);
@@ -286,13 +343,18 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
     auto eltwiseInput1Type = mlir::cast<vpux::NDTypeInterface>(eltwiseOp->getOperand(0).getType());
     auto eltwiseInputLayout = eltwiseInput1Type.getDimsOrder();
     auto eltwiseInputShape = eltwiseInput1Type.getShape();
-    auto eltwiseOutputLayout = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getOutput().getType()).getDimsOrder();
+    auto eltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getOutput().getType());
+    auto eltwiseOutputLayout = eltwiseOutputType.getDimsOrder();
+    auto eltwiseOutputShape = eltwiseOutputType.getShape();
 
     const auto patternCanBeConverted = [&]() -> bool {
         const auto firstInputLayout = permuteInputLayouts[0];
         const auto isSameLayout = [firstInputLayout](const DimsOrder layout) -> bool {
             return firstInputLayout == layout;
         };
+        if (eltwiseInputShape != eltwiseOutputShape) {
+            return false;
+        }
         if (!std::all_of(permuteInputLayouts.begin(), permuteInputLayouts.end(), isSameLayout)) {
             // If the two inputs before Permutes have different layouts, the case is not supported
             // e.g., input1 layout is NCHW, input2 layout is NWHC
@@ -408,36 +470,54 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
         });
     }
 
-    // Get the output value of the last QuantizeCast op
-    // or the output value of the Eltwise op if no QuantizeCast op exists
+    const auto hasPermuteQuantize = llvm::any_of(inputPermutes, [](mlir::Operation* op) {
+        return mlir::isa<IE::PermuteQuantizeOp>(op);
+    });
+
+    // Get the output value by traversing down through ViewLikeOps
+    // Stop when we encounter an unsupported QuantizeCast or when there are multiple consumers
     auto getInsertPoint = [&]() -> mlir::Value {
-        auto output = eltwiseOp.getOutput();
-        if (output.getUsers().empty()) {
-            return output;
-        }
-        // When there are more than one consumer, return the output eltwise.
-        if (!output.hasOneUse()) {
-            return output;
-        }
-        if (auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(*output.getUsers().begin())) {
-            return quantizeCastOp.getOutput();
-        }
-        if (auto shapeCastOp = mlir::dyn_cast<IE::ShapeCastOp>(*output.getUsers().begin())) {
-            // Same here, when IE.ShapeCast has several consumers, bail out.
-            if (!shapeCastOp.getResult().hasOneUse()) {
-                return shapeCastOp.getResult();
-            }
-            // In case IE.Add -> IE.ShapeCast -> IE.QuantizeCast, return QuantizeCast.
-            if (auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(*shapeCastOp.getResult().getUsers().begin())) {
-                return quantizeCastOp.getOutput();
+        auto currentValue = eltwiseOp.getOutput();
+
+        while (true) {
+            if (currentValue.getUsers().empty()) {
+                return currentValue;
             }
 
-            return shapeCastOp.getResult();
+            // When there are more than one consumer, return the current value
+            if (!currentValue.hasOneUse()) {
+                return currentValue;
+            }
+
+            auto userOp = *currentValue.getUsers().begin();
+
+            if (auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(userOp)) {
+                // If any input permute is PermuteQuantize and the QuantizeCast output type is not supported by
+                // PermuteQuantize, we cannot move QuantizeCast before the PermuteQuantize
+                if (hasPermuteQuantize) {
+                    auto dstElemType = quantizeCastOp.getDstElemType();
+                    auto isSupportedPermuteQuantize = isPurePermuteCompatiblePrecision(dstElemType, dstElemType);
+                    if (!isSupportedPermuteQuantize) {
+                        return currentValue;
+                    }
+                }
+                // Continue traversing through QuantizeCast
+                currentValue = quantizeCastOp.getOutput();
+                continue;
+            }
+
+            if (auto shapeCastOp = mlir::dyn_cast<IE::ShapeCastOp>(userOp)) {
+                // Continue traversing through ShapeCast
+                currentValue = shapeCastOp.getResult();
+                continue;
+            }
+
+            // If it's not a ViewLikeOp we can traverse, stop here
+            return currentValue;
         }
-        return output;
     };
     auto outputValue = getInsertPoint();
-    auto eltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(outputValue.getType());
+    eltwiseOutputType = mlir::cast<vpux::NDTypeInterface>(outputValue.getType());
     rewriter.setInsertionPointAfter(outputValue.getDefiningOp());
     auto newOutputShapeCastType = eltwiseOutputType.changeShape(mappedShape);
     // Get new output memPermuteOp or permuteQuantizeOp
@@ -445,26 +525,33 @@ mlir::LogicalResult PermuteEltwiseRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp
                                 const mlir::Value inputValue) -> mlir::FailureOr<mlir::Operation*> {
         if (auto memPermute = mlir::dyn_cast<IE::MemPermuteOp>(op)) {
             return rewriter
-                    .template create<IE::MemPermuteOp>(appendLoc(eltwiseOp->getLoc(), "_mempermute"), inputValue,
+                    .template create<IE::MemPermuteOp>(appendLoc(eltwiseOp->getLoc(), "mempermute"), inputValue,
                                                        memPermute.getDstOrderAttr(), memPermute.getMemPermAttr())
                     .getOperation();
         } else if (auto permuteQuantize = mlir::dyn_cast<IE::PermuteQuantizeOp>(op)) {
+            auto srcElemType = mlir::cast<vpux::NDTypeInterface>(permuteQuantize.getInput().getType()).getElementType();
             auto dstElemType = permuteQuantize.getDstElemType();
-            if (canAvoidShapeCast && (dstElemType.isF16() || dstElemType.isF32())) {
+            auto moduleOp = getModuleOp(permuteQuantize);
+            const auto numCluster = config::getTileExecutor(moduleOp).getCount();
+            if (numCluster == 1 && canAvoidShapeCast &&
+                (IE::isPurePermuteCompatiblePrecision(srcElemType, dstElemType))) {
                 // if no extra shape cast needed and output permuteQuantize is actually a pure memPermute,
                 // create memPermute here so later it can be fused into ODU of the eltwise
+                // However, this only benefits when a single cluster is used, becauese the eltwise will be assigned the
+                // NWCH layout while it does not support SOW which will eventually lead to StridesDMA.
                 return rewriter
-                        .template create<IE::MemPermuteOp>(appendLoc(eltwiseOp->getLoc(), "_mempermute"), inputValue,
+                        .template create<IE::MemPermuteOp>(appendLoc(eltwiseOp->getLoc(), "mempermute"), inputValue,
                                                            permuteQuantize.getDstOrderAttr(),
                                                            permuteQuantize.getMemPermAttr())
                         .getOperation();
             } else {
+                auto dstElemTypeAttr =
+                        mlir::TypeAttr::get(mlir::cast<vpux::NDTypeInterface>(inputValue.getType()).getElementType());
                 return rewriter
                         .template create<IE::PermuteQuantizeOp>(
                                 appendLoc(eltwiseOp->getLoc(), "_permutequantize"), inputValue,
-                                permuteQuantize.getDstOrderAttr(), permuteQuantize.getMemPermAttr(),
-                                permuteQuantize.getDstElemTypeAttr(), permuteQuantize.getPadsBeginAttr(),
-                                permuteQuantize.getPadsEndAttr())
+                                permuteQuantize.getDstOrderAttr(), permuteQuantize.getMemPermAttr(), dstElemTypeAttr,
+                                permuteQuantize.getPadsBeginAttr(), permuteQuantize.getPadsEndAttr())
                         .getOperation();
             }
         } else {
@@ -606,7 +693,9 @@ private:
 
 mlir::LogicalResult PermuteEltwiseDiffLayoutRewriter::matchAndRewrite(IE::AddOp origOp,
                                                                       mlir::PatternRewriter& rewriter) const {
-    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+    const auto origOpName = origOp->getName();
+    const auto origOpLoc = origOp->getLoc();
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOpName, origOpLoc);
 
     for (auto input : origOp->getOperands()) {
         auto inputPermute = input.getDefiningOp();
@@ -682,10 +771,10 @@ mlir::LogicalResult PermuteEltwiseDiffLayoutRewriter::matchAndRewrite(IE::AddOp 
     }
 
     auto hasValidPermuteCast =
-            isLeftNCEOp ? vpux::tryToFindPermuteCastOp(origOp.getLoc(), firstRightValue, firstLeftType.getDimsOrder(),
-                                                       firstLeftType.getShape(), rewriter)
-                        : vpux::tryToFindPermuteCastOp(origOp.getLoc(), firstLeftValue, firstRightType.getDimsOrder(),
-                                                       firstRightType.getShape(), rewriter);
+            isLeftNCEOp ? IE::tryToFindPermuteCastOp(origOpLoc, firstRightValue, firstLeftType.getDimsOrder(),
+                                                     firstLeftType.getShape(), rewriter)
+                        : IE::tryToFindPermuteCastOp(origOpLoc, firstLeftValue, firstRightType.getDimsOrder(),
+                                                     firstRightType.getShape(), rewriter);
     if (!hasValidPermuteCast.has_value()) {
         _log.trace("No valid permute cast found for inputs");
         return mlir::failure();
@@ -700,7 +789,7 @@ mlir::LogicalResult PermuteEltwiseDiffLayoutRewriter::matchAndRewrite(IE::AddOp 
     auto newAddInputs = isLeftNCEOp ? SmallVector<mlir::Value>{firstLeftValue, permuteCastOp.getResult()}
                                     : SmallVector<mlir::Value>{permuteCastOp.getResult(), firstRightValue};
 
-    auto newAddOp = rewriter.create<IE::AddOp>(origOp->getLoc(), newType, newAddInputs[0], newAddInputs[1],
+    auto newAddOp = rewriter.create<IE::AddOp>(origOpLoc, newType, newAddInputs[0], newAddInputs[1],
                                                origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
                                                origOp.getClampAttr(), nullptr, nullptr);
     mlir::Value newOutput = newAddOp.getOutput();
@@ -719,7 +808,7 @@ mlir::LogicalResult PermuteEltwiseDiffLayoutRewriter::matchAndRewrite(IE::AddOp 
     }
     rewriter.replaceOp(origOp, newOutput);
 
-    _log.trace("Replaced '{0}' with '{1}'", origOp->getName(), newAddOp->getName());
+    _log.trace("Replaced '{0}' at {1} with '{2}'", origOpName, origOpLoc, newOutput);
     return mlir::success();
 }
 

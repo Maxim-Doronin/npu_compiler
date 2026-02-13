@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/normalization.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
@@ -36,8 +37,7 @@ VPU::DistributionMode getSWInputTensorDistributionMode(mlir::Operation* eltwiseO
                                                        vpux::NDTypeInterface inputType);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::PReluOp preluOp, VPU::MultiClusterStrategy strategy,
                                                        mlir::Value operand);
-VPU::DistributionMode getSWInputTensorDistributionMode(VPU::AccumulateOp accumulateOp,
-                                                       VPU::MultiClusterStrategy strategy, mlir::Value operand);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::MaxPool8Op maxpool8Op, VPU::MultiClusterStrategy strategy);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::DynamicDequantizeOp dynamicDequantizeOp,
                                                        VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                                        vpux::NDTypeInterface inputType);
@@ -89,6 +89,8 @@ VPU::DistributionMode getSWInputTensorDistributionMode(VPU::YuvToRgbOp op, VPU::
                                                        mlir::Value operand);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ReduceMeanSquareOp op, VPU::MultiClusterStrategy strategy,
                                                        mlir::Value operand);
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ScatterElementsUpdateOp op,
+                                                       VPU::MultiClusterStrategy strategy, mlir::Value operand);
 
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ClusteredOpInterface clusteredOp,
                                               int64_t numClustersAvailableForCompilation,
@@ -110,8 +112,7 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::LSTMSequenceOp lstmSequenceOp
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand);
 SmallVector<int64_t> getSWInputTensorNumTiles(mlir::Operation* eltwiseOp, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, vpux::NDTypeInterface inputType);
-SmallVector<int64_t> getSWInputTensorNumTiles(VPU::AccumulateOp accumulateOp,
-                                              int64_t numClustersAvailableForCompilation,
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::MaxPool8Op maxpool8Op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                               vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::DynamicDequantizeOp dynamicDequantizeOp,
@@ -179,8 +180,26 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::YuvToRgbOp op, int64_t numClu
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ReduceMeanSquareOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                               vpux::NDTypeInterface inputType);
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ScatterElementsUpdateOp op,
+                                              int64_t numClustersAvailableForCompilation,
+                                              VPU::MultiClusterStrategy strategy, mlir::Value operand);
+
+std::optional<SmallVector<int64_t>> getSWEltwiseAlignment(mlir::Operation* op, ShapeRef divisors,
+                                                          vpux::NDTypeInterface inputType = nullptr,
+                                                          vpux::NDTypeInterface outputType = nullptr);
+
+bool isSWEltwiseAndNeedsAlignment(mlir::Operation* op);
 
 std::optional<SmallVector<int64_t>> getSWAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape);
+
+// Check if DepthToSpace satisfies the condition of optimal SW implementation
+bool satisfiesOptimizedDepthToSpace(VPU::DepthToSpaceOp d2sOp, config::ArchKind arch);
+
+// Check if Convert operation should use multi-shaves
+// Returns true if:
+//   1. Input element type is int64/uint64, OR
+//   2. Input shape total size >= threshold
+bool shouldConvertUseMultiShaves(vpux::NDTypeInterface inputType);
 
 }  // namespace VPU
 }  // namespace vpux

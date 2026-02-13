@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
-#include "vpux/compiler/NPU40XX/dialect/ELF/dialect.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"

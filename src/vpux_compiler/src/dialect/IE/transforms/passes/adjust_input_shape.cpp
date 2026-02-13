@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,6 +30,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <llvm/ADT/STLExtras.h>
@@ -195,7 +196,7 @@ bool ExpandEltwisePattern::init() {
     // only support eltwise ops with same input and output layouts
     auto eltwiseOutputLayout = mlir::cast<vpux::NDTypeInterface>(_eltwiseOp->getResult(0).getType()).getDimsOrder();
     for (auto operand : _eltwiseOp->getOperands()) {
-        if (mlir::isa_and_nonnull<Const::DeclareOp>(operand.getDefiningOp())) {
+        if (mlir::isa_and_present<Const::DeclareOp>(operand.getDefiningOp())) {
             continue;
         }
 
@@ -401,11 +402,11 @@ bool ExpandEltwisePattern::init() {
     // A typical pattern: AlignedChannelsOp -> ViewLikeOp -> ExpandOp (channel) -> EltwiseOp
     for (auto input : _expandInputs) {
         auto producerOp = input.getInput().getDefiningOp();
-        while (mlir::isa_and_nonnull<IE::ViewLikeOpInterface>(producerOp) && producerOp->getResult(0).hasOneUse()) {
+        while (mlir::isa_and_present<IE::ViewLikeOpInterface>(producerOp) && producerOp->getResult(0).hasOneUse()) {
             producerOp = producerOp->getOperand(0).getDefiningOp();
         }
 
-        if (mlir::isa_and_nonnull<IE::AlignedChannelsOpInterface>(producerOp)) {
+        if (mlir::isa_and_present<IE::AlignedChannelsOpInterface>(producerOp)) {
             auto outType = mlir::cast<NDTypeInterface>(producerOp->getResult(0).getType());
             auto outShape = outType.getShape();
 
@@ -521,7 +522,7 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
         }
 
         rewriter.setInsertionPointAfter(nonExpand);
-        auto newLoc = takeOpLoc(_eltwiseOp, "_input");
+        auto newLoc = takeOpLoc(_eltwiseOp, "input");
         auto inputSliceOp =
                 rewriter.create<IE::SliceOp>(newLoc, nonExpand->getResult(0), getIntArrayAttr(ctx, sliceOffset),
                                              getIntArrayAttr(ctx, expandInputType.getShape().raw()));
@@ -669,7 +670,7 @@ mlir::LogicalResult ExpandEltwisePattern::rewrite(mlir::PatternRewriter& rewrite
 
     auto inputExpandOp = *_expandInputs.begin();
     auto newOutputExpandOp =
-            rewriter.create<IE::ExpandOp>(takeOpLoc(_eltwiseOp, "_out_expand"), outputShapeCastOp.getResult(),
+            rewriter.create<IE::ExpandOp>(takeOpLoc(_eltwiseOp, "out_expand"), outputShapeCastOp.getResult(),
                                           inputExpandOp.getPadsBeginAttr(), inputExpandOp.getPadsEndAttr());
     _eltwiseOp->getResult(0).replaceAllUsesExcept(newOutputExpandOp.getOutput(), outputShapeCastOp);
 
@@ -1018,7 +1019,7 @@ mlir::LogicalResult ExpandSingleChannelPoolingPattern::rewrite(mlir::PatternRewr
         auto padBegin = mlir::SmallVector<int64_t>(newInShape.size(), 0);
         auto padEnd = mlir::SmallVector<int64_t>(newInShape.size(), 0);
         padEnd[vpux::Dims4D::Act::C.ind()] = alignedInputC - newInShape[Dims4D::Act::C.ind()];
-        auto newExpand = rewriter.create<IE::ExpandOp>(takeOpLoc(op, "_in_expand"), inShapeCast,
+        auto newExpand = rewriter.create<IE::ExpandOp>(takeOpLoc(op, "in_expand"), inShapeCast,
                                                        getIntArrayAttr(ctx, ArrayRef(padBegin)),
                                                        getIntArrayAttr(ctx, ArrayRef(padEnd)));
         expand->replaceAllUsesWith(newExpand);
@@ -1046,7 +1047,7 @@ mlir::LogicalResult ExpandSingleChannelPoolingPattern::rewrite(mlir::PatternRewr
         // The original W has been expanded, need to slice for the new output
         SmallVector<int64_t> sliceOffset(outShape.size(), 0);
         newOutShape[Dims4D::Act::W.ind()] = inShape[Dims4D::Act::W];
-        newOutput = rewriter.create<IE::SliceOp>(takeOpLoc(outShapeCast, "_slice"), outShapeCast,
+        newOutput = rewriter.create<IE::SliceOp>(takeOpLoc(outShapeCast, "slice"), outShapeCast,
                                                  getIntArrayAttr(ctx, sliceOffset), getIntArrayAttr(ctx, newOutShape));
     }
 
@@ -1415,25 +1416,24 @@ PatternType getEltwiseShapePatternType(EltwiseOp layerOp, mlir::Operation*& orig
     const bool hasInputsFromSameOp = inputOp1 != nullptr && inputOp1 == inputOp2;
     // Match Eltwise(QuantizeCast) -> ShapeCast/AffineReshape -> NCE
     auto currentOp = layerOp.getOperation();
-    if (mlir::isa_and_nonnull<IE::QuantizeCastOp>(*layerOp->getUsers().begin()) && !VPU::hasMultiBranches(currentOp)) {
+    if (mlir::isa_and_present<IE::QuantizeCastOp>(*layerOp->getUsers().begin()) && !VPU::hasMultiBranches(currentOp)) {
         currentOp = *layerOp->getUsers().begin();
     }
     auto userMaybeShapeOp = *currentOp->getUsers().begin();
-    if (mlir::isa_and_nonnull<IE::ShapeCastOp, IE::AffineReshapeOp>(userMaybeShapeOp)) {
-        if (auto maybeNCEOp = *userMaybeShapeOp->getUsers().begin()) {
-            const bool hasShapeOpBefore = mlir::isa_and_nonnull<IE::ShapeCastOp, IE::AffineReshapeOp>(inputOp1);
-            if (mlir::succeeded(VPU::NCEInvariant::isSupported(maybeNCEOp, log)) &&
-                (!hasInputsFromSameOp || hasShapeOpBefore) && !VPU::hasMultiBranches(userMaybeShapeOp) &&
-                !VPU::hasMultiBranches(currentOp) &&
-                isOutputShapeAligned(currentOp, getShape(userMaybeShapeOp->getResult(0)))) {
-                origShapeOp = userMaybeShapeOp;
-                return PatternType::SHAPE_OP_BEFORE_NCE;
-            }
+    if (mlir::isa_and_present<IE::ShapeCastOp, IE::AffineReshapeOp>(userMaybeShapeOp)) {
+        const bool hasShapeOpBefore = mlir::isa_and_present<IE::ShapeCastOp, IE::AffineReshapeOp>(inputOp1);
+        if (llvm::all_of(userMaybeShapeOp->getUsers(), [&](auto user) {
+                return mlir::succeeded(VPU::NCEInvariant::isSupported(user, log)) &&
+                       (!hasInputsFromSameOp || hasShapeOpBefore) && !VPU::hasMultiBranches(currentOp) &&
+                       isOutputShapeAligned(currentOp, getShape(userMaybeShapeOp->getResult(0)));
+            })) {
+            origShapeOp = userMaybeShapeOp;
+            return PatternType::SHAPE_OP_BEFORE_NCE;
         }
     }
     // Match NCE -> (Activation) -> ShapeCast/AffineReshape => Eltwise(QuantizeCast)
     auto producerMaybeShapeOp = layerOp->getOperand(0).getDefiningOp();
-    if (mlir::isa_and_nonnull<IE::ShapeCastOp, AffineReshapeOp>(producerMaybeShapeOp)) {
+    if (mlir::isa_and_present<IE::ShapeCastOp, AffineReshapeOp>(producerMaybeShapeOp)) {
         if (mlir::Operation* maybeNCEOp = producerMaybeShapeOp->getOperand(0).getDefiningOp()) {
             if (maybeNCEOp->hasTrait<IE::EltwiseOp>() && maybeNCEOp->getNumOperands() == 1 &&
                 !VPU::hasMultiBranches(maybeNCEOp)) {
@@ -1554,13 +1554,14 @@ void AdjustInputShapePass::safeRunOnFunc() {
     patterns.add<ExpandPoolingRewriter<IE::MaxPoolOp>>(&ctx, benefitLevels[0], _log);
     patterns.add<ExpandSingleChannelPoolingRewriter<IE::AvgPoolOp>>(&ctx, benefitLevels[1], _log);
     patterns.add<ExpandSingleChannelPoolingRewriter<IE::MaxPoolOp>>(&ctx, benefitLevels[1], _log);
-    patterns.add<EltwiseShapeRewriter<IE::AddOp>>(&ctx, _log);
-
+    collectOpsAndApplyPatterns(func, std::move(patterns));
     // There is case for `EltwiseShapeRewriter` that the iteration time larger than default value
     // TODO: E#126695 Refactor to avoid specific maxIterations
+    mlir::RewritePatternSet pattern(&ctx);
+    pattern.add<EltwiseShapeRewriter<IE::AddOp>>(&ctx, _log);
     auto greedyRewriteConfig = getDefaultGreedyRewriteConfig();
-    greedyRewriteConfig.maxIterations *= 20;
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), greedyRewriteConfig))) {
+    greedyRewriteConfig.setMaxIterations(greedyRewriteConfig.getMaxIterations() * 20);
+    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(pattern), greedyRewriteConfig))) {
         signalPassFailure();
         return;
     }

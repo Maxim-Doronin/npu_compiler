@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -90,7 +90,6 @@ void BoundedTensorsToDynamicDimsMask::safeRunOnModule() {
 
     typeConverter.addSourceMaterialization(convert);
     typeConverter.addTargetMaterialization(convert);
-    typeConverter.addArgumentMaterialization(convert);
 
     const auto isLegalOp = [&](mlir::Operation* op) {
         return typeConverter.isLegal(op);

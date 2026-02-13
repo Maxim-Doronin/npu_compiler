@@ -160,7 +160,7 @@ SmallVector<std::pair<Strategy, StrategyCost>> StrategyManagerImplPass::getOpera
             // with prefetching and without
             hasPrefetch ^= _enablePrefetchTiling;
             bool tilingNeeded = false;
-            auto tilingModeOpt = getTilingMode(operation, prefetchTiling, _log);
+            auto tilingModeOpt = getTilingMode(operation, prefetchTiling, nullptr, _log);
             if (tilingModeOpt.has_value()) {
                 auto [tilingMode, prefetchingCandidate] = tilingModeOpt.value();
                 if (tilingMode != TilingMode::PREFETCHING ||

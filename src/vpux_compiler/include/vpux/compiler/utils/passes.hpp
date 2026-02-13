@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,7 +22,8 @@ namespace vpux {
 #define CONTROL_GRAPH_SPLIT_BLOCK_SIZE 5000
 
 //
-// Default threshold for number of virtual barriers for workload management optimization
+// Default threshold for number of virtual barriers for workload management in case
+// of PWLM_V0_LCA mode
 //
 #define VIRTUAL_BARRIER_THRESHOLD_WLM 10000
 

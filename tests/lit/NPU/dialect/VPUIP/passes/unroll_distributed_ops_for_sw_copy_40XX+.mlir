@@ -48,7 +48,7 @@ func.func @DuplicatedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4, %orig_o
     %barrier_3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%barrier_0 : !VPURT.Barrier) {
-        %nndma_0 = VPUIP.NNDMA {port = 0 : i64} inputs(%orig_input : !DDR_ui4) outputs(%input_ddr_ui4 : !DDR_ui4) -> !DDR_ui4
+        %nndma_0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%orig_input : !DDR_ui4) outputs(%input_ddr_ui4 : !DDR_ui4) -> !DDR_ui4
     }
     VPURT.Task waits(%barrier_1 : !VPURT.Barrier) updates(%barrier_2 : !VPURT.Barrier) {
       %sw_copy = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Copy inputs(%input_ddr_ui4 as %input_kernel_run: !DDR_ui4) outputs(%input_cmx_ui4 as %output_kernel_run: !CMX_ui4) on tile 0 -> !type_Distributed_ui4{
@@ -56,7 +56,7 @@ func.func @DuplicatedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4, %orig_o
       }
     }
     VPURT.Task waits(%barrier_3 : !VPURT.Barrier) {
-      %nndma_1 = VPUIP.NNDMA {port = 0 : i64} inputs(%output_cmx_f16 : !type_Distributed_f16) outputs(%orig_output : !DDR_f16) -> !DDR_f16
+      %nndma_1 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%output_cmx_f16 : !type_Distributed_f16) outputs(%orig_output : !DDR_f16) -> !DDR_f16
     }
     return %orig_output : !DDR_f16
 }
@@ -74,7 +74,7 @@ func.func @DuplicatedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4, %orig_o
 // CHECK:      [[BARRIER_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
 // CHECK:      VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier) {
-// CHECK:        [[NNDMA_0:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ORIG_INPUT]] : memref<1x1x1x111xui4, @DDR>) outputs([[INPUT_DDR_0]] : memref<1x1x1x111xui4, @DDR>) -> memref<1x1x1x111xui4, @DDR>
+// CHECK:        [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ORIG_INPUT]] : memref<1x1x1x111xui4, @DDR>) outputs([[INPUT_DDR_0]] : memref<1x1x1x111xui4, @DDR>) -> memref<1x1x1x111xui4, @DDR>
 // CHECK:      }
 
 // CHECK:      VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier) updates([[BARRIER_2]] : !VPURT.Barrier) {
@@ -89,7 +89,7 @@ func.func @DuplicatedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4, %orig_o
 // CHECK:      }
 
 // CHECK:      VPURT.Task waits([[BARRIER_3]] : !VPURT.Barrier) {
-// CHECK:        [[NNDMA_1:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[IN_CMX]] : memref<1x1x1x111xf16, [@CMX_NN, 0]>) outputs([[ORIG_OUTPUT]] : memref<1x1x1x111xf16, @DDR>) -> memref<1x1x1x111xf16, @DDR>
+// CHECK:        [[NNDMA_1:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN_CMX]] : memref<1x1x1x111xf16, [@CMX_NN, 0]>) outputs([[ORIG_OUTPUT]] : memref<1x1x1x111xf16, @DDR>) -> memref<1x1x1x111xf16, @DDR>
 // CHECK:      }
 // CHECK:    }
 
@@ -137,7 +137,7 @@ func.func @DuplicatedClusteringSWCopyCaseCMXtoDDR(%orig_input: !DDR_i8, %orig_ou
     %barrier_3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%barrier_0 : !VPURT.Barrier) {
-        %nndma_0 = VPUIP.NNDMA {port = 0 : i64} inputs(%orig_input : !DDR_i8) outputs(%output_cmx_i8 : !type_Distributed_i8) -> !type_Distributed_i8
+        %nndma_0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%orig_input : !DDR_i8) outputs(%output_cmx_i8 : !type_Distributed_i8) -> !type_Distributed_i8
     }
     VPURT.Task waits(%barrier_1 : !VPURT.Barrier) updates(%barrier_2 : !VPURT.Barrier) {
         %sw_copy = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Copy inputs(%input_cmx_i4 as %kernel_run_input: !CMX_i4) outputs(%output_ddr_i4 as %kernel_run_output: !DDR_i4) on tile 0 -> !DDR_i4{
@@ -145,7 +145,7 @@ func.func @DuplicatedClusteringSWCopyCaseCMXtoDDR(%orig_input: !DDR_i8, %orig_ou
         }
     }
     VPURT.Task waits(%barrier_3 : !VPURT.Barrier) {
-        %nndma_1 = VPUIP.NNDMA {port = 0 : i64} inputs(%output_ddr_i4 : !DDR_i4) outputs(%orig_output: !DDR_i4) -> !DDR_i4
+        %nndma_1 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%output_ddr_i4 : !DDR_i4) outputs(%orig_output: !DDR_i4) -> !DDR_i4
     }
     return %orig_output : !DDR_i4
 }
@@ -165,7 +165,7 @@ func.func @DuplicatedClusteringSWCopyCaseCMXtoDDR(%orig_input: !DDR_i8, %orig_ou
 // CHECK:      [[BARRIER_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
 // CHECK:      VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier) {
-// CHECK:        [[NNDMA_0:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ORIG_INPUT]] : memref<1x2x3x4xsi8, @DDR>) outputs([[OUTPUT_CMX_0]] : !VPUIP.DistributedBuffer<1x2x3x4xsi8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x2x3x4xsi8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+// CHECK:        [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ORIG_INPUT]] : memref<1x2x3x4xsi8, @DDR>) outputs([[OUTPUT_CMX_0]] : !VPUIP.DistributedBuffer<1x2x3x4xsi8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x2x3x4xsi8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 // CHECK:      }
 
 // CHECK:      VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier) updates([[BARRIER_2]] : !VPURT.Barrier) {
@@ -180,7 +180,7 @@ func.func @DuplicatedClusteringSWCopyCaseCMXtoDDR(%orig_input: !DDR_i8, %orig_ou
 // CHECK:      }
 
 // CHECK:      VPURT.Task waits([[BARRIER_3]] : !VPURT.Barrier) {
-// CHECK:        [[NNDMA_1:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_DDR]] : memref<1x2x3x4xsi4, @DDR>) outputs([[ORIG_OUTPUT]] : memref<1x2x3x4xsi4, @DDR>) -> memref<1x2x3x4xsi4, @DDR>
+// CHECK:        [[NNDMA_1:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_DDR]] : memref<1x2x3x4xsi4, @DDR>) outputs([[ORIG_OUTPUT]] : memref<1x2x3x4xsi4, @DDR>) -> memref<1x2x3x4xsi4, @DDR>
 // CHECK:      }
 
 
@@ -230,7 +230,7 @@ func.func @SegmentedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4) -> !DDR_
     %barrier_3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%barrier_0 : !VPURT.Barrier) {
-        %nndma_0 = VPUIP.NNDMA {port = 0 : i64} inputs(%orig_input : !DDR_ui4) outputs(%output_ddr_u4 : !DDR_ui4) -> !DDR_ui4
+        %nndma_0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%orig_input : !DDR_ui4) outputs(%output_ddr_u4 : !DDR_ui4) -> !DDR_ui4
     }
     VPURT.Task waits(%barrier_1 : !VPURT.Barrier) updates(%barrier_2 : !VPURT.Barrier) {
         %sw_copy = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Copy inputs(%output_ddr_u4 as %kernel_run_input: !DDR_ui4) outputs(%output_cmx_ui4 as %kernel_run_output: !CMX_ui4) on tile 0 -> !type_Distributed_ui4{
@@ -238,7 +238,7 @@ func.func @SegmentedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4) -> !DDR_
         }
     }
     VPURT.Task waits(%barrier_3 : !VPURT.Barrier) {
-        %nndma_1 = VPUIP.NNDMA {port = 0 : i64} inputs(%input_cmx_i8 : !type_Distributed_i8) outputs(%orig_output : !DDR_i8) -> !DDR_i8
+        %nndma_1 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%input_cmx_i8 : !type_Distributed_i8) outputs(%orig_output : !DDR_i8) -> !DDR_i8
     }
     return %orig_output : !DDR_i8
 }
@@ -262,7 +262,7 @@ func.func @SegmentedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4) -> !DDR_
 // CHECK:        [[BARRIER_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
 // CHECK:        VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier) {
-// CHECK:          [[NNDMA:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[ORIG_INPUT]] : memref<1x1x20x20xui4, @DDR>) outputs([[OUTPUT_DDR]] : memref<1x1x20x20xui4, @DDR>) -> memref<1x1x20x20xui4, @DDR>
+// CHECK:          [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[ORIG_INPUT]] : memref<1x1x20x20xui4, @DDR>) outputs([[OUTPUT_DDR]] : memref<1x1x20x20xui4, @DDR>) -> memref<1x1x20x20xui4, @DDR>
 // CHECK:        }
 
 // CHECK:        VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier) updates([[BARRIER_2]] : !VPURT.Barrier) {
@@ -277,10 +277,10 @@ func.func @SegmentedClusteringSWCopyCaseDDRtoCMX(%orig_input: !DDR_ui4) -> !DDR_
 // CHECK:        }
 
 // CHECK:        VPURT.Task waits([[BARRIER_3]] : !VPURT.Barrier) {
-// CHECK:          [[NNDMA_0:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_CMX_0]] : memref<1x1x10x20xsi8, [@CMX_NN, 0]>) outputs([[OUTPUT_TILE_0]] : memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) -> memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>
+// CHECK:          [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_CMX_0]] : memref<1x1x10x20xsi8, [@CMX_NN, 0]>) outputs([[OUTPUT_TILE_0]] : memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) -> memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>
 // CHECK:        }
 // CHECK:        VPURT.Task waits([[BARRIER_3]] : !VPURT.Barrier) {
-// CHECK:          [[NNDMA_1:%.+]] = VPUIP.NNDMA {port = 1 : i64} inputs([[INPUT_CMX_1]] : memref<1x1x10x20xsi8, [@CMX_NN, 1]>) outputs([[OUTPUT_TILE_1]] : memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) -> memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>
+// CHECK:          [[NNDMA_1:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[INPUT_CMX_1]] : memref<1x1x10x20xsi8, [@CMX_NN, 1]>) outputs([[OUTPUT_TILE_1]] : memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) -> memref<1x1x10x20xsi8, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>
 // CHECK:        }
 
 
@@ -330,7 +330,7 @@ func.func @SegmentedClusteringSWCopyCaseCMXtoDDR(%orig_output: !DDR_i4) -> !DDR_
     %barrier_3 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
     VPURT.Task updates(%barrier_0 : !VPURT.Barrier) {
-        %nndma_0 = VPUIP.NNDMA {port = 0 : i64} inputs(%orig_input : !DDR_f16) outputs(%output_cmx_f16 : !type_Distributed_f16 ) -> !type_Distributed_f16
+        %nndma_0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%orig_input : !DDR_f16) outputs(%output_cmx_f16 : !type_Distributed_f16 ) -> !type_Distributed_f16
     }
     VPURT.Task waits(%barrier_1 : !VPURT.Barrier) updates(%barrier_2 : !VPURT.Barrier) {
         %sw_copy = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Copy inputs(%input_cmx_i4 as %kernel_run_input: !CMX_i4) outputs(%output_ddr_i4 as %kernel_run_output: !DDR_i4) on tile 0 -> !DDR_i4{
@@ -338,7 +338,7 @@ func.func @SegmentedClusteringSWCopyCaseCMXtoDDR(%orig_output: !DDR_i4) -> !DDR_
         }
     }
     VPURT.Task waits(%barrier_3 : !VPURT.Barrier) {
-        %nndma_1 = VPUIP.NNDMA {port = 0 : i64} inputs(%output_ddr_i4 : !DDR_i4) outputs(%orig_output : !DDR_i4) -> !DDR_i4
+        %nndma_1 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%output_ddr_i4 : !DDR_i4) outputs(%orig_output : !DDR_i4) -> !DDR_i4
     }
     return %orig_output : !DDR_i4
 }
@@ -362,10 +362,10 @@ func.func @SegmentedClusteringSWCopyCaseCMXtoDDR(%orig_output: !DDR_i4) -> !DDR_
 // CHECK:          [[BARRIER_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
 // CHECK:          VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier) {
-// CHECK:            [[NNDMA_0:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_TILE_0]] : memref<1x1x10x20xf16, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) outputs([[OUTPUT_CMX_0]] : memref<1x1x10x20xf16, [@CMX_NN, 0]>) -> memref<1x1x10x20xf16, [@CMX_NN, 0]>
+// CHECK:            [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_TILE_0]] : memref<1x1x10x20xf16, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) outputs([[OUTPUT_CMX_0]] : memref<1x1x10x20xf16, [@CMX_NN, 0]>) -> memref<1x1x10x20xf16, [@CMX_NN, 0]>
 // CHECK:          }
 // CHECK:          VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier) {
-// CHECK:            [[NNDMA_1:%.+]] = VPUIP.NNDMA {port = 1 : i64} inputs([[INPUT_TILE_1]] : memref<1x1x10x20xf16, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) outputs([[OUTPUT_CMX_1]] : memref<1x1x10x20xf16, [@CMX_NN, 1]>) -> memref<1x1x10x20xf16, [@CMX_NN, 1]>
+// CHECK:            [[NNDMA_1:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[INPUT_TILE_1]] : memref<1x1x10x20xf16, {order = #NCHW, strides = [400, 400, 20, 1]}, @DDR>) outputs([[OUTPUT_CMX_1]] : memref<1x1x10x20xf16, [@CMX_NN, 1]>) -> memref<1x1x10x20xf16, [@CMX_NN, 1]>
 // CHECK:          }
 
 // CHECK:          VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier) updates([[BARRIER_2]] : !VPURT.Barrier) {
@@ -380,5 +380,5 @@ func.func @SegmentedClusteringSWCopyCaseCMXtoDDR(%orig_output: !DDR_i4) -> !DDR_
 // CHECK:          }
 
 // CHECK:          VPURT.Task waits([[BARRIER_3]] : !VPURT.Barrier) {
-// CHECK:            [[NNDMA:%.+]] = VPUIP.NNDMA {port = 0 : i64} inputs([[INPUT_DDR]] : memref<1x1x20x20xsi4, @DDR>) outputs([[ORIG_OUTPUT]] : memref<1x1x20x20xsi4, @DDR>) -> memref<1x1x20x20xsi4, @DDR>
+// CHECK:            [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[INPUT_DDR]] : memref<1x1x20x20xsi4, @DDR>) outputs([[ORIG_OUTPUT]] : memref<1x1x20x20xsi4, @DDR>) -> memref<1x1x20x20xsi4, @DDR>
 // CHECK:          }

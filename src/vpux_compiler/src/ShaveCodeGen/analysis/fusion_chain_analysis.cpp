@@ -112,15 +112,24 @@ e.g.: (for forking chain) OP1 -> OP2 -> OP5 -> OP6 -> OP7 with additional result
 namespace {
 
 // Out of line to provide ease of access for potential validity requirement updates
-bool isValidChainNode(mlir::Operation* op) {
+// True if the node can start or end a chain.
+bool isValidChainHeadNode(mlir::Operation* op) {
     if (auto scgOp = mlir::dyn_cast<IE::ShaveCodeGenSupportedOpInterface>(op)) {
         return scgOp.shouldJITCompile();
     }
     return false;
 }
 
+// Determines if the node can be included in a chain.
+bool isValidChainNode(mlir::Operation* op) {
+    if (auto scgOp = mlir::dyn_cast<IE::ShaveCodeGenSupportedOpInterface>(op)) {
+        return isValidChainHeadNode(op) || scgOp.shouldJITCompileToEnableFusion();
+    }
+    return false;
+}
+
 void extendChain(mlir::Operation* head, std::vector<mlir::Operation*>& currChain,
-                 std::deque<mlir::Operation*>& forkHeads) {
+                 std::deque<mlir::Operation*>& forkHeads, std::unordered_set<mlir::Operation*>& inChainOps) {
     // Only valid chain heads are expected
     // So we can safely push it to the chain
     currChain.push_back(head);
@@ -161,7 +170,9 @@ void extendChain(mlir::Operation* head, std::vector<mlir::Operation*>& currChain
             // If op has any external dependencies, break the chain at this point
             // and further flag node as a possible chain head
             if (hasExternalDeps) {
-                forkHeads.push_back(currOp);
+                if (isValidChainHeadNode(currOp)) {
+                    forkHeads.push_back(currOp);
+                }
                 break;
             } else {
                 currChain.push_back(currOp);
@@ -169,12 +180,24 @@ void extendChain(mlir::Operation* head, std::vector<mlir::Operation*>& currChain
             }
         } else {
             for (auto user : currOp->getUsers()) {
-                if (isValidChainNode(user)) {
+                if (isValidChainHeadNode(user)) {
                     forkHeads.push_back(user);
                 }
             }
             break;
         }
+    }
+
+    // Pop chain nodes until we find one which should unconditionally compile.
+    // We are guaranteed to have at least one valid chain node (the chain head).
+    while (!isValidChainHeadNode(currChain.back())) {
+        currChain.pop_back();
+    }
+
+    // Add all chain ops to inChainOps so that we don't make them part of
+    // other chains.
+    for (auto op : currChain) {
+        inChainOps.insert(op);
     }
 }
 }  // namespace
@@ -185,36 +208,35 @@ ShaveCodeGen::FusionChainAnalysis::FusionChainAnalysis(mlir::Operation* op) {
     auto codeGenOps = funcOp.getOps<IE::ShaveCodeGenSupportedOpInterface>();
 
     std::deque<mlir::Operation*> forkHeads;
-    std::unordered_set<mlir::Operation*> processedHeads;
+    // Tracks ops which have been added to a chain.
+    std::unordered_set<mlir::Operation*> inChainOps;
 
     // Attempt to find chain heads and start extending the chains starting with them
     for (auto codeGenOp : codeGenOps) {
-        // For a node to be considered a chain head, it needs to not have any SCG produced operands
-        auto isProducedByCodeGenOp = [](mlir::Value val) {
-            auto definingOp = val.getDefiningOp();
-            return definingOp && isValidChainNode(definingOp);
-        };
-        auto isNotChainHead = llvm::any_of(codeGenOp->getOperands(), isProducedByCodeGenOp);
+        // For a node to be considered a chain head, it needs to
+        // non-conditionally be selected for JIT compile and should
+        // not be part of an already existing chain.
+        if (inChainOps.find(codeGenOp) != inChainOps.end()) {
+            continue;
+        }
 
-        if (!isValidChainNode(codeGenOp) || isNotChainHead) {
+        if (!isValidChainHeadNode(codeGenOp)) {
             continue;
         }
 
         std::vector<mlir::Operation*> newChain;
-        extendChain(codeGenOp, newChain, forkHeads);
-        processedHeads.insert(newChain[0]);
+        extendChain(codeGenOp, newChain, forkHeads, inChainOps);
         _computeOpChains.push_back(std::move(newChain));
     }
 
     while (!forkHeads.empty()) {
         auto forkHead = forkHeads[0];
         forkHeads.pop_front();
-        if (processedHeads.find(forkHead) != processedHeads.end()) {
+        if (inChainOps.find(forkHead) != inChainOps.end()) {
             continue;
         }
         std::vector<mlir::Operation*> newChain;
-        extendChain(forkHead, newChain, forkHeads);
-        processedHeads.insert(newChain[0]);
+        extendChain(forkHead, newChain, forkHeads, inChainOps);
         _computeOpChains.push_back(std::move(newChain));
     }
 

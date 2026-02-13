@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025 Intel Corporation
+// Copyright (C) 2021-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -73,6 +73,7 @@ TEST_P(MatMulLayerTestCommon_HW, NPU4000) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MatMulLayerTestCommon_SW, NPU5010) {
     rel_threshold = 0.001;
     setReferenceSoftwareMode();
@@ -84,6 +85,7 @@ TEST_P(MatMulLayerTestCommon_HW, NPU5010) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 TEST_P(MatMulLayerTest_HW_NPU3720_ppe_fp16_clamp, HW) {
     rel_threshold = 1;
     setDefaultHardwareMode();

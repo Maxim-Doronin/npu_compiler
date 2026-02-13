@@ -22,8 +22,7 @@ TIP: You can also combine these options
 cd to validation/build/
 - ```./bitc [config_file_path]```
 - **[config_file_path]** - a file with the configuration for the test. Contains the following
-    - **arch_type** - architecture type - can be NPU27, NPU4
-      - or NPU5
+    - **arch_type** - architecture type - can be NPU27, NPU4 or NPU5
     - **data_type** - data type of data (either u8 or fp16)
     - **sparse_mode_enable** - can be true or false (supported from NPU5)
     - **weight_compress_enable** - can be true or false, false for activation compression (supported from NPU4)

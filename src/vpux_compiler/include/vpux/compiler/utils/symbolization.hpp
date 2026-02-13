@@ -5,9 +5,8 @@
 
 #pragma once
 
-#include "vpux/compiler/NPU40XX/dialect/ELF/ops.hpp"
+#include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
-#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -257,12 +256,7 @@ public:
     template <typename... Ts, typename ConstructorArg, typename... ConstructorArgs,
               typename = std::enable_if_t<sizeof...(Ts) != 0>>
     SymbolizationPatternSet& add(ConstructorArg&& arg, ConstructorArgs&&... args) {
-        // The following expands a call to emplace_back for each of the pattern
-        // types 'Ts'. This magic is necessary due to a limitation in the places
-        // that a parameter pack can be expanded in c++11.
-        // FIXME: In c++17 this can be simplified by using 'fold expressions'.
-        (void)std::initializer_list<int>{
-                0, (addImpl<Ts, typename Ts::BaseOpT>(/*debugLabels=*/std::nullopt, arg, args...), 0)...};
+        (addImpl<Ts, typename Ts::BaseOpT>(/*debugLabels=*/{}, arg, args...), ...);
         return *this;
     }
     /// An overload of the above `add` method that allows for attaching a set
@@ -273,11 +267,7 @@ public:
               typename = std::enable_if_t<sizeof...(Ts) != 0>>
     SymbolizationPatternSet& addWithLabel(ArrayRef<StringRef> debugLabels, ConstructorArg&& arg,
                                           ConstructorArgs&&... args) {
-        // The following expands a call to emplace_back for each of the pattern
-        // types 'Ts'. This magic is necessary due to a limitation in the places
-        // that a parameter pack can be expanded in c++11.
-        // FIXME: In c++17 this can be simplified by using 'fold expressions'.
-        (void)std::initializer_list<int>{0, (addImpl<Ts, typename Ts::BaseOpT>(debugLabels, arg, args...), 0)...};
+        (addImpl<Ts, typename Ts::BaseOpT>(debugLabels, arg, args...), ...);
         return *this;
     }
 
@@ -285,7 +275,7 @@ public:
     /// `this` for chaining insertions.
     template <typename... Ts>
     SymbolizationPatternSet& add() {
-        (void)std::initializer_list<int>{0, (addImpl<Ts, Ts::BaseOpT>(), 0)...};
+        (addImpl<Ts, Ts::BaseOpT>({}), ...);
         return *this;
     }
 

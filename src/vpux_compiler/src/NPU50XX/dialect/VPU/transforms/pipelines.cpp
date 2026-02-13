@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,9 @@ using namespace vpux;
 void vpux::VPU::arch50xx::buildIncrementalPipeline(mlir::OpPassManager& pm, const vpux::MCAndTilingOptionsBase& options,
                                                    Logger log) {
     pm.addPass(VPU::createDecomposeMVNPass(log));
-
+    if (options.enableRunMVNNormalizeOnDPU) {
+        pm.addPass(VPU::createRunMVNNormalizeOnDPUPass(log));
+    }
     pm.addPass(VPU::createMultiClusterStrategyAssignmentPass(options.enablePrefetching, options.opTilingCacheThreshold,
                                                              options.mcOptimizationScope, log));
     if (options.enablePrintStatistics) {
@@ -44,12 +46,15 @@ void vpux::VPU::arch50xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
     VPU::buildTilingPipeline(pm, VPU::TilingOptions(options), log);
 
     if (options.enableScfComputeOpsOutlining) {
-        VPU::buildScfComputeOpsOutliningPipeline(pm, options.loopUnrollFactor, log);
+        VPU::buildScfComputeOpsOutliningPipeline(pm, options.loopUnrollFactor, options.enableProfiling,
+                                                 options.enableCascadedUnrolling, log);
     }
 
     auto& nestedPm = options.enableScfComputeOpsOutlining ? pm.nest<mlir::ModuleOp>() : pm;
 
-    nestedPm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
+    if (options.enableBoundedTensorsToDynamicDimsMask) {
+        nestedPm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
+    }
 
     nestedPm.addPass(VPU::createMakeOpsWithDistributedTensorPass(options.enableExplicitDistributionInfoAttr, log));
 
@@ -111,6 +116,7 @@ void vpux::VPU::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     pm.addPass(VPU::createFuseClampPass(log));
+    pm.addPass(VPU::createFuseConvertPass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(options.enableOutputEnsurance,
                                                            options.enableDequantWeightEnsuranceBeforeStrategy,
@@ -151,6 +157,11 @@ void vpux::VPU::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     nestedPm.addPass(VPU::createCMXConcatPass(log));
     nestedPm.addPass(mlir::createCanonicalizerPass(grc));
     nestedPm.addPass(VPU::createMoveReflectPadToCMXPass(log));
+    nestedPm.addPass(VPU::createMoveTensorOpsToCMXPass(log));
+
+    if (options.enableSCFTiling) {
+        pm.addPass(VPU::createFullUnrollSCFLoopPass(log));
+    }
 
     nestedPm.addPass(vpux::VPU::createSplitNCEOpsOntoWorkloadsPass(log));
     if (options.enablePrintStatistics) {

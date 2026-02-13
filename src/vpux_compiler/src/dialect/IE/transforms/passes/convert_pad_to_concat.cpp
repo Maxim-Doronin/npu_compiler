@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pad_extract.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -72,6 +73,10 @@ mlir::LogicalResult ReplacePadWithConstAndConcat::matchAndRewrite(IE::PadOp orig
     if (origPadOp.getMode() != IE::PadMode::CONSTANT) {
         return mlir::failure();
     }
+    // Skip this replacement if Pad is dynamic
+    if (IE::hasDynamicTensors(origPadOp)) {
+        return mlir::failure();
+    }
 
     auto padsBegin = vpux::IE::extractPads(origPadOp.getPadsBeginAttrAttr(), _log);
     if (mlir::failed(padsBegin)) {
@@ -136,8 +141,8 @@ mlir::LogicalResult ReplacePadWithConstAndConcat::matchAndRewrite(IE::PadOp orig
         addPaddingConstForConcat(appendLoc(origPadOp->getLoc(), "pad_end_{0}", reversedAxis), constShape, padsEndValue,
                                  valueRange, padsBeginValue[reversedAxis] + inputShape[reversedAxis], reversedAxis);
 
-        auto concat = rewriter.create<IE::ConcatOp>(takeOpLoc(origPadOp, StringLiteral("concat_{0}"), reversedAxis),
-                                                    valueRange, reversedAxis);
+        auto concat = rewriter.create<IE::ConcatOp>(takeOpLoc(origPadOp, "concat_{0}", reversedAxis), valueRange,
+                                                    reversedAxis);
         _log.nest().trace("Insert ConcatOp {0}", concat.getLoc());
         midInput = concat.getOutput();
     }

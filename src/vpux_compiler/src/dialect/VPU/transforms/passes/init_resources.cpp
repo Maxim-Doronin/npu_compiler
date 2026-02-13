@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/constraints.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
 namespace vpux::VPU {
@@ -139,6 +140,12 @@ void InitResourcesPass::safeRunOnModule() {
         } else {
             _log.trace("Set RevisionID to REVISION_NONE");
             config::setRevisionID(module, config::RevisionID::REVISION_NONE);
+        }
+    }
+
+    if (config::getElfAbiVersion(module) == std::nullopt) {
+        if (const auto& baseElfAbiVersion = config::getNPUConstraints(module.getContext()).baseElfAbiVersion) {
+            config::setElfAbiVersion(module, baseElfAbiVersion.value());
         }
     }
 

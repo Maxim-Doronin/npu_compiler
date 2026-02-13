@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_to_pool_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -59,7 +60,7 @@ SmallVector<mlir::Value> sliceInputs(mlir::PatternRewriter& rewriter, mlir::Oper
             Shape sizes = shape.raw();
             sizes[Dim(0)] = 1;
             const auto sizesAttr = getIntArrayAttr(rewriter.getContext(), sizes);
-            auto newLoc = appendLoc(input.getLoc(), llvm::formatv("_slice_{0}_{1}", offsets, sizes));
+            auto newLoc = appendLoc(input.getLoc(), "slice_{0}_{1}", offsets, sizes);
             const auto subViewOp = rewriter.createOrFold<IE::SliceOp>(newLoc, input, offsetsAttr, sizesAttr);
             slices.push_back(subViewOp);
         } else {
@@ -79,7 +80,7 @@ mlir::Value appendOperationsToSlices(mlir::PatternRewriter& rewriter, mlir::Oper
 
     auto* newOp = rewriter.clone(*origOp, mapper);
     inferReturnTypes(newOp, InferShapedTypeMode::SHAPE);
-    extendOpLoc(newOp, llvm::formatv("_slice_{0}", sliceIdx));
+    extendOpLoc(newOp, "slice_{0}", sliceIdx);
 
     return newOp->getResult(0);
 }
@@ -114,7 +115,7 @@ mlir::LogicalResult genericBatchUnroll(mlir::Operation* origOp, size_t numInputs
     }
 
     auto concatOp = rewriter.replaceOpWithNewOp<IE::ConcatOp>(origOp, slicesToConcat, Dim(0).ind());
-    extendOpLoc(concatOp, "_output_concat");
+    extendOpLoc(concatOp, "output_concat");
     return mlir::success();
 }
 

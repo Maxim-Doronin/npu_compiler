@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,11 +33,11 @@ std::unique_ptr<mlir::Pass> createConvertFetchDmasToFetchTaskOpsPass(Logger log 
 std::unique_ptr<mlir::Pass> createResolveWLMTaskLocationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createPropagateFinalBarrierPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddEnqueueOpsPass(
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollFetchTaskOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLinkEnqueueTargetsPass(
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLinkAllOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollEnqueueOpsPass(Logger log = Logger::global());
@@ -45,7 +45,7 @@ std::unique_ptr<mlir::Pass> createLinkEnqueueOpsForSameBarrierPass(Logger log = 
 std::unique_ptr<mlir::Pass> createSplitEnqueueOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddBootstrapBarriersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddBootstrapWorkItemsPass(
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createNextSameIdAssignmentPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddPlatformInfoPass(Logger log = Logger::global());
@@ -54,7 +54,7 @@ std::unique_ptr<mlir::Pass> createAddMappedInferenceVersionOpPass(Logger log = L
                                                                   uint32_t versionMajor = 0, uint32_t versionMinor = 0,
                                                                   uint32_t versionPatch = 0);
 std::unique_ptr<mlir::Pass> createAddBarrierConfigurationOps(
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         WorkloadManagementBarrierProgrammingMode WorkloadManagementBarrierProgrammingMode =
                 WorkloadManagementBarrierProgrammingMode::LEGACY,
         Logger log = Logger::global());

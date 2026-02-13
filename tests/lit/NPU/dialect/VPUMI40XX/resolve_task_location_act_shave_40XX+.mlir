@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,7 +18,7 @@ func.func @manyActShaveTasks() {
   %4 = VPUMI40XX.DeclareKernelText kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %5 = VPUMI40XX.DeclareKernelEntry kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
   %6 = VPUMI40XX.DeclareKernelArgs kernel_path("activation_hswish") -> !VPURegMapped.Index<0:0:0>
-  %7 = VPUMI40XX.KernelParams inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
+  %7 = VPUMI40XX.KernelParams <{dynamicInputShapesSize = array<i32>, dynamicOutputShapesSize = array<i32>}> inputs(%2 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) kernel_type("activation_hswish") kernel_params([0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]) -> !VPURegMapped.Index<0:0:0>
 
   %r0 = VPUMI40XX.ActKernelRange kernel_text_index(%4 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%6 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%5 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
   %r1 = VPUMI40XX.ActKernelRange kernel_text_index(%4 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%6 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%5 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:1>
@@ -161,269 +161,269 @@ func.func @manyActShaveTasks() {
 
 //CHECK: func.func @manyActShaveTasks
 
-//CHECK-DAG: [[TBR0:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
-//CHECK-DAG: [[TBR1:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:1>
-//CHECK-DAG: [[TBR2:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:2>
-//CHECK-DAG: [[TBR3:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:3>
-//CHECK-DAG: [[TBR4:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:4>
-//CHECK-DAG: [[TBR5:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:5>
-//CHECK-DAG: [[TBR6:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:6>
-//CHECK-DAG: [[TBR7:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:7>
-//CHECK-DAG: [[TBR8:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:8>
-//CHECK-DAG: [[TBR9:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:9>
-//CHECK-DAG: [[TBR10:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:10>
-//CHECK-DAG: [[TBR11:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:11>
-//CHECK-DAG: [[TBR12:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:12>
-//CHECK-DAG: [[TBR13:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:13>
-//CHECK-DAG: [[TBR14:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:14>
-//CHECK-DAG: [[TBR15:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:15>
-//CHECK-DAG: [[TBR16:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:16>
-//CHECK-DAG: [[TBR17:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:17>
-//CHECK-DAG: [[TBR18:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:18>
-//CHECK-DAG: [[TBR19:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:19>
-//CHECK-DAG: [[TBR20:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:20>
-//CHECK-DAG: [[TBR21:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:21>
-//CHECK-DAG: [[TBR22:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:22>
-//CHECK-DAG: [[TBR23:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:23>
-//CHECK-DAG: [[TBR24:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:24>
-//CHECK-DAG: [[TBR25:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:25>
-//CHECK-DAG: [[TBR26:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:26>
-//CHECK-DAG: [[TBR27:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:27>
-//CHECK-DAG: [[TBR28:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:28>
-//CHECK-DAG: [[TBR29:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:29>
-//CHECK-DAG: [[TBR30:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:30>
-//CHECK-DAG: [[TBR31:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:31>
-//CHECK-DAG: [[TBR32:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:32>
-//CHECK-DAG: [[TBR33:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:33>
-//CHECK-DAG: [[TBR34:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:34>
-//CHECK-DAG: [[TBR35:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:35>
-//CHECK-DAG: [[TBR36:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:36>
-//CHECK-DAG: [[TBR37:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:37>
-//CHECK-DAG: [[TBR38:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:38>
-//CHECK-DAG: [[TBR39:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:39>
-//CHECK-DAG: [[TBR40:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:40>
-//CHECK-DAG: [[TBR41:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:41>
-//CHECK-DAG: [[TBR42:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:42>
-//CHECK-DAG: [[TBR43:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:43>
-//CHECK-DAG: [[TBR44:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:44>
-//CHECK-DAG: [[TBR45:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:45>
-//CHECK-DAG: [[TBR46:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:46>
-//CHECK-DAG: [[TBR47:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:47>
-//CHECK-DAG: [[TBR48:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:48>
-//CHECK-DAG: [[TBR49:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:49>
-//CHECK-DAG: [[TBR50:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:50>
-//CHECK-DAG: [[TBR51:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:51>
-//CHECK-DAG: [[TBR52:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:52>
-//CHECK-DAG: [[TBR53:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:53>
-//CHECK-DAG: [[TBR54:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:54>
-//CHECK-DAG: [[TBR55:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:55>
-//CHECK-DAG: [[TBR56:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:56>
-//CHECK-DAG: [[TBR57:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:57>
-//CHECK-DAG: [[TBR58:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:58>
-//CHECK-DAG: [[TBR59:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:59>
-//CHECK-DAG: [[TBR60:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:60>
-//CHECK-DAG: [[TBR61:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:61>
-//CHECK-DAG: [[TBR62:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:62>
-//CHECK-DAG: [[TBR63:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:63>
+//CHECK-DAG: [[TBR0:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:0>
+//CHECK-DAG: [[TBR1:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:1>
+//CHECK-DAG: [[TBR2:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[TBR3:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:3>
+//CHECK-DAG: [[TBR4:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:4>
+//CHECK-DAG: [[TBR5:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:5>
+//CHECK-DAG: [[TBR6:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:6>
+//CHECK-DAG: [[TBR7:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:7>
+//CHECK-DAG: [[TBR8:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:8>
+//CHECK-DAG: [[TBR9:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:9>
+//CHECK-DAG: [[TBR10:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:10>
+//CHECK-DAG: [[TBR11:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:11>
+//CHECK-DAG: [[TBR12:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:12>
+//CHECK-DAG: [[TBR13:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:13>
+//CHECK-DAG: [[TBR14:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:14>
+//CHECK-DAG: [[TBR15:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:15>
+//CHECK-DAG: [[TBR16:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:16>
+//CHECK-DAG: [[TBR17:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:17>
+//CHECK-DAG: [[TBR18:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:18>
+//CHECK-DAG: [[TBR19:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:19>
+//CHECK-DAG: [[TBR20:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:20>
+//CHECK-DAG: [[TBR21:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:21>
+//CHECK-DAG: [[TBR22:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:22>
+//CHECK-DAG: [[TBR23:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:23>
+//CHECK-DAG: [[TBR24:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:24>
+//CHECK-DAG: [[TBR25:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:25>
+//CHECK-DAG: [[TBR26:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:26>
+//CHECK-DAG: [[TBR27:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:27>
+//CHECK-DAG: [[TBR28:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:28>
+//CHECK-DAG: [[TBR29:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:29>
+//CHECK-DAG: [[TBR30:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:30>
+//CHECK-DAG: [[TBR31:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:31>
+//CHECK-DAG: [[TBR32:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:32>
+//CHECK-DAG: [[TBR33:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:33>
+//CHECK-DAG: [[TBR34:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:34>
+//CHECK-DAG: [[TBR35:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:35>
+//CHECK-DAG: [[TBR36:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:36>
+//CHECK-DAG: [[TBR37:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:37>
+//CHECK-DAG: [[TBR38:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:38>
+//CHECK-DAG: [[TBR39:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:39>
+//CHECK-DAG: [[TBR40:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:40>
+//CHECK-DAG: [[TBR41:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:41>
+//CHECK-DAG: [[TBR42:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:42>
+//CHECK-DAG: [[TBR43:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:43>
+//CHECK-DAG: [[TBR44:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:44>
+//CHECK-DAG: [[TBR45:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:45>
+//CHECK-DAG: [[TBR46:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:46>
+//CHECK-DAG: [[TBR47:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:47>
+//CHECK-DAG: [[TBR48:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:48>
+//CHECK-DAG: [[TBR49:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:49>
+//CHECK-DAG: [[TBR50:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:50>
+//CHECK-DAG: [[TBR51:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:51>
+//CHECK-DAG: [[TBR52:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:52>
+//CHECK-DAG: [[TBR53:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:53>
+//CHECK-DAG: [[TBR54:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:54>
+//CHECK-DAG: [[TBR55:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:55>
+//CHECK-DAG: [[TBR56:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:56>
+//CHECK-DAG: [[TBR57:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:57>
+//CHECK-DAG: [[TBR58:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:58>
+//CHECK-DAG: [[TBR59:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:59>
+//CHECK-DAG: [[TBR60:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:60>
+//CHECK-DAG: [[TBR61:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:61>
+//CHECK-DAG: [[TBR62:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:62>
+//CHECK-DAG: [[TBR63:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelRange> -> !VPURegMapped.Index<0:0:63>
 
-//CHECK-DAG: [[TBI0:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
-//CHECK-DAG: [[TBI1:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:1>
-//CHECK-DAG: [[TBI2:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:2>
-//CHECK-DAG: [[TBI3:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:3>
-//CHECK-DAG: [[TBI4:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:4>
-//CHECK-DAG: [[TBI5:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:5>
-//CHECK-DAG: [[TBI6:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:6>
-//CHECK-DAG: [[TBI7:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:7>
-//CHECK-DAG: [[TBI8:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:8>
-//CHECK-DAG: [[TBI9:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:9>
-//CHECK-DAG: [[TBI10:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:10>
-//CHECK-DAG: [[TBI11:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:11>
-//CHECK-DAG: [[TBI12:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:12>
-//CHECK-DAG: [[TBI13:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:13>
-//CHECK-DAG: [[TBI14:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:14>
-//CHECK-DAG: [[TBI15:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:15>
-//CHECK-DAG: [[TBI16:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:16>
-//CHECK-DAG: [[TBI17:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:17>
-//CHECK-DAG: [[TBI18:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:18>
-//CHECK-DAG: [[TBI19:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:19>
-//CHECK-DAG: [[TBI20:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:20>
-//CHECK-DAG: [[TBI21:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:21>
-//CHECK-DAG: [[TBI22:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:22>
-//CHECK-DAG: [[TBI23:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:23>
-//CHECK-DAG: [[TBI24:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:24>
-//CHECK-DAG: [[TBI25:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:25>
-//CHECK-DAG: [[TBI26:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:26>
-//CHECK-DAG: [[TBI27:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:27>
-//CHECK-DAG: [[TBI28:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:28>
-//CHECK-DAG: [[TBI29:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:29>
-//CHECK-DAG: [[TBI30:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:30>
-//CHECK-DAG: [[TBI31:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:31>
-//CHECK-DAG: [[TBI32:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:32>
-//CHECK-DAG: [[TBI33:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:33>
-//CHECK-DAG: [[TBI34:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:34>
-//CHECK-DAG: [[TBI35:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:35>
-//CHECK-DAG: [[TBI36:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:36>
-//CHECK-DAG: [[TBI37:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:37>
-//CHECK-DAG: [[TBI38:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:38>
-//CHECK-DAG: [[TBI39:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:39>
-//CHECK-DAG: [[TBI40:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:40>
-//CHECK-DAG: [[TBI41:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:41>
-//CHECK-DAG: [[TBI42:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:42>
-//CHECK-DAG: [[TBI43:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:43>
-//CHECK-DAG: [[TBI44:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:44>
-//CHECK-DAG: [[TBI45:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:45>
-//CHECK-DAG: [[TBI46:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:46>
-//CHECK-DAG: [[TBI47:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:47>
-//CHECK-DAG: [[TBI48:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:48>
-//CHECK-DAG: [[TBI49:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:49>
-//CHECK-DAG: [[TBI50:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:50>
-//CHECK-DAG: [[TBI51:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:51>
-//CHECK-DAG: [[TBI52:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:52>
-//CHECK-DAG: [[TBI53:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:53>
-//CHECK-DAG: [[TBI54:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:54>
-//CHECK-DAG: [[TBI55:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:55>
-//CHECK-DAG: [[TBI56:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:56>
-//CHECK-DAG: [[TBI57:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:57>
-//CHECK-DAG: [[TBI58:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:58>
-//CHECK-DAG: [[TBI59:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:59>
-//CHECK-DAG: [[TBI60:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:60>
-//CHECK-DAG: [[TBI61:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:61>
-//CHECK-DAG: [[TBI62:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:62>
-//CHECK-DAG: [[TBI63:%.*]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.*}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:63>
+//CHECK-DAG: [[TBI0:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:0>
+//CHECK-DAG: [[TBI1:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:1>
+//CHECK-DAG: [[TBI2:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:2>
+//CHECK-DAG: [[TBI3:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:3>
+//CHECK-DAG: [[TBI4:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:4>
+//CHECK-DAG: [[TBI5:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:5>
+//CHECK-DAG: [[TBI6:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:6>
+//CHECK-DAG: [[TBI7:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:7>
+//CHECK-DAG: [[TBI8:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:8>
+//CHECK-DAG: [[TBI9:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:9>
+//CHECK-DAG: [[TBI10:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:10>
+//CHECK-DAG: [[TBI11:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:11>
+//CHECK-DAG: [[TBI12:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:12>
+//CHECK-DAG: [[TBI13:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:13>
+//CHECK-DAG: [[TBI14:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:14>
+//CHECK-DAG: [[TBI15:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:15>
+//CHECK-DAG: [[TBI16:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:16>
+//CHECK-DAG: [[TBI17:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:17>
+//CHECK-DAG: [[TBI18:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:18>
+//CHECK-DAG: [[TBI19:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:19>
+//CHECK-DAG: [[TBI20:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:20>
+//CHECK-DAG: [[TBI21:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:21>
+//CHECK-DAG: [[TBI22:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:22>
+//CHECK-DAG: [[TBI23:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:23>
+//CHECK-DAG: [[TBI24:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:24>
+//CHECK-DAG: [[TBI25:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:25>
+//CHECK-DAG: [[TBI26:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:26>
+//CHECK-DAG: [[TBI27:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:27>
+//CHECK-DAG: [[TBI28:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:28>
+//CHECK-DAG: [[TBI29:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:29>
+//CHECK-DAG: [[TBI30:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:30>
+//CHECK-DAG: [[TBI31:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:31>
+//CHECK-DAG: [[TBI32:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:32>
+//CHECK-DAG: [[TBI33:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:33>
+//CHECK-DAG: [[TBI34:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:34>
+//CHECK-DAG: [[TBI35:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:35>
+//CHECK-DAG: [[TBI36:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:36>
+//CHECK-DAG: [[TBI37:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:37>
+//CHECK-DAG: [[TBI38:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:38>
+//CHECK-DAG: [[TBI39:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:39>
+//CHECK-DAG: [[TBI40:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:40>
+//CHECK-DAG: [[TBI41:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:41>
+//CHECK-DAG: [[TBI42:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:42>
+//CHECK-DAG: [[TBI43:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:43>
+//CHECK-DAG: [[TBI44:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:44>
+//CHECK-DAG: [[TBI45:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:45>
+//CHECK-DAG: [[TBI46:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:46>
+//CHECK-DAG: [[TBI47:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:47>
+//CHECK-DAG: [[TBI48:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:48>
+//CHECK-DAG: [[TBI49:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:49>
+//CHECK-DAG: [[TBI50:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:50>
+//CHECK-DAG: [[TBI51:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:51>
+//CHECK-DAG: [[TBI52:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:52>
+//CHECK-DAG: [[TBI53:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:53>
+//CHECK-DAG: [[TBI54:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:54>
+//CHECK-DAG: [[TBI55:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:55>
+//CHECK-DAG: [[TBI56:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:56>
+//CHECK-DAG: [[TBI57:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:57>
+//CHECK-DAG: [[TBI58:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:58>
+//CHECK-DAG: [[TBI59:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:59>
+//CHECK-DAG: [[TBI60:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:60>
+//CHECK-DAG: [[TBI61:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:61>
+//CHECK-DAG: [[TBI62:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:62>
+//CHECK-DAG: [[TBI63:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = {{.+}}}  <ActKernelInvocation> -> !VPURegMapped.Index<0:0:63>
 
 //CHECK-DAG: VPURegMapped.TaskBufferLayout
 
-//CHECK: [[R0:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R0:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR0]]
-//CHECK: [[R1:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R1:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR1]]
-//CHECK: [[R2:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R2:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR2]]
-//CHECK: [[R3:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R3:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR3]]
-//CHECK: [[R4:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R4:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR4]]
-//CHECK: [[R5:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R5:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR5]]
-//CHECK: [[R6:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R6:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR6]]
-//CHECK: [[R7:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R7:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR7]]
-//CHECK: [[R8:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R8:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR8]]
-//CHECK: [[R9:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R9:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR9]]
-//CHECK: [[R10:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R10:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR10]]
-//CHECK: [[R11:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R11:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR11]]
-//CHECK: [[R12:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R12:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR12]]
-//CHECK: [[R13:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R13:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR13]]
-//CHECK: [[R14:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R14:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR14]]
-//CHECK: [[R15:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R15:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR15]]
-//CHECK: [[R16:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R16:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR16]]
-//CHECK: [[R17:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R17:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR17]]
-//CHECK: [[R18:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R18:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR18]]
-//CHECK: [[R19:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R19:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR19]]
-//CHECK: [[R20:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R20:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR20]]
-//CHECK: [[R21:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R21:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR21]]
-//CHECK: [[R22:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R22:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR22]]
-//CHECK: [[R23:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R23:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR23]]
-//CHECK: [[R24:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R24:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR24]]
-//CHECK: [[R25:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R25:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR25]]
-//CHECK: [[R26:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R26:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR26]]
-//CHECK: [[R27:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R27:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR27]]
-//CHECK: [[R28:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R28:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR28]]
-//CHECK: [[R29:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R29:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR29]]
-//CHECK: [[R30:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R30:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR30]]
-//CHECK: [[R31:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R31:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR31]]
-//CHECK: [[R32:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R32:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR32]]
-//CHECK: [[R33:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R33:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR33]]
-//CHECK: [[R34:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R34:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR34]]
-//CHECK: [[R35:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R35:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR35]]
-//CHECK: [[R36:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R36:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR36]]
-//CHECK: [[R37:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R37:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR37]]
-//CHECK: [[R38:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R38:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR38]]
-//CHECK: [[R39:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R39:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR39]]
-//CHECK: [[R40:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R40:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR40]]
-//CHECK: [[R41:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R41:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR41]]
-//CHECK: [[R42:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R42:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR42]]
-//CHECK: [[R43:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R43:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR43]]
-//CHECK: [[R44:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R44:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR44]]
-//CHECK: [[R45:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R45:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR45]]
-//CHECK: [[R46:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R46:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR46]]
-//CHECK: [[R47:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R47:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR47]]
-//CHECK: [[R48:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R48:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR48]]
-//CHECK: [[R49:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R49:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR49]]
-//CHECK: [[R50:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R50:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR50]]
-//CHECK: [[R51:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R51:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR51]]
-//CHECK: [[R52:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R52:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR52]]
-//CHECK: [[R53:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R53:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR53]]
-//CHECK: [[R54:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R54:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR54]]
-//CHECK: [[R55:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R55:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR55]]
-//CHECK: [[R56:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R56:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR56]]
-//CHECK: [[R57:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R57:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR57]]
-//CHECK: [[R58:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R58:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR58]]
-//CHECK: [[R59:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R59:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR59]]
-//CHECK: [[R60:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R60:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR60]]
-//CHECK: [[R61:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R61:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR61]]
-//CHECK: [[R62:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R62:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR62]]
-//CHECK: [[R63:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R63:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR63]]
-//CHECK: [[R64:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R64:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR0]]
-//CHECK: [[R65:%.*]] = VPUMI40XX.ActKernelRange
+//CHECK: [[R65:%.+]] = VPUMI40XX.ActKernelRange
     //CHECK-SAME: taskLocation([[TBR1]]
 
 //CHECK: VPUMI40XX.ActKernelInvocation

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -50,7 +50,7 @@ class FakeConvertLayerTestCommon : public FakeConvertLayerTest, virtual public V
         if (!default_shift) {
             inputs.push_back(shift);
         }
-        function = std::make_shared<ov::Model>(NodeVector{fake_convert}, inputs);
+        function = std::make_shared<ov::Model>(OutputVector{fake_convert}, inputs);
     }
 
     void configure_model() override {

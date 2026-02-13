@@ -93,7 +93,7 @@ mlir::Value ConvertExpandPass::applyPadding(const int64_t padAxis, const int64_t
     const auto constSubviewOffset = SmallVector<int64_t>(1, 0);
     const auto constSubviewShape = SmallVector<int64_t>(1, subViewShape.totalSize());
     auto constSubView =
-            builder.create<VPUIP::SubViewOp>(appendLoc(location, "_constant_subview_{0}_{1}", padAxis, padValue),
+            builder.create<VPUIP::SubViewOp>(appendLoc(location, "constant_subview_{0}_{1}", padAxis, padValue),
                                              constantOp, constSubviewOffset, constSubviewShape);
 
     // Step 2: Create Reshape Op to match concat shape with expected type
@@ -103,9 +103,8 @@ mlir::Value ConvertExpandPass::applyPadding(const int64_t padAxis, const int64_t
         // Reinterpret the constant from fp8 to quant.uniform<fp8:...>
         newShapeType = newShapeType.changeElemType(expectedElemType);
     }
-    auto reshapeOp =
-            builder.create<VPUIP::GenericReshapeOp>(appendLoc(location, "_constant_reshape_{0}_{1}", padAxis, padValue),
-                                                    newShapeType, constSubView.getResult());
+    auto reshapeOp = builder.create<VPUIP::GenericReshapeOp>(
+            appendLoc(location, "constant_reshape_{0}_{1}", padAxis, padValue), newShapeType, constSubView.getResult());
 
     // Step 3: Create PermuteCast Op to match concat layout
     const auto expandOutBufferType = mlir::cast<NDTypeInterface>(expandedBuffer.getType());
@@ -116,13 +115,13 @@ mlir::Value ConvertExpandPass::applyPadding(const int64_t padAxis, const int64_t
             DimsOrder::fromNumDims(mlir::cast<NDTypeInterface>(reshapeOp.getOutput().getType()).getRank())
                     .toAffineMap(reshapeOp.getContext()));
     auto permuteCastOp =
-            builder.create<VPUIP::PermuteCastOp>(appendLoc(location, "_constant_permute_{0}_{1}", padAxis, padValue),
+            builder.create<VPUIP::PermuteCastOp>(appendLoc(location, "constant_permute_{0}_{1}", padAxis, padValue),
                                                  newLayoutType, reshapeOp.getOutput(), dstOrderAttr, memPermAttr);
 
     // Step 4: Create Copy Op for concat concatant input
-    auto subView = builder.create<VPUIP::SubViewOp>(appendLoc(location, "_expand_subview_{0}_{1}", padAxis, padValue),
+    auto subView = builder.create<VPUIP::SubViewOp>(appendLoc(location, "expand_subview_{0}_{1}", padAxis, padValue),
                                                     expandedBuffer, ShapeRef(subViewOffsets), subViewShape);
-    auto subViewCopy = builder.create<VPUIP::CopyOp>(appendLoc(location, "_expand_copy_{0}_{1}", padAxis, padValue),
+    auto subViewCopy = builder.create<VPUIP::CopyOp>(appendLoc(location, "expand_copy_{0}_{1}", padAxis, padValue),
                                                      permuteCastOp.getResult(), subView);
 
     return subViewCopy.getOutput();

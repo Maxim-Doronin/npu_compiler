@@ -209,4 +209,64 @@ def Net_SparsityInfoOp :
     let hasVerifier = 0;
 }
 
+def Net_PrecisionRequirementOp :
+        Net_Op<
+            "PrecisionRequirement",
+            [
+                HasParent<"mlir::ModuleOp">,
+                IsolatedFromAbove,
+                NoRegionArguments,
+                OpAsmOpInterface
+            ]
+            # GraphRegionNoTerminator.traits
+        > {
+    let summary = "Precision sensitiveness requirement per model layer";
+
+    let description = [{
+        This operation is bound to MLIR Module and holds information if a model layer is precision sensitive.
+    }];
+
+    let regions = (region
+        SizedRegion<1>:$precisionInfo
+    );
+
+    let assemblyFormat = [{
+        attr-dict
+        `precisionInfo` `:` $precisionInfo
+    }];
+
+    let hasVerifier = 0;
+}
+
+def Net_PrecisionInfoOp :
+        Net_Op<
+            "PrecisionInfo",
+            [
+                HasParent<"vpux::net::PrecisionRequirementOp">,
+                IsolatedFromAbove
+            ]
+        > {
+    let summary = "Information whether a specific layer is required to keep its precision setting.";
+
+    let description = [{
+        This operation is bound to `net.PrecisionRequirement` operation and holds information about the PrecisionInfo object.
+        Any operation in the model that has the DisableFP16Compression RT attribute set to 'precise' will be added here.
+
+          * operation name
+          * operation type
+    }];
+
+    let arguments = (ins
+        StrAttr:$opName,
+        StrAttr:$opType
+    );
+
+    let assemblyFormat = [{
+        $opName $opType
+        attr-dict
+    }];
+
+    let hasVerifier = 0;
+}
+
 #endif

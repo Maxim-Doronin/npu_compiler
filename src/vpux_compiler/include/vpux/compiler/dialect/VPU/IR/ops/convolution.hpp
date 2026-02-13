@@ -5,14 +5,11 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/IR/ops/convolution_fwd.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
-
-namespace vpux::IE {
-class MatMulOp;
-}
 
 //
 // Generated

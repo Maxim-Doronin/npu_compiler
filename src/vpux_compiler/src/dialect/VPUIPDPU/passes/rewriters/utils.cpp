@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -112,6 +112,10 @@ mlir::Type getBaseType(mlir::Type type, bool isPalletModeEnabled) {
         return mlir::Float8E4M3FNType::get(type.getContext());
     }
 
+    if (mlir::isa<mlir::Float4E2M1FNType>(quantStorageType)) {
+        return mlir::Float4E2M1FNType::get(type.getContext());
+    }
+
     auto signedness = quantType.isSigned() ? mlir::IntegerType::Signed : mlir::IntegerType::Unsigned;
     auto bitWidth = quantType.getStorageTypeIntegralWidth();
     return mlir::IntegerType::get(type.getContext(), bitWidth, signedness);
@@ -221,6 +225,25 @@ int64_t getZeroPoint(vpux::NDTypeInterface type) {
         }
     }
     return zeroPointVal;
+}
+
+VPUIPDPU::ODUReduceDataType getOutReduceType(mlir::Type outDataType) {
+    if (outDataType.isSignedInteger(CHAR_BIT * sizeof(int8_t))) {
+        return ODUReduceDataType::ODU_DTYPE_I8;
+    } else if (outDataType.isInteger(CHAR_BIT * sizeof(uint8_t))) {
+        return ODUReduceDataType::ODU_DTYPE_U8;
+    } else if (mlir::isa<mlir::Float8E5M2Type>(outDataType)) {
+        return ODUReduceDataType::ODU_DTYPE_BF8;
+    } else if (mlir::isa<mlir::Float8E4M3FNType>(outDataType)) {
+        return ODUReduceDataType::ODU_DTYPE_HF8;
+    } else if (mlir::isa<mlir::BFloat16Type>(outDataType)) {
+        return ODUReduceDataType::ODU_DTYPE_BF16;
+    } else if (mlir::isa<mlir::Float16Type>(outDataType)) {
+        return ODUReduceDataType::ODU_DTYPE_FP16;
+    } else if (mlir::isa<mlir::quant::QuantizedType>(outDataType)) {
+        return getOutReduceType(mlir::cast<mlir::quant::QuantizedType>(outDataType).getStorageType());
+    }
+    VPUX_THROW("Unsupported reduce output data type '{0}'.", outDataType);
 }
 
 }  // namespace VPUIPDPU

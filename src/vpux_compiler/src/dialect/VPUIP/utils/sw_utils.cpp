@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,8 +8,10 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/tiling_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -438,7 +440,7 @@ bool isSwKernelUseDpu(VPUIP::SwKernelOp swKernelOp) {
 }
 
 bool isDpuShaveKernelType(VPURT::TaskOp taskOp) {
-    if (taskOp.getExecutorKind() != VPU::ExecutorKind::SHAVE_ACT) {
+    if (taskOp.getExecutorKind() != config::ExecutorKind::SHAVE_ACT) {
         return false;
     }
     auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(taskOp.getInnerTaskOp());
@@ -685,6 +687,34 @@ InputTiling backInferGatherSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const
                                      indicesRank, log);
 }
 
+InputTiling backInferLogSoftmaxPeakSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                                     Logger log) {
+    log.trace("Try to back infer input tiling for log_softmax_peak, output tile: {0}", outputTile);
+
+    auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+    VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
+                      "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+
+    auto swKernelRun = *swKernelRuns.begin();
+    VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
+
+    const auto inShape = getShape(swKernelOp.getInputs()[0]);
+    const auto inOrder = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType()).getDimsOrder();
+    const auto attrs = swKernelRun.getAttrs().value();
+
+    const auto kernelAxis = mlir::cast<mlir::IntegerAttr>(attrs[0]).getInt();
+    const auto axis = reverseMemDim(inOrder, kernelAxis);
+
+    auto inputTile = outputTile;
+    // The axis dimension of input needs the full size (not reduced to 1)
+    inputTile.shape[Dim(axis)] = inShape[Dim(axis)];
+    inputTile.offsets[Dim(axis)] = 0;
+
+    log.trace("Back inferred input tile for log_softmax_peak: {0}", inputTile);
+
+    return TilingInfo{std::move(inputTile)};
+}
+
 InputTiling backInferGatherNDSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
                                                Logger log) {
     auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
@@ -899,29 +929,30 @@ InputTiling backInferSDPASwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
     return inTiles;
 }
 
-void pushSDPAExtendedOptionalInputs(const mlir::OperandRange& inputs, InputTiling& inTiles, int64_t optionalSizeArea) {
-    int inSize = inputs.size();
-    ShapeRef inputVShape = getShape(inputs[2]);
-    for (int i = 3; i < inSize - optionalSizeArea; i++) {
-        ShapeRef unknownShape = getShape(inputs[i]);
-        TileInfo unknownTile(getShape(inputs[i]));
-        if (unknownShape[Dims4D::Act::W] == inputVShape[Dims4D::Act::W]) {
-            TileInfo inQTile = inTiles.tiles[0];
-            adjustMaskOrBiasTile(unknownTile, inQTile);
-            inTiles.tiles.push_back(unknownTile);
-        } else {
-            // Push input Scale
-            TileInfo inScaleTile(getShape(inputs[i]));
-            inTiles.tiles.push_back(inScaleTile);
-        }
+void adjustSDPAExtendedAuxiliaryBroadcastTile(TileInfo& maskTile, const TileInfo& qTile) {
+    bool is2DMask = maskTile.shape[Dims4D::Act::H] != 1;
+    if (is2DMask) {
+        maskTile.shape[Dims4D::Act::H] = qTile.shape[Dims4D::Act::H];
+        maskTile.offsets[Dims4D::Act::H] = qTile.offsets[Dims4D::Act::H];
+    }
+    bool is3DMask = maskTile.shape[Dims4D::Act::C] != 1;
+    if (is3DMask) {
+        maskTile.shape[Dims4D::Act::C] = qTile.shape[Dims4D::Act::C];
+        maskTile.offsets[Dims4D::Act::C] = qTile.offsets[Dims4D::Act::C];
+    }
+    bool is4DMask = maskTile.shape[Dims4D::Act::N] != 1;
+    if (is4DMask) {
+        maskTile.shape[Dims4D::Act::N] = qTile.shape[Dims4D::Act::N];
+        maskTile.offsets[Dims4D::Act::N] = qTile.offsets[Dims4D::Act::N];
     }
 }
 
 InputTiling backInferSDPAExtendedSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
-                                                   Logger /*log*/) {
+                                                   Logger log) {
     auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
     VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
                       "SwKernelOp has already been tiled at '{0}'", swKernelOp);
+    log.trace("Try to back infer input tiling for {0}, output tile: {1}", swKernelOp, outputTile);
     const auto inputs = swKernelOp.getInputs();
     TileInfo inQTile(getShape(inputs[0]));
     TileInfo inKTile(getShape(inputs[1]));
@@ -947,9 +978,35 @@ InputTiling backInferSDPAExtendedSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     // InputQ, inputK and InputV are mandatory
     InputTiling inTiles = TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile)}};
 
-    // Last 2 inputs, DataStorage and DPUStorage are always present because it's generated if absent, in VPU dialect
-    pushSDPAExtendedOptionalInputs(inputs, inTiles, 2);
+    auto swKernelRun = *swKernelRuns.begin();
+    VPUX_THROW_UNLESS(swKernelRun.getAttrs().has_value(), "SwKernelOp has no attr '{0}'", swKernelOp);
+    const auto rawAttrs = swKernelRun.getAttrs().value();
+    const auto attrsD = mlir::dyn_cast<mlir::ArrayAttr>(rawAttrs[0]);
+    const auto inputsMask = mlir::cast<mlir::IntegerAttr>(attrsD[1]).getInt();
+    const auto hasAttentionMask = static_cast<bool>(inputsMask & (1 << 3));
+    const auto hasScale = static_cast<bool>(inputsMask & (1 << 4));
+    const auto hasBias = static_cast<bool>(inputsMask & (1 << 5));
+    const auto attentionMaskIndex = 3;
+    if (hasAttentionMask) {
+        TileInfo unknownTile(getShape(swKernelOp->getOperand(attentionMaskIndex)));
+        adjustSDPAExtendedAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
+        inTiles.tiles.push_back(unknownTile);
+    }
+    if (hasScale) {
+        auto scaleIndex = attentionMaskIndex + hasAttentionMask;
+        TileInfo unknownTile(getShape(swKernelOp->getOperand(scaleIndex)));
+        adjustSDPAExtendedAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
+        inTiles.tiles.push_back(unknownTile);
+    }
 
+    if (hasBias) {
+        auto biasIndex = attentionMaskIndex + hasAttentionMask + hasScale;
+        TileInfo unknownTile(getShape(swKernelOp->getOperand(biasIndex)));
+        adjustSDPAExtendedAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
+        inTiles.tiles.push_back(unknownTile);
+    }
+
+    // Last 2 inputs, DataStorage and DPUStorage are always present because it's generated in VPU dialect
     TileInfo dataStorageTile(getShape(inputs[inputs.size() - 2]));
     dataStorageTile.shape[Dims4D::Act::H] = outputTile.shape[Dims4D::Act::H];
     dataStorageTile.offsets[Dims4D::Act::H] = outputTile.offsets[Dims4D::Act::H];
@@ -975,7 +1032,18 @@ InputTiling backInferDepthToSpaceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     auto inShape = mlir::cast<vpux::NDTypeInterface>(swKernelOp.getInputs()[0].getType()).getShape();
     const auto blockSize = mlir::cast<mlir::IntegerAttr>(attrs[0]).getInt();
 
-    return vpux::backInferDepthToSpaceTile(outputTile, inShape, blockSize, log);
+    int64_t outChannelPad = 0;
+    if (attrs.size() > 2) {  // padding present ?
+        VPUX_THROW_UNLESS(attrs.size() == 4, "Expecting SwKernelOp to have both pads begin/end present");
+        auto inChPadding = mlir::dyn_cast<mlir::IntegerAttr>(attrs.getValue()[2]);
+        auto outChPadding = mlir::dyn_cast<mlir::IntegerAttr>(attrs.getValue()[3]);
+        VPUX_THROW_UNLESS((inChPadding != nullptr) && (outChPadding != nullptr),
+                          "In/out Channel padding IntegerAttr(s) not found");
+        VPUX_THROW_UNLESS(inChPadding.getInt() == 0, "Input channel padding currently not supported");
+        outChannelPad = outChPadding.getInt();
+    }
+
+    return vpux::backInferDepthToSpaceTile(outputTile, inShape, blockSize, outChannelPad, log);
 }
 
 InputTiling backInferPadSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile, Logger log) {
@@ -1019,14 +1087,16 @@ InputTiling backInferReduceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const
     const auto inputShape = getShape(input);
     const auto attrs = swKernelRun.getAttrs().value();
 
-    VPUX_THROW_UNLESS(attrs.size() == 3, "SwKernelOp {0} should have 3 attributes, got '{1}'", swKernelOp,
-                      attrs.size());
     VPUX_THROW_UNLESS(inputShape.size() == outputTile.shape.size(),
                       "Can't tile SwKernel operation '{0}' at '{1}', which has operands with different rank",
                       swKernelOp->getName(), swKernelOp->getLoc());
 
     auto inputTile = outputTile;
-    const auto reversedAxes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attrs[2]));
+
+    // For reduce_mean_square, axes is at index 2 (attrs: keepDims, axesSize, axes, epsilon)
+    // For other reduce ops, axes is the last attribute
+    const auto axesAttrIndex = (kernelEntryName == "reduce_mean_square") ? 2 : (attrs.size() - 1);
+    const auto reversedAxes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attrs[axesAttrIndex]));
     for (const auto reversedAxis : reversedAxes) {
         const auto axis = reverseMemDim(inputOrder, reversedAxis);
         const auto d = Dim(axis);
@@ -1143,6 +1213,45 @@ SmallVector<mlir::Attribute> getInterpolateSwkernelNewAttrsAfterTiling(VPUIP::Sw
     newOutputTile.offsets = Shape(outputTileOffset);
     newAttrs[10] = getIntArrayAttr(swKernelOp->getContext(), permuteIntArrayAttr(dim, inputTileOffset));
     newAttrs[11] = getIntArrayAttr(swKernelOp->getContext(), permuteIntArrayAttr(dim, outputTileOffset));
+    return newAttrs;
+}
+
+SmallVector<mlir::Attribute> getMaxPool8SwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp swKernelOp,
+                                                                    ArrayRef<mlir::Attribute> origAttr,
+                                                                    const TilingInfo& inputTiling,
+                                                                    const TileInfo& outTile, Logger log) {
+    log.trace("update attrs for SwKernel Op at '{0}' for out tile {1}", swKernelOp, outTile);
+    // Get output tile against the original output
+    auto kernelRun = *swKernelOp.getBody().getOps<VPUIP::SwKernelRun>().begin();
+    auto attrs = kernelRun.getAttrs().value();
+    VPUX_THROW_UNLESS(origAttr.size() == attrs.size(), "Unmatched attr size found at '{0}'", swKernelOp);
+    VPUX_THROW_WHEN(attrs.size() < 10, "Expected swKernel attributes size is 10, got {0} instead", attrs.size());
+
+    SmallVector<mlir::Attribute> newAttrs(attrs.begin(), attrs.end());
+    TileInfo inputTile = inputTiling.tiles[0];
+    const auto initialInputOffset = parseIntArrayAttr<int64_t>(mlir::dyn_cast<mlir::ArrayAttr>(attrs[8]));
+    const auto initialOutputOffset = parseIntArrayAttr<int64_t>(mlir::dyn_cast<mlir::ArrayAttr>(attrs[9]));
+    auto localInputOffset = to_small_vector(inputTile.offsets);
+    auto localOutputOffset = to_small_vector(outTile.offsets);
+    if (localInputOffset.size() != initialInputOffset.size() ||
+        localOutputOffset.size() != initialOutputOffset.size()) {
+        log.trace("Padding tiling offsets for SwKernelOp at '{0}'", swKernelOp);
+        localInputOffset.insert(localInputOffset.begin(), initialInputOffset.size() - localInputOffset.size(), 0);
+        localOutputOffset.insert(localOutputOffset.begin(), initialOutputOffset.size() - localOutputOffset.size(), 0);
+        log.trace("Padded localInputOffset: {0} - Padded localOutputOffset: {1}", localInputOffset, localOutputOffset);
+    }
+    SmallVector<int64_t> inputTileOffset;
+    SmallVector<int64_t> outputTileOffset;
+    std::transform(localInputOffset.begin(), localInputOffset.end(), initialInputOffset.begin(),
+                   std::back_inserter(inputTileOffset), std::plus<int64_t>());
+    std::transform(localOutputOffset.begin(), localOutputOffset.end(), initialOutputOffset.begin(),
+                   std::back_inserter(outputTileOffset), std::plus<int64_t>());
+    auto newInputTiling = inputTiling;
+    newInputTiling.tiles[0].offsets = Shape(inputTileOffset);
+    auto newOutputTile = outTile;
+    newOutputTile.offsets = Shape(outputTileOffset);
+    newAttrs[8] = getIntArrayAttr(swKernelOp->getContext(), inputTileOffset);
+    newAttrs[9] = getIntArrayAttr(swKernelOp->getContext(), outputTileOffset);
     return newAttrs;
 }
 
@@ -1754,40 +1863,28 @@ InputTiling backInferFlashSDPASwKernelInputTile(VPUIP::SwKernelOp swKernelOp, co
     const auto inputsMask = attrs[0][1];
 
     const auto hasAttentionMask = static_cast<bool>(inputsMask & (1 << 2));
-    const auto hasScale = static_cast<bool>(inputsMask & (1 << 3));
 
     auto attentionMaskShape = std::optional<ShapeRef>{};
-    auto scaleShape = std::optional<ShapeRef>{};
     const auto attentionMaskIndex = 10;
 
     if (hasAttentionMask) {
         attentionMaskShape = getShape(swKernelOp->getOperand(attentionMaskIndex));
     }
 
-    if (hasScale) {
-        auto scaleIndex = attentionMaskIndex + hasAttentionMask;
-        scaleShape = getShape(swKernelOp->getOperand(scaleIndex));
-    }
+    auto auxBufferShape = getShape(swKernelOp.getOperand(3));
 
     auto dpuDescriptorBufferShape = getShape(swKernelOp.getOperand(4));
     auto weightsTable0Shape = getShape(swKernelOp.getOperand(5));
     auto weightsTable1Shape = getShape(swKernelOp.getOperand(6));
 
     auto inputTiling =
-            vpux::VPU::FlashSDPAOpInputTiling(outputTile, keyShape, attentionMaskShape, scaleShape,
+            vpux::VPU::FlashSDPAOpInputTiling(outputTile, keyShape, attentionMaskShape, auxBufferShape,
                                               dpuDescriptorBufferShape, weightsTable0Shape, weightsTable1Shape);
 
-    auto& dpuDescriptorsBufferTile = inputTiling.tiles[4];
-    VPUX_THROW_UNLESS(
-            dpuDescriptorsBufferTile.shape[Dims4D::Act::H] % 2 == 0,
-            "Can't tile DpuDescriptorsBuffer on SHAVEs. Shape '{0}' is not divisible on 2 on Height dimension at {1}",
-            dpuDescriptorsBufferTile.shape, swKernelOp->getLoc());
-
-    dpuDescriptorsBufferTile.shape[Dims4D::Act::H] /= 2;
-
-    if (outputTile.offsets != Shape{0, 0, 0, 0}) {
-        dpuDescriptorsBufferTile.offsets[Dims4D::Act::H] = dpuDescriptorsBufferTile.shape[Dims4D::Act::H];
-    }
+    auto module = getModuleOp(swKernelOp.getOperation());
+    const auto numShavesPerTile = vpux::config::getNumOfEnginesOnTile(module, config::ExecutorKind::SHAVE_ACT);
+    VPUX_THROW_UNLESS(numShavesPerTile == 2, "FlashSDPAOp only supports auxiliary buffer tiling on 2 SHAVEs, got {0}",
+                      numShavesPerTile);
 
     return inputTiling;
 }
@@ -1854,6 +1951,8 @@ InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const Small
         return backInferInterpolateSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "topk") {
         return backInferTopKSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "log_softmax_peak") {
+        return backInferLogSoftmaxPeakSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "gather") {
         return backInferGatherSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "gatherND") {
@@ -1951,6 +2050,8 @@ SmallVector<mlir::Attribute> getSwkernelNewAttrsAfterTiling(VPUIP::SwKernelOp sw
         return getDeformableConvolutionSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
     } else if (kernelEntryName == "dequantize") {
         return getDequantizeSwkernelNewAttrsAfterTiling(swKernelOp, origAttr, outTile, log);
+    } else if (kernelEntryName == "max_pool8") {
+        return getMaxPool8SwkernelNewAttrsAfterTiling(swKernelOp, origAttr, inputTiling, outTile, log);
     } else {
         return SmallVector<mlir::Attribute>(origAttr.begin(), origAttr.end());
     }
@@ -2213,6 +2314,30 @@ std::pair<bool, size_t> getSwKernelInstructionPrefetchConfig(config::ArchKind ar
     default:
         VPUX_THROW("Unsupported Arch {0} to do Shave Instruction Prefetch", arch);
     }
+}
+
+mlir::SymbolRefAttr createCacheHandlingFunction(mlir::MLIRContext* ctx, OpBuilderLogger& builderLog, Logger log,
+                                                VPUIP::SwKernelOp origOp, mlir::StringRef functionName,
+                                                VPU::ActShaveTaskType type) {
+    auto origOpModule = origOp->getParentOfType<mlir::ModuleOp>();
+    auto vpuswModule = vpux::VPUIP::getVPUSWModule(origOpModule, log);
+    auto functionNameSymbol = mlir::SymbolRefAttr::get(ctx, functionName);
+    auto functionSymbol = mlir::SymbolRefAttr::get(ctx, vpuswModule.getName().value(), {functionNameSymbol});
+
+    // check if this functionSymbol was already created
+    auto prebuiltFunction = vpuswModule.lookupSymbol<mlir::func::FuncOp>(functionName);
+    if (prebuiltFunction == nullptr) {
+        const auto funcType = mlir::FunctionType::get(ctx, {}, {});
+        auto innerModuleBuilder = mlir::OpBuilder::atBlockBegin(vpuswModule.getBody(), &builderLog);
+        auto newFuncOp =
+                innerModuleBuilder.create<mlir::func::FuncOp>(mlir::UnknownLoc::get(ctx), functionName, funcType);
+
+        // modify attributes
+        newFuncOp.setSymVisibilityAttr(mlir::StringAttr::get(ctx, "private"));
+        newFuncOp->setAttr(vpuTaskTypeAttrName, mlir::SymbolRefAttr::get(ctx, VPU::stringifyActShaveTaskType(type)));
+    }
+
+    return functionSymbol;
 }
 
 }  // namespace VPUIP

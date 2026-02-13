@@ -5,7 +5,6 @@
 
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/constant_fusion.hpp"
 
 using namespace vpux;
 

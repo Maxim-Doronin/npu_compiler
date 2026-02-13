@@ -1,24 +1,24 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --init-resources="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" %s | FileCheck %s  --strict-whitespace
+// RUN: vpux-opt --split-input-file --init-resources="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" %s | FileCheck %s  --strict-whitespace
 // REQUIRES: arch-NPU40XX
 
-// CHECK: module @mode attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @mode attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.elf_version = #config.version<{{[^>]*}}>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>} {
 }
 
 // -----
 
-// CHECK: module @arch attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @arch attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.elf_version = #config.version<{{[^>]*}}>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @arch attributes {config.arch = #config.arch_kind<NPU37XX>} {
 }
 
 // -----
 
-// CHECK: module @executors attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @executors attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.elf_version = #config.version<{{[^>]*}}>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @executors {
     config.Resources 1 of @global {
         config.ExecutorResource 5 of @DMA_NN
@@ -39,7 +39,7 @@ module @executors {
 
 // -----
 
-// CHECK: module @memory attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @memory attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.elf_version = #config.version<{{[^>]*}}>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @memory {
     config.Resources 6 of @NCE at 1.700000e+03 MHz {
         config.MemoryResource 5 bytes of @CMX_NN_FragmentationAware

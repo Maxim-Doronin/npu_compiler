@@ -12,10 +12,13 @@
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/Linalg/Transforms/Transforms.h>
+#include <mlir/Dialect/SCF/Transforms/Patterns.h>
 #include <mlir/Dialect/SCF/Transforms/TileUsingInterface.h>
 #include <mlir/IR/Iterators.h>
 #include <mlir/Pass/Pass.h>
+#include <mlir/Transforms/CSE.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <mlir/Transforms/LoopInvariantCodeMotionUtils.h>
 
 namespace vpux::ShaveCodeGen {
 #define GEN_PASS_DECL_LINALGTILEANDFUSESWLAYERS
@@ -26,8 +29,11 @@ namespace vpux::ShaveCodeGen {
 using namespace vpux;
 
 namespace {
+
 class LinalgTileAndFuseSwLayersPass final :
         public ShaveCodeGen::impl::LinalgTileAndFuseSwLayersBase<LinalgTileAndFuseSwLayersPass> {
+    using CandidatesQueue = llvm::SmallSetVector<mlir::TilingInterface, 10>;
+
 public:
     explicit LinalgTileAndFuseSwLayersPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
@@ -35,7 +41,7 @@ public:
 
 private:
     void safeRunOnModule() final;
-    mlir::LogicalResult tileAndFuseOp(mlir::TilingInterface tileOp, bool isReduce);
+    mlir::LogicalResult tileAndFuseOp(mlir::TilingInterface tileOp, CandidatesQueue& candidates, bool isReduce);
     mlir::LogicalResult tileAndFuseOps(mlir::func::FuncOp func, mlir::MLIRContext& ctx, bool isReduce);
 };
 
@@ -67,9 +73,11 @@ std::optional<SmallVector<mlir::OpFoldResult>> getTileSizes(mlir::TilingInterfac
     return std::make_optional(tileSizes);
 }
 
-mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOp(mlir::TilingInterface tileOp, bool isReduce) {
+mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOp(mlir::TilingInterface tileOp,
+                                                                 CandidatesQueue& candidates, bool isReduce) {
     mlir::IRRewriter rewriter(tileOp);
-    if (tileOp->use_empty()) {
+
+    if (mlir::isOpTriviallyDead(tileOp)) {
         _log.trace("Operation {0} is dead, nothing to do", tileOp->getName());
         rewriter.eraseOp(tileOp);
         return mlir::success();
@@ -85,24 +93,23 @@ mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOp(mlir::TilingInt
     tilingOptions.setTileSizes(*tileSizes);
     tilingOptions.setLoopType(mlir::scf::SCFTilingOptions::LoopType::ForOp);
 
-    if (isReduce) {
-        // Don't fuse reduce ops for now. For fusion we would have to check
-        // the legality. Additionally this seems to work just as well for all
-        // cases so far.
-        auto tiledResults = mlir::scf::tileUsingSCF(rewriter, tileOp, tilingOptions);
-        if (failed(tiledResults)) {
-            _log.trace("Failed to tile reduction dimensions for {0}", tileOp->getName());
-            return mlir::failure();
-        }
-
-        _log.trace("Success tiling reduction dimensions for {0}", tileOp->getName());
-        rewriter.replaceOp(tileOp, tiledResults->mergeResult.replacements);
-
-        return mlir::success();
-    }
-
     mlir::scf::SCFTileAndFuseOptions tileAndFuseOptions;
     tileAndFuseOptions.tilingOptions = std::move(tilingOptions);
+    tileAndFuseOptions.fusionControlFn =
+            [&](mlir::tensor::ExtractSliceOp, mlir::OpResult,
+                bool isDestinationOperand) -> std::optional<mlir::scf::SCFTileAndFuseOptions::ControlFnResult> {
+        if (isReduce && isDestinationOperand) {
+            // We can't fuse producers for destination operands while tiling reductions.
+            return std::nullopt;
+        }
+        return mlir::scf::SCFTileAndFuseOptions::ControlFnResult{};
+    };
+
+    mlir::RewritePatternSet cleanupPatterns(rewriter.getContext());
+    mlir::tensor::ExtractSliceOp::getCanonicalizationPatterns(cleanupPatterns, rewriter.getContext());
+    mlir::tensor::populateMergeConsecutiveInsertExtractSlicePatterns(cleanupPatterns);
+    tileAndFuseOptions.cleanupPatterns = std::move(cleanupPatterns);
+
     auto tileFuseResult = mlir::scf::tileConsumerAndFuseProducersUsingSCF(rewriter, tileOp, tileAndFuseOptions);
 
     if (failed(tileFuseResult)) {
@@ -117,6 +124,19 @@ mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOp(mlir::TilingInt
         }
     }
 
+    if (isReduce) {
+        // Add the tiled ops to the candidate set for reduction tiling as it's possible for these to get further tiled.
+        // We don't do this for parallel tiling since we don't expect (at least at the moment) for this to enable
+        // further tiling.
+        for (auto it = tileFuseResult->tiledAndFusedOps.begin() + 1, e = tileFuseResult->tiledAndFusedOps.end();
+             it != e; ++it) {
+            auto tiledOp = mlir::dyn_cast<mlir::TilingInterface>(*it);
+            if (tiledOp) {
+                candidates.insert(tiledOp);
+            }
+        }
+    }
+
     if (tileOp->use_empty()) {
         rewriter.eraseOp(tileOp);
     }
@@ -127,16 +147,18 @@ mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOp(mlir::TilingInt
 mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOps(mlir::func::FuncOp func, mlir::MLIRContext& ctx,
                                                                   bool isReduce) {
     mlir::LogicalResult allMatched = mlir::success();
-    SmallVector<mlir::TilingInterface> candidates;
-    func.walk<mlir::WalkOrder::PostOrder, mlir::ReverseIterator>([&](mlir::Operation* op) {
+    llvm::SmallSetVector<mlir::TilingInterface, 10> candidates;
+    func.walk([&](mlir::Operation* op) {
         auto tileOp = mlir::dyn_cast<mlir::TilingInterface>(op);
         if (!tileOp) {
             return;
         }
-        candidates.push_back(tileOp);
+        candidates.insert(tileOp);
     });
-    for (auto op : candidates) {
-        if (failed(tileAndFuseOp(op, isReduce))) {
+
+    while (!candidates.empty()) {
+        auto op = candidates.pop_back_val();
+        if (failed(tileAndFuseOp(op, candidates, isReduce))) {
             allMatched = mlir::failure();
         }
     }
@@ -145,9 +167,10 @@ mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOps(mlir::func::Fu
         return mlir::failure();
     }
 
-    // Cleanup the IR post-tiling phase.
+    // Cleanup the IR post-tiling.
     mlir::RewritePatternSet patterns(&ctx);
     mlir::linalg::populateLinalgTilingCanonicalizationPatterns(patterns);
+    mlir::scf::populateSCFForLoopCanonicalizationPatterns(patterns);
     mlir::tensor::populateFoldTensorEmptyPatterns(patterns);
     if (failed(mlir::applyPatternsGreedily(func, std::move(patterns)))) {
         return mlir::failure();
@@ -158,9 +181,7 @@ mlir::LogicalResult LinalgTileAndFuseSwLayersPass::tileAndFuseOps(mlir::func::Fu
 void LinalgTileAndFuseSwLayersPass::safeRunOnModule() {
     // Algorithm inspired from the IREE LLVMCPUTileAndFuse pass.
     // We greedily tile in two phases, first over all parallel dimensions,
-    // then handle the reductions in a second phase. Currently
-    // we don't fuse producers for reduction tiling to avoid legality
-    // issues.
+    // then handle the reductions in a second phase.
     auto& ctx = getContext();
     auto moduleOp = getOperation();
     auto swModule = VPUIP::getVPUSWModule(moduleOp, _log);
@@ -171,11 +192,25 @@ void LinalgTileAndFuseSwLayersPass::safeRunOnModule() {
             signalPassFailure();
             return;
         }
+
         // Finally tile on the reduce dimensions.
         if (failed(tileAndFuseOps(func, ctx, /*isReduce=*/true))) {
             signalPassFailure();
             return;
         }
+
+        // Run CSE and LICM.
+        mlir::DominanceInfo domInfo;
+        mlir::IRRewriter rewriter(func);
+        mlir::eliminateCommonSubExpressions(rewriter, domInfo, func);
+
+        func->walk([&](mlir::LoopLikeOpInterface loopLike) {
+            mlir::moveLoopInvariantCode(loopLike);
+        });
+
+        func->walk([&](mlir::LoopLikeOpInterface loopLike) {
+            (void)mlir::hoistLoopInvariantSubsets(rewriter, loopLike);
+        });
     }
 
     return;

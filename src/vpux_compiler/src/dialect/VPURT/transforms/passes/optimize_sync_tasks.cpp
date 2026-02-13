@@ -261,7 +261,7 @@ DenseMap<VPURT::TaskOp, std::pair<VPURT::TaskOp, VPURT::TaskOp>> getSyncTaskOpsT
     auto firstSyncDmaOp = firstTask.getInnerTaskOpOfType<VPUIP::SyncDMAOp>();
 
     VPURT::TaskOp prevSyncTaskOp = nullptr;
-    auto prevSyncTaskOpQueueType = VPURT::TaskQueueType{VPU::ExecutorKind::UNKNOWN, 0};
+    auto prevSyncTaskOpQueueType = VPURT::TaskQueueType{config::ExecutorKind::UNKNOWN, 0};
 
     if (firstSyncDmaOp != nullptr) {
         prevSyncTaskOp = firstTask;

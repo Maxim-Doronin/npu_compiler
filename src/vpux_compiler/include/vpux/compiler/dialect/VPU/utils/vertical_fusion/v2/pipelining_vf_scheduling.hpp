@@ -38,7 +38,7 @@ protected:
 
     bool isSharedWeightsSupported(VFConfig& config) const override;
 
-    SmallVector<VPU::ExecutorKind> getExecutorForVFOps(ArrayRef<mlir::Operation*> ops) const;
+    SmallVector<config::ExecutorKind> getExecutorForVFOps(ArrayRef<mlir::Operation*> ops) const;
 };
 
 }  // namespace vpux::VPU::VF::v2

@@ -455,7 +455,7 @@ void createComputeOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder build
     auto dynOutputShapesRange = SmallVector<mlir::ValueRange>();
     llvm::transform(dynOutputShapes, std::back_inserter(dynOutputShapesRange), toValueRange);
 
-    auto isOutputBroadcasted = hasDuplicatedMode(swKernelOp.getResultTypes()) ? mlir::UnitAttr::get(ctx) : nullptr;
+    auto isOutputBroadcasted = hasDuplicatedMode(swKernelOp.getResultTypes());
     // should it be checked in SWKernelOp::verify?
     assert(!isOutputBroadcasted || swKernelOp.getOutputBuffs().size() == 1);
 
@@ -467,8 +467,7 @@ void createComputeOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder build
     auto paramsData = getIntArrayAttr(ctx, paramsVector);
     auto kernelParamsOp = builder.create<VPUMI40XX::KernelParamsOp>(
             swKernelOp.getLoc(), indexType, swKernelOp.getInputs(), actKernalParamResults, dynInputShapesRange,
-            dynOutputShapesRange, swKernelELF, paramsData, isOutputBroadcasted,
-            isJitCompiled ? mlir::UnitAttr::get(ctx) : nullptr);
+            dynOutputShapesRange, swKernelELF, paramsData, isOutputBroadcasted, isJitCompiled);
 
     builder.create<VPUMI40XX::ActKernelInvocationOp>(swKernelOp.getLoc(), indexType,
                                                      nullptr,             // taskLocation

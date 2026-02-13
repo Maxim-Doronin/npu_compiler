@@ -202,7 +202,7 @@ mlir::LogicalResult UpsamplingDMARewriter::matchAndRewrite(VPUIP::UpsamplingDMAO
 
         auto nextOffset = srcOffset + inputShape.totalSize() * elemTypeSize.count();
         const auto newLoc =
-                appendLoc(upsamplingDMAOp->getLoc(), "_unroll_upsamplingDMA[{0},{1}]", srcOffset, nextOffset);
+                appendLoc(upsamplingDMAOp->getLoc(), "unroll_upsamplingDMA[{0},{1}]", srcOffset, nextOffset);
         VPURT::wrapIntoTaskOp<VPUIP::UpsamplingDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, newSrcBuff, newDstBuff,
                 upsamplingDMAOp.getUpsamplingFactorAttr(), descriptorAttr, upsamplingDMAOp.getExpandAttr(), dmaPort,
@@ -239,7 +239,7 @@ void UnrollUpsamplingDMAPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
 
     mlir::RewritePatternSet patterns(&ctx);

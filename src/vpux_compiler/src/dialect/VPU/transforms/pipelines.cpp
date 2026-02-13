@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/ShaveCodeGen/passes.hpp"
+#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
@@ -19,8 +20,6 @@ using namespace vpux;
 namespace {
 
 VPU::ActivationSparsityProfile getActSparsityProfile(const StrOption& actProfile) {
-    VPUX_THROW_UNLESS(actProfile.hasValue(),
-                      "Activation sparsity profile is not provided. Please try 'act-sparsity-profile=S1'");
     const auto actProfileStr = actProfile.getValue();
     const auto parsed = VPU::symbolizeActivationSparsityProfile(actProfileStr);
     VPUX_THROW_UNLESS(parsed.has_value(), "Unsupported activation sparsity profile '{0}'", actProfileStr);
@@ -44,8 +43,6 @@ auto getSparsityProfileCallback(VPU::ActivationSparsityProfile actSparsityProfil
 }
 
 VPU::WeightsSparsityHeuristic getWeightsSparsityHeuristic(const StrOption& weightsSparsityHeuristic) {
-    VPUX_THROW_UNLESS(weightsSparsityHeuristic.hasValue(),
-                      "Weights sparsity heuristic is not provided. Please try 'weights-sparsity-heuristic=RATIO'");
     const auto weightsSparsityHeuristicStr = weightsSparsityHeuristic.getValue();
     const auto parsed = VPU::symbolizeWeightsSparsityHeuristic(weightsSparsityHeuristicStr);
     VPUX_THROW_UNLESS(parsed.has_value(), "Unsupported weights sparsity heuristic '{0}'", weightsSparsityHeuristicStr);
@@ -53,11 +50,9 @@ VPU::WeightsSparsityHeuristic getWeightsSparsityHeuristic(const StrOption& weigh
 }
 
 std::optional<double> getWeightsSparsityThreshold(const DoubleOption& weightsSparsityThreshold) {
-    if (weightsSparsityThreshold.hasValue()) {
-        const auto threshold = weightsSparsityThreshold.getValue();
-        if (threshold >= 0.0) {
-            return threshold;
-        }
+    const auto threshold = weightsSparsityThreshold.getValue();
+    if (threshold >= 0.0) {
+        return threshold;
     }
     return std::nullopt;
 }
@@ -161,7 +156,8 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
     pm.addPass(VPU::createFlashSDPATilingStrategyEstimationPass(log));
 
     pm.addPass(VPU::createTilingStrategyAssignmentPass(options.enablePrefetchTiling, options.enableVPUNNCostForTiling,
-                                                       options.enableShaveDDRAccessOptimization, log));
+                                                       options.enableShaveDDRAccessOptimization,
+                                                       options.enableDynamicDimAlignment, log));
     if (options.enablePrintStatistics) {
         pm.addPass(VPU::createPrintNNCacheStatisticsPass(log, "tiling-strategy-assignment"));
     }
@@ -178,7 +174,7 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
         if (!options.enableSCFTiling) {
             VPU::buildVFPipeline(pm, options, log);
         } else {
-            pm.addPass(VPU::createSCFVerticalFusionPass(log));
+            pm.addPass(VPU::createSCFVerticalFusionPass(options.enableDynamicDimAlignment, log));
             // cleaning up after SCFVerticalFusionPass
             pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
             pm.addPass(mlir::createCSEPass());
@@ -198,7 +194,7 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
                 /*updateStrategyForOutputPipelining*/ true, /*contextId*/ "outputPipelining", log));
     }
 
-    pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, log));
+    pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, options.enableDynamicDimAlignment, log));
     if (options.enableSCFTiling) {
         // cleaning up after ApplyTilingPass
         pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
@@ -215,11 +211,10 @@ void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOp
 //
 
 void vpux::VPU::buildScfComputeOpsOutliningPipeline(mlir::OpPassManager& pm, const vpux::StrOption& loopUnrollFactor,
-                                                    Logger log) {
+                                                    bool enableProfiling,
+                                                    const vpux::BoolOption& enableCascadedUnrolling, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
-
     pm.addPass(VPU::createSCFFuseLastViewLikeOpPass(log));
-    pm.addPass(VPU::createConvertVPUOpsToUpstreamOpsPass(log));
     pm.addPass(VPU::createRestorePadAttrAfterSCFTilingPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
@@ -228,14 +223,12 @@ void vpux::VPU::buildScfComputeOpsOutliningPipeline(mlir::OpPassManager& pm, con
     pm.addPass(VPU::createConvertDynamicToStaticKernelsPass(log));
 
     if (loopUnrollFactor.hasValue() && !loopUnrollFactor.getValue().empty()) {
-        pm.addPass(VPU::createUnrollSCFLoopPass(loopUnrollFactor.getValue(), log));
+        pm.addPass(VPU::createUnrollSCFLoopPass(loopUnrollFactor.getValue(), enableCascadedUnrolling.getValue(), log));
         pm.addPass(mlir::createCanonicalizerPass(grc));
         pm.addPass(mlir::createCSEPass());
     }
 
-    pm.addPass(Core::createPackNestedModulesPass(log));
-    pm.addNestedPass<mlir::ModuleOp>(Core::createAddNetInfoToModulePass(log, true));
-    pm.addPass(VPU::createCloneReservedResourcesFromTopModulePass(log));
+    pm.addPass(Core::createPackNestedModulesPass(log, Core::NestingMode::Default, enableProfiling));
     pm.addPass(VPU::createFinalizeComputeFunctionBoundariesPass(log));
 }
 
@@ -245,6 +238,10 @@ void vpux::VPU::buildScfComputeOpsOutliningPipeline(mlir::OpPassManager& pm, con
 
 void vpux::VPU::buildVFPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& options, Logger log) {
     pm.addPass(VPU::createWrapVerticalFusionRegionPass(options.workloadManagementMode, log));
+    pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
+                                                  options.readStrategyFromJson, readStrategyFileLocation,
+                                                  options.dumpStrategyToLog, false, log));
+
     pm.addPass(VPU::createMoveViewOpsToVerticalFusionPass(options.workloadManagementMode, log));
     pm.addPass(VPU::createMergeVfSubgraphsPass(options.enableVerticalFusionPipelining, options.enablePrefetchTiling,
                                                options.workloadManagementMode, log));
@@ -283,7 +280,7 @@ void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTiling
                                                       options.readStrategyFromJson, readStrategyFileLocation,
                                                       options.dumpStrategyToLog, false, log));
     }
-    pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, log));
+    pm.addPass(VPU::createApplyTilingPass(options.enableSCFTiling, options.enableDynamicDimAlignment, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(VPU::createCorrectStorageElementTableSeSizeForSEPDWConvPass(log));
     pm.addPass(VPU::createMakeOpsWithDistributedTensorPass(options.enableExplicitDistributionInfoAttr, log));
@@ -301,7 +298,23 @@ void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTiling
 //
 
 void vpux::VPU::buildShaveCodeGenPipeline(mlir::OpPassManager& pm) {
+    pm.addPass(ShaveCodeGen::createShaveKernelSimplifyPass());
+    const auto grc = getDefaultGreedyRewriteConfig();
+    // Move kernel results to arguments before doing any other
+    // optimizations. This allows us to see a simpler form of the IR
+    // and helps with the empty tensor elimination performed by this pass.
+    //
+    // In particular, empty tensor elimination needs to walk use-def
+    // chains to find tensor.empty() ops but will refuse to traverse
+    // any reshape-like ops. However these ops are introduced by our
+    // optimization passes (specifically FlattenEltwiseKernel).
+    pm.addPass(ShaveCodeGen::createMoveKernelResultsToArgumentsPass());
+
+    pm.addPass(ShaveCodeGen::createDecomposeAggregateOpsPass());
     pm.addPass(ShaveCodeGen::createFlattenEltwiseKernelPass());
     pm.addPass(ShaveCodeGen::createLinalgTileAndFuseSwLayersPass());
     pm.addPass(mlir::createLinalgGeneralizeNamedOpsPass());
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(ShaveCodeGen::createOneShotBufferizeSWKernelsPass());
+    pm.addPass(ShaveCodeGen::createShaveStackAllocationPass());
 }

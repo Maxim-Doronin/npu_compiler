@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,9 +52,9 @@ func.func @AdjustForSoftmaxMultiShaveOptNCHW(%arg0: tensor<1x2x16x32xf16>) -> te
     %0 = VPU.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<1x2x16x32xf16> -> tensor<1x2x16x32xf16>
     return %0 : tensor<1x2x16x32xf16>
 
-    // CHECK:        [[SHAPECAST_IN:%.*]] = VPU.ShapeCast {shape = [1, 8, 4, 32]} inputs(%arg0 : tensor<1x2x16x32xf16>) -> tensor<1x8x4x32xf16>
-    // CHECK:        [[SOFTMAX:%.*]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 3 : i64} : tensor<1x8x4x32xf16> -> tensor<1x8x4x32xf16>
-    // CHECK:        [[SHAPECAST_OUT:%.*]] = VPU.ShapeCast {shape = [1, 2, 16, 32]} inputs([[SOFTMAX]] : tensor<1x8x4x32xf16>) -> tensor<1x2x16x32xf16>
+    // CHECK:        [[SHAPECAST_IN:%.+]] = VPU.ShapeCast {shape = [1, 8, 4, 32]} inputs(%arg0 : tensor<1x2x16x32xf16>) -> tensor<1x8x4x32xf16>
+    // CHECK:        [[SOFTMAX:%.+]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 3 : i64} : tensor<1x8x4x32xf16> -> tensor<1x8x4x32xf16>
+    // CHECK:        [[SHAPECAST_OUT:%.+]] = VPU.ShapeCast {shape = [1, 2, 16, 32]} inputs([[SOFTMAX]] : tensor<1x8x4x32xf16>) -> tensor<1x2x16x32xf16>
     // CHECK:        return [[SHAPECAST_OUT]]
 }
 
@@ -67,9 +67,9 @@ func.func @AdjustForSoftmaxMultiShaveOptNHWC(%arg0: tensor<1x32x2x16xf16, {order
     %0 = VPU.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x32x2x16xf16, {order = #NHWC}> -> tensor<1x32x2x16xf16, {order = #NHWC}>
     return %0 : tensor<1x32x2x16xf16, {order = #NHWC}>
 
-    // CHECK:        [[SHAPECAST_IN:%.*]] = VPU.ShapeCast {shape = [1, 32, 8, 4]} inputs(%arg0 : tensor<1x32x2x16xf16, {order = #NHWC}>) -> tensor<1x32x8x4xf16, {order = #NHWC}>
-    // CHECK:        [[SOFTMAX:%.*]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 1 : i64} : tensor<1x32x8x4xf16, {order = #NHWC}> -> tensor<1x32x8x4xf16, {order = #NHWC}>
-    // CHECK:        [[SHAPECAST_OUT:%.*]] = VPU.ShapeCast {shape = [1, 32, 2, 16]} inputs([[SOFTMAX]] : tensor<1x32x8x4xf16, {order = #NHWC}>) -> tensor<1x32x2x16xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST_IN:%.+]] = VPU.ShapeCast {shape = [1, 32, 8, 4]} inputs(%arg0 : tensor<1x32x2x16xf16, {order = #NHWC}>) -> tensor<1x32x8x4xf16, {order = #NHWC}>
+    // CHECK:        [[SOFTMAX:%.+]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 1 : i64} : tensor<1x32x8x4xf16, {order = #NHWC}> -> tensor<1x32x8x4xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST_OUT:%.+]] = VPU.ShapeCast {shape = [1, 32, 2, 16]} inputs([[SOFTMAX]] : tensor<1x32x8x4xf16, {order = #NHWC}>) -> tensor<1x32x2x16xf16, {order = #NHWC}>
     // CHECK:        return [[SHAPECAST_OUT]]
 }
 
@@ -83,7 +83,7 @@ func.func @NotAdjustForSoftmaxMultiShaveOptNHWC(%arg0: tensor<1x64x3x3xf16, {ord
     return %0 : tensor<1x64x3x3xf16, {order = #NHWC}>
 
     // CHECK-NOT:    VPU.ShapeCast
-    // CHECK:        [[SOFTMAX:%.*]] = VPU.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x64x3x3xf16, {order = #NHWC}> -> tensor<1x64x3x3xf16, {order = #NHWC}>
+    // CHECK:        [[SOFTMAX:%.+]] = VPU.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x64x3x3xf16, {order = #NHWC}> -> tensor<1x64x3x3xf16, {order = #NHWC}>
     // CHECK-NOT:    VPU.ShapeCast
     // CHECK:        return [[SOFTMAX]]
 }
@@ -97,9 +97,9 @@ func.func @AdjustForSoftmaxMultiShaveOptNCHWwithBatch(%arg0: tensor<2x8x16x16xf1
     %0 = VPU.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<2x8x16x16xf16> -> tensor<2x8x16x16xf16>
     return %0 : tensor<2x8x16x16xf16>
 
-    // CHECK:        [[SHAPECAST_IN:%.*]] = VPU.ShapeCast {shape = [1, 16, 16, 16]} inputs(%arg0 : tensor<2x8x16x16xf16>) -> tensor<1x16x16x16xf16>
-    // CHECK:        [[SOFTMAX:%.*]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 3 : i64} : tensor<1x16x16x16xf16> -> tensor<1x16x16x16xf16>
-    // CHECK:        [[SHAPECAST_OUT:%.*]] = VPU.ShapeCast {shape = [2, 8, 16, 16]} inputs([[SOFTMAX]] : tensor<1x16x16x16xf16>) -> tensor<2x8x16x16xf16>
+    // CHECK:        [[SHAPECAST_IN:%.+]] = VPU.ShapeCast {shape = [1, 16, 16, 16]} inputs(%arg0 : tensor<2x8x16x16xf16>) -> tensor<1x16x16x16xf16>
+    // CHECK:        [[SOFTMAX:%.+]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 3 : i64} : tensor<1x16x16x16xf16> -> tensor<1x16x16x16xf16>
+    // CHECK:        [[SHAPECAST_OUT:%.+]] = VPU.ShapeCast {shape = [2, 8, 16, 16]} inputs([[SOFTMAX]] : tensor<1x16x16x16xf16>) -> tensor<2x8x16x16xf16>
     // CHECK:        return [[SHAPECAST_OUT]]
 }
 
@@ -112,8 +112,8 @@ func.func @AdjustForSoftmaxMultiShaveOptNHWCwithBatch(%arg0: tensor<2x8x16x16xf1
     %0 = VPU.SoftMax(%arg0) {axisInd = 3 : i64} : tensor<2x8x16x16xf16, {order = #NHWC}> -> tensor<2x8x16x16xf16, {order = #NHWC}>
     return %0 : tensor<2x8x16x16xf16, {order = #NHWC}>
 
-    // CHECK:        [[SHAPECAST_IN:%.*]] = VPU.ShapeCast {shape = [1, 8, 32, 16]} inputs(%arg0 : tensor<2x8x16x16xf16, {order = #NHWC}>) -> tensor<1x8x32x16xf16, {order = #NHWC}>
-    // CHECK:        [[SOFTMAX:%.*]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 3 : i64} : tensor<1x8x32x16xf16, {order = #NHWC}> -> tensor<1x8x32x16xf16, {order = #NHWC}>
-    // CHECK:        [[SHAPECAST_OUT:%.*]] = VPU.ShapeCast {shape = [2, 8, 16, 16]} inputs([[SOFTMAX]] : tensor<1x8x32x16xf16, {order = #NHWC}>) -> tensor<2x8x16x16xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST_IN:%.+]] = VPU.ShapeCast {shape = [1, 8, 32, 16]} inputs(%arg0 : tensor<2x8x16x16xf16, {order = #NHWC}>) -> tensor<1x8x32x16xf16, {order = #NHWC}>
+    // CHECK:        [[SOFTMAX:%.+]] = VPU.SoftMax([[SHAPECAST_IN]]) {axisInd = 3 : i64} : tensor<1x8x32x16xf16, {order = #NHWC}> -> tensor<1x8x32x16xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST_OUT:%.+]] = VPU.ShapeCast {shape = [2, 8, 16, 16]} inputs([[SOFTMAX]] : tensor<1x8x32x16xf16, {order = #NHWC}>) -> tensor<2x8x16x16xf16, {order = #NHWC}>
     // CHECK:        return [[SHAPECAST_OUT]]
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,7 @@ func.func @Reshape(%arg0 : tensor<1x512x1x1xf32>) -> tensor<1x512xf32> {
 
 // -----
 
-// CHECK: func.func @ReshapeInGraph([[ARG0:%.*]]: tensor<1x512x1x1xf32>) -> tensor<1x512x1x1xf32> {
+// CHECK: func.func @ReshapeInGraph([[ARG0:%.+]]: tensor<1x512x1x1xf32>) -> tensor<1x512x1x1xf32> {
 func.func @ReshapeInGraph(%arg0 : tensor<1x512x1x1xf32>) -> tensor<1x512x1x1xf32> {
     %0 = IE.Reshape(%arg0) { shape_value = [1, 512] } : tensor<1x512x1x1xf32> -> tensor<1x512xf32>
     %1 = IE.SoftMax(%0) {axisInd = 1} : tensor<1x512xf32> -> tensor<1x512xf32>

@@ -58,6 +58,10 @@ mlir::LogicalResult FuseWithDepth2Space::matchAndRewrite(IE::QuantizeOp quantize
         return mlir::failure();
     }
 
+    if (!isQuantizationSupported(quantizeOp, depth2SpaceOp, IE::TypeComparisonMode::STRICT_EQUAL)) {
+        return mlir::failure();
+    }
+
     auto inputDequantizeOp = depth2SpaceOp.getInput().getDefiningOp<IE::DequantizeOp>();
     if (inputDequantizeOp == nullptr) {
         return mlir::failure();

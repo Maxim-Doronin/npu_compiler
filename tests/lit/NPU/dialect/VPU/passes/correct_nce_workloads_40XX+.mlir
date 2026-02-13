@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -202,7 +202,7 @@ func.func @DepthConvSparseInputWithoutL1aOpt(
     %ACT: !SparseInputType,
     %FILT: tensor<64x16x1x1xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
 ) -> tensor<1x64x16x16xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}> {
-    // CHECK:   [[ACT:%.+]]: !VPU.SparseTensor<{{.*}}>, [[FILT:%.+]]: tensor<64x16x1x1xf16{{.*}}>
+    // CHECK:   [[ACT:%.+]]: !VPU.SparseTensor{{.+}}, [[FILT:%.+]]: tensor<64x16x1x1xf16{{.+}}>
     %DWCONV = VPU.NCE.DepthConvolution(%ACT, %FILT) {
         minimumHardwareExecutionCost = 790 : i64,
         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,

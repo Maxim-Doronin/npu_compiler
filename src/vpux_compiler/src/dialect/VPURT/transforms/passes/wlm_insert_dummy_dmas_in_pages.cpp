@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_pages_split.hpp"
@@ -10,7 +11,6 @@
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
-#include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/options.hpp"
 
 namespace vpux::VPURT {
@@ -46,17 +46,19 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
 
     const auto numBarriers =
             numBarriersOpt.hasValue() ? numBarriersOpt.getValue() : VPUIP::getNumAvailableBarriers(func);
+    auto& barrierInfo = getAnalysis<BarrierInfo>();
 
     // Create dummy input and output buffer that will be needed for creating dummy DMAs
     mlir::OpBuilder builder(func);
     auto buffers = func.getOps<VPURT::DeclareBufferOp>();
-    VPUX_THROW_WHEN(buffers.empty(), "Cannot find DeclareBufferOp");
-    auto firstDeclareBufferOp = *buffers.begin();
-    auto inDdrBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp, VPU::MemoryKind::DDR);
-    auto inCmxBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp, VPU::MemoryKind::CMX_NN);
-    auto outBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
+    auto insertionPoint = !buffers.empty() ? *buffers.begin() : barrierInfo.getBarrierOpAtIndex(0).getOperation();
 
-    auto& barrierInfo = getAnalysis<BarrierInfo>();
+    VPUX_THROW_WHEN(!insertionPoint,
+                    "Cannot find DeclareBufferOp or BarrierOpInterface to use as reference for dummy buffer creation");
+    auto inDdrBuffer = VPUIP::createDummyBuffer(builder, insertionPoint, VPU::MemoryKind::DDR);
+    auto inCmxBuffer = VPUIP::createDummyBuffer(builder, insertionPoint, VPU::MemoryKind::CMX_NN);
+    auto outBuffer = VPUIP::createDummyBuffer(builder, insertionPoint);
+
     VPURT::BarrierPagesSplitHandler barrierPagesSplitHandler(func, barrierInfo, numBarriers, _log);
     barrierPagesSplitHandler.initializeForLegalization();
 
@@ -128,8 +130,8 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
         auto insertionPointOp = barrierInfo.getTaskOpAtIndex(dummyDmaInsertionData.insertAfter);
         auto port = getDMAPortFromEncodedId(queueType.id);
 
-        _log.trace("Insert new DMA[{0}][{1}] in page {2}", port, getDMAChannelTypeAsString(queueType.id, arch),
-                   pageInd);
+        _log.trace("Insert new DMA[{0}][{1}] in page {2} after {3}", port,
+                   VPUIP::getDMAChannelTypeAsString(queueType.id, arch), pageInd, dummyDmaInsertionData.insertAfter);
 
         builder.setInsertionPointAfter(insertionPointOp);
 

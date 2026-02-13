@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -58,8 +58,8 @@ module @LogSoftmax attributes {config.arch = #config.arch_kind<NPU50XX>, config.
         // CHECK-DAG:   [[BAR1:%.+]] = VPURT.ConfigureBarrier<1> -> !VPURT.Barrier
         // CHECK-DAG:   [[BAR2:%.+]] = VPURT.ConfigureBarrier<2> -> !VPURT.Barrier
         // CHECK-DAG:   [[BAR3:%.+]] = VPURT.ConfigureBarrier<3> <{isFinalBarrier}> -> !VPURT.Barrier
-        // CHECK-DAG:   [[DUMMY_BUFF0:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
-        // CHECK-DAG:   [[DUMMY_BUFF1:%.*]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+        // CHECK-DAG:   [[DUMMY_BUFF0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
+        // CHECK-DAG:   [[DUMMY_BUFF1:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
         // CHECK-DAG:   [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x1000xf16, @DDR>
         // CHECK-DAG:   [[BUFF0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
         // CHECK-DAG:   [[BUFF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
@@ -68,12 +68,12 @@ module @LogSoftmax attributes {config.arch = #config.arch_kind<NPU50XX>, config.
         // CHECK-DAG:   [[BUFF2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <2048> -> memref<1x1000xf16, [@CMX_NN, 0]>
 
         // CHECK:                VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK-NEXT:                VPUIP.SyncDMA {port = 0 : i64} inputs([[DUMMY_BUFF0]] : memref<0x0x0x0xi32, @DDR>) outputs([[DUMMY_BUFF1]] : memref<0x0x0x0xi32, @DDR>)
+        // CHECK-NEXT:                VPUIP.SyncDMA <{port = 0 : i64}> inputs([[DUMMY_BUFF0]] : memref<0x0x0x0xi32, @DDR>) outputs([[DUMMY_BUFF1]] : memref<0x0x0x0xi32, @DDR>)
         // CHECK-SAME:                -> memref<0x0x0x0xi32, @DDR>
         // CHECK-NEXT:           }
 
         // CHECK:              VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-        // CHECK-NEXT:            VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs([[IN]] : memref<1x1x1x1000xf16, @DDR>) outputs([[BUFF0]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>)
+        // CHECK-NEXT:            VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs([[IN]] : memref<1x1x1x1000xf16, @DDR>) outputs([[BUFF0]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>)
         // CHECK-SAME:            -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
         // CHECK-NEXT:    }
 
@@ -85,7 +85,7 @@ module @LogSoftmax attributes {config.arch = #config.arch_kind<NPU50XX>, config.
         // CHECK-NEXT:    }
 
         // CHECK:       VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) {
-        // CHECK-NEXT:    VPUIP.NNDMA {port = 0 : i64} inputs([[BUFF2]] : memref<1x1000xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x1000xf16, @DDR>)
+        // CHECK-NEXT:    VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF2]] : memref<1x1000xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x1000xf16, @DDR>)
         // CHECK-SAME:    -> memref<1x1000xf16, @DDR>
         // CHECK-NEXT:  }
 

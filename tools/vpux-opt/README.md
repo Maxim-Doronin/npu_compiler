@@ -15,7 +15,7 @@ The following commands were tested on *Ubuntu*. Please, don't hesitate to update
 
 1. Compile a model and dump the pass you're interested in (i.e. `my-pass`):
 
-    `IE_NPU_PRINT_AS_TEXTUAL_PIPELINE_FILE=pipeline.txt IE_NPU_IR_PRINTING_FILE=output_my_pass_full.mlir IE_NPU_PRINT_FULL_IR=1 IE_NPU_IR_PRINTING_ORDER=After IE_NPU_PRINT_FULL_CONSTANT=1 IE_NPU_IR_PRINTING_FILTER=.*my-pass.* compile_tool -m <YOUR model path> -d <YOUR NPU type> -c <YOUR cfg_file>`
+    `IE_NPU_PRINT_AS_TEXTUAL_PIPELINE_FILE=pipeline.txt IE_NPU_IR_PRINTING_LOCATION=output_my_pass_full.mlir IE_NPU_PRINT_FULL_IR=1 IE_NPU_IR_PRINTING_ORDER=After IE_NPU_PRINT_FULL_CONSTANT=1 IE_NPU_IR_PRINTING_FILTER=.*my-pass.* compile_tool -m <YOUR model path> -d <YOUR NPU type> -c <YOUR cfg_file>`
 
     Please, ensure that `IE_NPU_PRINT_FULL_CONSTANT=1` was set and enabled. In general circumstances, the subsequent steps will require full presence of all constants in the processed MLIR
 

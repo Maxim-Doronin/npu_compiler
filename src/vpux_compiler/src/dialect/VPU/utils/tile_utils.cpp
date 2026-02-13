@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,23 +8,27 @@
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 
 namespace vpux {
 namespace VPU {
-
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEConvolutionOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiling =
             inputTiles.has_value() ? inputTiles.value() : origOp.backInferTileInfo(outTile, Logger::global());
 
@@ -38,37 +42,33 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-        auto strategy = clusteredOp.getMultiClusterStrategy().value();
-
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(
-                clusteredOp, outputTileType.getShape(),
-                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
-                        .getValue());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(filterTileType,
-                               VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(filterTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+    auto strategy = customStrategy.value();
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(filterTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
+
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(filterTileType,
+                           VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEMatMulOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiling = inputTiles.value_or(origOp.backInferTileInfo(outTile, Logger::global()));
 
     const auto tiles = tiling.tiles;
@@ -81,37 +81,34 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-        auto strategy = clusteredOp.getMultiClusterStrategy().value();
-
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(
-                clusteredOp, outputTileType.getShape(),
-                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
-                        .getValue());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(filterTileType,
-                               VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(filterTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(filterTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+    auto strategy = customStrategy.value();
+
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
+
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(filterTileType,
+                           VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEMaxPoolOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiling =
             inputTiles.has_value() ? inputTiles.value() : origOp.backInferTileInfo(outTile, Logger::global());
 
@@ -123,28 +120,28 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
-                                                      clusteredOp.getMultiClusterStrategy().value());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+
+    auto strategy = customStrategy.value();
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEAveragePoolOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiling =
             inputTiles.has_value() ? inputTiles.value() : origOp.backInferTileInfo(outTile, Logger::global());
 
@@ -157,28 +154,27 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
-                                                      clusteredOp.getMultiClusterStrategy().value());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto strategy = customStrategy.value();
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEDepthConvolutionOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiling =
             inputTiles.has_value() ? inputTiles.value() : origOp.backInferTileInfo(outTile, Logger::global());
 
@@ -192,33 +188,33 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
-
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-        auto strategy = clusteredOp.getMultiClusterStrategy().value();
-        auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(filterTileType,
-                               VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(filterTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(filterTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
+
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+    auto strategy = customStrategy.value();
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(filterTileType,
+                           VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCECompressConvolutionOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiles = inputTiles.has_value() ? inputTiles.value().tiles
                                               : origOp.backInferTileInfo(outTile, Logger::global()).tiles;
     auto inputTileType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType())
@@ -228,37 +224,34 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-        auto strategy = clusteredOp.getMultiClusterStrategy().value();
-
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(
-                clusteredOp, outputTileType.getShape(),
-                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
-                        .getValue());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(filterTileType,
-                               VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(filterTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(filterTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+    auto strategy = customStrategy.value();
+
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
+
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(filterTileType,
+                           VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEPermuteOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiles = inputTiles.has_value() ? inputTiles.value().tiles
                                               : origOp.backInferTileInfo(outTile, Logger::global()).tiles;
     auto inputTileType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType())
@@ -266,33 +259,30 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(
-                clusteredOp, outputTileType.getShape(),
-                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
-                        .getValue());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
+    auto strategy = customStrategy.value();
+
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         VPU::NCEInterpolateOp origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto tiling =
             inputTiles.has_value() ? inputTiles.value() : origOp.backInferTileInfo(outTile, Logger::global());
 
@@ -306,37 +296,34 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
-        auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
-                        origOp->getLoc());
-        auto strategy = clusteredOp.getMultiClusterStrategy().value();
-
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
-        VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
-
-        auto numClusters = VPU::getOptimalNumClusters(
-                clusteredOp, outputTileType.getShape(),
-                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
-                        .getValue());
-        return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
-                                                      clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                      siblingsAnalysis, nullptr, tiles[0])),
-                std::make_pair(filterTileType,
-                               VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
-                std::make_pair(outputTileType,
-                               VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
-                                                                    siblingsAnalysis, {}, outTile))};
+    if (!customStrategy.has_value()) {
+        return {std::make_pair(inputTileType, TensorDistributionMap{}),
+                std::make_pair(filterTileType, TensorDistributionMap{}),
+                std::make_pair(outputTileType, TensorDistributionMap{})};
     }
 
-    return {std::make_pair(inputTileType, TensorDistributionMap{}),
-            std::make_pair(filterTileType, TensorDistributionMap{}),
-            std::make_pair(outputTileType, TensorDistributionMap{})};
+    auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
+                    origOp->getLoc());
+    auto strategy = customStrategy.value();
+
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(origOp.getOperation());
+    VPUX_THROW_WHEN(nceOp == nullptr, "Op {0} has multiClusterStrategy but is not an NCEOp", origOp->getLoc());
+
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
+    return {std::make_pair(inputTileType, VPU::getActivationDistributionAttrFromOp(
+                                                  clusteredOp, origOp.getInput(), inputTileType, numClusters, strategy,
+                                                  siblingsAnalysis, {}, nullptr, tiles[0])),
+            std::make_pair(filterTileType,
+                           VPU::getFilterDistributionAttrFromOp(nceOp, filterTileType, numClusters, strategy)),
+            std::make_pair(outputTileType,
+                           VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
+                                                                siblingsAnalysis, {}, outTile))};
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributionsCommon(
         mlir::Operation* origOp, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
 
     SmallVector<vpux::TileInfo> inTiles{outTile};
@@ -361,7 +348,7 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     }
     const auto outputTileType = outputType.extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (!origOp->hasAttr(VPU::multiClusterStrategy)) {
+    if (!customStrategy.has_value()) {
         inputTileTypes.push_back(std::make_pair(outputTileType, TensorDistributionMap{}));
         return inputTileTypes;
     }
@@ -369,20 +356,20 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
     auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp);
     VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
                     origOp->getLoc());
-    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(),
-                                                  clusteredOp.getMultiClusterStrategy().value());
+    auto strategy = customStrategy.value();
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy);
 
     std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> distributedTensorTypes;
     SmallVector<NDTypeInterface> inputTypes;
     for (const auto& [idx, inputTileType] : inputTileTypes | indexed) {
-        auto inDistribution =
-                VPU::getActivationDistributionAttrFromOp(clusteredOp, clusteredOp->getOperand(idx), inputTileType.first,
-                                                         numClusters, siblingsAnalysis, outputTileType, outTile);
+        auto inDistribution = VPU::getActivationDistributionAttrFromOp(clusteredOp, clusteredOp->getOperand(idx),
+                                                                       inputTileType.first, numClusters, strategy,
+                                                                       siblingsAnalysis, {}, outputTileType, outTile);
         distributedTensorTypes.push_back(std::make_pair(inputTileType.first, inDistribution));
         inputTypes.push_back(inputTileType.first);
     }
 
-    auto outDistribution = VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters,
+    auto outDistribution = VPU::getOutputDistributionAttrFromOp(clusteredOp, outputTileType, numClusters, strategy,
                                                                 siblingsAnalysis, inputTypes);
     distributedTensorTypes.push_back(std::make_pair(outputTileType, outDistribution));
 
@@ -391,49 +378,52 @@ std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributi
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
         mlir::Operation* op, SiblingOpsAnalysis& siblingsAnalysis, const TileInfo& outTile,
-        const std::optional<InputTiling>& inputTiles) {
+        std::optional<VPU::MultiClusterStrategy> customStrategy, const std::optional<InputTiling>& inputTiles) {
     if (auto convOp = mlir::dyn_cast<VPU::NCEConvolutionOp>(op)) {
-        return getTileDistributions(convOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(convOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto convOp = mlir::dyn_cast<VPU::NCECompressConvolutionOp>(op)) {
-        return getTileDistributions(convOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(convOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto poolOp = mlir::dyn_cast<VPU::NCEMaxPoolOp>(op)) {
-        return getTileDistributions(poolOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(poolOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto poolOp = mlir::dyn_cast<VPU::NCEAveragePoolOp>(op)) {
-        return getTileDistributions(poolOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(poolOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto depthConvOp = mlir::dyn_cast<VPU::NCEDepthConvolutionOp>(op)) {
-        return getTileDistributions(depthConvOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(depthConvOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto interpOp = mlir::dyn_cast<VPU::NCEInterpolateOp>(op)) {
-        return getTileDistributions(interpOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(interpOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto permuteOp = mlir::dyn_cast<VPU::NCEPermuteOp>(op)) {
-        return getTileDistributions(permuteOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(permuteOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto nceMatmulOp = mlir::dyn_cast<VPU::NCEMatMulOp>(op)) {
-        return getTileDistributions(nceMatmulOp, siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributions(nceMatmulOp, siblingsAnalysis, outTile, customStrategy, inputTiles);
     }
     if (auto nceReduceOp = mlir::dyn_cast<VPU::NCEReduceOp>(op)) {
-        return getTileDistributionsCommon(nceReduceOp.getOperation(), siblingsAnalysis, outTile, inputTiles);
+        return getTileDistributionsCommon(nceReduceOp.getOperation(), siblingsAnalysis, outTile, customStrategy,
+                                          inputTiles);
     }
 
     auto tileConf = inputTiles.has_value() ? inputTiles.value() : vpux::backInferEltwiseTile(op, outTile);
 
-    return getTileDistributionsCommon(op, siblingsAnalysis, outTile, tileConf);
+    return getTileDistributionsCommon(op, siblingsAnalysis, outTile, customStrategy, tileConf);
 }
 
 std::vector<std::pair<NDTypeInterface, TensorDistributionMap>> getTileDistributions(
-        mlir::Operation* op, const TileInfo& outTile, const std::optional<InputTiling>& inputTiles) {
+        mlir::Operation* op, const TileInfo& outTile, std::optional<VPU::MultiClusterStrategy> customStrategy,
+        const std::optional<InputTiling>& inputTiles) {
     auto siblingsAnalysis = SiblingOpsAnalysis(op);
-    return getTileDistributions(op, siblingsAnalysis, outTile, inputTiles);
+    return getTileDistributions(op, siblingsAnalysis, outTile, customStrategy, inputTiles);
 }
 
 // Convolution
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::ConvolutionOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> /*strategy*/,
                                                 const std::optional<InputTiling>& inputTiles) {
     const auto origBiasShape = origOp.getBias() != nullptr ? getShape(origOp.getBias()) : ShapeRef();
     const auto origPadding = PadInfo(origOp.getPadsBegin(), origOp.getPadsEnd());
@@ -458,6 +448,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::ConvolutionOp origOp, const
 // MaxPool
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::MaxPoolOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> /*strategy*/,
                                                 const std::optional<InputTiling>& inputTiles) {
     const auto origPadding = PadInfo(origOp.getPadsBegin(), origOp.getPadsEnd());
 
@@ -480,6 +471,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::MaxPoolOp origOp, const Til
 // GroupConvolution
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::GroupConvolutionOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> /*strategy*/,
                                                 const std::optional<InputTiling>& inputTiles) {
     const auto origBiasShape = origOp.getBias() != nullptr ? getShape(origOp.getBias()) : ShapeRef();
     const auto origPadding = PadInfo(origOp.getPadsBegin(), origOp.getPadsEnd());
@@ -507,6 +499,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::GroupConvolutionOp origOp, 
 // DepthToSpace
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::DepthToSpaceOp origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles) {
     const auto tiling =
             inputTiles.has_value() ? inputTiles.value() : origOp.backInferTileInfo(outTile, Logger::global());
@@ -520,24 +513,23 @@ SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::DepthToSpaceOp origOp, cons
     auto outputTileType =
             mlir::cast<vpux::NDTypeInterface>(origOp.getType()).extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (origOp->hasAttr(VPU::multiClusterStrategy)) {
+    if (strategy.has_value()) {
         auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp.getOperation());
         VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
                         origOp->getLoc());
 
-        auto numClusters = VPU::getOptimalNumClusters(
-                clusteredOp, outputTileType.getShape(),
-                mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(clusteredOp->getAttr(VPU::multiClusterStrategy))
-                        .getValue());
+        auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTileType.getShape(), strategy.value());
         return {VPU::getDistributedActivationTypeFromOp(clusteredOp, origOp.getInput(), inputTileType, numClusters,
-                                                        nullptr, tiles[0]),
-                VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, {}, outTile)};
+                                                        strategy.value(), {}, nullptr, tiles[0]),
+                VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, strategy.value(), {},
+                                                    outTile)};
     }
 
     return {inputTileType, outputTileType};
 }
 
 SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, const TileInfo& outTile,
+                                                      std::optional<VPU::MultiClusterStrategy> strategy,
                                                       const std::optional<InputTiling>& inputTiles) {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
 
@@ -564,7 +556,7 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
     }
     const auto outputTileType = outputType.extractDenseTile(outTile.offsets, outTile.shape);
 
-    if (!origOp->hasAttr(VPU::multiClusterStrategy)) {
+    if (!strategy.has_value()) {
         inputTileTypes.emplace_back(outputTileType);
         return inputTileTypes;
     }
@@ -572,107 +564,117 @@ SmallVector<vpux::NDTypeInterface> getTileTypesCommon(mlir::Operation* origOp, c
     auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(origOp);
     VPUX_THROW_WHEN(clusteredOp == nullptr, "Op {0} has multiClusterStrategy but is not an ClusteredOp",
                     origOp->getLoc());
-    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, getBoundedShape(outputTileType),
-                                                  clusteredOp.getMultiClusterStrategy().value());
+    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, getBoundedShape(outputTileType), strategy.value());
 
     SmallVector<vpux::NDTypeInterface> distributedTensorTypes;
     distributedTensorTypes.reserve(inputTileTypes.size());
     for (const auto& [idx, inputTileType] : inputTileTypes | indexed) {
-        auto inDistributedType =
-                idx != 0 && inputTileType == inputTileTypes.front()
-                        ? distributedTensorTypes.front()
-                        : VPU::getDistributedActivationTypeFromOp(clusteredOp, clusteredOp->getOperand(idx),
-                                                                  inputTileType, numClusters, outputTileType, outTile);
+        auto inDistributedType = idx != 0 && inputTileType == inputTileTypes.front()
+                                         ? distributedTensorTypes.front()
+                                         : VPU::getDistributedActivationTypeFromOp(
+                                                   clusteredOp, clusteredOp->getOperand(idx), inputTileType,
+                                                   numClusters, strategy.value(), {}, outputTileType, outTile);
         distributedTensorTypes.emplace_back(mlir::cast<vpux::NDTypeInterface>(inDistributedType));
     }
 
-    auto outDistributedType =
-            VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters, inputTileTypes);
+    auto outDistributedType = VPU::getDistributedOutputTypeFromOp(clusteredOp, outputTileType, numClusters,
+                                                                  strategy.value(), inputTileTypes);
     distributedTensorTypes.emplace_back(mlir::cast<vpux::NDTypeInterface>(outDistributedType));
 
     return distributedTensorTypes;
 }
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(VPU::SWOpInterface origOp, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles) {
     VPUX_THROW_UNLESS(origOp->getResults().size() == 1, "Only support SW with one output, but got '{0}'",
                       origOp->getResults().size());
 
-    return getTileTypesCommon(origOp, outTile, inputTiles);
+    return getTileTypesCommon(origOp, outTile, strategy, inputTiles);
 }
 
 SmallVector<vpux::NDTypeInterface> getTileTypes(mlir::Operation* op, const TileInfo& outTile,
+                                                std::optional<VPU::MultiClusterStrategy> strategy,
                                                 const std::optional<InputTiling>& inputTiles) {
     if (auto convOp = mlir::dyn_cast<VPU::ConvolutionOp>(op)) {
-        return getTileTypes(convOp, outTile, inputTiles);
+        return getTileTypes(convOp, outTile, strategy, inputTiles);
     }
     if (auto convOp = mlir::dyn_cast<VPU::NCEConvolutionOp>(op)) {
-        return getTileTypes(convOp, outTile, inputTiles);
+        return getTileTypes(convOp, outTile, strategy, inputTiles);
     }
     if (auto convOp = mlir::dyn_cast<VPU::NCECompressConvolutionOp>(op)) {
-        return getTileTypes(convOp, outTile, inputTiles);
+        return getTileTypes(convOp, outTile, strategy, inputTiles);
     }
     if (auto convOp = mlir::dyn_cast<VPU::NCEMatMulOp>(op)) {
-        return getTileTypes(convOp, outTile, inputTiles);
+        return getTileTypes(convOp, outTile, strategy, inputTiles);
     }
     if (auto poolOp = mlir::dyn_cast<VPU::MaxPoolOp>(op)) {
-        return getTileTypes(poolOp, outTile, inputTiles);
+        return getTileTypes(poolOp, outTile, strategy, inputTiles);
     }
     if (auto poolOp = mlir::dyn_cast<VPU::NCEMaxPoolOp>(op)) {
-        return getTileTypes(poolOp, outTile, inputTiles);
+        return getTileTypes(poolOp, outTile, strategy, inputTiles);
     }
     if (auto poolOp = mlir::dyn_cast<VPU::NCEAveragePoolOp>(op)) {
-        return getTileTypes(poolOp, outTile, inputTiles);
+        return getTileTypes(poolOp, outTile, strategy, inputTiles);
     }
     if (auto groupConvOp = mlir::dyn_cast<VPU::GroupConvolutionOp>(op)) {
-        return getTileTypes(groupConvOp, outTile, inputTiles);
+        return getTileTypes(groupConvOp, outTile, strategy, inputTiles);
     }
     if (auto depthConvOp = mlir::dyn_cast<VPU::NCEDepthConvolutionOp>(op)) {
-        return getTileTypes(depthConvOp, outTile, inputTiles);
+        return getTileTypes(depthConvOp, outTile, strategy, inputTiles);
     }
     if (auto depthToSpaceOp = mlir::dyn_cast<VPU::DepthToSpaceOp>(op)) {
-        return getTileTypes(depthToSpaceOp, outTile, inputTiles);
+        return getTileTypes(depthToSpaceOp, outTile, strategy, inputTiles);
     }
     if (auto swOp = mlir::dyn_cast<VPU::SWOpInterface>(op)) {
-        return getTileTypes(swOp, outTile, inputTiles);
+        return getTileTypes(swOp, outTile, strategy, inputTiles);
     }
     if (auto interpOp = mlir::dyn_cast<VPU::NCEInterpolateOp>(op)) {
-        return getTileTypes(interpOp, outTile, inputTiles);
+        return getTileTypes(interpOp, outTile, strategy, inputTiles);
     }
     if (auto permuteOp = mlir::dyn_cast<VPU::NCEPermuteOp>(op)) {
-        return getTileTypes(permuteOp, outTile, inputTiles);
+        return getTileTypes(permuteOp, outTile, strategy, inputTiles);
     }
     if (auto reduceOp = mlir::dyn_cast<VPU::NCEReduceOp>(op)) {
-        return getTileTypesCommon(reduceOp, outTile, inputTiles);
+        return getTileTypesCommon(reduceOp, outTile, strategy, inputTiles);
     }
     if (auto gatherOp = mlir::dyn_cast<VPU::GatherOp>(op)) {
-        return getTileTypesCommon(gatherOp, outTile, inputTiles);
+        return getTileTypesCommon(gatherOp, outTile, strategy, inputTiles);
     }
 
     auto tileConf = inputTiles.has_value() ? inputTiles.value() : vpux::backInferEltwiseTile(op, outTile);
 
-    return getTileTypesCommon(op, outTile, tileConf);
+    return getTileTypesCommon(op, outTile, strategy, tileConf);
 }
 
 Byte getRequiredCMXForWeight(VPU::ConvolutionOp convOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(convOp, tiling, inputTiles);
+    auto tileTypes = getTileTypes(convOp, tiling, std::nullopt, inputTiles);
     const auto lastFilterTileType = tileTypes[1];
     return getRequiredCMXSize({lastFilterTileType});
 }
 
 Byte getRequiredCMXForWeight(VPU::NCEConvolutionOp convOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(convOp, tiling, inputTiles);
+    auto strategy = convOp.getMultiClusterStrategy();
+    auto tileTypes = getTileTypes(convOp, tiling, strategy, inputTiles);
     const auto lastFilterTileType = tileTypes[1];
     const auto outputTileType = tileTypes[2];
     const auto OC = outputTileType.getShape()[Dims4D::Act::C];
-    return getRequiredCMXSizeForNCEOps({lastFilterTileType}, OC, countElementsPerOutputChannelInWeightTable(convOp));
+    Byte requiredCMX =
+            getRequiredCMXSizeForNCEOps({lastFilterTileType}, OC, countElementsPerOutputChannelInWeightTable(convOp));
+
+    if (convOp.getWeightZeroPoints()) {
+        requiredCMX += getRequiredCMXSizeForZeroPointTable(convOp, OC, convOp.getWeightZeroPoints());
+    }
+
+    return requiredCMX;
 }
 
 Byte getRequiredCMXForWeight(VPU::NCEMatMulOp matMulOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(matMulOp, tiling, inputTiles);
+    auto strategy = matMulOp.getMultiClusterStrategy();
+    auto tileTypes = getTileTypes(matMulOp, tiling, strategy, inputTiles);
     const auto lastFilterTileType = tileTypes[1];
     const auto outputTileType = tileTypes[2];
     const auto OC = outputTileType.getShape()[DimsGroups5D::Act::C];
@@ -684,7 +686,8 @@ Byte getRequiredCMXForWeight(VPU::NCEMatMulOp matMulOp, const vpux::TileInfo& ti
 
 Byte getRequiredCMXForWeight(VPU::NCECompressConvolutionOp convOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(convOp.getOperation(), tiling, inputTiles);
+    auto strategy = convOp.getMultiClusterStrategy();
+    auto tileTypes = getTileTypes(convOp.getOperation(), tiling, strategy, inputTiles);
     const auto lastFilterTileType = tileTypes[1];
     const auto outputTileType = tileTypes[2];
     const auto OC = outputTileType.getShape()[Dims4D::Act::C];
@@ -693,7 +696,7 @@ Byte getRequiredCMXForWeight(VPU::NCECompressConvolutionOp convOp, const vpux::T
 
 Byte getRequiredCMX(VPU::ConvolutionOp convOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    auto tileDistributions = getTileDistributions(convOp, tiling, inputTiles);
+    auto tileDistributions = getTileDistributions(convOp, tiling, std::nullopt, inputTiles);
     const auto lastInputTileType = tileDistributions[0];
     const auto lastFilterTileType = tileDistributions[1];
     const auto lastOutputTileType = tileDistributions[2];
@@ -706,8 +709,14 @@ Byte getRequiredCMX(VPU::NCEConvolutionOp convOp, const SmallVector<NDTypeInterf
     const auto lastFilterTileType = tileTypes[1];
     const auto lastOutputTileType = tileTypes[2];
     const auto OC = lastOutputTileType.getShape()[Dims4D::Act::C];
-    return getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC,
-                                       countElementsPerOutputChannelInWeightTable(convOp));
+    Byte requiredCMX = getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC,
+                                                   countElementsPerOutputChannelInWeightTable(convOp));
+
+    if (convOp.getWeightZeroPoints()) {
+        requiredCMX += getRequiredCMXSizeForZeroPointTable(convOp, OC, convOp.getWeightZeroPoints());
+    }
+
+    return requiredCMX;
 }
 
 Byte getRequiredCMX(VPU::NCEConvolutionOp convOp,
@@ -717,13 +726,20 @@ Byte getRequiredCMX(VPU::NCEConvolutionOp convOp,
     const auto lastFilterTileType = tileDistributions[1];
     const auto lastOutputTileType = tileDistributions[2];
     const auto OC = lastOutputTileType.first.getShape()[Dims4D::Act::C];
-    return getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC,
-                                       countElementsPerOutputChannelInWeightTable(convOp));
+    Byte requiredCMX = getRequiredCMXSizeForNCEOps({lastInputTileType, lastFilterTileType, lastOutputTileType}, OC,
+                                                   countElementsPerOutputChannelInWeightTable(convOp));
+
+    if (convOp.getWeightZeroPoints()) {
+        requiredCMX += getRequiredCMXSizeForZeroPointTable(convOp, OC, convOp.getWeightZeroPoints());
+    }
+
+    return requiredCMX;
 }
 
 Byte getRequiredCMX(VPU::NCEConvolutionOp convOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(convOp, getTileDistributions(convOp.getOperation(), tiling, inputTiles));
+    auto strategy = convOp.getMultiClusterStrategy();
+    return getRequiredCMX(convOp, getTileDistributions(convOp.getOperation(), tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMX(VPU::NCECompressConvolutionOp convOp, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -747,19 +763,21 @@ Byte getRequiredCMX(VPU::NCECompressConvolutionOp convOp,
 
 Byte getRequiredCMX(VPU::NCECompressConvolutionOp convOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(convOp, getTileDistributions(convOp.getOperation(), tiling, inputTiles));
+    auto strategy = convOp.getMultiClusterStrategy();
+    return getRequiredCMX(convOp, getTileDistributions(convOp.getOperation(), tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMXForWeight(VPU::GroupConvolutionOp gConvOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(gConvOp, tiling, inputTiles);
+    auto tileTypes = getTileTypes(gConvOp, tiling, std::nullopt, inputTiles);
     const auto filterTileType = tileTypes[1];
     return getRequiredCMXSize({filterTileType});
 }
 
-Byte getRequiredCMXForWeight(VPU::NCEDepthConvolutionOp gConvOp, const vpux::TileInfo& tiling,
+Byte getRequiredCMXForWeight(VPU::NCEDepthConvolutionOp dwConvOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(gConvOp, tiling, inputTiles);
+    auto strategy = dwConvOp.getMultiClusterStrategy();
+    auto tileTypes = getTileTypes(dwConvOp, tiling, strategy, inputTiles);
     const auto filterTileShape = tileTypes[1];
     const auto outputTileType = tileTypes[2];
     const auto OC = outputTileType.getShape()[Dims4D::Act::C];
@@ -768,7 +786,7 @@ Byte getRequiredCMXForWeight(VPU::NCEDepthConvolutionOp gConvOp, const vpux::Til
 
 Byte getRequiredCMX(VPU::GroupConvolutionOp gConvOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    auto tileDistributions = getTileDistributions(gConvOp, tiling, inputTiles);
+    auto tileDistributions = getTileDistributions(gConvOp, tiling, std::nullopt, inputTiles);
     const auto inputTileType = tileDistributions[0];
     return getRequiredCMXSize({inputTileType, inputTileType}) + getRequiredCMXForWeight(gConvOp, tiling, inputTiles);
 }
@@ -798,7 +816,8 @@ Byte getRequiredCMX(VPU::NCEDepthConvolutionOp dConvOp,
 
 Byte getRequiredCMX(VPU::NCEDepthConvolutionOp dConvOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(dConvOp, getTileDistributions(dConvOp, tiling, inputTiles));
+    auto strategy = dConvOp.getMultiClusterStrategy();
+    return getRequiredCMX(dConvOp, getTileDistributions(dConvOp, tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMX(VPU::SWOpInterface /*swOp*/, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -807,7 +826,8 @@ Byte getRequiredCMX(VPU::SWOpInterface /*swOp*/, const SmallVector<NDTypeInterfa
 
 Byte getRequiredCMX(VPU::SWOpInterface swOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(swOp, tiling, inputTiles);
+    auto strategy = getMultiClusterStrategyFromOp(swOp.getOperation());
+    auto tileTypes = getTileTypes(swOp, tiling, strategy, inputTiles);
     return getRequiredCMXSize(tileTypes);
 }
 
@@ -817,7 +837,8 @@ Byte getRequiredCMX(VPU::DepthToSpaceOp /*d2sOp*/, const SmallVector<NDTypeInter
 
 Byte getRequiredCMX(VPU::DepthToSpaceOp d2sOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileDistributions(d2sOp, tiling, inputTiles);
+    auto strategy = d2sOp.getMultiClusterStrategy();
+    auto tileTypes = getTileDistributions(d2sOp, tiling, strategy, inputTiles);
     return getRequiredCMXSize(tileTypes);
 }
 
@@ -846,7 +867,8 @@ Byte getRequiredCMX(VPU::NCEMatMulOp matMulOp,
 
 Byte getRequiredCMX(VPU::NCEMatMulOp matMulOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(matMulOp, getTileDistributions(matMulOp.getOperation(), tiling, inputTiles));
+    auto strategy = matMulOp.getMultiClusterStrategy();
+    return getRequiredCMX(matMulOp, getTileDistributions(matMulOp.getOperation(), tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMXForWeight(VPU::MaxPoolOp /*op*/, const vpux::TileInfo& /*tiling*/,
@@ -870,7 +892,7 @@ Byte getRequiredCMXForWeight(VPU::NCEAveragePoolOp /*op*/, const vpux::TileInfo&
 }
 
 Byte getRequiredCMX(VPU::MaxPoolOp poolOp, const vpux::TileInfo& tiling, const std::optional<InputTiling>& inputTiles) {
-    auto tileDistributions = getTileDistributions(poolOp.getOperation(), tiling, inputTiles);
+    auto tileDistributions = getTileDistributions(poolOp.getOperation(), tiling, std::nullopt, inputTiles);
     auto inputType = tileDistributions[0];
     auto outputType = tileDistributions[1];
     return getRequiredCMXSize({std::move(inputType), std::move(outputType)});
@@ -899,7 +921,9 @@ Byte getRequiredCMX(VPU::NCEMaxPoolOp poolOp,
 
 Byte getRequiredCMX(VPU::NCEMaxPoolOp poolOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(poolOp, getTileDistributions(poolOp.getOperation(), tiling, inputTiles));
+    auto strategy = poolOp.getMultiClusterStrategy();
+
+    return getRequiredCMX(poolOp, getTileDistributions(poolOp.getOperation(), tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMX(VPU::NCEPermuteOp pqOp, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -919,7 +943,8 @@ Byte getRequiredCMX(VPU::NCEPermuteOp pqOp,
 
 Byte getRequiredCMX(VPU::NCEPermuteOp pqOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(pqOp, getTileDistributions(pqOp, tiling, inputTiles));
+    auto strategy = pqOp.getMultiClusterStrategy();
+    return getRequiredCMX(pqOp, getTileDistributions(pqOp, tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -945,7 +970,8 @@ Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp,
 
 Byte getRequiredCMX(VPU::NCEAveragePoolOp poolOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(poolOp, getTileDistributions(poolOp.getOperation(), tiling, inputTiles));
+    auto strategy = poolOp.getMultiClusterStrategy();
+    return getRequiredCMX(poolOp, getTileDistributions(poolOp.getOperation(), tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMX(VPU::NCEReduceOp reduceOp, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -973,7 +999,8 @@ Byte getRequiredCMX(VPU::NCEReduceOp reduceOp,
 
 Byte getRequiredCMX(VPU::NCEReduceOp reduceOp, const vpux::TileInfo& tiling,
                     const std::optional<InputTiling>& inputTiles) {
-    return getRequiredCMX(reduceOp, getTileDistributions(reduceOp.getOperation(), tiling, inputTiles));
+    auto strategy = reduceOp.getMultiClusterStrategy();
+    return getRequiredCMX(reduceOp, getTileDistributions(reduceOp.getOperation(), tiling, strategy, inputTiles));
 }
 
 Byte getEltwiseRequiredCMX(mlir::Operation* op, const SmallVector<NDTypeInterface>& tileTypes) {
@@ -1021,7 +1048,8 @@ Byte getEltwiseRequiredCMX(mlir::Operation* op,
 
 Byte getEltwiseRequiredCMX(mlir::Operation* op, const vpux::TileInfo& tiling,
                            const std::optional<InputTiling>& inputTiles) {
-    return getEltwiseRequiredCMX(op, getTileDistributions(op, tiling, inputTiles));
+    auto strategy = getMultiClusterStrategyFromOp(op);
+    return getEltwiseRequiredCMX(op, getTileDistributions(op, tiling, strategy, inputTiles));
 }
 
 Byte getRequiredCMX(VPU::AddOp op, const vpux::TileInfo& tiling, const std::optional<InputTiling>& inputTiles) {
@@ -1068,9 +1096,10 @@ Byte getRequiredCMXForWeight(VPU::NCEEltwiseOp /*op*/, const vpux::TileInfo& /*t
     return Byte(0);
 }
 
-Byte getRequiredCMXForWeight(VPU::NCEInterpolateOp NCEInterpOp, const vpux::TileInfo& tiling,
+Byte getRequiredCMXForWeight(VPU::NCEInterpolateOp interpOp, const vpux::TileInfo& tiling,
                              const std::optional<InputTiling>& inputTiles) {
-    auto tileTypes = getTileTypes(NCEInterpOp, tiling, inputTiles);
+    auto strategy = interpOp.getMultiClusterStrategy();
+    auto tileTypes = getTileTypes(interpOp, tiling, strategy, inputTiles);
     const auto filterTileShape = tileTypes[1];
     const auto outputTileType = tileTypes[2];
     const auto OC = outputTileType.getShape()[Dims4D::Act::C];
@@ -1284,6 +1313,48 @@ Byte getRequiredCMXSizeForDefaultOps(mlir::Operation* op) {
     return requiredCMX;
 }
 
+Byte getRequiredCMXSizeForZeroPointTable(mlir::Operation* op, int64_t OC, mlir::Value weightTableZeroPoints) {
+    auto zeroPointTableOp = weightTableZeroPoints.getDefiningOp<VPU::ZeroPointTableOp>();
+    // If the ZeroPointTableOp is wrapped in view operations (Copy, Slice, etc), traverse through them
+    if (zeroPointTableOp == nullptr) {
+        auto parentOp = weightTableZeroPoints.getDefiningOp();
+        if (auto copyOp = mlir::dyn_cast_or_null<VPU::CopyOp>(parentOp)) {
+            zeroPointTableOp = copyOp.getInput().getDefiningOp<VPU::ZeroPointTableOp>();
+        } else if (auto sliceOp = mlir::dyn_cast_or_null<VPU::SliceOp>(parentOp)) {
+            zeroPointTableOp = sliceOp.getInput().getDefiningOp<VPU::ZeroPointTableOp>();
+        }
+    }
+    VPUX_THROW_WHEN(zeroPointTableOp == nullptr, "Could not find ZeroPointTableOp for weightTableZeroPoints");
+
+    auto weightsElemType = zeroPointTableOp.getWeightsElemType();
+    auto weightsQuantizedPerChannel = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(weightsElemType);
+    auto isZeroPoint4Bit = weightsQuantizedPerChannel.getStorageTypeIntegralWidth() == 4;
+
+    Byte requiredCMX;
+    if (isZeroPoint4Bit) {
+        requiredCMX = alignValUp(static_cast<int32_t>(OC), 2) / 2 * 1_Byte;
+    } else {
+        requiredCMX = OC * 1_Byte;
+    }
+
+    // Add the worst-case alignment overhead for the zero-point table
+    // Zero-point table requires 32-byte alignment per workload. We can have X clusters (differs depending
+    // on platform). In bad case scenario, OC is split by X clusters equally. Then each invariant (cluster) can be split
+    // on up to 64 variants (config::METADATA_MAX_VARIANT_COUNT / 2, we take half of METADATA_MAX_VARIANT_COUNT because
+    // we do double buffering), where the worst case scenario is that each of these 64 variants would need padding of 31
+    // bytes. In the end, the worst case scenario estimated size is: (X * 64 * 31b) + the size of zero-point table
+    // itself without any zero-point table alignment.
+    const auto arch = config::getArch(op);
+
+    const auto maxClusters = static_cast<int32_t>(VPU::getMaxArchDPUClusterNum(arch));
+    const auto maxVariantsPerCluster =
+            static_cast<int32_t>(config::getConstraint(op, config::METADATA_MAX_VARIANT_COUNT) / 2);
+    const auto maxZeroPointTableAlignment = VPU::NCESparsity::ZERO_POINT_TABLE_READER_ALIGNMENT - 1;
+
+    requiredCMX += Byte(maxClusters * maxVariantsPerCluster * maxZeroPointTableAlignment);
+    return requiredCMX;
+}
+
 OutputTiling getUniqueShapeTilingCandidates(mlir::Operation* op, const OutputTiling& origTiles, Logger) {
     if (origTiles.size() <= 2) {
         return origTiles;
@@ -1429,9 +1500,15 @@ OutputTiling getUniqueShapeTilingCandidates(mlir::Operation* op, const OutputTil
 }
 
 bool canSWLayerBeEvenlyUnrolled(mlir::Operation* op, const OutputTiling& tiles, Dim targetDim, Logger) {
+    // MaxPool8Op does not support ActShave Tile currently
+    // E#195504
+    if (auto maxpool8 = mlir::dyn_cast<VPU::MaxPool8Op>(op)) {
+        return true;
+    }
+
     auto tileOp = config::getTileExecutor(getModuleOp(op));
     int64_t shaveActCount = 1;
-    if (auto shaveActExec = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT)) {
+    if (auto shaveActExec = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT)) {
         shaveActCount = shaveActExec.getCount();
     }
 
@@ -2002,6 +2079,9 @@ bool isSupportedPipeliningTilingSwInterface(VPU::SWOpInterface origOp, const Out
     // The tiling strategy follows last-tile-not-biggest, and sw layers usually do not have padding
     // So just check the first two tiles are enough to make sure pipelining
     log.trace("isSupportedPipeliningTilingSwInterface OpName: {0}", origOp->getName());
+    if (tiles.size() < 2) {
+        return false;
+    }
 
     auto firstTile = getAllOperandsSwInterface(origOp, tiles[0], log);
     auto secondTile = getAllOperandsSwInterface(origOp, tiles[1], log);

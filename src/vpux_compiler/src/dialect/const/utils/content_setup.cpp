@@ -4,6 +4,7 @@
 //
 
 #include <mlir/Support/LLVM.h>
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #ifdef BACKGROUND_FOLDING_ENABLED

@@ -5,9 +5,11 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
-#include <memory>
+#include <mlir/Support/LogicalResult.h>
+
 #include <vector>
 
 namespace vpux {

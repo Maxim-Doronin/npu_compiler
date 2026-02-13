@@ -10,7 +10,7 @@ module @Test  {
 
 // CHECK-LABEL: @oneDma
   func.func @oneDma(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
-    %0 = VPUMI37XX.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x1x1x1000xf16>) outputs(%arg1 : memref<1x1x1x1000xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    %0 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x1x1x1000xf16>) outputs(%arg1 : memref<1x1x1x1000xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
     %1 = VPUMI37XX.MappedInference dmas(%0 : !VPURegMapped.Index<0:0:0>) dmaCount([1, 0]) invariantCount(0) variantCount(0) actKernelRangesCount(0) actKernelInvocationsCount(0) barrierCount(0) -> !VPURegMapped.Index<0:0:0>
     %2 = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.dmaTasks"} -> !ELFNPU37XX.Section  {
       ELFNPU37XX.PutOpInSection %0 : !VPURegMapped.Index<0:0:0>
@@ -55,20 +55,20 @@ module @Test  {
       ELFNPU37XX.PutOpInSection %23 : !ELFNPU37XX.Symbol
     }
     %c0_i8 = arith.constant 0 : i8
-    %25 = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") {isBuiltin} : i8
+    %25 = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") <{isBuiltin}> : i8
     %c1_i8 = arith.constant 1 : i8
-    %26 = ELFNPU37XX.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR") {isBuiltin} : i8
+    %26 = ELFNPU37XX.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR") <{isBuiltin}> : i8
     %c2_i8 = arith.constant 2 : i8
-    %27 = ELFNPU37XX.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") {isBuiltin} : i8
+    %27 = ELFNPU37XX.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") <{isBuiltin}> : i8
     %c3_i8 = arith.constant 3 : i8
-    %28 = ELFNPU37XX.Symbol %c3_i8 name("VPU_NNRD_SYM_RTM_DMA0") {isBuiltin} : i8
+    %28 = ELFNPU37XX.Symbol %c3_i8 name("VPU_NNRD_SYM_RTM_DMA0") <{isBuiltin}> : i8
     %c4_i8 = arith.constant 4 : i8
-    %29 = ELFNPU37XX.Symbol %c4_i8 name("VPU_NNRD_SYM_RTM_DMA1") {isBuiltin} : i8
+    %29 = ELFNPU37XX.Symbol %c4_i8 name("VPU_NNRD_SYM_RTM_DMA1") <{isBuiltin}> : i8
     %c5_i8 = arith.constant 5 : i8
-    %30 = ELFNPU37XX.Symbol %c5_i8 name("VPU_NNRD_SYM_FIFO_BASE") {isBuiltin} : i8
+    %30 = ELFNPU37XX.Symbol %c5_i8 name("VPU_NNRD_SYM_FIFO_BASE") <{isBuiltin}> : i8
     %c6_i8 = arith.constant 6 : i8
-    %31 = ELFNPU37XX.Symbol %c6_i8 name("VPU_NNRD_SYM_BARRIERS_START") {isBuiltin} : i8
-    %32 = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") {isBuiltin} -> !ELFNPU37XX.Section  {
+    %31 = ELFNPU37XX.Symbol %c6_i8 name("VPU_NNRD_SYM_BARRIERS_START") <{isBuiltin}> : i8
+    %32 = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") <{isBuiltin}> -> !ELFNPU37XX.Section  {
       ELFNPU37XX.PutOpInSection %25 : !ELFNPU37XX.Symbol
       ELFNPU37XX.PutOpInSection %26 : !ELFNPU37XX.Symbol
       ELFNPU37XX.PutOpInSection %27 : !ELFNPU37XX.Symbol

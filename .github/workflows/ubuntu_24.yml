@@ -30,8 +30,8 @@ jobs:
       test-runner: ubuntu-latest-8-cores
       build-cache: true
       build-cache-key-suffix: ${{ github.sha }}
-      build-mlir: true
-      build-driver: true
+      build-plugin: true
+      build-driver: false
       build-cid: true
       run-unit-tests: true
       run-lit-tests: true

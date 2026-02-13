@@ -1,4 +1,4 @@
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -86,6 +86,7 @@ TEST_P(MatMulSoftmaxMatMulTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MatMulSoftmaxMatMulTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
@@ -97,7 +98,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulSoftmaxMatMul, MatMulSoftmaxMatMulTestCommo
                                               TestParams{{16, 8, 49, 32}, {16, 8, 49, 32}, {16, 8, 49, 32}, -1},
                                               TestParams{{4, 16, 49, 32}, {4, 16, 49, 32}, {4, 16, 49, 32}, -1},
                                               // SdapExtended fused resolution combinations
-                                              TestParams{{1, 12, 225, 16}, {1, 12, 225, 16}, {1, 12, 225, 16}, -1}}),
+                                              TestParams{{1, 24, 225, 16}, {1, 24, 225, 16}, {1, 24, 225, 16}, -1}}),
                          MatMulSoftmaxMatMulTestCommon::getTestCaseName);
 
 }  // namespace ov::test

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -115,4 +115,49 @@ net.NetworkInfo
     // CHECK:       [[VAR3:%.+]] =  IE.Reorder([[VAR2]]) {dstOrder = #NCHW} : tensor<1x64x28x28xf16, {order = #NHWC}> -> tensor<1x64x28x28xf16>
     // CHECK-NEXT:  return [[VAR3]] : tensor<1x64x28x28xf16>
 }
+}
+
+// -----
+
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+module @FlashAttentionTile {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "query" : tensor<8x64x128xf32>
+        DataInfo "key" : tensor<8x160x128xf32>
+        DataInfo "value" : tensor<8x160x128xf32>
+        DataInfo "running_output" : tensor<8x64x128xf32>
+        DataInfo "running_max" : tensor<8x64xf32>
+        DataInfo "running_sum" : tensor<8x64xf32>
+        DataInfo "attention_mask" : tensor<8x64x160xf32>
+    } outputsInfo : {
+        DataInfo "flash_attention_tile.0" friendlyName = "Result_21" : tensor<8x64x128xf32>
+        DataInfo "flash_attention_tile.1" friendlyName = "Result_22" : tensor<8x64xf32>
+        DataInfo "flash_attention_tile.2" friendlyName = "Result_23" : tensor<8x64xf32>
+    }
+
+    // CHECK-LABEL:    func.func @main
+    // CHECK-SAME: [[QUERY:%[^, ]+]]: tensor<1x8x64x128xf16>,
+    // CHECK-SAME: [[KEY:%[^, ]+]]: tensor<1x8x160x128xf16>,
+    // CHECK-SAME: [[VALUE:%[^, ]+]]: tensor<1x8x160x128xf16>,
+    // CHECK-SAME: [[RUNNING_OUTPTUT:%[^, ]+]]: tensor<1x8x64x128xf16>,
+    // CHECK-SAME: [[RUNNING_MAX:%[^, ]+]]: tensor<1x1x8x64xf16>,
+    // CHECK-SAME: [[RUNNING_SUM:%[^, ]+]]: tensor<1x1x8x64xf32>,
+    // CHECK-SAME: [[ATTENTION_MASK:%[^, ]+]]: tensor<1x8x64x160xf16>
+    func.func @main(%arg0: tensor<1x8x64x128xf16>, %arg1: tensor<1x8x160x128xf16>, %arg2: tensor<1x8x160x128xf16>,
+                    %arg3: tensor<1x8x64x128xf16>, %arg4: tensor<1x1x8x64xf16>, %arg5: tensor<1x1x8x64xf32>, %arg6: tensor<1x8x64x160xf16>)
+                    -> (tensor<1x8x64x128xf16>, tensor<1x1x8x64xf16>, tensor<1x1x8x64xf32>) {
+      %result_running_output, %result_running_max, %result_running_sum = IE.FlashSDPA(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6) {
+            is_head = true, is_tail = true, source_seq_len_pad_size = 0 : i64
+        } : tensor<1x8x64x128xf16>, tensor<1x8x160x128xf16>, tensor<1x8x160x128xf16>,
+            tensor<1x8x64x128xf16>, tensor<1x1x8x64xf16>, tensor<1x1x8x64xf32>,
+            tensor<1x8x64x160xf16>
+        -> tensor<1x8x64x128xf16>, tensor<1x1x8x64xf16>, tensor<1x1x8x64xf32>
+
+      return %result_running_output, %result_running_max, %result_running_sum : tensor<1x8x64x128xf16>, tensor<1x1x8x64xf16>, tensor<1x1x8x64xf32>
+
+      // CHECK:         [[VALUE_REORDERED:%.+]] = IE.Reorder([[VALUE]]) {dstOrder = #NCWH} : tensor<1x8x160x128xf16> -> tensor<1x8x160x128xf16, {order = #NCWH}>
+      // CHECK-NOT:     IE.Reorder
+      // CHECK:         IE.FlashSDPA
+      // CHECK-SAME:        [[VALUE_REORDERED]]
+    }
 }

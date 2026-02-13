@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion/passes/IE2VPU/convert_layers_to_VPU.hpp"
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/ValueRange.h>
+#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
@@ -26,10 +29,14 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/utils/auxiliary_buffers.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/type/float16.hpp"
 
 // Generated
@@ -450,29 +457,6 @@ mlir::LogicalResult EmbeddingBagOffsetsSumRewriter::matchAndRewrite(IE::Embeddin
 }
 
 //
-// AccumulateRewrite
-//
-
-mlir::LogicalResult AccumulateRewrite::matchAndRewrite(IE::AccumulateOp origOp, mlir::PatternRewriter& rewriter) const {
-    _log.trace("Found AccumulateOp Operation '{0}'", origOp->getLoc());
-
-    if (origOp.getLhsScale() != nullptr && origOp.getRhsScale() != nullptr) {
-        rewriter.replaceOpWithNewOp<VPU::AccumulateOp>(origOp, origOp.getLhs(), origOp.getRhs(), origOp.getLhsScale(),
-                                                       origOp.getRhsScale(),
-                                                       /*multiClusterStrategy=*/nullptr);
-    } else if (origOp.getLhsScale() == nullptr && origOp.getRhsScale() == nullptr) {
-        const auto broadcast = IE::AutoBroadcastType::NONE_OR_EXPLICIT;
-        const auto broadcastAttr = IE::AutoBroadcastTypeAttr::get(rewriter.getContext(), broadcast);
-        rewriter.replaceOpWithNewOp<VPU::AddOp>(origOp, origOp.getLhs(), origOp.getRhs(), broadcastAttr,
-                                                /*postOp=*/nullptr);
-    } else {
-        VPUX_THROW("IE.Accumulate must set either both scales or none.");
-    }
-
-    return mlir::success();
-}
-
-//
 // RandomUniformRewrite
 //
 
@@ -593,47 +577,95 @@ mlir::LogicalResult ExternalKernelRewrite::matchAndRewrite(IE::ExternalKernelOp 
 // FlashSDPARewrite
 //
 
-namespace {
-
-Const::DeclareOp createDenseFp16Constant(mlir::Location loc, mlir::PatternRewriter& rewriter, ShapeRef shape,
-                                         float value) {
-    const auto type = mlir::RankedTensorType::get(shape.raw(), rewriter.getF16Type());
-    const auto values = SmallVector<type::float16>(shape.totalSize(), value);
-    auto content = Const::ContentAttr::get(Const::createConstContent(type, ArrayRef<type::float16>(values)));
-
-    return rewriter.create<Const::DeclareOp>(loc, content.getType(), content);
-}
-
-}  // namespace
-
 mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(IE::FlashSDPAOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Found '{0}' Operation at '{1}'", origOp->getName(), origOp->getLoc());
 
-    const auto outputShape = getShape(origOp.getOutput());
+    enum struct Rotate { Left, Right };
 
-    auto bufferShape = Shape(outputShape);
+    // B - batch, H - numHeads, L - targetSequenceLength
+    // AffineReshape
+    // Rotate left:  [1, B, H, L] -> [B, H, L, 1]
+    // Rotate right: [B, H, L, 1] -> [1, B, H, L]
+    const auto rotateShape = [&](mlir::Value tensor, Rotate direction) -> mlir::Value {
+        auto shape = getShape(tensor).toValues();
 
-    // Tensors for Max and Sum tensors reduce the last dimension.
-    // Preserve dimensions in the same place to work around the limitation of
-    // cluster tiling algorithm that will apply the same strategy for all the outputs
-    bufferShape.back() = 1;
+        SmallVector<SmallVector<int64_t>> inDimMapping;
 
-    auto loc = origOp->getLoc();
-    const auto minusInf = -std::numeric_limits<float>::infinity();
-    auto initialRunningOutput = createDenseFp16Constant(appendLoc(loc, "running_output"), rewriter, outputShape, 0.0f);
-    auto initialRunningMax = createDenseFp16Constant(appendLoc(loc, "running_max"), rewriter, bufferShape, minusInf);
-    auto initialRunningSum = createDenseFp16Constant(appendLoc(loc, "running_sum"), rewriter, bufferShape, 0.0f);
+        if (direction == Rotate::Left) {
+            _log.trace("Rotate shape left  <-");
+            _log.trace("From: {0}", shape);
+            std::rotate(shape.begin(), std::next(shape.begin()), shape.end());
+            _log.trace("To:   {0}", shape);
 
-    auto newOp = rewriter.create<VPU::FlashSDPAOp>(origOp->getLoc(), origOp.getQuery(), origOp.getKey(),
-                                                   origOp.getValue(), initialRunningOutput, initialRunningMax,
-                                                   initialRunningSum, origOp.getAttentionMask(), origOp.getScale(),
-                                                   origOp.getSourceSeqLenPadSizeAttr());
+            inDimMapping = SmallVector<SmallVector<int64_t>>{{0}, {0}, {1}, {2, 3}};
+        } else {
+            _log.trace("Rotate shape right ->");
+            _log.trace("From: {0}", shape);
+            std::rotate(shape.rbegin(), std::next(shape.rbegin()), shape.rend());
+            _log.trace("To:   {0}", shape);
 
-    rewriter.replaceOp(origOp, newOp.getResultRunningOutput());
+            inDimMapping = SmallVector<SmallVector<int64_t>>{{0, 1}, {2}, {3}, {3}};
+        }
+
+        auto newShapeAttr = getIntArrayAttr(getContext(), shape);
+        auto inDimMappingAttr = getIntArrayOfArray(getContext(), inDimMapping);
+
+        auto loc = appendLoc(tensor.getLoc(), "reshaped");
+        auto affineReshape = rewriter.create<VPU::AffineReshapeOp>(loc, tensor, inDimMappingAttr, newShapeAttr);
+
+        return affineReshape.getOutput();
+    };
+
+    if (origOp.getInputRunningMax().getType().getRank() != 4 || origOp.getInputRunningSum().getType().getRank() != 4) {
+        return errorAt(origOp, "'{0}' must have 4D input shapes", origOp->getName());
+    }
+
+    // Shift 4D max and sum tensor shapes to have 1 at the end of the shape
+    // to align dimensions with the first output to satisfy MC tiling limitation
+    // because we can't specify MC tiling dimensions for multiple outputs, they must align
+    auto inputRunningMax = rotateShape(origOp.getInputRunningMax(), Rotate::Left);
+    auto inputRunningSum = rotateShape(origOp.getInputRunningSum(), Rotate::Left);
+
+    auto newOp = rewriter.create<VPU::FlashSDPAOp>(
+            origOp->getLoc(), origOp.getQuery(), origOp.getKey(), origOp.getValue(), origOp.getInputRunningOutput(),
+            inputRunningMax, inputRunningSum, origOp.getAttentionMask(), origOp.getSourceSeqLenPadSizeAttr(),
+            origOp.getIsHeadAttr(), origOp.getIsTailAttr());
+
+    auto resultRunningMax = rotateShape(newOp.getResultRunningMax(), Rotate::Right);
+    auto resultRunningSum = rotateShape(newOp.getResultRunningSum(), Rotate::Right);
+
+    rewriter.replaceOp(origOp, mlir::ValueRange{newOp.getResultRunningOutput(), resultRunningMax, resultRunningSum});
 
     return mlir::success();
 }
 
+//
+// LogSoftmaxTopKRewrite
+//
+
+mlir::LogicalResult LogSoftmaxTopKRewrite::matchAndRewrite(IE::LogSoftmaxTopKOp origOp,
+                                                           mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found LogSoftmaxTopK Operation '{0}'", origOp->getLoc());
+
+    rewriter.replaceOpWithNewOp<VPU::LogSoftmaxTopKOp>(origOp, origOp.getInput(), origOp.getAxisIndAttr(),
+                                                       origOp.getPadSizeAttr(), origOp.getDstElemTypeAttr());
+
+    return mlir::success();
+}
+
+//
+// LogSoftmaxPeakRewrite
+//
+
+mlir::LogicalResult LogSoftmaxPeakRewrite::matchAndRewrite(IE::LogSoftmaxPeakOp origOp,
+                                                           mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found LogSoftmaxPeak Operation '{0}'", origOp->getLoc());
+
+    rewriter.replaceOpWithNewOp<VPU::LogSoftmaxPeakOp>(origOp, origOp.getInput(), origOp.getAxisIndAttr(),
+                                                       origOp.getPadSizeAttr(), origOp.getDstElemTypeAttr());
+
+    return mlir::success();
+}
 namespace {
 
 //
@@ -661,8 +693,16 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     target.addLegalDialect<mlir::linalg::LinalgDialect>();
     target.addLegalDialect<mlir::math::MathDialect>();
 
+    if (config::isPureHostCompileFunc(func)) {
+        // host pipeline related
+        target.addLegalDialect<mlir::arith::ArithDialect>();
+        target.addLegalDialect<mlir::scf::SCFDialect>();
+        target.addLegalDialect<mlir::tensor::TensorDialect>();
+    }
+
     target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp, mlir::func::CallOp>();
     target.addLegalOp<Core::ReinterpretCastOp>();
+    target.addLegalOp<VPU::AffineReshapeOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
 
@@ -685,7 +725,6 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     patterns.add<GroupConvolutionRewrite>(&ctx, _log);
     patterns.add<EmbeddingSegmentsSumRewriter>(&ctx, _log);
     patterns.add<EmbeddingBagOffsetsSumRewriter>(&ctx, _log);
-    patterns.add<AccumulateRewrite>(&ctx, _log);
     patterns.add<RandomUniformRewrite>(&ctx, _log);
     patterns.add<DynamicReshapeRewrite>(&ctx, _log);
     patterns.add<DynamicTileRewrite>(&ctx, _log);
@@ -693,6 +732,8 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     patterns.add<AddRewrite>(&ctx, _log);
     patterns.add<ExternalKernelRewrite>(&ctx, _log);
     patterns.add<FlashSDPARewrite>(&ctx, _log);
+    patterns.add<LogSoftmaxTopKRewrite>(&ctx, _log);
+    patterns.add<LogSoftmaxPeakRewrite>(&ctx, _log);
     populateWithGenerated(patterns);
 
     if (mlir::failed(mlir::applyFullConversion(func, target, std::move(patterns)))) {

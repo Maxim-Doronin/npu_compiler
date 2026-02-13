@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -426,32 +426,35 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConv(%input: tensor<1x1x2x2xf32>) -
     %output = IE.ConvolutionBackpropData(%input, %filter){
         dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], spatial_output_padding = [0, 0], strides = [2, 2]
         } : tensor<1x1x2x2xf32>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf32>
-  
+
     return %output : tensor<1x1x4x4xf32>
 
-    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32> 
-    // CHECK-SAME{LITERAL}: dense<[[[[1.600000e+01, 1.400000e+01], [8.000000e+00, 6.000000e+00]]]]> 
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32>
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32>
+    // CHECK-SAME{LITERAL}: dense<[[[[1.600000e+01, 1.400000e+01], [8.000000e+00, 6.000000e+00]]]]>
+    // CHECK-SAME: [#const.CastElemType<f32>, #const.Transpose<#map>]
+
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: dense<[[[[1.500000e+01, 1.300000e+01], [7.000000e+00, 5.000000e+00]]]]>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32>
+    // CHECK-SAME: [#const.CastElemType<f32>, #const.Transpose<#map>]
+
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: dense<[[[[1.200000e+01, 1.000000e+01], [4.000000e+00, 2.000000e+00]]]]>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32>
-    // CHECK-SAME{LITERAL}: dense<[[[[1.100000e+01, 9.000000e+00], [3.000000e+00, 1.000000e+00]]]]> 
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
+    // CHECK-SAME: [#const.CastElemType<f32>, #const.Transpose<#map>]
+
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32>
+    // CHECK-SAME{LITERAL}: dense<[[[[1.100000e+01, 9.000000e+00], [3.000000e+00, 1.000000e+00]]]]>
+    // CHECK-SAME: [#const.CastElemType<f32>, #const.Transpose<#map>]
 
     // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
     // CHECK: [[CONV1:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_2]]) {dilations = [1, 1], pads_begin = [1, 0], pads_end = [0, 1], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
     // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]]) 
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
     // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
     // CHECK:               tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x4x2x2xf32>
     // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf32> -> tensor<1x1x4x4xf32>
-    
+
     // CHECK: return [[D2S]] : tensor<1x1x4x4xf32>
 }
 
@@ -487,21 +490,21 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConv(%input: tensor<1x1x2x
 
     return %output_fq : tensor<1x1x4x4xf16>
 
-    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf16> 
-    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]]]]>  : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]]]]> : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]]]]> : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]]]]> : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-
     // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
     // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]]]]>  : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
 
     // CHECK-DAG:   [[FILTER_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK-DAG:   [[FILTER_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
@@ -533,11 +536,11 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConv(%input: tensor<1x1x2x
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT_FQ]], [[FILTER_FQ_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf16>
     // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT_FQ]], [[FILTER_FQ_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf16>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]]) 
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
     // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
     // CHECK:               tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x4x2x2xf16>
     // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf16> -> tensor<1x1x4x4xf16>
-    
+
     // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
@@ -552,21 +555,21 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConv(%input: tensor<1x1x2x
 // CHECK-LABEL: @LegalizeConvBackpropDataTo2x2SplitConvWithBiasAdd
 // CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1x2x2xf32>)
 func.func @LegalizeConvBackpropDataTo2x2SplitConvWithBiasAdd(%input: tensor<1x1x2x2xf32>) -> tensor<1x1x4x4xf32> {
-    %filter = const.Declare tensor<1x1x4x4xf32> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00], [9.000000e+00, 1.000000e+01, 1.100000e+01, 1.200000e+01], [1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01]]]]> : tensor<1x1x4x4xf32> 
+    %filter = const.Declare tensor<1x1x4x4xf32> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00], [9.000000e+00, 1.000000e+01, 1.100000e+01, 1.200000e+01], [1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01]]]]> : tensor<1x1x4x4xf32>
     %bias = const.Declare tensor<1x1x1x1xf32> = dense<1.000000e+00> : tensor<1x1x1x1xf32>
     %convTranspose = IE.ConvolutionBackpropData(%input, %filter){dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x1x2x2xf32>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf32>
     %add = IE.Add(%convTranspose, %bias) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x4x4xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x4x4xf32>
- 
+
     return %add : tensor<1x1x4x4xf32>
 
-    // CHECK-DAG: [[BIAS:%.+]] = const.Declare tensor<1x1x1x1xf32> 
-    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[BIAS:%.+]] = const.Declare tensor<1x1x1x1xf32>
+    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
 
     // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
@@ -574,26 +577,26 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConvWithBiasAdd(%input: tensor<1x1x
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
     // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
 
-    // CHECK:   [[ADD0:%.*]] = IE.Add([[CONV0]], [[BIAS]]) {
+    // CHECK:   [[ADD0:%.+]] = IE.Add([[CONV0]], [[BIAS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x2x2xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x2x2xf32>
-    // CHECK:   [[ADD1:%.*]] = IE.Add([[CONV1]], [[BIAS]]) {
+    // CHECK:   [[ADD1:%.+]] = IE.Add([[CONV1]], [[BIAS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x2x2xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x2x2xf32>
-    // CHECK:   [[ADD2:%.*]] = IE.Add([[CONV2]], [[BIAS]]) {
+    // CHECK:   [[ADD2:%.+]] = IE.Add([[CONV2]], [[BIAS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x2x2xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x2x2xf32>
-    // CHECK:   [[ADD3:%.*]] = IE.Add([[CONV3]], [[BIAS]]) {
+    // CHECK:   [[ADD3:%.+]] = IE.Add([[CONV3]], [[BIAS]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x2x2xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x2x2xf32>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]], [[ADD2]], [[ADD3]]) 
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]], [[ADD2]], [[ADD3]])
     // CHECK{LITERAL}:  {static_offsets =  [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
     // CHECK:               tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x4x2x2xf32>
     // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf32> -> tensor<1x1x4x4xf32>
 
     // CHECK:       return [[D2S]]
-}    
+}
 
 // -----
 
@@ -629,22 +632,21 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConvWithFilterConvert(%inp
 
     return %output_fq : tensor<1x1x4x4xf16>
 
-
-    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf16> 
-    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]]]]>  : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]]]]> : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]]]]> : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf16>
-    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]]]]> : tensor<1x1x2x2xsi8>
-    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
-
     // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
     // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]]]]>  : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf16>
+    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<f16>, #const.Transpose<#map>
 
     // CHECK-DAG:   [[FILTER_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK-DAG:   [[FILTER_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
@@ -681,11 +683,11 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConvWithFilterConvert(%inp
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT_FQ]], [[FILTER_CONVERT_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
     // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT_FQ]], [[FILTER_CONVERT_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]]) 
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
     // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
     // CHECK:               tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x4x2x2xf16>
     // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf16> -> tensor<1x1x4x4xf16>
-    
+
     // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
@@ -701,19 +703,19 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConvWithFilterConvert(%inp
 // CHECK-LABEL: @LegalizeConvBackpropDataTo2x2SplitConvWithNonBiasAdd
 // CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1x2x2xf32>)
 func.func @LegalizeConvBackpropDataTo2x2SplitConvWithNonBiasAdd(%arg0: tensor<1x1x2x2xf32>) -> tensor<1x1x4x4xf32> {
-    %cst = const.Declare tensor<1x1x4x4xf32> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00], [9.000000e+00, 1.000000e+01, 1.100000e+01, 1.200000e+01], [1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01]]]]> : tensor<1x1x4x4xf32> 
+    %cst = const.Declare tensor<1x1x4x4xf32> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00], [9.000000e+00, 1.000000e+01, 1.100000e+01, 1.200000e+01], [1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01]]]]> : tensor<1x1x4x4xf32>
     %0 = IE.ConvolutionBackpropData(%arg0, %cst) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x1x2x2xf32>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf32>
     %1 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 1, 1], pads_end_attr = [0, 0, 1, 1]} : tensor<1x1x2x2xf32> -> tensor<1x1x4x4xf32>
     %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x4x4xf32>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf32>
     return %2 : tensor<1x1x4x4xf32>
 
-    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
 
     // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
@@ -721,7 +723,7 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConvWithNonBiasAdd(%arg0: tensor<1x
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
     // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]]) 
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
     // CHECK{LITERAL}:  {static_offsets =  [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
     // CHECK:               tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x4x2x2xf32>
     // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf32> -> tensor<1x1x4x4xf32>
@@ -733,7 +735,7 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConvWithNonBiasAdd(%arg0: tensor<1x
     // CHECK-SAME:      pads_end_attr = [0, 0, 1, 1]
     // CHECK-SAME:      : tensor<1x1x2x2xf32> -> tensor<1x1x4x4xf32>
 
-    // CHECK:   [[ADD:%.*]] = IE.Add([[D2S]], [[PAD]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[D2S]], [[PAD]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x4x4xf32>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf32>
 
@@ -750,7 +752,7 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConvWithNonBiasAdd(%arg0: tensor<1x
 func.func @LegalizeConvBackpropDataTo2x2SplitConvWith2AddOps(%arg0: tensor<1x1x2x2xf32>) -> (tensor<1x1x4x4xf32>, tensor<1x1x4x4xf32>) {
     %cst = const.Declare tensor<1x1x1x1xf32> = dense<1.000000e+00> : tensor<1x1x1x1xf32>
     %cst_0 = const.Declare tensor<1x1x1x1xf32> = dense<2.000000e+00> : tensor<1x1x1x1xf32>
-    %cst_1 = const.Declare tensor<1x1x4x4xf32> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00], [9.000000e+00, 1.000000e+01, 1.100000e+01, 1.200000e+01], [1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01]]]]> : tensor<1x1x4x4xf32> 
+    %cst_1 = const.Declare tensor<1x1x4x4xf32> = dense<[[[[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00], [5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00], [9.000000e+00, 1.000000e+01, 1.100000e+01, 1.200000e+01], [1.300000e+01, 1.400000e+01, 1.500000e+01, 1.600000e+01]]]]> : tensor<1x1x4x4xf32>
     %0 = IE.ConvolutionBackpropData(%arg0, %cst_1) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], spatial_output_padding = [0, 0], strides = [2, 2]} : tensor<1x1x2x2xf32>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf32>
     %1 = IE.Add(%0, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x4x4xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x4x4xf32>
     %2 = IE.Add(%0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x4x4xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x4x4xf32>
@@ -759,13 +761,13 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConvWith2AddOps(%arg0: tensor<1x1x2
     // CHECK-DAG:   [[CST0:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<1.000000e+00> : tensor<1x1x1x1xf32>
     // CHECK-DAG:   [[CST1:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<2.000000e+00> : tensor<1x1x1x1xf32>
 
-    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
-    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32> 
+    // CHECK-DAG: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2xf32>
     // CHECK-SAME{LITERAL}: #const.CastElemType<f32>, #const.Transpose<#map>
 
     // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
@@ -773,16 +775,16 @@ func.func @LegalizeConvBackpropDataTo2x2SplitConvWith2AddOps(%arg0: tensor<1x1x2
     // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
     // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT]], [[SPLIT_FILTER_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf32>
 
-    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]]) 
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
     // CHECK{LITERAL}:  {static_offsets =  [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
     // CHECK:               tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x4x2x2xf32>
     // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf32> -> tensor<1x1x4x4xf32>
 
-    // CHECK:   [[ADD0:%.*]] = IE.Add([[D2S]], [[CST1]]) {
+    // CHECK:   [[ADD0:%.+]] = IE.Add([[D2S]], [[CST1]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x4x4xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x4x4xf32>
 
-    // CHECK:   [[ADD1:%.*]] = IE.Add([[D2S]], [[CST0]]) {
+    // CHECK:   [[ADD1:%.+]] = IE.Add([[D2S]], [[CST0]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x1x4x4xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x4x4xf32>
 

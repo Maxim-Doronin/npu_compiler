@@ -5,13 +5,9 @@
 
 #pragma once
 
-#include <cmath>
 #include <cstdint>
-#include <iostream>
 #include <limits>
-#include <memory>
-#include <string>
-#include <vector>
+#include <ostream>
 
 namespace vpux {
 namespace type {
@@ -208,7 +204,7 @@ public:
         return vpux::type::float4_e2m1::from_bits(0b0001);  // minimum positive denormalized value
     }
     static constexpr bool is_iec559 = false;
-    static constexpr bool is_bounded = false;
+    static constexpr bool is_bounded = true;
     static constexpr bool is_modulo = false;
     static constexpr bool traps = false;
     static constexpr bool tinyness_before = false;

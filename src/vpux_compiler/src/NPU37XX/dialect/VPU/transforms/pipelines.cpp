@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -154,9 +154,9 @@ void vpux::VPU::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createFlashSDPATilingStrategyEstimationPass(log));
     pm.addPass(VPU::createTilingStrategyAssignmentPass(
             /*enablePrefetchTiling=*/false, /*enableVPUNNCostForTiling*/ false,
-            /*enableShaveDDRAccessOptimization*/ "true", log));
+            /*enableShaveDDRAccessOptimization*/ "true", /*enableDynAlignment=*/false, log));
     pm.addPass(VPU::createApplyTilingMVN1SumPass(/*enablePrefetchTiling=*/false, log));
-    pm.addPass(VPU::createApplyTilingPass(/*enableSCFTiling=*/false, log));
+    pm.addPass(VPU::createApplyTilingPass(/*enableSCFTiling=*/false, /*enableDynAlignment=*/false, log));
     pm.addPass(VPU::createComputeInterpolateCoordinatesPass(/*enableExplicitDistributionInfoAttr*/ false, log));
 
     pm.addPass(VPU::createUnrollFlashSDPAPass(log));

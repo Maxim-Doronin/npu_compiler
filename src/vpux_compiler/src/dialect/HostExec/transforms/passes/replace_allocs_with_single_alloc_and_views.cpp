@@ -81,6 +81,11 @@ void ReplaceAllocsWithSingleAllocAndViewsPass::safeRunOnFunc() {
         rewriter.setInsertionPoint(parentOfFirstAllocToReplace);
     }
 
+    for (const auto& dynDim : allocDynamicSizes) {
+        for (auto dim : dynDim) {
+            rewriter.moveOpBefore(dim.getDefiningOp(), &*rewriter.getInsertionPoint());
+        }
+    }
     auto loc = func.getLoc();
 
     SmallVector<mlir::Value> offsets;

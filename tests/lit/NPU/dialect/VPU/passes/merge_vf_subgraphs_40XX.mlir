@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -571,8 +571,8 @@ func.func @MergeVFWithoutTilingC(%arg0: tensor<1x64x1x19284xf16, {order = #NHWC}
     //CHECK:	  [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion ([[INPUT0]] as [[INNER_ARG0:%.+]]: tensor<1x64x1x19284xf16, {order = #NHWC}>,
     //CHECK-SAME:                                             [[INPUT1]] as [[INNER_ARG1:%.+]]: tensor<1x64x1x19284xf16, {order = #NHWC}>)
     //CHECK-SAME:            attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 1, 2]} -> tensor<1x64x1x19284xf16, {order = #NHWC}> {
-    //CHECK:    [[SIGMOID:%.*]] = VPU.Sigmoid([[INNER_ARG0]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x64x1x19284xf16, {order = #NHWC}> -> tensor<1x64x1x19284xf16, {order = #NHWC}>
-    //CHECK:    [[MULTIPLY:%.*]]= VPU.Multiply([[INNER_ARG1]], [[SIGMOID]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x64x1x19284xf16, {order = #NHWC}>, tensor<1x64x1x19284xf16, {order = #NHWC}> -> tensor<1x64x1x19284xf16, {order = #NHWC}>
+    //CHECK:    [[SIGMOID:%.+]] = VPU.Sigmoid([[INNER_ARG0]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x64x1x19284xf16, {order = #NHWC}> -> tensor<1x64x1x19284xf16, {order = #NHWC}>
+    //CHECK:    [[MULTIPLY:%.+]]= VPU.Multiply([[INNER_ARG1]], [[SIGMOID]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<1x64x1x19284xf16, {order = #NHWC}>, tensor<1x64x1x19284xf16, {order = #NHWC}> -> tensor<1x64x1x19284xf16, {order = #NHWC}>
     //CHECK:    VPU.Yield [[MULTIPLY]]
     //CHECK:    return [[VERTICAL_FUSION]] : tensor<1x64x1x19284xf16, {order = #NHWC}>
 }

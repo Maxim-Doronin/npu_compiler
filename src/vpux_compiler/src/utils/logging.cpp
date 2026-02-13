@@ -9,10 +9,6 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassInstrumentation.h>
 
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
-#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
-#include "vpux/compiler/utils/options.hpp"
-
 using namespace vpux;
 
 //
@@ -46,73 +42,6 @@ void vpux::addLogging(mlir::MLIRContext& ctx, Logger log) {
         // Propagate diagnostic to following handlers
         return mlir::failure();
     });
-}
-
-//
-// PassLogging
-//
-
-namespace {
-
-class PassLogging final : public mlir::PassInstrumentation {
-public:
-    explicit PassLogging(Logger log): _log(log) {
-    }
-
-    void runBeforePipeline(std::optional<mlir::OperationName> name, const PipelineParentInfo&) final {
-        if (name.has_value()) {
-            _log.debug("Start Pass Pipeline {0}", *name);
-        }
-    }
-
-    void runAfterPipeline(std::optional<mlir::OperationName> name, const PipelineParentInfo&) final {
-        if (name.has_value()) {
-            _log.debug("End Pass Pipeline {0}", *name);
-        }
-    }
-
-    void runBeforePass(mlir::Pass* pass, mlir::Operation* op) final {
-        if (pass->getName() != "mlir::detail::OpToOpPassAdaptor") {
-            _log.debug("Start Pass {0} on Operation {1}", pass->getName(), op->getLoc());
-        }
-    }
-
-    void runAfterPass(mlir::Pass* pass, mlir::Operation* op) override {
-        if (pass->getName() != "mlir::detail::OpToOpPassAdaptor") {
-            _log.debug("End Pass {0} on Operation {1}", pass->getName(), op->getLoc());
-        }
-    }
-
-    void runAfterPassFailed(mlir::Pass* pass, mlir::Operation* op) override {
-        if (pass->getName() == "mlir::detail::OpToOpPassAdaptor") {
-            return;
-        }
-
-        auto module =
-                mlir::isa<mlir::ModuleOp>(op) ? mlir::cast<mlir::ModuleOp>(op) : op->getParentOfType<mlir::ModuleOp>();
-        if (config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::FAILED) {
-            _log.warning("WLM Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
-        } else {
-            _log.error("Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
-        }
-    }
-
-    void runBeforeAnalysis(StringRef name, mlir::TypeID, mlir::Operation* op) override {
-        _log.trace("Start Analysis {0} on Operation {1}", name, op->getLoc());
-    }
-
-    void runAfterAnalysis(StringRef name, mlir::TypeID, mlir::Operation* op) override {
-        _log.trace("End Analysis {0} on Operation {1}", name, op->getLoc());
-    }
-
-private:
-    Logger _log;
-};
-
-}  // namespace
-
-void vpux::addLogging(mlir::PassManager& pm, Logger log) {
-    pm.addInstrumentation(std::make_unique<PassLogging>(log));
 }
 
 //

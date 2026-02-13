@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -146,15 +147,6 @@ private:
                 _callFunction[callOp] = calledFuncOp;
             });
         });
-    }
-
-    // Find the Return operation of the given function
-    mlir::func::ReturnOp findReturnOp(mlir::func::FuncOp funcOp) {
-        mlir::func::ReturnOp returnOp;
-        funcOp.walk([&](mlir::func::ReturnOp op) {
-            returnOp = op;
-        });
-        return returnOp;
     }
 
     // Find the function arguments and results which can be optimized in terms of element type.
@@ -354,7 +346,11 @@ private:
             }
             const auto origArgType = funcOp.getArgument(argNum).getType();
             const auto newArgType = userOps.front()->getResult(0).getType();
-            funcOp.insertArgument(argNum, newArgType, /*argAttrs=*/nullptr, funcOp.getArgument(argNum).getLoc());
+            VPUX_THROW_WHEN(failed(funcOp.insertArgument(argNum, newArgType, /*argAttrs=*/nullptr,
+                                                         funcOp.getArgument(argNum).getLoc())),
+                            "Failed to insert argument #{0} of type '{1}' into function '{2}'", argNum, newArgType,
+                            funcOp.getSymName());
+
             const auto newArg = funcOp.getArgument(argNum);
 
             for (auto userOp : llvm::make_early_inc_range(userOps)) {
@@ -364,7 +360,8 @@ private:
                 userOp->erase();
             }
 
-            funcOp.eraseArgument(argNum + 1);
+            VPUX_THROW_WHEN(failed(funcOp.eraseArgument(argNum + 1)),
+                            "Failed to erase argument at index {0} in function '{1}'", argNum + 1, funcOp.getSymName());
 
             _log.nest(2).trace("Replaced argument {0} of type '{1}' with argument of type '{2}'", argNum, origArgType,
                                newArgType);

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-branches-concat-to-conv %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-branches-concat-to-conv --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @OptimizeGroupConvConcat
@@ -29,7 +29,7 @@ func.func @OptimizeGroupConvConcat(%arg0: tensor<1x16x144x144xf16>) -> (tensor<1
     return %2 : tensor<1x32x144x144xf16>
 
     // CHECK-DAG:       [[NEW_WEIGHTS:%.+]] = const.Declare tensor<32x16x3x3xf16>
-    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16>
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16> = dense<1.000000e+00> : tensor<16x16x1x1xf16>
 
     // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
     // CHECK:           [[NEW_CONV:%.+]] = IE.Convolution([[CONV]], [[NEW_WEIGHTS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<32x16x3x3xf16> -> tensor<1x32x144x144xf16>
@@ -62,7 +62,7 @@ func.func @OptimizeGroupConvConcat_SwapConcatInput(%arg0: tensor<1x16x144x144xf1
     return %2 : tensor<1x32x144x144xf16>
 
     // CHECK-DAG:       [[NEW_WEIGHTS:%.+]] = const.Declare tensor<32x16x3x3xf16>
-    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16>
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16> = dense<1.000000e+00> : tensor<16x16x1x1xf16>
 
     // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
     // CHECK:           [[NEW_CONV:%.+]] = IE.Convolution([[CONV]], [[NEW_WEIGHTS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<32x16x3x3xf16> -> tensor<1x32x144x144xf16>
@@ -97,12 +97,11 @@ func.func @OptimizeGroupConvConcatWithReLu(%arg0: tensor<1x16x144x144xf16>) -> (
     return %2 : tensor<1x32x144x144xf16>
 
     // CHECK-DAG:       [[NEW_WEIGHTS:%.+]] = const.Declare tensor<32x16x3x3xf16>
-    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16>
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16> = dense<1.000000e+00> : tensor<16x16x1x1xf16>
 
     // CHECK:           [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x144x144xf16>
     // CHECK:           [[NEW_CONV:%.+]] = IE.Convolution([[CONV]], [[NEW_WEIGHTS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x144x144xf16>, tensor<32x16x3x3xf16> -> tensor<1x32x144x144xf16>
-
-    // CHECK:           return [[NEW_CONV]] : tensor<1x32x144x144xf16>
+    // CHECK:          return [[NEW_CONV]] : tensor<1x32x144x144xf16>
 }
 
 // -----

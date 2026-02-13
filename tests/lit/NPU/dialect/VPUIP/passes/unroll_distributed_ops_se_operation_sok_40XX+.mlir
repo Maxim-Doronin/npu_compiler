@@ -100,7 +100,7 @@ func.func @UnrollNceSoKSEPDilatedConv() -> !Output_DDR {
                        [249856, 124928, 258048, 129024]]]]> : tensor<1x2x4x4xi32, {order = #NHWC}>
     %seTable_CMX = VPURT.DeclareBuffer <CMX_NN> <4160> -> !InputSETableDistributed
     VPURT.Task updates(%bar0: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 1 : i64} inputs(%seTable_cst : memref<1x2x4x4xi32, #NHWC, @DDR>) outputs(%seTable_CMX : !InputSETableDistributed) -> !InputSETableDistributed
+        VPUIP.NNDMA <{port = 1 : i64}> inputs(%seTable_cst : memref<1x2x4x4xi32, #NHWC, @DDR>) outputs(%seTable_CMX : !InputSETableDistributed) -> !InputSETableDistributed
     }
 
     %parent_out = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> !Output_DDR
@@ -151,7 +151,7 @@ func.func @UnrollNceSoKSEPDilatedConv() -> !Output_DDR {
     }
 
     VPURT.Task waits(%bar1: !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
 
     return %parent_out: !Output_DDR

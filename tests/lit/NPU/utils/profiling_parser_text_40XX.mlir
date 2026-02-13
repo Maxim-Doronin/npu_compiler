@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,50 +7,17 @@
 // RUN: prof_parser -b %t -p %data_path_npu%/profiling-0-40XX.bin -f text | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/cluster_0                  Time(us): 0.21          Start(us): 0.00
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/cluster_1                  Time(us): 0.21          Start(us): 1.10
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/cluster_2                  Time(us): 0.20          Start(us): 1.93
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/cluster_3                  Time(us): 0.20          Start(us): 2.76
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/cluster_4                  Time(us): 0.20          Start(us): 3.60
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/cluster_5                  Time(us): 0.15          Start(us): 4.43
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_3     Time(us): 1.89          Start(us): 7.69
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_2     Time(us): 1.89          Start(us): 7.69
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_4     Time(us): 1.89          Start(us): 7.69
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_5     Time(us): 1.89          Start(us): 7.69
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_0     Time(us): 1.89          Start(us): 7.69
-// CHECK: Task(DPU): conv1/WithoutBiases?t_Convolution/Duplicated_2/cluster_1     Time(us): 1.89          Start(us): 7.69
-// CHECK: Task(DPU): relu1?t_Relu/cluster_5                                       Time(us): 1.53          Start(us): 9.62
-// CHECK: Task(DPU): relu1?t_Relu/cluster_2                                       Time(us): 1.67          Start(us): 9.63
-// CHECK: Task(DPU): relu1?t_Relu/cluster_0                                       Time(us): 1.61          Start(us): 9.64
-// CHECK: Task(DPU): relu1?t_Relu/cluster_1                                       Time(us): 1.66          Start(us): 9.64
-// CHECK: Task(DPU): relu1?t_Relu/cluster_4                                       Time(us): 1.66          Start(us): 9.64
-// CHECK: Task(DPU): relu1?t_Relu/cluster_3                                       Time(us): 1.60          Start(us): 9.65
-// CHECK: Task(DPU): conv2/WithoutBiases?t_Convolution/cluster_3                  Time(us): 3.65          Start(us): 11.30
-// CHECK: Task(DPU): conv2/WithoutBiases?t_Convolution/cluster_0                  Time(us): 3.64          Start(us): 11.30
-// CHECK: Task(DPU): conv2/WithoutBiases?t_Convolution/cluster_1                  Time(us): 3.64          Start(us): 11.30
-// CHECK: Task(DPU): conv2/WithoutBiases?t_Convolution/cluster_2                  Time(us): 3.64          Start(us): 11.30
-// CHECK: Task(DPU): conv2/WithoutBiases?t_Convolution/cluster_4                  Time(us): 1.84          Start(us): 11.34
-// CHECK: Task(DPU): conv2/WithoutBiases?t_Convolution/cluster_5                  Time(us): 1.84          Start(us): 11.34
-// CHECK: Task(DPU): relu2?t_Relu/cluster_2                                       Time(us): 0.98          Start(us): 14.96
-// CHECK: Task(DPU): relu2?t_Relu/cluster_5                                       Time(us): 0.98          Start(us): 14.96
-// CHECK: Task(DPU): relu2?t_Relu/cluster_4                                       Time(us): 0.97          Start(us): 14.97
-// CHECK: Task(DPU): relu2?t_Relu/cluster_0                                       Time(us): 0.94          Start(us): 15.00
-// CHECK: Task(DPU): relu2?t_Relu/cluster_3                                       Time(us): 0.93          Start(us): 15.01
-// CHECK: Task(DPU): relu2?t_Relu/cluster_1                                       Time(us): 0.93          Start(us): 15.01
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_0/cluster_0                Time(us): 11.93         Cycles:888(11231)       Start(us): 43.75
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_0/cluster_1                Time(us): 11.56         Cycles:692(11413)       Start(us): 43.90
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_1/cluster_0                Time(us): 11.77         Cycles:692(11420)       Start(us): 43.90
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_1/cluster_1                Time(us): 10.94         Cycles:692(10414)       Start(us): 44.69
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_0/cluster_2                Time(us): 10.47         Cycles:888(9700)        Start(us): 45.21
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_1/cluster_2                Time(us): 10.00         Cycles:692(9748)        Start(us): 45.47
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_0/cluster_3                Time(us): 9.01          Cycles:692(8373)        Start(us): 46.61
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_1/cluster_3                Time(us): 8.07          Cycles:692(7377)        Start(us): 47.60
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_0/cluster_4                Time(us): 5.73          Cycles:692(5110)        Start(us): 49.48
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_1/cluster_4                Time(us): 4.11          Cycles:692(3359)        Start(us): 51.15
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_0/cluster_5                Time(us): 3.64          Cycles:692(3144)        Start(us): 53.18
-// CHECK: Task(SW): relu2?t_Relu/converted_to_f32/tile_1/cluster_5                Time(us): 3.64          Cycles:692(2901)        Start(us): 54.53
-// CHECK: Layer: conv1/WithoutBiases                      Type: Convolution          DPU: 12.54    SW: 0.00     DMA: 0.00         Start: 0.00
-// CHECK: Layer: relu1                                    Type: Relu                 DPU: 9.73     SW: 0.00     DMA: 0.00         Start: 9.62
-// CHECK: Layer: conv2/WithoutBiases                      Type: Convolution          DPU: 18.26    SW: 0.00     DMA: 0.00         Start: 11.30
-// CHECK: Layer: relu2                                    Type: Relu                 DPU: 5.72     SW: 100.88   DMA: 0.00         Start: 14.96
-// CHECK: Total time: 147.12us, Real: 58.17us
+//CHECK: Task(DMA): Convolution_6?t_Convolution/reorder_in_0/PermuteQuantize/_expand_input       Time(us): 0.26          Start(us): 0.00    
+//CHECK: Task(DMA): Convolution_6?t_Convolution/reorder_in_0/PermuteQuantize/_expand_input/_expand_copy_3_14     Time(us): 0.26          Start(us): 0.26    
+//CHECK: Task(DMA): Convolution_6?t_Convolution/expand_act_channels/input-1-CMX  Time(us): 0.26          Start(us): 0.52    
+//CHECK: Task(DMA): Convolution_6?t_Convolution/expand_act_channels/input-2-CMX  Time(us): 0.26          Start(us): 0.78    
+//CHECK: Task(DPU): Convolution_6?t_Convolution/reorder_in_0/PermuteQuantize/cluster_0   Time(us): 0.06          Start(us): 7.75    
+//CHECK: Task(DMA): Convolution_6?t_Convolution/expand_act_channels/input-0-CMX  Time(us): 0.05          Start(us): 7.92    
+//CHECK: Task(DPU): Convolution_6?t_Convolution/expand_act_channels/cluster_0    Time(us): 0.08          Start(us): 7.94    
+//CHECK: Task(DMA): Conv_0?t_Convert/input-0-CMX                                 Time(us): 0.05          Start(us): 8.39    
+//CHECK: Task(SW): Conv_0?t_Convert/cluster_0                                    Time(us): 5.47          Cycles:379(5382)        Start(us): 35.83   
+//CHECK: Task(DMA): 495/sink_port_0?t_Result                                     Time(us): 0.05          Start(us): 44.32   
+//CHECK: Layer: Convolution_6                            Type: Convolution          DPU: 0.14     SW: 0.00     DMA: 1.09         Start: 0.00
+//CHECK: Layer: Conv_0                                   Type: Convert              DPU: 0.00     SW: 5.47     DMA: 0.05         Start: 8.39
+//CHECK: Layer: 495/sink_port_0                          Type: Result               DPU: 0.00     SW: 0.00     DMA: 0.05         Start: 44.32
+//CHECK: Total time: 6.80us, Real: 44.38us

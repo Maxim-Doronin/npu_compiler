@@ -18,7 +18,8 @@ def IE_AffineReshapeOp :
         IE_LayerOp<
             "AffineReshape",
             [
-                IE_ViewLikeOpInterface
+                IE_ViewLikeOpInterface,
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface, ["shouldJITCompile", "shouldJITCompileToEnableFusion"]>,
             ]
         > {
     let summary = "AffineReshape layer";

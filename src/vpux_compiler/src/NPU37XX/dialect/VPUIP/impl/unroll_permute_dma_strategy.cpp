@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -129,7 +129,8 @@ mlir::LogicalResult SingleClusterPermuteDMARewriter::unroll(VPUIP::PermuteDMAOp 
             if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(distributionAttr)) {
                 distributionAttr = VPU::getNonOverlappedDistributedAttr(
                         subOutputShapes[idx], distributionAttr.getMode(), nullptr, distributionAttr.getNumClusters(),
-                        nullptr, distributionAttr.getUniformDistributedSegments(), dstDeclBuff.getContext());
+                        nullptr, distributionAttr.getUniformDistributedSegments(), dstType.getElementType(),
+                        dstDeclBuff.getContext());
             }
 
             const auto layout = mlir::AffineMapAttr::get(dimOrder.toAffineMap(ctx));
@@ -164,12 +165,11 @@ mlir::LogicalResult SingleClusterPermuteDMARewriter::unroll(VPUIP::PermuteDMAOp 
                    "DstMemory at {3}",
                    subInputShapes[idx], subOutputShapes[idx], newSrcBuff.getSection(), newDstBuff.getSection());
 
-        const auto newLoc = appendLoc(vpurtTask->getLoc(), "_unrolled_permuteDMA");
+        const auto newLoc = appendLoc(vpurtTask->getLoc(), "unrolled_permuteDMA");
         auto newDmaPort = portIsAlreadyAssigned ? permuteDMAOp.getPort().value() : dmaPort;
         auto newPermuteDMAOp = VPURT::wrapIntoTaskOp<VPUIP::PermuteDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, newSrcBuff, newDstBuff,
-                vpux::getIntAttr(rewriter, newDmaPort), permuteDMAOp.getIsOutOfOrderAttr(),
-                permuteDMAOp.getIsCriticalAttr(),
+                vpux::getIntAttr(rewriter, newDmaPort), permuteDMAOp.getIsOutOfOrder(), permuteDMAOp.getIsCritical(),
                 /*mem_perm*/ nullptr, newDMADescriptorAttr, permuteDMAOp.getDmaHwpIdAttr(),
                 permuteDMAOp.getProfilingMetadataAttr(), /*internalDataFlow=*/nullptr);
 

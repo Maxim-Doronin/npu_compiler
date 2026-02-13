@@ -1,19 +1,19 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
+#include "vpux/compiler/locverif/locations_verifier.hpp"
 #include "vpux/compiler/utils/dot_printer.hpp"
-#include "vpux/compiler/utils/function_statistics_instrumentation.hpp"
-#include "vpux/compiler/utils/locations_verifier.hpp"
-#include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/memory_usage_collector.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/pipelines/developer_config.hpp"
+#include "vpux/compiler/pipelines/function_statistics_instrumentation.hpp"
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 #include "vpux/compiler/core/developer_build_utils.hpp"
@@ -33,7 +33,9 @@ DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
     parseEnv("IE_NPU_GEN_LOCAL_REPRODUCER", _localReproducer);
 
     parseEnv("IE_NPU_IR_PRINTING_FILTER", _irPrintingFilter);
-    parseEnv("IE_NPU_IR_PRINTING_FILE", _irPrintingFile);
+    parseEnv("IE_NPU_IR_PRINT_TO_FILE_TREE", _printToFileTree);
+    parseEnv("IE_NPU_IR_PRINTING_FILE", _irPrintingFile);  // deprecated #E194687
+    parseEnv("IE_NPU_IR_PRINTING_LOCATION", _irPrintingLocation);
     parseEnv("IE_NPU_IR_PRINTING_ORDER", _irPrintingOrderStr);
     parseEnv("IE_NPU_PRINT_FULL_IR", _printFullIR);
     parseEnv("IE_NPU_PRINT_FULL_CONSTANT", _printFullConstant);
@@ -45,6 +47,17 @@ DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
 
     parseEnv("IE_NPU_PRINT_DOT", _printDotOptions);
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+
+    if (_printToFileTree && _irPrintingLocation.empty()) {
+        _log.info("PrintTree location not specified, defaulting to .");
+        _irPrintingLocation = ".";
+    }
+
+    if (!_irPrintingFile.empty() && _irPrintingLocation.empty()) {
+        _log.warning("IE_NPU_IR_PRINTING_FILE is deprecated and is going to be removed in UD2026.08, please use "
+                     "IE_NPU_IR_PRINTING_LOCATION instead");
+        _irPrintingLocation = _irPrintingFile;
+    }
 
     if (!_irPrintingOrderStr.empty()) {
         auto orderString = _irPrintingOrderStr;
@@ -72,16 +85,18 @@ DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
             VPUX_THROW("Invalid regular expression '{0}' : {1}", _irPrintingFilter, regexErr);
         }
 
-        if (_irPrintingFile.empty()) {
-            _irDumpStream = &Logger::getBaseStream();
-        } else {
-            std::error_code err;
-            _irDumpFile = std::make_unique<llvm::raw_fd_ostream>(_irPrintingFile, err);
-            if (err) {
-                VPUX_THROW("Failed to open file '{0}' for write : {1}", _irPrintingFile, err.message());
-            }
+        if (!_printToFileTree) {
+            if (_irPrintingLocation.empty()) {
+                _irDumpStream = &Logger::getBaseStream();
+            } else {
+                std::error_code err;
+                _irDumpFile = std::make_unique<llvm::raw_fd_ostream>(_irPrintingLocation, err);
+                if (err) {
+                    VPUX_THROW("Failed to open file '{0}' for write : {1}", _irPrintingLocation, err.message());
+                }
 
-            _irDumpStream = _irDumpFile.get();
+                _irDumpStream = _irDumpFile.get();
+            }
         }
     }
 }
@@ -101,6 +116,65 @@ void DeveloperConfig::setup(mlir::DefaultTimingManager& tm) const {
     } else {
         tm.setEnabled(false);
     }
+}
+
+class PassLogging final : public mlir::PassInstrumentation {
+public:
+    explicit PassLogging(Logger log): _log(log) {
+    }
+
+    void runBeforePipeline(std::optional<mlir::OperationName> name, const PipelineParentInfo&) final {
+        if (name.has_value()) {
+            _log.debug("Start Pass Pipeline {0}", *name);
+        }
+    }
+
+    void runAfterPipeline(std::optional<mlir::OperationName> name, const PipelineParentInfo&) final {
+        if (name.has_value()) {
+            _log.debug("End Pass Pipeline {0}", *name);
+        }
+    }
+
+    void runBeforePass(mlir::Pass* pass, mlir::Operation* op) final {
+        if (pass->getName() != "mlir::detail::OpToOpPassAdaptor") {
+            _log.debug("Start Pass {0} on Operation {1}", pass->getName(), op->getLoc());
+        }
+    }
+
+    void runAfterPass(mlir::Pass* pass, mlir::Operation* op) override {
+        if (pass->getName() != "mlir::detail::OpToOpPassAdaptor") {
+            _log.debug("End Pass {0} on Operation {1}", pass->getName(), op->getLoc());
+        }
+    }
+
+    void runAfterPassFailed(mlir::Pass* pass, mlir::Operation* op) override {
+        if (pass->getName() == "mlir::detail::OpToOpPassAdaptor") {
+            return;
+        }
+
+        auto module =
+                mlir::isa<mlir::ModuleOp>(op) ? mlir::cast<mlir::ModuleOp>(op) : op->getParentOfType<mlir::ModuleOp>();
+        if (config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::FAILED) {
+            _log.warning("WLM Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
+        } else {
+            _log.error("Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
+        }
+    }
+
+    void runBeforeAnalysis(StringRef name, mlir::TypeID, mlir::Operation* op) override {
+        _log.trace("Start Analysis {0} on Operation {1}", name, op->getLoc());
+    }
+
+    void runAfterAnalysis(StringRef name, mlir::TypeID, mlir::Operation* op) override {
+        _log.trace("End Analysis {0} on Operation {1}", name, op->getLoc());
+    }
+
+private:
+    Logger _log;
+};
+
+void addLogging(mlir::PassManager& pm, Logger log) {
+    pm.addInstrumentation(std::make_unique<PassLogging>(log));
 }
 
 void DeveloperConfig::setup(mlir::PassManager& pm, const intel_npu::Config& config, bool isSubPipeline) const {
@@ -147,8 +221,14 @@ void DeveloperConfig::setup(mlir::PassManager& pm, const intel_npu::Config& conf
             flags.enableDebugInfo(true, _printDebugInfoPrettyForm);
         }
 
-        pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass, _printFullIR, printAfterOnlyOnChange,
-                            printAfterOnlyOnFailure, *_irDumpStream, flags);
+        if (_printToFileTree) {
+            pm.enableIRPrintingToFileTree(shouldPrintBeforePass, shouldPrintAfterPass, _printFullIR,
+                                          printAfterOnlyOnChange, printAfterOnlyOnFailure, _irPrintingLocation, flags);
+        } else {
+            assert(_irDumpStream && "IR dump stream must be set in all cases");
+            pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass, _printFullIR, printAfterOnlyOnChange,
+                                printAfterOnlyOnFailure, *_irDumpStream, flags);
+        }
     }
 
     // Dot printing

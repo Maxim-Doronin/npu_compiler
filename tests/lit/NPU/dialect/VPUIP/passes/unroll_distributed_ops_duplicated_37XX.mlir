@@ -45,7 +45,7 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
     %301 = VPURT.DeclareBuffer <CMX_NN> <4096> -> !typeCmxDistributed
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%395 : !Input_DDR) outputs(%300 : !typeCmxDistributed) -> !typeCmxDistributed
+      %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%395 : !Input_DDR) outputs(%300 : !typeCmxDistributed) -> !typeCmxDistributed
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
       %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
@@ -55,7 +55,7 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
       }
     }
     VPURT.Task waits(%bar1 : !VPURT.Barrier)  attributes {isTrailingSWLayer = false} {
-      %399 = VPUIP.NNDMA {port = 0 : i64} inputs(%301 : !typeCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
+      %399 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%301 : !typeCmxDistributed) outputs(%302 : !Output_DDR) -> !Output_DDR
     }
 
     return %output: !Output_DDR

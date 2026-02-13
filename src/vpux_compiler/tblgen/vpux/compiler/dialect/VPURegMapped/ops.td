@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -97,6 +97,7 @@ def VPURegMapped_FetchTaskOp:
         VPURegMapped_IndexType:$primary_end,
         Optional<VPURegMapped_IndexType>:$secondary_start,
         Optional<VPURegMapped_IndexType>:$secondary_end,
+        Optional<VPURegMapped_IndexType>:$enqueueBarrier,
         OptionalAttr<VPURegMapped_TaskTypeAttr>:$associated_task_type,
         OptionalAttr<UI64Attr>:$associated_tile_index,
         OptionalAttr<UI64Attr>:$associated_execution_group_index,
@@ -115,6 +116,7 @@ def VPURegMapped_FetchTaskOp:
         `primary` `(` $primary_start `->` $primary_end `)`
         `secondary` `(` $secondary_start `->` $secondary_end `)`
         `(` type($primary_start) `->` type($primary_end) `:` type($secondary_start) `->` type($secondary_end) `)`
+        (`enqueueBarrier` `(` $enqueueBarrier^ `:` type($enqueueBarrier) `)`)?
         `->` type($index)
         attr-dict
     }];

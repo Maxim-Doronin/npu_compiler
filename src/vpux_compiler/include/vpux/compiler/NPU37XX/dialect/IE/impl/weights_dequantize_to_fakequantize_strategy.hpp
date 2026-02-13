@@ -5,18 +5,24 @@
 
 #pragma once
 
-#include "vpux/compiler/core/interfaces/rewriter_pattern_strategies.hpp"
+#include "vpux/compiler/dynamic_rewriter/dynamic_rewriter_strategies.hpp"
+#include "vpux/utils/core/array_ref.hpp"
 
 namespace vpux::IE::arch37xx {
 
 /*
    Class for getting WeightsDequantizeToFakeQuantizeStrategy patterns for VPU37XX
 */
-class WeightsDequantizeToFakeQuantizeStrategy : public IGreedilyPassStrategy {
+class WeightsDequantizeToFakeQuantizeStrategy final : public IDynamicRewriterStrategy {
 public:
-    WeightsDequantizeToFakeQuantizeStrategy() noexcept = default;
+    explicit WeightsDequantizeToFakeQuantizeStrategy(ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index)
+            : _benefitLevels(benefitLevels), _index(index) {};
 
-    void addPatterns(mlir::RewritePatternSet& patterns, Logger& log) const override final;
+    void registerRewriters(RewriterRegistry& registry, Logger& log) const override;
+
+private:
+    ArrayRef<mlir::PatternBenefit> _benefitLevels;
+    size_t _index;
 };
 
 }  // namespace vpux::IE::arch37xx

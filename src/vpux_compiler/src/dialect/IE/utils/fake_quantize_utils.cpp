@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -210,6 +210,14 @@ mlir::LogicalResult WeightsDequantizeStructureInfo::checkAndSet(mlir::Value& out
         const auto stridedSliceInput = stridedSlice.getInput();
         if (mlir::isa<mlir::BlockArgument>(stridedSliceInput)) {
             out = stridedSlice.getResult();
+            return mlir::success();
+        }
+    }
+
+    if (auto gather = mlir::dyn_cast<IE::GatherOp>(definingOp)) {
+        const auto gatherInput = gather.getInput();
+        if (mlir::isa<mlir::BlockArgument>(gatherInput)) {
+            out = gather.getResult();
             return mlir::success();
         }
     }

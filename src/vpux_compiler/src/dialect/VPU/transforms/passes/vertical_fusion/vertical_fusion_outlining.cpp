@@ -76,7 +76,7 @@ void VerticalFusionOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<Smal
         const size_t sliceIdx = 0;
         const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                       ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
-        const auto funcLoc = appendLoc(netFunc.getLoc(), "_part{0}", targetIdx + 1);
+        const auto funcLoc = appendLoc(netFunc.getLoc(), "part{0}", targetIdx + 1);
         auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
         if (config::getWeightsTableReuseMode(func) == WeightsTableReuseMode::VF_ENABLED && isPureVFRegion(slice)) {
             func->setAttr(VPU::PureVerticalFusionRegionAttrName, mlir::UnitAttr::get(ctx));
@@ -104,7 +104,7 @@ void VerticalFusionOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<Smal
         for (const auto output : slice.outputs) {
             funcOutputFromSlices.push_back(oldToNewMap[output]);
         }
-        const auto returnLoc = appendLoc(netFunc.getLoc(), "_part{0}_return", targetIdx + 1);
+        const auto returnLoc = appendLoc(netFunc.getLoc(), "part{0}_return", targetIdx + 1);
         builder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromSlices);
     }
 }
@@ -131,7 +131,7 @@ void VerticalFusionOutliner::buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<Smal
             newInputs.push_back(oldToNewArgMap[input]);
         }
 
-        const auto callLoc = appendLoc(netFunc.getLoc(), "_part{0}_call", targetIdx + 1);
+        const auto callLoc = appendLoc(netFunc.getLoc(), "part{0}_call", targetIdx + 1);
         auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                           funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
         for (const auto& res : newCall.getResults()) {

@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -53,7 +54,7 @@ mlir::LogicalResult NNDMARewriter::matchAndRewrite(VPUIP::NNDMAOp nnDMAOp, OpAda
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
 
     auto origOp = nnDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             nnDMAOp, indexType,
             nullptr,  // taskLocation
             inputs[0], dmaResults,
@@ -75,6 +76,15 @@ mlir::LogicalResult NNDMARewriter::matchAndRewrite(VPUIP::NNDMAOp nnDMAOp, OpAda
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = nnDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = nnDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -95,7 +105,7 @@ mlir::LogicalResult PermuteDMARewriter::matchAndRewrite(VPUIP::PermuteDMAOp perm
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = permuteDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             permuteDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -117,6 +127,15 @@ mlir::LogicalResult PermuteDMARewriter::matchAndRewrite(VPUIP::PermuteDMAOp perm
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = permuteDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = permuteDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -136,7 +155,7 @@ mlir::LogicalResult ExpandDMARewriter::matchAndRewrite(VPUIP::ExpandDMAOp expand
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = expandDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             expandDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -158,6 +177,15 @@ mlir::LogicalResult ExpandDMARewriter::matchAndRewrite(VPUIP::ExpandDMAOp expand
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = expandDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = expandDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -173,7 +201,7 @@ mlir::LogicalResult ConvertDMARewriter::matchAndRewrite(VPUIP::ConvertDMAOp conv
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = convertDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             convertDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -187,7 +215,7 @@ mlir::LogicalResult ConvertDMARewriter::matchAndRewrite(VPUIP::ConvertDMAOp conv
             VPUIP::DMAAccMode::DISABLE,
             nullptr,  // actCompressionSizeEntry
             nullptr,  // actCompressionSparsityMap
-            nullptr,  // dmaTransaction
+            VPUMI40XX::NNDMATransactionAttr::get(ctx, inputType, outputType),
             nullptr,  // dmaDescriptor
             adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
             false,                   // allowDifferentInOutShapes
@@ -195,6 +223,15 @@ mlir::LogicalResult ConvertDMARewriter::matchAndRewrite(VPUIP::ConvertDMAOp conv
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = convertDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = convertDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -218,7 +255,7 @@ mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewrite(VPUIP::SpaceToDepth
             ctx, internalDataFlow->getInputType(), internalDataFlow->getOutputType(),
             internalDataFlow->getMappingOrder(), internalDataFlow->getLoopOrder());
 
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             spaceToDepthDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -240,6 +277,15 @@ mlir::LogicalResult SpaceToDepthDMARewriter::matchAndRewrite(VPUIP::SpaceToDepth
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = spaceToDepthDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = spaceToDepthDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -263,7 +309,7 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
             ctx, internalDataFlow->getInputType(), internalDataFlow->getOutputType(),
             internalDataFlow->getMappingOrder(), internalDataFlow->getLoopOrder());
 
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             depthToSpaceDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -285,6 +331,15 @@ mlir::LogicalResult DepthToSpaceDMARewriter::matchAndRewrite(VPUIP::DepthToSpace
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = depthToSpaceDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = depthToSpaceDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -301,7 +356,8 @@ mlir::LogicalResult UpsamplingDMARewriter::matchAndRewrite(VPUIP::UpsamplingDMAO
     const auto dmaDescriptor = adaptor.getDmaDescriptor().value();
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = upsamplingDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             upsamplingDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -322,6 +378,15 @@ mlir::LogicalResult UpsamplingDMARewriter::matchAndRewrite(VPUIP::UpsamplingDMAO
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = upsamplingDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = upsamplingDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -343,7 +408,7 @@ mlir::LogicalResult PerAxisTileDMARewriter::matchAndRewrite(VPUIP::PerAxisTileDM
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = perAxisTileDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             perAxisTileDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -365,6 +430,15 @@ mlir::LogicalResult PerAxisTileDMARewriter::matchAndRewrite(VPUIP::PerAxisTileDM
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = perAxisTileDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = perAxisTileDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -380,7 +454,7 @@ mlir::LogicalResult DecompressDMARewriter::matchAndRewrite(VPUIP::DecompressDMAO
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = decompressDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             decompressDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -401,6 +475,15 @@ mlir::LogicalResult DecompressDMARewriter::matchAndRewrite(VPUIP::DecompressDMAO
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = decompressDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = decompressDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -416,7 +499,7 @@ mlir::LogicalResult CompressDMARewriter::matchAndRewrite(VPUIP::CompressDMAOp co
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = compressDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             compressDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -437,6 +520,15 @@ mlir::LogicalResult CompressDMARewriter::matchAndRewrite(VPUIP::CompressDMAOp co
             nullptr,                 // enqueueBarrier
             origOp.getWlmPageAttr()  // wlmPageAttr
     );
+
+    if (auto stridedInput = compressDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = compressDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 
@@ -452,7 +544,7 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
 
     auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
     auto origOp = gatherDMAOp->getParentOfType<VPURT::TaskOp>();
-    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+    auto newOp = rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
             gatherDMAOp, indexType,
             nullptr,  // taskLocation
             adaptor.getInput(), dmaResults,
@@ -478,6 +570,15 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
             nullptr,                             // fetchDmaAttr
             gatherDMAOp.getAddressingModeAttr()  // addressingMode
     );
+
+    if (auto stridedInput = gatherDMAOp->getAttr(vpux::stridedInputAttrName)) {
+        newOp->setAttr(vpux::stridedInputAttrName, stridedInput);
+    }
+
+    if (auto stridedOutput = gatherDMAOp->getAttr(vpux::stridedOutputAttrName)) {
+        newOp->setAttr(vpux::stridedOutputAttrName, stridedOutput);
+    }
+
     return mlir::success();
 }
 

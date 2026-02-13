@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/IR/PatternMatch.h>
@@ -48,7 +49,7 @@ mlir::LogicalResult ConvertQuantizeRewriter::matchAndRewrite(IE::QuantizeOp quan
     }
 
     auto inElemType = mlir::cast<vpux::NDTypeInterface>(convertOp.getInput().getType()).getElementType();
-    if (!inElemType.isInteger(CHAR_BIT)) {
+    if (!inElemType.isInteger(8)) {
         return mlir::failure();
     }
 
@@ -93,8 +94,29 @@ mlir::LogicalResult DequantizeConvertRewriter::matchAndRewrite(IE::ConvertOp con
     }
 
     auto outElemType = mlir::cast<vpux::NDTypeInterface>(convertOp.getType()).getElementType();
-    if (!outElemType.isUnsignedInteger(CHAR_BIT)) {
+    if (!outElemType.isUnsignedInteger(8)) {
         return mlir::failure();
+    }
+
+    auto inType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
+    auto quantizedElemType = inType.getElementType();
+
+    // Check if there's a QuantizeCast before the Dequantize
+    auto quantizeCastOp = dequantizeOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
+    if (quantizeCastOp) {
+        // Fusion shouldn't occur when the pattern is QuantizeCast -> Dequantize -> Convert and zero point is not zero
+        if (auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(quantizedElemType)) {
+            if (uniformType.getZeroPoint() != 0) {
+                return mlir::failure();
+            }
+        } else if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(quantizedElemType)) {
+            auto zeroPoints = perAxisType.getZeroPoints();
+            if (llvm::any_of(zeroPoints, [](int64_t zp) {
+                    return zp != 0;
+                })) {
+                return mlir::failure();
+            }
+        }
     }
 
     _log.trace("Fusing operations: '{0}' and '{1}'", dequantizeOp->getName(), convertOp->getName());
@@ -128,9 +150,7 @@ void FuseConvertWithQDQPass::safeRunOnFunc() {
     patterns.add<DequantizeConvertRewriter>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 }  // namespace
 

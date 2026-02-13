@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -186,14 +186,12 @@ void ConvertAsyncOpsToTasksPass::safeRunOnFunc() {
         return VPURT::BarrierType::get(token.getContext());
     });
     typeConverter.addTargetMaterialization(dummyConverter<VPURT::BarrierType>);
-    typeConverter.addArgumentMaterialization(dummyConverter<VPURT::BarrierType>);
     typeConverter.addSourceMaterialization(dummyConverter<mlir::async::TokenType>);
 
     typeConverter.addConversion([](mlir::async::ValueType future) {
         return future.getValueType();
     });
     typeConverter.addTargetMaterialization(dummyConverter<mlir::MemRefType>);
-    typeConverter.addArgumentMaterialization(dummyConverter<mlir::MemRefType>);
     typeConverter.addSourceMaterialization(dummyConverter<mlir::async::ValueType>);
 
     mlir::ConversionTarget target(ctx);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,7 +25,7 @@ func.func @ConstBroadcastFuseBidirectional()-> tensor<1x8x4x4xf32> {
     return %2 : tensor<1x8x4x4xf32>
 
     // CHECK-NOT: IE.Broadcast
-    // CHECK:     [[CST:%.*]] = const.Declare tensor<1x8x4x4xf32> = dense<1.000000e+00> :
+    // CHECK:     [[CST:%.+]] = const.Declare tensor<1x8x4x4xf32> = dense<1.000000e+00> :
     // CHECK-SAME:          tensor<4x1xf32>, [#const.Reshape<[1, 1, 4, 1]>, #const.Broadcast<1 : i64, 8 : i64>, #const.Broadcast<3 : i64, 4 : i64>]
     // CHECK:     return [[CST]] : tensor<1x8x4x4xf32>
 }
@@ -39,7 +39,7 @@ func.func @ConstBroadcastFuseNumpy()-> tensor<1x8x4x4xf32> {
     return %2 : tensor<1x8x4x4xf32>
 
     // CHECK-NOT: IE.Broadcast
-    // CHECK:     [[CST:%.*]] = const.Declare tensor<1x8x4x4xf32> = dense<1.000000e+00> :
+    // CHECK:     [[CST:%.+]] = const.Declare tensor<1x8x4x4xf32> = dense<1.000000e+00> :
     // CHECK-SAME:          tensor<4x1xf32>, [#const.Reshape<[1, 1, 4, 1]>, #const.Broadcast<1 : i64, 8 : i64>, #const.Broadcast<3 : i64, 4 : i64>]
     // CHECK:     return [[CST]] : tensor<1x8x4x4xf32>
 }
@@ -54,7 +54,7 @@ func.func @ConstBroadcastFuseExplicit()-> tensor<1x8x4x4xf32> {
     return %3 : tensor<1x8x4x4xf32>
 
     // CHECK-NOT: IE.Broadcast
-    // CHECK:     [[CST:%.*]] = const.Declare tensor<1x8x4x4xf32> = dense<1.000000e+00> :
+    // CHECK:     [[CST:%.+]] = const.Declare tensor<1x8x4x4xf32> = dense<1.000000e+00> :
     // CHECK-SAME:          tensor<4x1xf32>, [#const.Reshape<[1, 4, 1, 1]>, #const.Broadcast<1 : i64, 8 : i64>, #const.Broadcast<2 : i64, 4 : i64>, #const.Broadcast<3 : i64, 4 : i64>]
     // CHECK:     return [[CST]] : tensor<1x8x4x4xf32>
 }

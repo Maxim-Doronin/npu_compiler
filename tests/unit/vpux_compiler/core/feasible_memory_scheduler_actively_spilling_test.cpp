@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,12 @@
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
 #include "vpux/compiler/core/prefetch_data_ops.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/dialect/core/utils/declaration_utils.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
 
 #include <mlir/IR/MLIRContext.h>
@@ -25,7 +27,11 @@ using namespace vpux;
 using MLIR_FeasibleMemorySchedulerActivelySpilling = MLIR_UnitBase;
 
 TEST_F(MLIR_FeasibleMemorySchedulerActivelySpilling, FixMemoryFragmentation) {
+    const auto arch = config::ArchKind::NPU40XX;
+    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{std::nullopt, arch});
+
     mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<vpux::VPU::VPUDialect>();
 
     // Create an IR so that AsyncDepsInfo class can be initialized
     constexpr llvm::StringLiteral inputIRPart1 = R"(
@@ -194,19 +200,18 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
     const auto maxSize = available.size();
     auto reservedMemVec = config::getReservedMemOffsetAndSizeVec(*module, memKindAttr);
     LinearScan<mlir::Value, LinearScanHandler> scan(maxSize.count(), reservedMemVec, alignment);
-    const auto arch = config::getArch(module->getOperation());
-    VPU::CostModelConfig::setFactory(arch);
-    auto costModel = VPU::CostModelConfig::createCostModel(arch);
+    auto vpuDev = VPU::getVPUDeviceType(module->getOperation());
+    auto costModel = VPU::CostModelConfig::createCostModel(&ctx);
     auto tileOp = config::getTileExecutor(*module);
     ASSERT_TRUE(tileOp != nullptr);
     auto tileCount = tileOp.getCount();
-    auto dmaPorts = config::getAvailableExecutor(*module, VPU::ExecutorKind::DMA_NN);
+    auto dmaPorts = config::getAvailableExecutor(*module, config::ExecutorKind::DMA_NN);
     ASSERT_TRUE(dmaPorts != nullptr);
     auto dmaCount = dmaPorts.getCount();
 
     // init schedule
-    FeasibleMemoryScheduler initSchedule(memKind, secondLvlMemKind, liveRange, depsInfo, log, scan, arch, costModel,
-                                         tileCount, dmaCount, /*enableScheduleStatistics*/ false,
+    FeasibleMemoryScheduler initSchedule(memKind, secondLvlMemKind, liveRange, depsInfo, log, scan, arch, vpuDev,
+                                         costModel, tileCount, dmaCount, /*enableScheduleStatistics*/ false,
                                          /*optimizeFragmentation*/ true,
                                          /*activelySpillForPrefetching*/ false);
     auto initScheduledOps = initSchedule.generateSchedule();
@@ -214,14 +219,14 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
 
     PrefetchDataOps prefetching(initScheduledOps, depsInfo);
     EXPECT_EQ(prefetching.enableDataOpPrefetching(), true);
-    VPUIP::moveDeclarationsToTop(func);
+    vpux::moveDeclarationsToTop(func);
 
     // prefetching - default
     depsInfo = AsyncDepsInfo{func};
     LinearScan<mlir::Value, LinearScanHandler> defaultPrefetchScan(maxSize.count(), reservedMemVec, alignment);
     auto defaultLiveRange = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>(func, aliasesInfo);
     FeasibleMemoryScheduler schedulerDefault(memKind, secondLvlMemKind, defaultLiveRange, depsInfo, log,
-                                             defaultPrefetchScan, arch, costModel, tileCount, dmaCount,
+                                             defaultPrefetchScan, arch, vpuDev, costModel, tileCount, dmaCount,
                                              /*enableScheduleStatistics*/ false, /*optimizeFragmentation*/ true,
                                              /*activelySpillForPrefetching*/ false);
     const auto defaultRes = schedulerDefault.generateSchedule().back().cycleEnd_;
@@ -231,8 +236,8 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
     LinearScan<mlir::Value, LinearScanHandler> aggressivePrefetchScan(maxSize.count(), reservedMemVec, alignment);
     auto aggressiveLiveRange = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>(func, aliasesInfo);
     FeasibleMemoryScheduler schedulerWithAggressivePrefetch(
-            memKind, secondLvlMemKind, aggressiveLiveRange, depsInfo, log, aggressivePrefetchScan, arch, costModel,
-            tileCount, dmaCount, /*enableScheduleStatistics*/ false, /*optimizeFragmentation*/ true,
+            memKind, secondLvlMemKind, aggressiveLiveRange, depsInfo, log, aggressivePrefetchScan, arch, vpuDev,
+            costModel, tileCount, dmaCount, /*enableScheduleStatistics*/ false, /*optimizeFragmentation*/ true,
             /*activelySpillForPrefetching*/ true);
     const auto activelySpillRes = schedulerWithAggressivePrefetch.generateSchedule().back().cycleEnd_;
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -63,27 +63,27 @@ func.func @RemoveOutputSparseForConvSOKFollowedByConcat(%arg0: tensor<1x128x28x2
 
     return %15 : tensor<1x128x28x28xf16, {order = #NHWC}>
 
-    //CHECK:    [[WEIGHTSTABLE_0:%.*]] = const.Declare tensor<128x1x1x4xsi32>
-    //CHECK:    [[WEIGHTS_0:%.*]] = const.Declare tensor<128x128x1x1xf16, {order = #NHWC}>
-    //CHECK:    [[WEIGHTSTABLE_1:%.*]] = const.Declare tensor<128x1x1x4xsi32>
-    //CHECK:    [[WEIGHTS_1:%.*]] = const.Declare tensor<128x128x1x1xf16, {order = #NHWC}>
+    //CHECK:    [[WEIGHTSTABLE_0:%.+]] = const.Declare tensor<128x1x1x4xsi32>
+    //CHECK:    [[WEIGHTS_0:%.+]] = const.Declare tensor<128x128x1x1xf16, {order = #NHWC}>
+    //CHECK:    [[WEIGHTSTABLE_1:%.+]] = const.Declare tensor<128x1x1x4xsi32>
+    //CHECK:    [[WEIGHTS_1:%.+]] = const.Declare tensor<128x128x1x1xf16, {order = #NHWC}>
 
-    //CHECK:    [[UNROLLED_INPUT_0:%.*]] = VPU.UnrolledType([[ARG0]] : tensor<1x128x28x28xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
-    //CHECK:    [[UNROLLED_WEIGHTS_0:%.*]] = VPU.UnrolledType([[WEIGHTS_0]] : tensor<128x128x1x1xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
-    //CHECK:    [[UNROLLED_WEIGHTSTABLE_0:%.*]] = VPU.UnrolledType([[WEIGHTSTABLE_0]] : tensor<128x1x1x4xsi32>) -> !VPU.DistributedTensor<128x1x1x4xsi32
+    //CHECK:    [[UNROLLED_INPUT_0:%.+]] = VPU.UnrolledType([[ARG0]] : tensor<1x128x28x28xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
+    //CHECK:    [[UNROLLED_WEIGHTS_0:%.+]] = VPU.UnrolledType([[WEIGHTS_0]] : tensor<128x128x1x1xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
+    //CHECK:    [[UNROLLED_WEIGHTSTABLE_0:%.+]] = VPU.UnrolledType([[WEIGHTSTABLE_0]] : tensor<128x1x1x4xsi32>) -> !VPU.DistributedTensor<128x1x1x4xsi32
 
-    //CHECK:        [[CONV0:%.*]] = VPU.NCE.Convolution([[UNROLLED_INPUT_0]], [[UNROLLED_WEIGHTS_0]], [[UNROLLED_WEIGHTSTABLE_0]])
+    //CHECK:        [[CONV0:%.+]] = VPU.NCE.Convolution([[UNROLLED_INPUT_0]], [[UNROLLED_WEIGHTS_0]], [[UNROLLED_WEIGHTSTABLE_0]])
     //CHECK-SAME:     -> !VPU.DistributedTensor
-    //CHECK:        [[UNROLLED_OUTPUT_0:%.*]] = VPU.UnrolledType([[CONV0]]
+    //CHECK:        [[UNROLLED_OUTPUT_0:%.+]] = VPU.UnrolledType([[CONV0]]
     //CHECK-SAME:     -> tensor<1x128x28x28xf16, {order = #NHWC}>
 
-    //CHECK:    [[UNROLLED_INPUT_1:%.*]] = VPU.UnrolledType([[ARG0]] : tensor<1x128x28x28xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
-    //CHECK:    [[UNROLLED_WEIGHTS_1:%.*]] = VPU.UnrolledType([[WEIGHTS_1]] : tensor<128x128x1x1xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
-    //CHECK:    [[UNROLLED_WEIGHTSTABLE_1:%.*]] = VPU.UnrolledType([[WEIGHTSTABLE_1]] : tensor<128x1x1x4xsi32>) -> !VPU.DistributedTensor<128x1x1x4xsi32
+    //CHECK:    [[UNROLLED_INPUT_1:%.+]] = VPU.UnrolledType([[ARG0]] : tensor<1x128x28x28xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
+    //CHECK:    [[UNROLLED_WEIGHTS_1:%.+]] = VPU.UnrolledType([[WEIGHTS_1]] : tensor<128x128x1x1xf16, {order = #NHWC}>) -> !VPU.DistributedTensor
+    //CHECK:    [[UNROLLED_WEIGHTSTABLE_1:%.+]] = VPU.UnrolledType([[WEIGHTSTABLE_1]] : tensor<128x1x1x4xsi32>) -> !VPU.DistributedTensor<128x1x1x4xsi32
 
-    //CHECK:        [[CONV1:%.*]] = VPU.NCE.Convolution([[UNROLLED_INPUT_1]], [[UNROLLED_WEIGHTS_1]], [[UNROLLED_WEIGHTSTABLE_1]])
+    //CHECK:        [[CONV1:%.+]] = VPU.NCE.Convolution([[UNROLLED_INPUT_1]], [[UNROLLED_WEIGHTS_1]], [[UNROLLED_WEIGHTSTABLE_1]])
     //CHECK-SAME:     -> !VPU.DistributedTensor
-    //CHECK:        [[UNROLLED_OUTPUT_1:%.*]] = VPU.UnrolledType([[CONV1]]
+    //CHECK:        [[UNROLLED_OUTPUT_1:%.+]] = VPU.UnrolledType([[CONV1]]
     //CHECK-SAME:     -> tensor<1x128x28x28xf16, {order = #NHWC}>
 
     //CHECK:        VPU.Concat([[UNROLLED_OUTPUT_0]], [[UNROLLED_OUTPUT_1]])

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/reshape_utils.hpp"
 
 using namespace vpux;
 
@@ -30,14 +31,8 @@ mlir::LogicalResult vpux::VPUIP::GenericReshapeOp::verify() {
         return errorAt(op, "Reshape input and output must have the same number of elements");
     }
 
-    const auto inReqs = StrideReqs::compact(inType.getRank());
-    const auto outReqs = StrideReqs::compact(outType.getRank());
-
-    if (!inReqs.checkStrides(inType)) {
-        return errorAt(op, "Input strides do not match requirements '{0}'", inType);
-    }
-    if (!outReqs.checkStrides(outType)) {
-        return errorAt(op, "Output strides do not match requirements '{0}'", inType);
+    if (!isInAndOutStridesCompatible(inType, outType)) {
+        return errorAt(op, "Incompatible strides between input {0} and output {1}", inType, outType);
     }
 
     return mlir::success();

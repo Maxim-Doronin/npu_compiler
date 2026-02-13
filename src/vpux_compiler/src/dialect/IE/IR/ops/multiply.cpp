@@ -3,8 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <llvm/ADT/STLExtras.h>
+#include <mlir/IR/Value.h>
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
-#include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
@@ -23,33 +26,15 @@ mlir::LogicalResult vpux::IE::MultiplyOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto in1Type = mlir::cast<mlir::RankedTensorType>(multiply.getInput1().getType());
-    const auto in2Type = mlir::cast<mlir::RankedTensorType>(multiply.getInput2().getType());
+    const auto in1Type = mlir::cast<vpux::NDTypeInterface>(multiply.getInput1().getType());
+    const auto in2Type = mlir::cast<vpux::NDTypeInterface>(multiply.getInput2().getType());
 
-    auto in1Shape = SmallVector<int64_t>(in1Type.getShape());
-    auto in2Shape = SmallVector<int64_t>(in2Type.getShape());
-    if (mlir::failed(IE::unpadInputShape(in1Shape, multiply.getInputPaddingAttr(), loc))) {
-        return mlir::failure();
-    }
-    if (mlir::failed(IE::unpadInputShape(in2Shape, multiply.getInputPaddingAttr(), loc))) {
-        return mlir::failure();
-    }
+    auto outShapeInfo = inferEltwiseOutputShapeInfo(ShapeInfo::fromNDType(in1Type), ShapeInfo::fromNDType(in2Type),
+                                                    multiply.getAutoBroadcast(), loc);
 
-    const auto outShapeRes = IE::broadcastEltwiseShape(in1Shape, in2Shape, multiply.getAutoBroadcast(), loc);
-
-    if (mlir::succeeded(outShapeRes)) {
-        auto outShape = outShapeRes.value();
-        if (mlir::failed(IE::padOutputShape(outShape, multiply.getOutputPaddingAttr(), loc))) {
-            return mlir::failure();
-        }
-        const auto outBounds = inferOutputBounds(multiply.getInput1(), multiply.getInput2(), ShapeRef(outShape),
-                                                 multiply.getAutoBroadcast());
-        const auto outOrder =
-                in1Type.getRank() >= in2Type.getRank() ? vpux::getOrder(in1Type) : vpux::getOrder(in2Type);
-
-        const auto tensorAttr = getTensorAttr(ctx, outOrder, getMemorySpace(in1Type), BoundsRef(outBounds));
-        inferredReturnShapes.emplace_back(outShape, in1Type.getElementType(), tensorAttr);
-    }
+    const auto outDesc = vpux::getTensorAttr(ctx, inferOrder(in1Type, in2Type), /*memSpace=*/nullptr,
+                                             BoundsRef(outShapeInfo.bounds));
+    inferredReturnShapes.emplace_back(outShapeInfo.shape, in1Type.getElementType(), outDesc);
 
     return mlir::success();
 }
@@ -102,4 +87,14 @@ mlir::LogicalResult vpux::IE::MultiplyOp::reifyResultShapes(mlir::OpBuilder& bui
 
     reifiedReturnShapes.emplace_back(std::move(outShape.value()));
     return mlir::success();
+}
+
+bool vpux::IE::MultiplyOp::requiresStaticShape() {
+    // MultiplyOp might require static shapes in some cases. Currently we handle only one case when MultiplyOp is
+    // involved into BoundaryCorrection logic
+    // return true in case one of the operand is a DynamicDataMaskOp
+    return llvm::any_of(getOperands(), [](mlir::Value operand) {
+        auto defOp = operand.getDefiningOp();
+        return mlir::isa_and_nonnull<IE::DynamicDataMaskOp>(defOp);
+    });
 }

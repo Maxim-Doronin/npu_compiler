@@ -13,6 +13,7 @@
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <optional>
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_SPLITDMATOBALANCELOAD
@@ -49,7 +50,7 @@ NDTypeInterface getNewBufferType(NDTypeInterface bufferType, vpux::Dim tileDim, 
             auto duplicatedOutputMode = VPU::DistributionModeAttr::get(ctx, VPU::DistributionMode::DUPLICATED);
             auto newDistribution = VPU::getNonOverlappedDistributedAttr(
                     newShape, duplicatedOutputMode, nullptr, origDistAttr.getNumClusters(), nullptr,
-                    origDistAttr.getUniformDistributedSegments(), ctx);
+                    origDistAttr.getUniformDistributedSegments(), bufferType.getElementType(), ctx);
 
             auto newElemType = bufferType.getElementType();
             if (auto qType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(bufferType.getElementType())) {
@@ -101,8 +102,8 @@ BuffersPair getReplacementBuffers(mlir::Value originalBuffer, vpux::Dim tileDim,
     const auto [firstPartSize, secondPartSize] = VPUIP::getSplitPartSizes(bufferType, tileDim);
     const auto extraOffset = Byte(firstPartSize * origStrides[tileDim]).count();
 
-    auto firstBuff = getTiledBuf(/*dimOffset=*/0, firstPartSize, /*byteOffset=*/0, "_first_part");
-    auto secondBuff = getTiledBuf(firstPartSize, secondPartSize, extraOffset, "_second_part");
+    auto firstBuff = getTiledBuf(/*dimOffset=*/0, firstPartSize, /*byteOffset=*/0, "first_part");
+    auto secondBuff = getTiledBuf(firstPartSize, secondPartSize, extraOffset, "second_part");
 
     return {firstBuff, secondBuff};
 }
@@ -123,8 +124,8 @@ BuffersPair getConstantParts(mlir::Value originalConstant, vpux::Dim tileDim, ml
     };
 
     const auto [firstPartSize, secondPartSize] = VPUIP::getSplitPartSizes(cstType, tileDim);
-    auto firstCst = createCstPart(0, firstPartSize, "_first_part");
-    auto secondCst = createCstPart(firstPartSize, secondPartSize, "_second_part");
+    auto firstCst = createCstPart(0, firstPartSize, "first_part");
+    auto secondCst = createCstPart(firstPartSize, secondPartSize, "second_part");
 
     return {firstCst, secondCst};
 }
@@ -134,17 +135,21 @@ void replaceDmaWithTwoParts(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, BuffersP
     builder.setInsertionPoint(taskOp);
     const auto insertNewDma = [&](mlir::Value input, mlir::Value output, int64_t newDmaPort, StringRef locSuffix) {
         const auto newLoc = takeOpLoc(taskOp, locSuffix);
-        VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(
+        auto newDmaOp = VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(
                 builder, taskOp.getWaitBarriers(), taskOp.getUpdateBarriers(), newLoc, input, output, newDmaPort,
                 dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(), dmaOp.getSpillIdAttr(),
-                /*compress_candidate=*/nullptr);  // split gives more improvement than compression
+                /*compress_candidate=*/false);  // split gives more improvement than compression
+
+        if (dmaOp.getProfilingBufferMgmt()) {
+            newDmaOp.setProfilingBufferMgmt(true);
+        }
     };
 
     int64_t firstPartPort = dmaOp.getPort().value();
     int64_t secondPartPort = (firstPartPort + 1) % numDmaPorts;
 
-    insertNewDma(inputs.first, outputs.first, firstPartPort, "_first_part");
-    insertNewDma(inputs.second, outputs.second, secondPartPort, "_second_part");
+    insertNewDma(inputs.first, outputs.first, firstPartPort, "first_part");
+    insertNewDma(inputs.second, outputs.second, secondPartPort, "second_part");
 
     SmallVector<mlir::Value> oldArgs{dmaOp.getInput(), dmaOp.getOutputBuff()};
     taskOp->erase();
@@ -227,8 +232,8 @@ void splitFoldedConstToBufferDma(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, Con
         return builder.create<Const::DeclareOp>(newLoc, newType, Const::ContentAttr::get(denseAttr));
     };
 
-    auto firstCst = createCstPart(0, firstPartSize, "_first_part");
-    auto secondCst = createCstPart(firstPartSize, secondPartSize, "_second_part");
+    auto firstCst = createCstPart(0, firstPartSize, "first_part");
+    auto secondCst = createCstPart(firstPartSize, secondPartSize, "second_part");
 
     BuffersPair inputBuffers = {firstCst, secondCst};
     auto outputBuffers = getReplacementBuffers(dmaOp.getOutputBuff(), tileDim, builder);
@@ -244,6 +249,14 @@ void splitDmaIntoParts(VPURT::TaskOp taskOp, int64_t numDmaPorts, mlir::OpBuilde
         return;
     }
     const auto tileDim = maybeTileDim.value();
+
+    // Check if split would create empty parts due to sub-byte alignment constraints
+    const auto [firstPartSize, secondPartSize] = VPUIP::getSplitPartSizes(inputBuffType, tileDim);
+    if (firstPartSize == 0 || secondPartSize == 0) {
+        log.trace("Split would create empty part (firstPartSize={0}, secondPartSize={1}), skip", firstPartSize,
+                  secondPartSize);
+        return;
+    }
 
     BuffersPair inputBuffers;
     if (auto inputCst = dmaOp.getInput().getDefiningOp<Const::DeclareOp>()) {
@@ -281,14 +294,14 @@ void SplitDMAToBalanceLoad::safeRunOnFunc() {
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
-    auto dmaOp = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN);
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
     auto dmaPortCount = dmaOp.getCount();
     if (dmaPortCount != 2) {
         return;
     }
 
     func->walk([&](VPURT::TaskOp taskOp) {
-        if (taskOp.getExecutorKind() != VPU::ExecutorKind::DMA_NN) {
+        if (taskOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
             return;
         }
 
@@ -298,7 +311,7 @@ void SplitDMAToBalanceLoad::safeRunOnFunc() {
         }
         VPUX_THROW_UNLESS(dmaOp.getPort().has_value(), "DMA at '{0}' has no portId", dmaOp->getLoc());
 
-        if (dmaOp.getSplitCandidateAttr() == nullptr) {
+        if (!dmaOp.getSplitCandidate()) {
             return;
         }
         _log.trace("Found split candidate at '{0}'", dmaOp->getLoc());

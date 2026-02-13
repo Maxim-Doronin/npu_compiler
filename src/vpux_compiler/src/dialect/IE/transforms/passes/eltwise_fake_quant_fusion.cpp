@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Support/LLVM.h>
@@ -256,9 +257,7 @@ void EltwiseFakeQuantizeFusionPass::safeRunOnFunc() {
     patterns.add<EltwiseFakeQuantizeFusion<IE::DivideOp>>(&ctx, std::multiplies<float>(), _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

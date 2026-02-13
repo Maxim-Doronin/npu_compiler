@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,6 +52,14 @@ class FakeQuantizeLayerTest_SW_NPU3720 : public FakeQuantizeLayerTestCommon {
 class FakeQuantizeLayerTest_HW_NPU3720 : public FakeQuantizeLayerTestCommon {};
 
 class FakeQuantizeLayerTest_SW_NPU4000 : public FakeQuantizeLayerTest_SW_NPU3720 {};
+
+class ShaveCodeGenFakeQuantizeLayerTest_SW : public FakeQuantizeLayerTest_SW_NPU4000 {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-shave-code-gen=true enable-convert-quantize-ops-to-nce=false merge-fake-quant=false";
+    }
+};
+
 class FakeQuantizeLayerTest_SW_NPU5010 : public FakeQuantizeLayerTest_SW_NPU3720 {};
 
 TEST_P(FakeQuantizeLayerTest_SW_NPU3720, SW) {
@@ -74,6 +82,16 @@ TEST_P(FakeQuantizeLayerTest_SW_NPU4000, SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
+TEST_P(ShaveCodeGenFakeQuantizeLayerTest_SW, NPU4000) {
+    const auto tol = 1.6;                       // To cope with cpu/npu 'limits' diffs
+    rel_threshold = fabs(rel_threshold) * tol;  // E#77437
+    abs_threshold = rel_threshold;              // Rely on absolute value check
+    setReferenceSoftwareMode();
+    setPluginCompilerType();
+    run(Platform::NPU4000);
+}
+
 TEST_P(FakeQuantizeLayerTest_SW_NPU5010, SW) {
     const auto tol = 1.6;                       // To cope with cpu/npu 'limits' diffs
     rel_threshold = fabs(rel_threshold) * tol;  // E#77437
@@ -81,6 +99,16 @@ TEST_P(FakeQuantizeLayerTest_SW_NPU5010, SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
+TEST_P(ShaveCodeGenFakeQuantizeLayerTest_SW, NPU5010) {
+    const auto tol = 1.6;                       // To cope with cpu/npu 'limits' diffs
+    rel_threshold = fabs(rel_threshold) * tol;  // E#77437
+    abs_threshold = rel_threshold;              // Rely on absolute value check
+    setReferenceSoftwareMode();
+    setPluginCompilerType();
+    run(Platform::NPU5010);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -130,8 +158,12 @@ INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantize_PerTensor, FakeQuantizeLayerTest_SW_
 
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantize_PerTensor, FakeQuantizeLayerTest_SW_NPU4000, perTensorCfg,
                          FakeQuantizeLayerTest_SW_NPU4000::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_ShaveCodeGenFakeQuantize_PerTensor, ShaveCodeGenFakeQuantizeLayerTest_SW, perTensorCfg,
+                         ShaveCodeGenFakeQuantizeLayerTest_SW::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantize_PerTensor, FakeQuantizeLayerTest_SW_NPU5010, perTensorCfg,
                          FakeQuantizeLayerTest_SW_NPU5010::getTestCaseName);
+
 // NPU3720 Per-Tensor Tiling
 const auto fqParamsT =
         ::testing::Combine(::testing::ValuesIn(u8qLevels), ::testing::Values(constShapes[0]),

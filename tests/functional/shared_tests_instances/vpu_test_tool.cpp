@@ -7,6 +7,7 @@
 #include <functional_test_utils/ov_plugin_cache.hpp>
 #include "vpux/utils/core/format.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 
@@ -20,6 +21,7 @@ VpuTestTool::VpuTestTool(const VpuTestEnvConfig& envCfg)
 
 void VpuTestTool::exportModel(ov::CompiledModel& compiledModel, const std::string& fsName) {
     OPENVINO_ASSERT(!envConfig.IE_NPU_TESTS_DUMP_PATH.empty());
+    std::filesystem::create_directories(envConfig.IE_NPU_TESTS_DUMP_PATH);
 
     const auto fileName = vpux::printToString("{0}/{1}", envConfig.IE_NPU_TESTS_DUMP_PATH, fsName);
     _log.info("Exporting model into {0}, device {1}", fileName, DEVICE_NAME);
@@ -63,6 +65,7 @@ void VpuTestTool::importTensor(ov::Tensor& tensor, const std::string& fsName) {
 
 void VpuTestTool::exportTensor(const ov::Tensor& tensor, const std::string& fsName) {
     OPENVINO_ASSERT(!envConfig.IE_NPU_TESTS_DUMP_PATH.empty());
+    std::filesystem::create_directories(envConfig.IE_NPU_TESTS_DUMP_PATH);
 
     const auto fileName = vpux::printToString("{0}/{1}", envConfig.IE_NPU_TESTS_DUMP_PATH, fsName);
     _log.debug("Exporting `ov::Tensor` blob from {0}, device {1}", fileName, DEVICE_NAME);

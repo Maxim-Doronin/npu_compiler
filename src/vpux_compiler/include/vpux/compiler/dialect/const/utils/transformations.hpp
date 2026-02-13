@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -173,9 +173,12 @@ std::pair<optimization::TransformAttrPos, bool> moveTransformationIntoFuse(
     transformation, value == (y1 - y0) is returned. This is primarily used in
     cases when one wants to convert between signed and unsigned quantized types.
 
+    Note that this function is used for both UniformQuantizedPerAxis and UniformQuantized types. If the latter,
+    SmallVector will contain only 1 element, which can be accessed via [0] index.
+
     @note At present, only supports single-zero-point integer-storage types.
 */
-int64_t getValueRangeOffset(mlir::quant::QuantizedType inType, mlir::quant::QuantizedType outType);
+SmallVector<double> getValueRangeOffset(mlir::quant::QuantizedType inType, mlir::quant::QuantizedType outType);
 
 }  // namespace details
 }  // namespace Const

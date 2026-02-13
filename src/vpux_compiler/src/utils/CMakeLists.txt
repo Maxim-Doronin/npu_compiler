@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -14,27 +14,29 @@ endif()
 file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(${TARGET_NAME}
     ${SRC_FILES}
-    LINK_LIBS PRIVATE
+    LINK_LIBS
+      PRIVATE
         npu_algo_utils
         npu_ov_utils
         npu_llvm_utils
         npu_profiling_utils
         MLIRIR
+		# npu_compiler_utils should not depend on other dialects (IE, VPU, VPUIP...),
+        # to avoid circular dependencies, except for the net dialect.
+		# net dialect does not depends on other dialects, so it's safe to use it here
+		npu_compiler_dialect_net
         npu_compiler_dialect_vpu
-        npu_elf
-        npu_compiler_dialect_vpuip
-        npu_compiler_dialect_vpurt
+      PUBLIC
+        npu_elf  # symbolization.hpp
     DEPENDS
-        intrinsics_gen
-    SYSTEM_INCLUDES
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/thirdparty>)
+        intrinsics_gen)
 
 set(LINKER_SCRIPT_INPUT "${PROJECT_SOURCE_DIR}/sw_runtime_kernels/kernels/prebuild/shave_kernel.ld")
 set(LINKER_SCRIPT_HEADER "${CMAKE_CURRENT_BINARY_DIR}/shave_ld.hpp")
 set(PREP_SCRIPT "${PROJECT_SOURCE_DIR}/cmake/prep_ldscript.py")
 
 message(STATUS "Linker at ${LINKER_SCRIPT_INPUT}")
-message(STATUS "Header at ${LINKER_SCRIPT_HEADER}") 
+message(STATUS "Header at ${LINKER_SCRIPT_HEADER}")
 
 add_custom_command(
     OUTPUT ${LINKER_SCRIPT_HEADER}

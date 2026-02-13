@@ -1,7 +1,50 @@
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+/*
+  VERSION HISTORY
+
+ - version 2.3
+     Adds DMATask fields:
+       tensorShapeInfo, tensorStrideInfo, gatherIndices, dynamicStridesInput, dynamicStridesOutput
+
+ - version 2.2
+     Adds DPU fields:
+       tensorInfo, variantInfo
+     Adds ActShave field:
+       tensorInfo
+
+ - version 2.1
+     Adds DMATask fields:
+       portId, channelType, sourceMemoryType, destinationMemoryType
+
+ - version 2.0 (initial version)
+
+*/
+
 namespace ProfilingFB;
+
+enum MemoryKind : byte { DDR, CMX }
+
+enum DMAChannelType : byte { DDR, CMX }
+
+table ShapeInfo {
+    dimensions: [uint];
+    elemType: string;
+}
+
+table TensorInfo {
+    inputs: [ShapeInfo] (native_inline);
+    outputs: [ShapeInfo] (native_inline);
+}
+
+// The current implementation assumes that each of the arrays in DPUVariantInfo has length of 3.
+table DPUVariantInfo {
+    inStart: [uint];
+    inEnd: [uint];
+    outStart: [uint];
+    outEnd: [uint];
+}
 
 // Each task represent individual task, which can be executed and so be profiled.
 // DMATask - DMA transaction, DPUTask - DPU invariant, SWTask - single kernel invocation,
@@ -16,6 +59,15 @@ table DMATask {
     hwpId: ushort;          // DMA hardware profiling ID
     dataIndex: uint;        // The position in the profiling output binary
     isProfBegin: bool;      // Marker of profBeginDma
+    portId: ushort = null;
+    channelType: DMAChannelType = null;
+    sourceMemoryKind: MemoryKind = null;
+    destinationMemoryKind: MemoryKind = null;
+    tensorShapeInfo: TensorInfo;
+    tensorStrideInfo: TensorInfo;
+    gatherIndices: ushort; // Number of indices passed to GatherDMA, 0 means task isn't a GatherDMA
+    dynamicStridesInput: bool;
+    dynamicStridesOutput: bool;
 }
 
 // DPU tasks are special, because of memory layout, which may be distributed across multiple clusters.
@@ -26,14 +78,16 @@ table DMATask {
 
 table DPUTask {
     name: string;
-    bufferId: ushort;       // id of buffer(single DPU profiling buffer in CMX)
-    clusterId: ushort;      // id of cluster
-    taskId: ushort;         // id of task(global, not in current buffer)
-    numVariants: ushort;    // count of variants(or count of **used** profiling timestamps)
-    maxVariants: ushort;    // max. count of variants in any invariant, which was grouped before unrolling(or size of **allocated** memory for profiling timestamps)
+    bufferId: ushort;               // id of buffer(single DPU profiling buffer in CMX)
+    clusterId: ushort;              // id of cluster
+    taskId: ushort;                 // id of task(global, not in current buffer)
+    numVariants: ushort;            // count of variants(or count of **used** profiling timestamps)
+    maxVariants: ushort;            // max. count of variants in any invariant, which was grouped before unrolling(or size of **allocated** memory for profiling timestamps)
     waitBarriers: [uint];
     updateBarriers: [uint];
-    workloadIds: [uint];    // DPU hardware profiling ID, for validation purpose. Quantity should be the same as numVariants
+    workloadIds: [uint];            // DPU hardware profiling ID, for validation purpose. Quantity should be the same as numVariants
+    tensorInfo: TensorInfo;         // DPU invariant-level tensor info
+    variantInfo: [DPUVariantInfo] (native_inline);  // DPU variant offsets
 }
 
 table SWTask {
@@ -47,6 +101,7 @@ table SWTask {
     dataIndex: uint;        // index of current task
     tileId: uint;
     clusterId: uint;
+    tensorInfo: TensorInfo;
 }
 
 table M2ITask {

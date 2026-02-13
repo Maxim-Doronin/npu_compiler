@@ -82,41 +82,41 @@ module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.c
     %output_ready = VPURT.ConfigureBarrier<2> -> !VPURT.Barrier
 
     VPURT.Task updates(%inputs_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%input_arg : memref<1x16x16x16x!qtype, #NHWC, @DDR>)
         outputs(%input_0 : memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 0]>)
         -> memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 0]>
     }
     VPURT.Task updates(%inputs_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%input_arg : memref<1x16x16x16x!qtype, #NHWC, @DDR>)
         outputs(%input_1 : memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 1]>)
         -> memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 1]>
     }
 
     VPURT.Task updates(%inputs_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%weights_constant : memref<16x1x1x16x!qtype, #NHWC, @DDR>)
         outputs(%weights0 : memref<16x1x1x16x!qtype, #NHWC, [@CMX_NN, 0]>)
         -> memref<16x1x1x16x!qtype, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task updates(%inputs_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%weights_constant : memref<16x1x1x16x!qtype, #NHWC, @DDR>)
         outputs(%weights1 : memref<16x1x1x16x!qtype, #NHWC, [@CMX_NN, 1]>)
         -> memref<16x1x1x16x!qtype, #NHWC, [@CMX_NN, 1]>
     }
 
     VPURT.Task updates(%inputs_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%weight_table_constant : memref<16x1x1x4xsi32, #NHWC, @DDR>)
         outputs(%weight_table0 : memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>)
         -> memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
     }
 
     VPURT.Task updates(%inputs_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%weight_table_constant : memref<16x1x1x4xsi32, #NHWC, @DDR>)
         outputs(%weight_table1 : memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>)
         -> memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>
@@ -175,21 +175,21 @@ module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.c
     }
 
     VPURT.Task waits(%conv_complete : !VPURT.Barrier) updates(%output_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%output_0 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>)
         outputs(%output_ddr_0 : memref<1x16x16x16xf16, #NHWC, @DDR>)
         -> memref<1x16x16x16xf16, #NHWC, @DDR>
     }
 
     VPURT.Task waits(%conv_complete : !VPURT.Barrier) updates(%output_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%output_1 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 1]>)
         outputs(%output_ddr_1 : memref<1x16x16x16xf16, #NHWC, @DDR>)
         -> memref<1x16x16x16xf16, #NHWC, @DDR>
     }
 
     VPURT.Task waits(%output_ready : !VPURT.Barrier) {
-      VPUIP.NNDMA {port = 0}
+      VPUIP.NNDMA <{port = 0}>
         inputs(%output_ddr : memref<2x16x16x16xf16, #NHWC, @DDR>)
         outputs(%output_arg : memref<2x16x16x16xf16, #NHWC, @DDR>)
         -> memref<2x16x16x16xf16, #NHWC, @DDR>

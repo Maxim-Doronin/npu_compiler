@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <tuple>
@@ -250,7 +251,7 @@ mlir::LogicalResult InsertMultiplyBeforeConcat::matchAndRewrite(IE::MultiplyOp o
         auto constSplatValue = maybeConstSplatValue.value();
 
         const auto fp32TensorType = mlir::RankedTensorType::get(newShape, mlir::Float32Type::get(getContext()));
-        const auto newConst = Const::createFloatConst(rewriter, appendLoc(constOp->getLoc(), "_to_mult_scalar"),
+        const auto newConst = Const::createFloatConst(rewriter, appendLoc(constOp->getLoc(), "to_mult_scalar"),
                                                       fp32TensorType, constSplatValue);
         const auto actualElemType = mlir::cast<NDTypeInterface>(constOp.getType()).getElementType();
         const bool floatConstantHasCorrectType = (actualElemType == fp32TensorType.getElementType());
@@ -435,8 +436,11 @@ struct FuseStaticScaleToWeights : public mlir::OpRewritePattern<IE::MultiplyOp> 
         auto weightConstOp = weightVal.template getDefiningOp<Const::DeclareOp>();
         if (weightConstOp) {
             auto newConst = getRescaledConst(weightConstOp, rewriter, constSplatValue);
-            rewriter.replaceAllUsesWith(weightConstOp.getOutput(), newConst.getOutput());
-            rewriter.replaceAllUsesWith(origOp.getOutput(), nonConstMultiplyOperand);
+            // Only replace the weight operand of this specific convolution
+            rewriter.modifyOpInPlace(forwardTargetOp, [&]() {
+                forwardTargetOp->setOperand(1, newConst.getOutput());
+            });
+            rewriter.replaceOp(origOp, nonConstMultiplyOperand);
             return mlir::success();
         }
         auto fqOp = weightVal.template getDefiningOp<IE::FakeQuantizeOp>();
@@ -451,8 +455,11 @@ struct FuseStaticScaleToWeights : public mlir::OpRewritePattern<IE::MultiplyOp> 
             return mlir::failure();
         }
         auto newFQ = getRescaledFQ(fqOp, outputLowConstOp, outputHighConstOp, rewriter, constSplatValue);
-        rewriter.replaceAllUsesWith(fqOp.getOutput(), newFQ.getOutput());
-        rewriter.replaceAllUsesWith(origOp.getOutput(), nonConstMultiplyOperand);
+        // Only replace the weight operand of this specific convolution
+        rewriter.modifyOpInPlace(forwardTargetOp, [&]() {
+            forwardTargetOp->setOperand(1, newFQ.getOutput());
+        });
+        rewriter.replaceOp(origOp, nonConstMultiplyOperand);
         return mlir::success();
     }
 
@@ -474,21 +481,27 @@ void FuseStaticScalePass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<InsertMultiplyBeforeConcat>(&ctx, _log);
-    patterns.add<FuseStaticScaleToPpeBackward<IE::ConvolutionOp>>(&ctx, _log);
-    patterns.add<FuseStaticScaleToPpeBackward<IE::AvgPoolOp>>(&ctx, _log);
-    patterns.add<FuseStaticScaleToWeights<IE::ConvolutionOp>>(&ctx, _log);
-    // For a pooling operation, use standard pattern (no scale check)
-    patterns.add<FuseStaticScaleToPpeForward<IE::AvgPoolOp>>(&ctx, _log);
-    // If the supported operation is not a pooling operation and the scale is less than 1.0,
-    // do not fuse forward to avoid accuracy degradation. This is because the input values
-    // before multiplication are larger than the values after multiplication, which can
-    // cause the supported operation to overflow during accumulation.
-    patterns.add<FuseStaticScaleToPpeForwardWithScaleCheck<IE::ConvolutionOp>>(&ctx, _log);
+    {
+        mlir::RewritePatternSet patterns(&ctx);
+        patterns.add<InsertMultiplyBeforeConcat>(&ctx, _log);
+        collectOpsAndApplyPatterns(func, std::move(patterns));
+    }
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
+    {
+        // NOTE: InsertMultiplyBeforeConcat inserts Multiply Ops which get optimized out
+        // by FuseStaticScale patterns, therefore require a separate func walk
+        mlir::RewritePatternSet patterns(&ctx);
+        patterns.add<FuseStaticScaleToPpeBackward<IE::ConvolutionOp>>(&ctx, _log);
+        patterns.add<FuseStaticScaleToPpeBackward<IE::AvgPoolOp>>(&ctx, _log);
+        patterns.add<FuseStaticScaleToWeights<IE::ConvolutionOp>>(&ctx, _log);
+        // For a pooling operation, use standard pattern (no scale check)
+        patterns.add<FuseStaticScaleToPpeForward<IE::AvgPoolOp>>(&ctx, _log);
+        // If the supported operation is not a pooling operation and the scale is less than 1.0,
+        // do not fuse forward to avoid accuracy degradation. This is because the input values
+        // before multiplication are larger than the values after multiplication, which can
+        // cause the supported operation to overflow during accumulation.
+        patterns.add<FuseStaticScaleToPpeForwardWithScaleCheck<IE::ConvolutionOp>>(&ctx, _log);
+        collectOpsAndApplyPatterns(func, std::move(patterns));
     }
 }
 

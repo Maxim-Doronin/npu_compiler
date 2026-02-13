@@ -169,7 +169,7 @@ std::vector<std::pair<unsigned int, ELFNPU37XX::SymbolOp>> vpux::ELFNPU37XX::Elf
 
         elfSymbolsOp.push_back(std::make_pair(
                 idx, opsBuilder.create<ELFNPU37XX::SymbolOp>(
-                             mlir::UnknownLoc::get(_ctx), vpux::ELFNPU37XX::SymbolType::get(_ctx), inputArg, nullptr,
+                             mlir::UnknownLoc::get(_ctx), vpux::ELFNPU37XX::SymbolType::get(_ctx), inputArg, false,
                              mlir::StringAttr::get(_ctx, symName),
                              vpux::ELFNPU37XX::SymbolTypeEnumAttr::get(_ctx, symAttr), symSizeAttr, symValAttr)));
     }
@@ -665,10 +665,8 @@ void vpux::ELFNPU37XX::ElfImporter::createSectionOpForDMA(
             mlir::IntegerAttr port = mlir::IntegerAttr::get(type64SAttr, 0);
             mlir::IntegerAttr startAfter = mlir::IntegerAttr::get(type64UAttr, dmaTasks->barriers_sched_.start_after_);
             mlir::IntegerAttr cleanAfter = mlir::IntegerAttr::get(type64UAttr, dmaTasks->barriers_sched_.clean_after_);
-            const auto isCritical =
-                    dmaTasks->transaction_.cfg_link.cfg_bits.critical ? mlir::UnitAttr::get(_ctx) : nullptr;
-            const auto isOutOfOrder =
-                    dmaTasks->transaction_.cfg_link.cfg_bits.order_forced ? mlir::UnitAttr::get(_ctx) : nullptr;
+            const auto isCritical = dmaTasks->transaction_.cfg_link.cfg_bits.critical;
+            const auto isOutOfOrder = dmaTasks->transaction_.cfg_link.cfg_bits.order_forced;
             const auto dmaDescriptor =
                     VPUIP::DMADescriptorAttr::get(_ctx, vpux::getIntAttr(_ctx, dmaTasks->transaction_.num_planes),
                                                   vpux::getIntAttr(_ctx, dmaTasks->transaction_.length),
@@ -799,9 +797,8 @@ void vpux::ELFNPU37XX::ElfImporter::createGenericBuiltInRegion(mlir::OpBuilder& 
                 vpux::ELFNPU37XX::CMXMappingSymbol::VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR);
         const auto specialSymAttr = mlir::StringAttr::get(_ctx, stringifyCMXMappingSymbol(specialSym));
         auto symbolValue = opsBuilder.create<ELFNPU37XX::SymbolOp>(
-                mlir::UnknownLoc::get(_ctx), vpux::ELFNPU37XX::SymbolType::get(_ctx), arithOperation.getResult(),
-                mlir::UnitAttr::get(_ctx), specialSymAttr, vpux::ELFNPU37XX::SymbolTypeEnumAttr{}, mlir::IntegerAttr{},
-                mlir::IntegerAttr{});
+                mlir::UnknownLoc::get(_ctx), vpux::ELFNPU37XX::SymbolType::get(_ctx), arithOperation.getResult(), true,
+                specialSymAttr, vpux::ELFNPU37XX::SymbolTypeEnumAttr{}, mlir::IntegerAttr{}, mlir::IntegerAttr{});
         elfSymbolsConstOp.push_back(std::make_pair(val, symbolValue));
     }
 

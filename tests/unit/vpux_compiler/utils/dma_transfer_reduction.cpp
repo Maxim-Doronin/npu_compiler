@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -72,7 +72,7 @@ TEST_P(DMAReductionTest, GetParams) {
 
     const auto reducedDimsStrides =
             reduceDimsForDma(to_small_vector(ndType.getMemShape()), to_small_vector(ndType.getMemStrides()),
-                             ndType.getElemTypeSize().count());
+                             ndType.getElemTypeSize().count(), false);
     EXPECT_EQ(reducedDimsStrides.dims, expectedReducedDims);
     EXPECT_EQ(reducedDimsStrides.strides, expectedReducedStrides);
 }
@@ -250,6 +250,45 @@ std::vector<DMAReductionTestParams> dmaReductionTestValues = {
 
 INSTANTIATE_TEST_SUITE_P(ArbitraryTest, DMAReductionTest, testing::ValuesIn(dmaReductionTestValues));
 
+// Test for scalar tensors (rank=0) where memShape and memStrides are empty
+TEST(DMAReductionScalarTest, EmptyShapeAndStrides) {
+    // Scalar f16: elemSize = 16 bits, aligned to byte = 2 bytes
+    {
+        SmallVector<int64_t> emptyShape;
+        SmallVector<vpux::Bit> emptyStrides;
+        const int64_t elemSizeF16 = 16;  // f16 in bits
+
+        const auto result = reduceDimsForDma(emptyShape, emptyStrides, elemSizeF16, false);
+
+        EXPECT_EQ(result.dims, SmallVector<int64_t>({2}));
+        EXPECT_EQ(result.strides, SmallVector<int64_t>({2}));
+    }
+
+    // Scalar u8: elemSize = 8 bits, aligned to byte = 1 byte
+    {
+        SmallVector<int64_t> emptyShape;
+        SmallVector<vpux::Bit> emptyStrides;
+        const int64_t elemSizeU8 = 8;  // u8 in bits
+
+        const auto result = reduceDimsForDma(emptyShape, emptyStrides, elemSizeU8, false);
+
+        EXPECT_EQ(result.dims, SmallVector<int64_t>({1}));
+        EXPECT_EQ(result.strides, SmallVector<int64_t>({1}));
+    }
+
+    // Scalar i4: elemSize = 4 bits, aligned to byte = 1 byte
+    {
+        SmallVector<int64_t> emptyShape;
+        SmallVector<vpux::Bit> emptyStrides;
+        const int64_t elemSizeI4 = 4;  // i4 in bits
+
+        const auto result = reduceDimsForDma(emptyShape, emptyStrides, elemSizeI4, false);
+
+        EXPECT_EQ(result.dims, SmallVector<int64_t>({1}));
+        EXPECT_EQ(result.strides, SmallVector<int64_t>({1}));
+    }
+}
+
 class DMAReductionTestExpectFail : public testing::TestWithParam<DMAReductionTestParams> {};
 
 TEST_P(DMAReductionTestExpectFail, GetParams) {
@@ -292,7 +331,7 @@ TEST_P(DMAReductionTestExpectFail, GetParams) {
     const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(memrefType);
 
     EXPECT_ANY_THROW(reduceDimsForDma(to_small_vector(ndType.getMemShape()), to_small_vector(ndType.getMemStrides()),
-                                      ndType.getElemTypeSize().count()));
+                                      ndType.getElemTypeSize().count(), false));
 }
 
 // To add a test that throws an error #E118627

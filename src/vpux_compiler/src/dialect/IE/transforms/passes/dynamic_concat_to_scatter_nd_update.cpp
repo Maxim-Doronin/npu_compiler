@@ -70,26 +70,25 @@ mlir::LogicalResult DynamicConcatToScatterNDUpdate::matchAndRewrite(IE::ConcatOp
     const auto dataTypeShapeOf = mlir::TypeAttr::get(getSInt64Type(ctx));
 
     auto shapeOfOp =
-            rewriter.create<IE::ShapeOfOp>(appendLoc(origOp->getLoc(), "_shapeOf"), dynamicInput, dataTypeShapeOf);
+            rewriter.create<IE::ShapeOfOp>(appendLoc(origOp->getLoc(), "shapeOf"), dynamicInput, dataTypeShapeOf);
 
-    auto channelDimOp = rewriter.create<IE::SliceOp>(appendLoc(origOp->getLoc(), "_sliceOf"), shapeOfOp,
+    auto channelDimOp = rewriter.create<IE::SliceOp>(appendLoc(origOp->getLoc(), "sliceOf"), shapeOfOp,
                                                      rewriter.getI64ArrayAttr({1}), rewriter.getI64ArrayAttr({1}));
 
     auto constDataType = mlir::RankedTensorType::get({1}, getSInt64Type(ctx));
-    auto addendCstOp =
-            Const::createConst(rewriter, appendLoc(loc, "_channelsNum"), constDataType, ArrayRef<int64_t>{1});
+    auto addendCstOp = Const::createConst(rewriter, appendLoc(loc, "channelsNum"), constDataType, ArrayRef<int64_t>{1});
     const auto broadcastType =
             vpux::IE::AutoBroadcastTypeAttr::get(getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
     auto newChannelDimOp = rewriter.create<IE::AddOp>(
-            appendLoc(origOp->getLoc(), "_add"), channelDimOp, addendCstOp, broadcastType,
+            appendLoc(origOp->getLoc(), "add"), channelDimOp, addendCstOp, broadcastType,
             /*post_op=*/nullptr, /*clamp=*/nullptr, /*outputPadding*/ nullptr, /*inputPadding*/ nullptr);
 
-    auto batchDimOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "_sliceCst"), shapeOfOp,
+    auto batchDimOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "sliceCst"), shapeOfOp,
                                                    /*begins=*/rewriter.getI64ArrayAttr({0}),
                                                    /*sizes=*/rewriter.getI64ArrayAttr({1}));
 
-    auto widthAndHeightDimOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "_sliceCst2"), shapeOfOp,
+    auto widthAndHeightDimOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "sliceCst2"), shapeOfOp,
                                                             /*begins=*/rewriter.getI64ArrayAttr({2}),
                                                             /*sizes=*/rewriter.getI64ArrayAttr({2}));
 
@@ -99,13 +98,13 @@ mlir::LogicalResult DynamicConcatToScatterNDUpdate::matchAndRewrite(IE::ConcatOp
     concatenatedDims.push_back(newChannelDimOp);
     concatenatedDims.push_back(widthAndHeightDimOp);
 
-    auto newShapeOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "_newShape"), concatenatedDims, axisAttr);
+    auto newShapeOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "newShape"), concatenatedDims, axisAttr);
 
     auto newInputDataShape = to_small_vector(getShape(dynamicInput));
     const auto newInputDataShapeAttr = getIntArrayAttr(ctx, newInputDataShape);
     const auto newInputDataBoundsAttr = getIntArrayAttr(ctx, boundsVec);
     auto dynamicInputReshaped = rewriter.create<IE::DynamicReshapeOp>(
-            appendLoc(loc, "_reshaped"), dynamicInput, newShapeOp, newInputDataShapeAttr, newInputDataBoundsAttr,
+            appendLoc(loc, "reshaped"), dynamicInput, newShapeOp, newInputDataShapeAttr, newInputDataBoundsAttr,
             /*onlySetShape*/ true);
 
     auto funcOp = mlir::cast<mlir::func::FuncOp>(channelDimOp.getOperation()->getParentOp());
@@ -120,16 +119,16 @@ mlir::LogicalResult DynamicConcatToScatterNDUpdate::matchAndRewrite(IE::ConcatOp
     finalInputTypes.push_back(updatedDynamicInputType);
     finalInputTypes.append(updatedInputTypes.begin() + 1, updatedInputTypes.end());
 
-    auto zeroCstOp = Const::createConst(rewriter, appendLoc(loc, "_channelsNum"), constDataType, ArrayRef<int64_t>{0});
+    auto zeroCstOp = Const::createConst(rewriter, appendLoc(loc, "channelsNum"), constDataType, ArrayRef<int64_t>{0});
     SmallVector<mlir::Value> indicesValues;
     indicesValues.push_back(zeroCstOp);
     indicesValues.push_back(channelDimOp);
     indicesValues.push_back(zeroCstOp);
-    auto indicesOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "_indices"), indicesValues, axisAttr);
+    auto indicesOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "indices"), indicesValues, axisAttr);
 
     auto finalFunctionType = mlir::FunctionType::get(ctx, finalInputTypes, {dynamicResultType});
     funcOp.setType(finalFunctionType);
-    auto scatterOp = rewriter.create<IE::ScatterNDUpdateOp>(appendLoc(origOp->getLoc(), "_scatterNDUpdate"),
+    auto scatterOp = rewriter.create<IE::ScatterNDUpdateOp>(appendLoc(origOp->getLoc(), "scatterNDUpdate"),
                                                             dynamicInputReshaped, indicesOp, staticInput);
     rewriter.replaceOp(origOp, scatterOp.getResult());
 

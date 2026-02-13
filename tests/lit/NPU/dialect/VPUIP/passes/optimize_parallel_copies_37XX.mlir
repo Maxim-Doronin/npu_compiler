@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -76,11 +76,11 @@ func.func @OptimizeParallelNonConstCopies(
 
 // CHECK-LABEL: func.func @OptimizeParallelNonConstCopies
 
-// CHECK:       [[VAR1:%.*]] = VPUIP.Copy inputs(%arg0 : memref<1x16x112x112xf16, #NHWC, @DDR>)
+// CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x112x112xf16, #NHWC, @DDR>)
 // CHECK:       [[VAR2:%.+]] = VPUIP.NCEClusterTask
 // CHECK-SAME:       input([[VAR1]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
-// CHECK:       [[VAR3:%.*]] = VPUIP.Copy inputs([[VAR2]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
+// CHECK:       [[VAR3:%.+]] = VPUIP.Copy inputs([[VAR2]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
 
 // CHECK:       [[VAR4:%.+]] = VPUIP.NCEClusterTask
 // CHECK-SAME:       input([[VAR1]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
-// CHECK:       [[VAR5:%.*]] = VPUIP.Copy inputs([[VAR4]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
+// CHECK:       [[VAR5:%.+]] = VPUIP.Copy inputs([[VAR4]] : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)

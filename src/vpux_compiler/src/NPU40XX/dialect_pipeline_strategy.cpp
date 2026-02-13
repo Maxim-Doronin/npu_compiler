@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,6 +43,9 @@ public:
     static void setupOptionsCommon(DefaultHWOptions40XX& options, LogLevel logLevel = LogLevel::None) {
         setupParamsAccordingToOptimizationLevel(options.optimizationLevel, options, options.workloadManagementEnable);
         setupPWLMParams(options, logLevel);
+        if (options.enableSCFTiling) {
+            overwriteIfUnset(options.enableBoundedTensorsToDynamicDimsMask, false);
+        }
     }
 };
 
@@ -63,17 +66,19 @@ public:
         overwriteIfUnset(options.enableForceZMajorConcat, false);
         overwriteIfUnset(options.enableSwapTransposeWithFQ, false);
         overwriteIfUnset(options.enableAlignScales, false);
-        overwriteIfUnset(options.fuseMvn6ScaleBias, false);
         overwriteIfUnset(options.enableConvertFCToConv, false);
         overwriteIfUnset(options.enableAdjustNonZeroFakeQuant, false);
         overwriteIfUnset(options.enableExtraStaticShapeOps, false);
         overwriteIfUnset(options.enableOptimizeReorders, false);
         overwriteIfUnset(options.enableVPUNNPreSplit, false);
+        overwriteIfUnset(options.enableODULocalRegion, false);
         overwriteIfUnset(options.enableRuntimeDequant, false);
 
         overwriteIfUnset(options.enableConvertFFTToConv, false);
         overwriteIfUnset(options.enableConvertToSdpaExtended, false);
+        overwriteIfUnset(options.enableConvertToReduceMeanSquare, true);
         overwriteIfUnset(options.enableDecomposeGRUSequence, false);
+        overwriteIfUnset(options.workloadManagementMode, WorkloadManagementMode::PWLM_V0_1_PAGES);
     }
 };
 
@@ -107,7 +112,14 @@ private:
 
         // HostCompile specific options
         overwriteIfUnset(options.enableDynamicShapeTransformationsPipeline, false);
-        overwriteIfUnset(options.enableSCFTiling, true);
+
+        auto overrideEnableSCFTiling = [](const DefaultHWOptions40XX& options) {
+            if (auto debatcherOptionsPtr = DebatcherOptions::create(options); debatcherOptionsPtr != nullptr) {
+                return debatcherOptionsPtr->debatcherInliningMethod != "host_pipeline";
+            }
+            return true;
+        };
+        overwriteIfUnset(options.enableSCFTiling, overrideEnableSCFTiling(options));
         overwriteIfUnset(options.enableScfComputeOpsOutlining, true);
         overwriteIfUnset(options.useMemrefForHostFunctionBufferization, true);
         overwriteIfUnset(options.disablePassOnEntryFunctionForHostCompile, true);
@@ -122,6 +134,7 @@ private:
         // tiling over channels is not supported for HostCompile, so we disable propagation of permute through eltwise
         overwriteIfUnset(options.enablePropagateMemPermuteThroughEltwise, false);
         overwriteIfUnset(options.enableAdjustMemPermuteAroundOp, false);
+        overwriteIfUnset(options.enableMovePermutePostEltwise, false);
     }
 };
 
@@ -190,10 +203,6 @@ public:
 
     void initializePipeline(mlir::OpPassManager& pm, Logger log) override {
         VPU::buildInitCompilerPipeline(pm, _optionsContainer->getInitCompilerOptions(), log.nest());
-
-        // TRACK: E#179877
-        // This is needed for the HostCompile pipeline to properly set up outlined NPU compute ops
-        pm.addPass(VPU::createCloneReservedResourcesFromTopModulePass(log));
     }
 
     void buildIEPipeline(mlir::OpPassManager& pm, Logger log) override {

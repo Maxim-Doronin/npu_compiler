@@ -333,6 +333,23 @@ def IE_ReverseMode :
 def IE_ReverseModeAttr : IE_EnumAttr<IE_ReverseMode, "reverse_mode">;
 
 //
+// OneHot
+//
+
+def IE_OneHotMode :
+        IE_I64EnumAttr<
+            "OneHotMode",
+            "OneHotMode that the InferenceEngine supports",
+            [
+                I64EnumAttrCase<"IGNORE_NEGATIVE", 0>,
+                I64EnumAttrCase<"NORMALIZE", 1>,
+            ]
+        > {
+}
+
+def IE_OneHotModeAttr : IE_EnumAttr<IE_OneHotMode, "one_hot_mode">;
+
+//
 // Interpolate
 //
 
@@ -522,17 +539,6 @@ def IE_RNNSequenceDirectionAttr : IE_EnumAttr<IE_RNNSequenceDirection, "rnn_seq_
 //
 // PostOp
 //
-
-class IE_PostOpAttrBase<Pred condition, string summary> : Attr<condition, summary> {
-    let storageType = [{ vpux::IE::PostOpAttr }];
-    let returnType = [{ vpux::IE::PostOpAttr }];
-    let convertFromStorage = "$_self";
-}
-
-def IE_PostOpAttr : IE_PostOpAttrBase<CPred<"mlir::isa<vpux::IE::PostOpAttr>($_self)">,
-                                      "Post-Op Attribute"> {
-    string cppType = "vpux::IE::PostOpAttr";
-}
 
 def IE_ReluAttr : IE_Attr<"Relu", [
         DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,

@@ -57,7 +57,7 @@ quantiles_lut - Optional attribute that stores the weight palletization table va
     let arguments =(ins
         TypeAttr:$wmode,
         OptionalAttr<IntAttr>:$pool_wt_data,
-        UnitAttr:$wt_sparse,
+        UnitProp:$wt_sparse,
         VPUIPDPU_IDUWeightPalletMode:$wt_plt_cfg,
         OptionalAttr<F64ArrayAttr>:$quantiles_lut
         );
@@ -67,6 +67,7 @@ quantiles_lut - Optional attribute that stores the weight palletization table va
         `wt_plt_cfg`    `(` $wt_plt_cfg `)`
         (`pool_wt_data` `(` $pool_wt_data^ `)`)?
         (`quantiles_lut` `(` $quantiles_lut^ `)`)?
+        prop-dict
         attr-dict
     }];
 }

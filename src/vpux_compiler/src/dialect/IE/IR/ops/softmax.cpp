@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,13 +8,22 @@
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
+
+void vpux::IE::SoftMaxOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value input,
+                                mlir::IntegerAttr axisInd, mlir::IntegerAttr padSize) {
+    build(odsBuilder, odsState, input, axisInd, padSize, nullptr);
+}
+
+void vpux::IE::SoftMaxOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Type output,
+                                mlir::Value input, mlir::IntegerAttr axisInd, mlir::IntegerAttr padSize) {
+    build(odsBuilder, odsState, output, input, axisInd, padSize, nullptr);
+}
 
 mlir::LogicalResult vpux::IE::SoftMaxOp::inferReturnTypeComponents(
         mlir::MLIRContext* ctx, std::optional<mlir::Location> optLoc, mlir::ValueShapeRange operands,
@@ -28,8 +37,12 @@ mlir::LogicalResult vpux::IE::SoftMaxOp::inferReturnTypeComponents(
     }
 
     const auto inType = mlir::cast<mlir::RankedTensorType>(softMax.getInput().getType());
+    const auto dstElemType = softMax.getDstElemType();
+
+    auto elemType = dstElemType.value_or(inType.getElementType());
+
     const auto outDesc = vpux::getTensorAttr(inType);
-    inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType(), outDesc);
+    inferredReturnShapes.emplace_back(inType.getShape(), elemType, outDesc);
 
     return mlir::success();
 }

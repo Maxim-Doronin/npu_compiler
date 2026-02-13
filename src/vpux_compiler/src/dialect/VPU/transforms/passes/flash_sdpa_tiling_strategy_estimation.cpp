@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -11,14 +12,8 @@
 
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
-
-#include <mlir/IR/PatternMatch.h>
-#include <cmath>
-#include <functional>
-#include <optional>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_FLASHSDPATILINGSTRATEGYESTIMATION
@@ -88,10 +83,13 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
 
     auto tiledResultShape = Shape(resultShape);
 
+    const auto alignment = getAlignment(origOp, {}, {});
+
     auto kvNumBlocks = std::optional<int64_t>{};
     for (auto tilingIndex : irange(strategy.size())) {
-        auto curTilingDim = tilingDims[tilingIndex];
+        const auto curTilingDim = tilingDims[tilingIndex];
         const auto tilingDimSize = resultShape[curTilingDim];
+        const auto minDimSize = alignment[curTilingDim.ind()];
 
         auto curDimSize = tilingDimSize;
         auto numDivisions = int64_t{1};
@@ -101,12 +99,12 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
             auto tiledTensors = getAllOperandsSwInterface(swOp, TileInfo{tiledResultShape}, log);
             kvNumBlocks = estimateRequiredKvNumBlocks(origOp, tiledTensors);
 
-            const auto qNumBlocks = accumulate(strategy, int64_t{1}, std::multiplies<int64_t>{});
-            if (kvNumBlocks.has_value() && qNumBlocks >= kvNumBlocks.value()) {
+            // Optimal strategy is to not tile on Key/Value tensors if possible
+            if (kvNumBlocks.has_value() && kvNumBlocks.value() == 1) {
                 break;
             }
 
-            if (curDimSize <= 1) {
+            if (curDimSize <= minDimSize) {
                 break;
             }
 

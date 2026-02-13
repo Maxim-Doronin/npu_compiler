@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
@@ -469,6 +470,68 @@ public:
 
     IE::LayerLayoutInfo getLayoutInfo(mlir::Operation* origOp) const {
         return IE::getLayoutInfo(origOp);
+    }
+};
+
+//
+// FlashSDPADimsOrderOpModel
+//
+
+class FlashSDPADimsOrderOpModel final : public IE::LayoutInfoOpInterface::FallbackModel<FlashSDPADimsOrderOpModel> {
+public:
+    static void inferLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
+                                const bool /*seExperimentalOpsEnabled*/) {
+        auto valueTensorIdx = 2u;
+        for (auto i : irange(op->getNumOperands())) {
+            if (i == valueTensorIdx) {
+                info.setInput(i, DimsOrder::NCWH);
+            } else {
+                info.setInput(i, DimsOrder::NCHW);
+            }
+        }
+
+        for (auto i : irange(op->getNumResults())) {
+            info.setOutput(i, DimsOrder::NCHW);
+        }
+    }
+
+    mlir::LogicalResult verifyLayout(mlir::Operation* op) const {
+        auto layer = mlir::dyn_cast<VPU::LayerOpInterface>(op);
+        if (layer == nullptr) {
+            return errorAt(op, "Operation '{0}' doesn't implement Layer interface", op->getName());
+        }
+
+        const auto valueIdx = 2;
+        for (auto [idx, opOperand] : enumerate(op->getOpOperands())) {
+            auto expectedOrder = DimsOrder::NCHW;
+            if (opOperand.getOperandNumber() == valueIdx) {
+                expectedOrder = DimsOrder::NCWH;
+            }
+
+            auto inOrder = DimsOrder::fromValue(opOperand.get());
+            if (inOrder != expectedOrder) {
+                return errorAt(op->getLoc(),
+                               "Operation '{0}' has unsupported input layout '{1}' for operand '{2}'. Expected '{3}'.",
+                               op->getName(), inOrder, idx, expectedOrder);
+            }
+        }
+
+        for (auto [idx, result] : enumerate(op->getResults())) {
+            auto expectedOrder = DimsOrder::NCHW;
+            auto outOrder = DimsOrder::fromValue(result);
+
+            if (outOrder != expectedOrder) {
+                return errorAt(op->getLoc(),
+                               "Operation '{0}' has unsupported output layout '{1}' for result '{2}'. Expected '{3}'.",
+                               op->getName(), outOrder, idx, expectedOrder);
+            }
+        }
+
+        return mlir::success();
+    }
+
+    IE::LayerLayoutInfo getLayoutInfo(mlir::Operation* op) const {
+        return IE::getLayoutInfo(op);
     }
 };
 

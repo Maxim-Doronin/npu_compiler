@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -101,8 +101,8 @@ mlir::LogicalResult SingleClusterDepthToSpaceDMARewriter::unroll(VPUIP::DepthToS
         VPURT::wrapIntoTaskOp<VPUIP::DepthToSpaceDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), vpurtTask.getLoc(), newSrcBuff,
                 newDstBuff, vpux::getIntAttr(rewriter, port), depthToSpaceDMAOp.getBlockSizeAttr(),
-                depthToSpaceDMAOp.getModeAttr(), dmaDescriptor, nullptr, depthToSpaceDMAOp.getIsOutOfOrderAttr(),
-                depthToSpaceDMAOp.getIsCriticalAttr(), depthToSpaceDMAOp.getDmaHwpIdAttr(),
+                depthToSpaceDMAOp.getModeAttr(), dmaDescriptor, nullptr, depthToSpaceDMAOp.getIsOutOfOrder(),
+                depthToSpaceDMAOp.getIsCritical(), depthToSpaceDMAOp.getDmaHwpIdAttr(),
                 /* profilingMetadata= */ nullptr, /*internalDataFlow= */ nullptr);
     };
 

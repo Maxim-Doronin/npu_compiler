@@ -287,7 +287,7 @@ void vpux::VPUIP::getLayerEffects(mlir::Operation* op, SmallVectorImpl<MemoryEff
 // TaskOpInterface
 //
 
-IndexedSymbolAttr vpux::VPUIP::getExecutorAttr(mlir::Operation* op, VPU::ExecutorKind kind) {
+IndexedSymbolAttr vpux::VPUIP::getExecutorAttr(mlir::Operation* op, config::ExecutorKind kind) {
     return IndexedSymbolAttr::get(op->getContext(), stringifyEnum(kind));
 }
 

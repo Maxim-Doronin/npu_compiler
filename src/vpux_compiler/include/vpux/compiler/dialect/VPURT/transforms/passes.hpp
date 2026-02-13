@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,8 +24,8 @@ namespace VPURT {
 //
 
 void buildBarrierLegalizationPipeline(
-        mlir::OpPassManager& pm, std::optional<int> virtualBarrierThresholdForWlm = std::nullopt,
-        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        mlir::OpPassManager& pm, std::optional<bool> workloadManagementEnabled = std::nullopt,
+        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         const bool unevenVariantSplitFlag = false, Logger log = Logger::global());
 
 //
@@ -45,9 +45,10 @@ std::unique_ptr<mlir::Pass> createWlmInsertDummyDmasInPagesPass(Logger log = Log
 std::unique_ptr<mlir::Pass> createWlmLegalizePagesForBarrierDmasPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWlmLegalizeSplitGraphToPagesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createWlmSplitGraphToPagesPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFindWlmEnqueueBarrierWithPagesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOrderBarriersForWlmPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFindWlmEnqueueBarrierPass(
-        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        WorkloadManagementMode workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         bool disableDmaSwFifo = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOptimizeSyncTasksPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInsertSyncTasksPass(Logger log = Logger::global());
@@ -60,25 +61,21 @@ std::unique_ptr<mlir::Pass> createSimplifySchedulePass(
         std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitExceedingBarrierSlotCountPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSatisfyOneWaitBarrierPerTaskPass(
-        std::optional<int> virtualBarrierThresholdForWlm = std::nullopt, const bool unevenVariantSplitFlag = false,
+        const bool unevenVariantSplitFlag = false,
         std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createReduceExceedingActiveCountBarriersPass(
-        std::optional<int> virtualBarrierThresholdForWlm = std::nullopt,
-        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         const bool unevenVariantSplitFlag = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAssignPhysicalBarriersPass(
-        const bool barrierColorBinFlag = false,
-        std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt,
-        std::optional<int> virtualBarrierThresholdForWlm = std::nullopt, Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createBarrierSimulationPass(const bool wlmRollbackFlag = false,
-                                                        Logger log = Logger::global());
+        std::optional<WorkloadManagementMode> workloadManagementMode = std::nullopt, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createBarrierSimulationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createIntermediateBufferOutputPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInferenceExecutionAnalysisPass(
         std::string compileSchedTraceFileName = "compileTimeScheduleTrace.json", bool dumpToJson = false,
-        bool enableActivityFactor = true, Logger log = Logger::global());
+        Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
-        std::optional<size_t> virtualBarrierThresholdForWlm = VIRTUAL_BARRIER_THRESHOLD_WLM,
-        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_LCA,
+        std::optional<size_t> virtualBarrierThresholdForWlm = std::numeric_limits<int>::max(),
+        std::optional<WorkloadManagementMode> workloadManagementMode = WorkloadManagementMode::PWLM_V0_1_PAGES,
         Logger log = Logger::global());
 
 //

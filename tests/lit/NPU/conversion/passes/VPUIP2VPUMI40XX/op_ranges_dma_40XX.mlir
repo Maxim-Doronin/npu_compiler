@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ module @SingleDMATile0List0Range {
   }
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -22,8 +22,8 @@ module @SingleDMATile0List0Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%[[VAR:[0-9]+]] : !VPURegMapped.Index<0:0:0>)
-  // CHECK-SAME: ends(%[[VAR]] : !VPURegMapped.Index<0:0:0>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<0:0:0>)
+  // CHECK-SAME: ends([[VAR]] : !VPURegMapped.Index<0:0:0>)
 }
 
 // -----
@@ -36,13 +36,13 @@ module @ThreeDMATile0List0Range {
   }
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -50,8 +50,8 @@ module @ThreeDMATile0List0Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%{{[0-9]+}} : !VPURegMapped.Index<0:0:0>)
-  // CHECK-SAME: ends(%{{[2-9]+}} : !VPURegMapped.Index<0:0:2>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<0:0:0>)
+  // CHECK-SAME: ends([[VAR2:%[2-9]+]] : !VPURegMapped.Index<0:0:2>)
 }
 
 // -----
@@ -66,7 +66,7 @@ module @SingleDMATile0List1Range {
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     %5 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -74,8 +74,8 @@ module @SingleDMATile0List1Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%[[VAR:[0-9]+]] : !VPURegMapped.Index<0:1:0>)
-  // CHECK-SAME: ends(%[[VAR]] : !VPURegMapped.Index<0:1:0>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<0:1:0>)
+  // CHECK-SAME: ends([[VAR]] : !VPURegMapped.Index<0:1:0>)
 }
 
 // -----
@@ -90,13 +90,13 @@ module @ThreeDMATile0List1Range {
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     %5 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 0 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -104,8 +104,8 @@ module @ThreeDMATile0List1Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%{{[0-9]+}} : !VPURegMapped.Index<0:1:0>)
-  // CHECK-SAME: ends(%{{[2-9]+}} : !VPURegMapped.Index<0:1:2>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<0:1:0>)
+  // CHECK-SAME: ends([[VAR2:%[2-9]+]] : !VPURegMapped.Index<0:1:2>)
 }
 
 // -----
@@ -118,7 +118,7 @@ module @SingleDMATile1List0Range {
   }
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -126,8 +126,8 @@ module @SingleDMATile1List0Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%[[VAR:[0-9]+]] : !VPURegMapped.Index<1:0:0>)
-  // CHECK-SAME: ends(%[[VAR]] : !VPURegMapped.Index<1:0:0>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<1:0:0>)
+  // CHECK-SAME: ends([[VAR]] : !VPURegMapped.Index<1:0:0>)
 }
 
 // -----
@@ -140,13 +140,13 @@ module @SingleDMATile1List0Range {
   }
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -154,8 +154,8 @@ module @SingleDMATile1List0Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%{{[0-9]+}} : !VPURegMapped.Index<1:0:0>)
-  // CHECK-SAME: ends(%{{[2-9]+}} : !VPURegMapped.Index<1:0:2>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<1:0:0>)
+  // CHECK-SAME: ends([[VAR2:%[2-9]+]] : !VPURegMapped.Index<1:0:2>)
 }
 
 // -----
@@ -170,7 +170,7 @@ module @SingleDMATile1List1Range {
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     %5 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -178,8 +178,8 @@ module @SingleDMATile1List1Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%[[VAR:[0-9]+]] : !VPURegMapped.Index<1:1:0>)
-  // CHECK-SAME: ends(%[[VAR]] : !VPURegMapped.Index<1:1:0>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<1:1:0>)
+  // CHECK-SAME: ends([[VAR]] : !VPURegMapped.Index<1:1:0>)
 }
 
 // -----
@@ -194,13 +194,13 @@ module @ThreeDMATile1List1Range {
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     %5 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     VPURT.Task {
-      %0 = VPUIP.NNDMA {port = 1 : i64} inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
+      %0 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) outputs(%5 : memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x32x1x1xf16, #NHWC, [@CMX_NN, 0]>
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
@@ -208,6 +208,6 @@ module @ThreeDMATile1List1Range {
   // CHECK-NOT: return
   // CHECK: VPUMI40XX.OpRanges
   // CHECK-SAME: types([#VPURegMapped.task_type<DMA>])
-  // CHECK-SAME: begins(%{{[0-9]+}} : !VPURegMapped.Index<1:1:0>)
-  // CHECK-SAME: ends(%{{[2-9]+}} : !VPURegMapped.Index<1:1:2>)
+  // CHECK-SAME: begins([[VAR:%[0-9]+]] : !VPURegMapped.Index<1:1:0>)
+  // CHECK-SAME: ends([[VAR2:%[2-9]+]] : !VPURegMapped.Index<1:1:2>)
 }

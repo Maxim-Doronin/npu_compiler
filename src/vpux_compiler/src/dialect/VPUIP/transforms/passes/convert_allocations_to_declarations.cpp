@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/dialect/core/dialect.hpp"
+#include "vpux/compiler/dialect/core/IR/dialect.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 

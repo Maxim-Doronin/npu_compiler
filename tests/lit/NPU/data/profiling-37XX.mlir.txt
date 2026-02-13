@@ -331,61 +331,61 @@ module @age_gender attributes {config.arch = #config.arch_kind<NPU37XX>, config.
     %283 = VPURT.DeclareBuffer <ProfilingOutput> [0] <448> -> memref<60xui64> loc(#loc38)
     %284 = VPURT.DeclareBuffer <ProfilingOutput> [0] <960> -> memref<16xui32> loc(#loc38)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%0 : memref<1xui32, @Register>) outputs(%1 : memref<1xui32>) -> memref<1xui32> loc(#loc4)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%0 : memref<1xui32, @Register>) outputs(%1 : memref<1xui32>) -> memref<1xui32> loc(#loc4)
     } loc(#loc4)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%155 : memref<1xui64, @Register>) outputs(%156 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%155 : memref<1xui64, @Register>) outputs(%156 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%100 : memref<1x3x15x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%28 : memref<1x3x15x62xf32, [@CMX_NN, 0]>) -> memref<1x3x15x62xf32, [@CMX_NN, 0]> loc(#loc125)
-    } loc(#loc125)
-    VPURT.Task updates(%2 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 0 : i64>} inputs(%157 : memref<1xui64, @Register>) outputs(%158 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
-    } loc(#loc125)
-    VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%159 : memref<1xui64, @Register>) outputs(%160 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
-    } loc(#loc126)
-    VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%101 : memref<1x3x15x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%29 : memref<1x3x15x62xf32, [@CMX_NN, 1]>) -> memref<1x3x15x62xf32, [@CMX_NN, 1]> loc(#loc126)
-    } loc(#loc126)
-    VPURT.Task updates(%2 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 16 : i64>} inputs(%161 : memref<1xui64, @Register>) outputs(%162 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
-    } loc(#loc126)
-    VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%163 : memref<1xui64, @Register>) outputs(%164 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
-    } loc(#loc125)
-    VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%102 : memref<1x3x16x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%32 : memref<1x3x16x62xf32, [@CMX_NN, 0]>) -> memref<1x3x16x62xf32, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%100 : memref<1x3x15x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%28 : memref<1x3x15x62xf32, [@CMX_NN, 0]>) -> memref<1x3x15x62xf32, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task updates(%2 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>} inputs(%165 : memref<1xui64, @Register>) outputs(%166 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 0 : i64>}> inputs(%157 : memref<1xui64, @Register>) outputs(%158 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%167 : memref<1xui64, @Register>) outputs(%168 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%159 : memref<1xui64, @Register>) outputs(%160 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%103 : memref<1x3x16x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%33 : memref<1x3x16x62xf32, [@CMX_NN, 1]>) -> memref<1x3x16x62xf32, [@CMX_NN, 1]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%101 : memref<1x3x15x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%29 : memref<1x3x15x62xf32, [@CMX_NN, 1]>) -> memref<1x3x15x62xf32, [@CMX_NN, 1]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task updates(%2 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 17 : i64>} inputs(%169 : memref<1xui64, @Register>) outputs(%170 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 16 : i64>}> inputs(%161 : memref<1xui64, @Register>) outputs(%162 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%171 : memref<1xui64, @Register>) outputs(%172 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc127)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%163 : memref<1xui64, @Register>) outputs(%164 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+    } loc(#loc125)
+    VPURT.Task {
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%102 : memref<1x3x16x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%32 : memref<1x3x16x62xf32, [@CMX_NN, 0]>) -> memref<1x3x16x62xf32, [@CMX_NN, 0]> loc(#loc125)
+    } loc(#loc125)
+    VPURT.Task updates(%2 : !VPURT.Barrier) {
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>}> inputs(%165 : memref<1xui64, @Register>) outputs(%166 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+    } loc(#loc125)
+    VPURT.Task {
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%167 : memref<1xui64, @Register>) outputs(%168 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+    } loc(#loc126)
+    VPURT.Task {
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%103 : memref<1x3x16x62xf32, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%33 : memref<1x3x16x62xf32, [@CMX_NN, 1]>) -> memref<1x3x16x62xf32, [@CMX_NN, 1]> loc(#loc126)
+    } loc(#loc126)
+    VPURT.Task updates(%2 : !VPURT.Barrier) {
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 17 : i64>}> inputs(%169 : memref<1xui64, @Register>) outputs(%170 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+    } loc(#loc126)
+    VPURT.Task {
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%171 : memref<1xui64, @Register>) outputs(%172 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc127)
     } loc(#loc127)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%cst_2 : memref<1x3x31x2xf16>) outputs(%104 : memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]>) -> memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]> loc(#loc127)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%cst_2 : memref<1x3x31x2xf16>) outputs(%104 : memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]>) -> memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]> loc(#loc127)
     } loc(#loc127)
     VPURT.Task updates(%3 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 2 : i64>} inputs(%173 : memref<1xui64, @Register>) outputs(%174 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc127)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 2 : i64>}> inputs(%173 : memref<1xui64, @Register>) outputs(%174 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc127)
     } loc(#loc127)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%175 : memref<1xui64, @Register>) outputs(%176 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc128)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%175 : memref<1xui64, @Register>) outputs(%176 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc128)
     } loc(#loc128)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%cst_1 : memref<1x3x31x2xf16>) outputs(%105 : memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]>) -> memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]> loc(#loc128)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%cst_1 : memref<1x3x31x2xf16>) outputs(%105 : memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]>) -> memref<1x3x31x2xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]> loc(#loc128)
     } loc(#loc128)
     VPURT.Task updates(%3 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 18 : i64>} inputs(%177 : memref<1xui64, @Register>) outputs(%178 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc128)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 18 : i64>}> inputs(%177 : memref<1xui64, @Register>) outputs(%178 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc128)
     } loc(#loc128)
     VPURT.Task waits(%2 : !VPURT.Barrier) updates(%4 : !VPURT.Barrier) {
       %results, %profiling_output = VPUIP.SW.Kernel {profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 4 : i64, dataIndex = 0 : i64, tileId = 0 : i64, clusterId = 0 : i64>, resultSegmentSizes = array<i32: 1, 0, 1>} @VPU.SW::@builtin_Convert inputs(%30 as %arg3: memref<1x3x16x62xf32, [@CMX_NN, 0]>) outputs(%40 as %arg4: memref<1x3x16x62xf16, [@CMX_NN, 0]>) profiling_data(%147 : memref<8xui32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x3x16x62xf16, [@CMX_NN, 0]>, memref<8xui32, [@CMX_NN, 0]>){
@@ -408,67 +408,67 @@ module @age_gender attributes {config.arch = #config.arch_kind<NPU37XX>, config.
       } loc(#loc138)
     } loc(#loc138)
     VPURT.Task waits(%4 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%179 : memref<1xui64, @Register>) outputs(%180 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%179 : memref<1xui64, @Register>) outputs(%180 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%38 : memref<1x3x16x62xf16, [@CMX_NN, 0]>) outputs(%106 : memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc125)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%38 : memref<1x3x16x62xf16, [@CMX_NN, 0]>) outputs(%106 : memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc125)
     } loc(#loc125)
     VPURT.Task updates(%3 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 3 : i64>} inputs(%181 : memref<1xui64, @Register>) outputs(%182 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 3 : i64>}> inputs(%181 : memref<1xui64, @Register>) outputs(%182 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task waits(%4 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%183 : memref<1xui64, @Register>) outputs(%184 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%183 : memref<1xui64, @Register>) outputs(%184 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%39 : memref<1x3x16x62xf16, [@CMX_NN, 1]>) outputs(%107 : memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc126)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%39 : memref<1x3x16x62xf16, [@CMX_NN, 1]>) outputs(%107 : memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x16x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc126)
     } loc(#loc126)
     VPURT.Task updates(%3 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 19 : i64>} inputs(%185 : memref<1xui64, @Register>) outputs(%186 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 19 : i64>}> inputs(%185 : memref<1xui64, @Register>) outputs(%186 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task waits(%3 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%187 : memref<1xui64, @Register>) outputs(%188 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%187 : memref<1xui64, @Register>) outputs(%188 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%34 : memref<1x3x15x62xf16, [@CMX_NN, 0]>) outputs(%108 : memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc125)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%34 : memref<1x3x15x62xf16, [@CMX_NN, 0]>) outputs(%108 : memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc125)
     } loc(#loc125)
     VPURT.Task updates(%5 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 4 : i64>} inputs(%189 : memref<1xui64, @Register>) outputs(%190 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 4 : i64>}> inputs(%189 : memref<1xui64, @Register>) outputs(%190 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc125)
     } loc(#loc125)
     VPURT.Task waits(%3 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%191 : memref<1xui64, @Register>) outputs(%192 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%191 : memref<1xui64, @Register>) outputs(%192 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%35 : memref<1x3x15x62xf16, [@CMX_NN, 1]>) outputs(%109 : memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc126)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%35 : memref<1x3x15x62xf16, [@CMX_NN, 1]>) outputs(%109 : memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) -> memref<1x3x15x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR> loc(#loc126)
     } loc(#loc126)
     VPURT.Task updates(%5 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 20 : i64>} inputs(%193 : memref<1xui64, @Register>) outputs(%194 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 20 : i64>}> inputs(%193 : memref<1xui64, @Register>) outputs(%194 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc126)
     } loc(#loc126)
     VPURT.Task waits(%5 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%195 : memref<1xui64, @Register>) outputs(%196 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%195 : memref<1xui64, @Register>) outputs(%196 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%42 : memref<1x3x31x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%110 : memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]>) -> memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%42 : memref<1x3x31x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%110 : memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]>) -> memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task updates(%6 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 5 : i64>} inputs(%197 : memref<1xui64, @Register>) outputs(%198 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 5 : i64>}> inputs(%197 : memref<1xui64, @Register>) outputs(%198 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task waits(%5 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%199 : memref<1xui64, @Register>) outputs(%200 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%199 : memref<1xui64, @Register>) outputs(%200 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%43 : memref<1x3x31x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%111 : memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]>) -> memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%43 : memref<1x3x31x62xf16, {order = #NCHW, strides = [11532, 3844, 62, 1]}, @DDR>) outputs(%111 : memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]>) -> memref<1x3x31x62xf16, {order = #NCHW, strides = [5952, 1984, 64, 1]}, [@CMX_NN, 1]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task updates(%6 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 21 : i64>} inputs(%201 : memref<1xui64, @Register>) outputs(%202 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 21 : i64>}> inputs(%201 : memref<1xui64, @Register>) outputs(%202 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task waits(%5 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%203 : memref<1xui64, @Register>) outputs(%204 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc47)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%203 : memref<1xui64, @Register>) outputs(%204 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc47)
     } loc(#loc47)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%cst_0 : memref<1x1x1x2688xf16>) outputs(%61 : !VPUIP.DistributedBuffer<1x1x1x2688xf16, {order = #NCHW, strides = [2688, 2688, 2688, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x2688xf16, {order = #NCHW, strides = [2688, 2688, 2688, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> loc(#loc47)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x2688xf16>) outputs(%61 : !VPUIP.DistributedBuffer<1x1x1x2688xf16, {order = #NCHW, strides = [2688, 2688, 2688, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x2688xf16, {order = #NCHW, strides = [2688, 2688, 2688, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> loc(#loc47)
     } loc(#loc47)
     VPURT.Task updates(%7 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 6 : i64>} inputs(%205 : memref<1xui64, @Register>) outputs(%206 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc47)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 6 : i64>}> inputs(%205 : memref<1xui64, @Register>) outputs(%206 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc47)
     } loc(#loc47)
     VPURT.Task waits(%6 : !VPURT.Barrier) updates(%8 : !VPURT.Barrier) {
       %285:2 = VPUIP.NCEClusterTask {is_permute_quantize, profilingMetadata = #VPUIP.DpuProfilingMetadataAttr<bufferId = 0 : i64, taskId = 1 : i64, maxVariants = 1 : i64, numVariants = 1 : i64, clusterId = 0 : i64>, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%115 : memref<1x64x3x31xf16, #NHWC, [@CMX_NN, 0]>) weights(%113 : memref<1x64x3x31xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%112 : !VPUIP.DistributedBuffer<1x64x3x62xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>) parent_output(%44 : !VPUIP.DistributedBuffer<1x64x16x62xf16, #NWCH, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>) outputs(%45 : memref<1x64x16x31xf16, #NWCH, [@CMX_NN, 0]>) profiling_data(%117 : memref<2xui64, [@CMX_NN, 0]>) -> memref<1x64x16x31xf16, #NWCH, [@CMX_NN, 0]>, memref<2xui64, [@CMX_NN, 0]> variants : {
@@ -483,49 +483,49 @@ module @age_gender attributes {config.arch = #config.arch_kind<NPU37XX>, config.
       } loc(#loc140)
     } loc(#loc140)
     VPURT.Task waits(%8 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%207 : memref<1xui64, @Register>) outputs(%208 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%207 : memref<1xui64, @Register>) outputs(%208 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%119 : memref<1x16x31x62xf16, {order = #NHWC, strides = [31744, 1, 1024, 16]}, [@CMX_NN, 0]>) outputs(%49 : memref<1x16x31x62xf16, #NHWC, @DDR>) -> memref<1x16x31x62xf16, #NHWC, @DDR> loc(#loc129)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%119 : memref<1x16x31x62xf16, {order = #NHWC, strides = [31744, 1, 1024, 16]}, [@CMX_NN, 0]>) outputs(%49 : memref<1x16x31x62xf16, #NHWC, @DDR>) -> memref<1x16x31x62xf16, #NHWC, @DDR> loc(#loc129)
     } loc(#loc129)
     VPURT.Task updates(%7 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 7 : i64>} inputs(%209 : memref<1xui64, @Register>) outputs(%210 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 7 : i64>}> inputs(%209 : memref<1xui64, @Register>) outputs(%210 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task waits(%8 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%211 : memref<1xui64, @Register>) outputs(%212 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%211 : memref<1xui64, @Register>) outputs(%212 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%120 : memref<1x16x31x62xf16, {order = #NHWC, strides = [31744, 1, 1024, 16]}, [@CMX_NN, 1]>) outputs(%50 : memref<1x16x31x62xf16, #NHWC, @DDR>) -> memref<1x16x31x62xf16, #NHWC, @DDR> loc(#loc130)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%120 : memref<1x16x31x62xf16, {order = #NHWC, strides = [31744, 1, 1024, 16]}, [@CMX_NN, 1]>) outputs(%50 : memref<1x16x31x62xf16, #NHWC, @DDR>) -> memref<1x16x31x62xf16, #NHWC, @DDR> loc(#loc130)
     } loc(#loc130)
     VPURT.Task updates(%7 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 22 : i64>} inputs(%213 : memref<1xui64, @Register>) outputs(%214 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 22 : i64>}> inputs(%213 : memref<1xui64, @Register>) outputs(%214 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task waits(%7 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%215 : memref<1xui64, @Register>) outputs(%216 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%215 : memref<1xui64, @Register>) outputs(%216 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%47 : memref<1x16x32x62xf16, #NHWC, @DDR>) outputs(%54 : memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%47 : memref<1x16x32x62xf16, #NHWC, @DDR>) outputs(%54 : memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task updates(%9 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 8 : i64>} inputs(%217 : memref<1xui64, @Register>) outputs(%218 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 8 : i64>}> inputs(%217 : memref<1xui64, @Register>) outputs(%218 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc129)
     } loc(#loc129)
     VPURT.Task waits(%7 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%219 : memref<1xui64, @Register>) outputs(%220 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%219 : memref<1xui64, @Register>) outputs(%220 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%48 : memref<1x16x30x62xf16, #NHWC, @DDR>) outputs(%55 : memref<1x16x30x62xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x16x30x62xf16, #NHWC, [@CMX_NN, 1]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%48 : memref<1x16x30x62xf16, #NHWC, @DDR>) outputs(%55 : memref<1x16x30x62xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x16x30x62xf16, #NHWC, [@CMX_NN, 1]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task updates(%9 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 23 : i64>} inputs(%221 : memref<1xui64, @Register>) outputs(%222 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 23 : i64>}> inputs(%221 : memref<1xui64, @Register>) outputs(%222 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc130)
     } loc(#loc130)
     VPURT.Task waits(%7 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%223 : memref<1xui64, @Register>) outputs(%224 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc48)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%223 : memref<1xui64, @Register>) outputs(%224 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc48)
     } loc(#loc48)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%cst : memref<1x1x1x28160xf16>) outputs(%72 : !VPUIP.DistributedBuffer<1x1x1x28160xf16, {order = #NCHW, strides = [28160, 28160, 28160, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x28160xf16, {order = #NCHW, strides = [28160, 28160, 28160, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> loc(#loc48)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%cst : memref<1x1x1x28160xf16>) outputs(%72 : !VPUIP.DistributedBuffer<1x1x1x28160xf16, {order = #NCHW, strides = [28160, 28160, 28160, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x28160xf16, {order = #NCHW, strides = [28160, 28160, 28160, 1]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}> loc(#loc48)
     } loc(#loc48)
     VPURT.Task updates(%10 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 9 : i64>} inputs(%225 : memref<1xui64, @Register>) outputs(%226 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc48)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 9 : i64>}> inputs(%225 : memref<1xui64, @Register>) outputs(%226 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc48)
     } loc(#loc48)
     VPURT.Task waits(%9 : !VPURT.Barrier) updates(%11 : !VPURT.Barrier) {
       %285:2 = VPUIP.NCEClusterTask {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], profilingMetadata = #VPUIP.DpuProfilingMetadataAttr<bufferId = 0 : i64, taskId = 2 : i64, maxVariants = 1 : i64, numVariants = 1 : i64, clusterId = 0 : i64>, task_type = #VPUIP.nce_task_type<CONV>} input(%52 : memref<1x16x32x62xf16, #NHWC, [@CMX_NN, 0]>) weights(%123 : memref<48x16x3x3xf16, {sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<27> : tensor<48xi64>, alignment = 16 : i64>, order = #NHWC}, [@CMX_NN, 0]>) weights_sparsity_map(%125 : memref<48x1x1x256xi1, [@CMX_NN, 0]>) weight_table(%121 : memref<48x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%51 : !VPUIP.DistributedBuffer<1x16x62x62xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>) parent_output(%56 : !VPUIP.DistributedBuffer<1x48x60x60xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%59 : memref<1x48x30x60xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>) profiling_data(%127 : memref<2xui64, [@CMX_NN, 0]>) -> memref<1x48x30x60xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>, memref<2xui64, [@CMX_NN, 0]> variants : {
@@ -578,82 +578,82 @@ module @age_gender attributes {config.arch = #config.arch_kind<NPU37XX>, config.
       } loc(#loc149)
     } loc(#loc149)
     VPURT.Task waits(%13 : !VPURT.Barrier) updates(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64} inputs(%24 : memref<12xui64, [@CMX_NN, 0]>) outputs(%18 : memref<12xui64, @DDR>) -> memref<12xui64, @DDR> loc(#loc150)
+      %285 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%24 : memref<12xui64, [@CMX_NN, 0]>) outputs(%18 : memref<12xui64, @DDR>) -> memref<12xui64, @DDR> loc(#loc150)
     } loc(#loc150)
     VPURT.Task waits(%13 : !VPURT.Barrier) updates(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64} inputs(%25 : memref<12xui64, [@CMX_NN, 1]>) outputs(%19 : memref<12xui64, @DDR>) -> memref<12xui64, @DDR> loc(#loc151)
+      %285 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%25 : memref<12xui64, [@CMX_NN, 1]>) outputs(%19 : memref<12xui64, @DDR>) -> memref<12xui64, @DDR> loc(#loc151)
     } loc(#loc151)
     VPURT.Task waits(%13 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%227 : memref<1xui64, @Register>) outputs(%228 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%227 : memref<1xui64, @Register>) outputs(%228 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%76 : memref<1x64x7x14xf16, [@CMX_NN, 0]>) outputs(%80 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%76 : memref<1x64x7x14xf16, [@CMX_NN, 0]>) outputs(%80 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc131)
     } loc(#loc131)
     VPURT.Task updates(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 10 : i64>} inputs(%229 : memref<1xui64, @Register>) outputs(%230 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 10 : i64>}> inputs(%229 : memref<1xui64, @Register>) outputs(%230 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task waits(%13 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%231 : memref<1xui64, @Register>) outputs(%232 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%231 : memref<1xui64, @Register>) outputs(%232 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%77 : memref<1x64x7x14xf16, [@CMX_NN, 1]>) outputs(%81 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%77 : memref<1x64x7x14xf16, [@CMX_NN, 1]>) outputs(%81 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc132)
     } loc(#loc132)
     VPURT.Task updates(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 24 : i64>} inputs(%233 : memref<1xui64, @Register>) outputs(%234 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 24 : i64>}> inputs(%233 : memref<1xui64, @Register>) outputs(%234 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task waits(%13 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%235 : memref<1xui64, @Register>) outputs(%236 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%235 : memref<1xui64, @Register>) outputs(%236 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%74 : memref<1x64x7x14xf16, [@CMX_NN, 0]>) outputs(%86 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%74 : memref<1x64x7x14xf16, [@CMX_NN, 0]>) outputs(%86 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc131)
     } loc(#loc131)
     VPURT.Task updates(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 11 : i64>} inputs(%237 : memref<1xui64, @Register>) outputs(%238 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 11 : i64>}> inputs(%237 : memref<1xui64, @Register>) outputs(%238 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task waits(%13 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%239 : memref<1xui64, @Register>) outputs(%240 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%239 : memref<1xui64, @Register>) outputs(%240 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%75 : memref<1x64x7x14xf16, [@CMX_NN, 1]>) outputs(%87 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%75 : memref<1x64x7x14xf16, [@CMX_NN, 1]>) outputs(%87 : memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x7x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc132)
     } loc(#loc132)
     VPURT.Task updates(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 25 : i64>} inputs(%241 : memref<1xui64, @Register>) outputs(%242 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 25 : i64>}> inputs(%241 : memref<1xui64, @Register>) outputs(%242 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task waits(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%243 : memref<1xui64, @Register>) outputs(%244 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%243 : memref<1xui64, @Register>) outputs(%244 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%139 : memref<1x64x3x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%84 : memref<1x64x3x14xf16, [@CMX_NN, 0]>) -> memref<1x64x3x14xf16, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%139 : memref<1x64x3x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%84 : memref<1x64x3x14xf16, [@CMX_NN, 0]>) -> memref<1x64x3x14xf16, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task updates(%15 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 12 : i64>} inputs(%245 : memref<1xui64, @Register>) outputs(%246 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 12 : i64>}> inputs(%245 : memref<1xui64, @Register>) outputs(%246 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task waits(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%247 : memref<1xui64, @Register>) outputs(%248 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%247 : memref<1xui64, @Register>) outputs(%248 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%140 : memref<1x64x3x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%85 : memref<1x64x3x14xf16, [@CMX_NN, 1]>) -> memref<1x64x3x14xf16, [@CMX_NN, 1]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%140 : memref<1x64x3x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%85 : memref<1x64x3x14xf16, [@CMX_NN, 1]>) -> memref<1x64x3x14xf16, [@CMX_NN, 1]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task updates(%15 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 26 : i64>} inputs(%249 : memref<1xui64, @Register>) outputs(%250 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 26 : i64>}> inputs(%249 : memref<1xui64, @Register>) outputs(%250 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task waits(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%251 : memref<1xui64, @Register>) outputs(%252 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%251 : memref<1xui64, @Register>) outputs(%252 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%141 : memref<1x64x4x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%90 : memref<1x64x4x14xf16, [@CMX_NN, 0]>) -> memref<1x64x4x14xf16, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%141 : memref<1x64x4x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%90 : memref<1x64x4x14xf16, [@CMX_NN, 0]>) -> memref<1x64x4x14xf16, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task updates(%15 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 13 : i64>} inputs(%253 : memref<1xui64, @Register>) outputs(%254 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 13 : i64>}> inputs(%253 : memref<1xui64, @Register>) outputs(%254 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc131)
     } loc(#loc131)
     VPURT.Task waits(%14 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%255 : memref<1xui64, @Register>) outputs(%256 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%255 : memref<1xui64, @Register>) outputs(%256 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%142 : memref<1x64x4x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%91 : memref<1x64x4x14xf16, [@CMX_NN, 1]>) -> memref<1x64x4x14xf16, [@CMX_NN, 1]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%142 : memref<1x64x4x14xf16, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) outputs(%91 : memref<1x64x4x14xf16, [@CMX_NN, 1]>) -> memref<1x64x4x14xf16, [@CMX_NN, 1]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task updates(%15 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 27 : i64>} inputs(%257 : memref<1xui64, @Register>) outputs(%258 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 27 : i64>}> inputs(%257 : memref<1xui64, @Register>) outputs(%258 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc132)
     } loc(#loc132)
     VPURT.Task waits(%15 : !VPURT.Barrier) updates(%16 : !VPURT.Barrier) {
       %results, %profiling_output = VPUIP.SW.Kernel {profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 4 : i64, dataIndex = 2 : i64, tileId = 0 : i64, clusterId = 0 : i64>, resultSegmentSizes = array<i32: 1, 0, 1>} @VPU.SW::@builtin_Convert inputs(%88 as %arg3: memref<1x64x4x14xf16, [@CMX_NN, 0]>) outputs(%98 as %arg4: memref<1x64x4x14xf32, [@CMX_NN, 0]>) profiling_data(%151 : memref<8xui32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x64x4x14xf32, [@CMX_NN, 0]>, memref<8xui32, [@CMX_NN, 0]>){
@@ -676,55 +676,55 @@ module @age_gender attributes {config.arch = #config.arch_kind<NPU37XX>, config.
       } loc(#loc155)
     } loc(#loc155)
     VPURT.Task waits(%16 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64} inputs(%22 : memref<32xui32, [@CMX_NN, 0]>) outputs(%20 : memref<32xui32, @DDR>) -> memref<32xui32, @DDR> loc(#loc156)
+      %285 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%22 : memref<32xui32, [@CMX_NN, 0]>) outputs(%20 : memref<32xui32, @DDR>) -> memref<32xui32, @DDR> loc(#loc156)
     } loc(#loc156)
     VPURT.Task waits(%16 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64} inputs(%23 : memref<32xui32, [@CMX_NN, 1]>) outputs(%21 : memref<32xui32, @DDR>) -> memref<32xui32, @DDR> loc(#loc157)
+      %285 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%23 : memref<32xui32, [@CMX_NN, 1]>) outputs(%21 : memref<32xui32, @DDR>) -> memref<32xui32, @DDR> loc(#loc157)
     } loc(#loc157)
     VPURT.Task waits(%16 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%259 : memref<1xui64, @Register>) outputs(%260 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%259 : memref<1xui64, @Register>) outputs(%260 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
     } loc(#loc133)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%96 : memref<1x64x4x14xf32, [@CMX_NN, 0]>) outputs(%143 : memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc133)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%96 : memref<1x64x4x14xf32, [@CMX_NN, 0]>) outputs(%143 : memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc133)
     } loc(#loc133)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 14 : i64>} inputs(%261 : memref<1xui64, @Register>) outputs(%262 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 14 : i64>}> inputs(%261 : memref<1xui64, @Register>) outputs(%262 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
     } loc(#loc133)
     VPURT.Task waits(%16 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%263 : memref<1xui64, @Register>) outputs(%264 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%263 : memref<1xui64, @Register>) outputs(%264 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
     } loc(#loc134)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%97 : memref<1x64x4x14xf32, [@CMX_NN, 1]>) outputs(%144 : memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc134)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%97 : memref<1x64x4x14xf32, [@CMX_NN, 1]>) outputs(%144 : memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x4x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc134)
     } loc(#loc134)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 28 : i64>} inputs(%265 : memref<1xui64, @Register>) outputs(%266 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 28 : i64>}> inputs(%265 : memref<1xui64, @Register>) outputs(%266 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
     } loc(#loc134)
     VPURT.Task waits(%16 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%267 : memref<1xui64, @Register>) outputs(%268 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%267 : memref<1xui64, @Register>) outputs(%268 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
     } loc(#loc133)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%92 : memref<1x64x3x14xf32, [@CMX_NN, 0]>) outputs(%145 : memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc133)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%92 : memref<1x64x3x14xf32, [@CMX_NN, 0]>) outputs(%145 : memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc133)
     } loc(#loc133)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 15 : i64>} inputs(%269 : memref<1xui64, @Register>) outputs(%270 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
+      %285 = VPUIP.NNDMA <{port = 0 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 15 : i64>}> inputs(%269 : memref<1xui64, @Register>) outputs(%270 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc133)
     } loc(#loc133)
     VPURT.Task updates(%17 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 0 : i64} inputs(%271 : memref<32xui64, [@CMX_NN, 0]>) outputs(%272 : memref<32xui64>) -> memref<32xui64> loc(#loc36)
+      %285 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%271 : memref<32xui64, [@CMX_NN, 0]>) outputs(%272 : memref<32xui64>) -> memref<32xui64> loc(#loc36)
     } loc(#loc36)
     VPURT.Task waits(%16 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>} inputs(%273 : memref<1xui64, @Register>) outputs(%274 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<profBeginFlag unit>}> inputs(%273 : memref<1xui64, @Register>) outputs(%274 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
     } loc(#loc134)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 1 : i64} inputs(%93 : memref<1x64x3x14xf32, [@CMX_NN, 1]>) outputs(%146 : memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc134)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}> inputs(%93 : memref<1x64x3x14xf32, [@CMX_NN, 1]>) outputs(%146 : memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR>) -> memref<1x64x3x14xf32, {order = #NCHW, strides = [12544, 196, 14, 1]}, @DDR> loc(#loc134)
     } loc(#loc134)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 29 : i64>} inputs(%275 : memref<1xui64, @Register>) outputs(%276 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
+      %285 = VPUIP.NNDMA <{port = 1 : i64, profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 29 : i64>}> inputs(%275 : memref<1xui64, @Register>) outputs(%276 : memref<1xui64, [@CMX_NN, 0]>) -> memref<1xui64, [@CMX_NN, 0]> loc(#loc134)
     } loc(#loc134)
     VPURT.Task updates(%17 : !VPURT.Barrier) {
-      %285 = VPUIP.NNDMA {port = 1 : i64} inputs(%277 : memref<28xui64, [@CMX_NN, 0]>) outputs(%278 : memref<28xui64>) -> memref<28xui64> loc(#loc37)
+      %285 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%277 : memref<28xui64, [@CMX_NN, 0]>) outputs(%278 : memref<28xui64>) -> memref<28xui64> loc(#loc37)
     } loc(#loc37)
     VPURT.Task {
-      %285 = VPUIP.NNDMA {is_out_of_order, port = 0 : i64} inputs(%279 : memref<1xui32, @Register>) outputs(%280 : memref<1xui32>) -> memref<1xui32> loc(#loc4)
+      %285 = VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs(%279 : memref<1xui32, @Register>) outputs(%280 : memref<1xui32>) -> memref<1xui32> loc(#loc4)
     } loc(#loc4)
     return %arg1, %arg2 : memref<1x64x14x14xf32, @DDR>, memref<256xui32> loc(#loc158)
   } loc(#loc)

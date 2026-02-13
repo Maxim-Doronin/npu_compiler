@@ -7,7 +7,11 @@
 
 #include "vpux/utils/core/string_ref.hpp"
 
-#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Support/LogicalResult.h>
+
+namespace mlir::func {
+class FuncOp;
+}  // namespace mlir::func
 
 namespace vpux {
 

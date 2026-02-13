@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -69,27 +69,27 @@ module @subgraph attributes {config.arch = #config.arch_kind<NPU40XX>, config.co
     %cmx_1 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> !DummyCMX1T
 
     VPURT.Task updates(%0 : !VPURT.Barrier) {
-        %241 = VPUIP.SyncDMA {port = 0 : i64} inputs(%28 : memref<0x0x0x0xi32, @DDR>) outputs(%28 : memref<0x0x0x0xi32, @DDR>) -> memref<0x0x0x0xi32, @DDR>
+        %241 = VPUIP.SyncDMA <{port = 0 : i64}> inputs(%28 : memref<0x0x0x0xi32, @DDR>) outputs(%28 : memref<0x0x0x0xi32, @DDR>) -> memref<0x0x0x0xi32, @DDR>
     }
 
     VPURT.Task waits(%0: !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-        %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
+        %241 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
 
     VPURT.Task waits(%1: !VPURT.Barrier) updates(%2 : !VPURT.Barrier) {
-        %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
+        %241 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
 
     VPURT.Task waits(%2: !VPURT.Barrier) updates(%3 : !VPURT.Barrier) {
-        %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
+        %241 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
 
     VPURT.Task waits(%3: !VPURT.Barrier) updates(%4 : !VPURT.Barrier) {
-        %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
+        %241 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
 
     VPURT.Task waits(%3: !VPURT.Barrier) updates(%4 : !VPURT.Barrier) {
-        %241 = VPUIP.NNDMA {port = 1 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_1 : !DummyCMX1T) -> !DummyCMX1T
+        %241 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_1 : !DummyCMX1T) -> !DummyCMX1T
     }
 
     VPURT.Task waits(%4: !VPURT.Barrier) updates(%5 : !VPURT.Barrier) {
@@ -112,7 +112,7 @@ module @subgraph attributes {config.arch = #config.arch_kind<NPU40XX>, config.co
     }
 
     VPURT.Task waits(%6: !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
-        %241 = VPUIP.NNDMA {port = 0 : i64} inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
+        %241 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%ddr_buf :!DummyDDRT) outputs(%cmx_0 : !DummyCMX0T) -> !DummyCMX0T
     }
 
     VPURT.Task waits(%7: !VPURT.Barrier) {
@@ -126,7 +126,6 @@ module @subgraph attributes {config.arch = #config.arch_kind<NPU40XX>, config.co
 
     // CHECK:       VPURT.Task updates([[BARRIER_1]] : !VPURT.Barrier) {
     // CHECK-NEXT:        VPUIP.SW.Kernel
-    // CHECK-SAME:        skipProfiling
     // CHECK-SAME:        @VPU.SW::@builtin_SoftMax
 
     // CHECK:       VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_2]] : !VPURT.Barrier) {

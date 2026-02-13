@@ -13,6 +13,7 @@
 
 namespace VPUNN {
 class VPUCostModel;
+enum class VPUDevice;
 }  // namespace VPUNN
 
 namespace vpux {
@@ -35,7 +36,7 @@ public:
     // different FIFOs on same executor (e.g. 2 separate DMA channels on single
     // DMA engine)
     struct QueueType {
-        VPU::ExecutorKind execKind;
+        config::ExecutorKind execKind;
         uint8_t id = 0;
 
         bool operator<(const QueueType& other) const {
@@ -269,7 +270,7 @@ public:
         bool isDataOp_{false};
         SmallVector<IntervalInfo> inputResourceInfo_;
         SmallVector<IntervalInfo> outputResourceInfo_;
-        QueueType queueType{VPU::ExecutorKind::DMA_NN, 0};
+        QueueType queueType{config::ExecutorKind::DMA_NN, 0};
         llvm::BitVector executorInstanceMask;
     };
     using ScheduledOpInfoVec = SmallVector<ScheduledOpInfo, 1>;
@@ -335,9 +336,10 @@ public:
 public:
     FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind, MemLiveRangeInfo& liveRangeInfo,
                             AsyncDepsInfo& depsInfo, Logger log, LinearScan<mlir::Value, LinearScanHandler>& scan,
-                            config::ArchKind arch, std::shared_ptr<VPUNN::VPUCostModel> costModel,
-                            int64_t nceClusterCount, int64_t dmaCount, bool enableScheduleStatistics,
-                            bool optimizeFragmentation, bool activelySpillForPrefetching);
+                            config::ArchKind arch, VPUNN::VPUDevice vpuDevice,
+                            std::shared_ptr<VPUNN::VPUCostModel> costModel, int64_t nceClusterCount, int64_t dmaCount,
+                            bool enableScheduleStatistics, bool optimizeFragmentation,
+                            bool activelySpillForPrefetching);
 
 public:
     ScheduledOpInfoVec generateSchedule();
@@ -367,7 +369,7 @@ private:
     bool isNoInputDepComputeOp(operationIdxType opIdx);
 
     // cycle and executor utils
-    VPU::ExecutorKind getExecutorType(operationIdxType opIdx);
+    config::ExecutorKind getExecutorType(operationIdxType opIdx);
     QueueType getQueueType(operationIdxType opIdx);
     size_t getCurrentCycle(operationIdxType opIdx, bool spilled = false);
     void insertInOpIdxCycleEndMap(const operationIdxType& opIdx, const size_t& endCycle);
@@ -454,6 +456,8 @@ private:
     LinearScan<mlir::Value, LinearScanHandler>& _scan;
     // architecture kind
     config::ArchKind _archKind;
+    // VPU device type
+    VPUNN::VPUDevice _vpuDevice;
     // VPUNN cost model
     std::shared_ptr<VPUNN::VPUCostModel> _costModel;
     // NCE cluster count
@@ -511,9 +515,9 @@ private:
     // same executor type in case where scheduler needs to be aware of it
     // TODO: Currently scheduler supports only multiple DMA executors (ports)
     std::map<QueueType, SmallVector<size_t>> _executorPipelines = {
-            {{VPU::ExecutorKind::DMA_NN}, {1}},    {{VPU::ExecutorKind::DPU}, {1}},
-            {{VPU::ExecutorKind::NCE}, {1}},       {{VPU::ExecutorKind::SHAVE_NN}, {1}},
-            {{VPU::ExecutorKind::SHAVE_ACT}, {1}}, {{VPU::ExecutorKind::M2I}, {1}}};
+            {{config::ExecutorKind::DMA_NN}, {1}},    {{config::ExecutorKind::DPU}, {1}},
+            {{config::ExecutorKind::NCE}, {1}},       {{config::ExecutorKind::SHAVE_NN}, {1}},
+            {{config::ExecutorKind::SHAVE_ACT}, {1}}, {{config::ExecutorKind::M2I}, {1}}};
 
     // spilled operation cycle cost
     mlir::DenseMap<mlir::Value, size_t> _spillBufferCycleCost;

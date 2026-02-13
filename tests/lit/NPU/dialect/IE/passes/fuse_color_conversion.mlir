@@ -66,13 +66,11 @@ func.func @FuseYuvToRgbWithFQ(%arg0: tensor<1x368x432x1xui8>, %arg1: tensor<1x18
 
     return %final_fq : tensor<1x3x368x432xf32>
 
-    // CHECK: [[SCALE_FACTOR:%.+]] = const.Declare tensor<1xf32> = dense<1.01575518> : tensor<1xf32>
     // CHECK: [[Y_CONVERT:%.+]] = IE.Convert([[Y_INPUT]]) {dstElemType = f32} : tensor<1x368x432x1xui8> -> tensor<1x368x432x1xf32>
     // CHECK: [[UV_CONVERT:%.+]] = IE.Convert([[UV_INPUT]]) {dstElemType = f32} : tensor<1x184x216x2xui8> -> tensor<1x184x216x2xf32>
-    // CHECK: [[YUV_TO_RGB:%.+]] = IE.YuvToRgb([[Y_CONVERT]], [[UV_CONVERT]]) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<RGB>} : tensor<1x368x432x1xf32>, tensor<1x184x216x2xf32> -> tensor<1x368x432x3xf32>
+    // CHECK: [[YUV_TO_RGB:%.+]] = IE.YuvToRgb([[Y_CONVERT]], [[UV_CONVERT]]) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<BGR>} : tensor<1x368x432x1xf32>, tensor<1x184x216x2xf32> -> tensor<1x368x432x3xf32>
     // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[YUV_TO_RGB]]) {order_value = #NWCH} : tensor<1x368x432x3xf32> -> tensor<1x3x368x432xf32>
-    // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[TRANSPOSE]], [[SCALE_FACTOR]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x368x432xf32>, tensor<1xf32> -> tensor<1x3x368x432xf32>
-    // CHECK: return [[MULTIPLY]] : tensor<1x3x368x432xf32>
+    // CHECK: return [[TRANSPOSE]] : tensor<1x3x368x432xf32>
 
 }
 
@@ -165,4 +163,43 @@ func.func @FuseYuvToBgr(%arg0: tensor<1x32x32x1xf32>, %arg1: tensor<1x16x16x2xf3
     // CHECK: [[YUV_TO_RGB:%.+]] = IE.YuvToRgb([[Y_INPUT]], [[UV_INPUT]]) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<BGR>} : tensor<1x32x32x1xf32>, tensor<1x16x16x2xf32> -> tensor<1x32x32x3xf32>
     // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[YUV_TO_RGB]]) {order_value = #NWCH} : tensor<1x32x32x3xf32> -> tensor<1x3x32x32xf32>
     // CHECK: return [[TRANSPOSE]] : tensor<1x3x32x32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NoFuseYuvToRgbWithNonSplatFQ
+// CHECK-SAME:  ([[Y_INPUT:%.+]]: tensor<1x32x32x1xf32>, [[UV_INPUT:%.+]]: tensor<1x16x16x2xf32>)
+func.func @NoFuseYuvToRgbWithNonSplatFQ(%arg0: tensor<1x32x32x1xf32>, %arg1: tensor<1x16x16x2xf32>) -> tensor<1x3x32x32xf32> {
+    // Non-splat output low/high constants - different values per channel
+    %cst_output_low = const.Declare tensor<1x3x1x1xf32> = dense<[[[[0.0]], [[10.0]], [[20.0]]]]> : tensor<1x3x1x1xf32>
+    %cst_output_high = const.Declare tensor<1x3x1x1xf32> = dense<[[[[255.0]], [[245.0]], [[235.0]]]]> : tensor<1x3x1x1xf32>
+    %cst_input_low = const.Declare tensor<1x3x1x1xf32> = dense<0.0> : tensor<1x3x1x1xf32>
+    %cst_input_high = const.Declare tensor<1x3x1x1xf32> = dense<255.0> : tensor<1x3x1x1xf32>
+    %cst_bias = const.Declare tensor<1x3x1x1xf32> = dense<[[[[-276.928]], [[135.488]], [[-222.912]]]]> : tensor<1x3x1x1xf32>
+    %cst_weights = const.Declare tensor<3x3x1x1xf32> = dense<[[[[1.164]], [[0.0]], [[1.596]]], [[[1.164]], [[-0.391]], [[-0.813]]], [[[1.164]], [[2.018]], [[0.0]]]]> : tensor<3x3x1x1xf32>
+
+    %y_reshape = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 1, 32, 32]} : tensor<1x32x32x1xf32> -> tensor<1x1x32x32xf32>
+    %uv_transpose = IE.Transpose(%arg1) {order_value = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x16x16x2xf32> -> tensor<1x2x16x16xf32>
+    %uv_interpolate = IE.Interpolate(%uv_transpose) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [32, 32]} : tensor<1x2x16x16xf32> -> tensor<1x2x32x32xf32>
+    %concat = IE.Concat(%y_reshape, %uv_interpolate) {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x32x32xf32>, tensor<1x2x32x32xf32> -> tensor<1x3x32x32xf32>
+    %conv = IE.Convolution(%concat, %cst_weights) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x32x32xf32>, tensor<3x3x1x1xf32> -> tensor<1x3x32x32xf32>
+    %add = IE.Add(%conv, %cst_bias) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x32x32xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x32x32xf32>
+    %fq = IE.FakeQuantize(%add, %cst_input_low, %cst_input_high, %cst_output_low, %cst_output_high) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x32x32xf32>, tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x32x32xf32>
+    return %fq : tensor<1x3x32x32xf32>
+
+    // CHECK-NOT: IE.YuvToRgb
+    // CHECK-DAG: [[CST_OUT_LOW:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<{{\[\[\[\[}}0.000000e+00]], {{\[\[}}1.000000e+01]], {{\[\[}}2.000000e+01]]]]>  : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[CST_OUT_HIGH:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<{{\[\[\[\[}}2.550000e+02]], {{\[\[}}2.450000e+02]], {{\[\[}}2.350000e+02]]]]> : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[CST_IN_LOW:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<0.000000e+00> : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[CST_IN_HIGH:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<2.550000e+02> : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[CST_BIAS:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<{{\[\[\[\[}}-2.769280e+02]], {{\[\[}}1.354880e+02]], {{\[\[}}-2.229120e+02]]]]> : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[CST_WEIGHTS:%.+]] = const.Declare tensor<3x3x1x1xf32> = dense<{{\[\[\[\[}}1.164000e+00]], {{\[\[}}0.000000e+00]], {{\[\[}}1.596000e+00]]], {{\[\[\[}}1.164000e+00]], {{\[\[}}-3.910000e-01]], {{\[\[}}-8.130000e-01]]], {{\[\[\[}}1.164000e+00]], {{\[\[}}2.018000e+00]], {{\[\[}}0.000000e+00]]]]> : tensor<3x3x1x1xf32>
+    // CHECK: [[RESHAPE:%.+]] = IE.AffineReshape([[Y_INPUT]]) {dim_mapping = {{\[\[}}0, 1], [2], [3], [3]], shape_value = [1, 1, 32, 32]} : tensor<1x32x32x1xf32> -> tensor<1x1x32x32xf32>
+    // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[UV_INPUT]]) {order_value = #NWCH} : tensor<1x16x16x2xf32> -> tensor<1x2x16x16xf32>
+    // CHECK: [[INTERPOLATE:%.+]] = IE.Interpolate([[TRANSPOSE]]) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [32, 32]} : tensor<1x2x16x16xf32> -> tensor<1x2x32x32xf32>
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[RESHAPE]], [[INTERPOLATE]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x32x32xf32>, tensor<1x2x32x32xf32> -> tensor<1x3x32x32xf32>
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[CONCAT]], [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x32x32xf32>, tensor<3x3x1x1xf32> -> tensor<1x3x32x32xf32>
+    // CHECK: [[ADD:%.+]] = IE.Add([[CONV]], [[CST_BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x32x32xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x32x32xf32>
+    // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ADD]], [[CST_IN_LOW]], [[CST_IN_HIGH]], [[CST_OUT_LOW]], [[CST_OUT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x32x32xf32>, tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x32x32xf32>
+    // CHECK: return [[FQ]] : tensor<1x3x32x32xf32>
 }

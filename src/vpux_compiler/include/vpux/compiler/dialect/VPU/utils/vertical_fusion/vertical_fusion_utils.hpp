@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@ constexpr vpux::StringLiteral isInPlace = "is_inplace";  // inplace attribute na
 // min length of tensor by tiled axis. It limits number of tiles
 // which we may increase in order to fit in CMX
 constexpr int64_t MINIMUM_LENGTH_TILING = 4;
+constexpr int64_t MIN_REQUIRED_TILES = 2;
 
 // The specific back-infer strategy type
 enum class BackInferStrategy { TILING_DIM, TILING_STRATEGY };
@@ -86,8 +87,8 @@ SmallVector<mlir::OpOperand*> findUses(mlir::Operation* operation);
 bool isSpatialTiling(ArrayRef<int64_t> strategy);
 
 // function merges operations to VF and returns the created subgraph
-VPU::VerticalFusionOp fuseOpsInBlock(mlir::PatternRewriter& rewriter, VPU::VerticalFusionOp vfOp,
-                                     mlir::Operation* prevOp, mlir::ArrayAttr tilingInfo = nullptr);
+VPU::VerticalFusionOp fuseOpsInBlock(mlir::OpBuilder& rewriter, VPU::VerticalFusionOp vfOp, mlir::Operation* prevOp,
+                                     mlir::ArrayAttr tilingInfo = nullptr, bool isManuallConfigured = false);
 
 template <typename VFConfigType>
 mlir::FailureOr<SmallVector<SmallVector<int64_t>>> backInferVFTilingStrategy(

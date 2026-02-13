@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,6 +38,11 @@ def InsertDelayDPUVariant : PassBase<"insert-delay-dpu-variant", "vpux::Function
             "dpuProfilingEnabled", "dpu-profiling-enabled",
             "bool", "false",
             "Specifies whether the DPU profiling feature is enabled"
+        >,
+        Option<
+            "fwPdecDelayEnabled", "fw-pdec-delay-enabled",
+            "bool", "false",
+            "Specifies whether the PDEC delay feature is enabled in the firmware"
         >
     ];
 }

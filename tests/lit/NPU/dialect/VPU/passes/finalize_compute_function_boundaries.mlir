@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,20 +39,20 @@ module @StaticEltwiseNHWC {
 
 // CHECK-LABEL: @StaticEltwiseNHWC
 // CHECK: func.func private @main_func0
-// CHECK-SAME: (%{{.*}}: tensor<1x90x1000x16xf16>, %{{.*}}: tensor<1x90x1000x16xf16>) -> tensor<1x90x1000x16xf16>
-// CHECK: Core.ReinterpretCast{{.*}} : tensor<1x90x1000x16xf16> -> tensor<1x16x90x1000xf16, {order = #NHWC}>
-// CHECK: Core.ReinterpretCast{{.*}} : tensor<1x90x1000x16xf16> -> tensor<1x16x90x1000xf16, {order = #NHWC}>
+// CHECK-SAME: ({{.+}}: tensor<1x90x1000x16xf16>, {{.+}}: tensor<1x90x1000x16xf16>) -> tensor<1x90x1000x16xf16>
+// CHECK: Core.ReinterpretCast{{.+}} : tensor<1x90x1000x16xf16> -> tensor<1x16x90x1000xf16, {order = #NHWC}>
+// CHECK: Core.ReinterpretCast{{.+}} : tensor<1x90x1000x16xf16> -> tensor<1x16x90x1000xf16, {order = #NHWC}>
 // CHECK: VPU.NCE.Eltwise
-// CHECK: Core.ReinterpretCast{{.*}} : tensor<1x16x90x1000xf16, {order = #NHWC}> -> tensor<1x90x1000x16xf16>
-// CHECK: return{{.*}} : tensor<1x90x1000x16xf16>
+// CHECK: Core.ReinterpretCast{{.+}} : tensor<1x16x90x1000xf16, {order = #NHWC}> -> tensor<1x90x1000x16xf16>
+// CHECK: return{{.+}} : tensor<1x90x1000x16xf16>
 
 // CHECK: func.func @main
-// CHECK-SAME: (%{{.*}}: tensor<1x720x1000x16xf16>, %{{.*}}: tensor<1x720x1000x16xf16>) -> tensor<1x720x1000x16xf16>
+// CHECK-SAME: ({{.+}}: tensor<1x720x1000x16xf16>, {{.+}}: tensor<1x720x1000x16xf16>) -> tensor<1x720x1000x16xf16>
 // CHECK: tensor.empty() : tensor<1x720x1000x16xf16>
 // CHECK: scf.for
-// CHECK: tensor.extract_slice{{.*}}[0, %{{.*}}, 0, 0] [1, 90, 1000, 16]
+// CHECK: tensor.extract_slice{{.+}}[0, {{.+}}, 0, 0] [1, 90, 1000, 16]
 // CHECK: func.call @main_func0
-// CHECK: return{{.*}} : tensor<1x720x1000x16xf16>
+// CHECK: return{{.+}} : tensor<1x720x1000x16xf16>
 
 
 // -----
@@ -136,15 +136,15 @@ module @StaticEltwiseNCHW {
 // CHECK: #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @StaticEltwiseNCHW
-// CHECK: func.func private @main_func0(%{{.*}}: tensor<1x16x90x1000xf16>)
-// CHECK:     Core.ReinterpretCast{{.*}} : tensor<1x16x90x1000xf16> -> tensor<1x16x90x1000xf16, {order = #NCHW}>
+// CHECK: func.func private @main_func0({{.+}}: tensor<1x16x90x1000xf16>)
+// CHECK:     Core.ReinterpretCast{{.+}} : tensor<1x16x90x1000xf16> -> tensor<1x16x90x1000xf16, {order = #NCHW}>
 // CHECK:     VPU.ReLU
-// CHECK:     Core.ReinterpretCast{{.*}} : tensor<1x16x90x1000xf16, {order = #NCHW}> -> tensor<1x16x90x1000xf16>
-// CHECK:     return{{.*}} : tensor<1x16x90x1000xf16>
+// CHECK:     Core.ReinterpretCast{{.+}} : tensor<1x16x90x1000xf16, {order = #NCHW}> -> tensor<1x16x90x1000xf16>
+// CHECK:     return{{.+}} : tensor<1x16x90x1000xf16>
 
-// CHECK: func.func @main(%{{.*}}: tensor<1x16x90x1000xf16>)
-// CHECK:    call @main_func0({{.*}})
-// CHECK:    return {{.*}} : tensor<1x16x90x1000xf16>
+// CHECK: func.func @main({{.+}}: tensor<1x16x90x1000xf16>)
+// CHECK:    call @main_func0({{.+}})
+// CHECK:    return {{.+}} : tensor<1x16x90x1000xf16>
 
 // -----
 
@@ -189,16 +189,16 @@ module @DynamicBoundedEltwiseNHWC {
 // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x256x?x16xf16>)
 // CHECK-DAG:   Core.ReinterpretCast([[ARG0]]) : tensor<1x256x?x16xf16> -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK-DAG:   Core.ReinterpretCast([[ARG1]]) : tensor<1x256x?x16xf16> -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
-// CHECK:       VPU.NCE.Eltwise{{.*}} -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
-// CHECK:       Core.ReinterpretCast({{.*}}) : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x256x?x16xf16>
+// CHECK:       VPU.NCE.Eltwise{{.+}} -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
+// CHECK:       Core.ReinterpretCast({{.+}}) : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x256x?x16xf16>
 
-// CHECK:       return {{.*}} : tensor<1x256x?x16xf16>
+// CHECK:       return {{.+}} : tensor<1x256x?x16xf16>
 
 // CHECK: func.func @main(
 // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x256x?x16xf16>,
 // CHECK-SAME:  [[ARG1:%.+]]: tensor<1x256x?x16xf16>)
 // CHECK-NOT:   bounds
-// CHECK:       return {{.*}} : tensor<1x256x?x16xf16>
+// CHECK:       return {{.+}} : tensor<1x256x?x16xf16>
 
 // -----
 

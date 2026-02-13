@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,12 +57,12 @@ module {
 
     // task 0
     VPURT.Task {
-            VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     // task 1
     VPURT.Task updates (%bar0:  !VPURT.Barrier) {
-            VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     // task 2
@@ -74,12 +74,12 @@ module {
 
     // task 3
     VPURT.Task waits (%bar0:  !VPURT.Barrier) {
-            VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     // task 4
     VPURT.Task waits (%bar0:  !VPURT.Barrier) updates (%bar1:  !VPURT.Barrier)  {
-            VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     // task 5
@@ -91,12 +91,12 @@ module {
 
     // task 6
     VPURT.Task waits (%bar2:  !VPURT.Barrier) updates (%bar3:  !VPURT.Barrier)  {
-            VPUIP.NNDMA {port = 1 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            VPUIP.NNDMA <{port = 1 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     // task 7
     VPURT.Task waits (%bar3:  !VPURT.Barrier) updates (%bar4:  !VPURT.Barrier)    {
-            VPUIP.NNDMA {port = 0 : i64} inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            VPUIP.NNDMA <{port = 0 : i64}> inputs(%buf0: memref<1x3x64x64xf16, @DDR>) outputs(%buf1: memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
     }
 
     return %arg1: memref<1x3x64x64xf16, @DDR>
@@ -107,7 +107,7 @@ module {
     // CHECK: [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK: [[BAR4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK: [[BAR5:%.*]] = VPURT.DeclareVirtualBarrier <{isFinalBarrier}> -> !VPURT.Barrier
+    // CHECK: [[BAR5:%.+]] = VPURT.DeclareVirtualBarrier <{isFinalBarrier}> -> !VPURT.Barrier
     // CHECK-NOT: VPURT.DeclareVirtual
 
     // 0(DMA-0)    1(DMA-1)   2(SW)
@@ -136,11 +136,11 @@ module {
     //
     // Task 0
     // CHECK: VPURT.Task
-    // CHECK:   VPUIP.NNDMA {port = 0 : i64}
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64}>
 
     // Task 1
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
-    // CHECK:   VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:   VPUIP.NNDMA <{port = 1 : i64}>
 
     // Task 2
     // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier)
@@ -148,11 +148,11 @@ module {
 
     // Task 3
     // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier)
-    // CHECK:   VPUIP.NNDMA {port = 0 : i64}
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64}>
 
     // Task 4
     // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier)
-    // CHECK:   VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:   VPUIP.NNDMA <{port = 1 : i64}>
 
     // Task 5
     // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier)
@@ -160,9 +160,9 @@ module {
 
     // Task 6
     // CHECK: VPURT.Task waits([[BAR3]] : !VPURT.Barrier) updates([[BAR4]] : !VPURT.Barrier)
-    // CHECK:   VPUIP.NNDMA {port = 1 : i64}
+    // CHECK:   VPUIP.NNDMA <{port = 1 : i64}>
 
     // Task 7
     // CHECK: VPURT.Task waits([[BAR4]] : !VPURT.Barrier) updates([[BAR5]] : !VPURT.Barrier)
-    // CHECK:   VPUIP.NNDMA {port = 0 : i64}
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64}>
 }

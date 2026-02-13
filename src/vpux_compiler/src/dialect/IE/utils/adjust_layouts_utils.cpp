@@ -25,9 +25,8 @@ void insertReorderForInput(mlir::Operation* op, mlir::OpOperand& input, DimsOrde
     mlir::OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(op);
 
-    auto reorderOp =
-            rewriter.create<IE::ReorderOp>(takeOpLoc(op, StringLiteral("reorder_in_{0}"), input.getOperandNumber()),
-                                           input.get(), dstOrder.toAffineMap(rewriter.getContext()));
+    auto reorderOp = rewriter.create<IE::ReorderOp>(takeOpLoc(op, "reorder_in_{0}", input.getOperandNumber()),
+                                                    input.get(), dstOrder.toAffineMap(rewriter.getContext()));
 
     log.trace("Redirect input to the new Value");
     input.set(reorderOp.getOutput());

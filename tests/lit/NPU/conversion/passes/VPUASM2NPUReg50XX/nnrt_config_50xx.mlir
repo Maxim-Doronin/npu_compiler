@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,14 +18,14 @@ module @Test attributes {config.arch = #config.arch_kind<NPU50XX>} {
         VPUASM.ActShaveRt @ActShaveRt kernel("nnActEntry")
       }
       ELF.CreateSection @program.nnrt_config aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
-        VPUASM.nnrtConfig {actShaveRt = @shave.runtime::@ActShaveRt, elfMemOffsetAttrKey = 0 : ui64, isActKernelInvocations} @MappedInference_nnrtConfigManaged : dmaHwpBase(@buffer.CMX_NN.0::@DeclareBuffer6)
+        VPUASM.nnrtConfig {elfMemOffsetAttrKey = 0 : ui64} <{actShaveRt = @shave.runtime::@ActShaveRt, isActKernelInvocations}> @MappedInference_nnrtConfigManaged : dmaHwpBase(@buffer.CMX_NN.0::@DeclareBuffer6)
       }
     }
     return
   }
 }
 
-//CHECK: NPUReg50XX.NNrtConfig descriptor = <
+//CHECK: NPUReg50XX.NNrtConfig <{actShaveRt = @shave.runtime::@ActShaveRt, descriptor = #NPUReg50XX.VpuNNRTConfig<
 //CHECK:   VpuNNRTConfig {
 //CHECK:     NNRTCfg_reserved = UINT 0,
 //CHECK:     NNRTCfg_runtime_entry = UINT 0x1C000000,
@@ -43,13 +43,13 @@ module @Test attributes {config.arch = #config.arch_kind<NPU50XX>} {
 //CHECK:     NNRTCfg_stack_10 = UINT 0,
 //CHECK:     NNRTCfg_stack_11 = UINT 0,
 //CHECK:     NNRTCfg_stack_size = UINT 0x1C00,
-//CHECK:     NNRTCfg_code_window_buffer_size = UINT 0x2630,
+//CHECK:     NNRTCfg_code_window_buffer_size = UINT 0x2120,
 //CHECK:     NNRTCfg_perf_metrics_mask = UINT 0,
-//CHECK:     NNRTCfg_runtime_version = UINT 0x1000F,
+//CHECK:     NNRTCfg_runtime_version = UINT 0x10010,
 //CHECK:     NNRTCfg_use_schedule_embedded_rt = UINT 1,
 //CHECK:     NNRTCfg_dpu_perf_mode = UINT 3,
 //CHECK:     NNRTCfg_pad_6 = UINT 0,
 //CHECK:     NNRTCfg_logAddrDmaHwp = UINT 0,
 //CHECK:     NNRTCfg_HwpCfgAddr = UINT 0,
 //CHECK:   } requires 11:13:0
-//CHECK: > {actShaveRt = @shave.runtime::@ActShaveRt, dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer6, isActKernelInvocations, sym_name = "MappedInference_nnrtConfigManaged"}
+//CHECK: >, dmaHwpBase = @buffer.CMX_NN.0::@DeclareBuffer6, isActKernelInvocations, sym_name = "MappedInference_nnrtConfigManaged"}>

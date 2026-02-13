@@ -1,14 +1,17 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/compression_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
@@ -16,6 +19,7 @@
 #include "vpux/utils/core/checked_cast.hpp"
 
 #include <mlir/Support/LLVM.h>
+#include <optional>
 
 using namespace vpux;
 
@@ -80,7 +84,8 @@ void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState&
                                  mlir::Value output_buff) {
     build(builder, state, input, output_buff, /*port=*/nullptr, /*is_out_of_order=*/false,
           /*is_critical=*/false,
-          /*spillId=*/nullptr, /*compress_candidate=*/nullptr, /*dma_hwp_id=*/nullptr, /* profilingMetadata= */ nullptr,
+          /*spillId=*/nullptr, /*compress_candidate=*/false, /*dma_hwp_id=*/nullptr,
+          /* profilingMetadata= */ nullptr,
           /*split_candidate=*/false, /*profiling_buffer_mgmt=*/false, /*fusionId=*/nullptr);
 }
 
@@ -89,7 +94,8 @@ void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState&
     build(builder, state, input, output_buff, /*port=*/vpux::getIntAttr(builder, port),
           /*is_out_of_order=*/false,
           /*is_critical=*/false,
-          /*spillId=*/nullptr, /*compress_candidate=*/nullptr, /*dma_hwp_id=*/nullptr, /* profilingMetadata= */ nullptr,
+          /*spillId=*/nullptr, /*compress_candidate=*/false, /*dma_hwp_id=*/nullptr,
+          /* profilingMetadata= */ nullptr,
           /*split_candidate=*/false, /*profiling_buffer_mgmt=*/false, /*fusionId=*/nullptr);
 }
 
@@ -98,24 +104,24 @@ void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState&
     build(builder, state, input, output_buff, /*port=*/vpux::getIntAttr(builder, port),
           /*is_out_of_order=*/false,
           /*is_critical=*/false,
-          /*spillId=*/nullptr, /*compress_candidate=*/nullptr, vpux::getIntAttr(builder, dma_hwp_id),
+          /*spillId=*/nullptr, /*compress_candidate=*/false, vpux::getIntAttr(builder, dma_hwp_id),
           /* profilingMetadata= */ nullptr, /*split_candidate=*/false, /*profiling_buffer_mgmt=*/false,
           /*fusionId=*/nullptr);
 }
 
 void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
-                                 mlir::Value output_buff, mlir::IntegerAttr port, mlir::UnitAttr is_out_of_order,
-                                 mlir::UnitAttr is_critical, mlir::IntegerAttr spillId) {
+                                 mlir::Value output_buff, mlir::IntegerAttr port, bool is_out_of_order,
+                                 bool is_critical, mlir::IntegerAttr spillId) {
     build(builder, state, input, output_buff, /*port=*/port,
           /*is_out_of_order=*/is_out_of_order,
-          /*is_critical=*/is_critical, /*spillId=*/spillId, /*compress_candidate=*/nullptr, /*dma_hwp_id=*/nullptr,
-          /* profilingMetadata= */ nullptr, /*split_candidate=*/nullptr, /*profiling_buffer_mgmt=*/nullptr,
+          /*is_critical=*/is_critical, /*spillId=*/spillId, /*compress_candidate=*/false, /*dma_hwp_id=*/nullptr,
+          /* profilingMetadata= */ nullptr, /*split_candidate=*/false, /*profiling_buffer_mgmt=*/false,
           /*fusionId=*/nullptr);
 }
 
 void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
                                  mlir::Value output_buff, int64_t port, bool is_out_of_order, bool is_critical,
-                                 mlir::IntegerAttr spillId, mlir::UnitAttr compress_candidate) {
+                                 mlir::IntegerAttr spillId, bool compress_candidate) {
     build(builder, state, input, output_buff, /*port=*/vpux::getIntAttr(builder, port),
           /*is_out_of_order=*/is_out_of_order,
           /*is_critical=*/is_critical, /*spillId=*/spillId, /*compress_candidate=*/compress_candidate,
@@ -129,14 +135,14 @@ void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState&
                                  mlir::IntegerAttr spillId) {
     build(builder, state, input, output_buff, /*port=*/vpux::getIntAttr(builder, port),
           /*is_out_of_order=*/is_out_of_order,
-          /*is_critical=*/is_critical, /*spillId=*/spillId, /*compress_candidate=*/nullptr, /*dma_hwp_id=*/nullptr,
+          /*is_critical=*/is_critical, /*spillId=*/spillId, /*compress_candidate=*/false, /*dma_hwp_id=*/nullptr,
           /* profilingMetadata=*/nullptr, /*split_candidate=*/false, /*profiling_buffer_mgmt=*/false,
           /*fusionId=*/nullptr);
 }
 
 void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
                                  mlir::Value output_buff, int64_t port, bool is_out_of_order, bool is_critical,
-                                 mlir::IntegerAttr spillId, mlir::UnitAttr compress_candidate, bool split_candidate,
+                                 mlir::IntegerAttr spillId, bool compress_candidate, bool split_candidate,
                                  mlir::IntegerAttr fusionId) {
     build(builder, state, input, output_buff, /*port=*/vpux::getIntAttr(builder, port),
           /*is_out_of_order=*/is_out_of_order,
@@ -148,18 +154,18 @@ void vpux::VPUIP::NNDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState&
 mlir::LogicalResult vpux::VPUIP::NNDMAOp::verify() {
     auto loc = getLoc();
 
-    if (getCompressCandidateAttr() != nullptr) {
+    if (getCompressCandidate()) {
         auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
         auto outType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
         if (inType.getMemoryKind() == VPU::MemoryKind::CMX_NN && outType.getMemoryKind() == VPU::MemoryKind::DDR) {
-            auto compressionState = getCompressionState(getOutput().getType());
+            auto compressionState = VPUIP::getCompressionState(getOutput().getType());
             if (compressionState != VPUIP::CompressionState::CompressionCandidate) {
                 return errorAt(loc, "NNDMA spill write must have compression candidate "
                                     "buffer as output");
             }
         } else if (inType.getMemoryKind() == VPU::MemoryKind::DDR &&
                    outType.getMemoryKind() == VPU::MemoryKind::CMX_NN) {
-            auto compressionState = getCompressionState(getInput().getType());
+            auto compressionState = VPUIP::getCompressionState(getInput().getType());
             if (compressionState != VPUIP::CompressionState::CompressionCandidate) {
                 return errorAt(loc, "NNDMA spill read must have compression candidate "
                                     "buffer as input");
@@ -167,16 +173,30 @@ mlir::LogicalResult vpux::VPUIP::NNDMAOp::verify() {
         }
     }
 
+    auto isDynamicStridesDma = (getOperation()->getAttr(vpux::stridedInputAttrName) != nullptr) ||
+                               (getOperation()->getAttr(vpux::stridedOutputAttrName) != nullptr);
+    auto isSplitCandidate = getSplitCandidate();
+    auto isFusionCandidate = (getFusionIdAttr() != nullptr);
+
+    if (isDynamicStridesDma && isSplitCandidate) {
+        return errorAt(loc, "NNDMA op with dynamic strides must not be a split candidate");
+    }
+
+    if (isDynamicStridesDma && isFusionCandidate) {
+        return errorAt(loc, "NNDMA op with dynamic strides must not be a fusion candidate");
+    }
+
     return verifyTensorSize(config::getArch(getOperation()), loc, getInput());
 }
 
 size_t vpux::VPUIP::NNDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: Expose API to get arch from cost model
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -187,8 +207,8 @@ void vpux::VPUIP::PermuteDMAOp::build(mlir::OpBuilder& builder, mlir::OperationS
                                       mlir::Value output_buff, mlir::AffineMapAttr mem_perm,
                                       VPUIP::DMADescriptorAttr dma_descriptor) {
     build(builder, state, input, output_buff, /*port=*/nullptr,
-          /*is_out_of_order=*/nullptr,
-          /*is_critical=*/nullptr, mem_perm, dma_descriptor, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false,
+          /*is_critical=*/false, mem_perm, dma_descriptor, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr, /*internalDataFlow=*/nullptr);
 }
 
@@ -196,8 +216,8 @@ void vpux::VPUIP::PermuteDMAOp::build(mlir::OpBuilder& builder, mlir::OperationS
                                       mlir::Value output_buff, mlir::AffineMapAttr mem_perm,
                                       VPUIP::DMADescriptorAttr dma_descriptor, mlir::IntegerAttr port) {
     build(builder, state, input, output_buff, /*port=*/port,
-          /*is_out_of_order=*/nullptr,
-          /*is_critical=*/nullptr, mem_perm, dma_descriptor, nullptr, /* profilingMetadata= */ nullptr,
+          /*is_out_of_order=*/false,
+          /*is_critical=*/false, mem_perm, dma_descriptor, nullptr, /* profilingMetadata= */ nullptr,
           /*internalDataFlow=*/nullptr);
 }
 
@@ -207,13 +227,14 @@ mlir::LogicalResult vpux::VPUIP::PermuteDMAOp::verify() {
 
 size_t vpux::VPUIP::PermuteDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs PermuteDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -225,7 +246,7 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
                                      mlir::IntegerAttr padding, int64_t port = 0) {
     GatherDMAOp::build(builder, state, input, indices, outputBuff, elementSize, padding,
                        /* port = */ vpux::getIntAttr(builder, port),
-                       /* isOutOfOrder = */ nullptr, /* isCritical = */ nullptr,
+                       /* isOutOfOrder = */ false, /* isCritical = */ false,
                        /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
                        /* gatherAddressingMode = */ nullptr);
 }
@@ -236,7 +257,7 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
     GatherDMAOp::build(builder, state, input, indices, outputBuff, vpux::getIntAttr(builder, elementSize),
                        vpux::getIntAttr(builder, padding),
                        /* port = */ vpux::getIntAttr(builder, port),
-                       /* isOutOfOrder = */ nullptr, /* isCritical = */ nullptr,
+                       /* isOutOfOrder = */ false, /* isCritical = */ false,
                        /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
                        /* gatherAddressingMode = */ nullptr);
 }
@@ -248,7 +269,7 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
     GatherDMAOp::build(builder, state, input, indices, outputBuff, vpux::getIntAttr(builder, elementSize),
                        vpux::getIntAttr(builder, padding),
                        /* port = */ vpux::getIntAttr(builder, port),
-                       /* isOutOfOrder = */ nullptr, /* isCritical = */ nullptr,
+                       /* isOutOfOrder = */ false, /* isCritical = */ false,
                        /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
                        VPUIP::GatherAddressingModeAttr::get(builder.getContext(), addressingMode));
 }
@@ -289,13 +310,14 @@ mlir::LogicalResult vpux::VPUIP::GatherDMAOp::verify() {
 
 size_t vpux::VPUIP::GatherDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs GatherDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -346,13 +368,14 @@ mlir::LogicalResult vpux::VPUIP::ConvertDMAOp::verify() {
 
 size_t vpux::VPUIP::ConvertDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs ConvertDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -369,8 +392,8 @@ void vpux::VPUIP::DecompressDMAOp::build(mlir::OpBuilder& builder, mlir::Operati
 }
 
 void vpux::VPUIP::DecompressDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
-                                         mlir::Value output_buff, mlir::IntegerAttr port,
-                                         mlir::UnitAttr is_out_of_order, mlir::UnitAttr is_critical) {
+                                         mlir::Value output_buff, mlir::IntegerAttr port, bool is_out_of_order,
+                                         bool is_critical) {
     build(builder, state, input, /*act_compression_size_entry=*/nullptr, /*act_compression_sparsity_map*/ nullptr,
           output_buff,
           /*port=*/port, /*is_out_of_order=*/is_out_of_order, /*is_critical=*/is_critical,
@@ -419,8 +442,7 @@ void vpux::VPUIP::DecompressDMAOp::build(mlir::OpBuilder& builder, mlir::Operati
 
 void vpux::VPUIP::DecompressDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
                                          mlir::Value actCompressionSizeEntryBuff, mlir::Value output_buff,
-                                         mlir::IntegerAttr port, mlir::UnitAttr is_out_of_order,
-                                         mlir::UnitAttr is_critical) {
+                                         mlir::IntegerAttr port, bool is_out_of_order, bool is_critical) {
     build(builder, state, input, actCompressionSizeEntryBuff, /*act_compression_sparsity_map*/ nullptr, output_buff,
           /*port=*/port,
           /*is_out_of_order=*/is_out_of_order, /*is_critical=*/is_critical,
@@ -451,13 +473,14 @@ mlir::LogicalResult vpux::VPUIP::DecompressDMAOp::verify() {
 
 size_t vpux::VPUIP::DecompressDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs DecompressDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -490,8 +513,8 @@ void vpux::VPUIP::CompressDMAOp::build(mlir::OpBuilder& builder, mlir::Operation
 
 void vpux::VPUIP::CompressDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
                                        mlir::Value actCompressionSizeEntryBuff, mlir::Value output_buff,
-                                       mlir::IntegerAttr port, /*optional*/ mlir::UnitAttr is_out_of_order,
-                                       /*optional*/ mlir::UnitAttr is_critical) {
+                                       mlir::IntegerAttr port, /*optional*/ bool is_out_of_order,
+                                       /*optional*/ bool is_critical) {
     build(builder, state, input, actCompressionSizeEntryBuff, /*act_compression_sparsity_map*/ nullptr, output_buff,
           /*port=*/port,
           /*is_out_of_order=*/is_out_of_order, /*is_critical=*/is_critical,
@@ -521,13 +544,14 @@ mlir::LogicalResult vpux::VPUIP::CompressDMAOp::verify() {
 
 size_t vpux::VPUIP::CompressDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs CompressDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -540,7 +564,7 @@ void vpux::VPUIP::DepthToSpaceDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            vpux::IE::ChannelPaddingAttr padded_channels) {
     build(odsBuilder, odsState, input, output_buff, /* port= */ nullptr, block_size, mode, dma_descriptor,
           padded_channels,
-          /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false, /*is_critical=*/false, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr, /*internalDataFlow= */ nullptr);
 }
 
@@ -549,7 +573,7 @@ void vpux::VPUIP::DepthToSpaceDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            vpux::IE::DepthToSpaceModeAttr mode, VPUIP::DMADescriptorAttr dma_descriptor,
                                            mlir::IntegerAttr port, vpux::IE::ChannelPaddingAttr padded_channels) {
     build(odsBuilder, odsState, input, output_buff, port, block_size, mode, dma_descriptor, padded_channels,
-          /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false, /*is_critical=*/false, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr, /*internalDataFlow= */ nullptr);
 }
 
@@ -565,13 +589,14 @@ mlir::LogicalResult vpux::VPUIP::DepthToSpaceDMAOp::verify() {
 
 size_t vpux::VPUIP::DepthToSpaceDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs DepthToSpaceDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -582,7 +607,7 @@ void vpux::VPUIP::SpaceToDepthDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            vpux::IE::SpaceToDepthModeAttr mode,
                                            VPUIP::DMADescriptorAttr dma_descriptor) {
     build(odsBuilder, odsState, input, output_buff, nullptr, block_size, mode, dma_descriptor,
-          /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false, /*is_critical=*/false, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr, nullptr);
 }
 
@@ -591,7 +616,7 @@ void vpux::VPUIP::SpaceToDepthDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Op
                                            vpux::IE::SpaceToDepthModeAttr mode, VPUIP::DMADescriptorAttr dma_descriptor,
                                            mlir::IntegerAttr port) {
     build(odsBuilder, odsState, input, output_buff, port, block_size, mode, dma_descriptor,
-          /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false, /*is_critical=*/false, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr, nullptr);
 }
 
@@ -607,13 +632,14 @@ mlir::LogicalResult vpux::VPUIP::SpaceToDepthDMAOp::verify() {
 
 size_t vpux::VPUIP::SpaceToDepthDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs SpaceToDepthDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -625,8 +651,8 @@ void vpux::VPUIP::ExpandDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
                                      VPUIP::DMADescriptorAttr dma_descriptor) {
     build(builder, state, input, output_buff, pads_begin, pads_end, dma_descriptor,
           /*port=*/nullptr,
-          /*is_out_of_order=*/nullptr,
-          /*is_critical=*/nullptr,
+          /*is_out_of_order=*/false,
+          /*is_critical=*/false,
           /* dma_hwp_id= */ nullptr, /* profilingMetadata */ nullptr);
 }
 
@@ -634,9 +660,8 @@ void vpux::VPUIP::ExpandDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
                                      mlir::Value output_buff, mlir::ArrayAttr pads_begin, mlir::ArrayAttr pads_end,
                                      VPUIP::DMADescriptorAttr dma_descriptor, mlir::IntegerAttr port) {
     build(builder, state, input, output_buff, pads_begin, pads_end, dma_descriptor, /*port=*/port,
-
-          /*is_out_of_order=*/nullptr,
-          /*is_critical=*/nullptr,
+          /*is_out_of_order=*/false,
+          /*is_critical=*/false,
           /* dma_hwp_id= */ nullptr, /* profilingMetadata */ nullptr);
 }
 
@@ -653,13 +678,14 @@ mlir::LogicalResult vpux::VPUIP::ExpandDMAOp::verify() {
 
 size_t vpux::VPUIP::ExpandDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs ExpandDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -670,7 +696,7 @@ void vpux::VPUIP::PerAxisTileDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Ope
                                           mlir::Value input, mlir::Value output_buff, mlir::IntegerAttr axis,
                                           mlir::IntegerAttr tiles, VPUIP::DMADescriptorAttr dma_descriptor) {
     build(odsBuilder, odsState, input, output_buff, nullptr, axis, tiles, dma_descriptor,
-          /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false, /*is_critical=*/false, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr);
 }
 
@@ -679,7 +705,7 @@ void vpux::VPUIP::PerAxisTileDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Ope
                                           mlir::IntegerAttr tiles, VPUIP::DMADescriptorAttr dma_descriptor,
                                           mlir::IntegerAttr port) {
     build(odsBuilder, odsState, input, output_buff, port, axis, tiles, dma_descriptor,
-          /*is_out_of_order=*/nullptr, /*is_critical=*/nullptr, /* dma_hwp_id= */ nullptr,
+          /*is_out_of_order=*/false, /*is_critical=*/false, /* dma_hwp_id= */ nullptr,
           /* profilingMetadata */ nullptr);
 }
 
@@ -689,13 +715,14 @@ mlir::LogicalResult vpux::VPUIP::PerAxisTileDMAOp::verify() {
 
 size_t vpux::VPUIP::PerAxisTileDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs PerAxisTileDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 //
@@ -706,8 +733,8 @@ void vpux::VPUIP::UpsamplingDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::Oper
                                          mlir::Value output_buff, mlir::ArrayAttr upsampling_factor,
                                          VPUIP::DMADescriptorAttr dma_descriptor, mlir::ArrayAttr expand) {
     build(odsBuilder, odsState, input, output_buff, upsampling_factor, dma_descriptor, expand,
-          /* port */ nullptr, /*is_out_of_order=*/nullptr,
-          /*is_critical=*/nullptr, /* dma_hwp_id */ nullptr, /* profilingMetadata */ nullptr);
+          /* port */ nullptr, /*is_out_of_order=*/false,
+          /*is_critical=*/false, /* dma_hwp_id */ nullptr, /* profilingMetadata */ nullptr);
 }
 
 void vpux::VPUIP::UpsamplingDMAOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value input,
@@ -745,13 +772,14 @@ mlir::LogicalResult vpux::VPUIP::UpsamplingDMAOp::verify() {
 
 size_t vpux::VPUIP::UpsamplingDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
-    auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
+    auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
 
     // TODO: E#97004 Expose API to get arch from cost model
     // TODO: E#89933 resolved, complex DMAs UpsamplingDMAOp will need to be handled by more detailed method than
     // getDMACost()
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel, numDMAPorts));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(
+            getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel, numDMAPorts));
 }
 
 mlir::LogicalResult vpux::VPUIP::SyncDMAOp::verify() {
@@ -807,8 +835,8 @@ size_t vpux::VPUIP::BarProgDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::V
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
     // TODO: E#97004 Expose API to get arch from cost model
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel));
 }
 
 //
@@ -827,7 +855,7 @@ mlir::LogicalResult vpux::VPUIP::EnqueueDMAOp::verify() {
                        startTaskIdx);
     }
 
-    if (enqueueDmaAttr.getTargetExecutorKindAttr().getValue() == VPU::ExecutorKind::DMA_NN) {
+    if (enqueueDmaAttr.getTargetExecutorKindAttr().getValue() == config::ExecutorKind::DMA_NN) {
         return errorAt(loc, "DMA tasks cannot be enqueued by enqueue DMA");
     }
 
@@ -848,8 +876,8 @@ size_t vpux::VPUIP::EnqueueDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::V
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
     // TODO: E#97004 Expose API to get arch from cost model
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel));
 }
 
 //
@@ -874,6 +902,6 @@ size_t vpux::VPUIP::FetchDMAOp::getOperationCycleCost(std::shared_ptr<VPUNN::VPU
     auto module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
     // TODO: Expose API to get arch from cost model
-    const auto arch = config::getArch(module);
-    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), arch, costModel));
+    const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
+    return checked_cast<size_t>(getDMACost(getInput(), getOutput(), config::getArch(module), vpuDevice, costModel));
 }

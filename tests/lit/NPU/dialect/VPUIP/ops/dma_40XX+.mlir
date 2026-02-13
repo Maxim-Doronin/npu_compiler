@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,7 +67,7 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
 
     return %output: !Output_DDR
 
-    //CHECK:        [[INPUT_CMX:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN,
+    //CHECK:        [[INPUT_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                           {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], kernel = [3, 3],
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
@@ -77,7 +77,7 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
     //CHECK:              async.yield
     //CHECK:        }
 
-    //CHECK:        [[OUTPUT_CMX:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf32, #NHWC, @CMX_NN,
+    //CHECK:        [[OUTPUT_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf32, #NHWC, @CMX_NN,
     //CHECK-SAME:                           {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], kernel = [3, 3],
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token_0 = async.execute attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
@@ -87,7 +87,7 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
     //CHECK:              async.yield
     //CHECK:        }
 
-    //CHECK:        [[OUTPUT:%.*]] = memref.alloc() : memref<1x32x16x16xf16, #NHWC, @DDR>
+    //CHECK:        [[OUTPUT:%.+]] = memref.alloc() : memref<1x32x16x16xf16, #NHWC, @DDR>
     //CHECK:        %token_1 = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.ConvertDMA
     //CHECK-SAME:                          inputs([[OUTPUT_CMX]] : !VPUIP.DistributedBuffer
@@ -113,11 +113,11 @@ module @ParseGatherDMAOpModuleDDR {
             waits(%barrier0 : !VPURT.Barrier)
             updates(%barrier1 : !VPURT.Barrier)
         {
-            %gather = VPUIP.GatherDMA {
+            %gather = VPUIP.GatherDMA <{
                 elementSize = 16,
                 padding = 0,
                 port = 0: i64
-            }
+            }>
                 inputs(%input: !InputGatherDMA_DDR)
                 indices(%indices: !IndicesGatherDMA_CMX)
                 outputs(%output: !OutputGatherDMA_CMX_Large) -> !OutputGatherDMA_CMX_Large
@@ -144,11 +144,11 @@ module @ParseGatherDMAOpModuleCMX {
             waits(%barrier0 : !VPURT.Barrier)
             updates(%barrier1 : !VPURT.Barrier)
         {
-            %gather = VPUIP.GatherDMA {
+            %gather = VPUIP.GatherDMA <{
                 elementSize = 16,
                 padding = 0,
                 port = 0: i64
-            }
+            }>
                 inputs(%input: !InputGatherDMA_CMX)
                 indices(%indices: !IndicesGatherDMA_CMX_Small)
                 outputs(%output: !OutputGatherDMA_CMX) -> !OutputGatherDMA_CMX

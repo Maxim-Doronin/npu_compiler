@@ -83,12 +83,3 @@ Const::Content vpux::Const::LayoutCastAttr::transform(vpux::Const::Content& inpu
     const auto outputType = inferOutputType(input.getType());
     return Const::Content::moveBuffer(outputType, std::move(input));
 }
-
-//
-// LayoutCastAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::LayoutCastAttr::getStableHashValue() const {
-    const auto order = DimsOrder::fromAffineMap(getDstOrder().getValue());
-    return llvm::hash_combine(getMnemonic(), order.code());
-}

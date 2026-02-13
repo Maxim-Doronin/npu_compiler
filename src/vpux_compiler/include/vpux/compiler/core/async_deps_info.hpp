@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,6 +24,7 @@ public:
 
 public:
     void addDependency(mlir::async::ExecuteOp from, mlir::async::ExecuteOp to);
+    void addDependency(size_t fromOpIdx, size_t toOpIdx);
     void buildConsMap();
     void optimizeDepsMap();
     void updateTokenDependencies();
@@ -36,10 +37,12 @@ public:
     std::unordered_map<size_t, size_t> calculateOpOutDegreeTable() const;
     uint32_t getIndex(mlir::async::ExecuteOp execOp) const;
     size_t getExecOpCount() const;
+    void verifyAcyclic() const;
 
 private:
     void setIndex(mlir::async::ExecuteOp execOp, uint64_t index);
     SmallVector<size_t> getDepsVec(const llvm::DenseSet<size_t>& deps) const;
+    bool hasCycle() const;
 
 private:
     void buildDepsMap(mlir::func::FuncOp func);

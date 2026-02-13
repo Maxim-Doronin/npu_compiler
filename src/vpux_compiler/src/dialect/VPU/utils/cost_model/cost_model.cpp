@@ -1,22 +1,25 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/core/interfaces/dialect_cache.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
@@ -27,6 +30,15 @@
 #include <vpu_layer_strategy.h>
 
 using namespace vpux;
+
+std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelConfig::createCostModel(mlir::MLIRContext* context) {
+    const auto& costModelFactory = getCostModelFactory(context);
+    return costModelFactory.createCostModel();
+}
+
+std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelConfig::createCostModel(mlir::Operation* op) {
+    return createCostModel(op->getContext());
+}
 
 ///@brief Validate vpunn cost. If cost is not the defined error code then return it
 /// Else print and return error code (an uint32 value in [max-100, max]) to user.
@@ -160,6 +172,21 @@ float vpux::VPU::getWeightsSparsityRatio(mlir::Value weights) {
     return weightsSparsityRatio;
 }
 
+VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(config::Platform platform) {
+    switch (platform) {
+    case config::Platform::NPU3720:
+        return VPUNN::VPUDevice::VPU_2_7;
+    case config::Platform::NPU4000:
+        return VPUNN::VPUDevice::VPU_4_0;
+    case config::Platform::NPU5000:
+    case config::Platform::NPU5010:
+        return VPUNN::VPUDevice::NPU_5_0;
+    default:
+        VPUX_THROW("Unsupported VPU Platform type: '{0}'", platform);
+    }
+}
+
+// add it as fallback function for getVPUDeviceType
 VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(config::ArchKind archKind) {
     switch (archKind) {
     case config::ArchKind::NPU37XX:
@@ -173,7 +200,13 @@ VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(config::ArchKind archKind) {
     }
 }
 
-bool vpux::VPU::isVPUNNSupportedElementType(mlir::Type type) {
+VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(mlir::Operation* op) {
+    auto platform = config::getPlatform(op);
+    auto archKind = config::getArch(op);
+    return platform.has_value() ? vpux::VPU::getVPUDeviceType(platform.value()) : vpux::VPU::getVPUDeviceType(archKind);
+}
+
+static bool isVPUNNSupportedElementType(mlir::Type type) {
     if (type.isBF16()) {
         return true;
     } else if (type.isF16()) {
@@ -220,9 +253,8 @@ std::optional<VPUNN::DataType> vpux::VPU::getVPUNNElementType(mlir::Type type) {
             return qType.isSigned() ? VPUNN::DataType::INT4 : VPUNN::DataType::UINT4;
         } else if (qType.getStorageTypeIntegralWidth() == 2) {
             return qType.isSigned() ? VPUNN::DataType::INT2 : VPUNN::DataType::UINT2;
-            // To do: provide proper cost for I16/U16: #E-160697
         } else if (qType.getStorageTypeIntegralWidth() == 16) {
-            return VPUNN::DataType::FLOAT16;
+            return qType.isSigned() ? VPUNN::DataType::INT16 : VPUNN::DataType::UINT16;
         }
     } else if (type.isF32()) {
         return VPUNN::DataType::FLOAT32;
@@ -240,6 +272,10 @@ std::optional<VPUNN::DataType> vpux::VPU::getVPUNNElementType(mlir::Type type) {
     }
 
     return std::nullopt;
+}
+
+bool vpux::VPU::isVPUNNSupportedElementType(mlir::Type type, [[maybe_unused]] config::ArchKind arch) {
+    return ::isVPUNNSupportedElementType(type);
 }
 
 VPUNN::Layout vpux::VPU::getVPUNNLayout(vpux::DimsOrder vpuxLayout) {
@@ -307,6 +343,29 @@ VPUNN::ExecutionMode vpux::VPU::getExecutionMode(VPU::MPEMode mpeMode) {
     default:
         VPUX_THROW("Unsupported MPE mode type: '{0}'", mpeMode);
     }
+}
+
+VPUNN::MPEEngine vpux::VPU::getVPUNNMPEEngine(std::optional<VPU::MPEEngineAttr> mpeEngine) {
+    // Default if attribute absent
+    if (!mpeEngine.has_value()) {
+        return VPUNN::MPEEngine::SCL;
+    }
+
+    VPU::MPEEngineAttr attr = mpeEngine.value();
+
+    if (attr == nullptr) {
+        return VPUNN::MPEEngine::SCL;
+    }
+
+    return llvm::TypeSwitch<VPU::MPEEngineAttr, VPUNN::MPEEngine>(attr)
+            .Case<vpux::VPU::MPEEngine37XXAttr>([](vpux::VPU::MPEEngine37XXAttr mpeEngineAttr) {
+                auto mode = mpeEngineAttr.getMode();
+                VPUX_THROW_WHEN(mode == nullptr, "MPEEngine37XXAttr has null mode");
+                return VPUNN::MPEEngine::SCL;
+            })
+            .Default([](VPU::MPEEngineAttr unknown) -> VPUNN::MPEEngine {
+                VPUX_THROW("Unsupported MPEEngineAttr kind: '{0}'", unknown);
+            });
 }
 
 /*
@@ -458,7 +517,7 @@ VPUNN::DPULayer vpux::VPU::getDPULayer(const VPUIP::WorkloadCostParams& params) 
     const auto inputTensor = VPU::getVPUTensor(inputTensorShape, params.inDataType, params.inOrder);
 
     auto vpunnLayer =
-            VPUNN::DPULayer(getVPUDeviceType(params.arch), opType, {inputTensor}, {outputTensor}, {KX, KY}, {SX, SY},
+            VPUNN::DPULayer(params.vpuDevice, opType, {inputTensor}, {outputTensor}, {KX, KY}, {SX, SY},
                             {static_cast<unsigned int>(padsConf.top), static_cast<unsigned int>(padsConf.bottom),
                              static_cast<unsigned int>(padsConf.left), static_cast<unsigned int>(padsConf.right)});
 
@@ -480,6 +539,8 @@ VPUNN::DPULayer vpux::VPU::getDPULayer(const VPUIP::WorkloadCostParams& params) 
     }
 
     setAutopadFields(vpunnLayer, params);
+
+    vpunnLayer.mpe_engine = getVPUNNMPEEngine(params.mpeEngine);
 
     return vpunnLayer;
 }
@@ -517,13 +578,20 @@ std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterfa
     if (outputDistributedType == nullptr || actInputDistributedType == nullptr) {
         // When the distributedTypes are not created, generate distributedTypes from strategy
         auto strategy = params.layerStrategy;
-        auto numClusters = params.numTiles;
         const auto offsets = Shape(params.outputShape.size(), 0);
         auto outType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
         if (mlir::isa<VPU::SparseTensorType, VPUIP::SparseBufferType>(outType)) {
             outType = mlir::cast<vpux::NDTypeInterface>(getEffectiveSparseOutputType(outType));
         }
         outType = outType.extractDenseTile(offsets, params.outputShape);
+
+        // Adjust numClusters based on the tiled output shape
+        // When tiling occurs, the tile shape may be smaller than the full output shape.
+        // For strategies that distribute along a specific dimension, numClusters should be
+        // limited by the size of that dimension in the tile.
+        // For example: SOB splits over batch, SOH splits over height, SOK splits over channels
+        auto numClusters = VPU::getOptimalNumClusters(clusteredOp, params.outputShape, strategy);
+
         outputDistributedType = mlir::cast<VPU::DistributedTensorType>(
                 getDistributedOutputTypeFromOp(clusteredOp, outType, numClusters, strategy));
         auto inType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getOperand(0).getType());
@@ -625,14 +693,13 @@ std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterfa
             outputDistributedType, outputWriteTiles);  // if the workload's output needs broadcast per channel
 
     for (auto index : irange(numClusters)) {
-        auto vpunnLayer =
-                VPUNN::DPULayer(getVPUDeviceType(params.arch), opType, {actInputTensors[index]}, {outputTensors[index]},
-                                {static_cast<unsigned int>(KX), static_cast<unsigned int>(KY)},
-                                {static_cast<unsigned int>(SX), static_cast<unsigned int>(SY)},
-                                {static_cast<unsigned int>(outputPerClusterPaddings[index].top),
-                                 static_cast<unsigned int>(outputPerClusterPaddings[index].bottom),
-                                 static_cast<unsigned int>(outputPerClusterPaddings[index].left),
-                                 static_cast<unsigned int>(outputPerClusterPaddings[index].right)});
+        auto vpunnLayer = VPUNN::DPULayer(params.vpuDevice, opType, {actInputTensors[index]}, {outputTensors[index]},
+                                          {static_cast<unsigned int>(KX), static_cast<unsigned int>(KY)},
+                                          {static_cast<unsigned int>(SX), static_cast<unsigned int>(SY)},
+                                          {static_cast<unsigned int>(outputPerClusterPaddings[index].top),
+                                           static_cast<unsigned int>(outputPerClusterPaddings[index].bottom),
+                                           static_cast<unsigned int>(outputPerClusterPaddings[index].left),
+                                           static_cast<unsigned int>(outputPerClusterPaddings[index].right)});
         // act_sparsity is not set in compiler, because the act input sparsity is unknown to compiler
         // SEP attributes unset. Track E#158943
         // halo not required for accurate cost, but better to have it. Track E#158946
@@ -656,6 +723,8 @@ std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterfa
         }
 
         setAutopadFields(vpunnLayer, params);
+
+        vpunnLayer.mpe_engine = getVPUNNMPEEngine(params.mpeEngine);
 
         vpunnLayers.push_back(std::move(vpunnLayer));
     }
@@ -811,7 +880,7 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
     const auto outputTensor = getVPUTensor(outputTensorShape, tileParams.outDataType, tileParams.outOrder);
 
     VPUNN::DPUWorkload vpunnDPUWorkload{
-            getVPUDeviceType(tileParams.arch),
+            tileParams.vpuDevice,
             opType,
             {inputTensor},
             {outputTensor},
@@ -876,11 +945,14 @@ VPUNN::DPUWorkload vpux::VPU::getDPUWorkload(const VPUIP::WorkloadCostParams& ti
 
     setAutopadFields(vpunnDPUWorkload, tileParams);
 
+    vpunnDPUWorkload.mpe_engine = getVPUNNMPEEngine(tileParams.mpeEngine);
+
     return vpunnDPUWorkload;
 }
 
 VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nceOp, config::ArchKind arch,
-                                                          int64_t numDPU, int64_t numTiles) {
+                                                          int64_t numDPU, int64_t numTiles,
+                                                          std::optional<VPU::MultiClusterStrategy> mcStrategy) {
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType());
     const auto inElemType = inputType.getElementType();
@@ -894,6 +966,8 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
 
     const auto pads = nceOp.getPad();
 
+    const auto vpuDevice = getVPUDeviceType(nceOp.getOperation());
+
     VPUIP::WorkloadCostParams params = {};
     params.inDataType = inElemType;
     params.outDataType = outElemType;
@@ -906,6 +980,7 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
     params.numDPU = numDPU;
     params.numTiles = numTiles;
     params.arch = arch;
+    params.vpuDevice = vpuDevice;
     params.fullInputShape = inputShape.raw();
     params.inputShape = inputShape.raw();
     params.outputShape = outputShape.raw();
@@ -917,6 +992,8 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
 
     // set ppe for workload activation
     params.ppeAttr = nceOp.getPPE();
+
+    params.mpeEngine = nceOp.getMpeEngine();
 
     // set sep
     if (VPU::isNCEWithSEPActivation(nceOp.getOperation())) {
@@ -934,8 +1011,7 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
     // set MC strategy
     auto op = nceOp.getOperation();
     if (auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(op)) {
-        auto strategy = clusteredOp.getMultiClusterStrategy();
-
+        auto strategy = mcStrategy.has_value() ? mcStrategy : clusteredOp.getMultiClusterStrategy();
         if (strategy.has_value()) {
             params.layerStrategy = strategy.value();
         } else if (hasDistributedTypesIO(op)) {
@@ -1103,37 +1179,12 @@ VPUIP::ShaveWorkloadCostParams vpux::VPU::getShaveWorkloadCostParam(VPU::SWOpInt
     return params;
 }
 
-vpux::VPU::LayerCostModelAnalysis::LayerCostModelAnalysis(mlir::ModuleOp module) {
-    auto arch = config::getArch(module);
-    _layerCostModel = VPU::CostModelConfig::createLayerCostModel(arch);
-}
-
-std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getVPUNNLayerCostModel() {
-    return _layerCostModel;
-}
-
-bool vpux::VPU::LayerCostModelAnalysis::isInvalidated(const mlir::AnalysisManager::PreservedAnalyses&) {
-    return !_preserved;
-}
-
-void vpux::VPU::LayerCostModelAnalysis::invalidate() {
-    _preserved = false;
-}
-
-std::shared_ptr<VPUNN::VPULayerCostModel> vpux::VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(
-        std::optional<std::reference_wrapper<vpux::VPU::LayerCostModelAnalysis>> analysis, config::ArchKind arch,
-        Logger log) {
-    if (analysis.has_value()) {
-        log.trace("Load preserved layer cost model");
-        return analysis.value().get().getVPUNNLayerCostModel();
-    }
-    log.warning("Create new layer cost model instance");
-    return VPU::CostModelConfig::createLayerCostModel(arch);
-}
+//
+// CostModelAnalysis
+//
 
 vpux::VPU::CostModelAnalysis::CostModelAnalysis(mlir::ModuleOp module) {
-    auto arch = config::getArch(module);
-    _costModel = VPU::CostModelConfig::createCostModel(arch);
+    _costModel = VPU::CostModelConfig::createCostModel(module->getContext());
 }
 
 std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelAnalysis::getVPUNNCostModel() {
@@ -1149,21 +1200,16 @@ void vpux::VPU::CostModelAnalysis::invalidate() {
 }
 
 std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelAnalysis::getOrCreateCostModel(
-        std::optional<std::reference_wrapper<vpux::VPU::CostModelAnalysis>> analysis, config::ArchKind arch,
+        std::optional<std::reference_wrapper<vpux::VPU::CostModelAnalysis>> analysis, mlir::MLIRContext* ctx,
         Logger log) {
     if (analysis.has_value()) {
         log.trace("Load preserved cost model");
         return analysis.value().get().getVPUNNCostModel();
     }
     log.warning("Create new cost model instance");
-    return VPU::CostModelConfig::createCostModel(arch);
+    return VPU::CostModelConfig::createCostModel(ctx);
 }
 
-vpux::VPU::ICostModelUtilsInterface* vpux::VPU::getICostModelUtilsInterface(mlir::MLIRContext* ctx) {
-    auto* dialect = ctx->getOrLoadDialect<vpux::VPU::VPUDialect>();
-    assert(dialect != nullptr && "VPU Dialect must be present in the context");
-
-    auto iface = dialect->getRegisteredInterface<vpux::VPU::ICostModelUtilsInterface>();
-    assert(iface != nullptr && "The requested interface must be registered in the context");
-    return iface;
+vpux::VPU::ICostModelUtilsInterface& vpux::VPU::getICostModelUtilsInterface(mlir::MLIRContext* ctx) {
+    return getCache<vpux::VPU::ICostModelUtilsInterface, vpux::VPU::VPUDialect>(ctx);
 }

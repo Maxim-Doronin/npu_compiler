@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -111,7 +111,7 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
             resCreate[i] = vclExecutableCreate(compiler, exeDesc, exeHandle);
         }};
         exeHandles.push_back(std::make_pair(exeHandle, blobSize));
-        compilationThreads.push_back(move(thread));
+        compilationThreads.push_back(std::move(thread));
     }
 
     /// Wait for all threads to finish
@@ -141,7 +141,7 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
         std::thread thread{[&blobSize, idx, &resGetBlobInit, exeHandle, blob] {
             resGetBlobInit[idx] = vclExecutableGetSerializableBlob(exeHandle, blob, &blobSize);
         }};
-        getBlobSizeThreads.push_back(move(thread));
+        getBlobSizeThreads.push_back(std::move(thread));
         idx++;
     }
     for (auto& getBlobSizeThread : getBlobSizeThreads) {
@@ -178,7 +178,7 @@ vcl_result_t VCLParallelCompilationTest::parallelCompilation(const std::string& 
         }};
         blobs.push_back(std::make_pair(blob, exeHandles[idx].second));
 
-        getBlobThreads.push_back(move(thread));
+        getBlobThreads.push_back(std::move(thread));
     }
     for (auto& getBlobThread : getBlobThreads) {
         getBlobThread.join();

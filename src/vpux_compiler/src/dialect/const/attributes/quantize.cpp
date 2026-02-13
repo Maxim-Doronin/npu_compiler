@@ -222,12 +222,3 @@ Const::Content vpux::Const::QuantizeAttr::transform(vpux::Const::Content& input)
     }
     VPUX_THROW("Unsupported {0} storage type", storageType);
 }
-
-//
-// QuantizeAttr::getStableHashValue
-//
-
-llvm::hash_code vpux::Const::QuantizeAttr::getStableHashValue() const {
-    const auto type = getTargetType();
-    return llvm::hash_combine(getMnemonic(), getStableHash(type));
-}

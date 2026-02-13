@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -124,10 +124,9 @@ mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::mat
     auto padsEnd = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
 
-    auto convolutionOp = rewriter.create<IE::ConvolutionOp>(
-            origOp.getLoc(), weightsReshapeOp.getOutput(), inputReshapeOp.getOutput(), nullptr, strides, padsBegin,
-            padsEnd, dilations, nullptr, nullptr, nullptr, nullptr, nullptr);
-
+    auto convolutionOp =
+            rewriter.create<IE::ConvolutionOp>(origOp.getLoc(), weightsReshapeOp.getOutput(),
+                                               inputReshapeOp.getOutput(), strides, padsBegin, padsEnd, dilations);
     auto newResultShape = getIntArrayAttr(ctx, SmallVector<int64_t>({batchSize, seqLength, weightsShape[1], 1}));
 
     auto resultReshapeOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "out_reshape"), convolutionOp.getOutput(),

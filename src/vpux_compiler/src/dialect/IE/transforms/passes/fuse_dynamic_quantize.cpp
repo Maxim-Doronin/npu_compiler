@@ -343,11 +343,11 @@ void FuseDynamicQuantizePass::safeRunOnFunc() {
         }
 
         const auto loc = outputConvert->getLoc();
-        auto dqOp = builder.create<IE::DynamicQuantizeOp>(appendLoc(loc, "_dq_linear"), reduceMinInput,
+        auto dqOp = builder.create<IE::DynamicQuantizeOp>(appendLoc(loc, "dq_linear"), reduceMinInput,
                                                           reduceMinOp.getOutput(), reduceMaxOp.getOutput());
-        auto dqZp = createConvert(builder, dqOp.getZeroPoint(), outputZp, appendLoc(loc, "_zp"));
-        auto dqOutput = createConvert(builder, dqOp.getOutput(), outputQuant, appendLoc(loc, "_output"));
-        auto dqScale = createConvert(builder, dqOp.getScale(), outputScale, appendLoc(loc, "_scale"));
+        auto dqZp = createConvert(builder, dqOp.getZeroPoint(), outputZp, appendLoc(loc, "zp"));
+        auto dqOutput = createConvert(builder, dqOp.getOutput(), outputQuant, appendLoc(loc, "output"));
+        auto dqScale = createConvert(builder, dqOp.getScale(), outputScale, appendLoc(loc, "scale"));
 
         outputQuant.replaceAllUsesWith(dqOutput);
         outputZp.replaceAllUsesWith(dqZp);

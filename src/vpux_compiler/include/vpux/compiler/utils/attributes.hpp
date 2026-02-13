@@ -13,6 +13,10 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 
+namespace mlir {
+class MLIRContext;
+}  // namespace mlir
+
 namespace vpux {
 
 /// These constants provide a centralized location for attribute names.
@@ -201,5 +205,7 @@ mlir::StringRef getResourceName(mlir::DenseResourceElementsAttr attr);
 /// Returns a dense_resource<> key. If the attribute is not a resource, an empty
 /// string is returned.
 mlir::StringRef getResourceName(mlir::ElementsAttr attr);
+
+int64_t getPositiveAxisInd(mlir::IntegerAttr axisIndAttr, int64_t rank);
 
 }  // namespace vpux

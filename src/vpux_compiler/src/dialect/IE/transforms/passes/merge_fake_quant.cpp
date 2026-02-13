@@ -1,14 +1,15 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -53,7 +54,7 @@ mlir::LogicalResult MergeQuantDequant::matchAndRewrite(IE::DequantizeOp dequanti
     int64_t levels = 0;
     mlir::RankedTensorType attrType;
     mlir::DenseElementsAttr rMinAttr, rMaxAttr;
-    getFakeQuantParams(quantizeType, levels, attrType, rMinAttr, rMaxAttr);
+    IE::getFakeQuantParams(quantizeType, levels, attrType, rMinAttr, rMaxAttr);
 
     mlir::IntegerAttr levelsAttr = nullptr;
     mlir::TypeAttr lowFpTypeAttr = nullptr;
@@ -67,12 +68,15 @@ mlir::LogicalResult MergeQuantDequant::matchAndRewrite(IE::DequantizeOp dequanti
         levelsAttr = getIntAttr(dequantizeOp.getContext(), levels);
     }
 
-    auto rMinOp = rewriter.create<Const::DeclareOp>(dequantizeOp.getLoc(), attrType, Const::ContentAttr::get(rMinAttr));
-    auto rMaxOp = rewriter.create<Const::DeclareOp>(dequantizeOp.getLoc(), attrType, Const::ContentAttr::get(rMaxAttr));
+    auto rMinOp = rewriter.create<Const::DeclareOp>(appendLoc(dequantizeOp.getLoc(), "low"), attrType,
+                                                    Const::ContentAttr::get(rMinAttr));
+    auto rMaxOp = rewriter.create<Const::DeclareOp>(appendLoc(dequantizeOp.getLoc(), "high"), attrType,
+                                                    Const::ContentAttr::get(rMaxAttr));
 
-    rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(dequantizeOp, quantizeOp.getInput(), rMinOp.getOutput(),
-                                                    rMaxOp.getOutput(), rMinOp.getOutput(), rMaxOp.getOutput(),
-                                                    levelsAttr, lowFpTypeAttr, IE::AutoBroadcastType::NUMPY);
+    auto fqOp = rewriter.create<IE::FakeQuantizeOp>(
+            appendLoc(dequantizeOp.getLoc(), "as_fq"), quantizeOp.getInput(), rMinOp.getOutput(), rMaxOp.getOutput(),
+            rMinOp.getOutput(), rMaxOp.getOutput(), levelsAttr, lowFpTypeAttr, IE::AutoBroadcastType::NUMPY);
+    rewriter.replaceAllOpUsesWith(dequantizeOp, fqOp);
 
     return mlir::success();
 }
@@ -115,8 +119,8 @@ mlir::LogicalResult MergeQuantCastDequant::matchAndRewrite(IE::DequantizeOp dequ
     int64_t inLevels = 0, outLevels = 0;
     mlir::RankedTensorType inAttrType, outAttrType;
     mlir::DenseElementsAttr inMinAttr, inMaxAttr, outMinAttr, outMaxAttr;
-    getFakeQuantParams(inputQuantizeType, inLevels, inAttrType, inMinAttr, inMaxAttr);
-    getFakeQuantParams(outputQuantizeCastType, outLevels, outAttrType, outMinAttr, outMaxAttr);
+    IE::getFakeQuantParams(inputQuantizeType, inLevels, inAttrType, inMinAttr, inMaxAttr);
+    IE::getFakeQuantParams(outputQuantizeCastType, outLevels, outAttrType, outMinAttr, outMaxAttr);
 
     mlir::IntegerAttr levelsAttr = nullptr;
     mlir::TypeAttr lowFpTypeAttr = nullptr;
@@ -134,19 +138,20 @@ mlir::LogicalResult MergeQuantCastDequant::matchAndRewrite(IE::DequantizeOp dequ
         levelsAttr = getIntAttr(dequantizeOp.getContext(), inLevels);
     }
 
-    auto inMinOp =
-            rewriter.create<Const::DeclareOp>(dequantizeOp.getLoc(), inAttrType, Const::ContentAttr::get(inMinAttr));
-    auto inMaxOp =
-            rewriter.create<Const::DeclareOp>(dequantizeOp.getLoc(), inAttrType, Const::ContentAttr::get(inMaxAttr));
-    auto outMinOp =
-            rewriter.create<Const::DeclareOp>(dequantizeOp.getLoc(), outAttrType, Const::ContentAttr::get(outMinAttr));
-    auto outMaxOp =
-            rewriter.create<Const::DeclareOp>(dequantizeOp.getLoc(), outAttrType, Const::ContentAttr::get(outMaxAttr));
+    auto inMinOp = rewriter.create<Const::DeclareOp>(appendLoc(dequantizeOp.getLoc(), "in_low"), inAttrType,
+                                                     Const::ContentAttr::get(inMinAttr));
+    auto inMaxOp = rewriter.create<Const::DeclareOp>(appendLoc(dequantizeOp.getLoc(), "in_high"), inAttrType,
+                                                     Const::ContentAttr::get(inMaxAttr));
+    auto outMinOp = rewriter.create<Const::DeclareOp>(appendLoc(dequantizeOp.getLoc(), "out_low"), outAttrType,
+                                                      Const::ContentAttr::get(outMinAttr));
+    auto outMaxOp = rewriter.create<Const::DeclareOp>(appendLoc(dequantizeOp.getLoc(), "out_high"), outAttrType,
+                                                      Const::ContentAttr::get(outMaxAttr));
 
     // lowFpType in not needed (nullptr), only levels are given
-    rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(dequantizeOp, quantizeOp.getInput(), inMinOp.getOutput(),
-                                                    inMaxOp.getOutput(), outMinOp.getOutput(), outMaxOp.getOutput(),
-                                                    levelsAttr, lowFpTypeAttr, IE::AutoBroadcastType::NUMPY);
+    auto fqOp = rewriter.create<IE::FakeQuantizeOp>(
+            appendLoc(dequantizeOp.getLoc(), "as_fq"), quantizeOp.getInput(), inMinOp.getOutput(), inMaxOp.getOutput(),
+            outMinOp.getOutput(), outMaxOp.getOutput(), levelsAttr, lowFpTypeAttr, IE::AutoBroadcastType::NUMPY);
+    rewriter.replaceAllOpUsesWith(dequantizeOp, fqOp);
 
     return mlir::success();
 }
@@ -173,9 +178,7 @@ void MergeFakeQuantPass::safeRunOnFunc() {
     patterns.add<MergeQuantCastDequant>(&ctx, _log);
 
     auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

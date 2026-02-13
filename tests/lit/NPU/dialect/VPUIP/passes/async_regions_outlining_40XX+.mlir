@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -87,30 +87,30 @@ module @AsyncRegionOutliningThroughDDR {
 //CHECK: DataInfo "output1" : tensor<1x32x256x128xf16>
 
 //CHECK:  func.func private @main_async_region1([[ARG0:%.+]]: memref<1x32x256x256xf16, #NHWC, @DDR>, [[ARG1:%.+]]: memref<1x32x256x256xf16, #NHWC, @DDR>, [[ARG2:%.+]]: memref<1x32x256x256xf16, #NHWC, @DDR>) -> memref<1x32x256x256xf16, #NHWC, @DDR> {
-//CHECK:     [[func_output_buffer:%.*]] = memref.alloc() : memref<1x32x256x256xf16, #NHWC, @DDR>
-//CHECK:     [[input_buffer_0:%.*]] = VPURT.AllocDistributed
-//CHECK:     [[input_buffer_1:%.*]] = VPURT.AllocDistributed
-//CHECK:     [[output_buffer:%.*]] = VPURT.AllocDistributed
+//CHECK:     [[func_output_buffer:%.+]] = memref.alloc() : memref<1x32x256x256xf16, #NHWC, @DDR>
+//CHECK:     [[input_buffer_0:%.+]] = VPURT.AllocDistributed
+//CHECK:     [[input_buffer_1:%.+]] = VPURT.AllocDistributed
+//CHECK:     [[output_buffer:%.+]] = VPURT.AllocDistributed
 
-//CHECK:     [[token:%.*]], [[bodyResults:%.*]] = async.execute
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token:%.+]], [[bodyResults:%.+]] = async.execute
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:                  inputs([[ARG0]]
 //CHECK-SAME:                  outputs([[input_buffer_0]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
 
-//CHECK:     [[token_0:%.*]], [[bodyResults_1:%.*]] = async.execute
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token_0:%.+]], [[bodyResults_1:%.+]] = async.execute
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:                  inputs([[ARG1]]
 //CHECK-SAME:                  outputs([[input_buffer_1]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
 
-//CHECK:     [[token_2:%.*]], [[bodyResults_3:%.*]] = async.execute [[[token]], [[token_0]]]
+//CHECK:     [[token_2:%.+]], [[bodyResults_3:%.+]] = async.execute [[[token]], [[token_0]]]
 //CHECK-SAME:    ([[bodyResults]] as [[ARG3:%[^:]+]]
 //CHECK-SAME:    [[bodyResults_1]] as [[ARG4:%[^:]+]]
-//CHECK:       [[ViewOp:%.*]] = VPUIP.ViewOp [[output_buffer]]
-//CHECK:       [[NCEOp:%.*]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 13984 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+//CHECK:       [[ViewOp:%.+]] = VPUIP.ViewOp [[output_buffer]]
+//CHECK:       [[NCEOp:%.+]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 13984 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
 //CHECK-SAME:                 input([[ARG3]]
 //CHECK-SAME:                 weights([[ARG4]]
 //CHECK-SAME:                 parent_input([[ARG3]]
@@ -118,39 +118,39 @@ module @AsyncRegionOutliningThroughDDR {
 //CHECK-SAME:                 outputs([[ViewOp]]
 //CHECK:       async.yield [[NCEOp]]
 
-//CHECK:     [[token_4:%.*]], [[bodyResults_5:%.*]] = async.execute [[[token_2]]] ([[bodyResults_3]] as [[ARG3:%[^:]+]]
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token_4:%.+]], [[bodyResults_5:%.+]] = async.execute [[[token_2]]] ([[bodyResults_3]] as [[ARG3:%[^:]+]]
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:                  inputs([[ARG3]]
 //CHECK-SAME:                  outputs([[func_output_buffer]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
 
-//CHECK:     [[token_6:%.*]], [[bodyResults_7:%.*]] = async.execute [[[token_4]]] ([[bodyResults_5]] as [[ARG3:%[^:]+]]
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token_6:%.+]], [[bodyResults_7:%.+]] = async.execute [[[token_4]]] ([[bodyResults_5]] as [[ARG3:%[^:]+]]
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:                  inputs([[ARG3]]
 //CHECK-SAME:                  outputs([[ARG2]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
 
-//CHECK:     [[func_output:%.*]] = async.await [[bodyResults_7]] : !async.value<memref<1x32x256x256xf16, #NHWC, @DDR>>
+//CHECK:     [[func_output:%.+]] = async.await [[bodyResults_7]] : !async.value<memref<1x32x256x256xf16, #NHWC, @DDR>>
 //CHECK:     return [[func_output]]
 
 //CHECK:   func.func private @main_async_region2([[ARG0:%.+]]: memref<1x32x256x256xf16, #NHWC, @DDR>, [[ARG1:%.+]]: memref<1x32x256x128xf16, #NHWC, @DDR>)
 //CHECK-SAME:   -> memref<1x32x256x128xf16, #NHWC, @DDR> {
-//CHECK:     [[NCE_INPUT:%.*]] = VPURT.AllocDistributed
-//CHECK:     [[NCE_OUTPUT_CMX:%.*]] = VPURT.AllocDistributed
-//CHECK:     [[NCE_OUTPUT_DDR:%.*]] = memref.alloc() : memref<1x32x256x128xf16, #NHWC, @DDR>
+//CHECK:     [[NCE_INPUT:%.+]] = VPURT.AllocDistributed
+//CHECK:     [[NCE_OUTPUT_CMX:%.+]] = VPURT.AllocDistributed
+//CHECK:     [[NCE_OUTPUT_DDR:%.+]] = memref.alloc() : memref<1x32x256x128xf16, #NHWC, @DDR>
 
-//CHECK:     [[token:%.*]], [[bodyResults:%.*]] = async.execute
-//CHECK:       [[SUBVIEW:%.*]] = VPUIP.SubView [[ARG0]] [0, 0, 0, 0] [1, 32, 256, 128]
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token:%.+]], [[bodyResults:%.+]] = async.execute
+//CHECK:       [[SUBVIEW:%.+]] = VPUIP.SubView [[ARG0]] [0, 0, 0, 0] [1, 32, 256, 128]
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:       inputs([[SUBVIEW]]
 //CHECK-SAME:       outputs([[NCE_INPUT]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
 
-//CHECK:     [[token_0:%.*]], [[bodyResults_1:%.*]] = async.execute [[[token]]] ([[bodyResults]] as [[ARG2:%[^:]+]]
-//CHECK:       [[NCEOp:%.*]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 22748 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<AVEPOOL>}
+//CHECK:     [[token_0:%.+]], [[bodyResults_1:%.+]] = async.execute [[[token]]] ([[bodyResults]] as [[ARG2:%[^:]+]]
+//CHECK:       [[NCEOp:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 22748 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<AVEPOOL>}
 //CHECK-SAME:       input([[ARG2]]
 //CHECK-SAME:       parent_input([[ARG2]]
 //CHECK-SAME:       parent_output([[NCE_OUTPUT_CMX]]
@@ -158,50 +158,50 @@ module @AsyncRegionOutliningThroughDDR {
 //CHECK:       async.yield [[NCEOp]]
 //CHECK:     }
 
-//CHECK:     [[token_2:%.*]], [[bodyResults_3:%.*]] = async.execute [[[token_0]]] ([[bodyResults_1]] as [[ARG2:%[^:]+]]
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token_2:%.+]], [[bodyResults_3:%.+]] = async.execute [[[token_0]]] ([[bodyResults_1]] as [[ARG2:%[^:]+]]
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:       inputs([[ARG2]]
 //CHECK-SAME:       outputs([[NCE_OUTPUT_DDR]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
 
-//CHECK:     [[token_4:%.*]], [[bodyResults_5:%.*]] = async.execute [[[token_2]]] ([[bodyResults_3]] as [[ARG2:%[^:]+]]
-//CHECK:       [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:     [[token_4:%.+]], [[bodyResults_5:%.+]] = async.execute [[[token_2]]] ([[bodyResults_3]] as [[ARG2:%[^:]+]]
+//CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:       inputs([[ARG2]]
 //CHECK-SAME:       outputs([[ARG1]]
 //CHECK:       async.yield [[NNDMA]]
 //CHECK:     }
-//CHECK:     [[func_output:%.*]] = async.await [[bodyResults_5]]
+//CHECK:     [[func_output:%.+]] = async.await [[bodyResults_5]]
 //CHECK:     return [[func_output]]
 
 //CHECK:  func.func @main([[ARG0:%.+]]: memref<1x32x256x256xf16, #NHWC, @DDR>, [[ARG1:%.+]]: memref<1x32x256x256xf16, #NHWC, @DDR>, [[ARG2:%.+]]: memref<1x32x256x128xf16, #NHWC, @DDR>) -> memref<1x32x256x128xf16, #NHWC, @DDR> {
-//CHECK:    [[FUNC1_OUTPUT_BUFFER:%.*]] = memref.alloc() : memref<1x32x256x256xf16, #NHWC, @DDR>
-//CHECK:    [[FUNC2_OUTPUT_BUFFER:%.*]] = memref.alloc() : memref<1x32x256x128xf16, #NHWC, @DDR>
-//CHECK:    [[SPILL_READ_DMA:%.*]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
-//CHECK:    [[token:%.*]], [[bodyResults:%.*]] = async.execute -> !async.value<memref<1x32x256x256xf16, #NHWC, @DDR>> attributes {VPUIP.executor = @NCE, "async-deps-index" = 0 : i64} {
-//CHECK:      [[FUNC_RES:%.*]] = func.call @main_async_region1([[ARG0]], [[ARG1]], [[FUNC1_OUTPUT_BUFFER]]) : (memref<1x32x256x256xf16, #NHWC, @DDR>, memref<1x32x256x256xf16, #NHWC, @DDR>, memref<1x32x256x256xf16, #NHWC, @DDR>) -> memref<1x32x256x256xf16, #NHWC, @DDR>
+//CHECK:    [[FUNC1_OUTPUT_BUFFER:%.+]] = memref.alloc() : memref<1x32x256x256xf16, #NHWC, @DDR>
+//CHECK:    [[FUNC2_OUTPUT_BUFFER:%.+]] = memref.alloc() : memref<1x32x256x128xf16, #NHWC, @DDR>
+//CHECK:    [[SPILL_READ_DMA:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
+//CHECK:    [[token:%.+]], [[bodyResults:%.+]] = async.execute -> !async.value<memref<1x32x256x256xf16, #NHWC, @DDR>> attributes {VPUIP.executor = @NCE, "async-deps-index" = 0 : i64} {
+//CHECK:      [[FUNC_RES:%.+]] = func.call @main_async_region1([[ARG0]], [[ARG1]], [[FUNC1_OUTPUT_BUFFER]]) : (memref<1x32x256x256xf16, #NHWC, @DDR>, memref<1x32x256x256xf16, #NHWC, @DDR>, memref<1x32x256x256xf16, #NHWC, @DDR>) -> memref<1x32x256x256xf16, #NHWC, @DDR>
 //CHECK:      async.yield [[FUNC_RES]] : memref<1x32x256x256xf16, #NHWC, @DDR>
 //CHECK:    }
 
-//CHECK:    [[token_1:%.*]], [[bodyResults_2:%.*]] = async.execute [[[token]]] ([[bodyResults]] as [[ARG3:%[^:]+]]: !async.value<memref<1x32x256x256xf16, #NHWC, @DDR>>) -> !async.value<memref<1x32x256x128xf16, #NHWC, @DDR>>
+//CHECK:    [[token_1:%.+]], [[bodyResults_2:%.+]] = async.execute [[[token]]] ([[bodyResults]] as [[ARG3:%[^:]+]]: !async.value<memref<1x32x256x256xf16, #NHWC, @DDR>>) -> !async.value<memref<1x32x256x128xf16, #NHWC, @DDR>>
 //CHECK-SAME:     attributes {VPUIP.executor = @NCE, "async-deps-index" = 1 : i64} {
-//CHECK:      [[FUNC_RES:%.*]] = func.call @main_async_region2([[ARG3]], [[FUNC2_OUTPUT_BUFFER]]) : (memref<1x32x256x256xf16, #NHWC, @DDR>, memref<1x32x256x128xf16, #NHWC, @DDR>) -> memref<1x32x256x128xf16, #NHWC, @DDR>
+//CHECK:      [[FUNC_RES:%.+]] = func.call @main_async_region2([[ARG3]], [[FUNC2_OUTPUT_BUFFER]]) : (memref<1x32x256x256xf16, #NHWC, @DDR>, memref<1x32x256x128xf16, #NHWC, @DDR>) -> memref<1x32x256x128xf16, #NHWC, @DDR>
 //CHECK:      async.yield [[FUNC_RES]] : memref<1x32x256x128xf16, #NHWC, @DDR>
 //CHECK:    }
-//CHECK:   [[token_3:%.*]], [[bodyResults_4:%.*]] = async.execute [[[token_1]]] ([[bodyResults_2]] as [[ARG3:%[^:]+]]: !async.value<memref<1x32x256x128xf16, #NHWC, @DDR>>) -> !async.value<!VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
-//CHECK:      [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:   [[token_3:%.+]], [[bodyResults_4:%.+]] = async.execute [[[token_1]]] ([[bodyResults_2]] as [[ARG3:%[^:]+]]: !async.value<memref<1x32x256x128xf16, #NHWC, @DDR>>) -> !async.value<!VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
+//CHECK:      [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:                  inputs([[ARG3]]
 //CHECK-SAME:                  outputs([[SPILL_READ_DMA]]
 //CHECK:      async.yield [[NNDMA]] : !VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
 //CHECK:    }
-//CHECK:    [[token_5:%.*]], [[bodyResults_6:%.*]] = async.execute [[[token_3]]] ([[bodyResults_4]] as [[ARG3:%[^:]+]]: !async.value<!VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
-//CHECK:      [[NNDMA:%.*]] = VPUIP.NNDMA
+//CHECK:    [[token_5:%.+]], [[bodyResults_6:%.+]] = async.execute [[[token_3]]] ([[bodyResults_4]] as [[ARG3:%[^:]+]]: !async.value<!VPUIP.DistributedBuffer<1x32x256x128xf16, #NHWC, @CMX_NN
+//CHECK:      [[NNDMA:%.+]] = VPUIP.NNDMA
 //CHECK-SAME:                  inputs([[ARG3]]
 //CHECK-SAME:                  outputs([[ARG2]]
 //CHECK:      async.yield [[NNDMA]] : memref<1x32x256x128xf16, #NHWC, @DDR>
 //CHECK:    }
 
-//CHECK:    [[FUNC_OUTPUT:%.*]] = async.await [[bodyResults_6]] : !async.value<memref<1x32x256x128xf16, #NHWC, @DDR>>
+//CHECK:    [[FUNC_OUTPUT:%.+]] = async.await [[bodyResults_6]] : !async.value<memref<1x32x256x128xf16, #NHWC, @DDR>>
 //CHECK:    return [[FUNC_OUTPUT]] : memref<1x32x256x128xf16, #NHWC, @DDR>
 //CHECK:  }
 

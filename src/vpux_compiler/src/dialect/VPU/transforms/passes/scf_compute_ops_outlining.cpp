@@ -1,21 +1,22 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/outlining_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/abstract_tree.hpp"
 #include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/outlining_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/Block.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/Visitors.h>
 
@@ -189,7 +190,7 @@ mlir::func::FuncOp ScfBlockUpdater::buildComputeFunctionOp(const BlockIOAndOps& 
     mlir::TypeRange blockOutputTypes(blockContents.outputArgs.getArrayRef());
     auto* ctx = _moduleOp.getContext();
     const auto funcType = mlir::FunctionType::get(ctx, blockInputTypes, blockOutputTypes);
-    const auto funcLoc = appendLoc(_entryPointFuncOp.getLoc(), "_compute_group{0}", funcIndex);
+    const auto funcLoc = appendLoc(_entryPointFuncOp.getLoc(), "compute_group{0}", funcIndex);
     auto funcName = vpux::formatv("{0}_func{1}", _entryPointFuncOp.getName().str(), std::to_string(funcIndex));
     auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcName.str(), funcType);
     func.setPrivate();
@@ -221,7 +222,7 @@ mlir::func::FuncOp ScfBlockUpdater::buildComputeFunctionOp(const BlockIOAndOps& 
         funcReturnOps.push_back(operandMapper[output]);
     }
 
-    const auto returnLoc = appendLoc(_entryPointFuncOp.getLoc(), "_part{0}_return", funcIndex);
+    const auto returnLoc = appendLoc(_entryPointFuncOp.getLoc(), "part{0}_return", funcIndex);
     builder.create<mlir::func::ReturnOp>(returnLoc, funcReturnOps);
     return func;
 }
@@ -240,7 +241,7 @@ void ScfBlockUpdater::buildCallOp(const BlockIOAndOps& blockContents, mlir::func
     OpBuilderLogger builderLog(_log.nest());
     auto builder = mlir::OpBuilder::atBlockBegin(&_entryPointFuncOp.getBody().front(), &builderLog);
     builder.setInsertionPoint(blockContents.operations.front());
-    const auto callLoc = appendLoc(blockContents.operations.front()->getLoc(), "_part{0}_call", funcIndex);
+    const auto callLoc = appendLoc(blockContents.operations.front()->getLoc(), "part{0}_call", funcIndex);
     auto callOp = builder.create<mlir::func::CallOp>(callLoc, funcOp, funcInputOperands);
     for (auto outputPair : llvm::zip(blockContents.outputArgs, callOp.getResults())) {
         auto [oldOutput, newOutput] = outputPair;
@@ -377,11 +378,41 @@ std::vector<ScfBlockData> findChildren(const ScfOpHierarchy::Node& node) {
 //
 // safeRunOnModule
 //
+
+void moveExtractSliceBeforeVPUInSCFFor(mlir::scf::ForOp forOp) {
+    mlir::Block& block = *forOp.getBody();
+    mlir::Operation* firstVPUOp = nullptr;
+    for (auto& op : block) {
+        if (mlir::isa<vpux::VPU::VPUDialect>(op.getDialect())) {
+            firstVPUOp = &op;
+            break;
+        }
+    }
+
+    if (!firstVPUOp) {
+        return;
+    }
+
+    for (auto& op : llvm::make_early_inc_range(block)) {
+        if (mlir::isa<mlir::tensor::ExtractSliceOp>(op)) {
+            if (op.isBeforeInBlock(firstVPUOp)) {
+                continue;
+            }
+            op.moveBefore(firstVPUOp);
+        }
+    }
+}
+
 void ScfComputeOpsOutliningPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     net::NetworkInfoOp netInfo;
     mlir::func::FuncOp mainFuncOp;
     net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+
+    // move all tensor.extract slices before VPU ops to avoid unnecessary splitting of compute blocks
+    mainFuncOp.walk([&](mlir::scf::ForOp forOp) {
+        moveExtractSliceBeforeVPUInSCFFor(forOp);
+    });
 
     // construct the tree
     auto computeOpsVec = getComputeOps(mainFuncOp);
@@ -405,6 +436,8 @@ void ScfComputeOpsOutliningPass::safeRunOnModule() {
             op->erase();
         }
     });
+
+    config::setPureHostCompileFuncAttribute(mainFuncOp);
 }
 
 }  // namespace

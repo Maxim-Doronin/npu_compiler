@@ -53,9 +53,9 @@ mlir::FailureOr<SymbolizationResult> DPUInvariantRewriter::symbolize(VPUMI37XX::
             weightsSparsityMapSym, weightTableSym, parentInputSym, parentInputSparsityMapSym, parentInputSETableSym,
             parentOutputSym, outputSymsAttr, profilingDataSym, waitAttr, updateAttr, op.getNceTaskTypeAttr(),
             op.getEltwiseTypeAttr(), op.getMpeFrequentModeAttr(), op.getKernelSizeAttr(), op.getKernelStridesAttr(),
-            op.getKernelPaddingAttr(), op.getIsContinuedAttr(), op.getCmSpPatternAttr(),
-            op.getInputChannelsCompressionAttr(), op.getIsZeroOffsetWeightsTableAttr(), op.getIsSegmentedAttr(),
-            op.getOutChannelOffsetAttr(), op.getStartAfterAttr(), op.getCleanAfterAttr());
+            op.getKernelPaddingAttr(), op.getIsContinued(), op.getCmSpPatternAttr(), op.getInputChannelsCompression(),
+            op.getIsZeroOffsetWeightsTable(), op.getIsSegmented(), op.getOutChannelOffsetAttr(), op.getStartAfterAttr(),
+            op.getCleanAfterAttr());
 
     {
         auto& ppeRegion = invariant.getPpe();

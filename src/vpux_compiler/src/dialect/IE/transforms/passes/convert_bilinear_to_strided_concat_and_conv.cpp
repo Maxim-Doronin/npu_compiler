@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
@@ -74,11 +75,8 @@ mlir::Value createAverageConv(mlir::Value input, ShapeRef kernelShape, mlir::Loc
     const auto convInType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto convOutType = convInType.changeShape(outputShape);
 
-    auto averageConv = rewriter.create<IE::ConvolutionOp>(
-            newLoc, convOutType, input, weight, /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr,
-            /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr,
-            /*staticScaleAttr=*/nullptr, /*outputPaddingAttr=*/nullptr, /*inputPaddingAttr=*/nullptr);
-
+    auto averageConv = rewriter.create<IE::ConvolutionOp>(newLoc, convOutType, input, weight, stridesAttr, padBeginAttr,
+                                                          padEndAttr, dilationsAttr);
     return averageConv.getOutput();
 }
 
@@ -107,7 +105,7 @@ auto createAverageDWConv(mlir::Value input, ShapeRef kernelShape, mlir::Location
                                             inputFQ.getLowFpType(), inputFQ.getAutoBroadcastAttr(), rewriter);
     }
 
-    auto newLoc = appendLoc(loc, "_interpolate_GroupConv_{0}_{1}", kernelShape[Dim(0)], kernelShape[Dim(1)]);
+    auto newLoc = appendLoc(loc, "interpolate_GroupConv_{0}_{1}", kernelShape[Dim(0)], kernelShape[Dim(1)]);
     auto averageDWConv = rewriter.create<IE::GroupConvolutionOp>(
             newLoc, input, weights, /*bias=*/nullptr, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr, groupAttr,
             /*post_opAttr=*/nullptr, /*clampAttr=*/nullptr, /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
@@ -384,8 +382,7 @@ mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpola
         auto DWConv = createAverageDWConv(input, kernelShape, appendLoc(location, locSuffix), inputFQ, convStrideH,
                                           convStrideW, rewriter, _log);
         if (outputFQ != nullptr) {
-            DWConv = vpux::IE::createFQ(rewriter, DWConv, outputFQ,
-                                        takeOpLoc(outputFQ, StringLiteral("fq_{0}_out"), locSuffix));
+            DWConv = vpux::IE::createFQ(rewriter, DWConv, outputFQ, takeOpLoc(outputFQ, "fq_{0}_out", locSuffix));
         }
         return DWConv;
     };
@@ -575,9 +572,8 @@ ConvertBilinearToStridedConcatAndConvPass::SmallChannelPytorchHalfPixelBilinearI
 
         auto nearestInterpolateOut =
                 heightSlices.size() != 1
-                        ? rewriter.create<IE::ConcatOp>(
-                                          takeOpLoc(origOp, StringLiteral("{0}_slices_concat"), locSuffix),
-                                          heightSlices, Dims4D::Act::H, 1, upSampleH)
+                        ? rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "{0}_slices_concat", locSuffix), heightSlices,
+                                                        Dims4D::Act::H, 1, upSampleH)
                                   .getOutput()
                         : heightSlices.front();
 
@@ -588,9 +584,8 @@ ConvertBilinearToStridedConcatAndConvPass::SmallChannelPytorchHalfPixelBilinearI
         const Shape outputShapeOnH = {inputShape[vpux::Dims4D::Act::N], inputShape[vpux::Dims4D::Act::C],
                                       inputShape[vpux::Dims4D::Act::H] * scaleH, inputShape[vpux::Dims4D::Act::W]};
 
-        return createAverageConv(tensorPadded, {convKernelShapeH, 1},
-                                 takeOpLoc(origOp, StringLiteral("{0}_avgconv"), locSuffix), convStrideH,
-                                 outputShapeOnH, rewriter, _log);
+        return createAverageConv(tensorPadded, {convKernelShapeH, 1}, takeOpLoc(origOp, "{0}_avgconv", locSuffix),
+                                 convStrideH, outputShapeOnH, rewriter, _log);
     };
 
     auto dstOrder = DimsOrder::NHWC.toAffineMap(getContext());
@@ -777,7 +772,7 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
         // Use ExecutorOpInterface to determine if SHAVE is preferred
         if (auto iface = mlir::dyn_cast<IE::ExecutorOpInterface>(op.getOperation())) {
             auto execs = iface.getPreferredExecutors();
-            if (!execs.empty() && execs[0] == VPU::ExecutorKind::SHAVE_ACT) {
+            if (!execs.empty() && execs[0] == config::ExecutorKind::SHAVE_ACT) {
                 return true;
             }
         }

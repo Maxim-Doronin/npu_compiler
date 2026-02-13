@@ -59,8 +59,8 @@ BarrierInfoMaps graphToCheckBarrierWlmHandler() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType2{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType2{config::ExecutorKind::DMA_NN, 1};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType1] = {0, 2, 4, 5, 6};
     barrierMapsConfig.taskQueueTypeMap[dmaType2] = {1, 3};
@@ -134,8 +134,8 @@ BarrierInfoMaps graphToCheckBarrierWlmHandlerWithDepsTwoBranches() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {2, 4, 6};
     barrierMapsConfig.taskQueueTypeMap[dpuType] = {0, 1, 3, 5, 7, 8};
@@ -200,8 +200,8 @@ BarrierInfoMaps graphToCheckBarrierWlmHandlerWithDepsTwoBranchesThroughFifo() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 1, 3};
     barrierMapsConfig.taskQueueTypeMap[dpuType] = {2, 4, 5, 6};
@@ -289,10 +289,10 @@ BarrierInfoMaps graphToCheckBarrierWlmHandlerWithMultipleBranches() {
 
     fillProducersAndConsumers(barrierMapsConfig);
 
-    const VPURT::TaskQueueType dpuType1{VPU::ExecutorKind::DPU, 0};
-    const VPURT::TaskQueueType dpuType2{VPU::ExecutorKind::DPU, 1};
-    const VPURT::TaskQueueType dmaType1{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dmaType2{VPU::ExecutorKind::DMA_NN, 1};
+    const VPURT::TaskQueueType dpuType1{config::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dpuType2{config::ExecutorKind::DPU, 1};
+    const VPURT::TaskQueueType dmaType1{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dmaType2{config::ExecutorKind::DMA_NN, 1};
 
     barrierMapsConfig.taskQueueTypeMap[dpuType1] = {0, 1, 2, 5, 8, 10, 11};
     barrierMapsConfig.taskQueueTypeMap[dpuType2] = {4, 7, 9};
@@ -383,8 +383,8 @@ BarrierInfoMaps graphToCheckBarrierWlmHandlerWithGraphSplit() {
     fillProducersAndConsumers(barrierMapsConfig);
     barrierMapsConfig.syncTasksIds = {3, 7};
 
-    const VPURT::TaskQueueType dmaType{VPU::ExecutorKind::DMA_NN, 0};
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dmaType{config::ExecutorKind::DMA_NN, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 1, 3, 4, 6, 7, 8, 10};
     barrierMapsConfig.taskQueueTypeMap[dpuType] = {2, 5, 9};

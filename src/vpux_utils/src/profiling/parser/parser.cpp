@@ -1,21 +1,23 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/utils/profiling/parser/parser.hpp"
-#include "vpux/utils/profiling/parser/records.hpp"
-
-#include "vpux/utils/profiling/reports/api.hpp"  // getLayerInfo
-
 #include "vpux/utils/core/error.hpp"
+#include "vpux/utils/core/range.hpp"
 #include "vpux/utils/profiling/common.hpp"
 #include "vpux/utils/profiling/metadata.hpp"
+#include "vpux/utils/profiling/parser/records.hpp"
+#include "vpux/utils/profiling/reports/api.hpp"  // getLayerInfo
 #include "vpux/utils/profiling/taskinfo.hpp"
 #include "vpux/utils/profiling/tasknames.hpp"
 
+#include "flatbuffers/flatbuffers.h"
 #include "schema/profiling_generated.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,7 +26,7 @@ namespace vpux::profiling {
 namespace {
 
 void fillTaskInfoWithParsedRawRecords(std::vector<TaskInfo>& vec, const RawProfilingRecords& rawTasks,
-                                      FrequenciesSetup frequenciesSetup) {
+                                      const FrequenciesSetup& frequenciesSetup) {
     for (const auto& task : rawTasks) {
         vec.push_back(task->getTaskInfo(frequenciesSetup));
     }
@@ -136,7 +138,7 @@ RawProfilingRecords parseDmaSwTaskProfiling(
             auto outputBin = reinterpret_cast<const DMA27Data_t*>(output);
             const auto record = outputBin[recordNumber];
             rawRecords.push_back(std::make_shared<RawProfilingDMA27Record>(
-                    record, taskMetadata, lastProfilingRecordWaitBarriers, updateBarriers, recordNumber));
+                    record, taskMetadata, recordNumber, lastProfilingRecordWaitBarriers, updateBarriers));
         } else {
             lastProfilingRecordWaitBarriers = RawProfilingRecord::getWaitBarriersFromTask(taskMetadata);
         }
@@ -248,6 +250,9 @@ RawProfilingRecords parseDPUTaskProfiling(
     TaskLocationDescriptor bufferAndClusterDescriptor(0, 0);
     for (const ProfilingFB::DPUTask* taskMeta : profInfoAggregator) {
         VPUX_THROW_UNLESS(taskMeta->taskId() < dpuTaskList->size() + 1, "Invalid profiling data");
+        const auto* fbVariantArray = taskMeta->variantInfo();
+        const auto* fbTtensorInfo = taskMeta->tensorInfo();
+        std::shared_ptr<const TensorInfo> tensorInfo(fbTtensorInfo ? fbTtensorInfo->UnPack() : nullptr);
 
         const TaskLocationDescriptor newDescriptor{taskMeta->bufferId(), taskMeta->clusterId()};
         if (newDescriptor != bufferAndClusterDescriptor) {
@@ -259,7 +264,17 @@ RawProfilingRecords parseDPUTaskProfiling(
             if (variantId < taskMeta->numVariants()) {
                 const auto inClusterIndex = currentPos - clusterBeginning;
                 VPUX_THROW_WHEN(currentPos >= outputLen / recordSize, "Profiling index is out of range");
-                if (device >= TargetDevice::TargetDevice_VPUX40XX) {
+                VPUX_THROW_WHEN(fbVariantArray && variantId >= fbVariantArray->size(), "Variant ID {0} is out of range",
+                                variantId);
+                std::unique_ptr<const DPUVariantInfo> variantInfo(
+                        fbVariantArray ? fbVariantArray->Get(variantId)->UnPack() : nullptr);
+                if (device == TargetDevice::TargetDevice_VPUX37XX) {
+                    const HwpDpu27Mode0Data_t dpuTimings =
+                            reinterpret_cast<const HwpDpu27Mode0Data_t*>(output)[currentPos];
+                    record = std::make_shared<RawProfilingDPUHW27Record>(dpuTimings, taskMeta, variantId, currentPos,
+                                                                         inClusterIndex, std::move(tensorInfo),
+                                                                         std::move(variantInfo));
+                } else {
                     const HwpDpuIduOduData_t dpuTimings =
                             reinterpret_cast<const HwpDpuIduOduData_t*>(output)[currentPos];
                     const auto taskWloadId = taskMeta->workloadIds()->Get(variantId);
@@ -270,23 +285,19 @@ RawProfilingRecords parseDPUTaskProfiling(
                                dpuTimings.idu_wl_id, dpuTimings.odu_wl_id);
 
                     if (device == TargetDevice::TargetDevice_VPUX40XX) {
-                        record = std::make_shared<RawProfilingDPUHW40Record>(dpuTimings, taskMeta, variantId,
-                                                                             currentPos, inClusterIndex);
-                    } else if (device >= TargetDevice::TargetDevice_VPUX50XX) {
-                        record = std::make_shared<RawProfilingDPUHW50Record>(dpuTimings, taskMeta, variantId,
-                                                                             currentPos, inClusterIndex);
+                        record = std::make_shared<RawProfilingDPUHW40Record>(
+                                dpuTimings, taskMeta, variantId, currentPos, inClusterIndex, std::move(tensorInfo),
+                                std::move(variantInfo));
+                    } else {
+                        record = std::make_shared<RawProfilingDPUHW50Record>(
+                                dpuTimings, taskMeta, variantId, currentPos, inClusterIndex, std::move(tensorInfo),
+                                std::move(variantInfo));
                     }
-                } else if (device == TargetDevice::TargetDevice_VPUX37XX) {
-                    const HwpDpu27Mode0Data_t dpuTimings =
-                            reinterpret_cast<const HwpDpu27Mode0Data_t*>(output)[currentPos];
-                    record = std::make_shared<RawProfilingDPUHW27Record>(dpuTimings, taskMeta, variantId, currentPos,
-                                                                         inClusterIndex);
                 }
                 // Check if record is initialized before using it
-                if (record != nullptr) {
-                    record->checkData(!ignoreSanitizationErrors, log);
-                    rawRecords.push_back(record);
-                }
+                VPUX_THROW_WHEN(record == nullptr, "Failed to create DPU profiling record");
+                record->checkData(!ignoreSanitizationErrors, log);
+                rawRecords.push_back(record);
             }
             // continue increment of currentPos to walk over non-used data
             ++currentPos;
@@ -392,7 +403,8 @@ RawDataLayout getRawDataLayoutFB(const ProfilingFB::ProfilingBuffer* profBuffer,
     return sections;
 }
 
-RawProfilingRecords makeFakeDpuInvariants(const RawProfilingRecords& variants) {
+RawProfilingRecords makeFakeDpuInvariants(const RawProfilingRecords& variants,
+                                          const FrequenciesSetup& frequenciesSetup) {
     RawProfilingRecords invariants;
 
     // Grouping of variants into one invariant
@@ -415,7 +427,9 @@ RawProfilingRecords makeFakeDpuInvariants(const RawProfilingRecords& variants) {
             variants.push_back(it->second);
             ++it;
         }
-        invariants.push_back(std::make_shared<ArrayRecord>(name, variants));
+        auto dpuTask = std::dynamic_pointer_cast<RawProfilingDPURecord>(variants[0]);
+        auto tensorInfo = dpuTask->getTensorInfo();
+        invariants.push_back(std::make_shared<FakeInvariantRecord>(name, variants, frequenciesSetup, tensorInfo));
     }
 
     return invariants;
@@ -441,7 +455,7 @@ std::vector<TaskInfo> convertRawTasksToTaskInfo(const RawProfilingData& rawTasks
 
     fillTaskInfoWithParsedRawRecords(swTaskInfo, rawTasks.swTasks, frequenciesSetup);
 
-    RawProfilingRecords dpuInvariantTasks = makeFakeDpuInvariants(rawTasks.dpuTasks);
+    RawProfilingRecords dpuInvariantTasks = makeFakeDpuInvariants(rawTasks.dpuTasks, frequenciesSetup);
     fillTaskInfoWithParsedRawRecords(dpuTaskInfo, dpuInvariantTasks, frequenciesSetup);
     if (verbosity >= VerbosityLevel::MEDIUM) {
         fillTaskInfoWithParsedRawRecords(dpuTaskInfo, rawTasks.dpuTasks, frequenciesSetup);
@@ -472,10 +486,7 @@ std::vector<TaskInfo> convertRawTasksToTaskInfo(const RawProfilingData& rawTasks
             // If DMA profiling enabled difference is 0, otherwise setting to earliest task without call to
             // getTimersOffset to avoid counting twice. Timer also can be shared with SW tasks
             // List of other engines, which share timer with DMA
-            std::vector<std::optional<size_t>> otherEngineStarts = {earliestM2iNs};
-            if (frequenciesSetup.hasSharedDmaSwCounter) {
-                otherEngineStarts.push_back(earliestSwNs);
-            }
+            std::vector<std::optional<size_t>> otherEngineStarts = {earliestM2iNs, earliestSwNs};
             size_t earliestTaskNs = findEarliestTask(earliestDpuNs.value(), otherEngineStarts);
             dma2dpuOffset = earliestDmaNs.has_value() ? 0 : -static_cast<int64_t>(earliestTaskNs);
         }
@@ -483,18 +494,16 @@ std::vector<TaskInfo> convertRawTasksToTaskInfo(const RawProfilingData& rawTasks
     }
 
     if (!swTaskInfo.empty()) {
-        int64_t dma2SwOffset = 0;
-        if (frequenciesSetup.hasSharedDmaSwCounter) {
-            // If DMA profiling enabled difference is 0, otherwise setting to earliest task without call to
-            // getTimersOffset to avoid counting twice. Timer also can be shared with SW tasks
-            // List of other engines, which share timer with DMA
-            std::vector<std::optional<size_t>> otherEngineStarts = {earliestM2iNs};
-            if (frequenciesSetup.hasSharedDmaDpuCounter) {
-                otherEngineStarts.push_back(earliestDpuNs);
-            }
-            size_t earliestTaskNs = findEarliestTask(earliestSwNs.value(), otherEngineStarts);
-            dma2SwOffset = earliestDmaNs.has_value() ? 0 : -static_cast<int64_t>(earliestTaskNs);
+        // If DMA profiling enabled difference is 0, otherwise setting to earliest task without call to
+        // getTimersOffset to avoid counting twice. Timer also can be shared with SW tasks
+        // List of other engines, which share timer with DMA
+        std::vector<std::optional<size_t>> otherEngineStarts = {earliestM2iNs};
+        if (frequenciesSetup.hasSharedDmaDpuCounter) {
+            otherEngineStarts.push_back(earliestDpuNs);
         }
+        size_t earliestTaskNs = findEarliestTask(earliestSwNs.value(), otherEngineStarts);
+        int64_t dma2SwOffset = earliestDmaNs.has_value() ? 0 : -static_cast<int64_t>(earliestTaskNs);
+
         adjustZeroPoint(swTaskInfo, dma2SwOffset, earliestDmaNs);
     }
 

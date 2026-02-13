@@ -305,10 +305,18 @@ mlir::LogicalResult NCEConvolutionSplitOverInputChannel::matchAndRewrite(VPU::NC
     mlir::Value result = VPU::splitNCEConvolutionOverIC(origOp, weightInput, convOps, addOps, dequantizeOps,
                                                         tiles.value(), weightDequantizeOp, rewriter, _log.nest());
 
+    setStrategies<VPU::DequantizeOp>(dequantizeOps);
     setStrategies<VPU::NCEConvolutionOp>(
             convOps, {VPU::MultiClusterStrategy::SplitOverKernel, VPU::MultiClusterStrategy::SplitOverHeight});
-    setStrategies<VPU::NCEEltwiseOp>(addOps, {VPU::MultiClusterStrategy::SplitOverHeight});
-    setStrategies<VPU::DequantizeOp>(dequantizeOps);
+    setStrategies<VPU::NCEEltwiseOp>(llvm::ArrayRef(addOps).drop_back(), {VPU::MultiClusterStrategy::SplitOverHeight});
+    setStrategies<VPU::NCEEltwiseOp>(llvm::ArrayRef(addOps).take_back(), {VPU::MultiClusterStrategy::SplitOverHeight});
+
+    auto lastOp = result.getDefiningOp();
+    if (mlir::isa<VPU::NCEDepthConvolutionOp>(lastOp)) {
+        setStrategies<VPU::NCEDepthConvolutionOp>(
+                SmallVector<VPU::NCEDepthConvolutionOp>{mlir::cast<VPU::NCEDepthConvolutionOp>(lastOp)},
+                {VPU::MultiClusterStrategy::SplitOverKernel, VPU::MultiClusterStrategy::SplitOverHeight});
+    }
 
     rewriter.replaceOp(origOp, result);
 

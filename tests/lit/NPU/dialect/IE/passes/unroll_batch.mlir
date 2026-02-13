@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,17 +15,17 @@ func.func @UnrollFullyConnectedBatch(%arg0: tensor<2x16xf32>) -> tensor<2x64xf32
 
     return %2 : tensor<2x64xf32>
 
-    // CHECK-DAG:       %[[WEIGHTS:.*]] = const.Declare tensor<64x16xf16> = dense<1.000000e+00>
+    // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16xf16> = dense<1.000000e+00>
     // CHECK-SAME:      : tensor<64x16xf32>, [#const.CastElemType<f16>]
-    // CHECK:       %[[INPUT:.*]] = IE.Convert(%arg0) {dstElemType = f16} : tensor<2x16xf32> -> tensor<2x16xf16>
-    // CHECK:       %[[INPUT_SLICE_1:.*]] = IE.Slice %[[INPUT]] [0, 0] [1, 16] : tensor<2x16xf16> to tensor<1x16xf16>
-    // CHECK:       %[[FC_1:.*]] = IE.FullyConnected(%[[INPUT_SLICE_1]], %[[WEIGHTS]]) : tensor<1x16xf16>, tensor<64x16xf16> -> tensor<1x64xf16>
-    // CHECK:       %[[INPUT_SLICE_2:.*]] = IE.Slice %[[INPUT]] [1, 0] [1, 16] : tensor<2x16xf16> to tensor<1x16xf16>
-    // CHECK:       %[[FC_2:.*]] = IE.FullyConnected(%[[INPUT_SLICE_2]], %[[WEIGHTS]]) : tensor<1x16xf16>, tensor<64x16xf16> -> tensor<1x64xf16>
-    // CHECK:       %[[FC_CONCAT:.*]] = IE.Concat(%[[FC_1]], %[[FC_2]])
+    // CHECK:       [[INPUT:%.+]] = IE.Convert(%arg0) {dstElemType = f16} : tensor<2x16xf32> -> tensor<2x16xf16>
+    // CHECK:       [[INPUT_SLICE_1:%.+]] = IE.Slice [[INPUT]] [0, 0] [1, 16] : tensor<2x16xf16> to tensor<1x16xf16>
+    // CHECK:       [[FC_1:%.+]] = IE.FullyConnected([[INPUT_SLICE_1]], [[WEIGHTS]]) : tensor<1x16xf16>, tensor<64x16xf16> -> tensor<1x64xf16>
+    // CHECK:       [[INPUT_SLICE_2:%.+]] = IE.Slice [[INPUT]] [1, 0] [1, 16] : tensor<2x16xf16> to tensor<1x16xf16>
+    // CHECK:       [[FC_2:%.+]] = IE.FullyConnected([[INPUT_SLICE_2]], [[WEIGHTS]]) : tensor<1x16xf16>, tensor<64x16xf16> -> tensor<1x64xf16>
+    // CHECK:       [[FC_CONCAT:%.+]] = IE.Concat([[FC_1]], [[FC_2]])
     // CHECK-SAME:      {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x64xf16>, tensor<1x64xf16> -> tensor<2x64xf16>
-    // CHECK:       %[[OUT:.*]] = IE.Convert(%[[FC_CONCAT]]) {dstElemType = f32} : tensor<2x64xf16> -> tensor<2x64xf32>
-    // CHECK:       return %[[OUT]] : tensor<2x64xf32>
+    // CHECK:       [[OUT:%.+]] = IE.Convert([[FC_CONCAT]]) {dstElemType = f32} : tensor<2x64xf16> -> tensor<2x64xf32>
+    // CHECK:       return [[OUT]] : tensor<2x64xf32>
 }
 
 !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>

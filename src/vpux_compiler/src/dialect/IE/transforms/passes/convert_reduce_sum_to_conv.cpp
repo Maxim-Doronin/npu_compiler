@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTREDUCESUMTOCONV
@@ -42,12 +43,10 @@ IE::ConvolutionOp createConvolution(mlir::Value activation, mlir::Value weights,
     const auto kernelPadsEnd = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
     const auto dilations = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
 
-    return (outType == nullptr) ? rewriter.create<IE::ConvolutionOp>(newLoc, activation, weights, nullptr, strides,
-                                                                     kernelPadsBegin, kernelPadsEnd, dilations, nullptr,
-                                                                     nullptr, nullptr, nullptr, nullptr)
-                                : rewriter.create<IE::ConvolutionOp>(newLoc, outType, activation, weights, nullptr,
-                                                                     strides, kernelPadsBegin, kernelPadsEnd, dilations,
-                                                                     nullptr, nullptr, nullptr, nullptr, nullptr);
+    return (outType == nullptr) ? rewriter.create<IE::ConvolutionOp>(newLoc, activation, weights, strides,
+                                                                     kernelPadsBegin, kernelPadsEnd, dilations)
+                                : rewriter.create<IE::ConvolutionOp>(newLoc, outType, activation, weights, strides,
+                                                                     kernelPadsBegin, kernelPadsEnd, dilations);
 }
 
 //
@@ -344,9 +343,7 @@ void ConvertReduceSumToConvPass::safeRunOnFunc() {
     pattern.add<ReduceSumToConvRewriter>(&ctx, _log);
     pattern.add<InnerDimReduceSumToConvRewriter>(&ctx, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, std::move(pattern), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(pattern));
 }
 
 }  // namespace

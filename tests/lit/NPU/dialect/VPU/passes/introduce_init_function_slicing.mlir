@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,7 +43,7 @@ module @MemoryLimitTest {
     //       part is not here because we only generate single-part schedule)
 
     // CHECK-SMALL-LIMIT: func.func @init_part0([[OV_1:%.+]]: tensor<4xui8>)
-    // CHECK-SMALL-LIMIT-NEXT:   [[ONE:%.+]] = const.Declare {{.*}} dense<1.000000e+00>
+    // CHECK-SMALL-LIMIT-NEXT:   [[ONE:%.+]] = const.Declare {{.+}} dense<1.000000e+00>
     // CHECK-SMALL-LIMIT-NEXT:   [[ADD_ONE:%.+]] = IE.Add([[OV_1]], [[ONE]])
     // CHECK-SMALL-LIMIT-NEXT:   return [[ADD_ONE]]
 

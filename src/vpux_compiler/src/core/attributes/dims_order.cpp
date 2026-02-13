@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -425,6 +425,17 @@ std::optional<Dim> vpux::getInnermostNonTrivialDim(ShapeRef shape, const DimsOrd
     for (auto idx : irange(dimOrder.numDims()) | reversed) {
         auto curDim = dimOrder.dimAt(idx);
         if (shape[curDim] != 1) {
+            return curDim;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<Dim> vpux::getInnermostDynamicDim(ShapeRef shape, const DimsOrder& dimOrder) {
+    for (auto idx : irange(dimOrder.numDims()) | reversed) {
+        auto curDim = dimOrder.dimAt(idx);
+        if (shape[curDim] == mlir::ShapedType::kDynamic) {
             return curDim;
         }
     }

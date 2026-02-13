@@ -10,7 +10,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
@@ -35,12 +35,12 @@ using MLIR_VPU_LayerVPUNNCost = vpux::VPU::arch37xx::UnitTest;
 VPU::StrategyCost getSWVPUNNCost(std::shared_ptr<VPUNN::SHAVEWorkload> vpunnLayer, mlir::ModuleOp module,
                                  VPU::MultiClusterStrategy mcStrategy) {
     const auto archKind = config::getArch(module);
-    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
+    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(module);
 
     auto tileOp = config::getTileExecutor(module);
-    auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
+    auto dpuExec = tileOp.getSubExecutor(config::ExecutorKind::DPU);
 
-    auto shaveActExec = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT);
+    auto shaveActExec = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT);
     VPUX_THROW_WHEN(shaveActExec == nullptr, "Act shave kernels are not supported for the platform {0}", archKind);
 
     auto vpunnStrategy = VPU::getVPULayerStrategy(mcStrategy, dpuExec.getCount(), tileOp.getCount(), archKind,
@@ -51,12 +51,12 @@ VPU::StrategyCost getSWVPUNNCost(std::shared_ptr<VPUNN::SHAVEWorkload> vpunnLaye
 VPUNN::CyclesInterfaceType getHWVPUNNCost(VPUNN::DPULayer& vpunnLayer, mlir::ModuleOp module,
                                           VPU::MultiClusterStrategy mcStrategy) {
     const auto archKind = config::getArch(module);
-    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
+    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(module);
 
     auto tileOp = config::getTileExecutor(module);
-    auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
+    auto dpuExec = tileOp.getSubExecutor(config::ExecutorKind::DPU);
 
-    auto shaveActExec = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT);
+    auto shaveActExec = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT);
     VPUX_THROW_WHEN(shaveActExec == nullptr, "Act shave kernels are not supported for the platform {0}", archKind);
 
     auto vpunnStrategy = VPU::getVPULayerStrategy(mcStrategy, dpuExec.getCount(), tileOp.getCount(), archKind,
@@ -79,11 +79,10 @@ VPUNN::CyclesInterfaceType getWeightsDMACost(VPU::NCEOpInterface nceOp, mlir::Mo
         return 0;
     }
     const auto weightsType = mlir::cast<vpux::NDTypeInterface>(weightsVal.getType());
-    const auto archKind = config::getArch(module);
-    const auto vpunnCostModel = VPU::CostModelConfig::createCostModel(archKind);
-    const auto vpunnDevice = VPU::getVPUDeviceType(archKind);
-    const auto numDMAPorts = config::getAvailableExecutor(module, VPU::ExecutorKind::DMA_NN).getCount();
-    return checked_cast<VPUNN::CyclesInterfaceType>(getDMACost(weightsType, vpunnDevice, vpunnCostModel, numDMAPorts));
+    const auto vpunnCostModel = VPU::CostModelConfig::createCostModel(module);
+    const auto vpuDevice = VPU::getVPUDeviceType(module);
+    const auto numDMAPorts = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
+    return checked_cast<VPUNN::CyclesInterfaceType>(getDMACost(weightsType, vpuDevice, vpunnCostModel, numDMAPorts));
 }
 
 TEST_F(MLIR_VPU_LayerVPUNNCost, DPU_LayerCost) {
@@ -122,7 +121,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DPU_LayerCost) {
     VPU::LayerVPUNNCost layerCost(func);
 
     auto tileOp = config::getTileExecutor(module.get());
-    auto dpuExec = tileOp.getSubExecutor(VPU::ExecutorKind::DPU);
+    auto dpuExec = tileOp.getSubExecutor(config::ExecutorKind::DPU);
 
     func->walk([&](VPU::NCEConvolutionOp convOp) {
         auto nceOp = mlir::cast<VPU::NCEOpInterface>(convOp.getOperation());
@@ -182,7 +181,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, SWKernel_LayerCost) {
 
     VPU::LayerVPUNNCost layerCost(func);
 
-    auto vpuDevice = VPU::getVPUDeviceType(archKind);
+    const auto vpuDevice = VPU::getVPUDeviceType(*module);
 
     func->walk([&](VPU::SoftMaxOp kernelOp) {
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(kernelOp.getInput().getType());
@@ -284,9 +283,10 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, DMA_Cost) {
 
     VPU::LayerVPUNNCost layerCost(func);
 
-    auto vpuDevice = VPU::getVPUDeviceType(archKind);
-    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(archKind);
-    const auto dmaPorts = config::getAvailableExecutor(module.get(), VPU::ExecutorKind::DMA_NN).getCount();
+    const auto vpuDevice = VPU::getVPUDeviceType(*module);
+
+    const auto vpunnCostFunction = VPU::CostModelConfig::createLayerCostModel(module.get());
+    const auto dmaPorts = config::getAvailableExecutor(module.get(), config::ExecutorKind::DMA_NN).getCount();
 
     func->walk([&](VPU::NCEConvolutionOp convOp) {
         auto spillWriteCostPerTile = layerCost.getSpillingWriteCostsForAllTiles(convOp.getOperation(),

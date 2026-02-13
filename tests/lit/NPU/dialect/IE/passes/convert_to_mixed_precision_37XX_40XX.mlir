@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,10 +26,10 @@ func.func @Conv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x
 
     return %1 : tensor<1x3x3x3x!qElemType>
 
-    // CHECK:   [[CST:%.*]] = const.Declare tensor<3x16x1x1xf16> = dense<2.000000e+00> :
+    // CHECK:   [[CST:%.+]] = const.Declare tensor<3x16x1x1xf16> = dense<2.000000e+00> :
     // CHECK-SAME:  tensor<3x16x1x1xf16>
 
-    // CHECK:   [[VAL0:%.*]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:   [[VAL0:%.+]] = IE.Convolution(%arg0, [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -74,7 +74,7 @@ func.func @MixedPrecisionConvQuantile(%arg0: tensor<1x16x1x1xf16>) -> tensor<1x1
 // CHECK-LABEL: @AvoidMixedPrecisionForConvWithPostOpReluAndNegativeScales
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x3x448x448xf32>)
 func.func @AvoidMixedPrecisionForConvWithPostOpReluAndNegativeScales(%arg0: tensor<1x3x448x448xf32>) -> tensor<1x32x224x224xf32> {
-    %cst = const.Declare tensor<1x32x1x1xf16> = dense<1.0> : tensor<1x32x1x1xf16>, [#const.CastElemType<f16>] 
+    %cst = const.Declare tensor<1x32x1x1xf16> = dense<1.0> : tensor<1x32x1x1xf16>, [#const.CastElemType<f16>]
     %cst_0 = const.Declare tensor<32x3x3x3x!qElemType> = dense<1> : tensor<32x3x3x3xsi8>, [#const.CastElemType<f16>, #const.CastElemType<!qElemType>]
     %0 = IE.Dequantize(%cst_0) {dstElemType = f16} : tensor<32x3x3x3x!qElemType> -> tensor<32x3x3x3xf16>
     %1 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x448x448xf32> -> tensor<1x3x448x448xf16>

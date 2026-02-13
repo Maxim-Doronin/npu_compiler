@@ -1,14 +1,14 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/utils/passes.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 
 using namespace vpux;
 
@@ -34,7 +34,7 @@ void ApplySwizzlingPass::safeRunOnFunc() {
 
     func->walk([&](Const::DeclareOp constOp) {
         auto constType = mlir::cast<vpux::NDTypeInterface>(constOp.getOutput().getType());
-        auto swizzlingScheme = vpux::getSwizzlingSchemeAttr(constType);
+        auto swizzlingScheme = VPUIP::getSwizzlingSchemeAttr(constType);
         if (swizzlingScheme == nullptr) {
             return;
         }
@@ -46,11 +46,11 @@ void ApplySwizzlingPass::safeRunOnFunc() {
         }
 
         auto module = constOp->getParentOfType<mlir::ModuleOp>();
-        auto newContentAttr =
-                constOp.getContentAttr()
-                        .transform()
-                        .swizzleConstant(getSwizzlingKey(constType), static_cast<uint64_t>(config::getArch(module)))
-                        .get();
+        auto newContentAttr = constOp.getContentAttr()
+                                      .transform()
+                                      .swizzleConstant(VPUIP::getSwizzlingKey(constType),
+                                                       static_cast<uint64_t>(config::getArch(module)))
+                                      .get();
         mlir::OpBuilder builder(constOp);
         auto newConstOp =
                 builder.create<vpux::Const::DeclareOp>(constOp.getLoc(), constType, std::move(newContentAttr));

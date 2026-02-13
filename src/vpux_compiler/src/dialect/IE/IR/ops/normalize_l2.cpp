@@ -4,8 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
+#include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -23,7 +23,7 @@ mlir::LogicalResult vpux::IE::NormalizeL2Op::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto axes = getConstOrArrAttrValue(normalizeL2.getAxes(), normalizeL2.getAxesValueAttr());
+    const auto axes = Const::getConstOrArrAttrValue(normalizeL2.getAxes(), normalizeL2.getAxesValueAttr());
     if (mlir::failed(axes)) {
         return mlir::failure();
     }
@@ -45,7 +45,7 @@ mlir::LogicalResult vpux::IE::NormalizeL2Op::verify() {
     if (!(axes_tensor || axes_attribute)) {
         return mlir::failure();
     }
-    const auto axes = getConstOrArrAttrValue(axes_tensor, axes_attribute);
+    const auto axes = Const::getConstOrArrAttrValue(axes_tensor, axes_attribute);
     auto axesVec{axes.value()};
     for (auto& axis : axesVec) {
         if (axis < 0) {
@@ -81,7 +81,7 @@ mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::NormalizeL2Op normal
         return mlir::failure();
     }
 
-    const auto axesValue = getConstOrArrAttrValue(normalizeL2Op.getAxes(), normalizeL2Op.getAxesValueAttr());
+    const auto axesValue = Const::getConstOrArrAttrValue(normalizeL2Op.getAxes(), normalizeL2Op.getAxesValueAttr());
 
     if (mlir::failed(axesValue)) {
         return mlir::failure();

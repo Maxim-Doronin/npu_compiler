@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,9 +33,9 @@ func.func @inplaceFp16Eltwise (%arg0: tensor<1x256x56x56xf16, {order = #NHWC}>,
 
     return %2 : tensor<1x256x56x56xf16, {order = #NHWC}>
 
-    //CHECK:        [[AVGPOOL0:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[AVGPOOL1:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[ELTWISE:%.*]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
+    //CHECK:        [[AVGPOOL0:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[AVGPOOL1:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
     //CHECK-SAME:           is_inplace = true,
     //CHECK-SAME:           op_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:           ppe = #VPU.PPEStub<>
@@ -75,9 +75,9 @@ func.func @inplaceQuantEltwise (%arg0: tensor<1x256x56x56x!qElemType, {order = #
 
     return %2 : tensor<1x256x56x56x!qElemType2, {order = #NHWC}>
 
-    //CHECK:        [[AVGPOOL0:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[AVGPOOL1:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[ELTWISE:%.*]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
+    //CHECK:        [[AVGPOOL0:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[AVGPOOL1:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
     //CHECK-SAME:           is_inplace = true,
     //CHECK-SAME:           op_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:           ppe = #VPU.PPEStub<>
@@ -99,7 +99,7 @@ func.func @fp16EltwiseBlockArg (%arg0: tensor<1x256x56x56xf16, {order = #NHWC}>,
 
     return %0 : tensor<1x256x56x56xf16, {order = #NHWC}>
 
-    //CHECK:        [[ELTWISE:%.*]] = VPU.NCE.Eltwise(%arg0, %arg1) {
+    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise(%arg0, %arg1) {
     //CHECK-NOT:           is_inplace = true,
     //CHECK-SAME:           op_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:           ppe = #VPU.PPEStub<>
@@ -137,9 +137,9 @@ func.func @Fp16EltwiseFitIntoCMX (%arg0: tensor<1x16x56x56xf16, {order = #NHWC}>
 
     return %2 : tensor<1x16x56x56xf16, {order = #NHWC}>
 
-    //CHECK:        [[AVGPOOL0:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[AVGPOOL1:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[ELTWISE:%.*]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
+    //CHECK:        [[AVGPOOL0:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[AVGPOOL1:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
     //CHECK-NOT:            is_inplace = true,
     //CHECK-SAME:           op_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:           ppe = #VPU.PPEStub<>
@@ -176,9 +176,9 @@ func.func @Fp16EltwiseDiffLayout (%arg0: tensor<1x16x56x56xf16, {order = #NHWC}>
 
     return %2 : tensor<1x16x56x56xf16, {order = #NCHW}>
 
-    //CHECK:        [[AVGPOOL0:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[AVGPOOL1:%.*]] = VPU.NCE.AveragePool
-    //CHECK:        [[ELTWISE:%.*]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
+    //CHECK:        [[AVGPOOL0:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[AVGPOOL1:%.+]] = VPU.NCE.AveragePool
+    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[AVGPOOL0]], [[AVGPOOL1]]) {
     //CHECK-NOT:            is_inplace = true,
     //CHECK-SAME:           op_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:           ppe = #VPU.PPEStub<>

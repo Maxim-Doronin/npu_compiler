@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -55,11 +55,11 @@ func.func @main(%1: memref<1x1x1x1000xsi32>, %2: memref<1x1x1x1000xsi32>, %3: me
     %b1 = VPURT.ConfigureBarrier<1> -> !VPURT.Barrier
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%1 : memref<1x1x1x1000xsi32>) outputs(%in0_tile0_cmx : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%1 : memref<1x1x1x1000xsi32>) outputs(%in0_tile0_cmx : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
     }
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%2 : memref<1x1x1x1000xsi32>) outputs(%in1_tile0_cmx : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%2 : memref<1x1x1x1000xsi32>) outputs(%in1_tile0_cmx : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
     }
 
     // Genetic Kernel information for the scheduler.
@@ -81,7 +81,7 @@ func.func @main(%1: memref<1x1x1x1000xsi32>, %2: memref<1x1x1x1000xsi32>, %3: me
     }
 
     VPURT.Task waits(%b1 : !VPURT.Barrier) {
-        VPUIP.NNDMA {port = 0 : i64} inputs(%out_tile0_cmx : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xsi32>) -> memref<1x1x1x1000xsi32>
+        VPUIP.NNDMA <{port = 0 : i64}> inputs(%out_tile0_cmx : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) outputs(%3 : memref<1x1x1x1000xsi32>) -> memref<1x1x1x1000xsi32>
     }
     return %3: memref<1x1x1x1000xsi32>
 
@@ -90,21 +90,21 @@ func.func @main(%1: memref<1x1x1x1000xsi32>, %2: memref<1x1x1x1000xsi32>, %3: me
 
 }
 
-//CHECK: %[[VAL0:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
-//CHECK: %[[VAL1:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <4000> -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
-//CHECK: %[[VAL2:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8000> -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
-//CHECK-NEXT: %[[VAL3:.*]] = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8} <0, -1> -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: %[[VAL4:.*]] = VPUMI40XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8} <1, -1> -> !VPURegMapped.Index<0:0:1>
+//CHECK: [[VAL0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
+//CHECK: [[VAL1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <4000> -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
+//CHECK: [[VAL2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <8000> -> memref<1x1x1x1000xsi32, [@CMX_NN, 0]>
+//CHECK-NEXT: [[VAL3:%.+]] = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 2 : ui8}> <0, -1> -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL4:%.+]] = VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <1, -1> -> !VPURegMapped.Index<0:0:1>
 //CHECK-NOT: VPURT.Task
-//CHECK-NEXT: %[[VAL5:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%[[VAL6:.*]] : memref<1x1x1x1000xsi32>) outputs(%[[VAL0]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) updates(%[[VAL3]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: %[[VAL7:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%[[VAL8:.*]] : memref<1x1x1x1000xsi32>) outputs(%[[VAL1]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) previousDMA(%[[VAL5]] : !VPURegMapped.Index<0:0:0>) updates(%[[VAL3]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:0:1>
-//CHECK-DAG: %[[VAL9:.*]] = VPUMI40XX.DeclareKernelText kernel_path([[VAL10:.*]]) -> !VPURegMapped.Index<0:0:0>
-//CHECK-DAG: %[[VAL11:.*]] = VPUMI40XX.DeclareKernelEntry kernel_path([[VAL10]]) -> !VPURegMapped.Index<0:0:0>
-//CHECK-DAG: %[[VAL12:.*]] = VPUMI40XX.DeclareKernelArgs kernel_path([[VAL10]]) -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: %[[VAL13:.*]] = VPUMI40XX.ActKernelRange kernel_text_index(%[[VAL9]] : !VPURegMapped.Index<0:0:0>) kernel_args_index(%[[VAL12]] : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%[[VAL11]] : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: %[[VAL14:.*]] = VPUMI40XX.KernelParams inputs(%[[VAL0]], %[[VAL1]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>, memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) outputs(%[[VAL2]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) kernel_type([[VAL10]]) kernel_params({{.*}}) -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: %[[VAL15:.*]] = VPUMI40XX.ActKernelInvocation range_index(%[[VAL13]] : <0:0:0>) kernel_params(%[[VAL14]] : <0:0:0>) waits(%[[VAL3]] : !VPURegMapped.Index<0:0:0>) updates(%[[VAL4]] : !VPURegMapped.Index<0:0:1>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL5:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[VAL6:%.+]] : memref<1x1x1x1000xsi32>) outputs([[VAL0]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) updates([[VAL3]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}}-> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL7:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[VAL8:%.+]] : memref<1x1x1x1000xsi32>) outputs([[VAL1]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) previousDMA([[VAL5]] : !VPURegMapped.Index<0:0:0>) updates([[VAL3]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}}-> !VPURegMapped.Index<0:0:1>
+//CHECK-DAG: [[VAL9:%.+]] = VPUMI40XX.DeclareKernelText kernel_path([[VAL10:.+]]) -> !VPURegMapped.Index<0:0:0>
+//CHECK-DAG: [[VAL11:%.+]] = VPUMI40XX.DeclareKernelEntry kernel_path([[VAL10]]) -> !VPURegMapped.Index<0:0:0>
+//CHECK-DAG: [[VAL12:%.+]] = VPUMI40XX.DeclareKernelArgs kernel_path([[VAL10]]) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL13:%.+]] = VPUMI40XX.ActKernelRange kernel_text_index([[VAL9]] : !VPURegMapped.Index<0:0:0>) kernel_args_index([[VAL12]] : !VPURegMapped.Index<0:0:0>) kernel_entry_index([[VAL11]] : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL14:%.+]] = VPUMI40XX.KernelParams <{dynamicInputShapesSize = array<i32>, dynamicOutputShapesSize = array<i32>}> inputs([[VAL0]], [[VAL1]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>, memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) outputs([[VAL2]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) kernel_type([[VAL10]]) kernel_params({{.+}}) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[VAL15:%.+]] = VPUMI40XX.ActKernelInvocation range_index([[VAL13]] : <0:0:0>) kernel_params([[VAL14]] : <0:0:0>) waits([[VAL3]] : !VPURegMapped.Index<0:0:0>) updates([[VAL4]] : !VPURegMapped.Index<0:0:1>) tile(0) start_after(0) clean_after(0) -> !VPURegMapped.Index<0:0:0>
 //CHECK-NOT: VPURT.Task
-//CHECK-NEXT: %[[VAL16:.*]] = VPUMI40XX.NNDMA {port = 0 : i64} inputs(%[[VAL2]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) outputs(%[[VAL17:.*]] : memref<1x1x1x1000xsi32>) waits(%[[VAL4]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.*}}-> !VPURegMapped.Index<0:1:0>
-//CHECK-NEXT: %[[VAL29:.*]] = VPUMI40XX.ActShaveRt kernel("nnActEntry") -> !VPURegMapped.Index<0:0:0>
-//CHECK: %[[VAL30:.*]] = VPUMI40XX.MappedInference
+//CHECK-NEXT: [[VAL16:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[VAL2]] : memref<1x1x1x1000xsi32, [@CMX_NN, 0]>) outputs([[VAL17:%.+]] : memref<1x1x1x1000xsi32>) waits([[VAL4]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}}-> !VPURegMapped.Index<0:1:0>
+//CHECK-NEXT: [[VAL29:%.+]] = VPUMI40XX.ActShaveRt kernel("nnActEntry") -> !VPURegMapped.Index<0:0:0>
+//CHECK: [[VAL30:%.+]] = VPUMI40XX.MappedInference

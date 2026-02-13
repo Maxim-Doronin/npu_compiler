@@ -1,20 +1,24 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/NPU37XX/dialect/VPU/impl/singleton_initializer.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
+#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/dpu_tiler.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/split_cost_getter.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/split_cost_utils.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/FileSystem.h>
 #include <mlir/IR/MLIRContext.h>
+
+#include <vpu/dpu_types.h>
 
 #include <gtest/gtest.h>
 
@@ -47,6 +51,7 @@ vpux::VPUIP::WorkloadCostParams buildWorkloadCost(const NceOpTensorShape& tensor
     costParams.kernelStride = {1, 1};
     costParams.nceTaskType = vpux::VPUIP::NCETaskType::CONV;
     costParams.arch = vpux::config::ArchKind::NPU37XX;
+    costParams.vpuDevice = VPUNN::VPUDevice::VPU_2_7;
     costParams.numDPU = numDPU;
     return costParams;
 }
@@ -54,11 +59,13 @@ vpux::VPUIP::WorkloadCostParams buildWorkloadCost(const NceOpTensorShape& tensor
 
 TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
     mlir::MLIRContext ctx;
+    ctx.loadDialect<vpux::VPU::VPUDialect>();
+    vpux::VPU::arch37xx::initializeSingletonCache(&ctx, std::nullopt);
 
     llvm::SmallVector<vpux::VPU::MPEMode> mpeModeList{vpux::VPU::MPEMode::VECTOR_FP16, vpux::VPU::MPEMode::VECTOR,
                                                       vpux::VPU::MPEMode::MATRIX};
 
-    const auto costModel = vpux::VPU::CostModelConfig::createCostModel(vpux::config::ArchKind::NPU37XX);
+    const auto costModel = vpux::VPU::CostModelConfig::createCostModel(&ctx);
 
     llvm::SmallVector<NceOpTensorShape> testTensorLists;
     for (int64_t h = initDimensionValue; h < maxDimensionValue; h *= testStep) {
@@ -90,8 +97,8 @@ TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
                 singleSplit.emplace_back(std::move(outTile), mpeMode);
             }
 
-            auto splitCostCb = vpux::VPUIP::getSplitCostCb(costParams.arch);
-            auto baseHardwareExecutionCost = splitCostCb(singleSplit, costParams, *costModel, vpux::emptyLogCb);
+            auto baseHardwareExecutionCost =
+                    vpux::VPUIP::computeSplitCost(singleSplit, costParams, *costModel, vpux::emptyLogCb);
 
             vpux::VPUIP::WorkloadSplitPool splitPool;
 
@@ -101,7 +108,8 @@ TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
             }
 
             for (auto iter = splitPool.begin(); iter != splitPool.end(); iter++) {
-                auto hardwareExecutionCost = splitCostCb(*iter, costParams, *costModel, vpux::emptyLogCb);
+                auto hardwareExecutionCost =
+                        vpux::VPUIP::computeSplitCost(*iter, costParams, *costModel, vpux::emptyLogCb);
                 EXPECT_LE(hardwareExecutionCost, baseHardwareExecutionCost);
             }
         }

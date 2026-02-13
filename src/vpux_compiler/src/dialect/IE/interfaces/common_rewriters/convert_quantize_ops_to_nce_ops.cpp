@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,8 +7,9 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes/convert_quantize_ops_to_nce_ops.hpp"
+#include "vpux/compiler/dialect/IE/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/conv_utils.hpp"
 
 namespace vpux::IE {
 
@@ -21,7 +22,7 @@ mlir::LogicalResult QuantizeToDwRewriter::matchAndRewrite(IE::QuantizeOp originO
     const auto origType = mlir::cast<vpux::NDTypeInterface>(originOp.getInput().getType());
     const auto origShape = origType.getShape();
     const auto OC = origShape[Dims4D::Act::C];
-    auto weights = vpux::buildDwWeights(originOp->getLoc(), OC, origType.getElementType(), rewriter);
+    auto weights = IE::buildDwWeights(originOp->getLoc(), OC, origType.getElementType(), rewriter);
 
     const auto ctx = rewriter.getContext();
     const auto attrStrides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
@@ -56,7 +57,7 @@ mlir::LogicalResult DequantizeToDwRewriter::matchAndRewrite(IE::DequantizeOp ori
     const auto quantizeType = mlir::quant::UniformQuantizedType::get(
             /*flags=*/0, /*storageType=*/getUInt8Type(ctx), /*expressedType=*/mlir::Float16Type::get(ctx),
             /*scale=*/1.0, /*zeroPoint=*/0, /*storageTypeMin=*/0, /*storageTypeMax=*/255);
-    auto quantWeightsOp = vpux::buildDwWeights(originOp->getLoc(), OC, quantizeType, rewriter);
+    auto quantWeightsOp = IE::buildDwWeights(originOp->getLoc(), OC, quantizeType, rewriter);
 
     const auto attrStrides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
     const auto attrPadsBegin = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
@@ -165,8 +166,7 @@ mlir::LogicalResult DequantizeToConvRewriter::matchAndRewrite(IE::DequantizeOp o
     auto pads_end = rewriter.getI64ArrayAttr({0, 0});
     auto dilations = rewriter.getI64ArrayAttr({1, 1});
     auto convOp = rewriter.create<IE::ConvolutionOp>(originOp.getLoc(), originOp.getType(), originOp.getInput(), filter,
-                                                     /*bias=*/nullptr, strides, pads_begin, pads_end, dilations,
-                                                     nullptr, nullptr, nullptr, nullptr, nullptr);
+                                                     strides, pads_begin, pads_end, dilations);
     rewriter.replaceOp(originOp, convOp.getResult());
     return mlir::success();
 }

@@ -1,10 +1,13 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <gtest/gtest.h>
-#include "vpux/compiler/utils/wlm_legalization_utils.hpp"
+
+#include "vpux/compiler/core/execution_group_analysis.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 
 using namespace vpux;
 using ExecutionGroupAnalysisTests = ::testing::Test;
@@ -34,8 +37,8 @@ using ExecutionGroupAnalysisTests = ::testing::Test;
  *  SHV11       DMA12
  */
 std::map<VPURT::TaskQueueType, SmallVector<uint32_t>> buildBarrierMapWithMultiTaskQueueTypes() {
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
-    const VPURT::TaskQueueType shvType{VPU::ExecutorKind::SHAVE_ACT, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType shvType{config::ExecutorKind::SHAVE_ACT, 0};
     std::map<VPURT::TaskQueueType, SmallVector<uint32_t>> taskQueueTypeMap;
 
     taskQueueTypeMap[dpuType] = {2, 5, 7, 9};
@@ -48,14 +51,14 @@ std::map<VPURT::TaskQueueType, SmallVector<uint32_t>> buildBarrierMapWithMultiTa
     std::map<VPURT::TaskQueueType, SmallVector<uint32_t>> taskQueueTypeMap;
 
     // DPU tasks across multiple tiles (different TaskQueueType IDs for different tiles)
-    taskQueueTypeMap[{VPU::ExecutorKind::DPU, 0}] = {1, 2, 3, 4};      // Tile 0
-    taskQueueTypeMap[{VPU::ExecutorKind::DPU, 1}] = {5, 6, 7, 8};      // Tile 1
-    taskQueueTypeMap[{VPU::ExecutorKind::DPU, 2}] = {15, 16, 17, 18};  // Tile 2
+    taskQueueTypeMap[{config::ExecutorKind::DPU, 0}] = {1, 2, 3, 4};      // Tile 0
+    taskQueueTypeMap[{config::ExecutorKind::DPU, 1}] = {5, 6, 7, 8};      // Tile 1
+    taskQueueTypeMap[{config::ExecutorKind::DPU, 2}] = {15, 16, 17, 18};  // Tile 2
 
     // SHAVE tasks across multiple tiles
-    taskQueueTypeMap[{VPU::ExecutorKind::SHAVE_ACT, 0}] = {9, 10};   // Tile 0
-    taskQueueTypeMap[{VPU::ExecutorKind::SHAVE_ACT, 1}] = {11, 12};  // Tile 1
-    taskQueueTypeMap[{VPU::ExecutorKind::SHAVE_ACT, 2}] = {13, 14};  // Tile 2
+    taskQueueTypeMap[{config::ExecutorKind::SHAVE_ACT, 0}] = {9, 10};   // Tile 0
+    taskQueueTypeMap[{config::ExecutorKind::SHAVE_ACT, 1}] = {11, 12};  // Tile 1
+    taskQueueTypeMap[{config::ExecutorKind::SHAVE_ACT, 2}] = {13, 14};  // Tile 2
 
     return taskQueueTypeMap;
 }
@@ -68,7 +71,7 @@ TEST_F(ExecutionGroupAnalysisTests, CheckDPUGroups) {
                                                      /*tilesCount*/ 1);
 
     auto dpuExecGroups = execGroupAnalysisTest.getDPUExecutionGroups();
-    const VPURT::TaskQueueType dpuType{VPU::ExecutorKind::DPU, 0};
+    const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
 
     auto execGroupLists = dpuExecGroups[dpuType];
     ExecutionGroupList expectedDPUList = {{2, 5}, {7, 9}};
@@ -94,7 +97,7 @@ TEST_F(ExecutionGroupAnalysisTests, CheckSWGroups) {
                                                      /*tilesCount*/ 1);
 
     auto swGroups = execGroupAnalysisTest.getActShvExecutionGroups();
-    const VPURT::TaskQueueType shvType{VPU::ExecutorKind::SHAVE_ACT, 0};
+    const VPURT::TaskQueueType shvType{config::ExecutorKind::SHAVE_ACT, 0};
 
     auto execGroupLists = swGroups[shvType];
     ExecutionGroupList expectedSWList = {{4, 11}};
@@ -147,7 +150,7 @@ TEST_F(ExecutionGroupAnalysisTests, CheckAllTasksGrouped) {
 
     // Check if tasks are correctly grouped for DPU and SHAVE_ACT queue types
     for (auto& [queueType, expectedTasks] : expectedTasksByQueueType) {
-        if (queueType.type == VPU::ExecutorKind::DPU || queueType.type == VPU::ExecutorKind::SHAVE_ACT) {
+        if (queueType.type == config::ExecutorKind::DPU || queueType.type == config::ExecutorKind::SHAVE_ACT) {
             auto& groupedTasks = groupedTasksByQueueType[queueType];
 
             // Sort both lists for comparison

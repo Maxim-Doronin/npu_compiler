@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize --verify-diagnostics %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -105,4 +105,75 @@ func.func @GenericReshapeDistributed(%arg0: !InputDistributed) -> !OutputDistrib
     // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 16, 10, 96], [1, 16, 9, 96]], memory_offsets = [[0, 0, 0, 0], [0, 0, 7, 0]]
 
     // CHECK:       return [[RES]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @GenericReshapeWithStrides4DTo4D
+func.func @GenericReshapeWithStrides4DTo4D(%arg0: memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}> {
+    %0 = VPUIP.GenericReshape inputs(%arg0 : memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
+    return %0 : memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
+
+    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
+    // CHECK:       return [[VAR0]] : memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @GenericReshapeWithStrides2DTo4D
+func.func @GenericReshapeWithStrides2DTo4D(%arg0: memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}> {
+    %0 = VPUIP.GenericReshape inputs(%arg0 : memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
+    return %0 : memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
+
+    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
+    // CHECK:       return [[VAR0]] : memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
+}
+
+// -----
+
+#NCDHW = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @GenericReshapeWithStrides5DTo4D
+func.func @GenericReshapeWithStrides5DTo4D(%arg0: memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}> {
+    %0 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
+    return %0 : memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
+
+    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
+    // CHECK:       return [[VAR0]] : memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+
+func.func @GenericReshapeStridesIncompatible2DSwapDims(%arg0: memref<16x32xf32, {order = #NC, strides = [512, 16]}>) -> memref<32x16xf32, {order = #NC, strides = [512, 1]}> {
+// expected-error@+1 {{Incompatible strides between input}}
+    %0 = VPUIP.GenericReshape inputs(%arg0 : memref<16x32xf32, {order = #NC, strides = [512, 16]}>) -> memref<32x16xf32, {order = #NC, strides = [512, 1]}>
+    return %0 : memref<32x16xf32, {order = #NC, strides = [512, 1]}>
+}
+
+// -----
+
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+func.func @GenericReshapeStridesIncompatible3DTo3D(%arg0: memref<2x16x32xf32, {order = #CHW, strides = [2048, 64, 1]}>) -> memref<1x32x32xf32, {order = #CHW, strides = [2048, 64, 1]}> {
+// expected-error@+1 {{Incompatible strides between input}}
+    %0 = VPUIP.GenericReshape inputs(%arg0 : memref<2x16x32xf32, {order = #CHW, strides = [2048, 64, 1]}>) -> memref<1x32x32xf32, {order = #CHW, strides = [2048, 64, 1]}>
+    return %0 : memref<1x32x32xf32, {order = #CHW, strides = [2048, 64, 1]}>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+
+func.func @GenericReshapeStridesIncompatibleCompactOutput(%arg0: memref<16x32xf32, {order = #NC, strides = [512, 16]}>) -> memref<32x16xf32, {order = #NC, strides = [32, 1]}> {
+// expected-error@+1 {{Incompatible strides between input}}
+    %0 = VPUIP.GenericReshape inputs(%arg0 : memref<16x32xf32, {order = #NC, strides = [512, 16]}>) -> memref<32x16xf32, {order = #NC, strides = [32, 1]}>
+    return %0 : memref<32x16xf32, {order = #NC, strides = [32, 1]}>
 }

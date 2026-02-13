@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
@@ -137,10 +138,8 @@ mlir::LogicalResult ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp origO
 
     auto newDequantizeOp = rewriter.create<IE::DequantizeOp>(origOp->getLoc(), newCstDeclareOp.getOutput(),
                                                              filterOp.getDstElemTypeAttr());
-    rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
-            origOp, origOp.getInput(), newDequantizeOp, origOp.getBias(), origOp.getStrides(), origOp.getPadsBegin(),
-            origOp.getPadsEnd(), origOp.getDilations(), origOp.getPostOpAttr(), origOp.getClampAttr(),
-            origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+    rewriter.replaceOp(origOp, cloneConvolutionOp(rewriter, origOp, origOp.getInput(), newDequantizeOp));
+
     return mlir::success();
 }
 
@@ -250,7 +249,6 @@ void ConvertWeightsToI8Pass::safeRunOnFunc() {
     });
     typeConverter.addSourceMaterialization(dummyConverter<mlir::RankedTensorType>);
     typeConverter.addTargetMaterialization(dummyConverter<mlir::RankedTensorType>);
-    typeConverter.addArgumentMaterialization(dummyConverter<mlir::RankedTensorType>);
 
     mlir::ConversionTarget target(ctx);
 

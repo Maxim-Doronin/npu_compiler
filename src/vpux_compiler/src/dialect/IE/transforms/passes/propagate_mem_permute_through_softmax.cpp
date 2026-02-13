@@ -12,6 +12,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_PROPAGATEMEMPERMUTETHROUGHSOFTMAX
@@ -83,13 +84,13 @@ mlir::LogicalResult SwapSoftmaxAndMemPermute::matchAndRewrite(IE::SoftMaxOp soft
         return mlir::failure();
     }
 
-    auto newMemPermuteOp = rewriter.create<IE::MemPermuteOp>(memPermuteOp->getLoc(), softMaxOp.getInput(),
-                                                             memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
+    auto newMemPermuteOpResult = rewriter.createOrFold<IE::MemPermuteOp>(
+            memPermuteOp->getLoc(), softMaxOp.getInput(), memPermuteOp.getDstOrder(), memPermuteOp.getMemPerm());
 
     const auto optimalAxis = outOrder.toDim(MemDim(outOrder.numDims() - 1)).ind();
     const auto optimalAxisAttr = getIntAttr(rewriter.getContext(), optimalAxis);
-    auto newSoftMaxOp = rewriter.replaceOpWithNewOp<IE::SoftMaxOp>(memPermuteOp, newMemPermuteOp.getOutput(),
-                                                                   optimalAxisAttr, nullptr);
+    auto newSoftMaxOp =
+            rewriter.replaceOpWithNewOp<IE::SoftMaxOp>(memPermuteOp, newMemPermuteOpResult, optimalAxisAttr, nullptr);
     newSoftMaxOp->setLoc(softMaxOp->getLoc());
     changeDimsOrder(newSoftMaxOp, outOrder, _log.nest());
     rewriter.eraseOp(softMaxOp);
@@ -181,21 +182,21 @@ mlir::LogicalResult InsertMemPermuteBeforeAndAfterSoftmax::matchAndRewrite(IE::S
     const auto optimalDstOrder = calcuteOptimalOrderMapForSoftmax(inOrder, axis, ctx);
     const auto permMapOfInputMemPermute = getPermutationFromOrders(inOrder, optimalDstOrder, ctx);
     const auto optimalDstOrderMap = optimalDstOrder.toAffineMap(ctx);
-    auto inputMemPermuteOp = rewriter.create<IE::MemPermuteOp>(
-            appendLoc(origLoc, "_input_reorder"), softMaxOp.getInput(), optimalDstOrderMap, permMapOfInputMemPermute);
+    auto inputMemPermuteOpResult = rewriter.createOrFold<IE::MemPermuteOp>(
+            appendLoc(origLoc, "input_reorder"), softMaxOp.getInput(), optimalDstOrderMap, permMapOfInputMemPermute);
 
     // Create new Softmax with optimal axis
     const auto optimalAxis = optimalDstOrder.toDim(MemDim(optimalDstOrder.numDims() - 1)).ind();
     const auto optimalAxisAttr = getIntAttr(ctx, optimalAxis);
-    auto newSoftMaxOp =
-            rewriter.create<IE::SoftMaxOp>(origLoc, inputMemPermuteOp.getOutput(), optimalAxisAttr, nullptr);
-    changeDimsOrder(newSoftMaxOp, optimalDstOrder, _log.nest());
+    auto newSoftMaxOpResult =
+            rewriter.createOrFold<IE::SoftMaxOp>(origLoc, inputMemPermuteOpResult, optimalAxisAttr, nullptr);
+    changeDimsOrder(newSoftMaxOpResult, optimalDstOrder, _log.nest());
 
     // Create output MemPermute for inverse data transposition
     auto permMapOfOutputMemPermute = mlir::inversePermutation(permMapOfInputMemPermute);
     auto outputMemPermuteOp = rewriter.replaceOpWithNewOp<IE::MemPermuteOp>(
-            softMaxOp, newSoftMaxOp.getOutput(), inOrder.toAffineMap(ctx), permMapOfOutputMemPermute);
-    outputMemPermuteOp->setLoc(appendLoc(origLoc, "_output_reorder"));
+            softMaxOp, newSoftMaxOpResult, inOrder.toAffineMap(ctx), permMapOfOutputMemPermute);
+    outputMemPermuteOp->setLoc(appendLoc(origLoc, "output_reorder"));
     return mlir::success();
 }
 
@@ -222,9 +223,7 @@ void PropagateMemPermuteThroughSoftMaxPass::safeRunOnFunc() {
     patterns.add<SwapSoftmaxAndMemPermute>(&ctx, _log);
     patterns.add<InsertMemPermuteBeforeAndAfterSoftmax>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

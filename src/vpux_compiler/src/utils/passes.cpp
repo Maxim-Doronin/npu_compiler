@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/utils/passes.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"

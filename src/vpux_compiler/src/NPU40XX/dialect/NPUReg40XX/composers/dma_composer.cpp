@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -121,9 +121,11 @@ void setGatherMode(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap, c
                    DMARegister& initValues, const mlir::MemRefType& outputType, Bit elemOutSize) {
     mlir::MemRefType indicesType;
     auto indicesBufferRep = symRefMap.lookupSymbol(indices);
+    uint32_t indiceTileMask = 0;
     if (mlir::isa<VPUASM::DeclareBufferOp>(indicesBufferRep)) {
         auto indicesBuffer = mlir::cast<VPUASM::DeclareBufferOp>(indicesBufferRep);
         indicesType = indicesBuffer.getBufferType().getMemref();
+        indiceTileMask = VPUASM::getTileSelectMaskForBuffer(indicesBuffer);
     }
     // DMA copies data block by block example here with
     // input 50257x768xf32 indices 1024xi64
@@ -149,6 +151,7 @@ void setGatherMode(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap, c
     initValues.write<Fields::dma_stride_dst_1>(dma_element_size);
     initValues.write<Fields::dma_width_src>(dma_element_size);
     initValues.write<Fields::dma_dim_size_dst_1>(0);
+    initValues.write<Fields::dma_dim_size_src_2>(indiceTileMask);
 }
 
 }  // namespace
@@ -208,7 +211,24 @@ DMARegister compose(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap) 
         }
     }
 
-    auto transactionConfig = VPUASM::getDMATransactionConfig(origOp);
+    mlir::MemRefType outputType;
+    if (!isDMAInputForWLMDMA) {
+        auto outputBuffs = origOp.getOutputBuffs();
+        VPUX_THROW_WHEN(outputBuffs.empty(), "Output buffer is missing.");
+        auto outputBufferSym = mlir::dyn_cast_or_null<mlir::SymbolRefAttr>(outputBuffs[0]);
+        VPUX_THROW_UNLESS(outputBufferSym, "`output_buffs` attribute should contain SymbolRefAttr but it doesn't");
+
+        auto outputBufferRef = symRefMap.lookupSymbol(outputBufferSym);
+        auto outputBuffer = mlir::dyn_cast_or_null<VPUASM::DeclareBufferOp>(outputBufferRef);
+        VPUX_THROW_UNLESS(outputBuffer, "Could not find symbol name entry for {0}", outputBufferRef);
+        outputType = outputBuffer.getBufferType().getMemref();
+    }
+
+    auto isQuantizedType = mlir::dyn_cast_or_null<mlir::quant::QuantizedType>(inputType) &&
+                           mlir::dyn_cast_or_null<mlir::quant::QuantizedType>(outputType);
+    auto transactionConfig = VPUASM::getDMATransactionConfig(
+            origOp,
+            !isDMAInputForWLMDMA && !isQuantizedType && (inputType.getElementType() != outputType.getElementType()));
 
     descriptor.write<Fields::dma_cfg_fields_num_dim>(transactionConfig.numDims);
     descriptor.write<Fields::dma_cfg_fields_barrier_en>(barrierEn);
@@ -261,7 +281,7 @@ DMARegister compose(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap) 
         descriptor.write<Fields::dma_cfg_fields_memset_en>(1);
     }
 
-    if (auto enableMemorySideCaching = origOp.getEnableMscAttr()) {
+    if (origOp.getEnableMsc()) {
         setEnableMemorySideCaching(descriptor);
     }
 
@@ -298,17 +318,6 @@ DMARegister compose(VPUASM::NNDMAOp origOp, ELF::SymbolReferenceMap& symRefMap) 
 
         auto totalInSizeBits = alignMemSize(inputType.getNumElements() * elemInSize, Byte(1));
         auto totalOutSizeBits = alignMemSize(outputType.getNumElements() * elemOutSize, Byte(1));
-
-        // DMA only does FP32 -> FP16/BF16 conversions,
-        // Because of this, dstDimSize1 will always be half of the original value
-        auto isQuantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(inputType) &&
-                               mlir::dyn_cast<mlir::quant::QuantizedType>(outputType);
-        if (inputType.getElementType() != outputType.getElementType() && !isQuantizedType &&
-            transactionConfig.dstDimSizes[1]) {
-            VPUX_THROW_UNLESS(elemInSize == elemOutSize * 2, "Element sizes in conversion are not supported");
-            long newDstDimSize1 = ((transactionConfig.dstDimSizes[1] + 1) / 2) - 1;
-            descriptor.write<Fields::dma_dim_size_dst_1>(newDstDimSize1);
-        }
 
         if (accMode != vpux::VPUIP::DMAAccMode::DISABLE) {
             VPUX_THROW_WHEN(transactionConfig.srcDimSizes[1] != 0 || transactionConfig.dstDimSizes[1] != 0 ||

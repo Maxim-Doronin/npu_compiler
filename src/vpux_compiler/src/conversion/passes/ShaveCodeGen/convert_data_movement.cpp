@@ -11,19 +11,23 @@
 #include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/IR/AffineMap.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 using namespace vpux;
 
 namespace {
 
-class IESliceToExtractSlice : public mlir::OpRewritePattern<IE::SliceOp> {
+class IESliceToExtractSlice : public mlir::OpConversionPattern<IE::SliceOp> {
 public:
-    using mlir::OpRewritePattern<IE::SliceOp>::OpRewritePattern;
+    using mlir::OpConversionPattern<IE::SliceOp>::OpConversionPattern;
+    using OpAdaptor = mlir::OpConversionPattern<IE::SliceOp>::OpAdaptor;
 
-    mlir::LogicalResult matchAndRewrite(IE::SliceOp op, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(IE::SliceOp op, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const final;
 };
 
-mlir::LogicalResult IESliceToExtractSlice::matchAndRewrite(IE::SliceOp op, mlir::PatternRewriter& rewriter) const {
+mlir::LogicalResult IESliceToExtractSlice::matchAndRewrite(IE::SliceOp op, OpAdaptor adaptor,
+                                                           mlir::ConversionPatternRewriter& rewriter) const {
     auto inputNdType = mlir::cast<NDTypeInterface>(op->getOperand(0).getType());
     auto inputRank = inputNdType.getRank();
     auto outputNdType = mlir::cast<NDTypeInterface>(op->getResult(0).getType());
@@ -34,8 +38,7 @@ mlir::LogicalResult IESliceToExtractSlice::matchAndRewrite(IE::SliceOp op, mlir:
     auto flatResultTy = mlir::RankedTensorType::get(flatResultShape, elTy);
     auto inputMemMap = inputNdType.getDimsOrder().toAffineMap(op.getContext());
 
-    // Convert the input to identity layout.
-    auto input = ShaveCodeGen::convertToLinalgValue(op->getOperand(0), rewriter);
+    auto input = adaptor.getOperands()[0];
 
     // Apply input permutation to slice offsets and sizes
     const auto sliceOffsets = parseIntArrayAttr<int64_t>(op.getStaticOffsets());
@@ -49,16 +52,15 @@ mlir::LogicalResult IESliceToExtractSlice::matchAndRewrite(IE::SliceOp op, mlir:
             op.getLoc(), mlir::TypeRange{flatResultTy}, input, mlir::ValueRange{}, mlir::ValueRange{},
             mlir::ValueRange{}, memSliceOffsets, memSliceSizes, sliceStrides);
 
-    rewriter.replaceOp(
-            op,
-            ShaveCodeGen::convertFromLinalgValue(extractSlice, op->getResult(0).getType(), rewriter).getDefiningOp());
+    rewriter.replaceOp(op, extractSlice);
 
     return mlir::success();
 }
 
 }  // namespace
 
-void ShaveCodeGen::populateIEDataMovementToTensorPatterns(mlir::RewritePatternSet& patternSet) {
+void ShaveCodeGen::populateIEDataMovementToTensorPatterns(mlir::RewritePatternSet& patternSet,
+                                                          mlir::TypeConverter& typeConverter) {
     auto& ctx = *patternSet.getContext();
-    patternSet.add<IESliceToExtractSlice>(&ctx);
+    patternSet.add<IESliceToExtractSlice>(typeConverter, &ctx);
 }

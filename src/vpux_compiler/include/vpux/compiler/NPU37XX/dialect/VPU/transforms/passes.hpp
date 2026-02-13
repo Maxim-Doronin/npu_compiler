@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,6 +39,9 @@ struct DefaultHWOptions : public VPU::DefaultHWOptionsDialectBase, virtual vpux:
                                         llvm::cl::init(true)};
     BoolOption enableVPUNNPreSplit{*this, "enable-vpunn-pre-split", llvm::cl::desc("Enable VPUNN LayersPreSplit API"),
                                    llvm::cl::init(false)};
+
+    BoolOption enableODULocalRegion{*this, "enable-odu-local-region", llvm::cl::desc("Enable ODU local region"),
+                                    llvm::cl::init(false)};
 
     DefaultHWOptions() = default;
 

@@ -129,11 +129,11 @@ vpux::VPURT::InferenceExecutionSimulator::InferenceExecutionSimulator(Logger log
         // (unless dedicated FIFOs for each SHAVE engine are enabled) as it is dispatched only at inference based on
         // engine availability. Nevertheless simulator needs to know this to correctly model those queues and track
         // cycles
-        if (auto shaveActExec = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT)) {
-            _numOfExecutorQueuesForWhichAssignmentIsAtInference[VPU::ExecutorKind::SHAVE_ACT] =
+        if (auto shaveActExec = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT)) {
+            _numOfExecutorQueuesForWhichAssignmentIsAtInference[config::ExecutorKind::SHAVE_ACT] =
                     _supportsDedicatedActShaveQueues ? 1 : shaveActExec.getCount();
         }
-        _dpuCount = tileOp.getSubExecutor(VPU::ExecutorKind::DPU).getCount();
+        _dpuCount = tileOp.getSubExecutor(config::ExecutorKind::DPU).getCount();
     }
     // Parse model and gather information about barrier, tasks and their cycle cost
     parseFunc();
@@ -333,7 +333,7 @@ void vpux::VPURT::InferenceExecutionSimulator::runSim() {
             queueStateMap[queueType].progressQueueToCycle(cycleEnd);
             queueTasks[index].cycleStart = cycleBegin;
 
-            if (queueType.type == VPU::ExecutorKind::DPU && !queueTasks[index].subTasksCycleCost.empty()) {
+            if (queueType.type == config::ExecutorKind::DPU && !queueTasks[index].subTasksCycleCost.empty()) {
                 queueTasks[index].subTasksCycleStart =
                         VPURT::getSubTasksStartTime(queueTasks[index].subTasksCycleCost, cycleBegin, _dpuCount);
             }
@@ -413,7 +413,7 @@ SmallVector<VPURT::TaskConfig, 1> vpux::VPURT::InferenceExecutionSimulator::getT
 }
 
 SmallVector<VPURT::TaskConfig, 1> vpux::VPURT::InferenceExecutionSimulator::getTaskCycleConfig(
-        VPU::ExecutorKind execKind) {
+        config::ExecutorKind execKind) {
     VPUX_THROW_WHEN(_queueTasksMap.empty(), "Queue task map not initialized");
 
     TaskConfigVec allQueueTaskConfig;

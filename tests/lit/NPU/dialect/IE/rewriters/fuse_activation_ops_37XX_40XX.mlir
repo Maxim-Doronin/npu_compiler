@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -138,7 +138,7 @@ func.func @AvgPoolWithLeakyReluFuseTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1
 
     return %1 : tensor<1x16x3x3xf16>
 
-    // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool(%arg0) {
+    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool(%arg0) {
     // CHECK-SAME:      kernel_size = [2, 2],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -238,7 +238,7 @@ func.func @SkipMaxPoolWithReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3
 
     return %1 : tensor<1x16x3x3xf16>
 
-    // CHECK:       [[MAX_POOL:%.*]] = IE.MaxPool(%arg0) {
+    // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool(%arg0) {
     // CHECK-SAME:      kernel_size = [2, 2],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -246,7 +246,7 @@ func.func @SkipMaxPoolWithReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:  } : tensor<1x16x4x4xf16> -> tensor<1x16x3x3xf16>
 
-    // CHECK:       [[RELU:%.*]] = IE.ReLU([[MAX_POOL]])
+    // CHECK:       [[RELU:%.+]] = IE.ReLU([[MAX_POOL]])
     // CHECK-SAME:  : tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
 
     // CHECK:       return [[RELU]] : tensor<1x16x3x3xf16>
@@ -270,7 +270,7 @@ func.func @SkipMaxPoolWithLeakyReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1
 
     return %1 : tensor<1x16x3x3xf16>
 
-    // CHECK:       [[MAX_POOL:%.*]] = IE.MaxPool(%arg0) {
+    // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool(%arg0) {
     // CHECK-SAME:      kernel_size = [2, 2],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -278,7 +278,7 @@ func.func @SkipMaxPoolWithLeakyReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:  } : tensor<1x16x4x4xf16> -> tensor<1x16x3x3xf16>
 
-    // CHECK:       [[LEAKY_RELU:%.*]] = IE.LeakyRelu([[MAX_POOL]]) {
+    // CHECK:       [[LEAKY_RELU:%.+]] = IE.LeakyRelu([[MAX_POOL]]) {
     // CHECK-SAME:      negative_slope = 1.000000e-01 : f64
     // CHECK-SAME:  } : tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
 
@@ -362,14 +362,14 @@ func.func @MixedAvgPoolWithLeakyReluNoFuseTest(%arg0: tensor<1x16x4x4x!qElemType
 
     return %1 : tensor<1x16x4x4xf16>
 
-    // CHECK:       [[AVG_POOL:%.*]] = IE.AvgPool([[ARG0]]) {
+    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool([[ARG0]]) {
     // CHECK-SAME:      kernel_size = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
     // CHECK-SAME:      rounding_type = #IE.rounding_type<FLOOR>,
     // CHECK-SAME:      strides = [1, 1]
     // CHECK-SAME:  } : tensor<1x16x4x4x!qElemType> -> tensor<1x16x4x4xf16>
-    // CHECK:       [[LEAKY_RELU:%.*]] = IE.LeakyRelu([[AVG_POOL]]) {
+    // CHECK:       [[LEAKY_RELU:%.+]] = IE.LeakyRelu([[AVG_POOL]]) {
     // CHECK-SAME:  } : tensor<1x16x4x4xf16> -> tensor<1x16x4x4xf16>
 
     // CHECK:       return [[LEAKY_RELU]] : tensor<1x16x4x4xf16>
@@ -437,5 +437,4 @@ func.func @NotFuseClampI32(%arg0: tensor<1x50x1x1xsi32>) -> tensor<1x50x1x1xsi32
     // CHECK-SAME:      max = 1.000000e+00 : f64,
     // CHECK-SAME:      min = -1.000000e+00 : f64
     // CHECK-SAME:  } : tensor<1x50x1x1xsi32> -> tensor<1x50x1x1xsi32>
-
 }

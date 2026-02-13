@@ -107,12 +107,5 @@ int main(int argc, char** argv, char** envp) {
         std::cout << "gtest death test process is running" << std::endl;
     }
 
-    auto& log = vpux::Logger::global();
-    auto level = LayerTestsUtils::VpuTestEnvConfig::getInstance().IE_NPU_TESTS_LOG_LEVEL;
-    vpux::LogLevel logLevel =
-            level.empty() ? vpux::LogLevel::Info
-                          : vpux::getLogLevel(intel_npu::OptionParser<ov::log::Level>::parse(level.c_str()));
-    log.setLevel(logLevel);
-
     return RUN_ALL_TESTS();
 }

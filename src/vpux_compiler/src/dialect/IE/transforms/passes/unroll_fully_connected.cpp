@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/locations.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/ValueRange.h>
 #include <cstdint>
@@ -33,10 +34,8 @@ namespace {
 
 class UnrollFullyConnected final : public mlir::OpRewritePattern<IE::FullyConnectedOp> {
 public:
-    UnrollFullyConnected(mlir::MLIRContext* ctx, bool accumulateMatmulWithDPU, Logger log)
-            : mlir::OpRewritePattern<IE::FullyConnectedOp>(ctx),
-              _log(log),
-              _accumulateMatmulWithDPU(accumulateMatmulWithDPU) {
+    UnrollFullyConnected(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::FullyConnectedOp>(ctx), _log(log) {
         setDebugName("UnrollFullyConnected");
     }
 
@@ -62,7 +61,6 @@ private:
 
 private:
     Logger _log;
-    bool _accumulateMatmulWithDPU = false;
 };
 
 bool UnrollFullyConnected::checkConcat(IE::ConcatOp concat) const {
@@ -300,38 +298,23 @@ SmallVector<mlir::Value> UnrollFullyConnected::accumulateMatMuls(const mlir::Val
     // Next iterations will add each MatMul to the previous result.
     const auto addLoc = appendLoc(matMuls[0].getLoc(), "add");
 
-    mlir::Value addMatMuls;
     auto ctx = rewriter.getContext();
-    if (_accumulateMatmulWithDPU) {
-        addMatMuls =
-                rewriter.create<IE::AddOp>(addLoc, matMuls[0], matMuls[1],
-                                           IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT),
-                                           nullptr, nullptr, nullptr, nullptr)
-                        .getOutput();
-    } else {
-        addMatMuls = rewriter.create<IE::AccumulateOp>(addLoc, matMuls[0], matMuls[1],
-                                                       /*lhsScale=*/nullptr,
-                                                       /*rhsScale=*/nullptr)
-                             .getOutput();
-    }
+    auto addMatMuls =
+            rewriter.create<IE::AddOp>(addLoc, matMuls[0], matMuls[1],
+                                       IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT),
+                                       nullptr, nullptr, nullptr, nullptr)
+                    .getOutput();
     addOps.push_back(addMatMuls);
     for (const auto& idx : irange(numGroups - 2)) {
         // idx + 2 because the first two MatMul operations have already been summed up.
         const auto& matMul = matMuls[idx + 2];
         const auto loc = appendLoc(matMul.getLoc(), "add_{0}", idx + 2);
-        mlir::Value accumulateValue;
-        if (_accumulateMatmulWithDPU) {
-            accumulateValue = rewriter.create<IE::AddOp>(loc, addOps.back(), matMuls[idx + 2],
-                                                         IE::AutoBroadcastTypeAttr::get(
-                                                                 ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT),
-                                                         nullptr, nullptr, nullptr, nullptr)
-                                      .getOutput();
-        } else {
-            accumulateValue = rewriter.create<IE::AccumulateOp>(loc, addOps.back(), matMuls[idx + 2],
-                                                                /*lhsScale=*/nullptr,
-                                                                /*rhsScale=*/nullptr)
-                                      .getOutput();
-        }
+
+        auto accumulateValue =
+                rewriter.create<IE::AddOp>(loc, addOps.back(), matMuls[idx + 2],
+                                           IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT),
+                                           nullptr, nullptr, nullptr, nullptr)
+                        .getOutput();
         addOps.push_back(accumulateValue);
     }
     return addOps;
@@ -347,7 +330,7 @@ mlir::Value UnrollFullyConnected::reduceSumForAccumulateMatMuls(const mlir::Valu
     auto concat = rewriter.create<IE::ConcatOp>(concatLoc, matMuls, Dims4D::Act::C);
 
     auto axesAttr = getIntArrayAttr(rewriter, SmallVector<int32_t>{vpux::Dims4D::Act::C.ind()});
-    const auto reduceSumLoc = appendLoc(matMuls.front().getLoc(), "_reduceSum_for_accumulate");
+    const auto reduceSumLoc = appendLoc(matMuls.front().getLoc(), "reduceSum_for_accumulate");
     auto newReduceSumOp = rewriter.create<IE::ReduceSumOp>(reduceSumLoc, concat.getOutput(), nullptr, axesAttr, false,
                                                            nullptr, nullptr);
 
@@ -482,8 +465,17 @@ mlir::LogicalResult UnrollFullyConnected::matchAndRewrite(IE::FullyConnectedOp o
 
     auto nestedLog = _log.nest();
     nestedLog.debug("Unroll GPTQ FullyConnected.");
+
+    const auto numChunks = checked_cast<int64_t>(matMulInputs.size());
+    const auto lhsShape = getShape(origOp.getInput());
+    const auto inputChannels = lhsShape[Dim(1)];
+    if (inputChannels < numChunks || inputChannels % numChunks != 0) {
+        nestedLog.debug("Input channels ({0}) cannot be evenly divided by number of chunks ({1})", inputChannels,
+                        numChunks);
+        return mlir::failure();
+    }
+
     const auto rhsChunks = reshapeTo2d(matMulInputs, rewriter);
-    const auto numChunks = checked_cast<int64_t>(rhsChunks.size());
     // Split left input into the number of chunks:
     const auto lhsChunks = splitLeftInput(origOp.getInput(), numChunks, opLoc, rewriter);
     // Multiply lhs by rhs in pairs
@@ -498,10 +490,10 @@ mlir::LogicalResult UnrollFullyConnected::matchAndRewrite(IE::FullyConnectedOp o
         const auto matMuls = buildMatMuls(origOp, lhsChunks, rhsChunks, false, rewriter);
         // Sum up MatMul results
         const auto addOps = accumulateMatMuls(matMuls, rewriter);
-        VPUX_THROW_WHEN(addOps.empty(), "The group must contain at least one IE.Accumulate operation, got 0.");
-        // The last IE.Accumulate operation in the list will contain the total sum.
+        VPUX_THROW_WHEN(addOps.empty(), "The group must contain at least one IE.Add operation, got 0.");
+        // The last IE.Add operation in the list will contain the total sum.
         rewriter.replaceOp(origOp, addOps.back());
-        nestedLog.debug("Accumulate using IE.Accumulate op.");
+        nestedLog.debug("Accumulate using IE.Add op.");
     }
 
     _log.debug("Successfully unrolled FullyConnectedOp at loc: {0}", opLoc);
@@ -510,47 +502,25 @@ mlir::LogicalResult UnrollFullyConnected::matchAndRewrite(IE::FullyConnectedOp o
 
 class UnrollFullyConnectedPass final : public IE::impl::UnrollFullyConnectedBase<UnrollFullyConnectedPass> {
 public:
-    explicit UnrollFullyConnectedPass(Logger log, bool accumulateMatmulWithDPU)
-            : _accumulateMatmulWithDPU(accumulateMatmulWithDPU) {
+    explicit UnrollFullyConnectedPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
 private:
     void safeRunOnFunc() final;
-    bool _accumulateMatmulWithDPU = false;
 };
-
-mlir::LogicalResult UnrollFullyConnectedPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    if (accumulateMatmulWithDPU.hasValue()) {
-        _log.trace("Overloading the default value {0} of the '_accumulateMatmulWithDPU' field to the value {1} of the "
-                   "pass option "
-                   "'accumulateMatmulWithDPU' generated by MLIR",
-                   _accumulateMatmulWithDPU, accumulateMatmulWithDPU);
-        _accumulateMatmulWithDPU = accumulateMatmulWithDPU;
-    }
-
-    return mlir::success();
-}
 
 void UnrollFullyConnectedPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<UnrollFullyConnected>(&ctx, _accumulateMatmulWithDPU, _log);
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    patterns.add<UnrollFullyConnected>(&ctx, _log);
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createUnrollFullyConnectedPass(Logger log, bool accumulateMatmulWithDPU) {
-    return std::make_unique<UnrollFullyConnectedPass>(log, accumulateMatmulWithDPU);
+std::unique_ptr<mlir::Pass> vpux::IE::createUnrollFullyConnectedPass(Logger log) {
+    return std::make_unique<UnrollFullyConnectedPass>(log);
 }

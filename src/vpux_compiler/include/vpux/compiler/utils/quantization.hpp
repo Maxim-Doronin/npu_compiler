@@ -1,13 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
@@ -24,6 +22,7 @@ enum class EltwiseType : uint64_t;
 }  // namespace vpux::VPU
 
 namespace vpux {
+class NDTypeInterface;
 
 struct QuantizationLevels final {
     static constexpr int64_t QUANT_LEVELS_2BIT = 4;
@@ -107,21 +106,6 @@ private:
     int8_t _postShift;
 };
 
-class EltwiseQuantizationApproximation {
-public:
-    EltwiseQuantizationApproximation(double input1Target, double input2Target, double outputTarget,
-                                     VPU::EltwiseType eltwiseType);
-
-    QuantizationApproximation input1() const;
-    QuantizationApproximation input2() const;
-    QuantizationApproximation output() const;
-
-private:
-    QuantizationApproximation _input1;
-    QuantizationApproximation _input2;
-    QuantizationApproximation _output;
-};
-
 class PReLUApproximation {
 public:
     PReLUApproximation(double alpha);
@@ -142,36 +126,15 @@ bool hasScalarOrUniformZP(mlir::quant::QuantizedType quantizedType);
 // FakeQuantize support
 //
 
-namespace Const {
-class ContentAttr;
-}
-
-mlir::quant::QuantizedType getQuantizedType(const Const::ContentAttr& lowConst, const Const::ContentAttr& highConst,
-                                            std::optional<int64_t> levels, std::optional<mlir::Type> lowFpType,
-                                            mlir::FloatType expressedType, bool isSigned, mlir::Location loc,
-                                            IE::AutoBroadcastType broadcast = IE::AutoBroadcastType::NONE_OR_EXPLICIT,
-                                            bool ignoreZPCheck = false, const Logger& log = Logger::global());
-
 void getFakeQuantParams(mlir::quant::UniformQuantizedType qElemType, int64_t& levels, float& rMin, float& rMax);
 
 void getFakeQuantParams(mlir::quant::UniformQuantizedPerAxisType qElemType, int64_t& levels,
                         SmallVectorImpl<float>& rMinVals, SmallVectorImpl<float>& rMaxVals);
 
-void getFakeQuantParams(vpux::NDTypeInterface qType, int64_t& levels, mlir::RankedTensorType& attrType,
-                        mlir::DenseElementsAttr& rMinAttr, mlir::DenseElementsAttr& rMaxAttr);
-
-mlir::FailureOr<int32_t> getQuantizedDimension(ShapeRef lowShape, ShapeRef highShape, IE::AutoBroadcastType broadcast,
-                                               mlir::Location loc, const Logger& log);
-
 mlir::FailureOr<std::tuple<double, int64_t>> calcScaleAndZeroPoint(double qMinFP, double qMaxFP, double rMin,
                                                                    double rMax, const Logger& log = Logger::global());
 
 int64_t calculateZeroPoint(double low, double high, int levels, mlir::IntegerType type);
-
-mlir::FailureOr<std::tuple<SmallVector<double>, SmallVector<int64_t>>> getScalesAndZeroPointsFromContentAttr(
-        const Const::ContentAttr& lowContentAttr, const Const::ContentAttr& highContentAttr,
-        IE::AutoBroadcastType broadcast, const std::optional<int64_t> levels, const std::optional<mlir::Type> lowFpType,
-        bool isSigned, const Logger& log = Logger::global());
 
 mlir::FailureOr<int64_t> getSingleZeroPointOrFail(mlir::quant::QuantizedType quantType);
 
@@ -181,8 +144,8 @@ SmallVector<int64_t> getQuantizedTypeZeroPoints(mlir::quant::QuantizedType quant
 
 bool isSymmetricZeroPoint(mlir::quant::QuantizedType quantType);
 
-// Returns the min and max representable values for a known FP8 type.
-mlir::FailureOr<std::tuple<double, double>> getFp8Range(mlir::Type lowFpType);
+// Returns the min and max representable values for a known low precision types.
+mlir::FailureOr<std::tuple<double, double>> getLowFpRange(mlir::Type lowFpType);
 
 // Returns the integral storage type and the storage type's representable range for the given quantization levels.
 std::tuple<double, double, mlir::Type> getStorageParams(mlir::MLIRContext* ctx, int64_t levels, bool isSigned);
@@ -196,6 +159,14 @@ std::tuple<double, double> getRepresentableRange(mlir::Type lowPrecisionType);
 bool isFloat8(mlir::Type type);
 // Returns true if the given type is a quantized type with 8-bit float storage.
 bool isFloat8Quantized(mlir::Type type);
+// Returns true if the given type is an 4-bit float type.
+bool isFloat4(mlir::Type type);
+// Returns true if the given type is a quantized type with 4-bit float storage.
+bool isFloat4Quantized(mlir::Type type);
+// Returns true if the given type is a low float type.
+bool isLowFpType(mlir::Type type);
+// Returns true if the given type is a quantized type with low float type storage.
+bool isLowFpTypeQuantized(mlir::Type type);
 // Returns true if the given type is a quantized NF4 using Spec quantiles.
 bool isNF4SpecQuantized(mlir::Type type);
 
@@ -251,40 +222,6 @@ inline double dequantizeDouble(double qVal, double scale, int64_t zeroPoint) {
 //
 
 double fakeQuantize(double inVal, double inLow, double inHigh, double qLow, double qHigh, int64_t levels);
-
-// Broadcasting
-
-template <typename T>
-void broadcastRange(SmallVectorImpl<T>& lowVals, SmallVectorImpl<T>& highVals, IE::AutoBroadcastType broadcast) {
-    if (lowVals.size() == highVals.size()) {
-        return;
-    }
-    if (broadcast == IE::AutoBroadcastType::NONE_OR_EXPLICIT) {
-        return;
-    }
-
-    const auto numpyBroadcast = [](SmallVectorImpl<T>& smaller, SmallVectorImpl<T>& larger) {
-        VPUX_THROW_UNLESS(smaller.size() == 1, "One of the dimensions should be 1 for broadcasting.");
-        return SmallVector<T>(larger.size(), smaller[0]);
-    };
-
-    if (broadcast == IE::AutoBroadcastType::NUMPY) {
-        if (lowVals.size() < highVals.size()) {
-            lowVals = numpyBroadcast(lowVals, highVals);
-        } else {
-            highVals = numpyBroadcast(highVals, lowVals);
-        }
-        return;
-    }
-
-    VPUX_THROW("Unsupported broadcast type '{0}'", broadcast);
-}
-
-//
-// Derive new UniformQuantizedType. Multiply scale by specified factor.
-//
-
-mlir::Type rescaleUniformQuantizedType(const mlir::Type tensorType, const double factor);
 
 // Dequantize -> Operation -> Quantize fusing
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,9 +15,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
-#include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTDEFORMABLECONVTOCONV
@@ -200,9 +198,8 @@ mlir::LogicalResult ConvertDeformableConvToConv::matchAndRewrite(IE::DeformableC
     newConvStride[1] = KH;
     const auto allZeroPads = SmallVector<int64_t>(2, 0);
     auto newConvOp = rewriter.create<IE::ConvolutionOp>(
-            origOp.getLoc(), newConvInput, origOp.getKernel(), /*bias=*/nullptr, getIntArrayAttr(ctx, newConvStride),
-            getIntArrayAttr(ctx, allZeroPads), getIntArrayAttr(ctx, allZeroPads), origOp.getDilations(), nullptr,
-            nullptr, nullptr, nullptr, nullptr);
+            origOp.getLoc(), newConvInput, origOp.getKernel(), getIntArrayAttr(ctx, newConvStride),
+            getIntArrayAttr(ctx, allZeroPads), getIntArrayAttr(ctx, allZeroPads), origOp.getDilations());
     rewriter.replaceOp(origOp, newConvOp);
 
     return mlir::success();
@@ -233,10 +230,7 @@ void ConvertDeformableConvToConvPass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<ConvertDeformableConvToConv>(&ctx, _log);
-
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <common_test_utils/ov_tensor_utils.hpp>
@@ -71,14 +71,14 @@ class ShaveCodeGenActivationLayerTest_Profiling : public ShaveCodeGenActivationL
         }                                                                                          \
         EXTRA_SW;                                                                                  \
         setReferenceSoftwareMode();                                                                \
-        setMLIRCompilerType();                                                                     \
+        setPluginCompilerType();                                                                   \
         run(Platform::PLATFORM);                                                                   \
     }                                                                                              \
     TEST_P(ShaveCodeGenActivationLayerTest_Profiling, DISABLE_PROFILING##PLATFORM) {               \
         abs_threshold = 0.0056;                                                                    \
         EXTRA_PROF;                                                                                \
         setReferenceSoftwareMode();                                                                \
-        setMLIRCompilerType();                                                                     \
+        setPluginCompilerType();                                                                   \
         enableProfiling();                                                                         \
         run(Platform::PLATFORM);                                                                   \
     }
@@ -171,7 +171,8 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> activationDynamicTypes = {
-        {Gelu, {{1.0f}}}, {Atan, {{1.0f}}}, {Cos, {{1.0f}}}, {Sin, {{1.0f}}}, {Sqrt, {{1.0f}}}, {Log, {{1.0f}}},
+        {Gelu, {{1.0f}}}, {Atan, {{1.0f}}}, {Cos, {{1.0f}}},     {Sin, {{1.0f}}},
+        {Sqrt, {{1.0f}}}, {Log, {{1.0f}}},  {Ceiling, {{1.0f}}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> preluParamTypes = {
@@ -230,7 +231,13 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenAct
         {Selu, {{1.6732f, 1.0507f}}},
         {PReLu, {{0.01f}}},
         {SoftPlus, {{1.0f}}},
-        {Mish, {{1.0f}}}};
+        {Mish, {{1.0f}}},
+        {Floor, {{1.0f}}},
+        {Ceiling, {{1.0f}}},
+        {Asinh, {{1.0f}}},
+        {Acosh, {{1.0f}}},
+        {Asin, {{1.0f}}},
+        {Acos, {{1.0f}}}};
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> shaveCodeGenIntActivationTypes = {
         {Clamp, {{-1.0f, 1.0f}}},
@@ -282,6 +289,14 @@ const auto basicClampI32 = genActLessParams(
         std::map<ActivationTypes, std::vector<std::vector<float>>>{{Clamp, {{-1.0f, 1.0f}}}},
         std::map<std::vector<ov::Shape>, std::vector<ov::Shape>>({{{{1, 50, 1, 1}}, {}}}), ov::element::i32);
 
+const std::map<ActivationTypes, std::vector<std::vector<float>>> floorActivationTypes = {{Floor, {{-3.0f, 6.0f}}}};
+const std::vector<ov::element::Type> floorIntegerElementTypes = {ov::element::i32, ov::element::i64};
+const auto basicFloorInteger = ::testing::Combine(
+        ::testing::ValuesIn(::combineParams(floorActivationTypes)), ::testing::ValuesIn(floorIntegerElementTypes),
+        ::testing::ValuesIn(staticShapesParamTransform(ov::test::utils::combineParams(
+                std::map<std::vector<ov::Shape>, std::vector<ov::Shape>>({{{{1, 16, 48, 1}}, {}}})))),
+        ::testing::Values(test_utils::TARGET_DEVICE));
+
 // --------------------- 3720+ ---------------------
 // ------ NPU SW  ------
 INSTANTIATE_TEST_SUITE_P(precommit_Act_fp16, ActivationLayerTest_SW_FP, basicCasesSWFP16,
@@ -297,6 +312,8 @@ INSTANTIATE_TEST_SUITE_P(precommit_Act_PRelu_Slope_param, ActivationLayerTest_SW
 INSTANTIATE_TEST_SUITE_P(precommit_Act_2D, ActivationLayerTest_SW_FP, basicCases2D,
                          ActivationLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Act_tiling_Sw, ActivationLayerTest_SW_FP, basicTilingCases,
+                         ActivationLayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(precommit_Act_Floor_Integer, ActivationLayerTest_SW_FP, basicFloorInteger,
                          ActivationLayerTest::getTestCaseName);
 
 // ------ NPU HW ------

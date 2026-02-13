@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,12 +46,14 @@ namespace {
 // Run-time resources
 //
 
-constexpr llvm::StringLiteral platformAttrName = "config.platform";
-constexpr llvm::StringLiteral archAttrName = "config.arch";
+constexpr StringLiteral platformAttrName = config::PlatformAttr::name;
+constexpr StringLiteral archAttrName = "config.arch";
+constexpr StringLiteral abiVersionName = "config.elf_version";
+constexpr StringLiteral revisionIDAttrName = "config.revisionID";
 constexpr Byte DDR_HEAP_SIZE = 64000_MB;
 
-constexpr llvm::StringLiteral derateFactorAttrName = "config.derateFactor";
-constexpr llvm::StringLiteral bandwidthAttrName = "config.bandwidth"; /*!< This attribute corresponds to a single JSON
+constexpr StringLiteral derateFactorAttrName = "config.derateFactor";
+constexpr StringLiteral bandwidthAttrName = "config.bandwidth"; /*!< This attribute corresponds to a single JSON
                       field nested at header>resources>memory_bandwidth>number in the deserialized version of the blob.
                       */
 
@@ -71,10 +73,10 @@ config::CompilationMode vpux::config::getCompilationMode(mlir::Operation* op) {
     auto module = getModuleOp(op);
 
     if (auto attr = module->getAttr(compilationModeAttrName)) {
-        VPUX_THROW_UNLESS(mlir::isa<vpux::config::CompilationModeAttr>(attr),
+        VPUX_THROW_UNLESS(mlir::isa<config::CompilationModeAttr>(attr),
                           "Module attribute '{0}' has unsupported value '{1}'", compilationModeAttrName, attr);
 
-        return mlir::cast<vpux::config::CompilationModeAttr>(attr).getValue();
+        return mlir::cast<config::CompilationModeAttr>(attr).getValue();
     }
 
     // Use DefaultHW as a default mode
@@ -98,9 +100,9 @@ namespace {
 struct Resources {
     int numOfDPUGroups = 1;
     std::optional<int> numOfDMAPorts = std::nullopt;
-    std::optional<vpux::Byte> availableCMXMemory = std::nullopt;
+    std::optional<Byte> availableCMXMemory = std::nullopt;
 
-    Resources(int numOfDPUGroups, std::optional<int> numOfDMAPorts, std::optional<vpux::Byte> availableCMXMemory)
+    Resources(int numOfDPUGroups, std::optional<int> numOfDMAPorts, std::optional<Byte> availableCMXMemory)
             : numOfDPUGroups(numOfDPUGroups), numOfDMAPorts(numOfDMAPorts), availableCMXMemory(availableCMXMemory) {
     }
 };
@@ -108,7 +110,8 @@ struct Resources {
 struct SetResourcesFuncs {
     using AddGlobalResourcesFuncType = FuncRef<config::ResourcesOp()>;
     using AddTileExecutorFuncType = FuncRef<config::ResourcesOp(size_t)>;
-    using AddSubExecutorFuncType = FuncRef<config::ExecutorResourceOp(config::ResourcesOp, VPU::ExecutorKind, size_t)>;
+    using AddSubExecutorFuncType =
+            FuncRef<config::ExecutorResourceOp(config::ResourcesOp, config::ExecutorKind, size_t)>;
     using AddInnerMemoryFuncType = FuncRef<config::MemoryResourceOp(config::ResourcesOp, mlir::SymbolRefAttr, Byte)>;
     using AddInnerMemoryWithAttrsFuncType =
             FuncRef<void(config::ResourcesOp, mlir::SymbolRefAttr, Byte, double, size_t)>;
@@ -158,13 +161,13 @@ void setResources(mlir::ModuleOp module, const Resources& res, const SetResource
                         : VPUX37XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE;
 
         auto globalResource = funcs.addGlobalResources();
-        funcs.addSubExecutor(globalResource, VPU::ExecutorKind::DMA_NN, getNumOfDMAPortsVal(VPUX37XX_MAX_DMA_PORTS));
+        funcs.addSubExecutor(globalResource, config::ExecutorKind::DMA_NN, getNumOfDMAPortsVal(VPUX37XX_MAX_DMA_PORTS));
         funcs.addInnerMemoryWithAttrs(globalResource, ddrSymbolAttr, DDR_HEAP_SIZE, 0.6, 8);
 
         nceCluster = funcs.addTileExecutor(numOfDPUGroups);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::DPU, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_NN, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_ACT, VPUX37XX_MAX_SHAVES_PER_TILE);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::DPU, 1);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::SHAVE_NN, 1);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::SHAVE_ACT, VPUX37XX_MAX_SHAVES_PER_TILE);
         funcs.addInnerMemoryWithAttrs(nceCluster, cmxSymbolAttr, workspaceCMXSize, 1.0, 32);
         funcs.addInnerMemory(nceCluster, cmxFragAwareSymbolAttr, workspaceFragmentationAwareSize);
 
@@ -179,14 +182,14 @@ void setResources(mlir::ModuleOp module, const Resources& res, const SetResource
                         : VPUX40XX_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE;
 
         auto globalResource = funcs.addGlobalResources();
-        funcs.addSubExecutor(globalResource, VPU::ExecutorKind::DMA_NN,
+        funcs.addSubExecutor(globalResource, config::ExecutorKind::DMA_NN,
                              getNumOfDMAPortsVal(std::min(numOfDPUGroups, VPUX40XX_MAX_DMA_PORTS)));
-        funcs.addSubExecutor(globalResource, VPU::ExecutorKind::M2I, 1);
+        funcs.addSubExecutor(globalResource, config::ExecutorKind::M2I, 1);
         funcs.addInnerMemoryWithAttrs(globalResource, ddrSymbolAttr, DDR_HEAP_SIZE, 0.6, 64);
 
         nceCluster = funcs.addTileExecutor(numOfDPUGroups);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::DPU, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_ACT, VPUX40XX_MAX_SHAVES_PER_TILE);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::DPU, 1);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::SHAVE_ACT, VPUX40XX_MAX_SHAVES_PER_TILE);
         funcs.addInnerMemoryWithAttrs(nceCluster, cmxSymbolAttr, workspaceCMXSize, 1.0, 64);
         funcs.addInnerMemory(nceCluster, cmxFragAwareSymbolAttr, workspaceFragmentationAwareSize);
 
@@ -202,13 +205,13 @@ void setResources(mlir::ModuleOp module, const Resources& res, const SetResource
 
         auto globalResource = funcs.addGlobalResources();
         funcs.addInnerMemoryWithAttrs(globalResource, ddrSymbolAttr, DDR_HEAP_SIZE, 0.6, 64);
-        funcs.addSubExecutor(globalResource, VPU::ExecutorKind::DMA_NN,
+        funcs.addSubExecutor(globalResource, config::ExecutorKind::DMA_NN,
                              getNumOfDMAPortsVal(std::min(numOfDPUGroups, VPUX50XX_MAX_DMA_PORTS)));
-        funcs.addSubExecutor(globalResource, VPU::ExecutorKind::M2I, 1);
+        funcs.addSubExecutor(globalResource, config::ExecutorKind::M2I, 1);
 
         nceCluster = funcs.addTileExecutor(numOfDPUGroups);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::DPU, 1);
-        funcs.addSubExecutor(nceCluster, VPU::ExecutorKind::SHAVE_ACT, VPUX50XX_MAX_SHAVES_PER_TILE);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::DPU, 1);
+        funcs.addSubExecutor(nceCluster, config::ExecutorKind::SHAVE_ACT, VPUX50XX_MAX_SHAVES_PER_TILE);
         funcs.addInnerMemoryWithAttrs(nceCluster, cmxSymbolAttr, workspaceCMXSize, 1.0, 64);
         funcs.addInnerMemory(nceCluster, cmxFragAwareSymbolAttr, workspaceFragmentationAwareSize);
 
@@ -224,8 +227,8 @@ void setResources(mlir::ModuleOp module, const Resources& res, const SetResource
 }  // namespace
 
 void vpux::config::setArch(mlir::ModuleOp module, std::optional<config::Platform> platform, config::ArchKind kind,
-                           int numOfDPUGroups, std::optional<int> numOfDMAPorts,
-                           std::optional<vpux::Byte> availableCMXMemory, bool allowCustomValues) {
+                           int numOfDPUGroups, std::optional<int> numOfDMAPorts, std::optional<Byte> availableCMXMemory,
+                           bool allowCustomValues) {
     const bool hasArch = module->hasAttr(platformAttrName) || module->hasAttr(archAttrName);
     VPUX_THROW_WHEN(!allowCustomValues && hasArch,
                     "Target platform is already set, probably you run '--init-compiler' twice");
@@ -260,7 +263,7 @@ void vpux::config::setArch(mlir::ModuleOp module, std::optional<config::Platform
         return config::addTileExecutor(module, count);
     };
 
-    const auto addSubExecutor = [&](config::ResourcesOp tileResOp, VPU::ExecutorKind kind, size_t count) {
+    const auto addSubExecutor = [&](config::ResourcesOp tileResOp, config::ExecutorKind kind, size_t count) {
         VPUX_THROW_WHEN(!allowCustomValues && tileResOp.hasSubExecutor(kind),
                         "Available executor kind '{0}' was already added", kind);
         if (tileResOp.hasSubExecutor(kind)) {
@@ -316,7 +319,7 @@ config::ArchKind vpux::config::getArch(config::Platform platform) {
 std::optional<config::Platform> vpux::config::getPlatform(mlir::Operation* op) {
     auto module = getModuleOp(op);
     if (auto attr = module->getAttr(platformAttrName)) {
-        return mlir::cast<vpux::config::PlatformAttr>(attr).getValue();
+        return mlir::cast<config::PlatformAttr>(attr).getValue();
     }
     return std::nullopt;
 }
@@ -324,10 +327,10 @@ std::optional<config::Platform> vpux::config::getPlatform(mlir::Operation* op) {
 config::ArchKind vpux::config::getArch(mlir::Operation* op) {
     auto module = getModuleOp(op);
     if (auto attr = module->getAttr(platformAttrName)) {
-        auto platform = mlir::cast<vpux::config::PlatformAttr>(attr).getValue();
+        auto platform = mlir::cast<config::PlatformAttr>(attr).getValue();
         return getArch(platform);
     } else if (auto attr = module->getAttr(archAttrName)) {
-        return mlir::cast<vpux::config::ArchKindAttr>(attr).getValue();
+        return mlir::cast<config::ArchKindAttr>(attr).getValue();
     }
     return config::ArchKind::UNKNOWN;
 }
@@ -344,12 +347,6 @@ bool vpux::config::isArchVPUX5XXX(config::ArchKind arch) {
 // RevisionID
 //
 
-namespace {
-
-constexpr StringLiteral revisionIDAttrName = "config.revisionID";
-
-}  // namespace
-
 void vpux::config::setRevisionID(mlir::ModuleOp module, RevisionID revisionID) {
     module->setAttr(revisionIDAttrName, config::RevisionIDAttr::get(module.getContext(), revisionID));
 }
@@ -363,12 +360,56 @@ config::RevisionID vpux::config::getRevisionID(mlir::Operation* op) {
 
     if (module->hasAttr(revisionIDAttrName)) {
         if (auto attr = module->getAttr(revisionIDAttrName)) {
-            VPUX_THROW_UNLESS(mlir::isa<vpux::config::RevisionIDAttr>(attr),
+            VPUX_THROW_UNLESS(mlir::isa<config::RevisionIDAttr>(attr),
                               "Module attribute '{0}' has unsupported value '{1}'", revisionIDAttrName, attr);
 
-            return mlir::cast<vpux::config::RevisionIDAttr>(attr).getValue();
+            return mlir::cast<config::RevisionIDAttr>(attr).getValue();
         }
     }
 
     return config::RevisionID::REVISION_NONE;
+}
+
+namespace {
+constexpr StringLiteral debatchCompileMethod = "config.debatch";
+}  // namespace
+
+void config::setCompileMethodDebatch(mlir::ModuleOp module) {
+    module->setAttr(debatchCompileMethod, mlir::UnitAttr::get(module.getContext()));
+}
+
+bool config::hasCompileMethodDebatch(mlir::ModuleOp module) {
+    return module ? module->hasAttr(debatchCompileMethod) : false;
+}
+
+//
+// PureHostCompileFunc
+//
+
+namespace {
+constexpr StringLiteral pureHostCompileFunc = "config.pureHostCompileFunc";
+}  // namespace
+
+void config::setPureHostCompileFuncAttribute(mlir::func::FuncOp func) {
+    func->setAttr(pureHostCompileFunc, mlir::UnitAttr::get(func.getContext()));
+}
+
+bool config::isPureHostCompileFunc(mlir::func::FuncOp func) {
+    return func ? func->hasAttr(pureHostCompileFunc) : false;
+}
+
+//
+// ABI Version
+//
+
+void vpux::config::setElfAbiVersion(mlir::ModuleOp moduleOp, const config::Version& version) {
+    moduleOp->setAttr(abiVersionName, config::VersionAttr::get(moduleOp.getContext(), version));
+}
+
+std::optional<config::Version> vpux::config::getElfAbiVersion(mlir::Operation* op) {
+    auto moduleOp = getModuleOp(op);
+    if (auto attr = moduleOp->getAttr(abiVersionName)) {
+        return mlir::cast<config::VersionAttr>(attr).getVersion();
+    }
+    return std::nullopt;
 }

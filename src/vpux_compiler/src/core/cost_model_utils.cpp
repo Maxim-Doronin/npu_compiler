@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,14 +8,14 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/factories/cost_model_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
+#include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/swizzling_utils.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <vpu/dma_types.h>
@@ -51,20 +51,6 @@ VPUNN::VPUTensor getVPUNNTensorMultiCluster(ArrayRef<Shape> tensorShapes, VPUNN:
     return VPUNN::VPUTensor({totalShape, 1, 1, 1}, dataType);
 }
 
-// This function convert Arch kind to VPUNN VPUDevice directly and faithfully
-VPUNN::VPUDevice getVPUNNDevice(config::ArchKind archKind) {
-    switch (archKind) {
-    case config::ArchKind::NPU37XX:
-        return VPUNN::VPUDevice::VPU_2_7;
-    case config::ArchKind::NPU40XX:
-        return VPUNN::VPUDevice::VPU_4_0;
-    case config::ArchKind::NPU50XX:
-        return VPUNN::VPUDevice::NPU_5_0;
-    default:
-        VPUX_THROW("Unsupported VPU arch type: '{0}'", archKind);
-    }
-}
-
 VPUNN::DataType getElementType(mlir::Type type, [[maybe_unused]] VPUNN::VPUDevice vpuDevice) {
     if (type.isBF16()) {
         return VPUNN::DataType::BFLOAT16;
@@ -84,11 +70,11 @@ VPUNN::DataType getElementType(mlir::Type type, [[maybe_unused]] VPUNN::VPUDevic
 
         if (qType.getStorageTypeIntegralWidth() == 8) {
             return qType.isSigned() ? VPUNN::DataType::INT8 : VPUNN::DataType::UINT8;
-        } else if (qType.getStorageTypeIntegralWidth() == 4 && vpuDevice > VPUNN::VPUDevice::VPU_4_0) {
+        } else if (qType.getStorageTypeIntegralWidth() == 4 && vpuDevice >= VPUNN::VPUDevice::NPU_5_0) {
             // set INT4 only for 50XX+, see E#152912
             return qType.isSigned() ? VPUNN::DataType::INT4 : VPUNN::DataType::UINT4;
         }
-    } else if (type.isF32() && vpuDevice > VPUNN::VPUDevice::VPU_4_0) {
+    } else if (type.isF32() && vpuDevice >= VPUNN::VPUDevice::NPU_5_0) {
         // set FP32 only for 50XX+, see E#158088
         return VPUNN::DataType::FLOAT32;
     } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
@@ -115,7 +101,7 @@ VPUNN::Swizzling vpux::getVPUNNSwizzlingKey(mlir::Type type) {
                                                        VPUNN::Swizzling::KEY_2, VPUNN::Swizzling::KEY_3,
                                                        VPUNN::Swizzling::KEY_4, VPUNN::Swizzling::KEY_5};
 
-    auto swizzlingKey = vpux::getSwizzlingKey(type);
+    auto swizzlingKey = VPUIP::getSwizzlingKey(type);
     VPUX_THROW_UNLESS(checked_cast<size_t>(swizzlingKey) < swizzlingKeyVPUNN.size(), "Unsupported swizzling key: '{0}'",
                       swizzlingKey);
 
@@ -293,7 +279,7 @@ VPUNN::SEPModeInfo vpux::getSEPModeInfo(VPUIP::SEPInfo sepInfo) {
     return VPUNN::SEPModeInfo{true, getWHCBShape(sepInfo.sepTableShape), getWHCBShape(sepInfo.sepActShape)};
 }
 
-VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, config::ArchKind arch) {
+VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, [[maybe_unused]] config::ArchKind arch) {
     auto nceClusterOp = dpuTaskOp->getParentOfType<VPUIP::NCEClusterTaskOp>();
     VPUX_THROW_WHEN(nceClusterOp == nullptr, "The parent of dpuTaskOp {0} must be a NCEClusterTaskOp but not",
                     dpuTaskOp->getLoc());
@@ -425,18 +411,20 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, config::Arch
     isInputSparsityEnabled = false;
     isOutputSparsityEnabled = false;
 
+    auto vpunnDevice = vpux::VPU::getVPUDeviceType(nceClusterOp);
+
     const auto inputTensor = VPUNN::VPUTensor(
             {static_cast<unsigned int>(IW), static_cast<unsigned int>(IH), static_cast<unsigned int>(IC), 1},
-            getElementType(inputElemType, getVPUNNDevice(arch)), inputLayout, isInputSparsityEnabled);
+            getElementType(inputElemType, vpunnDevice), inputLayout, isInputSparsityEnabled);
     const auto outputTensor = VPUNN::VPUTensor(
             {static_cast<unsigned int>(OW), static_cast<unsigned int>(OH), static_cast<unsigned int>(OC), 1},
-            getElementType(outputElemType, getVPUNNDevice(arch)), outputLayout, isOutputSparsityEnabled);
+            getElementType(outputElemType, vpunnDevice), outputLayout, isOutputSparsityEnabled);
 
     VPUNN::DPUWorkload vpunnDPUWorkload;
     if (inputTwoElemType != nullptr) {
-        vpunnDPUWorkload.weight_type = getElementType(inputTwoElemType, getVPUNNDevice(arch));
+        vpunnDPUWorkload.weight_type = getElementType(inputTwoElemType, vpunnDevice);
     }
-    vpunnDPUWorkload.device = VPU::getVPUDeviceType(arch);
+    vpunnDPUWorkload.device = vpunnDevice;
     vpunnDPUWorkload.op = opType;
     vpunnDPUWorkload.inputs = {inputTensor};
     vpunnDPUWorkload.outputs = {outputTensor};
@@ -453,6 +441,7 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, config::Arch
     vpunnDPUWorkload.weight_sparsity_enabled = isWeightsSparsityEnabled;
     vpunnDPUWorkload.isi_strategy = isiStrategy;
     vpunnDPUWorkload.superdense_memory = nceClusterOp.getIsSuperdense();
+    vpunnDPUWorkload.mpe_engine = getVPUNNMPEEngine(nceClusterOp.getMpeEngine());
 
     // set sep info
     if (auto seTable = nceClusterOp.getInputStorageElementTable()) {
@@ -488,12 +477,12 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, config::Arch
 }
 
 size_t calculateMultiClusterDMACost(mlir::Value innerOperand, VPUNN::DataType inElemType, VPUNN::DataType outElemType,
-                                    config::ArchKind archKind, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
+                                    [[maybe_unused]] config::ArchKind archKind, VPUNN::VPUDevice vpuDevice,
+                                    const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
                                     [[maybe_unused]] int64_t numDMAPorts) {
     auto operandType = innerOperand.getType();
     auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
     VPUX_THROW_UNLESS(distributedType != nullptr, "Unsupported operand type {0}", operandType);
-    auto vpuDevice = VPU::getVPUDeviceType(archKind);
 
     // TODO: E#66557
     // Currently, if DMA source is OVERLAPPED we're moving the overlap twice. Once that is optimized,
@@ -528,29 +517,29 @@ bool extraDMAsRequired(mlir::Value innerOperand) {
     return false;
 }
 
-size_t vpux::getDMACost(mlir::Value input, mlir::Value output, config::ArchKind archKind,
+size_t vpux::getDMACost(mlir::Value input, mlir::Value output, config::ArchKind archKind, VPUNN::VPUDevice vpuDevice,
                         const std::shared_ptr<VPUNN::VPUCostModel>& costModel, int64_t numDMAPorts) {
     auto inputType = input.getType();
     auto outputType = output.getType();
 
-    auto inElemType =
-            getElementType(mlir::cast<vpux::NDTypeInterface>(inputType).getElementType(), getVPUNNDevice(archKind));
-    auto outElemType =
-            getElementType(mlir::cast<vpux::NDTypeInterface>(outputType).getElementType(), getVPUNNDevice(archKind));
+    auto inElemType = getElementType(mlir::cast<vpux::NDTypeInterface>(inputType).getElementType(), vpuDevice);
+    auto outElemType = getElementType(mlir::cast<vpux::NDTypeInterface>(outputType).getElementType(), vpuDevice);
 
     if (mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(inputType) && extraDMAsRequired(input)) {
-        return calculateMultiClusterDMACost(input, inElemType, outElemType, archKind, costModel, numDMAPorts);
+        return calculateMultiClusterDMACost(input, inElemType, outElemType, archKind, vpuDevice, costModel,
+                                            numDMAPorts);
     }
 
     if (mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(outputType) && extraDMAsRequired(output)) {
-        return calculateMultiClusterDMACost(output, inElemType, outElemType, archKind, costModel, numDMAPorts);
+        return calculateMultiClusterDMACost(output, inElemType, outElemType, archKind, vpuDevice, costModel,
+                                            numDMAPorts);
     }
 
     auto inputShape = getShape(input);
     auto outputShape = getShape(output);
 
     // TODO: add layout info to VPUNN tensors
-    auto cost = costModel->DMA(VPU::getVPUDeviceType(archKind), {getVPUNNTensor(inputShape, inElemType)},
+    auto cost = costModel->DMA(vpuDevice, {getVPUNNTensor(inputShape, inElemType)},
                                {getVPUNNTensor(outputShape, outElemType)}, getMemoryLocation(inputType),
                                getMemoryLocation(outputType));
 
@@ -651,6 +640,7 @@ const EnumMap<VPU::DistributionMode, GetDMAOnVPUNN> spillingCostMapVPUNN{
         {VPU::DistributionMode::DUPLICATED, getSpillingCostForDuplicated},
         {VPU::DistributionMode::SEGMENTED, getSpillingCostForSegmented},
         {VPU::DistributionMode::OVERLAPPED, getSpillingCostForSegmented},
+        {VPU::DistributionMode::SEGMENTED | VPU::DistributionMode::OVERLAPPED, getSpillingCostForSegmented},
         {VPU::DistributionMode::MULTICASTED, getSpillingCostForDuplicated},
         {VPU::DistributionMode::DUPLICATED | VPU::DistributionMode::SEGMENTED, getSpillingCostForDuplicated},
         {VPU::DistributionMode::MULTICASTED | VPU::DistributionMode::SEGMENTED, getSpillingCostForDuplicated},
@@ -749,28 +739,30 @@ size_t vpux::getAsyncExecuteCycleEnd(mlir::async::ExecuteOp op) {
     return checked_cast<size_t>(mlir::cast<mlir::IntegerAttr>(op->getAttr(cycleEnd)).getValue().getSExtValue());
 }
 
-size_t vpux::calculateCopyCycles(mlir::Operation* innerOp, config::ArchKind archKind,
+size_t vpux::calculateCopyCycles(mlir::Operation* innerOp, VPUNN::VPUDevice vpuDevice,
                                  const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
+    auto archKind = config::getArch(innerOp);
     if (auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::NNDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::DepthToSpaceDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::SpaceToDepthDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::PerAxisTileDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::TimestampOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getOutput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getOutput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::PermuteDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::ExpandDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto copyOp = mlir::dyn_cast<VPUIP::UpsamplingDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(getDMACost(copyOp.getInput(), copyOp.getOutput(), archKind, vpuDevice, costModel));
     } else if (auto convertDMAOp = mlir::dyn_cast<VPUIP::ConvertDMAOp>(innerOp)) {
-        return checked_cast<size_t>(getDMACost(convertDMAOp.getInput(), convertDMAOp.getOutput(), archKind, costModel));
+        return checked_cast<size_t>(
+                getDMACost(convertDMAOp.getInput(), convertDMAOp.getOutput(), archKind, vpuDevice, costModel));
     }
     return 0;
 }
@@ -946,12 +938,13 @@ std::vector<VPUNN::VPUTensor> getVPUNNTensorFromArrayRef(ArrayRef<mlir::Value> v
     return tensors;
 }
 
-std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPUIP::SwKernelOp swKernelOp, config::ArchKind arch,
+std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPUIP::SwKernelOp swKernelOp,
                                                                ArrayRef<mlir::Value> inputs,
                                                                ArrayRef<mlir::Value> outputs, bool isShave2ApiUsed) {
     auto swKernelName = getSwKernelOperationName(swKernelOp);
-    auto vpuDev = vpux::VPU::getVPUDeviceType(arch);
-    const auto& shaveUtilIntf = vpux::VPU::CostModelConfig::getShaveCostModelUtilsInterface(arch);
+
+    auto vpuDev = vpux::VPU::getVPUDeviceType(swKernelOp);
+    const auto& shaveUtilIntf = VPU::getShaveCostModelUtils(swKernelOp->getContext());
 
     VPUNN::SHAVEWorkload::Parameters params = {};
     VPUNN::SHAVEWorkload::ExtraParameters extraParams = {};
@@ -1011,13 +1004,14 @@ std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPUIP::SwKernelOp
     return swwl;
 }
 
-std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterface operation, config::ArchKind arch,
+std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterface operation,
                                                                std::vector<VPUNN::VPUTensor> inputTensors,
                                                                std::vector<VPUNN::VPUTensor> outputTensors,
                                                                bool isShave2ApiUsed) {
     auto swKernelName = operation->getName().stripDialect().str();
-    auto vpuDev = vpux::VPU::getVPUDeviceType(arch);
-    const auto& shaveUtilIntf = vpux::VPU::CostModelConfig::getShaveCostModelUtilsInterface(arch);
+
+    auto vpuDev = vpux::VPU::getVPUDeviceType(operation);
+    const auto& shaveUtilIntf = VPU::getShaveCostModelUtils(operation->getContext());
 
     VPUNN::SHAVEWorkload::Param param;
     VPUNN::SHAVEWorkload::Parameters params = {};
@@ -1054,24 +1048,23 @@ std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterfac
     return swwl;
 }
 
-std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterface operation, config::ArchKind arch,
+std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterface operation,
                                                                ArrayRef<mlir::Value> inputs,
                                                                ArrayRef<mlir::Value> outputs, bool isShave2ApiUsed) {
-    auto vpuDev = vpux::VPU::getVPUDeviceType(arch);
+    auto vpuDev = vpux::VPU::getVPUDeviceType(operation);
 
     std::vector<VPUNN::VPUTensor> inputTensors = getVPUNNTensorFromArrayRef(inputs, vpuDev);
     std::vector<VPUNN::VPUTensor> outputTensors = getVPUNNTensorFromArrayRef(outputs, vpuDev);
 
-    return getShaveWorkloadFunction(operation, arch, std::move(inputTensors), std::move(outputTensors),
-                                    isShave2ApiUsed);
+    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors), isShave2ApiUsed);
 }
 
-size_t getShaveActCycleForSwKernelFunc(VPUIP::SwKernelOp swKernelOp, config::ArchKind arch,
-                                       ArrayRef<mlir::Value> inputs, ArrayRef<mlir::Value> outputs,
+size_t getShaveActCycleForSwKernelFunc(VPUIP::SwKernelOp swKernelOp, ArrayRef<mlir::Value> inputs,
+                                       ArrayRef<mlir::Value> outputs,
                                        const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto log = vpux::Logger::global().nest("Get Shave Act Cycle For SW Kernel Function", 0);
 
-    auto swwl = getShaveWorkloadFunction(swKernelOp, arch, inputs, outputs, costModel->isShave2ApiUsed());
+    auto swwl = getShaveWorkloadFunction(swKernelOp, inputs, outputs, costModel->isShave2ApiUsed());
     if (swwl == nullptr) {
         return 1;
     }
@@ -1104,26 +1097,23 @@ std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp
     SmallVector<mlir::Value> smallVecInputs(inputs.begin(), inputs.end());
     SmallVector<mlir::Value> smallVecOutputs{outputs[0]};
 
-    return getShaveWorkloadFunction(swKernelOp, config::getArch(swKernelOp.getOperation()), smallVecInputs,
-                                    smallVecOutputs, isShave2ApiUsed);
+    return getShaveWorkloadFunction(swKernelOp, smallVecInputs, smallVecOutputs, isShave2ApiUsed);
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation, bool isShave2ApiUsed) {
-    auto vpuDev = config::getArch(operation);
     const auto operName = operation->getName().stripDialect().str();
 
     auto inputs = to_small_vector(operation->getOperands());
     auto output = operation->getResult(0);
 
-    return getShaveWorkloadFunction(operation, vpuDev, inputs, {output}, isShave2ApiUsed);
+    return getShaveWorkloadFunction(operation, inputs, {output}, isShave2ApiUsed);
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation,
                                                                vpux::NDTypeInterface outputNDType,
                                                                ArrayRef<vpux::NDTypeInterface> inputTypes,
                                                                bool isShave2APIused) {
-    auto arch = config::getArch(operation);
-    auto vpuDev = vpux::VPU::getVPUDeviceType(arch);
+    auto vpuDev = vpux::VPU::getVPUDeviceType(operation);
 
     const auto operName = operation->getName().stripDialect().str();
     auto outputTensor = getVPUNNTensor(outputNDType.getShape(), getElementType(outputNDType.getElementType(), vpuDev));
@@ -1134,24 +1124,20 @@ std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterfac
         inputTensors.push_back(getVPUNNTensor(inputNd.getShape(), getElementType(inputNd.getElementType(), vpuDev)));
     }
 
-    return getShaveWorkloadFunction(operation, arch, std::move(inputTensors), std::move(outputTensors),
-                                    isShave2APIused);
+    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors), isShave2APIused);
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation,
                                                                std::vector<VPUNN::VPUTensor> outputTensors,
                                                                std::vector<VPUNN::VPUTensor> inputTensors,
                                                                bool isShave2ApiUsed) {
-    auto arch = config::getArch(operation);
-
     const auto operName = operation->getName().stripDialect().str();
 
-    return getShaveWorkloadFunction(operation, arch, std::move(inputTensors), std::move(outputTensors),
-                                    isShave2ApiUsed);
+    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors), isShave2ApiUsed);
 }
 
 size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
-                                     const std::shared_ptr<VPUNN::VPUCostModel>& costModel, config::ArchKind arch) {
+                                     const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     if (swKernelOp.getInputs().empty() || swKernelOp.getOutputBuffs().empty()) {
         return 1;
     }
@@ -1194,7 +1180,7 @@ size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
         }
     }
 
-    return getShaveActCycleForSwKernelFunc(swKernelOp, arch, inputsForLargestKernelRun, outputsForLargestKernelRun,
+    return getShaveActCycleForSwKernelFunc(swKernelOp, inputsForLargestKernelRun, outputsForLargestKernelRun,
                                            costModel);
 }
 

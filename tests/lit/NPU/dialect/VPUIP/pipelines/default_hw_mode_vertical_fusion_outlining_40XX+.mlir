@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,17 +67,17 @@ module @VerticalFusionOutlining attributes {config.compilationMode = #config.com
     // CHECK-NEXT: [[CMX6:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <262144> -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
     // CHECK-NEXT: [[CMX7:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <786432> -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
 
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[NET_IN0]] {{.*}} outputs([[DDR0]]
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[NET_IN1]] {{.*}} outputs([[DDR1]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[NET_IN0]] {{.+}} outputs([[DDR0]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[NET_IN1]] {{.+}} outputs([[DDR1]]
 
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[DDR2]] {{.*}} outputs([[CMX0]]
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[DDR3]] {{.*}} outputs([[CMX1]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[DDR2]] {{.+}} outputs([[CMX0]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[DDR3]] {{.+}} outputs([[CMX1]]
 
     // CHECK: VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[CMX4]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) outputs([[CMX5]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
     // CHECK: VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[CMX6]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) outputs([[CMX7]] as {{[^:]+}}: memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>) on tile 0 -> memref<1x16x64x128xf16, {order = #NHWC, strides = [262144, 1, 2048, 16]}, [@CMX_NN, 0]>
 
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[CMX2]] {{.*}} outputs([[NET_OUT0]]
-    // CHECK: VPUIP.NNDMA {{.*}} inputs([[CMX3]] {{.*}} outputs([[NET_OUT1]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[CMX2]] {{.+}} outputs([[NET_OUT0]]
+    // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[CMX3]] {{.+}} outputs([[NET_OUT1]]
 
     // CHECK: return [[OUT]]
 }

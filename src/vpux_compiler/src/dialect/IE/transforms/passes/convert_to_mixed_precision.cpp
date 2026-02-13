@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,9 +9,12 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
-#include "vpux/compiler/dialect/IE/transforms/factories/convert_to_mixed_precision_getter.hpp"
+#include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/matmul.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -39,16 +42,13 @@ mlir::LogicalResult FloatOutConvRewriter::matchAndRewrite(IE::ConvolutionOp conv
     auto dequantizeInput = IE::findQuantizedInput(convolutionOp.getInput(), false);
     auto filterDequantizeInput = IE::findQuantizedInput(convolutionOp.getFilter(), true);
 
-    if (dequantizeInput == nullptr || filterDequantizeInput == nullptr) {
+    if (!IE::isInputQuantizationSupported(dequantizeInput, filterDequantizeInput)) {
         return mlir::failure();
     }
 
-    auto newConv = rewriter.create<IE::ConvolutionOp>(
-            convolutionOp->getLoc(), convolutionOp.getType(), dequantizeInput, filterDequantizeInput,
-            convolutionOp.getBias(), convolutionOp.getStrides(), convolutionOp.getPadsBegin(),
-            convolutionOp.getPadsEnd(), convolutionOp.getDilations(), convolutionOp.getPostOpAttr(),
-            convolutionOp.getClampAttr(), convolutionOp.getStaticScaleAttr(), convolutionOp.getOutputPaddingAttr(),
-            convolutionOp.getInputPaddingAttr());
+    auto newConv = cloneConvolutionOp(rewriter, convolutionOp, convolutionOp.getType(), dequantizeInput,
+                                      filterDequantizeInput);
+
     if (!IE::checkRescaledQuantApproximationForConvBasedOp(newConv)) {
         rewriter.eraseOp(newConv);
         return mlir::failure();
@@ -71,7 +71,7 @@ mlir::LogicalResult FloatOutGroupConvRewriter::matchAndRewrite(IE::GroupConvolut
     auto dequantizeType = IE::findQuantizedInput(groupConvolutionOp.getInput(), true);
     auto filterDequantizeType = IE::findQuantizedInput(groupConvolutionOp.getFilter(), true);
 
-    if (dequantizeType == nullptr || filterDequantizeType == nullptr) {
+    if (!IE::isInputQuantizationSupported(dequantizeType, filterDequantizeType)) {
         return mlir::failure();
     }
 
@@ -104,7 +104,7 @@ mlir::LogicalResult FloatOutTransposedConvRewriter::matchAndRewrite(IE::Transpos
     auto dequantizeInput = IE::findQuantizedInput(origOp.getInput(), false);
     auto filterDequantizeInput = IE::findQuantizedInput(origOp.getFilter(), true);
 
-    if (dequantizeInput == nullptr || filterDequantizeInput == nullptr) {
+    if (!IE::isInputQuantizationSupported(dequantizeInput, filterDequantizeInput)) {
         return mlir::failure();
     }
 
@@ -133,13 +133,11 @@ mlir::LogicalResult FloatOutMatMulRewriter::matchAndRewrite(IE::MatMulOp matmulO
     auto dequantizeInput = IE::findQuantizedInput(matmulOp.getInput1(), false);
     auto filterDequantizeInput = IE::findQuantizedInput(matmulOp.getInput2(), true);
 
-    if (dequantizeInput == nullptr || filterDequantizeInput == nullptr) {
+    if (!IE::isInputQuantizationSupported(dequantizeInput, filterDequantizeInput)) {
         return mlir::failure();
     }
 
-    auto newMatmulOp = rewriter.create<IE::MatMulOp>(matmulOp->getLoc(), matmulOp.getType(), dequantizeInput,
-                                                     filterDequantizeInput, matmulOp.getTransposeA(),
-                                                     matmulOp.getTransposeB(), matmulOp.getPostOpAttr());
+    auto newMatmulOp = cloneMatMulOp(rewriter, matmulOp, matmulOp.getType(), dequantizeInput, filterDequantizeInput);
     // E#157376: Following check is always true for IE::Matmuls, but should be updated to do similar checks with
     // Convolutions
     if (!IE::checkRescaledQuantApproximationForConvBasedOp(newMatmulOp)) {
@@ -147,7 +145,7 @@ mlir::LogicalResult FloatOutMatMulRewriter::matchAndRewrite(IE::MatMulOp matmulO
         return mlir::failure();
     }
 
-    rewriter.replaceOp(matmulOp, newMatmulOp.getOutput());
+    rewriter.replaceOp(matmulOp, newMatmulOp);
 
     return mlir::success();
 }
@@ -224,6 +222,14 @@ mlir::LogicalResult QuantizeWithNCERewriter::matchAndRewrite(IE::QuantizeOp orig
                            "IE.AvgPool and Eltwise do not support per-channel quantized output");
     }
 
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
+    auto qElemType = mlir::cast<mlir::quant::QuantizedType>(outType.getElementType());
+    auto isQuantWidthSupported = qElemType.getStorageTypeIntegralWidth() != 16;
+
+    if (!isQuantWidthSupported) {
+        return mlir::failure();
+    }
+
     auto layerWithPostOp = mlir::dyn_cast_or_null<IE::LayerWithPostOpInterface>(maybeNCETask);
     if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr &&
         !_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, /*isFloatInput=*/true)) {
@@ -272,7 +278,8 @@ void ConvertToMixedPrecisionPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto strategy = IE::createConvertToMixedPrecisionStrategy(func, enableFloatInQuantWeightsMixedMode);
+    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getConvertToMixedPrecisionStrategy(enableFloatInQuantWeightsMixedMode);
 
     mlir::RewritePatternSet patterns(&ctx);
     strategy->addPatterns(patterns, _log);

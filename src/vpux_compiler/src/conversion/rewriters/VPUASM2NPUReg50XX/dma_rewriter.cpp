@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/composers/dma_composer.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 
 #include <npu_40xx_nnrt.hpp>
 
@@ -29,6 +30,14 @@ mlir::LogicalResult NNDMARewriter::matchAndRewrite(VPUASM::NNDMAOp origOp, mlir:
     // TODO: (E#114625) Remove once proper refactoring happened
     if (!origOp.getTaskLocationAttr()) {
         dma.getOperation()->setAttr("directLink", rewriter.getUnitAttr());
+    }
+
+    if (auto strided = origOp->getAttr(vpux::stridedInputAttrName)) {
+        dma->setAttr(vpux::stridedInputAttrName, strided);
+    }
+
+    if (auto strided = origOp->getAttr(vpux::stridedOutputAttrName)) {
+        dma->setAttr(vpux::stridedOutputAttrName, strided);
     }
 
     rewriter.eraseOp(origOp);

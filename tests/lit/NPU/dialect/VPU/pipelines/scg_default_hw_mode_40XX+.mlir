@@ -13,9 +13,10 @@
 
 module @Eltwise attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   module @VPU.SW {
-    // CHECK: func.func @generated_0([[ARG0:%.+]]: tensor<1x3x224x224xf16>, [[ARG1:%.+]]: tensor<1x3x224x224xf16>, [[ARG2:%.+]]: tensor<1x3x224x224xf16>) -> tensor<1x3x224x224xf16>
-    func.func @generated_0(%arg0: tensor<1x3x224x224xf16>, %arg1: tensor<1x3x224x224xf16>, %arg2: tensor<1x3x224x224xf16>) -> tensor<1x3x224x224xf16> {
-      %0 = linalg.generic {indexing_maps = [#NCHW, #NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg0, %arg1 : tensor<1x3x224x224xf16>, tensor<1x3x224x224xf16>) outs(%arg2 : tensor<1x3x224x224xf16>) {
+    // CHECK: func.func @generated_0([[ARG0:%.+]]: memref<1x3x224x224xf16>, [[ARG1:%.+]]: memref<1x3x224x224xf16>, [[ARG2:%.+]]: memref<1x3x224x224xf16>) {
+    func.func @generated_0(%arg0: tensor<1x3x224x224xf16>, %arg1: tensor<1x3x224x224xf16>) -> tensor<1x3x224x224xf16> {
+      %empt = tensor.empty() : tensor<1x3x224x224xf16>
+      %0 = linalg.generic {indexing_maps = [#NCHW, #NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg0, %arg1 : tensor<1x3x224x224xf16>, tensor<1x3x224x224xf16>) outs(%empt : tensor<1x3x224x224xf16>) {
       ^bb0(%in: f16, %in_0: f16, %out: f16):
         %1 = arith.addf %in, %in_0 : f16
         linalg.yield %1 : f16
@@ -25,33 +26,31 @@ module @Eltwise attributes {config.compilationMode = #config.compilation_mode<De
       // CHECK-DAG:      [[C1:%.+]] = arith.constant 1
       // CHECK-DAG:      [[C150528:%.+]] = arith.constant 150528
       // CHECK-DAG:      [[C0:%.+]] = arith.constant 0 : index
-      // CHECK-DAG:      [[CARG0:%.+]] = tensor.collapse_shape [[ARG0]]
-      // CHECK-SAME:         into tensor<150528xf16>
-      // CHECK-DAG:      [[CARG1:%.+]] = tensor.collapse_shape [[ARG1]]
-      // CHECK-SAME:         into tensor<150528xf16>
-      // CHECK-DAG:      [[CARG2:%.+]] = tensor.collapse_shape [[ARG2]]
-      // CHECK-SAME:         into tensor<150528xf16>
-      // CHECK:          [[FLAT_OUT:%.+]] = scf.for [[IT:%.+]] = [[C0]] to [[C150528]] step [[C1]] iter_args([[SCF_OUT:%.+]] = [[CARG2]])
-      // CHECK-SAME:         -> (tensor<150528xf16>) {
-      // CHECK-DAG:          [[ARG0_SLICE:%.+]] = tensor.extract_slice [[CARG0]][[[IT]]] [1] [1]
-      // CHECK-SAME:            to tensor<1xf16>
-      // CHECK-DAG:          [[ARG1_SLICE:%.+]] = tensor.extract_slice [[CARG1]][[[IT]]] [1] [1]
-      // CHECK-SAME:            to tensor<1xf16>
-      // CHECK-DAG:          [[ARG2_SLICE:%.+]] = tensor.extract_slice [[SCF_OUT]][[[IT]]] [1] [1]
-      // CHECK-SAME:            to tensor<1xf16>
-      // CHECK:              [[OP:%.+]] = linalg.generic
-      // CHECK-SAME:                ins([[ARG0_SLICE]], [[ARG1_SLICE]] : tensor<1xf16>, tensor<1xf16>)
-      // CHECK-SAME:                outs([[ARG2_SLICE]] : tensor<1xf16>) {
+      // CHECK-DAG:      [[CARG0:%.+]] = memref.collapse_shape [[ARG0]]
+      // CHECK-SAME:         into memref<150528xf16>
+      // CHECK-DAG:      [[CARG1:%.+]] = memref.collapse_shape [[ARG1]]
+      // CHECK-SAME:         into memref<150528xf16>
+      // CHECK-DAG:      [[CARG2:%.+]] = memref.collapse_shape [[ARG2]]
+      // CHECK-SAME:         into memref<150528xf16>
+      // CHECK:          scf.for [[IT:%.+]] = [[C0]] to [[C150528]] step [[C1]]
+      // CHECK-DAG:          [[ARG0_SLICE:%.+]] = memref.subview [[CARG0]][[[IT]]] [1] [1]
+      // CHECK-SAME:            to memref<1xf16, strided<[1], offset: ?>
+      // CHECK-DAG:          [[ARG1_SLICE:%.+]] = memref.subview [[CARG1]][[[IT]]] [1] [1]
+      // CHECK-SAME:            to memref<1xf16, strided<[1], offset: ?>
+      // CHECK-DAG:          [[ARG2_SLICE:%.+]] = memref.subview [[CARG2]][[[IT]]] [1] [1]
+      // CHECK-SAME:            to memref<1xf16, strided<[1], offset: ?>
+      // CHECK:              linalg.generic
+      // CHECK-SAME:                ins([[ARG0_SLICE]], [[ARG1_SLICE]] :
+      // CHECK-SAME:                outs([[ARG2_SLICE]] :
       // CHECK-NEXT:         ^bb0([[IN0:%.+]]: f16, [[IN1:%.+]]: f16, {{%.*}}: f16):
       // CHECK-NEXT:            [[ADD:%.+]] = arith.addf [[IN0]], [[IN1]] : f16
       // CHECK-NEXT:            linalg.yield [[ADD]] : f16
-      // CHECK-NEXT:         } -> tensor<1xf16>
-      // CHECK-NEXT:         [[UPDATED:%.+]] = tensor.insert_slice [[OP]] into [[SCF_OUT]][[[IT]]] [1] [1]
-      // CHECK-SAME:              into tensor<150528xf16>
-      // CHECK-NEXT:         scf.yield [[UPDATED]] : tensor<150528xf16>
-      // CHECK:          [[OUT:%.+]] = tensor.expand_shape [[FLAT_OUT]]
-      // CHECK-SAME:          into tensor<1x3x224x224xf16>
-      // CHECK-NEXT:     return [[OUT]] : tensor<1x3x224x224xf16>
+      // CHECK-NEXT:         }
+      // CHECK-NEXT:         [[ARG2_DEST_SLICE:%.+]] = memref.subview [[CARG2]][[[IT]]] [1] [1]
+      // CHECK-SAME:            to memref<1xf16, strided<[1], offset: ?>
+      // CHECK-NEXT:         memref.copy [[ARG2_SLICE]], [[ARG2_DEST_SLICE]]
+      // CHECK-NEXT:     }
+      // CHECK-NEXT:     return
     }
   }
 

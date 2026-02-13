@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 
 // Opset versions supported
 #include <openvino/opsets/opset1.hpp>
+#include <openvino/opsets/opset10.hpp>
 #include <openvino/opsets/opset12.hpp>
 #include <openvino/opsets/opset13.hpp>
 #include <openvino/opsets/opset14.hpp>
@@ -47,6 +48,8 @@ struct ImportNetworkConfig {
     bool dynamicShapeToStatic = false;
     bool enableWeightsSeparationPath = false;
     bool enableDecomposeSDPA = false;
+    bool executionModeAccuracy = false;
+    std::set<std::string> ioWithDynamicStrides;
 };
 
 // TODO Get rid of this function (importNetwork), move logic to compiler.cpp
@@ -76,7 +79,7 @@ public:
     }
 
     mlir::func::FuncOp buildMainFunc(mlir::OpBuilder& moduleBuilder, StringRef funcName, mlir::TimingScope& rootTiming,
-                                     DummyOpMode stubLayers, bool dynamicShapeToStatic);
+                                     const ImportNetworkConfig& importCfg);
     void buildBlockFromRegion(mlir::Location loc, mlir::OpBuilder& builder, mlir::Block* block);
     void buildBlockFromBody(mlir::Location loc, mlir::OpBuilder& builder, mlir::Block* block);
     SmallVector<mlir::Type> getRegionResults();
@@ -92,199 +95,221 @@ public:
 
 private:
     using NodeOutputMap = std::unordered_map<ov::Output<OrigNode>, mlir::Value>;
-    using Callback = void (NGraphImporter::*)(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
+    using Callback = mlir::Operation* (NGraphImporter::*)(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
 
+    void extractPrecisionInfo(mlir::OpBuilder& moduleBuilder, const OrigNodePtr& origNode,
+                              const ImportNetworkConfig& importCfg, mlir::Operation* op);
     static Callback getParser(const std::shared_ptr<ov::Node>& op);
-
     template <class NodeType>
-    void parseDispatch(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
+    mlir::Operation* parseDispatch(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
 
-    void parseEmpty(mlir::OpBuilder&, const OrigNodePtr&) {
+    mlir::Operation* parseEmpty(mlir::OpBuilder&, const OrigNodePtr&) {
+        return nullptr;
     }
 
-    void parseNodeAsStub(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
+    mlir::Operation* parseNodeAsStub(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
 
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Constant>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Convert>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ConvertLike>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::Softmax>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::LogSoftmax>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Tile>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Relu>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Split>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Power>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Multiply>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Convolution>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GroupConvolution>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset12::GroupNormalization>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ConvolutionBackpropData>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GroupConvolutionBackpropData>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::AvgPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset16::AvgPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::MaxPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::MaxPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset14::MaxPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::AdaptiveAvgPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::AdaptiveMaxPool>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ShuffleChannels>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::Gather>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::GatherND>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GatherTree>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::NV12toRGB>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::NV12toBGR>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::I420toRGB>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::I420toBGR>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::RandomUniform>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::OneHot>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::BatchNormInference>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::GatherElements>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::ScatterNDUpdate>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::ScatterUpdate>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset12::ScatterElementsUpdate>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::ScatterElementsUpdate>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Clamp>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Elu>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Reshape>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Squeeze>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Sigmoid>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LRN>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceMax>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceMean>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceLogicalOr>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceLogicalAnd>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceProd>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceSum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceMin>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::ReduceL1>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::ReduceL2>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Unsqueeze>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Minimum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Maximum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Add>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Divide>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::SquaredDifference>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::FloorMod>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Mod>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Proposal>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Reverse>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::FakeQuantize>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::FakeConvert>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::MatMul>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Tan>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Tanh>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Sin>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Cos>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Sqrt>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Sinh>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Cosh>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Asinh>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Acosh>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Atanh>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Log>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Selu>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::Gelu>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Exp>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::HSwish>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Floor>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::Round>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Mish>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Erf>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::Broadcast>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::Bucketize>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Transpose>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Interpolate>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::TopK>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::TopK>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::RegionYolo>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::ReorgYolo>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::DetectionOutput>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::NormalizeL2>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::CumSum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::Eye>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::MVN>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::MVN>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Concat>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::ROIPooling>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::PSROIPooling>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v9::ROIAlign>& origNode);
-    void parseNode(mlir::OpBuilder& builder,
-                   const std::shared_ptr<ov::opset6::ExperimentalDetectronROIFeatureExtractor>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::StridedSlice>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::PRelu>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Swish>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GRN>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Negative>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Sign>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::CTCGreedyDecoder>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::CTCGreedyDecoderSeqLen>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Pad>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LSTMCell>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::LSTMCell>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Subtract>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalAnd>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::LSTMSequence>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Ceiling>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Equal>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Select>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::NonMaxSuppression>& origNode);
-    void parseNode(mlir::OpBuilder& builder,
-                   const std::shared_ptr<ov::op::internal::NonMaxSuppressionIEInternal>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::DepthToSpace>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReverseSequence>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Less>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LessEqual>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::NotEqual>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::SoftPlus>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Greater>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GreaterEqual>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseAnd>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseOr>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseXor>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseNot>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalNot>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalOr>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalXor>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::SpaceToDepth>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::BatchToSpace>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::SpaceToBatch>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::ExtractImagePatches>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Abs>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Atan>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Asin>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Acos>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Roll>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::HSigmoid>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::HardSigmoid>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::GridSample>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::EmbeddingBagOffsetsSum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::EmbeddingSegmentsSum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::EmbeddingBagPackedSum>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::Assign>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::ReadValue>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::Assign>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::ReadValue>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::GRUCell>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::GRUSequence>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::DeformablePSROIPooling>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::TensorIterator>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::Loop>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::DFT>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::RDFT>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::IDFT>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::IRDFT>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset15::STFT>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::If>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ShapeOf>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Range>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::NonZero>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::internal::RMS>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::internal::RoPE>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset14::Inverse>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::DeformableConvolution>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::VariadicSplit>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset13::ScaledDotProductAttention>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v16::Identity>& origNode);
-    void parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Constant>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Convert>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ConvertLike>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::Softmax>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::LogSoftmax>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Tile>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Relu>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Split>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Power>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Multiply>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Convolution>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GroupConvolution>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset12::GroupNormalization>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset1::ConvolutionBackpropData>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset1::GroupConvolutionBackpropData>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::AvgPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset16::AvgPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::MaxPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::MaxPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset14::MaxPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::AdaptiveAvgPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::AdaptiveMaxPool>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ShuffleChannels>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::Gather>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::GatherND>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GatherTree>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::NV12toRGB>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::NV12toBGR>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::I420toRGB>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::I420toBGR>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::RandomUniform>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::OneHot>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset16::OneHot>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset5::BatchNormInference>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::GatherElements>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::ScatterNDUpdate>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::ScatterUpdate>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset12::ScatterElementsUpdate>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset3::ScatterElementsUpdate>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Clamp>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Elu>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Reshape>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Squeeze>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Sigmoid>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LRN>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceMax>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceMean>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceLogicalOr>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceLogicalAnd>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceProd>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceSum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReduceMin>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::ReduceL1>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::ReduceL2>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Unsqueeze>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Minimum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Maximum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Add>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Divide>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset1::SquaredDifference>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::FloorMod>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Mod>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Proposal>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Reverse>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::FakeQuantize>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::FakeConvert>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::MatMul>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Tan>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Tanh>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Sin>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Cos>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Sqrt>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Sinh>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Cosh>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Asinh>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Acosh>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Atanh>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Log>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Selu>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::Gelu>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Exp>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::HSwish>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Floor>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::Round>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Mish>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Erf>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::Broadcast>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::Bucketize>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Transpose>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Interpolate>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::TopK>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::TopK>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::RegionYolo>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::ReorgYolo>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::DetectionOutput>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::NormalizeL2>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::CumSum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::Eye>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::MVN>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::MVN>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Concat>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::ROIPooling>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::PSROIPooling>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v9::ROIAlign>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset6::ExperimentalDetectronROIFeatureExtractor>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::StridedSlice>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::PRelu>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Swish>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GRN>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Negative>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Sign>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::CTCGreedyDecoder>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset6::CTCGreedyDecoderSeqLen>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Pad>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LSTMCell>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::LSTMCell>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Subtract>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalAnd>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::LSTMSequence>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Ceiling>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Equal>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Select>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset9::NonMaxSuppression>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::op::internal::NonMaxSuppressionIEInternal>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::DepthToSpace>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ReverseSequence>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Less>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LessEqual>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::NotEqual>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::SoftPlus>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Greater>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GreaterEqual>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseAnd>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseOr>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseXor>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseNot>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalNot>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalOr>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalXor>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::SpaceToDepth>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::BatchToSpace>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset2::SpaceToBatch>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset3::ExtractImagePatches>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Abs>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Atan>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Asin>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Acos>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::Roll>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::HSigmoid>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::HardSigmoid>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::GridSample>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset3::EmbeddingBagOffsetsSum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset3::EmbeddingSegmentsSum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset3::EmbeddingBagPackedSum>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::Assign>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::ReadValue>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::Assign>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset6::ReadValue>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::GRUCell>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::GRUSequence>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset1::DeformablePSROIPooling>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::TensorIterator>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset5::Loop>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::DFT>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::RDFT>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset16::ISTFT>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset7::IDFT>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::IRDFT>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset15::STFT>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset8::If>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::ShapeOf>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::Range>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset3::NonZero>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::internal::RMS>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::internal::RoPE>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset14::Inverse>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset8::DeformableConvolution>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::VariadicSplit>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::opset13::ScaledDotProductAttention>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v16::Identity>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset10::IsNaN>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset10::IsInf>& origNode);
 
     SmallVector<mlir::Value> getInputs(const OrigNodePtr& node);
     void addOutputs(const OrigNodePtr& node, mlir::Operation* op);
@@ -303,6 +328,7 @@ private:
     IE::GridSamplePaddingModeAttr importGridSamplePaddingMode(const ov::op::v9::GridSample::PaddingMode& val);
     IE::ProposalAttr importProposalAttrs(const ov::op::v0::Proposal::Attributes& val);
     IE::ReverseModeAttr importReverseMode(const ov::op::v1::Reverse::Mode mode);
+    IE::OneHotModeAttr importOneHotMode(const ov::op::v16::OneHot::NegativeIndicesMode mode);
     IE::InterpolateAttr importInterpolateAttrs(const ov::opset4::Interpolate::InterpolateAttrs& val);
     IE::DetectionOutputAttr importDetectionOutputAttrs(const ov::op::v0::DetectionOutput::Attributes& val);
     IE::ExperimentalDetectronROIFeatureExtractorAttr importExpDetectronROIFeatureExtractAttrs(
@@ -344,10 +370,10 @@ private:
 };
 
 template <class NodeType>
-void NGraphImporter::parseDispatch(mlir::OpBuilder& builder, const OrigNodePtr& origNode) {
+mlir::Operation* NGraphImporter::parseDispatch(mlir::OpBuilder& builder, const OrigNodePtr& origNode) {
     auto targetPtr = std::dynamic_pointer_cast<NodeType>(origNode);
     OPENVINO_ASSERT(targetPtr != nullptr);
-    parseNode(builder, targetPtr);
+    return parseNode(builder, targetPtr);
 }
 
 }  // namespace IE

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,12 +17,12 @@ func.func @SparseConvWeights(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref
 
     %cst_weights = const.Declare memref<32x16x3x3xf16, #NHWC> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare memref<32x1x1x256xi1> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %cst_weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}
+    %cst_weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}>
         -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC>, sparsity_map=memref<32x1x1x256xi1>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     %weights_data_cmx = memref.alloc() : memref<32x16x3x3xf16, #NHWC, @CMX_NN>
     %weights_sm_cmx = memref.alloc() : memref<32x1x1x256xi1, @CMX_NN>
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}>
         -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC, @CMX_NN>, sparsity_map=memref<32x1x1x256xi1, @CMX_NN>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     %weights = VPUIP.Copy inputs(%cst_weights_sparse : !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, #NHWC>, sparsity_map=memref<32x1x1x256xi1>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>)
@@ -60,16 +60,16 @@ func.func @SparseConvWeights(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref
     // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}>
     // CHECK-SAME:      = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     // CHECK-DAG:   [[CST_WEIGHTS_SM:%.+]] = const.Declare memref<32x1x1x256xi1> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    // CHECK:       [[CST_WEIGHTS_SPARSE:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) {
+    // CHECK:       [[CST_WEIGHTS_SPARSE:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) <{
     // CHECK-SAME:          is_weights, sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>
-    // CHECK-SAME:      } -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}>,
+    // CHECK-SAME:      }> -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}>,
     // CHECK-SAME:                               sparsity_map=memref<32x1x1x256xi1>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     // CHECK:       [[WEIGHTS_DATA_CMX:%.+]] = memref.alloc() : memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}, @CMX_NN>
     // CHECK:       [[WEIGHTS_SM_CMX:%.+]] = memref.alloc() : memref<32x1x1x256xi1, @CMX_NN>
-    // CHECK:       [[WEIGHTS_SPARSE_CMX:%.+]] = VPUIP.GroupSparseBuffer([[WEIGHTS_DATA_CMX]], [[WEIGHTS_SM_CMX]]) {
+    // CHECK:       [[WEIGHTS_SPARSE_CMX:%.+]] = VPUIP.GroupSparseBuffer([[WEIGHTS_DATA_CMX]], [[WEIGHTS_SM_CMX]]) <{
     // CHECK-SAME:          is_weights, sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>
-    // CHECK-SAME:      } -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}, @CMX_NN>,
+    // CHECK-SAME:      }> -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}, @CMX_NN>,
     // CHECK-SAME:                               sparsity_map=memref<32x1x1x256xi1, @CMX_NN>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     // CHECK:       [[WEIGHTS:%.+]] = VPUIP.Copy inputs([[CST_WEIGHTS_SPARSE]]
@@ -121,12 +121,12 @@ func.func @SparseConvWeights(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref
 func.func @SparseConvWeightsDistributed(%arg0: !IODistributed) -> !IODistributed {
     %cst_weights = const.Declare !WeightsBufferDDR = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %cst_weights_sm = const.Declare !WeightsSMBufferDDR = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    %cst_weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) {sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}
+    %cst_weights_sparse = VPUIP.GroupSparseBuffer (%cst_weights, %cst_weights_sm) <{sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsBufferDDR, sparsity_map=!WeightsSMBufferDDR, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     %weights_data_cmx = VPURT.AllocDistributed -> !WeightsDistributed
     %weights_sm_cmx = VPURT.AllocDistributed -> !WeightsSMDistributed
-    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) {sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}
+    %weights_sparse_cmx = VPUIP.GroupSparseBuffer (%weights_data_cmx, %weights_sm_cmx) <{sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>, is_weights}>
         -> !VPUIP.SparseBuffer<data=!WeightsDistributed, sparsity_map=!WeightsSMDistributed, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     %weights = VPUIP.Copy inputs(%cst_weights_sparse : !VPUIP.SparseBuffer<data=!WeightsBufferDDR, sparsity_map=!WeightsSMBufferDDR, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>)
@@ -161,20 +161,20 @@ func.func @SparseConvWeightsDistributed(%arg0: !IODistributed) -> !IODistributed
     // CHECK-DAG:       [[CST_WEIGHTS:%.+]] = const.Declare memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}>
     // CHECK-SAME:     = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     // CHECK-DAG:       [[CST_WEIGHTS_SM:%.+]] = const.Declare memref<32x1x1x256xi1> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
-    // CHECK:       [[CST_WEIGHTS_SPARSE:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) {
+    // CHECK:       [[CST_WEIGHTS_SPARSE:%.+]] = VPUIP.GroupSparseBuffer([[CST_WEIGHTS]], [[CST_WEIGHTS_SM]]) <{
     // CHECK-SAME:          is_weights
     // CHECK-SAME:          sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>
-    // CHECK-SAME:      } -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}>,
+    // CHECK-SAME:      }> -> !VPUIP.SparseBuffer<data=memref<32x16x3x3xf16, {order = #NHWC, sparsityCompression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>}>,
     // CHECK-SAME:                               sparsity_map=memref<32x1x1x256xi1>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
 
     // CHECK:       [[WEIGHTS_DATA_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64},
     // CHECK-SAME:      #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>
     // CHECK:       [[WEIGHTS_SM_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<32x1x1x256xi1, #NCHW, @CMX_NN,
     // CHECK-SAME:      {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    // CHECK:       [[WEIGHTS_SPARSE_CMX:%.+]] = VPUIP.GroupSparseBuffer([[WEIGHTS_DATA_CMX]], [[WEIGHTS_SM_CMX]]) {
+    // CHECK:       [[WEIGHTS_SPARSE_CMX:%.+]] = VPUIP.GroupSparseBuffer([[WEIGHTS_DATA_CMX]], [[WEIGHTS_SM_CMX]]) <{
     // CHECK-SAME:          is_weights
     // CHECK-SAME:          sparsity_compression = #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>
-    // CHECK-SAME:      } -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64},
+    // CHECK-SAME:      }> -> !VPUIP.SparseBuffer<data=!VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64},
     // CHECK-SAME:                                    #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>,
     // CHECK-SAME:                               sparsity_map=!VPUIP.DistributedBuffer<32x1x1x256xi1, #NCHW, @CMX_NN,
     // CHECK-SAME:                                            {mode = "DUPLICATED", num_clusters = 2 : i64}>, is_weights, #VPUIP.SparsityCompressionAttr<axis = 0 : i64, numElems = dense<1> : tensor<32xi64>, alignment = 16 : i64>>

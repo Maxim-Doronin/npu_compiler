@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -150,7 +150,8 @@ def IE_LogSoftmaxOp :
     let arguments = (ins
         RankedTensorOf<[F16, F32, F64]>:$input,
 
-        IntAttr:$axisInd
+        IntAttr:$axisInd,
+        OptionalAttr<IntAttr>:$padSize
     );
 
     let results = (outs
@@ -272,7 +273,8 @@ def IE_SoftMaxOp :
         IE_LayerOp<
             "SoftMax",
             [
-                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
             ]
         > {
     let summary = "InferenceEngine SoftMax layer";
@@ -290,7 +292,8 @@ def IE_SoftMaxOp :
         RankedTensorOf<[F16, F32, F64]>:$input,
 
         IntAttr:$axisInd,
-        OptionalAttr<IntAttr>:$padSize
+        OptionalAttr<IntAttr>:$padSize,
+        OptionalAttr<TypeAttr>:$dstElemType
     );
 
     let results = (outs
@@ -299,6 +302,20 @@ def IE_SoftMaxOp :
 
     let hasCanonicalizer = 1;
     let hasFolder = 1;
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input,
+            "::mlir::IntegerAttr":$axisInd,
+            "::mlir::IntegerAttr":$padSize
+        )>,
+        OpBuilder<(ins
+            "::mlir::Type":$output,
+            "::mlir::Value":$input,
+            "::mlir::IntegerAttr":$axisInd,
+            "::mlir::IntegerAttr":$padSize
+        )>
+    ];
 }
 
 def IE_SoftPlusOp :

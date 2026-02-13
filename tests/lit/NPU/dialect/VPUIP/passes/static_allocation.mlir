@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -86,9 +86,9 @@ func.func @main(%in: memref<1x1x1x1000xf16>, %out: memref<1x1x1x1000xf16>) -> me
     %3 = async.await %f3 : !async.value<memref<1x1x1x1000xf16>>
     return %3 : memref<1x1x1x1000xf16>
 
-    // CHECK:       [[BUF0:%.*]] = VPUIP.StaticAlloc<0> -> memref<1x1x1x1000xf16, @DDR>
-    // CHECK:       [[BUF1:%.*]] = VPUIP.StaticAlloc<2048> -> memref<1x1x1x1000xf16, @DDR>
-    // CHECK:       [[BUF2:%.*]] = VPUIP.StaticAlloc<0> -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[BUF0:%.+]] = VPUIP.StaticAlloc<0> -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[BUF1:%.+]] = VPUIP.StaticAlloc<2048> -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[BUF2:%.+]] = VPUIP.StaticAlloc<0> -> memref<1x1x1x1000xf16, @DDR>
 
     // CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
     // CHECK-SAME:      outputs([[BUF0]] as {{[^:]+}}: memref<1x1x1x1000xf16, @DDR>)
@@ -194,9 +194,9 @@ func.func @main(%in: memref<1x1x1x1000xf16>, %out: memref<1x1x1x1000xf16>) -> me
     %3 = async.await %f3 : !async.value<memref<1x1x1x1000xf16>>
     return %3 : memref<1x1x1x1000xf16>
 
-    // CHECK:       [[BUF0:%.*]] = VPUIP.StaticAlloc<512> -> memref<1x1x1x1000xf16, @DDR>
-    // CHECK:       [[BUF1:%.*]] = VPUIP.StaticAlloc<2560> -> memref<1x1x1x1000xf16, @DDR>
-    // CHECK:       [[BUF2:%.*]] = VPUIP.StaticAlloc<512> -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[BUF0:%.+]] = VPUIP.StaticAlloc<512> -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[BUF1:%.+]] = VPUIP.StaticAlloc<2560> -> memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[BUF2:%.+]] = VPUIP.StaticAlloc<512> -> memref<1x1x1x1000xf16, @DDR>
 
     // CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
     // CHECK-SAME:      outputs([[BUF0]] as {{[^:]+}}: memref<1x1x1x1000xf16, @DDR>)

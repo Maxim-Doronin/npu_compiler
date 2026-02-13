@@ -86,7 +86,7 @@ void WlmLegalizePagesForBarrierDmasPass::safeRunOnFunc() {
     auto inBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
     auto outBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
 
-    const VPURT::TaskQueueType barProgDmaQueueType = {VPU::ExecutorKind::DMA_NN,
+    const VPURT::TaskQueueType barProgDmaQueueType = {config::ExecutorKind::DMA_NN,
                                                       getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
 
     for (const auto& [pageInd, barProgDma] : barProgDmas | indexed) {

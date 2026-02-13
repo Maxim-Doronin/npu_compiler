@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -195,7 +195,7 @@ func.func @DontWrapMultiDimTiledNCETask(%arg0: tensor<1x32x256x256xf16, {order =
                 tilingStrategy = [1, 1, 2, 4]} : tensor<1x32x256x256xf16, {order = #NHWC}>, tensor<32x32x3x3xf16, {order = #NHWC}> -> tensor<1x32x256x256xf16, {order = #NHWC}>
     return %0 : tensor<1x32x256x256xf16, {order = #NHWC}>
 
-    //CHECK:  VPU.NCE.Convolution([[ARG_0:%.*]], [[ARG_1:%.*]])
+    //CHECK:  VPU.NCE.Convolution([[ARG_0:%.+]], [[ARG_1:%.+]])
     //CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     //CHECK-SAME:  pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     //CHECK-SAME:  rawFilterShape = [32, 32, 3, 3], strides = [1, 1], tilingStrategy = [1, 1, 2, 4]}

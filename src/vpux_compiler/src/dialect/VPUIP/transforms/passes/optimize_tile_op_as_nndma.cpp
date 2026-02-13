@@ -447,12 +447,12 @@ mlir::LogicalResult FuseTileWithConcatClusteredCopy::matchAndRewrite(VPUIP::Conc
 
                 auto newMemRefOutputType = inputType.changeShape(ShapeRef(newOutShape));
                 auto outputBuffer =
-                        rewriter.create<mlir::memref::AllocOp>(appendLoc(concatViewOp->getLoc(), "_new_buffer"),
+                        rewriter.create<mlir::memref::AllocOp>(appendLoc(concatViewOp->getLoc(), "new_buffer"),
                                                                mlir::cast<mlir::MemRefType>(newMemRefOutputType));
 
                 rewriter.setInsertionPointAfter(perAxisTileInput.getDefiningOp());
                 auto newPerAxisTileDMAOp = rewriter.create<VPUIP::PerAxisTileDMAOp>(
-                        appendLoc(concatViewOp->getLoc(), "_new_perAxisDMA_{0}", i), perAxisTileInput, outputBuffer,
+                        appendLoc(concatViewOp->getLoc(), "new_perAxisDMA_{0}", i), perAxisTileInput, outputBuffer,
                         axisAttr, repeatsAttr, nullptr);
                 if (newPerAxisTileDMAOp->isBeforeInBlock(outputBuffer)) {
                     VPUIP::moveRootAllocBefore(outputBuffer, newPerAxisTileDMAOp);
@@ -462,7 +462,7 @@ mlir::LogicalResult FuseTileWithConcatClusteredCopy::matchAndRewrite(VPUIP::Conc
             } else {
                 rewriter.setInsertionPointAfter(childClusterOp);
                 perAxisTileOutput = rewriter.create<VPUIP::PerAxisTileDMAOp>(
-                        appendLoc(concatViewOp->getLoc(), "_new_perAxisDMA_{0}", i), perAxisTileInput,
+                        appendLoc(concatViewOp->getLoc(), "new_perAxisDMA_{0}", i), perAxisTileInput,
                         childClusterOp.getOutputBuff(), axisAttr, repeatsAttr, nullptr);
             }
         }

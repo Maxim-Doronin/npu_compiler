@@ -32,3 +32,43 @@ func.func @main(%arg0: tensor<1x100x17x17xf32>) -> (tensor<1x100x8x8xf32>, tenso
   // CHECK:        return [[MAX_POOL_8]], [[MAX_POOL_8_INDEX]] : tensor<1x100x8x8xf32>, tensor<1x100x8x8xsi64>
 
 }
+
+// -----
+
+// CHECK-LABEL: @MaxPool8RemoveIdenticalOp
+module @MaxPool8RemoveIdenticalOp {
+
+// CHECK:       func.func @main(
+// CHECK-SAME:      [[ARG0:%arg[0-9]+]]: tensor<1x6x2x2xf32>)
+func.func @main(%arg0: tensor<1x6x2x2xf32>) -> (tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>) {
+  %output, %output_index = IE.MaxPool8(%arg0) {axis = 0 : i64, dilations = [1, 1], index_element_type = si64, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x6x2x2xf32> -> tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
+  return %output, %output_index : tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
+  }
+
+  // CHECK:        [[CST_INDEX:%.+]] = const.Declare tensor<1x6x2x2xsi64> 
+  // CHECK-SAME:                     = dense<[
+  // CHECK-SAME{LITERAL}:            [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]], [[12, 13], [14, 15]], [[16, 17], [18, 19]], [[20, 21], [22, 23]]]
+  // CHECK-SAME:                     ]> : tensor<1x6x2x2xsi64>
+  // CHECK:        return [[ARG0]], [[CST_INDEX]] : tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
+
+}
+
+// -----
+
+// CHECK-LABEL: @MaxPool8RemoveIdenticalOp2
+module @MaxPool8RemoveIdenticalOp2 {
+
+// CHECK:       func.func @main(
+// CHECK-SAME:      [[ARG0:%arg[0-9]+]]: tensor<1x6x2x2xf32>)
+func.func @main(%arg0: tensor<1x6x2x2xf32>) -> (tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>) {
+  %output, %output_index = IE.MaxPool8(%arg0) {axis = 2 : i64, dilations = [1, 1], index_element_type = si64, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x6x2x2xf32> -> tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
+  return %output, %output_index : tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
+  }
+
+  // CHECK:        [[CST_INDEX:%.+]] = const.Declare tensor<1x6x2x2xsi64> 
+  // CHECK-SAME:                     = dense<[
+  // CHECK-SAME{LITERAL}:            [[[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]]]
+  // CHECK-SAME:                     ]> : tensor<1x6x2x2xsi64>
+  // CHECK:        return [[ARG0]], [[CST_INDEX]] : tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
+
+}

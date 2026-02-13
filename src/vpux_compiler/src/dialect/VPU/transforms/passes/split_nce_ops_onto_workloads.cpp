@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,8 +8,10 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
@@ -173,18 +175,23 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
 
     auto module = func->getParentOfType<mlir::ModuleOp>();
 
+    if (config::isPureHostCompileFunc(func)) {
+        _log.debug("Nothing to do with a pure HostCompile function: {0}", func);
+        return;
+    }
+
     const auto arch = config::getArch(module);
 
     auto nceCluster = config::getTileExecutor(module);
     VPUX_THROW_UNLESS(nceCluster != nullptr, "Failed to get NCE_Cluster information");
 
-    auto dpuExec = nceCluster.getSubExecutor(VPU::ExecutorKind::DPU);
+    auto dpuExec = nceCluster.getSubExecutor(config::ExecutorKind::DPU);
     VPUX_THROW_UNLESS(dpuExec != nullptr, "Failed to get DPU information");
 
     const auto numDPUs = dpuExec.getCount();
 
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
-    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, arch, _log);
+    auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &ctx, _log);
 
     mlir::ConversionTarget target(ctx);
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
@@ -201,7 +208,7 @@ void SplitNCEOpsOntoWorkloadsPass::safeRunOnFunc() {
         const auto numTiles = nceCluster.getCount();
         auto maybeLayerCostModelAnalysis = getCachedParentAnalysis<VPU::LayerCostModelAnalysis>(module);
         auto layerCostModel =
-                VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, arch, _log);
+                VPU::LayerCostModelAnalysis::getOrCreateLayerCostModel(maybeLayerCostModelAnalysis, &ctx, _log);
         patterns.add<NCEWorkloadSplitPreSplitRewrite>(&ctx, numDPUs, numTiles, arch, layerCostModel, costModel, _log);
     } else {
         patterns.add<NCEWorkloadSplitRewrite>(&ctx, numDPUs, arch, costModel, _log);

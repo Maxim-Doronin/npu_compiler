@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,7 +25,7 @@ func.func @ConvertAssignAndReadValue(%arg0: tensor<1x768xf32>) -> tensor<1x768xf
     // CHECK:       DataInfo "vpux_ie_assign_inner_h1" : tensor<1x768xf32> loc([[LOC_ASSIGN:#.+]])
 
     // CHECK:       @ConvertAssignAndReadValue(%arg0: tensor<1x768xf32> loc([[LOC_FOO1_ARG0:.+]]), %arg1: tensor<1x768xf32> loc([[LOC_FOO2_ARG0:.+]])) -> (tensor<1x768xf32>, tensor<1x768xf32>)
-    // CHECK:       [[VAR0:%.*]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x768xf32>, tensor<1x768xf32> -> tensor<1x768xf32>
+    // CHECK:       [[VAR0:%.+]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x768xf32>, tensor<1x768xf32> -> tensor<1x768xf32>
     // CHECK:       return [[VAR0]], [[VAR0]] : tensor<1x768xf32>, tensor<1x768xf32>
 
     // CHECK: [[BASE_LOC_READ:#.+]] = loc("inner_h1_r")

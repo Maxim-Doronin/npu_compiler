@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -108,7 +108,7 @@ mlir::LogicalResult FuseConstantPadWithConv::matchAndRewrite(IE::ConvolutionOp o
             [&](mlir::Value origPadInput, mlir::ArrayAttr newPadsBegin, mlir::ArrayAttr newPadsEnd) {
                 rewriter.replaceOpWithNewOp<IE::ConvolutionOp>(
                         origConvolutionOp, origPadInput, origConvolutionOp.getFilter(), origConvolutionOp.getBias(),
-                        origConvolutionOp.getStridesAttr(), newPadsBegin, newPadsEnd,
+                        origConvolutionOp.getScale(), origConvolutionOp.getStridesAttr(), newPadsBegin, newPadsEnd,
                         origConvolutionOp.getDilationsAttr(), nullptr, nullptr, origConvolutionOp.getStaticScaleAttr(),
                         origConvolutionOp.getOutputPaddingAttr(), origConvolutionOp.getInputPaddingAttr());
             },
@@ -193,10 +193,6 @@ mlir::LogicalResult FuseConstantPadWithMaxpool::matchAndRewrite(IE::MaxPoolOp or
 
 }  // namespace
 
-// PadOp with CONSTANT model, pad value is 0 and the padding is needed in H and W dimensions only.
-// Merge [Pad] -> [Conv] into [Conv].
-// Merge [Pad] -> [GroupConv] into [GroupConv].
-// Merge [Pad] -> [MaxPool] into [MaxPool].
 void vpux::IE::registerFusePadOpsRewriters(RewriterRegistry& registry, Logger log) {
     registry.registerRewriterSet("fuse-pad-ops-set", [&registry, log]() {
         registry.registerRewriter<FuseConstantPadWithConv>("fuse-constant-pad-with-conv", log);

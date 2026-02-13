@@ -233,14 +233,6 @@ struct FieldsPPEFpBiasAddOp {
     using Field_ppe_fp_biasType = NPUReg50XX::Fields::ppe_fp_bias;
 };
 
-// PPEFpScalePreluMultOp
-struct FieldsPPEFpScalePreluMultOp {
-    using Field_ppe_fp_scale_overrideType = NPUReg50XX::Fields::ppe_fp_scale_override;
-    using Field_ppe_fp_scaleType = NPUReg50XX::Fields::ppe_fp_scale;
-    using Field_ppe_fp_prelu_enType = NPUReg50XX::Fields::ppe_fp_prelu_en;
-    using Field_ppe_fp_preluType = NPUReg50XX::Fields::ppe_fp_prelu;
-};
-
 // PPEFpConvertOp
 struct FieldsPPEFpConvertOp {
     using Field_ppe_fp_convertType = NPUReg50XX::Fields::ppe_fp_convert;

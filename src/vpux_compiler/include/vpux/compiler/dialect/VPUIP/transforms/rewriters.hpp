@@ -12,6 +12,19 @@ namespace vpux {
 namespace VPUIP {
 
 //
+// UngroupBuffer Section
+//
+
+// Moves child SubViewOp up through GroupSparseBufferOp and fuses it with constants if possible.
+// Re-infer output types of child operations since output type may change.
+void registerMoveSubViewBeforeSparseBufferRewriters(vpux::RewriterRegistry& registry, Logger& log = Logger::global());
+
+// Splits operations that work with sparse buffers into multiple operations,  each working with an individual buffer.
+// These separate operations are then surrounded by UngroupSparseBuffer and / or GroupSparseBuffer operations, which are
+// then optimized-out.
+void registerUngroupSparseBufferRewriters(vpux::RewriterRegistry& registry, Logger& log = Logger::global());
+
+//
 // OptimizeCopies Pipeline
 //
 

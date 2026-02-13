@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -51,6 +51,7 @@ mlir::LogicalResult SetTargetIndependentPassOptionsPass::initialize(mlir::MLIRCo
                   {config::REDUCE_SUPPORTED, getAttributeFromOption(context, enableIsReduceSupported)},
                   {config::FP16_COMPRESSED_CONV, getAttributeFromOption(context, enableFP16CompressedConvolution)},
                   {config::VPUNN_PRE_SPLIT, getAttributeFromOption(context, enableVPUNNPreSplit)},
+                  {config::ODU_LOCAL_REGION, getAttributeFromOption(context, enableODULocalRegion)},
                   {config::ENABLE_SE_PTRS_OPERATIONS, getAttributeFromOption(context, enableSEPtrsOperations)},
                   {config::ENABLE_EXPERIMENTAL_SE_PTRS_OPERATIONS,
                    getAttributeFromOption(context, enableExperimentalSEPtrsOperations)},

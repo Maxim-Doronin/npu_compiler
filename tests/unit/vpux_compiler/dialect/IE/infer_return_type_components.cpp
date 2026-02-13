@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
@@ -179,7 +180,7 @@ public:
             auto weights = prepareWeights(builder, baseParams);
             eraseLater(weights);
             return builder.create<IE::MatMulOp>(loc, input.value(), weights.value(), matmulParams->m_transpose_a,
-                                                matmulParams->m_transpose_b, /*post_op=*/nullptr);
+                                                matmulParams->m_transpose_b);
         }
         return nullptr;
     }
@@ -206,9 +207,8 @@ public:
             const auto attrPadsEnd = getIntArrayAttr(ctx, convParams->m_padsEnd);
             const auto attrDilation = getIntArrayAttr(ctx, convParams->m_dilations);
 
-            return builder.create<IE::ConvolutionOp>(loc, input.value(), weights.value(), nullptr, attrStride,
-                                                     attrPadsBegin, attrPadsEnd, attrDilation, nullptr, nullptr,
-                                                     nullptr, nullptr, nullptr);
+            return builder.create<IE::ConvolutionOp>(loc, input.value(), weights.value(), attrStride, attrPadsBegin,
+                                                     attrPadsEnd, attrDilation);
         }
         return nullptr;
     }

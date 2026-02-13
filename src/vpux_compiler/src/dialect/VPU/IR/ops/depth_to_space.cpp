@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -50,7 +51,8 @@ bool vpux::VPU::DepthToSpaceOp::checkStrategyCompatibility(VPU::MultiClusterStra
 vpux::VPU::DistributionInfo vpux::VPU::DepthToSpaceOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);
@@ -59,8 +61,9 @@ vpux::VPU::DistributionInfo vpux::VPU::DepthToSpaceOp::getExplicitDistributionIn
 void vpux::VPU::DepthToSpaceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
                                       ::mlir::Value input, ::mlir::IntegerAttr blockSize,
                                       vpux::IE::DepthToSpaceModeAttr mode,
-                                      /*optional*/ vpux::IE::ChannelPaddingAttr padded_channels) {
-    build(odsBuilder, odsState, input, blockSize, mode, padded_channels, {});
+                                      /*optional*/ vpux::IE::ChannelPaddingAttr padded_channels,
+                                      ::mlir::TypeAttr dstElemType) {
+    build(odsBuilder, odsState, input, blockSize, mode, padded_channels, dstElemType, {});
 }
 
 //
@@ -178,7 +181,9 @@ mlir::LogicalResult vpux::VPU::DepthToSpaceOp::inferReturnTypes(
         }
     });
 
-    auto outType = mlir::RankedTensorType::get(outShape, elemType, outDesc);
+    const auto dstElemType = depthToSpace.getDstElemType();
+    auto outElemType = dstElemType.value_or(inType.getElementType());
+    auto outType = mlir::RankedTensorType::get(outShape, outElemType, outDesc);
 
     inferredReturnTypes.push_back(outType);
 
@@ -190,6 +195,11 @@ mlir::LogicalResult vpux::VPU::DepthToSpaceOp::inferReturnTypes(
 //
 
 vpux::InputTiling vpux::VPU::DepthToSpaceOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger) {
+    VPUX_THROW_WHEN(outputTile.axis[Dims4D::Act::C] != 1,
+                    "[DepthToSpace] Dynamic tiling step for Channel dimension is not supported for "
+                    "outputTile: {0}",
+                    outputTile);
+
     const auto origInputShape = getShape(getInput());
 
     int64_t blockSize = 0;
@@ -198,14 +208,24 @@ vpux::InputTiling vpux::VPU::DepthToSpaceOp::backInferTileInfo(const vpux::TileI
     }
     VPUX_THROW_WHEN(blockSize == 0, "BlockSize is zero and used as a divisor");
 
+    int64_t paddedIC = 0;
+    int64_t paddedOC = 0;
+
+    auto paddedChannels = getPaddedChannels();
+    if (paddedChannels.has_value()) {
+        paddedIC = paddedChannels.value().getInput() ? paddedChannels.value().getInput().getInt() : 0;
+        paddedOC = paddedChannels.value().getOutput() ? paddedChannels.value().getOutput().getInt() : 0;
+    }
+
     TileInfo inputTile(origInputShape);
     inputTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
-    inputTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C] * (blockSize * blockSize);
+    inputTile.shape[Dims4D::Act::C] = (outputTile.shape[Dims4D::Act::C] - paddedOC) * blockSize * blockSize + paddedIC;
     inputTile.shape[Dims4D::Act::W] = outputTile.shape[Dims4D::Act::W] / blockSize;
     inputTile.shape[Dims4D::Act::H] = outputTile.shape[Dims4D::Act::H] / blockSize;
 
     inputTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
-    inputTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C] * (blockSize * blockSize);
+    // Shouldn't be tiled along C, so offsets are 0, so it's redundant to do anything with it.
+    inputTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
     inputTile.offsets[Dims4D::Act::W] = outputTile.offsets[Dims4D::Act::W] / blockSize;
     inputTile.offsets[Dims4D::Act::H] = outputTile.offsets[Dims4D::Act::H] / blockSize;
 
@@ -242,6 +262,19 @@ mlir::FailureOr<OutputTiling> getD2STilingStrategy(mlir::Operation* op, TilingMo
 
     auto tileDimIter = tileDimOrder.begin();
     auto dimToTile = *tileDimIter;
+
+    const auto fullOutShape = getShape(origOp.getOutput());
+    if (fullOutShape.isDynamic()) {
+        for (size_t idx = 0; idx < fullOutShape.size(); ++idx) {
+            const auto dim = Dim(idx);
+            if (fullOutShape[dim] == mlir::ShapedType::kDynamic && nTilesOnDimforDepthToSpace[dim] == 1) {
+                log.trace("Tiling discarded due to missing split on dynamic dimension {0} of bounded shape: {1}", idx,
+                          outputShape);
+                // we will start with at least 2 tiles on dynamic dimensions
+                nTilesOnDimforDepthToSpace[dim] = 2;
+            }
+        }
+    }
 
     const auto isSupportedTileSize = [op, &tilingInfo, outputShape, log](ShapeRef nTilesOnDim,
                                                                          TilingMode tilingMode) -> bool {
@@ -309,10 +342,7 @@ mlir::FailureOr<OutputTiling> vpux::VPU::DepthToSpaceOp::getTilingStrategy(Tilin
 }
 
 bool vpux::VPU::DepthToSpaceOp::isVFSupported() {
-    // E#184822: Fix backInferTile calculation
-    auto paddedChannels = getPaddedChannels();
-    auto multiCluster = getMultiClusterStrategy();
-    return !paddedChannels.has_value() || multiCluster.has_value();
+    return true;
 }
 
 mlir::LogicalResult VPU::DepthToSpaceOp::verify() {
@@ -350,7 +380,7 @@ mlir::LogicalResult vpux::VPU::DepthToSpaceOp::reifyResultShapes(
 
     // Use generator functions based on index for each output dimension
     auto computeShapeForDim = [&](int64_t idx) -> mlir::OpFoldResult {
-        auto dimLoc = appendLoc(loc, llvm::StringLiteral("_dim_{0}"), idx);
+        auto dimLoc = appendLoc(loc, "dim_{0}", idx);
 
         if (idx == Dims4D::Act::N.ind()) {
             return reifyDim(builder, getInput(), idx, dimLoc);

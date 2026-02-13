@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,11 +12,13 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/Support/LogicalResult.h>
@@ -452,7 +454,7 @@ mlir::LogicalResult OptimizeGroupConvConcat::matchAndRewrite(IE::ConcatOp origOp
 
     // GroupConv has no scale parameter, so it's nullptr when creating 'IE::ConvolutionOp'
     auto newConv = rewriter.create<IE::ConvolutionOp>(
-            origOp.getLoc(), root, concatWeights, newBiasValue, origGroupConv.getStrides(),
+            origOp.getLoc(), root, concatWeights, newBiasValue, /*scale*/ nullptr, origGroupConv.getStrides(),
             origGroupConv.getPadsBegin(), origGroupConv.getPadsEnd(), origGroupConv.getDilations(),
             origGroupConv.getPostOpAttr(), origGroupConv.getClampAttr(), nullptr, origGroupConv.getOutputPaddingAttr(),
             origGroupConv.getInputPaddingAttr());
@@ -611,11 +613,8 @@ mlir::LogicalResult OptimizeConvConcat::matchAndRewrite(IE::ConcatOp origOp, mli
         concatBias = rewriter.createOrFold<IE::ConcatOp>(origOp.getLoc(), newBias, Dims4D::Act::C);
     }
 
-    auto newConvOp = rewriter.create<IE::ConvolutionOp>(
-            origOp.getLoc(), outputType, root, concatWeights, concatBias, convOp.getStrides(), convOp.getPadsBegin(),
-            convOp.getPadsEnd(), convOp.getDilations(), convOp.getPostOpAttr(), convOp.getClampAttr(),
-            convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr());
-
+    auto newConvOp =
+            IE::cloneConvolutionOp(rewriter, convOp, outputType, root, concatWeights, concatBias, convOp.getScale());
     rewriter.replaceOp(origOp, newConvOp.getOutput());
     return mlir::success();
 }
@@ -862,9 +861,9 @@ mlir::LogicalResult OptimizeSliceMultiplyConcat::matchAndRewrite(IE::ConcatOp or
     auto stridesAttr = getIntArrayAttr(rewriter, SmallVector<int32_t>{1, 1});
     auto padBeginAttr = getIntArrayAttr(rewriter, SmallVector<int32_t>{0, 0});
     auto padEndAttr = getIntArrayAttr(rewriter, SmallVector<int32_t>{0, 0});
-    auto newConv = rewriter.create<IE::ConvolutionOp>(appendLoc(origOp.getLoc(), "branches_concat_to_conv"), inputCast,
-                                                      concatWeights, nullptr, stridesAttr, padBeginAttr, padEndAttr,
-                                                      dilationsAttr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    auto newConv =
+            rewriter.create<IE::ConvolutionOp>(appendLoc(origOp.getLoc(), "branches_concat_to_conv"), inputCast,
+                                               concatWeights, stridesAttr, padBeginAttr, padEndAttr, dilationsAttr);
     changeDimsOrder(newConv, DimsOrder::NHWC, _log.nest());
 
     // Cast to the original DimsOrder
@@ -904,12 +903,9 @@ void ConvertBranchesConcatToConvPass::safeRunOnFunc() {
     patterns.add<OptimizeGroupConvConcat>(&ctx, _log);
     patterns.add<OptimizeConvConcat>(&ctx, _log);
     patterns.add<OptimizeSliceMultiplyConcat>(&ctx, _log);
-    IE::ConcatOp::getCanonicalizationPatterns(patterns, &ctx);
 
     auto func = getOperation();
-    if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

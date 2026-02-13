@@ -1,7 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
+
+#pragma once
 
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
@@ -44,11 +46,12 @@ public:
     // up bufferized operands and forward the arguments to specific model's
     // bufferizeImpl()
     mlir::LogicalResult bufferize(mlir::Operation* op, mlir::RewriterBase& rewriter,
-                                  const mlir::bufferization::BufferizationOptions& options) const {
-        auto bufferizedOperands = vpux::bufferizeOperands(rewriter, op->getOperands());
+                                  const mlir::bufferization::BufferizationOptions& options,
+                                  mlir::bufferization::BufferizationState& state) const {
+        auto bufferizedOperands = vpux::bufferizeOperands(rewriter, op->getOperands(), state);
         auto adaptor = typename ConcreteOp::Adaptor(bufferizedOperands, op->getAttrDictionary(),
                                                     op->getPropertiesStorage(), op->getRegions());
-        return static_cast<const ConcreteModel*>(this)->bufferizeImpl(downcast(op), rewriter, options, adaptor);
+        return static_cast<const ConcreteModel*>(this)->bufferizeImpl(downcast(op), rewriter, options, state, adaptor);
     }
 
 protected:
@@ -78,7 +81,6 @@ private:
 
 void registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerVpuNceBufferizableOpInterfaces(mlir::DialectRegistry& registry);
-void registerFuncAndReturnBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerVPUBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerConstDeclareBufferizableOpInterfaces(mlir::DialectRegistry& registry);
 void registerCoreBufferizableOpInterfaces(mlir::DialectRegistry& registry);
@@ -113,6 +115,8 @@ mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::UngroupSparseTensor
                                 VPU::UngroupSparseTensorOp::Adaptor& newArgs, mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::StorageElementTableOp origOp,
                                 VPU::StorageElementTableOp::Adaptor& newArgs, mlir::RewriterBase& rewriter);
+mlir::LogicalResult bufferizeOp(mlir::MLIRContext*, VPU::ZeroPointTableOp origOp,
+                                VPU::ZeroPointTableOp::Adaptor& newArgs, mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::ShapeCastOp origOp, VPU::ShapeCastOp::Adaptor& newArgs,
                                 mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::LayoutCastOp origOp, VPU::LayoutCastOp::Adaptor& newArgs,
@@ -125,7 +129,8 @@ mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::GatherDMAOp origOp,
                                 mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::ShapeOfOp origOp, VPU::ShapeOfOp::Adaptor& newArgs,
                                 mlir::RewriterBase& rewriter);
-
+mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::EmptyOp origOp, VPU::EmptyOp::Adaptor& newArgs,
+                                mlir::RewriterBase& rewriter);
 template <typename ConcreteOp>
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, ConcreteOp origOp, typename ConcreteOp::Adaptor& newArgs,
                                 mlir::RewriterBase& rewriter);
@@ -171,6 +176,7 @@ struct VpuGenericOneShotBufferizeModel :
         public BufferizableOpInterfaceExternalModelBase<VpuGenericOneShotBufferizeModel<ConcreteOp>, ConcreteOp> {
     mlir::LogicalResult bufferizeImpl(ConcreteOp op, mlir::RewriterBase& rewriter,
                                       const mlir::bufferization::BufferizationOptions&,
+                                      mlir::bufferization::BufferizationState&,
                                       typename ConcreteOp::Adaptor& opAdaptor) const {
         // call the actual bufferization function
         return ::vpux::bufferizeOp(op.getContext(), op, opAdaptor, rewriter);

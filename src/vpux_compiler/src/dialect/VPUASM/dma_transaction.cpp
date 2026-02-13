@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUASM/dma_transaction.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 
 namespace vpux {
 namespace VPUASM {
@@ -144,7 +145,8 @@ DMATransactionConfig getDMATransactionConfig(VPUASM::NNDMAOp dmaOp, bool isConve
                                              bool isActivationDecompression) {
     VPUASM::DMATransactionConfig transactionConfig;
     if (auto transactionAttr = dmaOp.getDmaTransactionAttr()) {
-        auto transaction = transactionAttr.getDMATransaction();
+        auto transaction = transactionAttr.getDMATransaction(dmaOp->hasAttr(vpux::stridedInputAttrName),
+                                                             dmaOp->hasAttr(vpux::stridedOutputAttrName));
         transactionConfig = VPUASM::getDMATransactionConfigFromTransaction(transaction);
     } else {
         if (auto descriptorAttr = dmaOp.getDmaDescriptorAttr()) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -142,7 +142,7 @@ func.func @Async(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref
 >
 
 // CHECK-LABEL: func.func @GroupOp
-// CHECK-SAME:  ([[ARG0:%.*]]: !VPUIP.SparseBuffer<data=memref<1x1000xf16, @DDR>, sparsity_map=memref<1x1000xi1, @DDR>>)
+// CHECK-SAME:  ([[ARG0:%.+]]: !VPUIP.SparseBuffer<data=memref<1x1000xf16, @DDR>, sparsity_map=memref<1x1000xi1, @DDR>>)
 // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<1x1000xf16, @DDR>, sparsity_map=memref<1x1000xi1, @DDR>>
 func.func @GroupOp(%arg0: !SparseType) -> !SparseType {
     %0 = memref.alloc() : memref<1x1000xf16>
@@ -168,7 +168,7 @@ func.func @GroupOp(%arg0: !SparseType) -> !SparseType {
 >
 
 // CHECK-LABEL: func.func @GroupOpAllInputsNoneMemSpace
-// CHECK-SAME:  ([[ARG0:%.*]]: !VPUIP.SparseBuffer<data=memref<1x1000xf16, @DDR>, sparsity_map=memref<1x1000xi1, @DDR>>)
+// CHECK-SAME:  ([[ARG0:%.+]]: !VPUIP.SparseBuffer<data=memref<1x1000xf16, @DDR>, sparsity_map=memref<1x1000xi1, @DDR>>)
 // CHECK-SAME:      -> !VPUIP.SparseBuffer<data=memref<1x1000xf16, @DDR>, sparsity_map=memref<1x1000xi1, @DDR>>
 func.func @GroupOpAllInputsNoneMemSpace(%arg0: !SparseType) -> !SparseType {
     %0 = const.Declare memref<1x1000xf16> = dense<1.0> : tensor<1x1000xf16>

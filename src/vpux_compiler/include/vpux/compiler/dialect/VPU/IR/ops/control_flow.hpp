@@ -9,11 +9,8 @@
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 
+#include "vpux/compiler/dialect/VPU/IR/ops/internal_fwd.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
-
-namespace vpux::VPU {
-class VerticalFusionOp;
-}
 
 //
 // Generated

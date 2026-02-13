@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
@@ -90,5 +91,16 @@ mlir::LogicalResult vpux::IE::AddOp::reifyResultShapes(mlir::OpBuilder& builder,
 //
 
 bool vpux::IE::AddOp::shouldJITCompile() {
-    return true;
+    vpux::LogCb logCb = globalLogCb;
+    if (!vpux::ShaveCodeGen::hasOnlySupportedTypes(*this)) {
+        return false;
+    }
+    if (config::getCompilationMode(*this) == config::CompilationMode::ReferenceSW) {
+        return true;
+    }
+
+    return !vpux::VPU::NCEEltwiseOp::isSupported(*this, /*allowDifferentScales=*/true,
+                                                 /*allowDifferentZp=*/true, logCb,
+                                                 /*checkLayout=*/true,
+                                                 /*checkChannelAlignment=*/true);
 }

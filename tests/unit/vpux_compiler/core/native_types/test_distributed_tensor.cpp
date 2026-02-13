@@ -53,6 +53,7 @@ TEST_F(MLIR_DistributedTensorCpp, DistributionInfoTest) {
     auto memoryShapes = SmallVector<SmallVector<int64_t>>{{3, 2}, {3, 2}, {3, 2}, {3, 5}};
     auto memoryOffsets = SmallVector<SmallVector<int64_t>>{{4, 2}, {4, 2}, {4, 2}, {4, 5}};
     bool equalMemoryAndComputeView = false;
+    auto memoryNumTiles = SmallVector<int64_t>{1, 5, 1, 1};
 
     // Attr
     auto distributionModeAttr = VPU::DistributionModeAttr::get(&ctx, distributionMode);
@@ -67,18 +68,19 @@ TEST_F(MLIR_DistributedTensorCpp, DistributionInfoTest) {
     mlir::ArrayAttr memoryShapesAttr = memoryShapes.empty() ? nullptr : getIntArrayOfArray(&ctx, memoryShapes);
     mlir::ArrayAttr memoryOffsetsAttr = memoryOffsets.empty() ? nullptr : getIntArrayOfArray(&ctx, memoryOffsets);
     mlir::UnitAttr equalMemoryAndComputeViewAttr = equalMemoryAndComputeView ? mlir::UnitAttr::get(&ctx) : nullptr;
+    mlir::ArrayAttr memoryNumTilesAttr = memoryNumTiles.empty() ? nullptr : getIntArrayAttr(&ctx, memoryNumTiles);
 
     auto padAttr = pad.has_value() ? VPU::Padding::getAttrFromClass(&ctx, pad.value()) : nullptr;
 
     auto distributedTensorAttr = VPU::DistributionInfoAttr::get(
             &ctx, distributionModeAttr, numTilesAttr, kernelAttr, padAttr, stridesAttr, numClustersAttr, alignmentAttr,
             uniformDistributedSegmentsAttr, computeShapesAttr, computeOffsetsAttr, memoryShapesAttr, memoryOffsetsAttr,
-            equalMemoryAndComputeViewAttr);
+            equalMemoryAndComputeViewAttr, memoryNumTilesAttr);
 
     // CPP class
     auto distributedTensorStruct = VPU::DistributionInfo(
             distributionMode, numTiles, kernel, strides, pad, numClusters, alignment, uniformDistributedSegments,
-            computeShapes, computeOffsets, memoryShapes, memoryOffsets, equalMemoryAndComputeView);
+            computeShapes, computeOffsets, memoryShapes, memoryOffsets, equalMemoryAndComputeView, memoryNumTiles);
 
     auto attrFromClass = VPU::DistributionInfo::getAttrFromClass(&ctx, distributedTensorStruct);
     EXPECT_EQ(distributedTensorAttr, attrFromClass);

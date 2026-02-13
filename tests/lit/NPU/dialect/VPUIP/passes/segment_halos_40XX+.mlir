@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -155,7 +155,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 
 }
 
-// CHECK:       [[OUT_CMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <17408> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <17408> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x17x32xf16, #NHWC, [@CMX_NN, 0],
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:               #VPUIP.HaloRegionAttr<shape = [1, 16, 1, 32], offset = [0, 0, 16, 0], cluster_id = 0 : i64>,
@@ -171,7 +171,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 // CHECK-NEXT:              ]>
 // CHECK:           ]>
 
-// CHECK:       [[OUT_CMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <17408> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <17408> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x17x32xf16, #NHWC, [@CMX_NN, 1]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 32, 1, 32], offset = [0, 0, 0, 0], cluster_id = 1 : i64>
@@ -192,7 +192,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 // CHECK-NEXT:              #VPUIP.HaloRegionAttr<shape = [1, 16, 1, 32], offset = [0, 16, 16, 0], cluster_id = 0 : i64>
 // CHECK-NEXT:           ]>
 
-// CHECK:       [[OUT_SPARSE_CMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <39680> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_SPARSE_CMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <39680> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x17x32xi1, #NHWC, [@CMX_NN, 0]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 16, 1, 32], offset = [0, 0, 16, 0], cluster_id = 0 : i64>,
@@ -207,7 +207,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 // CHECK-NEXT:              #VPUIP.HaloRegionAttr<shape = [1, 32, 1, 32], offset = [0, 0, 0, 0], cluster_id = 1 : i64>
 // CHECK-NEXT:           ]>
 
-// CHECK:       [[OUT_SPARSE_CMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <39680> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_SPARSE_CMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <39680> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x17x32xi1, #NHWC, [@CMX_NN, 1]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 32, 1, 32], offset = [0, 0, 0, 0], cluster_id = 1 : i64>
@@ -454,7 +454,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 
 }
 
-// CHECK:       [[OUT_CMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <18432> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <18432> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x32x18xf16, #NHWC, [@CMX_NN, 0]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 32, 32, 1], offset = [0, 0, 0, 17], cluster_id = 0 : i64>
@@ -475,7 +475,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 // CHECK-NEXT:                 #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 1], offset = [0, 0, 16, 0], cluster_id = 1 : i64>
 // CHECK-NEXT:           ]>
 
-// CHECK:       [[OUT_CMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <18432> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <18432> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x32x19xf16, #NHWC, [@CMX_NN, 1]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:              #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 1], offset = [0, 0, 0, 0], cluster_id = 1 : i64>,
@@ -501,7 +501,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 // CHECK-NEXT:              #VPUIP.HaloRegionAttr<shape = [1, 32, 32, 1], offset = [0, 0, 0, 0], cluster_id = 2 : i64>
 // CHECK-NEXT:          ]>
 
-// CHECK:       [[OUT_CMX2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <18432> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <18432> -> !VPUIP.ITIBuffer<
 // CHECK:           1x32x32x18xf16, #NHWC, [@CMX_NN, 2]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 32, 32, 1], offset = [0, 0, 0, 0], cluster_id = 2 : i64>
@@ -755,7 +755,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 
 }
 
-// CHECK:       [[OUT_CMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <3200> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <3200> -> !VPUIP.ITIBuffer<
 // CHECK:           1x96x10x10xf16, #NHWC, [@CMX_NN, 0]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 10], offset = [0, 32, 0, 0], cluster_id = 0 : i64>,
@@ -781,7 +781,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-NEXT:               #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 10], offset = [0, 16, 0, 0], cluster_id = 2 : i64>
 // CHECK-NEXT:           ]>
 
-// CHECK:       [[OUT_CMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <3200> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <3200> -> !VPUIP.ITIBuffer<
 // CHECK:           1x96x10x10xf16, #NHWC, [@CMX_NN, 1]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:            #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 10], offset = [0, 0, 0, 0], cluster_id = 1 : i64>,
@@ -807,7 +807,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-NEXT:               #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 10], offset = [0, 48, 0, 0], cluster_id = 2 : i64>
 // CHECK-NEXT:          ]>
 
-// CHECK:       [[OUT_CMX2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <3200> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <3200> -> !VPUIP.ITIBuffer<
 // CHECK:           1x96x10x10xf16, #NHWC, [@CMX_NN, 2]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:              #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 10], offset = [0, 0, 0, 0], cluster_id = 2 : i64>,
@@ -1151,7 +1151,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 
 }
 
-// CHECK:       [[OUT_CMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <8192> -> !VPUIP.ITIBuffer<
 // CHECK:           1x64x18x16xf16, #NHWC, [@CMX_NN, 0]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:               #VPUIP.HaloRegionAttr<shape = [1, 32, 8, 16], offset = [0, 32, 0, 0], cluster_id = 0 : i64>,
@@ -1192,7 +1192,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 // CHECK-NEXT:               #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 16], offset = [0, 16, 0, 0], cluster_id = 3 : i64>
 // CHECK:               ]
 
-// CHECK:       [[OUT_CMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <8192> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <8192> -> !VPUIP.ITIBuffer<
 // CHECK:           1x64x18x16xf16, #NHWC, [@CMX_NN, 1]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK:              #VPUIP.HaloRegionAttr<shape = [1, 16, 16, 16], offset = [0, 0, 0, 0], cluster_id = 1 : i64>,
@@ -1226,7 +1226,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 // CHECK-NEXT:               #VPUIP.HaloRegionAttr<shape = [1, 32, 2, 16], offset = [0, 32, 0, 0], cluster_id = 3 : i64>
 // CHECK:                ]
 
-// CHECK:       [[OUT_CMX2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <8192> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <8192> -> !VPUIP.ITIBuffer<
 // CHECK-NEXT:      1x64x18x16xf16, #NHWC, [@CMX_NN, 2]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:         #VPUIP.HaloRegionAttr<shape = [1, 32, 16, 8], offset = [0, 32, 2, 0], cluster_id = 2 : i64>,
@@ -1281,7 +1281,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 // CHECK-NEXT:               #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 16], offset = [0, 16, 16, 0], cluster_id = 1 : i64>
 // CHECK-NEXT:          ]
 
-// CHECK:       [[OUT_CMX3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <8192> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <8192> -> !VPUIP.ITIBuffer<
 // CHECK-NEXT:      1x64x18x16xf16, #NHWC, [@CMX_NN, 3]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:         #VPUIP.HaloRegionAttr<shape = [1, 16, 8, 16], offset = [0, 0, 2, 0], cluster_id = 3 : i64>,
@@ -1634,7 +1634,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 
 }
 
-// CHECK:       [[OUT_CMX0:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <10880> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <10880> -> !VPUIP.ITIBuffer<
 // CHECK-NEXT:      1x16x22x17xf16, #NHWC, [@CMX_NN, 0]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:           #VPUIP.HaloRegionAttr<shape = [1, 16, 20, 1], offset = [0, 0, 0, 16], cluster_id = 0 : i64>,
@@ -1671,7 +1671,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 // CHECK-NEXT:              #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 1], offset = [0, 0, 0, 0], cluster_id = 3 : i64>
 // CHECK-NEXT:              ]
 
-// CHECK:       [[OUT_CMX1:%.*]] = VPURT.DeclareBuffer <CMX_NN> [1] <10880> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <10880> -> !VPUIP.ITIBuffer<
 // CHECK-NEXT:      1x16x22x17xf16, #NHWC, [@CMX_NN, 1]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:         #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 1], offset = [0, 0, 0, 0], cluster_id = 1 : i64>,
@@ -1710,7 +1710,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 // CHECK-NEXT:              #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 1], offset = [0, 0, 0, 16], cluster_id = 2 : i64>
 // CHECK-NEXT:          ]
 
-// CHECK:       [[OUT_CMX2:%.*]] = VPURT.DeclareBuffer <CMX_NN> [2] <10880> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <10880> -> !VPUIP.ITIBuffer<
 // CHECK-NEXT:      1x16x22x17xf16, #NHWC, [@CMX_NN, 2]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:         #VPUIP.HaloRegionAttr<shape = [1, 16, 10, 1], offset = [0, 0, 2, 16], cluster_id = 2 : i64>,
@@ -1741,7 +1741,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 // CHECK-NEXT:              #VPUIP.HaloRegionAttr<shape = [1, 16, 2, 1], offset = [0, 0, 20, 0], cluster_id = 1 : i64>
 // CHECK-NEXT:          ]
 
-// CHECK:       [[OUT_CMX3:%.*]] = VPURT.DeclareBuffer <CMX_NN> [3] <10880> -> !VPUIP.ITIBuffer<
+// CHECK:       [[OUT_CMX3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <10880> -> !VPUIP.ITIBuffer<
 // CHECK-NEXT:      1x16x22x17xf16, #NHWC, [@CMX_NN, 3]
 // CHECK-NEXT:      inwardHaloRegions = [
 // CHECK-NEXT:         #VPUIP.HaloRegionAttr<shape = [1, 16, 20, 1], offset = [0, 0, 2, 0], cluster_id = 3 : i64>,

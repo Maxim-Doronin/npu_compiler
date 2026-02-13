@@ -1,12 +1,13 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers_for_net_results.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
-#include "vpux/compiler/utils/allocate_buffers_for_net_results.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
@@ -64,14 +65,15 @@ void AddBuffersForNetResults::safeRunOnModule() {
     mlir::func::FuncOp entryPointFuncOp;
     net::NetworkInfoOp::getFromModule(module, netInfo, entryPointFuncOp);
 
-    SmallVector<mlir::CallOpInterface> callOps;
+    mlir::DenseSet<mlir::CallOpInterface> callOps;
     module.walk([&](mlir::CallOpInterface callOp) {
-        callOps.push_back(callOp);
+        callOps.insert(callOp);
     });
-    SmallVector<mlir::func::FuncOp> funcOps;
+    mlir::DenseSet<mlir::func::FuncOp> funcOps;
     module.walk([&](mlir::func::FuncOp funcOp) {
         auto closestModuleParentOp = funcOp->getParentOfType<mlir::ModuleOp>();
-        if (_useMemrefForHostFunctionBufferization && funcOp == entryPointFuncOp) {
+        if (_useMemrefForHostFunctionBufferization &&
+            (funcOp == entryPointFuncOp || config::isPureHostCompileFunc(funcOp))) {
             return mlir::WalkResult::skip();
         }
 
@@ -88,14 +90,17 @@ void AddBuffersForNetResults::safeRunOnModule() {
                        funcOp.getSymName(), funcOp.getLoc());
             return mlir::WalkResult::skip();
         }
-        funcOps.push_back(funcOp);
+        funcOps.insert(funcOp);
         return mlir::WalkResult::advance();
     });
 
-    vpux::allocateBuffersForNetResults(callOps, funcOps, _log);
-    if (_useMemrefForHostFunctionBufferization) {
-        vpux::allocateBuffersForNetResults<mlir::memref::CopyOp>({}, entryPointFuncOp, _log);
-    }
+    VPUIP::allocateBuffersForNetResults(callOps, funcOps, _log);
+
+    module.walk([&](mlir::func::FuncOp funcOp) {
+        if (!funcOps.contains(funcOp)) {
+            VPUIP::allocateBuffersForNetResults<mlir::memref::CopyOp>({}, {funcOp}, _log);
+        }
+    });
 }
 
 }  // namespace

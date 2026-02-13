@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include <mutex>
 #include <shared_mutex>
 #include "llvm/Support/MD5.h"
@@ -240,33 +241,7 @@ void ManualStrategyUtilsPass::safeRunOnFunc() {
     // store operations with Location as key to enable Location based mapping
     llvm::MapVector<mlir::Location, mlir::Operation*> operations;
     llvm::MapVector<mlir::Location, mlir::Operation*> outputPipeliningOps;
-
-    func->walk([&](VPU::LayerOpInterface op) {
-        auto isNCEOp = mlir::isa<VPU::NCEOpInterface>(op.getOperation());
-        auto isSWOp = mlir::isa<VPU::SWOpInterface>(op.getOperation());
-        // Avoid cluttering dump with irrelevant layers
-        if (!isNCEOp && !isSWOp) {
-            return;
-        }
-        // store unique operations (tiled operations are merged)
-        mlir::Location opLoc = op.getLoc();
-        if (operations.find(opLoc) != operations.end()) {
-            // if duplicate locations, create unique
-            opLoc = appendLoc(opLoc, "unique_{0}", operations.count(opLoc));
-            op->setLoc(opLoc);
-        }
-        operations.insert({opLoc, op.getOperation()});
-
-        // collect all operations that have tilingStrategy attribute after the number of tiles increases for output
-        // pipelining
-        // at this stage, VF tiling has been applied and VF ops do not have tilingStrategy, so VF ops are not collected
-        // Layers' strategies will be saved into JSON file when _writeStrategyToJSON is 'true'
-        // Layers' strategies will be overwritten with manual attributes from JSON file when _readStrategyFromJSON is
-        // 'true'
-        if (_updateStrategyForOutputPipelining && op->hasAttr(tilingStrategy)) {
-            outputPipeliningOps.insert({opLoc, op.getOperation()});
-        }
-    });
+    collectAllComputeOps(func, operations, outputPipeliningOps, _updateStrategyForOutputPipelining);
 
     llvm::json::Value json(nullptr);
     if (_writeStrategyToJSON || _dumpStrategyToLog) {
@@ -346,6 +321,41 @@ void ManualStrategyUtilsPass::safeRunOnFunc() {
 
 }  // namespace
 
+void vpux::collectAllComputeOps(mlir::func::FuncOp func, llvm::MapVector<mlir::Location, mlir::Operation*>& operations,
+                                llvm::MapVector<mlir::Location, mlir::Operation*>& outputPipeliningOps,
+                                bool updateStrategyForOutputPipelining) {
+    llvm::DenseMap<mlir::Location, size_t> locCount;
+    func->walk([&](VPU::LayerOpInterface op) {
+        auto isNCEOp = mlir::isa<VPU::NCEOpInterface>(op.getOperation());
+        auto isSWOp = mlir::isa<VPU::SWOpInterface>(op.getOperation());
+        // Avoid cluttering dump with irrelevant layers
+        if (!isNCEOp && !isSWOp) {
+            return;
+        }
+        // store unique operations (tiled operations are merged)
+        mlir::Location opLoc = op.getLoc();
+        auto iter = locCount.find(opLoc);
+        if (iter == locCount.end()) {
+            locCount.insert({opLoc, 0});
+        } else {
+            // if duplicate locations, create unique
+            opLoc = appendLoc(opLoc, "unique_{0}", iter->second++);
+            op->setLoc(opLoc);
+        }
+        operations.insert({opLoc, op.getOperation()});
+
+        // collect all operations that have tilingStrategy attribute after the number of tiles increases for output
+        // pipelining
+        // at this stage, VF tiling has been applied and VF ops do not have tilingStrategy, so VF ops are not collected
+        // Layers' strategies will be saved into JSON file when _writeStrategyToJSON is 'true'
+        // Layers' strategies will be overwritten with manual attributes from JSON file when _readStrategyFromJSON is
+        // 'true'
+        if (updateStrategyForOutputPipelining && op->hasAttr(tilingStrategy)) {
+            outputPipeliningOps.insert({opLoc, op.getOperation()});
+        }
+    });
+}
+
 //
 // createManualStrategyUtilsPass
 //
@@ -390,4 +400,24 @@ std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(
     return std::make_unique<ManualStrategyUtilsPass>(
             writeStrategyToJSON, writeStrategyFileLocation, readStrategyFromJSON, readStrategyFileLocation,
             updateStrategyForOutputPipelining, dumpStrategyToLog, contextId, log);
+}
+
+LoopAttributes vpux::getLoopAttributes(mlir::Operation* op) {
+    auto tilingLoopIndexAttr = op->getAttrOfType<TilingLoopIndexAttr>(TILING_LOOP_INDEX_ATTR_NAME);
+    auto vfLoopIndexAttr = op->getAttrOfType<VFLoopIndexAttr>(VF_LOOP_INDEX_ATTR_NAME);
+    auto vfLoopLayerIndexAttr = op->getAttrOfType<VFLoopLayerIndexAttr>(VF_LOOP_LAYER_INDEX_ATTR_NAME);
+    return LoopAttributes(tilingLoopIndexAttr, vfLoopIndexAttr, vfLoopLayerIndexAttr);
+}
+
+void vpux::copyLoopAttributes(mlir::Operation* srcOp, mlir::Operation* dstOp) {
+    const auto [tilingLoopIndexAttr, vfLoopIndexAttr, vfLoopLayerIndexAttr] = getLoopAttributes(srcOp);
+    if (tilingLoopIndexAttr != nullptr) {
+        dstOp->setAttr(TILING_LOOP_INDEX_ATTR_NAME, tilingLoopIndexAttr);
+    }
+    if (vfLoopIndexAttr != nullptr) {
+        dstOp->setAttr(VF_LOOP_INDEX_ATTR_NAME, vfLoopIndexAttr);
+    }
+    if (vfLoopLayerIndexAttr != nullptr) {
+        dstOp->setAttr(VF_LOOP_LAYER_INDEX_ATTR_NAME, vfLoopLayerIndexAttr);
+    }
 }

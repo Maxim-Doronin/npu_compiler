@@ -8,10 +8,10 @@ add_npu_library(npu_compiler_dialect_vpuasm
     ${SRC_FILES}
     DIALECT_LIB
     LINK_LIBS PRIVATE
+        compiler_commit_hash
         npu_compiler_utils
         npu_llvm_utils
         npu_ov_utils
-        flatbuffers
         npu_elf
         npu_compiler_dialect_elf_utils
         # E#98178: remove dependency on firmware headers

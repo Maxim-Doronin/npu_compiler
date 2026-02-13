@@ -4,11 +4,11 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
-#include "vpux/compiler/utils/allocate_buffers.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -101,10 +101,11 @@ void ConvertDynamicReshapeToInPlacePass::safeRunOnFunc() {
         auto kernelEntryName = getSwKernelEntryName(op);
 
         if (kernelEntryName == "dynamic_reshape") {
+            auto opLoc = op.getLoc();
             if (mlir::succeeded(makeInPlaceDynamicReshape(op, _log))) {
-                _log.trace("DynamicReshape {0} converted to in place", op->getLoc());
+                _log.trace("DynamicReshape {0} converted to in place", opLoc);
             } else {
-                _log.trace("Can't convert DynamicReshape {0} to in place", op->getLoc());
+                _log.trace("Can't convert DynamicReshape {0} to in place", opLoc);
             }
         }
     });

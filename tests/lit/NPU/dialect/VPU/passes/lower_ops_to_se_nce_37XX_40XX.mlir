@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1067,15 +1067,15 @@ func.func @ReflectPadOpToNCEQuantized(%input: tensor<1x48x80x80x!qElemType, {ord
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = !qElemType, dataShape = [1, 48, 80, 80],
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>,
-    // CHECK-SAME:          seDepth = {{.*}} : i64, seSize = [{{.*}}]}
-    // CHECK-SAME:      -> tensor<1x{{.*}}x83x83xi32, {order = #NHWC}>
+    // CHECK-SAME:          seDepth = {{.+}} : i64, seSize = [{{.+}}]}
+    // CHECK-SAME:      -> tensor<1x{{.+}}x83x83xi32, {order = #NHWC}>
     // CHECK-DAG:   [[INPUT_SM:%.+]] = const.Declare tensor<1x48x83x83xi1, {order = #NHWC}> = dense<1>
     // CHECK-SAME:          : tensor<1x48x83x83xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[INPUT_DATA]], [[INPUT_SM]], [[INPUT_SE]])
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>
     // CHECK-SAME:      } -> !VPU.SparseTensor<data=tensor<1x48x80x80x!qElemType, {order = #NHWC}>,
     // CHECK-SAME:                         sparsity_map=tensor<1x48x83x83xi1, {order = #NHWC}>,
-    // CHECK-SAME:                         storage_element_table=tensor<1x{{.*}}x83x83xi32, {order = #NHWC}>,
+    // CHECK-SAME:                         storage_element_table=tensor<1x{{.+}}x83x83xi32, {order = #NHWC}>,
     // CHECK-SAME:                         #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>>
 
     // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<48x48x1x1x!qElemType1, {order = #NHWC}> =
@@ -1121,8 +1121,8 @@ func.func @ConstantPadOpToNCE(%input: tensor<1x48x8x8xf16, {order = #NHWC}>) -> 
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 48, 8, 8],
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <CONSTANT>, padding = [1, 2, 2, 1]>,
-    // CHECK-SAME:          seDepth = {{.*}} : i64, seSize = [{{.*}}]
-    // CHECK-SAME:      } -> tensor<1x{{.*}}x11x11xi32, {order = #NHWC}>
+    // CHECK-SAME:          seDepth = {{.+}} : i64, seSize = [{{.+}}]
+    // CHECK-SAME:      } -> tensor<1x{{.+}}x11x11xi32, {order = #NHWC}>
     // CHECK-DAG:   [[INPUT_SM:%.+]] = const.Declare tensor<1x48x11x11xi1, {order = #NHWC}> = dense<[
     // CHECK-SAME:                          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     // CHECK-SAME:                          [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1140,7 +1140,7 @@ func.func @ConstantPadOpToNCE(%input: tensor<1x48x8x8xf16, {order = #NHWC}>) -> 
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <CONSTANT>, padding = [1, 2, 2, 1]>
     // CHECK-SAME:      } -> !VPU.SparseTensor<data=tensor<1x48x8x8xf16, {order = #NHWC}>,
     // CHECK-SAME:                         sparsity_map=tensor<1x48x11x11xi1, {order = #NHWC}>,
-    // CHECK-SAME:                         storage_element_table=tensor<1x{{.*}}x11x11xi32, {order = #NHWC}>,
+    // CHECK-SAME:                         storage_element_table=tensor<1x{{.+}}x11x11xi32, {order = #NHWC}>,
     // CHECK-SAME:                         #VPU.SEPadding<mode = <CONSTANT>, padding = [1, 2, 2, 1]>>
 
     // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<48x48x1x1xf16, {order = #NHWC}> =
@@ -1193,15 +1193,15 @@ func.func @FuseReflectPadOpToConv(%input: tensor<1x48x80x80xf16, {order = #NHWC}
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 48, 80, 80],
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>,
-    // CHECK-SAME:          seDepth = {{.*}} : i64, seSize = [{{.*}}]
-    // CHECK-SAME:      } -> tensor<1x{{.*}}x83x83xi32, {order = #NHWC}>
+    // CHECK-SAME:          seDepth = {{.+}} : i64, seSize = [{{.+}}]
+    // CHECK-SAME:      } -> tensor<1x{{.+}}x83x83xi32, {order = #NHWC}>
     // CHECK-DAG:   [[INPUT_SM:%.+]] = const.Declare tensor<1x48x83x83xi1, {order = #NHWC}> = dense<1>
     // CHECK-SAME:          : tensor<1x48x83x83xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[INPUT_DATA]], [[INPUT_SM]], [[INPUT_SE]])
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>
     // CHECK-SAME:      } -> !VPU.SparseTensor<data=tensor<1x48x80x80xf16, {order = #NHWC}>,
     // CHECK-SAME:                         sparsity_map=tensor<1x48x83x83xi1, {order = #NHWC}>,
-    // CHECK-SAME:                         storage_element_table=tensor<1x{{.*}}x83x83xi32, {order = #NHWC}>,
+    // CHECK-SAME:                         storage_element_table=tensor<1x{{.+}}x83x83xi32, {order = #NHWC}>,
     // CHECK-SAME:                         #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>>
 
     // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<16x48x3x3xf16, {order = #NHWC}> =
@@ -1248,15 +1248,15 @@ func.func @FuseReflectPadOpToConvQuantized(%input: tensor<1x48x80x80x!qElemType,
 
     // CHECK:       [[INPUT_SE:%.+]] = VPU.StorageElementTable {dataElemType = !qElemType, dataShape = [1, 48, 80, 80],
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>,
-    // CHECK-SAME:          seDepth = {{.*}} : i64, seSize = [{{.*}}]
-    // CHECK-SAME:      } -> tensor<1x{{.*}}x83x83xi32, {order = #NHWC}>
+    // CHECK-SAME:          seDepth = {{.+}} : i64, seSize = [{{.+}}]
+    // CHECK-SAME:      } -> tensor<1x{{.+}}x83x83xi32, {order = #NHWC}>
     // CHECK-DAG:   [[INPUT_SM:%.+]] = const.Declare tensor<1x48x83x83xi1, {order = #NHWC}> = dense<1>
     // CHECK-SAME:          : tensor<1x48x83x83xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[INPUT_DATA]], [[INPUT_SM]], [[INPUT_SE]])
     // CHECK-SAME:          seAttr = #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>
     // CHECK-SAME:      } -> !VPU.SparseTensor<data=tensor<1x48x80x80x!qElemType, {order = #NHWC}>,
     // CHECK-SAME:                         sparsity_map=tensor<1x48x83x83xi1, {order = #NHWC}>,
-    // CHECK-SAME:                         storage_element_table=tensor<1x{{.*}}x83x83xi32, {order = #NHWC}>,
+    // CHECK-SAME:                         storage_element_table=tensor<1x{{.+}}x83x83xi32, {order = #NHWC}>,
     // CHECK-SAME:                         #VPU.SEPadding<mode = <REFLECT>, padding = [1, 2, 2, 1]>>
 
     // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<16x48x3x3x!qElemType1, {order = #NHWC}> = dense<1>

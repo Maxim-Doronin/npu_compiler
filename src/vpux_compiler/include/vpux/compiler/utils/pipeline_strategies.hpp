@@ -33,6 +33,8 @@ public:
     using IFrontendPipelineStrategy::IFrontendPipelineStrategy;
 
     void buildPipeline(mlir::OpPassManager& pm) final;
+
+    void buildOutputShapePredictFunc(mlir::OpPassManager& pm);
 };
 
 //

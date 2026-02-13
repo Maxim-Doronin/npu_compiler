@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -42,6 +43,10 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
         return elf::DType::DType_F8E4M3FN;
     } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
         return elf::DType::DType_F8E5M2;
+    } else if (mlir::isa<mlir::Float8E8M0FNUType>(type)) {
+        return elf::DType::DType_F8E8M0;
+    } else if (mlir::isa<mlir::Float4E2M1FNType>(type)) {
+        return elf::DType::DType_F4E2M1;
     } else if (type.isSignedInteger(CHAR_BIT * sizeof(int64_t))) {
         return elf::DType::DType_I64;
     } else if (type.isSignedInteger(CHAR_BIT * sizeof(int32_t))) {
@@ -77,7 +82,7 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
     }
 }
 
-elf::TensorRef ELFNPU37XX::createTensorRef(NDTypeInterface type, StringRef name) {
+elf::TensorRef ELFNPU37XX::createTensorRef(NDTypeInterface type, StringRef name, uint8_t flags) {
     elf::TensorRef out{};
 
     copy_str(out.name, name.str());
@@ -123,6 +128,7 @@ elf::TensorRef ELFNPU37XX::createTensorRef(NDTypeInterface type, StringRef name)
 
     // dimsOrder
     out.order = type.getDimsOrder().code();
+    out.flags = flags;
 
     return out;
 }
@@ -147,6 +153,10 @@ elf::OVNodeType ELFNPU37XX::createOVNodeType(mlir::Type type) {
         return elf::OVNodeType::OVNodeType_F8E4M3FN;
     } else if (mlir::isa<mlir::Float8E5M2Type>(type)) {
         return elf::OVNodeType::OVNodeType_F8E5M2;
+    } else if (mlir::isa<mlir::Float8E8M0FNUType>(type)) {
+        return elf::OVNodeType::OVNodeType_F8E8M0;
+    } else if (mlir::isa<mlir::Float4E2M1FNType>(type)) {
+        return elf::OVNodeType::OVNodeType_F4E2M1;
     } else if (type.isSignedInteger(64)) {
         return elf::OVNodeType::OVNodeType_I64;
     } else if (type.isSignedInteger(32)) {
@@ -412,9 +422,14 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
                          net::DataInfoOp userInfo) {
         const auto userType = mlir::cast<NDTypeInterface>(userInfo.getUserType());
 
+        uint8_t flags = 0;
+        if (userInfo->hasAttr(vpux::dynamicStridesAttrName)) {
+            flags |= elf::TENSOR_REF_FLAG_DYNAMIC_STRIDES_SUPPORT;
+        }
+
         // For dynamic shape, userType is required as it has both size and bounds.
-        netInput = createTensorRef(isLLVMMainForHostCompile ? userType : type, userInfo.getName());
-        tensorDesc = createTensorRef(userType, userInfo.getName());
+        netInput = createTensorRef(isLLVMMainForHostCompile ? userType : type, userInfo.getName(), flags);
+        tensorDesc = createTensorRef(userType, userInfo.getName(), flags);
     };
 
     if (architecture >= config::ArchKind::NPU40XX) {

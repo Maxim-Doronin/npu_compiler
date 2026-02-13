@@ -206,7 +206,7 @@ void SetupNpuConstraintPass::safeRunOnModule() {
 
     auto numShvExecutorsPerTile = [&] {
         auto tileOp = config::getTileExecutor(moduleOp);
-        auto executorKind = VPU::ExecutorKind::SHAVE_ACT;
+        auto executorKind = config::ExecutorKind::SHAVE_ACT;
         VPUX_THROW_UNLESS(tileOp != nullptr, "Expected tileOp executor in order to query {0} executor.", executorKind);
         VPUX_THROW_UNLESS(tileOp.hasSubExecutor(executorKind), "Expected tileOp contain executor of type {0}.",
                           executorKind);

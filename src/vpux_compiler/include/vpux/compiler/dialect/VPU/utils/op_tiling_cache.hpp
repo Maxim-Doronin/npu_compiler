@@ -6,20 +6,23 @@
 #pragma once
 
 #include "vpux/compiler/core/tiling.hpp"
-#include "vpux/utils/core/dense_map.hpp"
+#include "vpux/compiler/utils/thread_safe_hash_map.hpp"
 
 #include <atomic>
-#include <mutex>
+#include <optional>
+#include <utility>
+
 namespace VPUNN {
 struct VPULayerStrategy;
 struct DPULayer;
 }  // namespace VPUNN
 
-namespace vpux::VPU {
-class DistributionInfo;
-}
-
 namespace vpux {
+
+namespace VPU {
+class DistributionInfo;
+}  // namespace VPU
+
 namespace VPU {
 
 using OutputTilingCacheItem = mlir::FailureOr<OutputTiling>;
@@ -31,23 +34,26 @@ using PerClusterShapeCacheItem = std::optional<SmallVector<Shape>>;
 /*
 Cache for possible tiling strategies for an operation with specified multi cluster strategy, tiling dim order and
 tiling mode.
+Uses ThreadSafeHashMap for automatic selection between TBB and mutex-based implementations.
 */
-
 class OpTilingCache {
 public:
+    OpTilingCache() = default;
     ~OpTilingCache() = default;
     OpTilingCache(const OpTilingCache&) = delete;
     OpTilingCache& operator=(const OpTilingCache&) = delete;
 
-    static OpTilingCache& instance() {
-        static OpTilingCache cache;
-        return cache;
-    }
-
     void enableIfNecessary(bool enable);
 
     llvm::hash_code calculateOpHash(mlir::Operation* op, const std::optional<DimArrRef>& dimOrder = std::nullopt,
-                                    const std::optional<OutputTiling>& outputTile = std::nullopt);
+                                    const std::optional<OutputTiling>& outputTile = std::nullopt,
+                                    const std::optional<mlir::Attribute> multiClusterStrategyAttr = std::nullopt);
+
+    llvm::hash_code calculateOpHashWithCustomAttr(mlir::Operation* op, mlir::StringRef customAttrName,
+                                                  mlir::Attribute customAttrValue,
+                                                  const std::optional<DimArrRef>& dimOrder = std::nullopt,
+                                                  const std::optional<OutputTiling>& outputTile = std::nullopt);
+
     llvm::hash_code calculateOpHashIncludingTilingExcludingAttr(
             mlir::Operation* op, mlir::StringRef excludedAttrName,
             const std::optional<DimArrRef>& dimOrder = std::nullopt,
@@ -96,24 +102,16 @@ public:
     void printStats(Logger& logger) const;
 
 private:
-    OpTilingCache() = default;
-
     std::optional<llvm::hash_code> calculateInputOutputModeHash(mlir::Operation* op,
                                                                 const OutputTilingCacheItem& outputTiling);
 
-    std::mutex _tilingMutex;
-    std::mutex _dpuMutex;
-    std::mutex _vpunnLayerMutex;
-    std::mutex _perClusterShapeMutex;
-    std::mutex _validPermutationsMutex;
-    std::mutex _dimOrderMutex;
-    DenseMap<llvm::hash_code, std::optional<NTilesOnDim>> _tilingCache;
-    DenseMap<llvm::hash_code, std::optional<llvm::hash_code>> _opHashToInputOutputModeHash;
-    DenseMap<llvm::hash_code, SmallVector<uint32_t>> _opDpuCostCache;
-    DenseMap<llvm::hash_code, uint32_t> _vpunnLayerCostCache;
-    DenseMap<llvm::hash_code, PerClusterShapeCacheItem> _perClusterShapeCache;
-    DenseMap<llvm::hash_code, SmallVector<DimArr>> _validPermutationsCache;
-    DenseMap<llvm::hash_code, DimArr> _dimOrderCache;
+    ThreadSafeHashMap<llvm::hash_code, std::optional<NTilesOnDim>> _tilingCache;
+    ThreadSafeHashMap<llvm::hash_code, std::optional<llvm::hash_code>> _opHashToInputOutputModeHash;
+    ThreadSafeHashMap<llvm::hash_code, SmallVector<uint32_t>> _opDpuCostCache;
+    ThreadSafeHashMap<llvm::hash_code, uint32_t> _vpunnLayerCostCache;
+    ThreadSafeHashMap<llvm::hash_code, PerClusterShapeCacheItem> _perClusterShapeCache;
+    ThreadSafeHashMap<llvm::hash_code, SmallVector<DimArr>> _validPermutationsCache;
+    ThreadSafeHashMap<llvm::hash_code, DimArr> _dimOrderCache;
 
     bool _enableCache{false};
 
@@ -135,5 +133,10 @@ private:
     std::atomic<uint64_t> _dimOrderHitCount{0};
     std::atomic<uint64_t> _dimOrderAccessCount{0};
 };
+
+// Global instance accessor
+// This provides singleton-like behavior for the tiling cache
+OpTilingCache& getGlobalOpTilingCache();
+
 }  // namespace VPU
 }  // namespace vpux

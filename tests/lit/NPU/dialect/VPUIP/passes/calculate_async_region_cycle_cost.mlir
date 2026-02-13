@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -111,7 +111,7 @@ module @AddCycleCostForSWSingleCluster {
         }
         %token_2, %results_3 = async.execute [%token_0] (%results_1#0 as %arg2: !async.value<!MemRef2>, %results_1#1 as %arg3: !async.value<!MemRef1>) -> !async.value<!MemRef0> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 2 : i64} {
             %4 = VPUIP.ConcatView inputs(%arg2, %arg3 : !MemRef2, !MemRef1) outputs(%1 : !SingleMemRef) -> !SingleMemRef
-            %5 = VPUIP.PermuteDMA {mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} inputs(%4 : !SingleMemRef) outputs(%2 : !MemRef0) -> !MemRef0
+            %5 = VPUIP.PermuteDMA <{mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>}> inputs(%4 : !SingleMemRef) outputs(%2 : !MemRef0) -> !MemRef0
             async.yield %5 : !MemRef0
         }
         %token_4, %results_5 = async.execute [%token_2] (%results_3 as %arg2: !async.value<!MemRef0>) -> !async.value<memref<4x8x12x16xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 3 : i64} {

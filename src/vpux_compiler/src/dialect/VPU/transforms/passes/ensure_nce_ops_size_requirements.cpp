@@ -114,7 +114,8 @@ mlir::LogicalResult EnsureNCEOpSizeRequirements::matchAndRewrite(VPU::TilingBuil
 
     for (auto tileDimIter = tileDimOrder.begin(); tileDimIter < tileDimOrder.end(); ++tileDimIter) {
         auto dimToTile = *tileDimIter;
-        while (!isSupportedTileSize(nTilesOnDim, dimToTile, outputDimThresholds)) {
+        while (!isSupportedTileSize(nTilesOnDim, dimToTile, outputDimThresholds) &&
+               nTilesOnDim[dimToTile] <= outputShape[dimToTile]) {
             _log.nest(1).trace("Failed to tile {0} at {1} with {2}", op->getName(), dimToTile, nTilesOnDim);
             ++nTilesOnDim[dimToTile];
         }
@@ -252,12 +253,18 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
     target.addLegalOp<VPU::SliceOp, VPU::ConcatOp>();
 
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
-        if (!mlir::isa<VPU::NCEConvolutionOp>(op)) {
+        // TODO: #-196283 There is no pattern rewriter for the VPU.NCEMatMulOp,
+        // it is better to catch the illegal operation and abort compilation process as soon as possible
+        if (!mlir::isa<VPU::NCEConvolutionOp, VPU::NCEMatMulOp>(op)) {
             return true;
         }
 
         const auto inputShape = getShape(op->getOperand(0));
-        return inputShape[Dims4D::Act::C] <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
+        auto channelIndex = Dims4D::Act::C;
+        if (mlir::isa<VPU::NCEMatMulOp>(op)) {
+            channelIndex = DimsGroups5D::Act::C;
+        }
+        return inputShape[channelIndex] <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
     });
 
     patterns.add<EnsureConvICRequirements>(&ctx, _log);
@@ -302,7 +309,7 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
             if (!inSizeWrongDims.empty()) {
                 _log.nest(2).debug("Input size has dims greater than HW requirements: {0}", inSizeWrongDims);
             }
-            const auto outSizeWrongDims = getDimsOverKHWLimit(outputShape, outputDimThresholds);
+            auto outSizeWrongDims = getDimsOverKHWLimit(outputShape, outputDimThresholds);
             if (!outSizeWrongDims.empty()) {
                 _log.nest(2).debug("Output size has dims greater than HW requirements: {0}", outSizeWrongDims);
             }
@@ -318,6 +325,17 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
                         return true;
                     }
                 }
+            }
+
+            // Skip slicing C for per-channel based NCE ops, which will be handled later in tiling pass
+            // This will benefit vertical fusion
+            if (mlir::isa<VPU::NCEDepthConvolutionOp, VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(op)) {
+                _log.nest(2).debug("Skip checking C dimension for per-channel based NCE op {0} at {1}", op->getName(),
+                                   op->getLoc());
+                inSizeWrongDims.erase(std::remove(inSizeWrongDims.begin(), inSizeWrongDims.end(), Dims4D::Act::C),
+                                      inSizeWrongDims.end());
+                outSizeWrongDims.erase(std::remove(outSizeWrongDims.begin(), outSizeWrongDims.end(), Dims4D::Act::C),
+                                       outSizeWrongDims.end());
             }
 
             return inSizeWrongDims.empty() && outSizeWrongDims.empty();

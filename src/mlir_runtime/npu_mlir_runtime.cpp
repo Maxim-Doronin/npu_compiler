@@ -1,0 +1,688 @@
+// Copyright (C) 2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "intel_npu/npu_mlir_runtime.hpp"
+#include <variant>
+#include "intel_npu/utils/zero/zero_utils.hpp"
+#include "level_zero_wrapper/level_zero_wrapper.h"
+#include "vpux/utils/IE/network_metadata.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#if defined(_WIN32)
+#pragma warning(push)
+#pragma warning(disable : 4244 4267 4146 4996)
+#endif
+#include <llvm/Support/Error.h>
+#include <llvm/Support/InitLLVM.h>
+#include <llvm/Support/SourceMgr.h>
+#include <llvm/Support/TargetSelect.h>
+#include <mlir/ExecutionEngine/ExecutionEngine.h>
+#include <mlir/ExecutionEngine/MemRefUtils.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/DialectRegistry.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/Parser/Parser.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Target/LLVMIR/Dialect/All.h>
+#if defined(_WIN32)
+#pragma warning(pop)
+#endif
+
+using namespace intel_npu;
+
+#if defined(_WIN32)
+#define MLIR_ZERO_WRAPPER_FILE_NAME "level_zero_wrapper.dll"
+#else
+#define MLIR_ZERO_WRAPPER_FILE_NAME "liblevel_zero_wrapper.so"
+#endif
+
+class DebugTrace {
+public:
+    DebugTrace(std::string funcName, vpux::Logger logger = vpux::Logger::global())
+            : _funcName(funcName), _logger(logger) {
+        _logger.trace("{0} start", _funcName);
+    }
+    ~DebugTrace() {
+        _logger.trace("{0} end", _funcName);
+    }
+
+private:
+    std::string _funcName;
+    vpux::Logger _logger;
+};
+
+// Same with the one in level_zero_wrapper.h
+struct MemRefNDRef {
+    constexpr static size_t headerSize = 3;  // allocatedPtr, alignedPtr, offset
+
+    int64_t* bufferPtr;
+    int64_t dimCount;
+    MemRefNDRef(int64_t* buffer, int64_t dim_count): bufferPtr(buffer), dimCount(dim_count) {
+    }
+
+    void setAllocated(const void* buf) {
+        bufferPtr[0] = reinterpret_cast<int64_t>(buf);
+    }
+
+    void setAligned(const void* buf) {
+        bufferPtr[1] = reinterpret_cast<int64_t>(buf);
+    }
+
+    void setOffset(int64_t offset) {
+        bufferPtr[2] = static_cast<int64_t>(offset);
+    }
+
+    template <typename T>
+    void setSizes(T* size, int64_t dimCount) {
+        int64_t* ptr = bufferPtr + headerSize;
+        for (int64_t i = 0; i < dimCount; ++i) {
+            ptr[i] = static_cast<int64_t>(size[i]);
+        }
+    }
+
+    template <typename T>
+    void setStrides(T* strides, int64_t dimCount) {
+        int64_t* ptr = bufferPtr + headerSize + dimCount;
+        for (int64_t i = 0; i < dimCount; ++i) {
+            ptr[i] = static_cast<int64_t>(strides[i]);
+        }
+    }
+
+    void* getAllocated() {
+        return reinterpret_cast<void*>(bufferPtr[0]);
+    }
+
+    void* getAligned() {
+        return reinterpret_cast<void*>(bufferPtr[1]);
+    }
+
+    int64_t getOffset() {
+        return bufferPtr[2];
+    }
+
+    int64_t* getSizes() {
+        return reinterpret_cast<int64_t*>(bufferPtr + headerSize);
+    }
+
+    int64_t* getStrides() {
+        return reinterpret_cast<int64_t*>(bufferPtr + headerSize + dimCount);
+    }
+};
+
+struct MemRefHandle {
+    int64_t* memRefBufferPtr;
+    int64_t dimCount;
+
+    MemRefHandle(int64_t dim_count): memRefBufferPtr(nullptr), dimCount(dim_count) {
+        int64_t numElements = MemRefNDRef::headerSize + dimCount * 2;
+        memRefBufferPtr = new int64_t[numElements];
+        for (int64_t i = 0; i < numElements; ++i) {
+            memRefBufferPtr[i] = 0;
+        }
+    }
+    ~MemRefHandle() {
+        if (memRefBufferPtr != nullptr) {
+            delete[] memRefBufferPtr;
+            memRefBufferPtr = nullptr;
+        }
+    }
+
+    int64_t getMemRefBufferNumElements() {
+        return MemRefNDRef::headerSize + dimCount * 2;
+    }
+
+    int64_t getMemRefBufferByteSize() {
+        return getMemRefBufferNumElements() * sizeof(uint64_t);
+    }
+
+    void parseMemRef(const void** pBasePtr, const void** pData, int64_t* pOffset, int64_t* pSizes, int64_t* pStrides,
+                     int64_t* pDimsCount) {
+        MemRefNDRef ref(memRefBufferPtr, dimCount);
+        *pBasePtr = ref.getAllocated();
+        *pData = ref.getAligned();
+        *pOffset = static_cast<int64_t>(ref.getOffset());
+        int64_t* sizes = ref.getSizes();
+        int64_t* strides = ref.getStrides();
+        for (int64_t i = 0; i < dimCount; ++i) {
+            pSizes[i] = sizes[i];
+            pStrides[i] = strides[i];
+        }
+        *pDimsCount = dimCount;
+    }
+
+    std::string toString() {
+        std::string result = "MemRefHandle(dimCount=" + std::to_string(dimCount) + ", buffer=[";
+        for (int64_t i = 0; i < getMemRefBufferNumElements(); ++i) {
+            result += std::to_string(memRefBufferPtr[i]);
+            if (i < getMemRefBufferNumElements() - 1) {
+                result += ", ";
+            }
+        }
+        result += "])";
+        return result;
+    }
+};
+
+class NPUMLIRRuntime {
+public:
+    NPUMLIRRuntime(const npu_mlir_runtime_blob_desc_t* desc, npu_mlir_runtime_properties_t* pProperties);
+    ~NPUMLIRRuntime();
+
+    void createExecutionEngine(const npu_mlir_runtime_blob_desc_t* blob);
+
+    void parseMetadata();
+
+    void getArgumentProperties(uint32_t argIndex, ze_graph_argument_properties_3_t* pGraphArgumentProperties,
+                               ze_graph_argument_metadata_t* pGraphArgumentMetadata);
+
+    void execute(npu_mlir_runtime_execute_params_t* pParams);
+
+    void predictOutputShape(npu_mlir_runtime_predict_output_shape_params_t* pParams);
+
+private:
+    std::unique_ptr<mlir::MLIRContext> _context;
+    mlir::DialectRegistry _registry;
+    std::unique_ptr<mlir::ExecutionEngine> _engine;
+
+    vpux::NetworkMetadata _metadata;
+    // use ze_graph_argument_properties_3_t instead of ArgumentDescriptor in metadata function in the future
+    std::vector<ArgumentDescriptor> _inputs;
+    std::vector<ArgumentDescriptor> _outputs;
+    uint32_t _numOfSubgraphs = 0;
+    uint32_t _numOfArgs = 0;
+    vpux::Logger _logger = vpux::Logger("NPUMLIRRuntime", vpux::Logger::global().level());
+};
+
+void NPUMLIRRuntime::createExecutionEngine(const npu_mlir_runtime_blob_desc_t* desc) {
+    DebugTrace dt("createExecutionEngine", _logger);
+    _logger.debug("Creating execution engine from blob at {0} of size {1}", desc->pInput, desc->inputSize);
+    const std::string adapterPrefix = std::string("_mlir_ciface_");
+    const std::string entryName = "main";
+    const std::string adapterName = adapterPrefix + entryName;
+
+    auto blobPtr = desc->pInput;
+    auto blobSize = desc->inputSize;
+
+    // Metadata<METADATA_VERSION_X_X> is stored after LLVM code in CompiledModel::export_model
+    // So, the file size needs to be adjusted to avoid compilation error
+    auto getLLVMIRSize = [](const uint8_t* llvmIR, size_t size) {
+        if (size == 0 || llvmIR == nullptr) {
+            return 0ULL;
+        }
+        for (size_t index = size; index-- > 0;) {
+            if (llvmIR[index] == static_cast<uint8_t>('}')) {
+                return index + 1ULL;
+            }
+        }
+        return 0ULL;
+    };
+
+    llvm::StringRef content(reinterpret_cast<const char*>(blobPtr), getLLVMIRSize(blobPtr, blobSize));
+    auto llvmBlob = llvm::MemoryBuffer::getMemBufferCopy(content, "LLVMBlob");
+    auto sourceMgr = std::make_shared<llvm::SourceMgr>();
+    sourceMgr->AddNewSourceBuffer(std::move(llvmBlob), llvm::SMLoc());
+    mlir::OwningOpRef<mlir::Operation*> module = mlir::parseSourceFile<mlir::ModuleOp>(*sourceMgr, _context.get());
+
+    if (!module) {
+        OPENVINO_THROW("Failed to parse LLVM IR");
+    }
+
+    _logger.debug("Creating JITTargetMachineBuilder");
+    auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+    if (!tmBuilderOrError) {
+        OPENVINO_THROW("Failed to detect host");
+    }
+    _logger.debug("Creating TargetMachine for {0}", tmBuilderOrError->getCPU());
+    _logger.debug("Target triple {0}", tmBuilderOrError->getTargetTriple().normalize());
+
+    auto tmOrError = tmBuilderOrError->createTargetMachine();
+    if (!tmOrError) {
+        OPENVINO_THROW("Failed to create TargetMachine");
+    }
+    _logger.debug("TargetMachine created");
+
+    mlir::ExecutionEngineOptions engineOptions;
+    engineOptions.jitCodeGenOptLevel = llvm::CodeGenOptLevel::None;
+
+    llvm::SmallVector<mlir::StringRef, 4> sharedLibs;
+    sharedLibs.push_back(MLIR_ZERO_WRAPPER_FILE_NAME);
+    engineOptions.sharedLibPaths = sharedLibs;
+    _logger.debug("Creating engine");
+    auto expectedEngine = mlir::ExecutionEngine::create(*module, engineOptions, std::move(tmOrError.get()));
+    if (!expectedEngine) {
+        OPENVINO_THROW("Failed to create ExecutionEngine");
+    }
+    _logger.debug("Engine created");
+    _engine = std::move(*expectedEngine);
+    auto expectedFPtr = _engine->lookupPacked(entryName);
+
+    if (!expectedFPtr) {
+        OPENVINO_THROW("Failed to lookup main function");
+    }
+}
+
+void NPUMLIRRuntime::parseMetadata() {
+    DebugTrace dt("parseMetadata", _logger);
+    std::string getNetworkMetadataFuncName = "get_network_metadata";
+
+    // Get metadata and number of graph
+    auto error = _engine->invoke(getNetworkMetadataFuncName, &_metadata, &_numOfSubgraphs, &_inputs, &_outputs);
+    if (error) {
+        OPENVINO_THROW("Error invoking main: " + llvm::toString(std::move(error)));
+    }
+    _logger.debug("num of subgraphs: {0} inputs: {1} outputs: {2}", _numOfSubgraphs, _inputs.size(), _outputs.size());
+    _metadata.bindRelatedDescriptors();
+    _numOfArgs = static_cast<uint32_t>(_inputs.size() + _outputs.size());
+    for (size_t i = 0; i < _inputs.size(); i++) {
+        _metadata.inputs[i].indexUsedByDriver = _inputs[i].idx;
+    }
+
+    for (size_t i = 0; i < _outputs.size(); i++) {
+        _metadata.outputs[i].indexUsedByDriver = _outputs[i].idx;
+    }
+}
+
+NPUMLIRRuntime::NPUMLIRRuntime(const npu_mlir_runtime_blob_desc_t* desc, npu_mlir_runtime_properties_t* pProperties) {
+    DebugTrace dt("Constructor", _logger);
+    // Initialize MLIR context and register necessary dialects
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+    mlir::registerAllToLLVMIRTranslations(_registry);
+
+    _context = std::make_unique<mlir::MLIRContext>(_registry);
+
+    createExecutionEngine(desc);
+
+    parseMetadata();
+
+    pProperties->numOfSubGraphs = _numOfSubgraphs;
+    pProperties->numOfGraphArgs = _numOfArgs;
+}
+
+NPUMLIRRuntime::~NPUMLIRRuntime() {
+    DebugTrace dt("Destructor", _logger);
+    _engine.reset();
+    _context.reset();
+}
+
+void NPUMLIRRuntime::getArgumentProperties(uint32_t argIndex,
+                                           ze_graph_argument_properties_3_t* pGraphArgumentProperties,
+                                           ze_graph_argument_metadata_t* pGraphArgumentMetadata) {
+    DebugTrace dt("getArgumentProperties", _logger);
+    _logger.debug("Getting argument properties for index {0}", argIndex);
+    if (argIndex >= _numOfArgs) {
+        OPENVINO_THROW("Invalid argument index");
+    }
+
+    const ArgumentDescriptor* argDesc = nullptr;
+    vpux::IODescriptor desc;
+    if (argIndex < _inputs.size()) {
+        argDesc = &_inputs[argIndex];
+        desc = _metadata.inputs[argIndex];
+    } else {
+        argDesc = &_outputs[argIndex - _inputs.size()];
+        desc = _metadata.outputs[argIndex - _inputs.size()];
+    }
+
+    // Define new struct to hold metadata
+    *pGraphArgumentProperties = argDesc->info;
+
+    // Fill in metadata struct
+    pGraphArgumentMetadata->stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_METADATA;
+    pGraphArgumentMetadata->pNext = nullptr;
+    pGraphArgumentMetadata->type = argDesc->info.type;
+    std::strncpy(pGraphArgumentMetadata->friendly_name, argDesc->info.name, ZE_MAX_GRAPH_ARGUMENT_NAME);
+    pGraphArgumentMetadata->data_type = ZE_GRAPH_METADATA_TYPE_UNDEFINED;
+
+    if (desc.shapeFromIRModel.has_value()) {
+        // Only care about shape, this is shapeFromIRModel
+        for (size_t i = 0; i < desc.shapeFromIRModel->size() && i < ZE_MAX_GRAPH_TENSOR_REF_DIMS; ++i) {
+            auto val = desc.shapeFromIRModel.value()[i];
+            pGraphArgumentMetadata->shape[i] =
+                    val.is_dynamic() ? std::numeric_limits<uint64_t>::max() : val.get_length();
+        }
+    } else {
+        // Use shapeFromCompiler
+        std::copy(std::begin(desc.shapeFromCompiler.get_shape()), std::end(desc.shapeFromCompiler.get_shape()),
+                  std::begin(pGraphArgumentMetadata->shape));
+    }
+    pGraphArgumentMetadata->shape_size = argDesc->info.dims_count;
+    pGraphArgumentMetadata->tensor_names_count = 0;  // Not used
+    std::strncpy(pGraphArgumentMetadata->input_name, argDesc->info.name, ZE_MAX_GRAPH_ARGUMENT_NAME);
+
+    // Dump argDesc info
+    _logger.debug("Argument Descriptor Info:");
+    _logger.debug("  Name: {0}", argDesc->info.name);
+    _logger.debug("  Type: {0}", argDesc->info.type);
+    _logger.debug("  Dimensions: {0}", argDesc->info.dims_count);
+    for (size_t i = 0; i < argDesc->info.dims_count; ++i) {
+        _logger.debug("    Dim[{0}]: {1}", i, argDesc->info.dims[i]);
+    }
+
+    // Dump metadata info
+    _logger.debug("Graph Argument Metadata Info:");
+    _logger.debug("  Input Name: {0}", pGraphArgumentMetadata->input_name);
+    _logger.debug("  Shape Size: {0}", pGraphArgumentMetadata->shape_size);
+    for (size_t i = 0; i < pGraphArgumentMetadata->shape_size; ++i) {
+        _logger.debug("    Shape[{0}]: {1}", i, pGraphArgumentMetadata->shape[i]);
+    }
+}
+
+void NPUMLIRRuntime::execute(npu_mlir_runtime_execute_params_t* pParams) {
+    DebugTrace dt("execute", _logger);
+    _logger.debug("Executing with {0} inputs and {1} outputs", pParams->numOfInputs, pParams->numOfOutputs);
+    if (pParams == nullptr) {
+        OPENVINO_THROW("Invalid execute parameters");
+    }
+
+    mlir::SmallVector<void*> packedArgs;
+    for (uint32_t i = 0; i < pParams->numOfInputs; ++i) {
+        auto handle = reinterpret_cast<MemRefHandle*>(pParams->pInputs[i]);
+        mlir::ExecutionEngine::Argument<int64_t*>::pack(packedArgs, handle->memRefBufferPtr);
+        _logger.debug("Input : {0}, info: {1}", i, handle->toString().c_str());
+    }
+    for (uint32_t i = 0; i < pParams->numOfOutputs; ++i) {
+        auto handle = reinterpret_cast<MemRefHandle*>(pParams->pOutputs[i]);
+        mlir::ExecutionEngine::Argument<int64_t*>::pack(packedArgs, handle->memRefBufferPtr);
+        _logger.debug("Output : {0}, info: {1}", i, handle->toString().c_str());
+    }
+
+    mlir::ExecutionEngine::Argument<ze_context_handle_t>::pack(packedArgs, pParams->ctx);
+    mlir::ExecutionEngine::Argument<ze_device_handle_t>::pack(packedArgs, pParams->device);
+    mlir::ExecutionEngine::Argument<ze_graph_dditable_ext_t*>::pack(packedArgs, pParams->graphDdiTableExt);
+    mlir::ExecutionEngine::Argument<ze_command_list_handle_t*>::pack(packedArgs, pParams->commandLists);
+    mlir::ExecutionEngine::Argument<uint64_t>::pack(packedArgs, pParams->numCommandLists);
+    mlir::ExecutionEngine::Argument<ze_command_queue_handle_t>::pack(packedArgs, pParams->commandQueue);
+    mlir::ExecutionEngine::Argument<ze_fence_handle_t>::pack(packedArgs, pParams->inferenceFence);
+    mlir::ExecutionEngine::Argument<ze_event_handle_t>::pack(packedArgs, pParams->event);
+
+    const std::string adapterName = "_mlir_ciface_main";
+    auto error = _engine->invokePacked(adapterName, packedArgs);
+    if (error) {
+        OPENVINO_THROW("Error invoking main: " + llvm::toString(std::move(error)));
+    }
+}
+
+void NPUMLIRRuntime::predictOutputShape(npu_mlir_runtime_predict_output_shape_params_t* params) {
+    DebugTrace dt("predictOutputShape", _logger);
+
+    for (uint32_t i = 0; i < params->numOfInputs; i++) {
+        MemRefHandle* input = reinterpret_cast<MemRefHandle*>(params->pInputs[i]);
+        _logger.debug("Input : {0}, info: {1}", i, input->toString());
+    }
+
+    const std::string predictFuncName = "_mlir_ciface_output_shape";
+    auto expectedFPtr = _engine->lookupPacked(predictFuncName);
+    if (!expectedFPtr) {
+        _logger.debug("Can not find predict func ptr, remain original value of output");
+
+        for (uint32_t i = 0; i < params->numOfOutputs; i++) {
+            MemRefHandle* output = reinterpret_cast<MemRefHandle*>(params->pOutputs[i]);
+            _logger.debug("Fake Output : {0}, info: {1}", i, output->toString());
+        }
+        return;
+    } else {
+        mlir::SmallVector<void*> packedArgs;
+
+        for (uint32_t i = 0; i < params->numOfInputs; ++i) {
+            MemRefHandle* input = reinterpret_cast<MemRefHandle*>(params->pInputs[i]);
+            mlir::ExecutionEngine::Argument<int64_t*>::pack(packedArgs, input->memRefBufferPtr);
+        }
+
+        // Prepare container to save predict result
+        std::vector<std::shared_ptr<MemRefHandle>> predictedOutputs;
+        predictedOutputs.reserve(params->numOfOutputs);
+        std::vector<std::vector<uint64_t>> outputShapes;
+        outputShapes.reserve(params->numOfOutputs);
+        for (uint32_t i = 0; i < params->numOfOutputs; ++i) {
+            MemRefHandle* output = reinterpret_cast<MemRefHandle*>(params->pOutputs[i]);
+            // Create a local MemRefHandle containing a tensor with a single dimension (dimCount).
+            // The tensor size is set to dimCount for the target tensor.
+            // The final prediction results are stored in the handle's basePtr.
+            std::shared_ptr<MemRefHandle> handleForPredict = std::make_shared<MemRefHandle>(1);
+            // Create reference of the buffer inside handleForPredict and update it with right value
+            MemRefNDRef refForHandle(handleForPredict->memRefBufferPtr, 1);
+            outputShapes.push_back(std::vector<uint64_t>(output->dimCount, 0));
+            void* basePtr = outputShapes[i].data();
+            refForHandle.setAllocated(basePtr);
+            refForHandle.setAligned(basePtr);
+            refForHandle.setOffset(0);
+            refForHandle.setSizes(&(output->dimCount), 1);
+            // Stride is always 1 now since we always use dense tensor now
+            int64_t stride = 1;
+            refForHandle.setStrides(&stride, 1);
+            predictedOutputs.push_back(handleForPredict);
+            mlir::ExecutionEngine::Argument<int64_t*>::pack(packedArgs, handleForPredict->memRefBufferPtr);
+        }
+
+        auto error = _engine->invokePacked(predictFuncName, packedArgs);
+        if (error) {
+            OPENVINO_THROW("Error invoking output_shape: " + llvm::toString(std::move(error)));
+        }
+
+        // Update original output to have right info
+        for (uint32_t i = 0; i < params->numOfOutputs; i++) {
+            MemRefHandle* output = reinterpret_cast<MemRefHandle*>(params->pOutputs[i]);
+            MemRefNDRef ref(output->memRefBufferPtr, output->dimCount);
+            auto& predictedShape = outputShapes[i];
+            if (predictedShape.size() != output->dimCount) {
+                OPENVINO_THROW("Predicted dim count is not the same as the original one!");
+            }
+            ref.setSizes(predictedShape.data(), predictedShape.size());
+            // Only size matters, calc stride by hand
+            std::vector<int64_t> strides;
+            strides.resize(predictedShape.size());
+            int64_t stride = 1;
+            for (int64_t i = predictedShape.size() - 1; i >= 0; --i) {
+                strides[i] = stride;
+                stride *= predictedShape[i];
+            }
+            ref.setStrides(strides.data(), strides.size());
+            _logger.debug("Output : {0}, info: {1}", i, output->toString());
+        }
+    }
+}
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#if defined(_WIN32)
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT __attribute__((visibility("default")))
+#endif
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Get API version
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeGetAPIVersion(npu_mlir_runtime_version_t* pVersion) {
+    DebugTrace dt("npuMLIRRuntimeGetAPIVersion");
+    if (pVersion == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    *pVersion = NPU_MLIR_RUNTIME_VERSION_CURRENT;
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Init MLIR runtime instance and return handle
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeCreate(const npu_mlir_runtime_blob_desc_t* desc, npu_mlir_runtime_handle_t* phRuntime,
+                     npu_mlir_runtime_properties_t* pProperties) {
+    DebugTrace dt("npuMLIRRuntimeCreate");
+    if (phRuntime == nullptr || desc == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = new NPUMLIRRuntime(desc, pProperties);
+        *phRuntime = reinterpret_cast<npu_mlir_runtime_handle_t>(runtime);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeCreate - Error creating MLIR runtime: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Destroy MLIR runtime instance
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL npuMLIRRuntimeDestroy(npu_mlir_runtime_handle_t hRuntime) {
+    DebugTrace dt("npuMLIRRuntimeDestroy");
+    if (hRuntime == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(hRuntime);
+        delete runtime;
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeDestroy - Error destroying MLIR runtime: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Get metadata from MLIR runtime instance
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeGetMetadata(npu_mlir_runtime_handle_t hRuntime, uint32_t argIndex,
+                          ze_graph_argument_properties_3_t* pGraphArgumentProperties,
+                          ze_graph_argument_metadata_t* pGraphArgumentMetadata, int64_t* upperBound) {
+    DebugTrace dt("npuMLIRRuntimeGetMetadata");
+    if (hRuntime == nullptr || pGraphArgumentProperties == nullptr || pGraphArgumentMetadata == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(hRuntime);
+        runtime->getArgumentProperties(argIndex, pGraphArgumentProperties, pGraphArgumentMetadata);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("Error getting argument properties: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeExecute(npu_mlir_runtime_handle_t hRuntime, npu_mlir_runtime_execute_params_t* pParams) {
+    DebugTrace dt("npuMLIRRuntimeExecute");
+    if (hRuntime == nullptr || pParams == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(hRuntime);
+        runtime->execute(pParams);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeExecute - Error executing MLIR runtime: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL npuMLIRRuntimePredictOutputShape(
+        npu_mlir_runtime_handle_t hRuntime, npu_mlir_runtime_predict_output_shape_params_t* pParams) {
+    DebugTrace dt("npuMLIRRuntimePredictOutputShape");
+    if (hRuntime == nullptr || pParams == nullptr || pParams->pInputs == nullptr || pParams->pOutputs == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(hRuntime);
+        runtime->predictOutputShape(pParams);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimePredictOutputShape - Error executing MLIR runtime: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeCreateMemRef(int64_t dimsCount, npu_mlir_runtime_mem_ref_handle_t* phMemRef) {
+    DebugTrace dt("npuMLIRRuntimeCreateMemRef");
+    if (phMemRef == nullptr || dimsCount == 0) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        // Now just support up to 5 since ZE_MAX_GRAPH_ARGUMENT_DIMENSIONS_SIZE is 5
+        MemRefHandle* memRef = new MemRefHandle(dimsCount);
+        *phMemRef = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t>(memRef);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeCreateMemRef - Error creating MemRef: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeDestroyMemRef(npu_mlir_runtime_mem_ref_handle_t hMemRef) {
+    DebugTrace dt("npuMLIRRuntimeDestroyMemRef");
+    if (hMemRef == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    try {
+        MemRefHandle* memRef = reinterpret_cast<MemRefHandle*>(hMemRef);
+        delete memRef;
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeDestroyMemRef - Error destroying MemRef: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeSetMemRef(npu_mlir_runtime_mem_ref_handle_t hMemRef, const void* basePtr, const void* data,
+                        int64_t offset, int64_t* pSizes, int64_t* pStrides, int64_t dimsCount) {
+    DebugTrace dt("npuMLIRRuntimeSetMemRef");
+    if (hMemRef == nullptr || pSizes == nullptr || pStrides == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    try {
+        MemRefHandle* memRef = reinterpret_cast<MemRefHandle*>(hMemRef);
+        MemRefNDRef ref(memRef->memRefBufferPtr, dimsCount);
+        ref.setAllocated(basePtr);
+        ref.setAligned(data);
+        ref.setOffset(offset);
+        ref.setSizes(pSizes, dimsCount);
+        ref.setStrides(pStrides, dimsCount);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeSetMemRef - Error setting MemRef: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL
+npuMLIRRuntimeParseMemRef(npu_mlir_runtime_mem_ref_handle_t hMemRef, const void** pBasePtr, const void** pData,
+                          int64_t* pOffset, int64_t* pSizes, int64_t* pStrides, int64_t* pDimsCount) {
+    DebugTrace dt("npuMLIRRuntimeParseMemRef");
+    if (hMemRef == nullptr || pBasePtr == nullptr || pData == nullptr || pOffset == nullptr || pSizes == nullptr ||
+        pStrides == nullptr || pDimsCount == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    try {
+        MemRefHandle* memRef = reinterpret_cast<MemRefHandle*>(hMemRef);
+        memRef->parseMemRef(pBasePtr, pData, pOffset, pSizes, pStrides, pDimsCount);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("npuMLIRRuntimeParseMemRef - Error parsing MemRef: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+#ifdef __cplusplus
+}
+#endif

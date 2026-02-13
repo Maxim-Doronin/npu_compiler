@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -50,6 +50,18 @@ bool isSupportedSEPPadImpl(mlir::Operation* op, NDTypeInterface inputType, NDTyp
     const auto inputShape = inputType.getShape();
     const auto padsBegin = parseIntArrayAttr<int64_t>(padsBeginAttr);
     const auto padsEnd = parseIntArrayAttr<int64_t>(padsEndAttr);
+
+    // Check for negative padding values - SEP does not support negative pads currently.
+    auto hasNegativePad = [](ArrayRef<int64_t> padsValue) {
+        return llvm::any_of(padsValue, [](int64_t pad) {
+            return pad < 0;
+        });
+    };
+    if (hasNegativePad(padsBegin) || hasNegativePad(padsEnd)) {
+        logCb(formatv("Negative padding values are not supported"));
+        return false;
+    }
+
     auto isSpatialPadding = [](ArrayRef<int64_t> padsValue) {
         return padsValue[Dims4D::Act::N.ind()] == 0 && padsValue[Dims4D::Act::C.ind()] == 0;
     };

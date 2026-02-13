@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,14 @@ namespace ov {
 namespace test {
 
 class DepthToSpaceLayerTestCommon : public DepthToSpaceLayerTest, virtual public VpuOv2LayerTest {};
+
+class DepthToSpace_SCFTilingLayerTest : public DepthToSpaceLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
+    }
+};
 
 TEST_P(DepthToSpaceLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
@@ -27,10 +35,17 @@ TEST_P(DepthToSpaceLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(DepthToSpaceLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
+TEST_P(DepthToSpace_SCFTilingLayerTest, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -63,6 +78,13 @@ const auto smoke_DepthToSpaceBS4_with_tiling =
                            ::testing::Values(ov::element::f16), ::testing::ValuesIn(modes), ::testing::Values(4),
                            ::testing::Values(test_utils::TARGET_DEVICE));
 
+// E-172335 DEPTH_FIRST will be added after supporting sparsity with scf tiling
+const auto smoke_DepthToSpaceBS2_with_tiling =
+        ::testing::Combine(::testing::ValuesIn({static_shapes_to_test_representation({ov::Shape{1, 48, 800, 800}})}),
+                           ::testing::Values(ov::element::f16),
+                           ::testing::Values(ov::op::v0::DepthToSpace::DepthToSpaceMode::BLOCKS_FIRST),
+                           ::testing::Values(2), ::testing::Values(test_utils::TARGET_DEVICE));
+
 std::vector<std::vector<ov::Shape>> inputShapesBS4 = {
         {{1, 16, 5, 4}}, {{1, 16, 9, 7}}, {{1, 128, 5, 4}}, {{1, 128, 9, 7}}};
 const auto smoke_DepthToSpaceBS4 = ::testing::Combine(
@@ -86,6 +108,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_DepthToSpaceBS4, DepthToSpaceLayerTestCommon, smo
 
 INSTANTIATE_TEST_SUITE_P(smoke_DepthToSpace_with_tiling, DepthToSpaceLayerTestCommon, smoke_DepthToSpaceBS4_with_tiling,
                          DepthToSpaceLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_DepthToSpace_with_scftiling, DepthToSpace_SCFTilingLayerTest,
+                         smoke_DepthToSpaceBS2_with_tiling, DepthToSpace_SCFTilingLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_DepthToSpace_with_large_height, DepthToSpaceLayerTestCommon,
                          DepthToSpaceBS2_with_large_height, DepthToSpaceLayerTestCommon::getTestCaseName);

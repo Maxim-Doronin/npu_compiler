@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,6 +48,16 @@ def AddELFRelocations : PassBase<"create-elf-relocations", "vpux::FunctionPass">
     ];
 }
 
+def AddRelocationsForDynamicStridesDmas : PassBase<"add-relocations-for-dynamic-strides-dmas", "vpux::FunctionPass"> {
+    let summary = "Create relocations for DMAs supporting dynamic strides";
+
+    let description = [{
+        For each NNDMA op that has "stridedInput" or "stridedOutput" attribute set this pass will create
+        a corresponding DMASymbolOp and RelocOp.
+    }];
+
+    let constructor = "vpux::ELF::createAddRelocationsForDynamicStridesDMAs()";
+}
 
 //
 // SetElfOpOffsets

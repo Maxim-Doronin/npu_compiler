@@ -31,11 +31,12 @@ function(vpux_add_flatc_target FLATC_TARGET_NAME)
         list(APPEND dst_files ${dst_file})
     endforeach()
 
+    # E#183334: warnings are suppressed as some fields do not follow the snake_case format
     add_custom_command(
         OUTPUT
             ${dst_files}
         COMMAND
-            ${flatc_COMMAND} -o "${FLATC_DST_DIR}/schema" --cpp ${FLATC_ARGS} ${FLATC_SOURCES}
+            ${flatc_COMMAND} -o "${FLATC_DST_DIR}/schema" --no-warnings --cpp ${FLATC_ARGS} ${FLATC_SOURCES}
         DEPENDS
             ${FLATC_SOURCES}
             ${flatc_TARGET}

@@ -26,12 +26,11 @@ namespace {
 
 mlir::FailureOr<std::tuple<double, double>> getMinMax(IE::FakeConvertOp origOp, const Logger& log) {
     const auto destinationType = origOp.getDstType();
-    const auto fp8Range = vpux::getFp8Range(destinationType);
-    if (mlir::failed(fp8Range)) {
-        log.error("Unsupported FP8 data type");
+    if (!vpux::isFloat8(destinationType)) {
+        log.error("Unsupported FP data type");
         return mlir::failure();
     }
-    return fp8Range.value();
+    return getLowFpRange(destinationType);
 }
 
 Const::ContentAttr getScale(IE::FakeConvertOp origOp) {

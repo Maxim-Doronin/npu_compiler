@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -89,11 +89,12 @@ const BatchCompileOptionsAdapter& BatchCompilerOptionsAdapterView::get() const {
 }
 
 DebatcherOptions::DebatcherOptions()
+        // TODO E#194475 Get off all debatcher magic strings related to the method
         : debatcherInliningMethod(*this, "debatching-inlining-method",
                                   llvm::cl::desc("Method for inlining of debatching-function. Supported methods: "
                                                  "\"naive\", \"host_pipeline\", \"reordering\". Default is \"naive\""),
                                   llvm::cl::init("naive")),
-          debatcherIntputCoeffPartitions(
+          debatcherInputCoeffPartitions(
                   *this, "debatcher-input-coefficients-partitions",
                   llvm::cl::desc(
                           "Determines which dimension and what proportion debatching of input tensors should be done. "
@@ -168,7 +169,7 @@ std::string DebatcherOptions::getDefaultOptions() {
 }
 
 std::string DebatcherOptions::getDefaultDebatchInputCoeffPartitionsValue() {
-    return DebatcherOptions{}.debatcherIntputCoeffPartitions;
+    return DebatcherOptions{}.debatcherInputCoeffPartitions;
 }
 
 std::unique_ptr<DebatcherOptions> DebatcherOptions::create(const BatchCompileOptionsAdapter& options) {
@@ -189,7 +190,7 @@ std::unique_ptr<DebatcherOptions> DebatcherOptions::create(const BatchCompileOpt
 std::string DebatcherOptions::to_string() const {
     std::stringstream ss;
     ss << debatcherInliningMethod.getArgStr().data() << ": " << debatcherInliningMethod.getValue() << ", "
-       << debatcherIntputCoeffPartitions.getArgStr().data() << ": " << debatcherIntputCoeffPartitions.getValue() << ", "
+       << debatcherInputCoeffPartitions.getArgStr().data() << ": " << debatcherInputCoeffPartitions.getValue() << ", "
        << modelOpsNumberEnableThreshold.getArgStr().data() << ": " << modelOpsNumberEnableThreshold.getValue() << ", "
        << maxBatchNumberDisableLimit.getArgStr().data() << ": " << maxBatchNumberDisableLimit.getValue();
     return ss.str();

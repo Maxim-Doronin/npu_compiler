@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,25 +57,25 @@ func.func @PatchFusedConstantWithSwizzling() -> !IpOp_Stub {
 
     %5 = async.await %r1 : !async.value<memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>>
     return %5 : memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK-DAG:   [[FUSED_CONSTANT:%.*]] = const.Declare memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}> = dense<
+    // CHECK-DAG:   [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}> = dense<
     // CHECK-SAME: #const.RelocateWeightsTable<weightsPtr=[1405952], sparsityPtr=16777215 : i64, offsets=[0], weightsTableSize=1024 : i64, weightsElemBitSize=16 : i64, channelOffset=0 : i64
     // CHECK-SAME: #const.SwizzleConstant<5 : i64, 3 : i64>
-    // CHECK:   [[INPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[OUTPUT:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <173184> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[FUSED_BUF:%.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <1404928> -> memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
+    // CHECK:   [[INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <512> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <173184> -> memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[FUSED_BUF:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1404928> -> memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
 
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>>
-    // CHECK:           [[VAR0:%.*]] = VPUIP.NNDMA
+    // CHECK:           [[VAR0:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:          inputs([[FUSED_CONSTANT]] : memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}>)
     // CHECK-SAME:          outputs([[FUSED_BUF]] : memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
     // CHECK:           async.yield [[VAR0]] : memref<1x1x1x5120xui8, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>
 
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>>
-    // CHECK:       [[SUBVIEW_1:%.*]] = VPUIP.SubView
-    // CHECK:       [[SUBVIEW_2:%.*]] = VPUIP.SubView
-    // CHECK:       [[VIEW_1:%.*]] = VPUIP.ViewOp
-    // CHECK:       [[VIEW_2:%.*]] = VPUIP.ViewOp
-    // CHECK:   [[NCE_CLUST_TASK_OP:.*]] = VPUIP.NCEClusterTask
+    // CHECK:       [[SUBVIEW_1:%.+]] = VPUIP.SubView
+    // CHECK:       [[SUBVIEW_2:%.+]] = VPUIP.SubView
+    // CHECK:       [[VIEW_1:%.+]] = VPUIP.ViewOp
+    // CHECK:       [[VIEW_2:%.+]] = VPUIP.ViewOp
+    // CHECK:   [[NCE_CLUST_TASK_OP:.+]] = VPUIP.NCEClusterTask
 }

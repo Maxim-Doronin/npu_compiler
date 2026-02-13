@@ -20,6 +20,8 @@
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
+
 #include "vpux/compiler/utils/error.hpp"
 
 #include <openvino/op/convolution.hpp>
@@ -163,7 +165,7 @@ mlir::LogicalResult vpux::VPU::NCECompressConvolutionOp::inferReturnTypes(
                    filterShapeVect[Dims4D::Filter::KY.ind()], filterShapeVect[Dims4D::Filter::KX.ind()]});
 
     const auto windowStrides = parseIntArrayAttr<int64_t>(op.getStrides());
-    const auto windowDilations = ov::Strides({1, 1});
+    const auto windowDilations = SmallVector<int64_t>({1, 1});
 
     const auto padTop = op.getPad().getTop().getValue().getSExtValue();
     const auto padBottom = op.getPad().getBottom().getValue().getSExtValue();
@@ -173,24 +175,17 @@ mlir::LogicalResult vpux::VPU::NCECompressConvolutionOp::inferReturnTypes(
     const auto dataPaddingBelow = ov::CoordinateDiff({padTop, padLeft});
     const auto dataPaddingAbove = ov::CoordinateDiff({padBottom, padRight});
 
-    const auto conv = ov::op::v1::Convolution(
-            std::make_shared<ov::op::v0::Parameter>(ov::element::i32, ov::Shape(inShape.begin(), inShape.end())),
-            std::make_shared<ov::op::v0::Parameter>(ov::element::i32,
-                                                    ov::Shape(filterShape.begin(), filterShape.end())),
-            ov::Strides(windowStrides.begin(), windowStrides.end()), dataPaddingBelow, dataPaddingAbove,
-            ov::Strides(windowDilations.begin(), windowDilations.end()));
-
-    const auto& outputShapeNG = conv.get_output_partial_shape(0);
-
-    auto outputShape = to_small_vector(outputShapeNG.get_shape() | transformed([](size_t val) {
-                                           return checked_cast<int64_t>(val);
-                                       }));
-
     auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto outputType =
-            mlir::RankedTensorType::get(outputShape, inputType.getElementType(), createTensorAttrFromType(inputType));
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
+    const auto inShapeInfo = ShapeInfo::fromNDType(inputType);
+    auto filterShapeInfo = ShapeInfo{/*shape*/ filterShape.raw(), /*bounds*/ {}};
+    auto shapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, filterType, windowStrides,
+                                                     dataPaddingBelow, dataPaddingAbove, windowDilations);
 
-    inferredReturnTypes.push_back(outputType);
+    const auto outType =
+            vpux::getTensorType(ShapeRef(shapeInfo.shape), inputType.getElementType(), inputType.getDimsOrder(),
+                                /*memSpace=*/nullptr, BoundsRef(shapeInfo.bounds), /*DynamicDimsMask=*/{});
+    inferredReturnTypes.push_back(outType);
     return mlir::success();
 }
 
@@ -200,7 +195,7 @@ mlir::LogicalResult vpux::VPU::NCECompressConvolutionOp::inferReturnTypes(
 
 vpux::InputTiling vpux::VPU::NCECompressConvolutionOp::backInferTileInfo(const vpux::TileInfo& outputTile,
                                                                          vpux::Logger log) {
-    const auto origInputShape = getShape(getInput());
+    const auto origInputShape = getBoundedShape(getInput());
     const auto origFilterShape = Shape(parseIntArrayAttr<int64_t>(getRawFilterShape()));
     const auto origPadding = toPadInfo(getPad());
 
@@ -258,10 +253,11 @@ bool vpux::VPU::NCECompressConvolutionOp::checkStrategyCompatibility(VPU::MultiC
 vpux::VPU::DistributionInfo vpux::VPU::NCECompressConvolutionOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> memoryNumTiles) {
     return VPU::getNCEExplicitDistributionInfo(mlir::dyn_cast<VPU::NCEOpInterface>(getOperation()), shape,
                                                distributionMode, numTiles, numClusters, alignment,
-                                               uniformDistributedSegments, overlapParams);
+                                               uniformDistributedSegments, overlapParams, memoryNumTiles);
 }
 
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOH
@@ -429,4 +425,31 @@ vpux::VPU::SparsitySupport vpux::VPU::NCECompressConvolutionOp::sparsitySupport(
         excludeMode = VPU::NCESparsity::bitwiseNot(VPU::SparsitySupport::SPARSE_OUTPUTS);
     }
     return VPU::SparsitySupport::SPARSE_OUTPUTS & excludeMode;
+}
+
+mlir::LogicalResult vpux::VPU::NCECompressConvolutionOp::reifyResultShapes(
+        mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    // Parse attributes
+    const auto strides = parseIntArrayAttr<int64_t>(getStrides());
+
+    const auto padTop = getPad().getTop().getValue().getSExtValue();
+    const auto padBottom = getPad().getBottom().getValue().getSExtValue();
+    const auto padLeft = getPad().getLeft().getValue().getSExtValue();
+    const auto padRight = getPad().getRight().getValue().getSExtValue();
+
+    const auto dataPaddingAbove = SmallVector<int64_t>({padTop, padLeft});
+    const auto dataPaddingBelow = SmallVector<int64_t>({padBottom, padRight});
+
+    const auto rawFilterShape = Shape(parseIntArrayAttr<int64_t>(getRawFilterShape()));
+    SmallVector<int64_t> kernelSize{rawFilterShape[Dims4D::Filter::KY], rawFilterShape[Dims4D::Filter::KX]};
+
+    // Compute output shape using utility
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), getFilter(), kernelSize, strides,
+                                         dataPaddingAbove, dataPaddingBelow, getLoc());
+    if (mlir::failed(outShape)) {
+        return outShape;
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

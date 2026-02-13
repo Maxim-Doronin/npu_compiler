@@ -117,7 +117,7 @@ mlir::Value createIntermediateSumsBuffer(mlir::OpBuilder& rewriter, int64_t hidd
     size = size / sizeof(int32_t);  // int32_t type format
 
     auto tileOp = config::getTileExecutor(module);
-    const auto numShavesPerTile = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
+    const auto numShavesPerTile = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount();
 
     const auto shape = Shape{1, 1, numShavesPerTile, size};
     const auto auxIndicesType = mlir::RankedTensorType::get(shape.raw(), getSInt32Type(rewriter.getContext()));
@@ -163,7 +163,7 @@ void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Ope
         const auto initialHiddenStateShape = initialHiddenStateType.getShape();
         internalBuffer = createIntermediateSumsBuffer(odsBuilder, initialHiddenStateShape.back());
     } else {
-        const auto numShavesPerTile = tileOp.getSubExecutor(VPU::ExecutorKind::SHAVE_ACT).getCount();
+        const auto numShavesPerTile = tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount();
         Shape shape{1, 1, 1, numShavesPerTile};
         internalBuffer = createSyncBuffer(odsBuilder, shape);
     }
@@ -200,31 +200,32 @@ bool vpux::VPU::LSTMSequenceOp::isSupported(vpux::IE::LSTMSequenceOp op, bool us
 //
 
 bool vpux::VPU::LSTMSequenceOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto inputShape = getShape(getInputData());
-    const auto numDirections = inputShape[Dims4D::Act::C];
+    const auto shape = getShape(getInitialHiddenState());
+    const auto numDirections = shape[Dims4D::Act::C];
 
     if (strategy == VPU::MultiClusterStrategy::SplitOverKernel && numDirections == 2) {
         return true;
     }
 
-    const auto batchSize = inputShape[Dims4D::Act::N];
+    const auto batchSize = shape[Dims4D::Act::N];
     return strategy == VPU::MultiClusterStrategy::SplitOverBatch && batchSize > 1;
 }
 
 bool VPU::LSTMSequenceOp::isOperationSplitOverKernelCompatible(ShapeRef, ShapeRef, ShapeRef) {
-    const auto numDirections = getShape(getInputData())[Dims4D::Act::C];
+    const auto numDirections = getShape(getInitialHiddenState())[Dims4D::Act::C];
     return numDirections == 2;
 }
 
 bool VPU::LSTMSequenceOp::isOperationSplitOverBatchCompatible(ShapeRef) {
-    const auto batchSize = getShape(getInputData())[Dims4D::Act::N];
+    const auto batchSize = getShape(getInitialHiddenState())[Dims4D::Act::N];
     return batchSize > 1;
 }
 
 vpux::VPU::DistributionInfo vpux::VPU::LSTMSequenceOp::getExplicitDistributionInfoAttr(
         vpux::ShapeRef shape, vpux::VPU::DistributionMode distributionMode, ArrayRef<int64_t> numTiles,
         const int64_t numClusters, ArrayRef<int64_t> alignment, const bool uniformDistributedSegments,
-        const vpux::VPU::OverlapDistributionParams& overlapParams) {
+        const vpux::VPU::OverlapDistributionParams& overlapParams,
+        const std::optional<ArrayRef<int64_t>> /* memoryNumTiles */) {
     return VPU::getSWExplicitDistributionInfo(mlir::cast<VPU::SWOpInterface>(getOperation()), shape, distributionMode,
                                               numTiles, numClusters, alignment, uniformDistributedSegments,
                                               overlapParams);

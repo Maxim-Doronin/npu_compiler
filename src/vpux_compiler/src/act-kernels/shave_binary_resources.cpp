@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
+#include "vpux/compiler/core/interfaces/dialect_cache.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 
@@ -87,7 +88,7 @@ void ShaveBinaryResources::loadElfData(mlir::ModuleOp module) {
 #if defined(_WIN32) || defined(_WIN64)
     return;
 #endif
-    ShaveBinaryResources& sbr = ShaveBinaryResourcesCache::getCache(module->getContext());
+    auto& sbr = getShaveBinaryResources(module->getContext());
 
     std::string line;
 
@@ -124,11 +125,6 @@ void ShaveBinaryResources::loadElfData(mlir::ModuleOp module) {
     ifileList.close();
 }
 
-ShaveBinaryResources& ShaveBinaryResourcesCache::getCache(mlir::MLIRContext* ctx) {
-    auto* dialect = ctx->getOrLoadDialect<vpux::Core::CoreDialect>();
-    assert(dialect != nullptr && "CoreDialect must be present in the context");
-
-    auto* iface = dialect->getRegisteredInterface<ShaveBinaryResourcesCache>();
-    assert(iface != nullptr && "The requested cache must be registered in the context");
-    return iface->_cache;
+ShaveBinaryResources& vpux::getShaveBinaryResources(mlir::MLIRContext* ctx) {
+    return getCache<ShaveBinaryResourcesCache, vpux::Core::CoreDialect>(ctx).getResources();
 }

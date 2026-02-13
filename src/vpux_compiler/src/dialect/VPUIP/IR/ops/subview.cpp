@@ -112,7 +112,8 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         }
         if (mode != VPU::DistributionMode::OVERLAPPED ||
             !VPU::isSegmentedOverlappedAxisSameAsSliceAxis(origDistribution.getNumTiles(), inShape, subViewShape)) {
-            return VPU::getExplicitDistrAttrForSliceLikeOps(origDistribution, subViewShape, inShape, ctx);
+            return VPU::getExplicitDistrAttrForSliceLikeOps(origDistribution, subViewShape, inShape,
+                                                            origType.getElementType(), ctx);
         }
 
         // When clustering axis == slice axis, we cannot infer per cluster shape from op itself
@@ -137,7 +138,7 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
                 origDistribution.getPads(), origDistribution.getStrides(), origDistribution.getNumClusters(),
                 origDistribution.getAlignment(), origDistribution.getUniformDistributedSegments(), perClusterShapesAttr,
                 perClusterOffsetsAttr, perClusterShapesAttr, perClusterOffsetsAttr,
-                origDistribution.getEqualMemoryAndComputeView());
+                origDistribution.getEqualMemoryAndComputeView(), origDistribution.getMemoryNumTiles());
     };
 
     const auto distributedIn = mlir::dyn_cast<vpux::VPU::DistributedTypeInterface>(origType);

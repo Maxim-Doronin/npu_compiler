@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,11 +27,11 @@ module @SingleCosLayer {
     }
     // CHECK: module @SingleCosLayer
     // CHECK: module @VPU.SW
-    // CHECK: llvm.func @generated_0({{.*}}: !llvm.ptr, [[IN_PTR:%.*]]: !llvm.ptr {llvm.noalias}, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: !llvm.ptr, [[OUT_PTR:%.*]]: !llvm.ptr {llvm.noalias}, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32)
-    // CHECK: [[IN_ELEMENT_ADDR:%.*]] = llvm.getelementptr [[IN_PTR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+    // CHECK: llvm.func @generated_0({{.+}}: !llvm.ptr, [[IN_PTR:%.+]]: !llvm.ptr {llvm.noalias}, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: !llvm.ptr, [[OUT_PTR:%.+]]: !llvm.ptr {llvm.noalias}, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32)
+    // CHECK: [[IN_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[IN_PTR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
     // CHECK: [[INPUT:%.+]] = llvm.load [[IN_ELEMENT_ADDR]] : !llvm.ptr -> f16
     // CHECK: [[COS_RES:%.+]] = llvm.intr.cos([[INPUT]])
-    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr [[OUT_PTR]][
+    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[OUT_PTR]][
     // CHECK: llvm.store [[COS_RES]], [[OUT_ELEMENT_ADDR]]
   }
 }
@@ -60,11 +60,11 @@ module @SingleCosLayerNoAlias {
     }
     // CHECK: module @SingleCosLayerNoAlias
     // CHECK: module @VPU.SW
-    // CHECK: llvm.func @generated_0({{.*}}: !llvm.ptr, [[IN_PTR:%.*]]: !llvm.ptr {llvm.noalias}, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: !llvm.ptr, [[OUT_PTR:%.*]]: !llvm.ptr {llvm.noalias}, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32)
-    // CHECK: [[IN_ELEMENT_ADDR:%.*]] = llvm.getelementptr [[IN_PTR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+    // CHECK: llvm.func @generated_0({{.+}}: !llvm.ptr, [[IN_PTR:%.+]]: !llvm.ptr {llvm.noalias}, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: !llvm.ptr, [[OUT_PTR:%.+]]: !llvm.ptr {llvm.noalias}, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32)
+    // CHECK: [[IN_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[IN_PTR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
     // CHECK: [[INPUT:%.+]] = llvm.load [[IN_ELEMENT_ADDR]] : !llvm.ptr -> f16
     // CHECK: [[COS_RES:%.+]] = llvm.intr.cos([[INPUT]])
-    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr [[OUT_PTR]][
+    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[OUT_PTR]][
     // CHECK: llvm.store [[COS_RES]], [[OUT_ELEMENT_ADDR]]
   }
   func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
@@ -105,11 +105,11 @@ module @SingleCosLayerInPlace {
     }
     // CHECK: module @SingleCosLayerInPlace
     // CHECK: module @VPU.SW
-    // CHECK: llvm.func @generated_0({{.*}}: !llvm.ptr, [[IN_PTR:%.*]]: !llvm.ptr, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: !llvm.ptr, [[OUT_PTR:%.*]]: !llvm.ptr, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32)
-// CHECK: [[IN_ELEMENT_ADDR:%.*]] = llvm.getelementptr [[IN_PTR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+    // CHECK: llvm.func @generated_0({{.+}}: !llvm.ptr, [[IN_PTR:%.+]]: !llvm.ptr, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: !llvm.ptr, [[OUT_PTR:%.+]]: !llvm.ptr, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32)
+// CHECK: [[IN_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[IN_PTR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
     // CHECK: [[INPUT:%.+]] = llvm.load [[IN_ELEMENT_ADDR]] : !llvm.ptr -> f16
     // CHECK: [[COS_RES:%.+]] = llvm.intr.cos([[INPUT]])
-    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr [[OUT_PTR]][
+    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[OUT_PTR]][
     // CHECK: llvm.store [[COS_RES]], [[OUT_ELEMENT_ADDR]]
   }
   func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
@@ -150,11 +150,11 @@ module @SingleCosLayerTwoCallsWithInPlace {
     }
     // CHECK: module @SingleCosLayerTwoCallsWithInPlace
     // CHECK: module @VPU.SW
-    // CHECK: llvm.func @generated_0({{.*}}: !llvm.ptr, [[IN_PTR:%.*]]: !llvm.ptr, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: !llvm.ptr, [[OUT_PTR:%.*]]: !llvm.ptr, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32)
-    // CHECK: [[IN_ELEMENT_ADDR:%.*]] = llvm.getelementptr [[IN_PTR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+    // CHECK: llvm.func @generated_0({{.+}}: !llvm.ptr, [[IN_PTR:%.+]]: !llvm.ptr, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: !llvm.ptr, [[OUT_PTR:%.+]]: !llvm.ptr, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32)
+    // CHECK: [[IN_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[IN_PTR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
     // CHECK: [[INPUT:%.+]] = llvm.load [[IN_ELEMENT_ADDR]] : !llvm.ptr -> f16
     // CHECK: [[COS_RES:%.+]] = llvm.intr.cos([[INPUT]])
-    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr [[OUT_PTR]][
+    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[OUT_PTR]][
     // CHECK: llvm.store [[COS_RES]], [[OUT_ELEMENT_ADDR]]
   }
   func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
@@ -200,11 +200,11 @@ module @SingleCosLayerTwoCalls {
     }
     // CHECK: module @SingleCosLayerTwoCalls
     // CHECK: module @VPU.SW
-    // CHECK: llvm.func @generated_0({{.*}}: !llvm.ptr, [[IN_PTR:%.*]]: !llvm.ptr {llvm.noalias}, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: !llvm.ptr, [[OUT_PTR:%.*]]: !llvm.ptr {llvm.noalias}, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32, {{.*}}: i32)
-    // CHECK: [[IN_ELEMENT_ADDR:%.*]] = llvm.getelementptr [[IN_PTR]][{{.*}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
+    // CHECK: llvm.func @generated_0({{.+}}: !llvm.ptr, [[IN_PTR:%.+]]: !llvm.ptr {llvm.noalias}, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: !llvm.ptr, [[OUT_PTR:%.+]]: !llvm.ptr {llvm.noalias}, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32, {{.+}}: i32)
+    // CHECK: [[IN_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[IN_PTR]][{{.+}}] : (!llvm.ptr, i32) -> !llvm.ptr, f16
     // CHECK: [[INPUT:%.+]] = llvm.load [[IN_ELEMENT_ADDR]] : !llvm.ptr -> f16
     // CHECK: [[COS_RES:%.+]] = llvm.intr.cos([[INPUT]])
-    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr [[OUT_PTR]][
+    // CHECK: [[OUT_ELEMENT_ADDR:%.+]] = llvm.getelementptr inbounds|nuw [[OUT_PTR]][
     // CHECK: llvm.store [[COS_RES]], [[OUT_ELEMENT_ADDR]]
   }
   func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {

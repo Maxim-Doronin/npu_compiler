@@ -1,8 +1,10 @@
-// Copyright (C) 2019-2025 Intel Corporation
+// Copyright (C) 2019-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_op_tests/conversion.hpp"
+#include <openvino/core/type/element_type.hpp>
+#include "pretty_test_arguments.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
 using namespace ov::test::utils;
@@ -32,7 +34,7 @@ TEST_P(ConversionLayerTestCommon_HW, NPU4000_HW) {
 
 TEST_P(ShaveCodeGenConversionLayerTest, NPU4000) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
@@ -42,7 +44,7 @@ TEST_P(ConversionLayerTestCommon_HW, NPU5010_HW) {
 }
 TEST_P(ShaveCodeGenConversionLayerTest, NPU5010) {
     setReferenceSoftwareMode();
-    setMLIRCompilerType();
+    setPluginCompilerType();
     run(Platform::NPU5010);
 }
 
@@ -50,10 +52,45 @@ TEST_P(ConversionLayerTestCommon, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(ConversionLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
+class ConversionLayerTest_HostCompile : public ConversionLayerTestCommon {};
+
+TEST_P(ConversionLayerTest_HostCompile, NPU4000_HC) {
+    setSkipInferenceCallback([](std::stringstream& skip) {
+        skip << "Host Pipeline does not support inference yet: C#164943";
+    });
+    setHostCompileMode();
+    setPluginCompilerType();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ConversionLayerTest_HostCompile, NPU5010_HC) {
+    setSkipInferenceCallback([](std::stringstream& skip) {
+        skip << "Host Pipeline does not support inference yet: C#164943";
+    });
+    setHostCompileMode();
+    setPluginCompilerType();
+    run(Platform::NPU5010);
+}
+
+class ConversionLayerTest_SCFTiling : public ConversionLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
+    }
+};
+
+TEST_P(ConversionLayerTest_SCFTiling, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 }  // namespace test
 }  // namespace ov
 
@@ -101,6 +138,19 @@ const auto configParamsU16ToF16 = genParams({u16}, {f16}, inShapeOdd);
 const auto configParamsF16ToU16 = genParams({f16}, {u16}, inShapeOdd);
 const auto configParamsF8ToF16 = genParams({f8e4m3, f8e5m2}, {f16}, inShapeOdd, false);
 const auto configParamsF16ToF8 = genParams({f16}, {f8e4m3, f8e5m2}, inShapeOdd, false);
+const auto configParamsF32ToF16Tiling = genParams({f32}, {f16}, inShapeTiling);
+
+const std::vector<std::vector<ov::test::InputShape>> dynamicShapes = {
+        {generateTestShape(1, 16, 1280_Dyn, 1280)}, {generateTestShape(1, 16, 1280_Dyn, 1280_Dyn)},
+        {generateTestShape(1, 3, 1280_Dyn, 1280)},  {generateTestShape(1, 3, 1280_Dyn, 1280_Dyn)},
+        {generateTestShape(1, 1, 1280_Dyn, 1280)},  {generateTestShape(1, 1, 1280_Dyn, 1280_Dyn)},
+};
+const auto configParamsF32ToF16 =
+        ::testing::Combine(::testing::ValuesIn({ConversionTypes::CONVERT}),  // Conversion type
+                           ::testing::ValuesIn(dynamicShapes),               // Input shapes
+                           ::testing::ValuesIn({f32}),                       // Input type
+                           ::testing::ValuesIn({f16}),                       // Output type
+                           ::testing::Values(test_utils::TARGET_DEVICE));
 
 // ------ HW ------
 
@@ -172,4 +222,11 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_u4_odd_Conversion, ConversionLayerTestC
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_bf16_Conversion, ConversionLayerTestCommon, configParamsBF16ToF16,
                          ConversionLayerTest::getTestCaseName);
 
+// ------ HostCompile ------
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Conversion_HostCompile, ConversionLayerTest_HostCompile, configParamsF32ToF16,
+                         ConversionLayerTest::getTestCaseName);
+
+// ------ SCFTiling ------
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Conversion_SCFTiling, ConversionLayerTest_SCFTiling,
+                         configParamsF32ToF16Tiling, ConversionLayerTest::getTestCaseName);
 }  // namespace

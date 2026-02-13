@@ -7,16 +7,11 @@
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops_fwd.hpp"
+#include "vpux/compiler/dialect/const/ops_fwd.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
-
-namespace vpux::Const {
-class DeclareOp;
-}  // namespace vpux::Const
-namespace vpux::VPURT {
-class TaskOp;
-}  // namespace vpux::VPURT
 
 namespace vpux {
 namespace VPUIP {

@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/core/force_link_macros.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
@@ -278,7 +280,9 @@ mlir::Value createAvgPoolForInterQuantizedConvert(mlir::OpBuilder& builder, mlir
 
     if (isSupportedPerAxis || hasNegativeZp) {
         // Note: do what ConvertElemType does to restore the offset.
-        const auto offset = Const::details::getValueRangeOffset(inQType, outQType);
+        // The current logic checks per axis quantization when scales are different per each channel. Current
+        // implementation assumes that zero points are the same. So getValueRangeOffset will return a vector of size 1.
+        const auto offset = static_cast<int64_t>(Const::details::getValueRangeOffset(inQType, outQType)[0]);
         // Negative zero points are not supported - we do the following trick:
         // Instead of converting !quant.uniform<u8:f16:s1:0> -> !quant.uniform<i8:f16:s1:-128>, we cast to
         // !quant.uniform<u8:f16:s1:128> and convert to !quant.uniform<i8:f16:s1:0>.
@@ -335,7 +339,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
             .Case<Const::AddAttr>([&](Const::AddAttr add) {
                 const auto biasValue = checked_cast<float>(add.getBias().getValueAsDouble());
 
-                const auto biasLoc = appendLoc(loc, "_bias");
+                const auto biasLoc = appendLoc(loc, "bias");
                 SmallVector<int64_t> shapeRank = {1};
                 auto biasType = mlir::RankedTensorType::get(shapeRank, mlir::Float32Type::get(builder.getContext()));
                 auto transform = [&](Const::ContentSetup& setup) -> Const::ContentSetup {
@@ -354,7 +358,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                 auto shape = SmallVector<int64_t>(mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape().raw());
                 shape[axis] = dimValue;
 
-                const auto targetShapeLoc = appendLoc(loc, "_shape");
+                const auto targetShapeLoc = appendLoc(loc, "shape");
                 SmallVector<int64_t> shapeRank = {static_cast<int64_t>(shape.size())};
                 auto targetShapeType = mlir::RankedTensorType::get(shapeRank, getInt64Type(builder.getContext()));
                 auto targetShape = Const::createConst<int64_t>(builder, targetShapeLoc, targetShapeType, shape);
@@ -459,7 +463,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                                                  /*padValue=*/nullptr, padWithZero.getPadBefore(),
                                                  padWithZero.getPadAfter(),
                                                  getFPAttr(builder.getContext(), extractPadValue(outElemType)),
-                                                 IE::PadMode::CONSTANT, nullptr, nullptr);
+                                                 IE::PadMode::CONSTANT, nullptr, nullptr, nullptr, nullptr);
             })
             .Case<Const::ReorderAttr>([&](Const::ReorderAttr reorder) {
                 return builder.create<IE::ReorderOp>(loc, input, reorder.getOrder());
@@ -468,7 +472,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                 auto foldedAttr = rescale.getScale().fold();
                 const auto scaleValue = foldedAttr.getSplatValue<float>();
 
-                const auto scaleLoc = appendLoc(loc, "_scale");
+                const auto scaleLoc = appendLoc(loc, "scale");
                 SmallVector<int64_t> shapeRank = {1};
                 auto scaleType = mlir::RankedTensorType::get({shapeRank}, mlir::Float32Type::get(builder.getContext()));
                 auto transform = [&](Const::ContentSetup& setup) -> Const::ContentSetup {
@@ -492,7 +496,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                                                            affineReshape.getShapeValue());
             })
             .Case<Const::ScalarMultInverseAttr>([&](Const::ScalarMultInverseAttr /*scalarMultInverse*/) -> mlir::Value {
-                const auto inverseLoc = appendLoc(loc, "_inverse");
+                const auto inverseLoc = appendLoc(loc, "inverse");
                 SmallVector<int64_t> shapeRank = {1};
                 const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
                 auto inverseType = mlir::RankedTensorType::get({shapeRank}, inputElemType);
@@ -1039,7 +1043,7 @@ std::string ConstArg::getUniqueName() const {
 }
 
 // We want to cache the results of mapping a list of transformations to operations to avoid the call of a
-// UniquifyOps pass. Experiments showed that the load became significant in some cases.
+// CSE pass. Experiments showed that the load became significant in some cases.
 class ConstOpConverter::OperationCache {
 public:
     using KeyT = std::tuple<mlir::Value, ArrayRef<Const::TransformAttrInterface>>;

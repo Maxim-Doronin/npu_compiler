@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,6 +18,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/small_kernel_optimization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
@@ -208,9 +209,10 @@ Byte vpux::VPU::NCEInvariant::getWeightsTableSize(int64_t OC) {
 
 // OC can be used to represent a number of output channels that is different from the number of output channels in op
 // (e.g. when a new output type will be used)
-SmallVector<Byte> vpux::VPU::NCEInvariant::getWeightsTableSize(int64_t OC, mlir::Value weightsTable,
-                                                               mlir::Value weightTableScale,
-                                                               mlir::Value weightTableBias) {
+SmallVector<Byte> vpux::VPU::NCEInvariant::getWeightsTableSize(mlir::Operation* op, int64_t OC,
+                                                               mlir::Value weightsTable, mlir::Value weightTableScale,
+                                                               mlir::Value weightTableBias,
+                                                               mlir::Value weightTableZeroPoints) {
     if (weightsTable != nullptr) {
         return SmallVector<Byte>{getWeightsTableSize(OC)};
     }
@@ -221,6 +223,9 @@ SmallVector<Byte> vpux::VPU::NCEInvariant::getWeightsTableSize(int64_t OC, mlir:
     }
     if (weightTableBias != nullptr) {
         newWeightTables.push_back(OC * 4_Byte);
+    }
+    if (weightTableZeroPoints != nullptr) {
+        newWeightTables.push_back(getRequiredCMXSizeForZeroPointTable(op, OC, weightTableZeroPoints));
     }
 
     return newWeightTables;
@@ -234,7 +239,8 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::getWeightTableBuffers(mlir::Operati
     }
 
     auto weightTables = vpux::VPU::NCEInvariant::getWeightsTableSize(
-            OC, nceOp.getWeightsTableOperand(), nceOp.getWeightTableScaleOperand(), nceOp.getWeightTableBiasOperand());
+            op, OC, nceOp.getWeightsTableOperand(), nceOp.getWeightTableScaleOperand(),
+            nceOp.getWeightTableBiasOperand(), nceOp.getWeightZeroPointsOperand());
 
     buffers.append(weightTables.begin(), weightTables.end());
     return mlir::success();
@@ -539,7 +545,7 @@ bool vpux::VPU::NCEInvariant::isAlignmentBeneficial(mlir::Operation* op) {
         }
     }
 
-    if (auto SDPAExtendedOp = mlir::dyn_cast<IE::SDPAExtendedOp>(op)) {
+    if (mlir::isa<IE::SDPAExtendedOp>(op)) {
         return true;
     }
 

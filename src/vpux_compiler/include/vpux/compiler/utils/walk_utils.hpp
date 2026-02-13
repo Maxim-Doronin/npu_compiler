@@ -5,9 +5,18 @@
 
 #pragma once
 
-#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
-#include <mlir/Rewrite/PatternApplicator.h>
+#include <mlir/IR/PatternMatch.h>
+
+namespace mlir {
+class Operation;
+}  // namespace mlir
+
+namespace mlir::func {
+class FuncOp;
+}  // namespace mlir::func
 
 namespace vpux {
 

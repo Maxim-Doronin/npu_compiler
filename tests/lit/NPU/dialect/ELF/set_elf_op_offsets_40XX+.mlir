@@ -35,7 +35,7 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
         VPUASM.NNDMA @NNDMA_0_0_5 idx(!VPURegMapped.Index<0:0:5>) taskLocation(@stub) input(@stub) outputs([@stub]) waits([1 : ui8]) updates([]) start_after(0) clean_after(0) dma_descriptor(#VPUIP.DMADescriptorAttr<numPlanes = 0 : i4, len = 0 : i4, srcWidth = 0 : i4, srcStride = 0 : i4, srcPlaneStride = 0 : i4, dstWidth = 0 : i4, dstStride = 0 : i4, dstPlaneStride = 0 : i4>) acceleration_mode(<DISABLE>) {elfMemOffsetAttrKey = 1120 : ui64}
       }
       ELF.CreateSection @text.invariants aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
-        VPUIPDPU.DPUInvariant @DPUInvariant0 {task_index = !VPURegMapped.Index<0:0:0>, task_location = @stub, input = @stub, weight_table = @stub, output = @stub, nce_task_type = #VPUIP.nce_task_type<CONV>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+        VPUIPDPU.DPUInvariant @DPUInvariant0 {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64} <{task_index = !VPURegMapped.Index<0:0:0>, task_location = @stub, input = @stub, weight_table = @stub, output = @stub, nce_task_type = #VPUIP.nce_task_type<CONV>}>
             DPUCfg : {
               ^bb0(%act_in: memref<1x64x16x16xf16, @DDR>,
                   %act_out: memref<1x64x16x16xf16, @DDR>):
@@ -50,7 +50,7 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
                   VPUIPDPU.ODUOutActivations out_activations(%act_out: memref<1x64x16x16xf16, @DDR>)
               }
           }
-        VPUIPDPU.DPUInvariant @DPUInvariant1 {task_index = !VPURegMapped.Index<0:0:1>, task_location = @stub, input = @stub, weight_table = @stub, output = @stub, nce_task_type = #VPUIP.nce_task_type<CONV>, mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64}
+        VPUIPDPU.DPUInvariant @DPUInvariant1 {mpe_frequent_mode = #VPU.mpe_mode<CUBOID_16x16>, start_after = 0 : ui64, clean_after = 0 : ui64} <{task_index = !VPURegMapped.Index<0:0:1>, task_location = @stub, input = @stub, weight_table = @stub, output = @stub, nce_task_type = #VPUIP.nce_task_type<CONV>}>
             DPUCfg : {
               ^bb0(%act_in: memref<1x64x16x16xf16, @DDR>,
                   %act_out: memref<1x64x16x16xf16, @DDR>):

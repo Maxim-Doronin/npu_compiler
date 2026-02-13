@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -92,12 +92,7 @@ mlir::LogicalResult FuseConvAndSlice::matchAndRewrite(IE::ConvolutionOp convOp, 
     auto newCstContent = cstContentAttrFilter.transform().padWithZero(cstPadBegin, cstPadEnd).get();
     auto newFilterConst =
             rewriter.create<Const::DeclareOp>(convOp.getLoc(), newCstContent.getType(), std::move(newCstContent));
-    auto newConvOp = rewriter.create<IE::ConvolutionOp>(
-            convOp.getLoc(), outNDInterface, sliceInput, newFilterConst, convOp.getBias(), convOp.getStridesAttr(),
-            convOp.getPadsBeginAttr(), convOp.getPadsEndAttr(), convOp.getDilationsAttr(), convOp.getPostOpAttr(),
-            convOp.getClampAttr(), convOp.getStaticScaleAttr(), convOp.getOutputPaddingAttr(),
-            convOp.getInputPaddingAttr());
-
+    auto newConvOp = cloneConvolutionOp(rewriter, convOp, outNDInterface, sliceInput, newFilterConst);
     rewriter.replaceOp(convOp, newConvOp->getOpResults());
 
     return mlir::success();
@@ -136,7 +131,7 @@ mlir::LogicalResult vpux::IE::ConvolutionOp::inferReturnTypeComponents(
     const auto inShapeInfo = ShapeInfo::fromNDType(inputType);
     const auto filterShapeInfo = ShapeInfo::fromNDType(filterType);
 
-    const auto outShapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, windowStrides,
+    const auto outShapeInfo = inferConvolutionOutputShapeInfo(inShapeInfo, filterShapeInfo, filterType, windowStrides,
                                                               dataPaddingBelow, dataPaddingAbove, windowDilations);
     const auto outDesc =
             vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, BoundsRef(outShapeInfo.bounds));
@@ -147,7 +142,6 @@ mlir::LogicalResult vpux::IE::ConvolutionOp::inferReturnTypeComponents(
 
 void vpux::IE::ConvolutionOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
                                                           mlir::MLIRContext* context) {
-    patterns.add<FuseConvAndBias>(context);
     patterns.add<FuseConvAndSlice>(context);
 }
 
@@ -245,7 +239,6 @@ mlir::LogicalResult GroupsToAttr::matchAndRewrite(IE::GroupConvolutionOp convOp,
 
 void vpux::IE::GroupConvolutionOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
                                                                mlir::MLIRContext* context) {
-    patterns.add<FuseConvAndBias>(context);
     patterns.add<GroupsToAttr>(context);
 }
 
@@ -273,4 +266,33 @@ mlir::LogicalResult vpux::IE::ConvolutionOp::reifyResultShapes(mlir::OpBuilder& 
 
     reifiedReturnShapes.emplace_back(std::move(outShape.value()));
     return mlir::success();
+}
+
+void vpux::IE::ConvolutionOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value input,
+                                    mlir::Value filter, mlir::ArrayAttr strides, mlir::ArrayAttr padsBegin,
+                                    mlir::ArrayAttr padsEnd, mlir::ArrayAttr dilations) {
+    build(odsBuilder, odsState, input, filter, nullptr, nullptr, strides, padsBegin, padsEnd, dilations, nullptr,
+          nullptr, nullptr, nullptr, nullptr);
+}
+
+void vpux::IE::ConvolutionOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value input,
+                                    mlir::Value filter, mlir::Value bias, mlir::Value scale, mlir::ArrayAttr strides,
+                                    mlir::ArrayAttr padsBegin, mlir::ArrayAttr padsEnd, mlir::ArrayAttr dilations) {
+    build(odsBuilder, odsState, input, filter, bias, scale, strides, padsBegin, padsEnd, dilations, nullptr, nullptr,
+          nullptr, nullptr, nullptr);
+}
+
+void vpux::IE::ConvolutionOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Type outType,
+                                    mlir::Value input, mlir::Value filter, mlir::ArrayAttr strides,
+                                    mlir::ArrayAttr padsBegin, mlir::ArrayAttr padsEnd, mlir::ArrayAttr dilations) {
+    build(odsBuilder, odsState, outType, input, filter, nullptr, nullptr, strides, padsBegin, padsEnd, dilations,
+          nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
+void vpux::IE::ConvolutionOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Type outType,
+                                    mlir::Value input, mlir::Value filter, mlir::Value bias, mlir::Value scale,
+                                    mlir::ArrayAttr strides, mlir::ArrayAttr padsBegin, mlir::ArrayAttr padsEnd,
+                                    mlir::ArrayAttr dilations) {
+    build(odsBuilder, odsState, outType, input, filter, bias, scale, strides, padsBegin, padsEnd, dilations, nullptr,
+          nullptr, nullptr, nullptr, nullptr);
 }

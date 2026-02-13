@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -138,8 +138,8 @@ func.func @Conv2dWithReluAndClamp(%arg0: tensor<4x512x1x1xf16>) -> tensor<4x2048
 
     return %2 : tensor<4x2048x1x1xf16>
 
-    // CHECK:       [[CST:%.*]] = const.Declare tensor<2048x512x1x1xf16> = dense<1.000000e+00> : tensor<2048x512xf16>, [#const.Reshape<[2048, 512, 1, 1]>]
-    // CHECK:       [[CONV:%.*]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<2048x512x1x1xf16> = dense<1.000000e+00> : tensor<2048x512xf16>, [#const.Reshape<[2048, 512, 1, 1]>]
+    // CHECK:       [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]]) {
     // CHECK-SAME:   clamp = {max = 0.69999999999999996 : f64, min = 0.000000e+00 : f64},
     // CHECK-SAME:   dilations = [1, 1],
     // CHECK-SAME:   pads_begin = [0, 0],

@@ -1,10 +1,12 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
@@ -14,6 +16,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTGROUPCONVSHAPE
@@ -111,7 +114,7 @@ IE::ShapeCastOp ReshapeGroupConvInput::reshapeOutput(IE::GroupConvolutionOp orig
     const auto origOutShape = getShape(origOp.getOutput());
     const SmallVector<int64_t> targetShape = to_small_vector(origOutShape.raw());
 
-    const auto reshapedLoc = appendLoc(origOp.getLoc(), "_output_reshape");
+    const auto reshapedLoc = appendLoc(origOp.getLoc(), "output_reshape");
     return vpux::IE::buildShapeCast(reshapedLoc, convOutput, ArrayRef(targetShape), rewriter);
 }
 
@@ -329,7 +332,7 @@ mlir::LogicalResult SliceGroupConvInput::matchAndRewrite(IE::GroupConvolutionOp 
         SmallVector<int64_t> staticSizes(inputShape.begin(), inputShape.end());
         staticSizes[Dims4D::Act::C.ind()] = 1;
         auto sliceInput =
-                rewriter.create<IE::SliceOp>(takeOpLoc(origOp, llvm::formatv("_input_{0}", i)), preReorder.getInput(),
+                rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "input_{0}", i), preReorder.getInput(),
                                              getIntArrayAttr(ctx, staticOffsets), getIntArrayAttr(ctx, staticSizes));
 
         auto preInOrder = DimsOrder::fromValue(preReorder.getInput());
@@ -350,10 +353,9 @@ mlir::LogicalResult SliceGroupConvInput::matchAndRewrite(IE::GroupConvolutionOp 
 
         SmallVector<int64_t> weightStaticSizes(weightShape.begin(), weightShape.end());
         weightStaticSizes[Dims4D::Filter::OC.ind()] = 1;
-        auto sliceWeight = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, llvm::formatv("_weight_{0}", i)),
-                                                        origOp.getFilter(), getIntArrayAttr(ctx, weightStaticOffsets),
-                                                        getIntArrayAttr(ctx, weightStaticSizes));
-
+        auto sliceWeight = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "_weight_{0}", i), origOp.getFilter(),
+                                                              getIntArrayAttr(ctx, weightStaticOffsets),
+                                                              getIntArrayAttr(ctx, weightStaticSizes));
         if (origOp.getBias()) {
             auto biasShape = getShape(origOp.getBias());
             auto biasStaticOffsets = SmallVector<int64_t>(biasShape.size(), 0);
@@ -361,16 +363,15 @@ mlir::LogicalResult SliceGroupConvInput::matchAndRewrite(IE::GroupConvolutionOp 
 
             SmallVector<int64_t> biasStaticSizes(biasShape.begin(), biasShape.end());
             biasStaticSizes[Dims4D::Filter::IC.ind()] = 1;
-            auto sliceBias = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, llvm::formatv("_bias_{0}", i)),
-                                                          origOp.getBias(), getIntArrayAttr(ctx, biasStaticOffsets),
-                                                          getIntArrayAttr(ctx, biasStaticSizes));
-            biasValue = sliceBias.getResult();
+            biasValue = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "_bias_{0}", i), origOp.getBias(),
+                                                           getIntArrayAttr(ctx, biasStaticOffsets),
+                                                           getIntArrayAttr(ctx, biasStaticSizes));
         }
 
         auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
-                takeOpLoc(origOp, llvm::formatv("_{0}", i)), permuteCast.getOutput(), sliceWeight.getResult(),
-                biasValue, origOp.getStrides(), origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(),
-                getIntAttr(ctx, 1), origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+                takeOpLoc(origOp, "{0}", i), permuteCast.getOutput(), sliceWeight, biasValue, origOp.getStrides(),
+                origOp.getPadsBegin(), origOp.getPadsEnd(), origOp.getDilations(), getIntAttr(ctx, 1),
+                origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
                 origOp.getInputPaddingAttr());
         auto groupOutputType = mlir::cast<vpux::NDTypeInterface>(newGroupConv.getOutput().getType());
         newGroupConv.getOutput().setType(mlir::cast<mlir::RankedTensorType>(
@@ -403,12 +404,20 @@ void AdjustGroupConvShapePass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<SliceGroupConvInput>(&ctx, benefitLevels[0], _log);
-    patterns.add<ReshapeGroupConvInput>(&ctx, benefitLevels[1], _log);
+    // Step 1: Slice GroupConvolution operations
+    // Transforms: Reorder -> GroupConv -> Reorder into PermuteCast
+    {
+        mlir::RewritePatternSet patterns(&ctx);
+        patterns.add<SliceGroupConvInput>(&ctx, benefitLevels[0], _log);
+        collectOpsAndApplyPatterns(func, std::move(patterns));
+    }
 
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
+    // Step 2: Reshape GroupConvolution for alignment
+    // Introduces ShapeCast operations
+    {
+        mlir::RewritePatternSet patterns(&ctx);
+        patterns.add<ReshapeGroupConvInput>(&ctx, benefitLevels[1], _log);
+        collectOpsAndApplyPatterns(func, std::move(patterns));
     }
 }
 }  // namespace

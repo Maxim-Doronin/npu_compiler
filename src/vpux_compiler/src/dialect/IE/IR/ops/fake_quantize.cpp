@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -26,8 +27,7 @@ mlir::LogicalResult vpux::IE::FakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!mlir::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type, vpux::type::QuantileFloatType>(
-                    lowFpType.value())) {
+        if (!isLowFpType(lowFpType.value()) && !mlir::isa<vpux::type::QuantileFloatType>(lowFpType.value())) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {

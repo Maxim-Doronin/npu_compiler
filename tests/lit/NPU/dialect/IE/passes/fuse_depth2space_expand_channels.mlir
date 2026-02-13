@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @FuseDepth2SpaceExpandChannels(%arg0: tensor<1x4x512x8xf16>) -> tensor
 
     return %1 : tensor<1x16x1024x16xf16>
 
-    // CHECK:           [[VAL0:%.*]] = IE.DepthToSpace([[INPUT]])
+    // CHECK:           [[VAL0:%.+]] = IE.DepthToSpace([[INPUT]])
     // CHECK-SAME:      {block_size = 2 : i64,
     // CHECK-SAME:      mode = #IE.depth_to_space_mode<BLOCKS_FIRST>
     // CHECK-SAME:      padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 15 : i64>
@@ -32,8 +32,8 @@ func.func @NotFuseDepth2SpaceExpandChannels(%arg0: tensor<1x4x512x8xf16>) -> ten
 
     return %1 : tensor<1x32x1024x16xf16>
 
-    // CHECK:           [[VAL0:%.*]] = IE.DepthToSpace([[INPUT]])
-    // CHECK:           [[VAL1:%.*]] = IE.Expand([[VAL0]])
+    // CHECK:           [[VAL0:%.+]] = IE.DepthToSpace([[INPUT]])
+    // CHECK:           [[VAL1:%.+]] = IE.Expand([[VAL0]])
     // CHECK:           return [[VAL1]] : tensor<1x32x1024x16xf16>
 }
 
@@ -49,9 +49,9 @@ func.func @NotFuseDepth2SpaceExpandChannelsMultipleUsers(%arg0: tensor<1x4x512x8
     %2 = IE.Reorder(%0) {dstOrder = #NHWC} : tensor<1x1x1024x16xf16> -> tensor<1x1x1024x16xf16, {order = #NHWC}>
     return %1, %2 : tensor<1x16x1024x16xf16>, tensor<1x1x1024x16xf16, {order = #NHWC}>
 
-    // CHECK:           [[VAL0:%.*]] = IE.DepthToSpace([[INPUT]])
-    // CHECK:           [[VAL1:%.*]] = IE.Expand([[VAL0]])
-    // CHECK:           [[VAL2:%.*]] = IE.Reorder([[VAL0]])
+    // CHECK:           [[VAL0:%.+]] = IE.DepthToSpace([[INPUT]])
+    // CHECK:           [[VAL1:%.+]] = IE.Expand([[VAL0]])
+    // CHECK:           [[VAL2:%.+]] = IE.Reorder([[VAL0]])
     // CHECK:           return [[VAL1]], [[VAL2]] : tensor<1x16x1024x16xf16>, tensor<1x1x1024x16xf16, {order = #NHWC}>
 }
 
@@ -65,7 +65,7 @@ func.func @NotFuseDepth2SpaceExpandNotChannels(%arg0: tensor<1x4x512x8xf16>) -> 
 
     return %1 : tensor<1x1x1024x32xf16>
 
-    // CHECK:           [[VAL0:%.*]] = IE.DepthToSpace([[INPUT]])
-    // CHECK:           [[VAL1:%.*]] = IE.Expand([[VAL0]])
+    // CHECK:           [[VAL0:%.+]] = IE.DepthToSpace([[INPUT]])
+    // CHECK:           [[VAL1:%.+]] = IE.Expand([[VAL0]])
     // CHECK:           return [[VAL1]] : tensor<1x1x1024x32xf16>
 }

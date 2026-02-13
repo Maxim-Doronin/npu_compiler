@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize --verify-diagnostics %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -54,7 +54,7 @@ func.func @PermuteCastDistributed(%arg0: !InputDistributed) -> !OutputDistribute
 
     return %1 : !OutputDistributed
 
-    // CHECK:        [[PERMUTECAST0:%.*]] = VPUIP.PermuteCast {dst_order = #NCHW, mem_perm = #NCHW}
+    // CHECK:        [[PERMUTECAST0:%.+]] = VPUIP.PermuteCast {dst_order = #NCHW, mem_perm = #NCHW}
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x256x40x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
     // CHECK-SAME:             num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
@@ -66,7 +66,7 @@ func.func @PermuteCastDistributed(%arg0: !InputDistributed) -> !OutputDistribute
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 20, 1, 256], [1, 20, 1, 256]], compute_offsets = [[0, 0, 0, 0], [0, 20, 0, 0]],
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 20, 1, 256], [1, 20, 1, 256]], memory_offsets = [[0, 0, 0, 0], [0, 20, 0, 0]]
 
-    // CHECK:        [[PERMUTECAST1:%.*]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHCW}
+    // CHECK:        [[PERMUTECAST1:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHCW}
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x40x1x256xf16, #NCHW, @CMX_NN
     // CHECK-SAME:         -> !VPUIP.DistributedBuffer<1x256x1x40xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
@@ -112,7 +112,7 @@ func.func @PermuteCastDistributedWithOnlyOrderChanged(%arg0: !InputDistributed) 
 
     return %0 : !OutputDistributed
 
-    // CHECK:        [[PERMUTECAST:%.*]] = VPUIP.PermuteCast {dst_order = #NCHW, mem_perm = #NCHW}
+    // CHECK:        [[PERMUTECAST:%.+]] = VPUIP.PermuteCast {dst_order = #NCHW, mem_perm = #NCHW}
     // CHECK-SAME:         !VPUIP.DistributedBuffer<1x256x40x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
     // CHECK-SAME:             num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
@@ -157,3 +157,13 @@ func.func @PermuteCastNoOp() -> memref<1x2xf32> {
 // CHECK:     [[CST:%.+]] = const.Declare memref<1x2xf32> = dense<{{\[\[}}1.000000e+00, 2.000000e+00]]> : memref<1x2xf32>
 // CHECK:     return [[CST]] : memref<1x2xf32>
 // CHECK: }
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// expected-error@+2 {{Non-strides input memref<1x3x16x16xf32> and strides output memref<1x3x16x16xf32, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [1536, 512, 16, 1]}> are inconsistent}}
+func.func @PermuteCastStridesMismatch(%arg0: memref<1x3x16x16xf32, #NCHW>) -> memref<1x3x16x16xf32, {order = #NCHW, strides = [1536, 512, 16, 1]}> {
+    %0 = VPUIP.PermuteCast {dst_order = #NCHW, mem_perm = #NCHW} inputs(%arg0 : memref<1x3x16x16xf32, #NCHW>) -> memref<1x3x16x16xf32, {order = #NCHW, strides = [1536, 512, 16, 1]}>
+    return %0 : memref<1x3x16x16xf32, {order = #NCHW, strides = [1536, 512, 16, 1]}>
+}

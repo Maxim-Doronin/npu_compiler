@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -82,16 +82,13 @@ module @SingleDivSILayer {
     return %0 : tensor<1x1x1x1000xsi32>
   }
     // CHECK-NOT:     IE.Divide
-    // CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-    // CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-    // CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-    // CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+    // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+    // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
     // CHECK-NEXT:    ^bb0([[LHS_S:%.+]]: i32, [[RHS_S:%.+]]: i32, {{%.+}}: i32):
     // CHECK-NEXT:      [[OP:%.+]] = arith.divsi [[LHS_S]], [[RHS_S]] : i32
     // CHECK-NEXT:      linalg.yield [[OP]] : i32
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-    // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-    // CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+    // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 }
 
 // -----
@@ -115,16 +112,13 @@ module @SingleDivUILayer {
   }
 
     // CHECK-NOT:     IE.Divide
-    // CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
-    // CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
-    // CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-    // CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+    // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+    // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
     // CHECK-NEXT:    ^bb0([[LHS_S:%.+]]: i32, [[RHS_S:%.+]]: i32, {{%.+}}: i32):
     // CHECK-NEXT:      [[OP:%.+]] = arith.divui [[LHS_S]], [[RHS_S]] : i32
     // CHECK-NEXT:      linalg.yield [[OP]] : i32
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-    // CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
-    // CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
+    // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 }
 
 // -----
@@ -177,16 +171,13 @@ module @SingleMaxSILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.Maximum
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[OP:%.+]] = arith.maxsi [[LHS]], [[RHS]] : i32
 // CHECK-NEXT:      linalg.yield [[OP]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -210,16 +201,13 @@ module @SingleMaxUILayer {
     return %0 : tensor<1x1x1x1000xui32>
 
 // CHECK-NOT:     IE.Maximum
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[OP:%.+]] = arith.maxui [[LHS]], [[RHS]] : i32
 // CHECK-NEXT:      linalg.yield [[OP]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -273,16 +261,13 @@ module @SingleMinSILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT:     IE.Minimum
-// CHECK-DAG:     [[LHS_BC:%.+]] = tensor.bitcast [[LHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[RHS_BC:%.+]] = tensor.bitcast [[RHS:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
-// CHECK-DAG:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:         [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[OP:%.+]] = arith.minsi [[LHS]], [[RHS]] : i32
 // CHECK-NEXT:      linalg.yield [[OP]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -306,16 +291,13 @@ module @SingleMinUILayer {
     return %0 : tensor<1x1x1x1000xui32>
 
 // CHECK-NOT:     IE.Minimum
-// CHECK:         [[LHS_BC:%.+]] = tensor.bitcast {{%.+}} : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RHS_BC:%.+]] = tensor.bitcast {{%.+}} : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[LHS_BC]], [[RHS_BC]] : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
+// CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xi32>, tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: i32, [[RHS:%.+]]: i32, {{%.+}}: i32):
 // CHECK-NEXT:      [[OP:%.+]] = arith.minui [[LHS]], [[RHS]] : i32
 // CHECK-NEXT:      linalg.yield [[OP]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>
-// CHECK-NEXT:    [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
-// CHECK-NEXT:    IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
+// CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
   }
 }
 
@@ -338,10 +320,10 @@ module @SingleLogLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT:  IE.Log
-// CHECK: IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x1x1x1000xf16>) {
+// CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:      [[OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG]] : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
-// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:        [[LOG:%.+]] = math.log [[IN]] fastmath<afn> : f16
 // CHECK-NEXT:        linalg.yield [[LOG]] : f16
 // CHECK-NEXT:      } -> tensor<1x1x1x1000xf16>
@@ -368,10 +350,10 @@ module @SingleExpLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT:  IE.Exp
-// CHECK: IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x1x1x1000xf16>) {
+// CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:      [[OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG]] : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
-// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:        [[EXP:%.+]] = math.exp [[IN]] fastmath<afn> : f16
 // CHECK-NEXT:        linalg.yield [[EXP]] : f16
 // CHECK-NEXT:      } -> tensor<1x1x1x1000xf16>
@@ -399,7 +381,7 @@ module @SingleSinLayer {
 
     // CHECK-NOT:    IE.Sin
     // CHECK:        [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-    // CHECK-NEXT:   {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+    // CHECK-NEXT:   {{.+}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[EXT:%.+]] = arith.extf [[IN]] : f16 to f32
     // CHECK-NEXT:      [[SIN:%.+]] = math.sin [[EXT]] : f32
@@ -430,10 +412,10 @@ module @SingleSqrtLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT: IE.Sqrt
-// CHECK: IE.CodeGenCapsule inputs({{.*}} as [[ARG:%.+]]: tensor<1x1x1x1000xf16>) {
+// CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:      [[OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG]] : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
-// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.*}}: f16):
+// CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, {{.+}}: f16):
 // CHECK-NEXT:        [[SQRT:%.+]] = math.sqrt [[IN]] fastmath<afn> : f16
 // CHECK-NEXT:        linalg.yield [[SQRT]] : f16
 // CHECK-NEXT:      } -> tensor<1x1x1x1000xf16>
@@ -461,7 +443,7 @@ module @SingleRoundLayerHalfToEven  {
 
     // CHECK-NOT:     IE.Round
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-    // CHECK-NEXT:    {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+    // CHECK-NEXT:    {{.+}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[VAR0:%.+]] = math.roundeven [[IN]] : f16
     // CHECK-NEXT:      linalg.yield [[VAR0]] : f16
@@ -487,7 +469,7 @@ module @SingleRoundLayerHalfAwayFromZero {
 
     // CHECK-NOT:     IE.Round
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-    // CHECK-NEXT:    {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+    // CHECK-NEXT:    {{.+}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[VAR0:%.+]] = math.round [[IN]] : f16
     // CHECK-NEXT:      linalg.yield [[VAR0]] : f16
@@ -514,7 +496,7 @@ module @SingleErfLayer {
 
     // CHECK-NOT:     IE.Erf
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-    // CHECK-NEXT:    {{.*}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+    // CHECK-NEXT:    {{.+}} = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[EXT:%.+]] = arith.extf [[IN]] : f16 to f32
     // CHECK-NEXT:      [[ERF:%.+]] = math.erf [[EXT]] : f32
@@ -547,8 +529,7 @@ module @SingleConvertFPToSILayer {
 // CHECK:     ^bb0([[IN:%.+]]: f16, {{%.+}}: i32):
 // CHECK:       [[OP:%.+]] = arith.fptosi [[IN]] : f16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 
   }
 }
@@ -575,8 +556,7 @@ module @SingleConvertFPToUILayer {
 // CHECK:     ^bb0([[IN:%.+]]: f16, {{%.+}}: i32):
 // CHECK:       [[OP:%.+]] = arith.fptoui [[IN]] : f16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
-// CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 
   }
 }
@@ -598,9 +578,8 @@ module @SingleConvertSIToFPLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT: IE.Convert
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG0:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK:     ^bb0([[IN:%.+]]: i32, {{%.+}}: f16):
 // CHECK:       [[OP:%.+]] = arith.sitofp [[IN]] : i32 to f16
 // CHECK:       linalg.yield [[OP]] : f16
@@ -627,9 +606,8 @@ module @SingleConvertUIToFPLayer {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT: IE.Convert
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG0:%.+]] : tensor<1x1x1x1000xui32> to tensor<1x1x1x1000xi32>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
-// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
+// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK:     ^bb0([[IN:%.+]]: i32, {{%.+}}: f16):
 // CHECK:       [[OP:%.+]] = arith.uitofp [[IN]] : i32 to f16
 // CHECK:       linalg.yield [[OP]] : f16
@@ -710,14 +688,12 @@ module @SingleConvertExtSILayer {
     return %0 : tensor<1x1x1x1000xsi32>
 
 // CHECK-NOT: IE.Convert
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi16> to tensor<1x1x1x1000xi16>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK:     ^bb0([[IN:%.+]]: i16, {{%.+}}: i32):
 // CHECK:       [[OP:%.+]] = arith.extsi [[IN]] : i16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-// CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xsi32>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 
   }
 }
@@ -739,14 +715,12 @@ module @SingleConvertExtUILayer {
     return %0 : tensor<1x1x1x1000xui32>
 
 // CHECK-NOT: IE.Convert
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xui16> to tensor<1x1x1x1000xi16>
 // CHECK:     [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[RET]] : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+// CHECK:     [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK:     ^bb0([[ARG0:%.+]]: i16, {{%.+}}: i32):
-// CHECK:       [[OP:%.+]] = arith.extui %{{.+}} : i16 to i32
+// CHECK:       [[OP:%.+]] = arith.extui {{.+}} : i16 to i32
 // CHECK:       linalg.yield [[OP]] : i32
-// CHECK:     [[RET:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xui32>
-// CHECK:     IE.CGCYield [[RET]] : tensor<1x1x1x1000xui32>
+// CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 
   }
 }
@@ -775,10 +749,10 @@ module @SingleConvertTruncILayer {
 // CHECK:       linalg.yield [[OP]] : i16
 // CHECK:     IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi16>
   }
-} 
+}
 
 // -----
-// IE.Abs 
+// IE.Abs
 
 module @SingleAbsFloatLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -805,7 +779,7 @@ module @SingleAbsFloatLayer {
 }
 
 // -----
-// IE.Negative 
+// IE.Negative
 
 // CHECK: module @SingleNegativeFloatLayer
 module @SingleNegativeFloatLayer {
@@ -851,20 +825,18 @@ module @SingleNegativeSI32Layer {
     return %0 : tensor<1x1x1x1000xsi32>
 
     // CHECK-NOT: IE.Negative
-    // CHECK: [[BC_ARG:%.+]] = tensor.bitcast [[ARG:%.+]] : tensor<1x1x1x1000xsi32> to tensor<1x1x1x1000xi32>
     // CHECK: [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
-    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[BC_ARG]] : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
     // CHECK: ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
     // CHECK: [[ZERO:%.+]] = arith.constant 0 : i32
     // CHECK: [[NEG:%.+]] = arith.subi [[ZERO]], [[IN]] : i32
     // CHECK: linalg.yield [[NEG]] : i32
-    // CHECK: [[RES:%.+]] = tensor.bitcast [[LINALG_OP]] : tensor<1x1x1x1000xi32> to tensor<1x1x1x1000xsi32>
-    // CHECK: IE.CGCYield [[RES]] : tensor<1x1x1x1000xsi32>
+    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xi32>
 	}
 }
 
 // -----
-// IE.Sign  
+// IE.Sign
 
 module @SingleSignFloatLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -904,7 +876,7 @@ module @SingleSignFloatLayer {
 }
 
 // -----
-// IE.HSwish  
+// IE.HSwish
 
 module @SingleHSwishFloatLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -928,19 +900,19 @@ module @SingleHSwishFloatLayer {
     // CHECK:   [[THREE:%.+]] = arith.constant 3.000000e+00 : f16
     // CHECK:   [[SIX:%.+]] = arith.constant 6.000000e+00 : f16
     // CHECK:   [[DIV_CST:%.+]] = arith.constant 1.666260e-01 : f16
-    // CHECK:   [[ADD:%.+]] = arith.addf %{{.+}}, [[THREE]] : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf {{.+}}, [[THREE]] : f16
     // CHECK:   [[MAX:%.+]] = arith.maximumf [[ADD]], [[ZERO]] fastmath<nnan,nsz> : f16
     // CHECK:   [[MIN:%.+]] = arith.minimumf [[MAX]], [[SIX]] fastmath<nnan,nsz> : f16
     // CHECK:   [[DIV:%.+]] = arith.mulf [[MIN]], [[DIV_CST]] : f16
     // CHECK:   [[MUL:%.+]] = arith.mulf [[IN]], [[DIV]] : f16
     // CHECK:   linalg.yield [[MUL]] : f16
     // CHECK: IE.CGCYield [[LINALG_OP]]  : tensor<1x1x1x1000xf16>
-    
+
 	}
 }
 
 // -----
-// IE.HSigmoid  
+// IE.HSigmoid
 
 module @SingleHSigmoidFloatLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -963,13 +935,13 @@ module @SingleHSigmoidFloatLayer {
     // CHECK:   [[THREE:%.+]] = arith.constant 3.000000e+00 : f16
     // CHECK:   [[SIX:%.+]] = arith.constant 6.000000e+00 : f16
     // CHECK:   [[DIV_CST:%.+]] = arith.constant 1.666260e-01 : f16
-    // CHECK:   [[ADD:%.+]] = arith.addf %{{.+}}, [[THREE]] : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf {{.+}}, [[THREE]] : f16
     // CHECK:   [[MAX:%.+]] = arith.maximumf [[ADD]], [[ZERO]] fastmath<nnan,nsz> : f16
     // CHECK:   [[MIN:%.+]] = arith.minimumf [[MAX]], [[SIX]] fastmath<nnan,nsz> : f16
     // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[DIV_CST]] : f16
     // CHECK:   linalg.yield [[MUL]] : f16
     // CHECK: IE.CGCYield [[LINALG_OP]]  : tensor<1x1x1x1000xf16>
-    
+
 	}
 }
 
@@ -1037,17 +1009,17 @@ module @SingleEluFloatLayer {
 
     // CHECK-NOT: IE.Elu
     // CHECK: linalg.generic
-    // CHECK: ^bb0(%[[IN:.*]]: f16, %{{.*}}: f16):
-    // CHECK-DAG: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-    // CHECK-DAG: %[[ONE:.*]] = arith.constant 1.000000e+00 : f16
-    // CHECK-DAG: %[[ALPHA:.*]] = arith.constant 1.000000e+00 : f16
-    // CHECK: %[[MIN:.*]] = arith.minimumf %[[IN]], %[[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK: %[[MAX:.*]] = arith.maximumf %[[IN]], %[[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK: %[[EXP:.*]] = math.exp %[[MIN]] fastmath<afn> : f16
-    // CHECK: %[[EXP_MINUS_ONE:.*]] = arith.subf %[[EXP]], %[[ONE]] : f16
-    // CHECK: %[[SCALED:.*]] = arith.mulf %[[ALPHA]], %[[EXP_MINUS_ONE]] : f16
-    // CHECK: %[[RESULT:.*]] = arith.addf %[[MAX]], %[[SCALED]] : f16
-    // CHECK: linalg.yield %[[RESULT]] : f16
+    // CHECK: ^bb0([[IN:%.+]]: f16, {{.+}}: f16):
+    // CHECK-DAG: [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK-DAG: [[ONE:%.+]] = arith.constant 1.000000e+00 : f16
+    // CHECK-DAG: [[ALPHA:%.+]] = arith.constant 1.000000e+00 : f16
+    // CHECK: [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK: [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK: [[EXP:%.+]] = math.exp [[MIN]] fastmath<afn> : f16
+    // CHECK: [[EXP_MINUS_ONE:%.+]] = arith.subf [[EXP]], [[ONE]] : f16
+    // CHECK: [[SCALED:%.+]] = arith.mulf [[ALPHA]], [[EXP_MINUS_ONE]] : f16
+    // CHECK: [[RESULT:%.+]] = arith.addf [[MAX]], [[SCALED]] : f16
+    // CHECK: linalg.yield [[RESULT]] : f16
   }
 }
 
@@ -1115,11 +1087,11 @@ module @SinglePReluScalarSlope {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1148,12 +1120,12 @@ module @PRelu1DSlopeNonChannel {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
-    // CHECK-SAME: ins({{.*}}tensor<1x3x5x7xf16>, tensor<7xf16>)
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK-SAME: ins({{.+}}tensor<1x3x5x7xf16>, tensor<7xf16>)
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1182,12 +1154,12 @@ module @PRelu1DSlopeChannel {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
-    // CHECK-SAME: ins({{.*}}tensor<1x3x5x7xf16>, tensor<3xf16>)
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK-SAME: ins({{.+}}tensor<1x3x5x7xf16>, tensor<3xf16>)
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1216,11 +1188,11 @@ module @PRelu1DInputScalarSlope {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel"]
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1249,12 +1221,12 @@ module @PRelu2DInput1DSlope {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel"]
-    // CHECK-SAME: ins({{.*}}tensor<20x128xf16>, tensor<128xf16>)
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK-SAME: ins({{.+}}tensor<20x128xf16>, tensor<128xf16>)
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1283,14 +1255,14 @@ module @PRelu4DInput1DSlope {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
-    // CHECK-SAME: ins({{.*}}tensor<1x20x128x128xf16>, tensor<20xf16>)
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
-    // CHECK:   %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   %[[MIN:.*]] = arith.minimumf %[[IN]], %[[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   %[[MAX:.*]] = arith.maximumf %[[IN]], %[[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   %[[MUL:.*]] = arith.mulf %[[MIN]], %[[SLOPE]] : f16
-    // CHECK:   %[[ADD:.*]] = arith.addf %[[MAX]], %[[MUL]] : f16
-    // CHECK:   linalg.yield %[[ADD]] : f16
+    // CHECK-SAME: ins({{.+}}tensor<1x20x128x128xf16>, tensor<20xf16>)
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
+    // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
+    // CHECK:   linalg.yield [[ADD]] : f16
   }
 }
 
@@ -1317,14 +1289,14 @@ module @PRelu3DInput1DSlope {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel"]
-    // CHECK-SAME: ins({{.*}}tensor<4x5x6xf16>, tensor<5xf16>)
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
-    // CHECK:   %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   %[[MIN:.*]] = arith.minimumf %[[IN]], %[[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   %[[MAX:.*]] = arith.maximumf %[[IN]], %[[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   %[[MUL:.*]] = arith.mulf %[[MIN]], %[[SLOPE]] : f16
-    // CHECK:   %[[ADD:.*]] = arith.addf %[[MAX]], %[[MUL]] : f16
-    // CHECK:   linalg.yield %[[ADD]] : f16
+    // CHECK-SAME: ins({{.+}}tensor<4x5x6xf16>, tensor<5xf16>)
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
+    // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
+    // CHECK:   linalg.yield [[ADD]] : f16
   }
 }
 
@@ -1351,11 +1323,11 @@ module @PReluF32DataType {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f32, %[[SLOPE:[a-zA-Z0-9_]*]]: f32, %{{.*}}: f32):
+    // CHECK: ^bb0([[IN:%.+]]: f32, [[SLOPE:%.+]]: f32, {{.+}}: f32):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f32
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f32
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f32
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f32
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f32
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f32
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f32
     // CHECK:   linalg.yield [[ADD]] : f32
   }
@@ -1384,11 +1356,11 @@ module @PReluNegativeValues {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel"]
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1417,11 +1389,11 @@ module @PReluLargeSlope {
     // CHECK-NOT: IE.PRelu
     // CHECK: linalg.generic
     // CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel"]
-    // CHECK: ^bb0(%[[IN:[a-zA-Z0-9_]*]]: f16, %[[SLOPE:[a-zA-Z0-9_]*]]: f16, %{{.*}}: f16):
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[SLOPE:%.+]]: f16, {{.+}}: f16):
     // CHECK:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK:   [[MIN:%.+]] = arith.minimumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MAX:%.+]] = arith.maximumf %[[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
-    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], %[[SLOPE]] : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE]] : f16
     // CHECK:   [[ADD:%.+]] = arith.addf [[MAX]], [[MUL]] : f16
     // CHECK:   linalg.yield [[ADD]] : f16
   }
@@ -1454,9 +1426,9 @@ module @SingleSoftPlusHalfLayer {
     // CHECK: [[ONE:%.+]] = arith.constant 1.000000e+00 : f32
 
     // SoftPlus computation: log(1 + exp(input)) in FP32
-    // CHECK: [[EXP:%.+]] = math.exp [[EXT]] fastmath<{{.*}}afn{{.*}}> : f32
+    // CHECK: [[EXP:%.+]] = math.exp [[EXT]] fastmath<{{.+}}afn{{.*}}> : f32
     // CHECK: [[ONE_PLUS_EXP:%.+]] = arith.addf [[ONE]], [[EXP]] : f32
-    // CHECK: [[SOFTPLUS_RESULT:%.+]] = math.log [[ONE_PLUS_EXP]] fastmath<{{.*}}afn{{.*}}> : f32
+    // CHECK: [[SOFTPLUS_RESULT:%.+]] = math.log [[ONE_PLUS_EXP]] fastmath<{{.+}}afn{{.*}}> : f32
 
     // CHECK: [[USE_LINEAR:%.+]] = arith.cmpf olt, [[EXT]], [[THRESHOLD]] : f32
     // CHECK: [[RESULT_F32:%.+]] = arith.select [[USE_LINEAR]], [[SOFTPLUS_RESULT]], [[EXT]] : f32
@@ -1493,9 +1465,9 @@ module @SingleSoftPlusFloat32Layer {
     // CHECK: [[ONE:%.+]] = arith.constant 1.000000e+00 : f32
 
     // SoftPlus computation: log(1 + exp(input))
-    // CHECK: [[EXP:%.+]] = math.exp [[IN]] fastmath<{{.*}}afn{{.*}}> : f32
+    // CHECK: [[EXP:%.+]] = math.exp [[IN]] fastmath<{{.+}}afn{{.*}}> : f32
     // CHECK: [[ONE_PLUS_EXP:%.+]] = arith.addf [[ONE]], [[EXP]] : f32
-    // CHECK: [[SOFTPLUS_RESULT:%.+]] = math.log [[ONE_PLUS_EXP]] fastmath<{{.*}}afn{{.*}}> : f32
+    // CHECK: [[SOFTPLUS_RESULT:%.+]] = math.log [[ONE_PLUS_EXP]] fastmath<{{.+}}afn{{.*}}> : f32
 
     // CHECK: [[USE_LINEAR:%.+]] = arith.cmpf olt, [[IN]], [[THRESHOLD]] : f32
     // CHECK: [[RESULT:%.+]] = arith.select [[USE_LINEAR]], [[SOFTPLUS_RESULT]], [[IN]] : f32
@@ -1528,9 +1500,9 @@ module @SingleSoftPlusBigValuesLayer {
     // CHECK: [[EXT:%.+]] = arith.extf {{%.+}} : f16 to f32
     // CHECK: [[THRESHOLD:%.+]] = arith.constant 1.100000e+01 : f32
     // CHECK: [[ONE:%.+]] = arith.constant 1.000000e+00 : f32
-    // CHECK: [[EXP:%.+]] = math.exp [[EXT]] fastmath<{{.*}}afn{{.*}}> : f32
+    // CHECK: [[EXP:%.+]] = math.exp [[EXT]] fastmath<{{.+}}afn{{.*}}> : f32
     // CHECK: [[ONE_PLUS_EXP:%.+]] = arith.addf [[ONE]], [[EXP]] : f32
-    // CHECK: [[SOFTPLUS_RESULT:%.+]] = math.log [[ONE_PLUS_EXP]] fastmath<{{.*}}afn{{.*}}> : f32
+    // CHECK: [[SOFTPLUS_RESULT:%.+]] = math.log [[ONE_PLUS_EXP]] fastmath<{{.+}}afn{{.*}}> : f32
     // CHECK: [[USE_LINEAR:%.+]] = arith.cmpf olt, [[EXT]], [[THRESHOLD]] : f32
     // CHECK: [[RESULT_F32:%.+]] = arith.select [[USE_LINEAR]], [[SOFTPLUS_RESULT]], [[EXT]] : f32
     // CHECK: [[TRUNC:%.+]] = arith.truncf [[RESULT_F32]] : f32 to f16
@@ -1672,5 +1644,206 @@ module @SingleMish5DLayer {
     // CHECK: linalg.yield [[RESULT]] : f16
     // CHECK: }
     // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<2x3x4x5x6xf16>
+  }
+}
+
+// -----
+// IE.Floor FP16 Custom Rounding
+
+module @SingleFloorHalfLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Floor(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.Floor
+    // CHECK-NOT: math.floor
+
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic
+    // CHECK: ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
+
+    // ===== FP16-specific constants (decimal form) =====
+    // CHECK-DAG: {{.+}} = arith.constant -32768 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 15360 : i16
+    // CHECK-DAG: {{.+}} = arith.constant -1 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 0 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 1 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 15 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 10 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 25599 : i16
+    // CHECK-DAG: {{.+}} = arith.constant -1024 : i16
+
+    // CHECK: {{.+}} = arith.bitcast [[IN]] : f16 to i16
+    // CHECK-DAG: arith.xori
+    // CHECK-DAG: arith.andi
+    // CHECK-DAG: arith.shrsi
+    // CHECK-DAG: arith.subi
+    // CHECK-DAG: arith.ori
+    // CHECK-DAG: arith.cmpi
+    // CHECK-DAG: arith.select
+
+    // CHECK: arith.bitcast
+    // CHECK: arith.addf
+    // CHECK: arith.bitcast
+    // CHECK: linalg.yield
+    // CHECK: }
+    // CHECK: IE.CGCYield [[LINALG_OP]]
+  }
+}
+
+// -----
+// IE.Floor FP32 with math libs
+
+module @SingleFloorFloatLayerFP32 {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf32>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf32>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf32>) -> tensor<1x1x1x1000xf32> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf32>) {
+      %1 = IE.Floor(%arg1) : tensor<1x1x1x1000xf32> -> tensor<1x1x1x1000xf32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf32>
+    } -> tensor<1x1x1x1000xf32>
+    return %0 : tensor<1x1x1x1000xf32>
+
+    // CHECK-NOT: IE.Floor
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic
+    // CHECK: ^bb0([[IN:%.+]]: f32, {{%.+}}: f32):
+    // CHECK: [[F:%.+]] = math.floor [[IN]] : f32
+    // CHECK: linalg.yield [[F]] : f32
+  }
+}
+
+// -----
+// IE.Ceiling FP16 Custom Rounding
+
+module @SingleCeilHalfLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf16>) {
+      %1 = IE.Ceiling(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf16>
+    } -> tensor<1x1x1x1000xf16>
+    return %0 : tensor<1x1x1x1000xf16>
+
+    // CHECK-NOT: IE.Ceiling
+    // CHECK-NOT: math.ceil
+
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic
+    // CHECK: ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
+
+    // ===== FP16-specific constants (decimal form) =====
+    // CHECK-DAG: {{.+}} = arith.constant -32768 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 15360 : i16
+    // CHECK-DAG: {{.+}} = arith.constant -1 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 0 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 1 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 15 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 10 : i16
+    // CHECK-DAG: {{.+}} = arith.constant 25599 : i16
+    // CHECK-DAG: {{.+}} = arith.constant -1024 : i16
+
+    // CHECK: {{.+}} = arith.bitcast [[IN]] : f16 to i16
+    // CHECK-DAG: arith.xori
+    // CHECK-DAG: arith.andi
+    // CHECK-DAG: arith.shrsi
+    // CHECK-DAG: arith.subi
+    // CHECK-DAG: arith.ori
+    // CHECK-DAG: arith.cmpi
+    // CHECK-DAG: arith.select
+
+    // CHECK: arith.bitcast
+    // CHECK: arith.addf
+    // CHECK: arith.bitcast
+    // CHECK: linalg.yield
+    // CHECK: }
+    // CHECK: IE.CGCYield [[LINALG_OP]]
+  }
+}
+
+// -----
+// IE.Ceiling FP32 with math libs
+
+module @SingleCeilFloatLayerFP32 {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x1x1x1000xf32>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x1x1x1000xf32>
+  }
+
+  func.func @main(%arg0: tensor<1x1x1x1000xf32>) -> tensor<1x1x1x1000xf32> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x1x1x1000xf32>) {
+      %1 = IE.Ceiling(%arg1) : tensor<1x1x1x1000xf32> -> tensor<1x1x1x1000xf32>
+      IE.CGCYield %1 : tensor<1x1x1x1000xf32>
+    } -> tensor<1x1x1x1000xf32>
+    return %0 : tensor<1x1x1x1000xf32>
+
+    // CHECK-NOT: IE.Ceiling
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic
+    // CHECK: ^bb0([[IN:%.+]]: f32, {{%.+}}: f32):
+    // CHECK: [[C:%.+]] = math.ceil [[IN]] : f32
+    // CHECK: linalg.yield [[C]] : f32
+  }
+}
+
+// -----    
+// IE.Quantize + IE.Dequantize
+
+!qElemType = !quant.uniform<u8:f16, 1.0588235294117647:37>
+module @QuantizeLayer {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input" : tensor<1x32x16x8xf16>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x32x16x8xf16>
+  }
+
+  func.func @main(%arg0: tensor<1x32x16x8xf16>) -> tensor<1x32x16x8xf16> {
+    %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<1x32x16x8xf16>) {
+      %3 = IE.Quantize(%arg1) {dstElemType = !qElemType} : tensor<1x32x16x8xf16> -> tensor<1x32x16x8x!qElemType>
+      IE.CGCYield %3 : tensor<1x32x16x8x!qElemType>
+    } -> tensor<1x32x16x8x!qElemType>
+    %2 = IE.CodeGenCapsule inputs(%0 as %arg1: tensor<1x32x16x8x!qElemType>) {
+      %3 = IE.Dequantize(%arg1) {dstElemType = f16} : tensor<1x32x16x8x!qElemType> -> tensor<1x32x16x8xf16>
+      IE.CGCYield %3 : tensor<1x32x16x8xf16>
+    } -> tensor<1x32x16x8xf16>
+    return %2 : tensor<1x32x16x8xf16>
+
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg1 : tensor<1x32x16x8xf16>) outs(%2 : tensor<1x32x16x8xi8>) {
+    // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: i8):
+    // CHECK:   [[CST:%.+]] = arith.constant 0.000000e+00 : f16
+    // CHECK:   [[CST_0:%.+]] = arith.constant 2.550000e+02 : f16
+    // CHECK:   [[CST_1:%.+]] = arith.constant 1.058590e+00 : f16
+    // CHECK:   [[CST_2:%.+]] = arith.constant 3.700000e+01 : f16
+    // CHECK:   [[DIV:%.+]] = arith.divf [[IN]], [[CST_1]] : f16
+    // CHECK:   [[ADD:%.+]] = arith.addf [[DIV]], [[CST_2]] : f16
+    // CHECK:   [[MAX:%.+]] = arith.maximumf [[ADD]], [[CST]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[MIN:%.+]] = arith.minimumf [[MAX]], [[CST_0]] fastmath<nnan,nsz> : f16
+    // CHECK:   [[OP:%.+]] = arith.fptosi [[MIN]] : f16 to i8
+    // CHECK:   linalg.yield [[OP]] : i8
+    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x32x16x8xi8>
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg1 : tensor<1x32x16x8xi8>) outs(%2 : tensor<1x32x16x8xf16>) {
+    // CHECK: ^bb0([[IN_2:%.+]]: i8, [[OUT_2:%.+]]: f16): 
+    // CHECK:   [[CST:%.+]] = arith.constant 1.058590e+00 : f16
+    // CHECK:   [[CST_0:%.+]] = arith.constant 3.700000e+01 : f16
+    // CHECK:   [[OP:%.+]] = arith.sitofp [[IN]] : i8 to f16
+    // CHECK:   [[SUB:%.+]] = arith.subf [[OP]], [[CST_0]] : f16
+    // CHECK:   [[MUL:%.+]] = arith.mulf [[CST]], [[SUB]] : f16
+    // CHECK:   linalg.yield [[MUL]] : f16
+    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x32x16x8xf16>   
   }
 }

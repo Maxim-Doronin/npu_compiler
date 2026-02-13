@@ -37,17 +37,16 @@ mlir::Value createSubAvgPool(IE::AvgPoolOp origOp, mlir::PatternRewriter& rewrit
     const auto endsAttr = getIntArrayAttr(ctx, ends);
 
     auto stridedSliceOp = rewriter.createOrFold<IE::StridedSliceOp>(
-            takeOpLoc(origOp, StringLiteral("slice_{0}"), locSuffix), origOp.getInput(), nullptr, nullptr, nullptr,
-            beginsAttr, endsAttr, stridesAttr, beginMask, endMask, newAxisMask, shrinkAxisMask, ellipsisMask);
+            takeOpLoc(origOp, "slice_{0}", locSuffix), origOp.getInput(), nullptr, nullptr, nullptr, beginsAttr,
+            endsAttr, stridesAttr, beginMask, endMask, newAxisMask, shrinkAxisMask, ellipsisMask);
 
     const auto zeroPadAttr = getIntArrayAttr(ctx, ArrayRef({0, 0}));
 
-    auto avgPoolOp = rewriter.create<IE::AvgPoolOp>(takeOpLoc(origOp, StringLiteral("pool_{0}"), locSuffix),
-                                                    stridedSliceOp == nullptr ? origOp.getInput() : stridedSliceOp,
-                                                    avgPoolOpKernelAttr, avgPoolOpStridesAttr, zeroPadAttr, zeroPadAttr,
-                                                    origOp.getRoundingTypeAttr(), nullptr, origOp.getPostOpAttr(),
-                                                    origOp.getClampAttr(), origOp.getStaticScaleAttr(),
-                                                    origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
+    auto avgPoolOp = rewriter.create<IE::AvgPoolOp>(
+            takeOpLoc(origOp, "pool_{0}", locSuffix), stridedSliceOp == nullptr ? origOp.getInput() : stridedSliceOp,
+            avgPoolOpKernelAttr, avgPoolOpStridesAttr, zeroPadAttr, zeroPadAttr, origOp.getRoundingTypeAttr(), nullptr,
+            origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getStaticScaleAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
     return avgPoolOp.getOutput();
 }
 
@@ -83,8 +82,8 @@ mlir::LogicalResult AveragePoolRewriter::matchAndRewrite(IE::AvgPoolOp origOp, m
     const auto inputHeight = inputShape[Dims4D::Act::H];
     const auto origStrides = parseIntArrayAttr<int64_t>(origOp.getStrides());
     const auto kernelSize = parseIntArrayAttr<int64_t>(origOp.getKernelSize());
-    const auto kernelHeight = kernelSize[Dims4D::Kernel::Y.ind()];
-    const auto kernelWidth = kernelSize[Dims4D::Kernel::X.ind()];
+    auto kernelHeight = kernelSize[Dims4D::Kernel::Y.ind()];
+    auto kernelWidth = kernelSize[Dims4D::Kernel::X.ind()];
     SmallVector<mlir::Value> inputs;
     SmallVector<SmallVector<int64_t>> staticOffsets;
     nestLog.trace("Create AvgPool center op without any padding");
@@ -99,10 +98,19 @@ mlir::LogicalResult AveragePoolRewriter::matchAndRewrite(IE::AvgPoolOp origOp, m
                     : origStrides[Dims4D::Strides::X.ind()] - padsBegin[Dims4D::PadsBegin::Left.ind()];
     const auto beginW = stridePadsbeginWDiff > 0 ? stridePadsbeginWDiff : 0;
 
-    auto avgCenterOp = createSubAvgPool(origOp, rewriter, /*begins=*/
-                                        {0, 0, beginH, beginW},
-                                        /*ends=*/{0, 0, inputHeight, inputWidth}, origOp.getKernelSize(),
-                                        origOp.getStrides(), "center");
+    // Handle the case of kernelSize = dataShape + pads
+    if (kernelHeight > inputHeight) {
+        kernelHeight -= (padsBegin[Dims4D::PadsBegin::Top.ind()] + padsEnd[Dims4D::PadsEnd::Bottom.ind()]);
+    }
+    if (kernelWidth > inputWidth) {
+        kernelWidth -= (padsBegin[Dims4D::PadsBegin::Left.ind()] + padsEnd[Dims4D::PadsEnd::Right.ind()]);
+    }
+    auto centerKernelAttr = getIntArrayAttr(ctx, ArrayRef({kernelHeight, kernelWidth}));
+
+    auto avgCenterOp =
+            createSubAvgPool(origOp, rewriter, /*begins=*/
+                             {0, 0, beginH, beginW},
+                             /*ends=*/{0, 0, inputHeight, inputWidth}, centerKernelAttr, origOp.getStrides(), "center");
 
     // The padsEnd attribute maybe redundant. e.g.
     // input: 1x256x96x32xf16, output: 1x256x48x16xf16

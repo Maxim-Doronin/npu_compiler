@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,9 +18,9 @@ func.func @main(%arg0: tensor<1x4x128x384xf16, {order = #NHWC}>) -> tensor<1x64x
     %4 = IE.MVN(%3) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16>
     return %4 : tensor<1x64x64x192xf16>
 
-    // CHECK:      [[CONV:%.*]] = IE.Convolution
-    // CHECK:      [[REORDER:%.*]] = IE.Reorder([[CONV]]) {dstOrder = #NCHW} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16>
-    // CHECK:      [[MVN:%.*]] = IE.MVN([[REORDER]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16>
+    // CHECK:      [[CONV:%.+]] = IE.Convolution
+    // CHECK:      [[REORDER:%.+]] = IE.Reorder([[CONV]]) {dstOrder = #NCHW} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16>
+    // CHECK:      [[MVN:%.+]] = IE.MVN([[REORDER]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16>
 }
 }
 
@@ -38,9 +38,9 @@ func.func @main(%arg0: tensor<1x4x128x384xf16, {order = #NHWC}>) -> tensor<1x384
     %4 = IE.MVN(%3) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x384x16x48xf16> -> tensor<1x384x16x48xf16>
     return %4 : tensor<1x384x16x48xf16>
 
-    // CHECK:      [[CONV:%.*]] = IE.Convolution
+    // CHECK:      [[CONV:%.+]] = IE.Convolution
     // CHECK-NOT:  IE.Reorder
-    // CHECK:      [[MVN:%.*]] = IE.MVN([[CONV]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x384x16x48xf16, {order = #NHWC}> -> tensor<1x384x16x48xf16, {order = #NHWC}>
+    // CHECK:      [[MVN:%.+]] = IE.MVN([[CONV]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x384x16x48xf16, {order = #NHWC}> -> tensor<1x384x16x48xf16, {order = #NHWC}>
 }
 }
 
@@ -58,9 +58,9 @@ func.func @main(%arg0: tensor<1x4x128x384xf16, {order = #NHWC}>) -> tensor<1x64x
     %4 = IE.MVN(%3) {across_channels = true, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x192xf16> -> tensor<1x64x64x192xf16>
     return %4 : tensor<1x64x64x192xf16>
 
-    // CHECK:      [[CONV:%.*]] = IE.Convolution
+    // CHECK:      [[CONV:%.+]] = IE.Convolution
     // CHECK-NOT:  IE.Reorder
-    // CHECK:      [[MVN:%.*]] = IE.MVN([[CONV]]) {across_channels = true, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
+    // CHECK:      [[MVN:%.+]] = IE.MVN([[CONV]]) {across_channels = true, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x192xf16, {order = #NHWC}> -> tensor<1x64x64x192xf16, {order = #NHWC}>
 }
 }
 
@@ -78,8 +78,8 @@ func.func @main(%arg0: tensor<1x4x128x384xf16, {order = #NHWC}>) -> tensor<1x64x
     %4 = IE.MVN(%3) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x191xf16> -> tensor<1x64x64x191xf16>
     return %4 : tensor<1x64x64x191xf16>
 
-    // CHECK:      [[CONV:%.*]] = IE.Convolution
+    // CHECK:      [[CONV:%.+]] = IE.Convolution
     // CHECK-NOT:  IE.Reorder
-    // CHECK:      [[MVN:%.*]] = IE.MVN([[CONV]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x191xf16, {order = #NHWC}> -> tensor<1x64x64x191xf16, {order = #NHWC}>
+    // CHECK:      [[MVN:%.+]] = IE.MVN([[CONV]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x64x64x191xf16, {order = #NHWC}> -> tensor<1x64x64x191xf16, {order = #NHWC}>
 }
 }

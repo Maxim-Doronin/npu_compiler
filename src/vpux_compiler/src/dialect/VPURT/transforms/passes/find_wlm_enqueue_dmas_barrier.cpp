@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,17 +52,11 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
 
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
 
-    mlir::DenseSet<vpux::VPU::ExecutorKind> executorKind = {
-            VPU::ExecutorKind::DPU,
-            VPU::ExecutorKind::DMA_NN,
-            VPU::ExecutorKind::SHAVE_ACT,
-    };
-    barrierInfo.initializeTaskQueueTypeMap(executorKind);
     barrierInfo.buildTaskQueueTypeMap();
 
     // If no compute tasks in the model then there is no need for enqueue DMAs
     // DMA tasks are all enqueued at bootstrap
-    if (barrierInfo.getNumOfTasks(VPU::ExecutorKind::DMA_NN) == barrierInfo.getNumOfTasks()) {
+    if (barrierInfo.getNumOfTasks(config::ExecutorKind::DMA_NN) == barrierInfo.getNumOfTasks()) {
         barrierInfo.clearAttributes();
         return;
     }
@@ -70,7 +64,7 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
     VPURT::BarrierPagesSplitHandler barrierPagesSplitHandler(func, barrierInfo, numBarriers, _log);
     barrierPagesSplitHandler.initializeForEnqueue(func);
 
-    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap{vpux::VPU::ExecutorKind::DMA_NN};
+    mlir::DenseSet<vpux::config::ExecutorKind> executorEnqAtBootstrap{vpux::config::ExecutorKind::DMA_NN};
 
     // Get Execution Groups on each queue
     auto& execGroupAnalysis = getAnalysis<ExecutionGroupAnalysis>();
@@ -90,6 +84,9 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
     auto inBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp, VPU::MemoryKind::DDR);
     auto outBuffer = VPUIP::createDummyBuffer(builder, firstDeclareBufferOp);
 
+    const VPURT::TaskQueueType enqueueDmaQueueType = {config::ExecutorKind::DMA_NN,
+                                                      getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
+
     // Process provided enqueue DMA data.
     // enqueueDmaDataVec order of enqueue DMAs follows the order of tasks on same HW FIFO
     // It is important to keep this order when inserting those ops in the IR, especially
@@ -104,7 +101,7 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
 
         _log.trace("Enqueue DMA data: pageInd={0}, queueType={1}:{2}, startTaskIdx={3}, endTaskIdx={4}, "
                    "waitBars={5}, insertBefore={6}",
-                   pageInd, VPU::stringifyExecutorKind(queueType.type), queueType.id, startTaskIdx, endTaskIdx,
+                   pageInd, config::stringifyExecutorKind(queueType.type), queueType.id, startTaskIdx, endTaskIdx,
                    to_small_vector(waitBars), insertBefore);
 
         auto insertionPointOp = barrierInfo.getTaskOpAtIndex(insertBefore);
@@ -113,7 +110,7 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
 
         auto [tileIdx, listIdx] = VPURT::getTileAndListIndex(queueType, numClusters, arch);
 
-        auto executorKindAttr = VPU::ExecutorKindAttr::get(ctx, queueType.type);
+        auto executorKindAttr = config::ExecutorKindAttr::get(ctx, queueType.type);
         auto tileIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), tileIdx);
         auto listIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), listIdx);
         auto startTaskIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), startTaskIdx);
@@ -129,6 +126,9 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
         llvm::for_each(waitBars, [&](auto waitBar) {
             barrierInfo.addConsumer(waitBar, enqDMATaskInd);
         });
+
+        barrierPagesSplitHandler.updateTaskPageAssignmentForQueue(insertBefore, pageInd, enqueueDmaQueueType,
+                                                                  enqDmaTaskOp);
     }
 
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);

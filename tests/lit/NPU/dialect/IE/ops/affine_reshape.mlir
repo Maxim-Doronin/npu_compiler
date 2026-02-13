@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -191,7 +191,7 @@ func.func @ReshapeConvertAffineReshapeWithOutputLast2Dim1(%arg0: tensor<2x3x15x4
 
     return %0 : tensor<2x180x1x1xf32>
 
-    // CHECK: [[VAL0:%.*]] = IE.AffineReshape(%arg0)
+    // CHECK: [[VAL0:%.+]] = IE.AffineReshape(%arg0)
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [1], [1, 2, 3]], shape_value = [2, 180, 1, 1]} : tensor<2x3x15x4xf32> -> tensor<2x180x1x1xf32>
 
     // CHECK: return [[VAL0]] : tensor<2x180x1x1xf32>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,12 +25,12 @@ module @inout {
     %2 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x1x1xf16, @DDR>
     %3 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x1x1x1xf16, @DDR>
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %6 = VPUIP.NNDMA {port = 0 : i64} inputs(%2 : memref<1x1x1x1xf16, @DDR>) outputs(%3 : memref<1x1x1x1xf16, @DDR>) -> memref<1x1x1x1xf16, @DDR>
+      %6 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%2 : memref<1x1x1x1xf16, @DDR>) outputs(%3 : memref<1x1x1x1xf16, @DDR>) -> memref<1x1x1x1xf16, @DDR>
     }
 
-    // CHECK: %[[SCRATCH:.*]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<16xui32, [@CMX_NN, 0]>
+    // CHECK: [[SCRATCH:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<16xui32, [@CMX_NN, 0]>
     // CHECK: VPUMI40XX.MappedInference
-    // CHECK-SAME: dmaHwpBase(%[[SCRATCH]] : memref<16xui32, [@CMX_NN, 0]>)
+    // CHECK-SAME: dmaHwpBase([[SCRATCH]] : memref<16xui32, [@CMX_NN, 0]>)
     return %arg1 : memref<1x1x1x1xf16, @DDR>
   }
 }

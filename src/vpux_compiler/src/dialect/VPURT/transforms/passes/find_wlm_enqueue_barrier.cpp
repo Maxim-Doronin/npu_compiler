@@ -63,9 +63,9 @@ void FindWlmEnqueueBarrierPass::safeRunOnFunc() {
                                            ? enqDmaAtBootstrapOpt.getValue()
                                            : _workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES;
 
-    mlir::DenseSet<vpux::VPU::ExecutorKind> executorEnqAtBootstrap;
+    mlir::DenseSet<vpux::config::ExecutorKind> executorEnqAtBootstrap;
     if (enqDmaAtBootstrap) {
-        executorEnqAtBootstrap.insert(vpux::VPU::ExecutorKind::DMA_NN);
+        executorEnqAtBootstrap.insert(vpux::config::ExecutorKind::DMA_NN);
     }
 
     const auto res = enqueueBarrier.calculateEnqueueBarriers(executorEnqAtBootstrap);

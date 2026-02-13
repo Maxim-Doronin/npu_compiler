@@ -17,16 +17,16 @@ namespace vpux::VPU {
 mlir::LogicalResult applySCFTiling(mlir::Operation* operation, mlir::RewriterBase& builder);
 
 // Apply VF tiling using SCF dialect
-mlir::FailureOr<SmallVector<mlir::Operation*>> applySCFVerticalFusion(mlir::Operation* operation,
-                                                                      mlir::RewriterBase& builder, Logger log);
+SmallVector<mlir::Operation*> applySCFVerticalFusion(mlir::Operation* operation, mlir::RewriterBase& builder,
+                                                     Logger log);
 
-SmallVector<mlir::OpFoldResult> staticTileSizeComputation(mlir::OpBuilder& builder,
-                                                          ArrayRef<mlir::Operation*> operations,
-                                                          mlir::Operation* lastOperation, ShapeRef strategy,
-                                                          ShapeRef outputShape);
+SmallVector<mlir::OpFoldResult> staticTileSizeComputation(
+        mlir::OpBuilder& builder, ArrayRef<mlir::Operation*> operations, mlir::Operation* lastOperation,
+        ShapeRef strategy, ShapeRef outputShape, std::unordered_map<Dim, std::pair<int64_t, int64_t>>& remainders);
 
 SmallVector<mlir::OpFoldResult> dynamicTileSizeComputation(mlir::OpBuilder& builder,
                                                            ArrayRef<mlir::Operation*> operations,
-                                                           mlir::Operation* lastOperation, ShapeRef strategy);
+                                                           mlir::Operation* lastOperation, ShapeRef strategy,
+                                                           bool useBoundedType = true);
 
 }  // namespace vpux::VPU

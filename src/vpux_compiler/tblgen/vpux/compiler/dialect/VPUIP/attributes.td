@@ -131,6 +131,37 @@ def VPUIP_SwizzlingSchemeAttr : VPUIP_Attr<"SwizzlingScheme", [DeclareAttrInterf
     let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def VPUIP_SparsityStructureType :
+    VPUIP_I64EnumAttr<
+        "SparsityStructureType",
+        "Sparsity structure type",
+        [
+            I64EnumAttrCase<"DENSE_2_IN_4",          0>,
+            I64EnumAttrCase<"DENSE_1_IN_4",          1>,
+            I64EnumAttrCase<"DENSE_1_IN_8",          2>,
+            I64EnumAttrCase<"DENSE_1_IN_16",         3>
+        ]
+    > {
+}
+
+def VPUIP_SparsityStructureTypeAttr : VPUIP_EnumAttr<VPUIP_SparsityStructureType, "sparsity_structure_type">;
+
+//
+// SparsityConfigAttr
+//
+
+def VPUIP_SparsityConfigAttr : VPUIP_Attr<"SparsityConfig"> {
+    let description = [{
+        Represents various sparsity configuration options in NCEClusterTask.
+    }];
+
+    let parameters = (ins
+        "SparsityStructureTypeAttr":$sparsityStructureType
+    );
+
+    let assemblyFormat = "`<` struct(params) `>`";
+}
+
 //
 // DMADescriptorAttr
 //
@@ -585,7 +616,7 @@ def VPUIP_FetchDMAAttr : VPUIP_Attr<"FetchDMA"> {
     }];
 
     let parameters = (ins
-        "vpux::VPU::ExecutorKindAttr":$targetExecutorKindAttr,
+        "vpux::config::ExecutorKindAttr":$targetExecutorKindAttr,
         "mlir::IntegerAttr":$tileIdx,
         "mlir::IntegerAttr":$listIdx,
         "mlir::IntegerAttr":$execGroupIdx
@@ -611,7 +642,7 @@ def VPUIP_EnqueueDMAAttr : VPUIP_Attr<"EnqueueDMA"> {
     }];
 
     let parameters = (ins
-        "vpux::VPU::ExecutorKindAttr":$targetExecutorKindAttr,
+        "vpux::config::ExecutorKindAttr":$targetExecutorKindAttr,
         "mlir::IntegerAttr":$tileIdx,
         "mlir::IntegerAttr":$listIdx,
         "mlir::IntegerAttr":$startTaskIdx,

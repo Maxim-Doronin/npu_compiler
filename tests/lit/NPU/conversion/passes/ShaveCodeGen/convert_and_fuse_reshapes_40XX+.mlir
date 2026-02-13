@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,7 +24,7 @@ func.func @convertAndFuse(%arg0: tensor<1x1008x1x1xf16, {order = #NHWC}>) -> ten
 
   return %caps : tensor<1x1x1x1000xf32>
 
-// CHECK: IE.CodeGenCapsule inputs({{.*}} as [[ARG1:%.+]]: tensor<1x1x1x1008xf16>) {
+// CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x1x1x1008xf16>) {
 // CHECK-NEXT:      [[EXTRACT_SLICE:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 1, 1, 1000] [1, 1, 1, 1] : tensor<1x1x1x1008xf16> to tensor<1x1x1x1000xf16>
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf32>
 // CHECK-NEXT:      [[OP:%.+]] = linalg.generic

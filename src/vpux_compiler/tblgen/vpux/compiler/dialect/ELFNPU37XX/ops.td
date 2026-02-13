@@ -200,7 +200,7 @@ def CreateSymbolTableSectionOp :
     let arguments = (ins
                       StrAttr:$secName,
                       ELFNPU37XX_SectionFlagsAttr:$secFlags,
-                      UnitAttr:$isBuiltin
+                      UnitProp:$isBuiltin
                     );
 
     let results = (outs ELFNPU37XX_Section:$section);
@@ -213,6 +213,7 @@ def CreateSymbolTableSectionOp :
         `secName` `(` $secName `)`
         `secFlags` `(` $secFlags `)`
         attr-dict
+        prop-dict
         `->` type(results)
         $aRegion
     }];
@@ -271,7 +272,7 @@ def SymbolOp :
 
     let arguments = (ins
           AnyType:$inputArg,
-          UnitAttr:$isBuiltin,
+          UnitProp:$isBuiltin,
           OptionalAttr<StrAttr>:$name,
           OptionalAttr<ELFNPU37XX_SymbolTypeAttr>:$symType,
           OptionalAttr<UI64Attr>:$size,
@@ -286,6 +287,7 @@ def SymbolOp :
         (`type` `(` $symType^ `)`)?
         (`size` `(` $size^ `)`)?
         attr-dict
+        prop-dict
         `:` type($inputArg)
     }];
 }

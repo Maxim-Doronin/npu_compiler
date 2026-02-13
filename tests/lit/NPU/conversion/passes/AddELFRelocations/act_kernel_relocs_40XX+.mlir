@@ -61,7 +61,7 @@ module @Model20 {
     // CHECK: ELF.CreateSection @shave.params aligned(1024) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
     // CHECK:    VPUASM.KernelParams
     // CHECK: {elfMemOffsetAttrKey = 0 : ui64}
-    // CHECK: < {inputDimsBinaryVector = [], inputStridesBinaryVector = [],
+    // CHECK: <{inputDimsBinaryVector = [], inputStridesBinaryVector = [],
     // CHECK: kernel_params = [120, 128, 1, 64, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 240, 128, 1, 64, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 33, 67, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
     // CHECK: outputDimsBinaryVector = [], outputStridesBinaryVector = []}>
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,4 +22,4 @@ module @AddProfilingSection {
 }
 
 // CHECK: ELF.CreateProfilingSection @".profiling" aligned(1) secFlags(SHF_ALLOC) {
-// CHECK-NEXT: VPUASM.ProfilingMetadata @ProfilingMetadata {metadata = {{.*}} : vector<184xui8>}
+// CHECK-NEXT: VPUASM.ProfilingMetadata @ProfilingMetadata {metadata = {{.+}} : vector<184xui8>}

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,16 +57,18 @@ public:
     TaskSet& getUpdateBarriers(size_t taskInd);
     uint32_t getIndex(VPURT::TaskOp taskOp) const;
     uint32_t getIndex(VPURT::BarrierOpInterface barrierOp) const;
+    VPURT::BarrierOpInterface getBarrierOpAtIndex(size_t opIdx) const;
     virtual VPURT::TaskOp getTaskOpAtIndex(size_t opIdx) const;
+
+    bool isTaskQueueTypeInitialized(VPURT::TaskQueueType taskQueueType) const;
     VPURT::TaskQueueType getTaskQueueType(size_t taskInd) const;
     SmallVector<VPURT::TaskQueueType> getNonEmptyTaskQueueTypes() const;
     size_t getLastTaskForQueueType(VPURT::TaskQueueType taskQueueType) const;
     std::optional<size_t> getPrevTaskOnQueue(size_t taskInd, VPURT::TaskQueueType taskQueueType) const;
-    std::optional<size_t> getPrevTaskOnSameQueue(size_t taskInd) const;
-    std::optional<size_t> getNextTaskOnSameQueue(size_t taskInd) const;
+    std::optional<size_t> getNextTaskOnQueue(size_t taskInd, VPURT::TaskQueueType taskQueueType) const;
     // Return the closest previous task on the same queue that has a wait barrier
-    std::optional<size_t> getPrevTaskOnSameQueueWithWaitBar(size_t taskInd) const;
-    VPURT::BarrierOpInterface getBarrierOpAtIndex(size_t opIdx) const;
+    std::optional<size_t> getPrevTaskOnQueueWithWaitBar(size_t taskInd, VPURT::TaskQueueType taskQueueType) const;
+
     void enableUnevenVariantSplit();
 
 private:
@@ -122,14 +124,17 @@ public:
 
     // Get index of barrier's earliest consumer - smallest index among barrier consumers
     size_t getBarrierEarliestConsumer(size_t barInd);
+    // Get index of barrier's latest consumer - largest index among barrier consumers
+    size_t getBarrierLatestConsumer(size_t barInd);
 
     // Get index of earliest consumer from the set of consumers of provided barriers
     size_t getBarriersEarliestConsumer(const TaskSet& barriers);
 
     void logBarrierInfo();
     void optimizeBarriers(bool checkValidSlotCount = true, bool considerTaskFifoDependency = false,
-                          mlir::DenseSet<vpux::VPU::ExecutorKind> executors = {
-                                  VPU::ExecutorKind::DMA_NN, VPU::ExecutorKind::DPU, VPU::ExecutorKind::SHAVE_ACT});
+                          mlir::DenseSet<vpux::config::ExecutorKind> executors = {config::ExecutorKind::DMA_NN,
+                                                                                  config::ExecutorKind::DPU,
+                                                                                  config::ExecutorKind::SHAVE_ACT});
 
     /**
      * @brief Eliminate tasks not controlled by barriers
@@ -156,7 +161,7 @@ public:
      *
      * @param executorKind - set of executors for which the map should be initialized
      */
-    void initializeTaskQueueTypeMap(const mlir::DenseSet<vpux::VPU::ExecutorKind>& executorKind);
+    void initializeTaskQueueTypeMap(const mlir::DenseSet<vpux::config::ExecutorKind>& executorKind);
 
     /**
      * @brief build task queue type map for the initialized executor kinds.
@@ -189,7 +194,7 @@ public:
                                                                         bool considerTaskFifoDependency = true,
                                                                         bool ignoreOutOfBlockDependencies = false);
     virtual size_t getNumOfTasks() const;
-    virtual size_t getNumOfTasks(vpux::VPU::ExecutorKind executorKind) const;
+    virtual size_t getNumOfTasks(vpux::config::ExecutorKind executorKind) const;
     size_t getNumOfBarrierOps() const;
     virtual size_t getBarrierMaxVariantSum() const;
     static size_t getNumOfSlotsUsed(VPURT::TaskOp op);
@@ -237,7 +242,7 @@ public:
     SmallVector<TaskSet> createLegalVariantBatches(const TaskSet& tasks, size_t availableSlots,
                                                    bool considerTaskExecutorType = false);
     std::optional<VPURT::TaskQueueType> haveSameImplicitDependencyTaskQueueType(const TaskSet& taskInds);
-    std::optional<VPU::ExecutorKind> haveSameExecutorKind(const TaskSet& taskInds);
+    std::optional<config::ExecutorKind> haveSameExecutorKind(const TaskSet& taskInds);
     bool canBarriersBeMerged(const TaskSet& barrierProducersA, const TaskSet& barrierConsumersA,
                              const TaskSet& barrierProducersB, const TaskSet& barrierConsumersB,
                              ArrayRef<TaskSet> origWaitBarriersMap);
@@ -246,8 +251,9 @@ public:
     SmallVector<TaskSet> getWaitBarriersMap();
     void dumpBarrierDependencies(const SmallVector<BarrierInfo::TaskSet>& depsMap, std::string fileName);
     void dumpQueues(const std::map<VPURT::TaskQueueType, llvm::BitVector>& queueMap, std::string fileName);
+    void dumpTaskIdxToQueueIdxMapping(std::string fileName, std::optional<bool> wlmEnabled = std::nullopt);
     void dumpSlots(std::string fileName);
-    void dumpBarriers(std::string fileNamePrefix);
+    void dumpBarriers(std::string fileNamePrefix, std::optional<bool> wlmEnabled = std::nullopt);
 
     void splitControlGraphToBlocks(const size_t blockSize);
     bool verifyControlGraphSplit();
@@ -422,17 +428,17 @@ public:
      * @return Number of newly created connections between tasks (producers and consumers) and barriers
      */
     unsigned createBarrierDependenciesImpliedByFIFO(
-            size_t blockIdx, std::optional<mlir::DenseSet<vpux::VPU::ExecutorKind>> executorKind = std::nullopt);
+            size_t blockIdx, std::optional<mlir::DenseSet<vpux::config::ExecutorKind>> executorKind = std::nullopt);
 
     /**
      * @brief Create barrier dependencies between task execution groups
      *
      * @param blockIdx - task block index for which the dependencies should be generated
-     * @param execGroups - groups of tasks used to split schedule by barriers
+     * @param executionGroups - definition of groups of tasks executed together on single task descriptor fetch
      *
-     * @return Number of newly created barriers
+     * @return true - if new dependencies were created, false - otherwise
      */
-    unsigned createBarrierDependenciesBetweenExecutionGroups(size_t blockIdx, ExecutionGroupListMap& executionGroups);
+    bool createBarrierDependenciesForDescriptorFetchInNonWlm(size_t blockIdx, ExecutionGroupListMap& executionGroups);
 
     /**
      * @brief Remove barrier representation of dependencies implied FIFOs execution order created by
@@ -460,6 +466,8 @@ private:
      * @param taskControlMap - task control map calculated for blockIdx (should account for all FIFO dependencies)
      * @param controlMapOffset - task control map offset
      * @param wlmEnabled - WLM flag
+     * @param legalizationBarrierIdx - output value set to legalization barrier index if found and std::nullopt
+     * otherwise
      * @return for wlmEnabled=true case return true, if GrandChildGroup does not exist or if GrandChildGroup exists and
      * the last task from task execution group grpIdx has update barrier.
      * @return for wlmEnabled=false case return true, if GrandChildGroup does not exist or if GrandChildGroup exists and
@@ -467,10 +475,11 @@ private:
      * on any task from GrandChildGroup or later.
      * @return false, otherwise
      */
-    bool hasBarrierDependencyRequiredForDescriptorFetch(int grpIdx, size_t blockIdx,
-                                                        const ExecutionGroupList& fifoExecGroups,
-                                                        SmallVector<llvm::BitVector>& taskControlMap,
-                                                        size_t controlMapOffset, bool wlmEnabled);
+    bool hasBarrierDependencyRequiredForDescriptorFetch(
+            int grpIdx, size_t blockIdx, const ExecutionGroupList& fifoExecGroups,
+            std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
+            std::optional<size_t>& blockIdxOfTaskControlMap, bool wlmEnabled,
+            std::optional<size_t>& legalizationBarrierIdx);
 
     Logger _log;
     mlir::func::FuncOp _func;

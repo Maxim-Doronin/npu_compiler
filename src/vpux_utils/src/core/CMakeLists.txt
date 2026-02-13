@@ -19,6 +19,7 @@ list (APPEND SOURCES
             common_string_utils.cpp
             type/float8_e4m3.cpp
             type/float8_e5m2.cpp
+            type/float8_e8m0.cpp
             type/float16.cpp
             type/bfloat16.cpp
             type/float4_e2m1.cpp

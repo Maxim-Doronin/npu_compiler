@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,10 +37,12 @@ func.func @MergeQuantizeCastF8E5M2(%arg0 : tensor<1x4xf32>) -> tensor<1x4xf32> {
     %2 = IE.Dequantize(%1) {dstElemType = f32} : tensor<1x4x!qElemType> -> tensor<1x4xf32>
     return %2 : tensor<1x4xf32>
 
-    // CHECK-DAG:       [[MIN:%.+]] = const.Declare tensor<1x1xf32> = dense<-5.734400e+04> : tensor<1x1xf32>
-    // CHECK-DAG:       [[MAX:%.+]] = const.Declare tensor<1x1xf32> = dense<5.734400e+04> : tensor<1x1xf32>
+    // CHECK-DAG:       [[MIN1:%.+]] = const.Declare tensor<1x1xf32> = dense<-5.734400e+04> : tensor<1x1xf32>
+    // CHECK-DAG:       [[MIN2:%.+]] = const.Declare tensor<1x1xf32> = dense<-5.734400e+04> : tensor<1x1xf32>
+    // CHECK-DAG:       [[MAX1:%.+]] = const.Declare tensor<1x1xf32> = dense<5.734400e+04> : tensor<1x1xf32>
+    // CHECK-DAG:       [[MAX2:%.+]] = const.Declare tensor<1x1xf32> = dense<5.734400e+04> : tensor<1x1xf32>
 
-    // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[MIN]], [[MAX]], [[MIN]], [[MAX]])
+    // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[MIN1]], [[MAX1]], [[MIN2]], [[MAX2]])
     // CHECK-SAME:      low_fp_type = f8E5M2
 
     // CHECK:       return [[FQ]]

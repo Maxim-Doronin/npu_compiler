@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -123,4 +123,221 @@ func.func @ConvertPerChannelGroupConvToMultiConvF8E5M2(%input: tensor<1x2x16x16x
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[CONV_0]], [[CONV_1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x16x16x16xf16>, tensor<1x16x16x16xf16> -> tensor<1x32x16x16xf16>
 
     // CHECK:       return [[CONCAT]] : tensor<1x32x16x16xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertDepthwiseGroupConvToTileMultiply
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2048x1x1xf16>
+func.func @ConvertDepthwiseGroupConvToTileMultiply(%input: tensor<1x2048x1x1xf16>) -> tensor<1x2048x3x1xf16> {
+    %weights = const.Declare tensor<2048x1x3x1xf16> = dense<1.0> : tensor<2048x1x3x1xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [2, 0],
+        pads_end = [2, 0],
+        strides = [1, 1]
+    } : tensor<1x2048x1x1xf16>, tensor<2048x1x3x1xf16> -> tensor<1x2048x3x1xf16>
+
+    return %result : tensor<1x2048x3x1xf16>
+
+    // CHECK-NOT:   IE.GroupConvolution
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<2048x1x3x1xf16> = dense<1.000000e+00> : tensor<2048x1x3x1xf16>
+
+    // CHECK:       [[TILED_INPUT:%.+]] = IE.Tile([[INPUT]]) {repeats_values = [1, 1, 3, 1]} : tensor<1x2048x1x1xf16> -> tensor<1x2048x3x1xf16>
+
+    // The weights are reordered to match output positions (reversed due to convolution semantics)
+    // CHECK:       [[WEIGHT_SLICE_0:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 2, 0] [2048, 1, 1, 1] : tensor<2048x1x3x1xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_1:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 1, 0] [2048, 1, 1, 1] : tensor<2048x1x3x1xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_2:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 0] [2048, 1, 1, 1] : tensor<2048x1x3x1xf16> to tensor<2048x1x1x1xf16>
+
+    // CHECK:       [[CONCAT_WEIGHTS:%.+]] = IE.Concat([[WEIGHT_SLICE_0]], [[WEIGHT_SLICE_1]], [[WEIGHT_SLICE_2]]) {per_axis = #IE.Concat<axis = 2 : i64>}
+    // CHECK-SAME:      : tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16> -> tensor<2048x1x3x1xf16>
+
+    // CHECK:       [[RESHAPED_WEIGHTS:%.+]] = IE.Reshape([[CONCAT_WEIGHTS]]) {shape_value = [1, 2048, 3, 1]} : tensor<2048x1x3x1xf16> -> tensor<1x2048x3x1xf16>
+
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[TILED_INPUT]], [[RESHAPED_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
+    // CHECK-SAME:      : tensor<1x2048x3x1xf16>, tensor<1x2048x3x1xf16> -> tensor<1x2048x3x1xf16>
+
+    // CHECK:       return [[MULTIPLY]] : tensor<1x2048x3x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertDepthwiseGroupConvToTileMultiplyYDimWithTileWeights
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2048x1x1xf16>
+func.func @ConvertDepthwiseGroupConvToTileMultiplyYDimWithTileWeights(%input: tensor<1x2048x1x1xf16>) -> tensor<1x2048x3x2xf16> {
+    %weights = const.Declare tensor<2048x1x3x1xf16> = dense<1.0> : tensor<2048x1x3x1xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [2, 0],
+        pads_end = [2, 1],
+        strides = [1, 1]
+    } : tensor<1x2048x1x1xf16>, tensor<2048x1x3x1xf16> -> tensor<1x2048x3x2xf16>
+
+    return %result : tensor<1x2048x3x2xf16>
+
+    // CHECK-NOT:   IE.GroupConvolution
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<2048x1x3x1xf16> = dense<1.000000e+00> : tensor<2048x1x3x1xf16>
+
+    // CHECK:       [[TILED_INPUT:%.+]] = IE.Tile([[INPUT]]) {repeats_values = [1, 1, 3, 2]} : tensor<1x2048x1x1xf16> -> tensor<1x2048x3x2xf16>
+
+    // CHECK:       [[WEIGHT_SLICE_0:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 2, 0] [2048, 1, 1, 1] : tensor<2048x1x3x1xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_1:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 1, 0] [2048, 1, 1, 1] : tensor<2048x1x3x1xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_2:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 0] [2048, 1, 1, 1] : tensor<2048x1x3x1xf16> to tensor<2048x1x1x1xf16>
+
+    // CHECK:       [[CONCAT_WEIGHTS:%.+]] = IE.Concat([[WEIGHT_SLICE_0]], [[WEIGHT_SLICE_1]], [[WEIGHT_SLICE_2]]) {per_axis = #IE.Concat<axis = 2 : i64>}
+    // CHECK-SAME:      : tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16> -> tensor<2048x1x3x1xf16>
+
+    // CHECK:       [[RESHAPED_WEIGHTS:%.+]] = IE.Reshape([[CONCAT_WEIGHTS]]) {shape_value = [1, 2048, 3, 1]} : tensor<2048x1x3x1xf16> -> tensor<1x2048x3x1xf16>
+
+    // CHECK:       [[TILED_WEIGHTS:%.+]] = IE.Tile([[RESHAPED_WEIGHTS]]) {repeats_values = [1, 1, 1, 2]} : tensor<1x2048x3x1xf16> -> tensor<1x2048x3x2xf16>
+
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[TILED_INPUT]], [[TILED_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
+    // CHECK-SAME:      : tensor<1x2048x3x2xf16>, tensor<1x2048x3x2xf16> -> tensor<1x2048x3x2xf16>
+
+    // CHECK:       return [[MULTIPLY]] : tensor<1x2048x3x2xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertDepthwiseGroupConvToTileMultiplyXDim
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2048x1x1xf16>
+func.func @ConvertDepthwiseGroupConvToTileMultiplyXDim(%input: tensor<1x2048x1x1xf16>) -> tensor<1x2048x1x3xf16> {
+    %weights = const.Declare tensor<2048x1x1x3xf16> = dense<1.0> : tensor<2048x1x1x3xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [0, 2],
+        pads_end = [0, 2],
+        strides = [1, 1]
+    } : tensor<1x2048x1x1xf16>, tensor<2048x1x1x3xf16> -> tensor<1x2048x1x3xf16>
+
+    return %result : tensor<1x2048x1x3xf16>
+
+    // CHECK-NOT:   IE.GroupConvolution
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<2048x1x1x3xf16> = dense<1.000000e+00> : tensor<2048x1x1x3xf16>
+
+    // CHECK:       [[TILED_INPUT:%.+]] = IE.Tile([[INPUT]]) {repeats_values = [1, 1, 1, 3]} : tensor<1x2048x1x1xf16> -> tensor<1x2048x1x3xf16>
+
+    // The weights are reordered in W dimension (reversed due to convolution semantics)
+    // CHECK:       [[WEIGHT_SLICE_0:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 2] [2048, 1, 1, 1] : tensor<2048x1x1x3xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_1:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 1] [2048, 1, 1, 1] : tensor<2048x1x1x3xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_2:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 0] [2048, 1, 1, 1] : tensor<2048x1x1x3xf16> to tensor<2048x1x1x1xf16>
+
+    // CHECK:       [[CONCAT_WEIGHTS:%.+]] = IE.Concat([[WEIGHT_SLICE_0]], [[WEIGHT_SLICE_1]], [[WEIGHT_SLICE_2]]) {per_axis = #IE.Concat<axis = 3 : i64>}
+    // CHECK-SAME:      : tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16> -> tensor<2048x1x1x3xf16>
+
+    // CHECK:       [[RESHAPED_WEIGHTS:%.+]] = IE.Reshape([[CONCAT_WEIGHTS]]) {shape_value = [1, 2048, 1, 3]} : tensor<2048x1x1x3xf16> -> tensor<1x2048x1x3xf16>
+
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[TILED_INPUT]], [[RESHAPED_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
+    // CHECK-SAME:      : tensor<1x2048x1x3xf16>, tensor<1x2048x1x3xf16> -> tensor<1x2048x1x3xf16>
+
+    // CHECK:       return [[MULTIPLY]] : tensor<1x2048x1x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertDepthwiseGroupConvToTileMultiplyXDimWithTileWeights
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x2048x1x1xf16>
+func.func @ConvertDepthwiseGroupConvToTileMultiplyXDimWithTileWeights(%input: tensor<1x2048x1x1xf16>) -> tensor<1x2048x2x3xf16> {
+    %weights = const.Declare tensor<2048x1x1x3xf16> = dense<1.0> : tensor<2048x1x1x3xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [0, 2],
+        pads_end = [1, 2],
+        strides = [1, 1]
+    } : tensor<1x2048x1x1xf16>, tensor<2048x1x1x3xf16> -> tensor<1x2048x2x3xf16>
+
+    return %result : tensor<1x2048x2x3xf16>
+
+    // CHECK-NOT:   IE.GroupConvolution
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<2048x1x1x3xf16> = dense<1.000000e+00> : tensor<2048x1x1x3xf16>
+
+    // CHECK:       [[TILED_INPUT:%.+]] = IE.Tile([[INPUT]]) {repeats_values = [1, 1, 2, 3]} : tensor<1x2048x1x1xf16> -> tensor<1x2048x2x3xf16>
+
+    // CHECK:       [[WEIGHT_SLICE_0:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 2] [2048, 1, 1, 1] : tensor<2048x1x1x3xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_1:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 1] [2048, 1, 1, 1] : tensor<2048x1x1x3xf16> to tensor<2048x1x1x1xf16>
+    // CHECK:       [[WEIGHT_SLICE_2:%.+]] = IE.Slice [[WEIGHTS]] [0, 0, 0, 0] [2048, 1, 1, 1] : tensor<2048x1x1x3xf16> to tensor<2048x1x1x1xf16>
+
+    // CHECK:       [[CONCAT_WEIGHTS:%.+]] = IE.Concat([[WEIGHT_SLICE_0]], [[WEIGHT_SLICE_1]], [[WEIGHT_SLICE_2]]) {per_axis = #IE.Concat<axis = 3 : i64>}
+    // CHECK-SAME:      : tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16>, tensor<2048x1x1x1xf16> -> tensor<2048x1x1x3xf16>
+
+    // CHECK:       [[RESHAPED_WEIGHTS:%.+]] = IE.Reshape([[CONCAT_WEIGHTS]]) {shape_value = [1, 2048, 1, 3]} : tensor<2048x1x1x3xf16> -> tensor<1x2048x1x3xf16>
+
+    // CHECK:       [[TILED_WEIGHTS:%.+]] = IE.Tile([[RESHAPED_WEIGHTS]]) {repeats_values = [1, 1, 2, 1]} : tensor<1x2048x1x3xf16> -> tensor<1x2048x2x3xf16>
+
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[TILED_INPUT]], [[TILED_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
+    // CHECK-SAME:      : tensor<1x2048x2x3xf16>, tensor<1x2048x2x3xf16> -> tensor<1x2048x2x3xf16>
+
+    // CHECK:       return [[MULTIPLY]] : tensor<1x2048x2x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertDepthwiseGroupConvToMultiplyWith1x1Kernel
+func.func @NotConvertDepthwiseGroupConvToMultiplyWith1x1Kernel(%input: tensor<1x2048x1x1xf16>) -> tensor<1x2048x3x3xf16> {
+    %weights = const.Declare tensor<2048x1x1x1xf16> = dense<1.0> : tensor<2048x1x1x1xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [1, 1],
+        pads_end = [1, 1],
+        strides = [1, 1]
+    } : tensor<1x2048x1x1xf16>, tensor<2048x1x1x1xf16> -> tensor<1x2048x3x3xf16>
+
+    return %result : tensor<1x2048x3x3xf16>
+
+    // CHECK-NOT:   IE.Tile
+    // CHECK-NOT:   IE.Multiply
+
+    // Should be converted to multiple convolutions instead
+    // CHECK:       IE.Convolution
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertDepthwiseGroupConvToMultiplyNon1x1Input
+func.func @NotConvertDepthwiseGroupConvToMultiplyNon1x1Input(%input: tensor<1x2048x3x3xf16>) -> tensor<1x2048x3x3xf16> {
+    %weights = const.Declare tensor<2048x1x3x3xf16> = dense<1.0> : tensor<2048x1x3x3xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [1, 1],
+        pads_end = [1, 1],
+        strides = [1, 1]
+    } : tensor<1x2048x3x3xf16>, tensor<2048x1x3x3xf16> -> tensor<1x2048x3x3xf16>
+
+    return %result : tensor<1x2048x3x3xf16>
+
+    // CHECK-NOT:   IE.Tile
+    // CHECK-NOT:   IE.Multiply
+
+    // CHECK:       IE.GroupConvolution
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertDepthwiseGroupConvWithLargePadding
+func.func @NotConvertDepthwiseGroupConvWithLargePadding(%input: tensor<1x2048x1024x1xf16>) -> tensor<1x2048x1026x1xf16> {
+    %weights = const.Declare tensor<2048x1x3x1xf16> = dense<1.0> : tensor<2048x1x3x1xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 2048 : i64,
+        pads_begin = [2, 0],
+        pads_end = [2, 0],
+        strides = [1, 1]
+    } : tensor<1x2048x1024x1xf16>, tensor<2048x1x3x1xf16> -> tensor<1x2048x1026x1xf16>
+
+    return %result : tensor<1x2048x1026x1xf16>
+
+    // CHECK-NOT:   IE.Convolution
+
+    // CHECK:       IE.GroupConvolution
 }

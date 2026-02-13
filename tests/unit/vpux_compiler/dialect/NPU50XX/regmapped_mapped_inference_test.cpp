@@ -328,7 +328,7 @@ TEST_F(NPUReg50XX_MappedInferenceTest, nnrtcfgPad) {
     const auto actualValue = actual.read<vpux::NPUReg50XX::Fields::MiNNRTCfg_pad_6>();
     EXPECT_EQ(actualValue, value);
 
-    std::memset(reference.shv_rt_configs.pad_, 0xFF, 6);
+    std::memset(reference.shv_rt_configs.pad1_, 0xFF, 6);
 
     ASSERT_TRUE(isContentEqual());
 }

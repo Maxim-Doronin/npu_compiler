@@ -123,6 +123,7 @@ void RelocateWeightTableForReusePass::safeRunOnFunc() {
         if (VPU::canAutopadOutput(nceOp.getOperation())) {
             originalOC = mlir::cast<vpux::NDTypeInterface>(nceOp->getResult(0).getType()).getShape()[Dims4D::Act::C];
         }
+
         auto newConstAttr = cstOp.getContentAttr()
                                     .transform()
                                     .relocateWeightsTablePointers(

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -235,14 +235,14 @@ func.func @NotEliminateConcatWithInputMultiUsers(%arg0: tensor<1x32x125x250xf16,
 
     return %output_concat : tensor<1x32x164x250xf16, {order = #NHWC}>
 
-    // CHECK: [[INPUT_SLICE:%.*]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 100, 250] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x32x100x250xf16, {order = #NHWC}>
-    // CHECK: [[CONCAT:%.*]] = VPU.Concat([[INPUT_SLICE]], %arg1) {
+    // CHECK: [[INPUT_SLICE:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 100, 250] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x32x100x250xf16, {order = #NHWC}>
+    // CHECK: [[CONCAT:%.+]] = VPU.Concat([[INPUT_SLICE]], %arg1) {
     // CHECK:    static_offsets = [
     // CHECK-SAME:  [0, 0, 0, 0], [0, 0, 100, 0]
     // CHECK:    tensor<1x32x100x250xf16, {order = #NHWC}>, tensor<1x32x125x250xf16, {order = #NHWC}> -> tensor<1x32x225x250xf16, {order = #NHWC}>
 
-    // CHECK: [[OUTPUT_SLICE:%.*]] = VPU.Slice [[CONCAT]] [0, 0, 0, 0] [1, 32, 64, 250] : tensor<1x32x225x250xf16, {order = #NHWC}> to tensor<1x32x64x250xf16, {order = #NHWC}>
-    // CHECK: [[OUTPUT_CONCAT:%.*]] = VPU.Concat([[INPUT_SLICE]], [[OUTPUT_SLICE]]) {
+    // CHECK: [[OUTPUT_SLICE:%.+]] = VPU.Slice [[CONCAT]] [0, 0, 0, 0] [1, 32, 64, 250] : tensor<1x32x225x250xf16, {order = #NHWC}> to tensor<1x32x64x250xf16, {order = #NHWC}>
+    // CHECK: [[OUTPUT_CONCAT:%.+]] = VPU.Concat([[INPUT_SLICE]], [[OUTPUT_SLICE]]) {
     // CHECK:   static_offsets = [
     // CHECK-SAME:  [0, 0, 0, 0], [0, 0, 100, 0]
     // CHECK:    tensor<1x32x100x250xf16, {order = #NHWC}>, tensor<1x32x64x250xf16, {order = #NHWC}> -> tensor<1x32x164x250xf16, {order = #NHWC}>

@@ -1,0 +1,32 @@
+//
+// Copyright (C) 2022-2025 Intel Corporation.
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "vpux/compiler/dialect/ELF/IR/attributes.hpp"
+#include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
+
+#include <llvm/ADT/StringExtras.h>
+#include <llvm/ADT/TypeSwitch.h>
+
+using namespace vpux;
+
+//
+// Generated
+//
+
+#define GET_ATTRDEF_CLASSES
+#include <vpux/compiler/dialect/ELF/attributes.cpp.inc>
+#include <vpux/compiler/dialect/ELF/enums.cpp.inc>
+
+//
+// Dialect hooks
+//
+
+void ELF::ELFDialect::registerAttributes() {
+    addAttributes<
+#define GET_ATTRDEF_LIST
+#include <vpux/compiler/dialect/ELF/attributes.cpp.inc>
+            >();
+}

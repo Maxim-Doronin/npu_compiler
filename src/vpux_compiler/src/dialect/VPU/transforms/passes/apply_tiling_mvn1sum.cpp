@@ -42,7 +42,7 @@ uint32_t getMVN1SumOutputHeight(VPU::MVN1SumOp op) {
     auto module = op.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto numCluster = config::getTileExecutor(module).getCount();
     VPUX_THROW_WHEN(numCluster <= 0, "Number of clusters should be a positive integer, while it is {0}", numCluster);
-    const auto numActShave = config::getTotalNumOfEngines(op, VPU::ExecutorKind::SHAVE_ACT);
+    const auto numActShave = config::getTotalNumOfEngines(op, config::ExecutorKind::SHAVE_ACT);
     const auto numActShavePerCluster = static_cast<int64_t>(numActShave / numCluster);
 
     uint32_t outputHeight = 1;

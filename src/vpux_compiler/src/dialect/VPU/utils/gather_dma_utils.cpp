@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -119,6 +119,31 @@ Shape getSupportedNTilesOnDimforGatherElements(DimArrRef tileDimOrder, mlir::Ope
     }
 
     return nTilesOnDimforGatherElements;
+}
+
+// GatherDMA with axis=0 and batch_dims=0 and input is low bit like 4 bit or 8 bit.
+bool isOutermostGatherDMAWithLowBit(VPU::GatherDMAOp origOp) {
+    int64_t axis = 0;
+    if (origOp.getAxisValueAttr() != nullptr) {
+        axis = mlir::cast<mlir::IntegerAttr>(origOp.getAxisValueAttr()).getValue().getSExtValue();
+    } else {
+        return false;
+    }
+
+    int64_t batchDims = 0;
+    if (origOp.getBatchDimsAttr() != nullptr) {
+        batchDims = mlir::cast<mlir::IntegerAttr>(origOp.getBatchDimsAttr()).getValue().getSExtValue();
+    } else {
+        return false;
+    }
+
+    if (axis != 0 || batchDims != 0) {
+        return false;
+    }
+
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    size_t elementSizeInBit = vpux::getElemTypeSize(outType.getElementType()).count();
+    return elementSizeInBit <= 8;
 }
 
 }  // namespace vpux::VPU

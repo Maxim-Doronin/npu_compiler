@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -78,6 +78,7 @@ void ExpandDPUConfigPass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patternsInv(&ctx);
     patternsInv.add<DPUInvariantRewriter>(&ctx, _log, symRefMap, _npu5PPEBackwardsCompatibilityMode);
+
     target.addIllegalOp<VPUASM::DPUInvariantOp>();
     if (mlir::failed(mlir::applyPartialConversion(netFunc, target, std::move(patternsInv)))) {
         signalPassFailure();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/function_outlining_splitter.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -93,7 +94,7 @@ private:
             const size_t sliceIdx = 0;
             const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                           ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
-            const auto funcLoc = appendLoc(netFunc.getLoc(), "_part{0}", targetIdx + 1);
+            const auto funcLoc = appendLoc(netFunc.getLoc(), "part{0}", targetIdx + 1);
             auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
             func.setPrivate();
 
@@ -112,7 +113,7 @@ private:
                 auto clonedOp = builder.clone(*op, mapper);
                 // The input pre-processing operations might be duplicated in multiple functions depending on how
                 // their results are used, so their location is customized during cloning
-                extendOpLoc(clonedOp, StringLiteral("part_{0}"), targetIdx + 1);
+                extendOpLoc(clonedOp, "part_{0}", targetIdx + 1);
                 for (size_t i = 0; i < clonedOp->getResults().size(); i++) {
                     oldToNewMap[op->getResult(i)] = clonedOp->getResult(i);
                 }
@@ -121,7 +122,7 @@ private:
             for (const auto output : slice.outputs) {
                 funcOutputFromSlices.push_back(oldToNewMap[output]);
             }
-            const auto returnLoc = appendLoc(netFunc.getLoc(), "_part{0}_return", targetIdx + 1);
+            const auto returnLoc = appendLoc(netFunc.getLoc(), "part{0}_return", targetIdx + 1);
             builder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromSlices);
         }
     }
@@ -150,7 +151,7 @@ private:
                 newInputs.push_back(oldToNewArgMap[input]);
             }
 
-            const auto callLoc = appendLoc(netFunc.getLoc(), "_part{0}_call", targetIdx + 1);
+            const auto callLoc = appendLoc(netFunc.getLoc(), "part{0}_call", targetIdx + 1);
             auto newCall = builder.create<mlir::func::CallOp>(callLoc, funcsInfo[targetIdx][sliceIdx].funcName,
                                                               funcsInfo[targetIdx][sliceIdx].outputTypes, newInputs);
             for (const auto& res : newCall.getResults()) {
@@ -198,7 +199,7 @@ private:
             // Only creates a single function for all instances
             const auto& slice = slices.front();
             const size_t sliceIdx = 0;
-            const auto funcLoc = appendLoc(netFunc.getLoc(), "_fn{0}", targetIdx + 1);
+            const auto funcLoc = appendLoc(netFunc.getLoc(), "fn{0}", targetIdx + 1);
             const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                           ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
             auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
@@ -245,7 +246,7 @@ private:
 
                 // The input pre-processing operations might be duplicated in multiple functions depending on how
                 // their results are used, so their location is customized during cloning
-                extendOpLoc(clonedOp, StringLiteral("fn_{0}"), targetIdx + 1);
+                extendOpLoc(clonedOp, "fn_{0}", targetIdx + 1);
                 for (size_t i = 0; i < clonedOp->getResults().size(); i++) {
                     oldToNewMap[op->getResult(i)] = clonedOp->getResult(i);
                 }
@@ -255,7 +256,7 @@ private:
             for (const auto output : slice.outputs) {
                 funcOutputFromSlices.push_back(oldToNewMap[output]);
             }
-            const auto returnLoc = appendLoc(netFunc.getLoc(), "_fn{0}_return", targetIdx + 1);
+            const auto returnLoc = appendLoc(netFunc.getLoc(), "fn{0}_return", targetIdx + 1);
             builder.create<mlir::func::ReturnOp>(returnLoc, funcOutputFromSlices);
         }
     }
@@ -383,7 +384,7 @@ private:
         auto* ctx = moduleOp.getContext();
         for (const auto& [targetIdx, slices] : outlinedTargets | indexed) {
             for (const auto& [sliceIdx, slice] : slices | indexed) {
-                const auto funcLoc = appendLoc(netFunc.getLoc(), "_fn{0}_block{1}", targetIdx + 1, sliceIdx + 1);
+                const auto funcLoc = appendLoc(netFunc.getLoc(), "fn{0}_block{1}", targetIdx + 1, sliceIdx + 1);
                 const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                               ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
                 auto func =
@@ -404,7 +405,7 @@ private:
                     auto clonedOp = builder.clone(*op, mapper);
                     // Some operation could be duplicated in the IR (e.g. input pre-processing ops, constant
                     // quantization ops), so their location is customized during cloning to distinguish between them
-                    extendOpLoc(clonedOp, StringLiteral("fn_{0}_block_{1}"), targetIdx + 1, sliceIdx + 1);
+                    extendOpLoc(clonedOp, "fn_{0}_block_{1}", targetIdx + 1, sliceIdx + 1);
                     for (size_t i = 0; i < clonedOp->getResults().size(); i++) {
                         oldToNewMap[op->getResult(i)] = clonedOp->getResult(i);
                     }
@@ -508,7 +509,7 @@ private:
         for (const auto& [targetIdx, slices] : outlinedTargets | indexed) {
             const auto& slice = slices.front();
             const size_t sliceIdx = 0;
-            const auto funcLoc = appendLoc(netFunc.getLoc(), "_fn{0}_block{1}", targetIdx + 1, sliceIdx + 1);
+            const auto funcLoc = appendLoc(netFunc.getLoc(), "fn{0}_block{1}", targetIdx + 1, sliceIdx + 1);
             const auto funcType = mlir::FunctionType::get(ctx, ArrayRef(funcsInfo[targetIdx][sliceIdx].inputTypes),
                                                           ArrayRef(funcsInfo[targetIdx][sliceIdx].outputTypes));
             auto func = builder.create<mlir::func::FuncOp>(funcLoc, funcsInfo[targetIdx][sliceIdx].funcName, funcType);
@@ -529,7 +530,7 @@ private:
                 auto clonedOp = builder.clone(*op, mapper);
                 // The input pre-processing operations might be duplicated in multiple functions depending on how
                 // their results are used, so their location is customized during cloning
-                extendOpLoc(clonedOp, StringLiteral("fn_{0}"), targetIdx + 1);
+                extendOpLoc(clonedOp, "fn_{0}", targetIdx + 1);
                 for (size_t i = 0; i < clonedOp->getResults().size(); i++) {
                     oldToNewMap[op->getResult(i)] = clonedOp->getResult(i);
                 }
@@ -642,21 +643,22 @@ mlir::LogicalResult OutlinerPass::initializeOptions(
 void OutlinerPass::safeRunOnModule() {
     auto moduleOp = getOperation();
 
-    // A module attribute "VPU.debatch" will enforce 'batching' outlining method providing that
+    // A module attribute "config.debatch" will enforce 'batching' outlining method providing that
     // other methods defined by OutlinerPassOptions became forbidden,
     // unless it's the only one `BatchingOptions`
-    if (hasCompileMethodDebatch(moduleOp)) {
+    if (config::hasCompileMethodDebatch(moduleOp)) {
         if (_options.count() != 0) {
             if (_options.count() != 1) {
-                mlir::emitError(moduleOp->getLoc(), printToString("The module attribute 'VPU.debatch' doesn't support "
-                                                                  "multiple `OutlinerPassOptions`, got: {0}",
-                                                                  _options.count()));
+                mlir::emitError(moduleOp->getLoc(),
+                                printToString("The module attribute 'config.debatch' doesn't support "
+                                              "multiple `OutlinerPassOptions`, got: {0}",
+                                              _options.count()));
                 signalPassFailure();
                 return;
             }
             if (!_options.getIf<vpux::IE::BatchingOptions>(0)) {
                 mlir::emitError(moduleOp->getLoc(),
-                                "The module attribute 'VPU.debatch' expects 'BatchingOptions' only");
+                                "The module attribute 'config.debatch' expects 'BatchingOptions' only");
                 signalPassFailure();
                 return;
             }

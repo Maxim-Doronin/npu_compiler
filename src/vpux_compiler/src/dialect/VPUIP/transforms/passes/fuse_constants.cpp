@@ -6,8 +6,8 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/constant_fusion.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/utils/constant_fusion.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -67,7 +67,7 @@ mlir::Value createAllocOp(Const::DeclareOp declOp, VPURT::AllocDistributed alloc
 VPUIP::CopyOp createFusedCopyOp(mlir::Value allocDefiningOp, Const::DeclareOp declOp, mlir::PatternRewriter& rewriter) {
     VPUIP::CopyOp fusedCopyOp = nullptr;
     if (auto allocOp = allocDefiningOp.getDefiningOp<VPURT::AllocDistributed>()) {
-        fusedCopyOp = rewriter.create<VPUIP::CopyOp>(appendLoc(declOp.getLoc(), "_fused_tile"), declOp.getResult(),
+        fusedCopyOp = rewriter.create<VPUIP::CopyOp>(appendLoc(declOp.getLoc(), "fused_tile"), declOp.getResult(),
                                                      allocOp.getBuffer());
     } else if (auto allocOp = allocDefiningOp.getDefiningOp<mlir::memref::AllocOp>()) {
         fusedCopyOp = rewriter.create<VPUIP::CopyOp>(declOp->getLoc(), declOp.getOutput(), allocOp.getMemref());
@@ -237,7 +237,7 @@ mlir::LogicalResult FuseConstants::matchAndRewrite(VPUIP::NCEClusterTaskOp nceOp
     // assumed to be always present we use its base content.
     VPUX_THROW_UNLESS(constantVector[0].second != nullptr, "No weight table for fusing");
     const auto fakeBaseContent = constantVector[0].second.getContentAttr().getBaseContent();
-    const auto newLoc = appendLoc(nceOp.getLoc(), "_fused_constant");
+    const auto newLoc = appendLoc(nceOp.getLoc(), "fused_constant");
     auto newContentAttr = Const::ContentAttr::get(fakeBaseContent);
     auto tensorType = getFusedConstantType(constantVector, rewriter);
     auto const weightsTable =

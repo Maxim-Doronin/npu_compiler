@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -77,11 +77,13 @@ TEST_P(MergeDequantChainTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
+
 TEST_P(MergeDequantChainTestCommon, NPU5010_HW) {
     rel_threshold = 0.5f;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+
 }  // namespace ov::test::subgraph
 
 using namespace ov::test::subgraph;

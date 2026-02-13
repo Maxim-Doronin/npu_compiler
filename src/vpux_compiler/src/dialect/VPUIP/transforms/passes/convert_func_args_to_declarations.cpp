@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -119,7 +119,7 @@ void ConvertFuncArgsToDeclarationsPass::safeRunOnModule() {
 
                 argBuilder.setInsertionPoint(&firstOp);
                 auto newArg = buildDecl(argBuilder, val, section, p.index());
-                if (hasCompileMethodDebatch(moduleOp)) {
+                if (config::hasCompileMethodDebatch(moduleOp)) {
                     auto argDeclareOp = newArg.template getDefiningOp<VPURT::DeclareBufferOp>();
                     if (argDeclareOp != nullptr) {
                         VPURT::BufferSection declarationSection = argDeclareOp.getSection();
@@ -130,7 +130,7 @@ void ConvertFuncArgsToDeclarationsPass::safeRunOnModule() {
                                             "Declaration {0} must not carry any section index attribute");
                             argDeclareOp.setSectionIndexAttr(
                                     getIntArrayAttr(argDeclareOp.getContext(), SmallVector<size_t>{argIndex}));
-                            extendOpLoc(argDeclareOp, StringLiteral("func_{0}_arg_{1}"), funcOp.getName(), argIndex);
+                            extendOpLoc(argDeclareOp, "func_{0}_arg_{1}", funcOp.getName(), argIndex);
                         }
                     }
                 }
@@ -185,7 +185,7 @@ void ConvertFuncArgsToDeclarationsPass::safeRunOnModule() {
                         }
 
                         auto declChain = getDeclaration(callOp, arg);
-                        if (hasCompileMethodDebatch(moduleOp)) {
+                        if (config::hasCompileMethodDebatch(moduleOp)) {
                             // Limitation in having a same declaration chain for all repeating calls
                             // wasn't completely overcomed here by using the additional FunctionInpu/Output section.
                             // A scenario with isPureViewLike operations propagation hasn't been solved yet.

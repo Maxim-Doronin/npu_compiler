@@ -23,7 +23,7 @@ using namespace vpux;
 void vpux::VPUMI37XX::ActShaveRtOp::serialize(elf::writer::BinaryDataSection<uint8_t>& binDataSection) {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
@@ -36,7 +36,7 @@ void vpux::VPUMI37XX::ActShaveRtOp::serialize(elf::writer::BinaryDataSection<uin
 size_t vpux::VPUMI37XX::ActShaveRtOp::getBinarySize() {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
@@ -49,7 +49,7 @@ size_t vpux::VPUMI37XX::ActShaveRtOp::getBinarySize() {
 uint32_t vpux::VPUMI37XX::ActShaveRtOp::getKernelEntry() {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);
@@ -64,7 +64,7 @@ uint32_t vpux::VPUMI37XX::ActShaveRtOp::getKernelEntry() {
 uint32_t vpux::VPUMI37XX::ActShaveRtOp::getVersion() {
     auto kernel = getKernelPath();
 
-    const auto& kernelInfo = ShaveBinaryResourcesCache::getCache(getContext());
+    const auto& kernelInfo = getShaveBinaryResources(getContext());
     const SmallString arch = ELFNPU37XX::getSwKernelArchString(config::getArch(this->getOperation()));
 
     const auto elfBlob = kernelInfo.getElf(kernel, arch);

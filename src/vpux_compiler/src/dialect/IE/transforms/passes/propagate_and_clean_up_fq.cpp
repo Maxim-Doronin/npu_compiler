@@ -106,7 +106,7 @@ mlir::LogicalResult PropagateFQUp::matchAndRewrite(IE::FakeQuantizeOp fqOp, mlir
 
         // The pattern is simplified intentionally
         // In the case of multiple users, they must all be the same FQ
-        // Probably it makes sense to use RemoveDuplicatingGeneric rewriter from UniquifyOpsPass
+        // Probably it makes sense to use CSE pass
         if (!producerOp->hasOneUse()) {
             break;
         }

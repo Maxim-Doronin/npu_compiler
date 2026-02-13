@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -82,14 +82,14 @@ def VPUIP_NNDMAOp :
         AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer]>:$output_buff,
 
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$spillId,
-        OptionalAttr<UnitAttr>:$compress_candidate,
+        UnitProp:$compress_candidate,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
-        UnitAttr:$split_candidate,
-        UnitAttr:$profiling_buffer_mgmt,
+        UnitProp:$split_candidate,
+        UnitProp:$profiling_buffer_mgmt,
         OptionalAttr<IntAttr>:$fusionId
     );
 
@@ -108,22 +108,22 @@ def VPUIP_NNDMAOp :
             (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "int32_t":$dma_hwp_id)
         >,
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "mlir::UnitAttr":$is_out_of_order, "mlir::UnitAttr":$is_critical, "mlir::IntegerAttr":$spillId)
+            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "bool":$is_out_of_order, "bool":$is_critical, "mlir::IntegerAttr":$spillId)
         >,
         OpBuilder<
             (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical, "mlir::IntegerAttr":$spillId)
         >,
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical, "mlir::IntegerAttr":$spillId, "mlir::UnitAttr":$compress_candidate)
+            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical, "mlir::IntegerAttr":$spillId, "bool":$compress_candidate)
         >,
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical, "mlir::IntegerAttr":$spillId, "mlir::UnitAttr":$compress_candidate, "bool":$split_candidate, "mlir::IntegerAttr":$fusionId)
+            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical, "mlir::IntegerAttr":$spillId, "bool":$compress_candidate, "bool":$split_candidate, "mlir::IntegerAttr":$fusionId)
         >,
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -134,6 +134,7 @@ def VPUIP_NNDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -161,8 +162,8 @@ def VPUIP_PermuteDMAOp :
         AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$output_buff,
 
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<AffineMapAttr>:$mem_perm,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
         OptionalAttr<IntAttr>:$dma_hwp_id,
@@ -186,8 +187,8 @@ def VPUIP_PermuteDMAOp :
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -198,6 +199,7 @@ def VPUIP_PermuteDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -235,8 +237,8 @@ def VPUIP_GatherDMAOp :
 
         OptionalAttr<IntAttr>:$port,
 
-        UnitAttr:$isOutOfOrder,
-        UnitAttr:$isCritical,
+        UnitProp:$isOutOfOrder,
+        UnitProp:$isCritical,
 
         OptionalAttr<VPUIP_DMADescriptorAttr>:$DMADescriptor,
         OptionalAttr<IntAttr>:$dmaHwpId,
@@ -268,8 +270,8 @@ def VPUIP_GatherDMAOp :
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -282,6 +284,7 @@ def VPUIP_GatherDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `indices` `(` $indices `:` type($indices) `)`
         `outputs` `(` $outputBuff `:` type($outputBuff) `)`
@@ -310,8 +313,8 @@ def VPUIP_ConvertDMAOp :
         AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer, VPUIP_BoundedBuffer]>:$output_buff,
 
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -330,8 +333,8 @@ def VPUIP_ConvertDMAOp :
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -342,6 +345,7 @@ def VPUIP_ConvertDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -376,8 +380,8 @@ def VPUIP_DecompressDMAOp :
         AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>:$output_buff,
 
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -394,7 +398,7 @@ def VPUIP_DecompressDMAOp :
             (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port)
         >,
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "mlir::UnitAttr":$is_out_of_order, "mlir::UnitAttr":$is_critical)
+            (ins "mlir::Value":$input, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "bool":$is_out_of_order, "bool":$is_critical)
         >,
         OpBuilder<
             (ins "mlir::Value":$input, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical)
@@ -409,13 +413,13 @@ def VPUIP_DecompressDMAOp :
             (ins "mlir::Value":$input, "mlir::Value":$actCompressionSizeEntryBuff, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical)
         >,
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::Value":$actCompressionSizeEntryBuff, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "mlir::UnitAttr":$is_out_of_order, "mlir::UnitAttr":$is_critical)
+            (ins "mlir::Value":$input, "mlir::Value":$actCompressionSizeEntryBuff, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "bool":$is_out_of_order, "bool":$is_critical)
         >,
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -426,6 +430,7 @@ def VPUIP_DecompressDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         (`act_compression_size_entry` `(` $act_compression_size_entry^  `:` type($act_compression_size_entry) `)`)?
@@ -460,8 +465,8 @@ def VPUIP_CompressDMAOp :
         AnyMemRef:$output_buff,
 
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -481,13 +486,13 @@ def VPUIP_CompressDMAOp :
             (ins "mlir::Value":$input, "mlir::Value":$actCompressionSizeEntryBuff, "mlir::Value":$output_buff, "int64_t":$port, "bool":$is_out_of_order, "bool":$is_critical)
         >,
         OpBuilder<
-            (ins "mlir::Value":$input, "mlir::Value":$actCompressionSizeEntryBuff, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "mlir::UnitAttr":$is_out_of_order, "mlir::UnitAttr":$is_critical)
+            (ins "mlir::Value":$input, "mlir::Value":$actCompressionSizeEntryBuff, "mlir::Value":$output_buff, "mlir::IntegerAttr":$port, "bool":$is_out_of_order, "bool":$is_critical)
         >,
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -498,6 +503,7 @@ def VPUIP_CompressDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `act_compression_size_entry` `(` $act_compression_size_entry  `:` type($act_compression_size_entry) `)`
@@ -526,8 +532,8 @@ def VPUIP_SyncDMAOp :
         AnyMemRef:$input,
         AnyMemRef:$output_buff,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -537,8 +543,8 @@ def VPUIP_SyncDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -548,6 +554,7 @@ def VPUIP_SyncDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -581,8 +588,8 @@ def VPUIP_ReadOnlyDMAOp :
     let arguments = (ins
         AnyMemRef:$input,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -592,8 +599,8 @@ def VPUIP_ReadOnlyDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -605,6 +612,7 @@ def VPUIP_ReadOnlyDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
 
     }];
@@ -757,7 +765,7 @@ def VPUIP_NCEClusterTaskOp :
         Optional<AnyTypeOf<[MemRefOf<[SI32]>, VPUIP_DistributedBuffer]>>:$weight_table,
         Optional<AnyTypeOf<[MemRefOf<[SI32]>, VPUIP_DistributedBuffer]>>:$weight_table_data_ptr,
         Optional<AnyTypeOf<[MemRefOf<[SI32]>, VPUIP_DistributedBuffer]>>:$weight_table_sp_ptr,
-        Optional<AnyTypeOf<[MemRefOf<[F32, F8E5M2, F8E4M3FN]>, VPUIP_DistributedBuffer]>>:$weight_table_scale,
+        Optional<AnyTypeOf<[MemRefOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>, VPUIP_DistributedBuffer]>>:$weight_table_scale,
         Optional<AnyTypeOf<[MemRefOf<[F32]>, VPUIP_DistributedBuffer]>>:$weight_table_bias,
         Optional<AnyTypeOf<[MemRefOf<[I8, I4]>, VPUIP_DistributedBuffer]>>:$weight_zero_points,
 
@@ -797,8 +805,9 @@ def VPUIP_NCEClusterTaskOp :
         OptionalAttr<IntAttr>:$output_se_size,
         UnitAttr:$is_permute_quantize,
         UnitAttr:$is_small_kernel_optimized,
+        OptionalAttr<VPUIP_SparsityConfigAttr>:$sparsity_config,
         OptionalAttr<VPUIP_DpuProfilingMetadataAttr>:$profilingMetadata,
-        OptionalAttr<VPU_MPEEngineAttr>:$mpe_engine,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
         OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
         OptionalAttr<VPUIP_LocalRegionAttr>:$local_region,
         OptionalAttr<VPUIP_S2DConfigAttr>:$s2d_config
@@ -927,7 +936,8 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_permute_quantize,
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
-            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type
+            CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::SparsityConfigAttr", "nullptr">:$sparsity_config
         )>,
 
         OpBuilder<(ins
@@ -959,6 +969,7 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
             CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::SparsityConfigAttr", "nullptr">:$sparsity_config,
             CArg<"VPUIP::DynamicScaleConfigAttr", "nullptr">:$dynamic_scale_config,
             CArg<"VPUIP::LocalRegionAttr", "nullptr">:$local_region,
             CArg<"VPUIP::S2DConfigAttr", "nullptr">:$s2d_config
@@ -994,6 +1005,7 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
             CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::SparsityConfigAttr", "nullptr">:$sparsity_config,
             CArg<"VPUIP::DynamicScaleConfigAttr", "nullptr">:$dynamic_scale_config,
             CArg<"VPUIP::LocalRegionAttr", "nullptr">:$local_region,
             CArg<"VPUIP::S2DConfigAttr", "nullptr">:$s2d_config
@@ -1028,6 +1040,7 @@ def VPUIP_NCEClusterTaskOp :
             CArg<"mlir::UnitAttr", "nullptr">:$is_small_kernel_optimized,
             CArg<"VPU::MPEEngineAttr", "nullptr">:$mpe_engine,
             CArg<"VPU::EltwiseTypeAttr", "nullptr">:$eltwise_type,
+            CArg<"VPUIP::SparsityConfigAttr", "nullptr">:$sparsity_config,
             CArg<"VPUIP::DynamicScaleConfigAttr", "nullptr">:$dynamic_scale_config,
             CArg<"VPUIP::LocalRegionAttr", "nullptr">:$local_region,
             CArg<"VPUIP::S2DConfigAttr", "nullptr">:$s2d_config
@@ -1092,8 +1105,8 @@ def VPUIP_NCEClusterTaskOp :
 
         int64_t getNumVariants();
 
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DPU;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DPU;
         }
 
         static mlir::StringRef getDefaultDialect() {
@@ -1293,8 +1306,8 @@ def VPUIP_SwKernelOp :
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::SHAVE_ACT;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::SHAVE_ACT;
         }
 
         static mlir::LogicalResult inferReturnTypes(mlir::MLIRContext* ctx, std::optional<mlir::Location> loc,
@@ -1334,8 +1347,8 @@ def VPUIP_SpaceToDepthDMAOp :
         IntAttr:$block_size,
         IE_SpaceToDepthModeAttr:$mode,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
         OptionalAttr<VPUIP_InternalDataFlow>:$internalDataFlow
@@ -1355,8 +1368,8 @@ def VPUIP_SpaceToDepthDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -1369,6 +1382,7 @@ def VPUIP_SpaceToDepthDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -1397,8 +1411,8 @@ def VPUIP_PerAxisTileDMAOp :
         OptionalAttr<IntAttr>:$axis,
         OptionalAttr<IntAttr>:$tiles,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -1417,8 +1431,8 @@ def VPUIP_PerAxisTileDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -1431,6 +1445,7 @@ def VPUIP_PerAxisTileDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -1460,8 +1475,8 @@ def VPUIP_DepthToSpaceDMAOp :
         IE_DepthToSpaceModeAttr:$mode,
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
         OptionalAttr<IE_ChannelPaddingAttr>:$padded_channels,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
         OptionalAttr<VPUIP_InternalDataFlow>:$internalDataFlow
@@ -1483,8 +1498,8 @@ def VPUIP_DepthToSpaceDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -1497,6 +1512,7 @@ def VPUIP_DepthToSpaceDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -1524,10 +1540,10 @@ def VPUIP_M2ITaskOp :
         BoolAttr:$do_norm,
         VPU_M2iColorFmtAttr:$inFmt,
         VPU_M2iColorFmtAttr:$outFmt,
-        UnitAttr:$chroma_in_reverse_channels,
-        UnitAttr:$chroma_out_reverse_channels,
-        UnitAttr:$luma_in_reverse_channels,
-        UnitAttr:$luma_out_reverse_channels,
+        UnitProp:$chroma_in_reverse_channels,
+        UnitProp:$chroma_out_reverse_channels,
+        UnitProp:$luma_in_reverse_channels,
+        UnitProp:$luma_out_reverse_channels,
         UI32Attr:$scale_factor_x,
         UI32Attr:$scale_factor_y,
         OptionalAttr<F64ArrayAttr>:$norm,
@@ -1544,6 +1560,7 @@ def VPUIP_M2ITaskOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         (`profiling_data` `(` $profiling_data^  `:` type($profiling_data) `)`)?
@@ -1551,8 +1568,8 @@ def VPUIP_M2ITaskOp :
     }];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::M2I;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::M2I;
         }
 
         static mlir::LogicalResult inferReturnTypes(mlir::MLIRContext* ctx, std::optional<mlir::Location> loc,
@@ -2042,10 +2059,10 @@ def VPUIP_GroupSparseBufferOp :
         Optional<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>>:$sparsityMap,
         Optional<AnyTypeOf<[AnyMemRef, VPUIP_DistributedBuffer]>>:$storageElementTable,
 
-        UnitAttr:$is_weights,
+        UnitProp:$is_weights,
         OptionalAttr<VPUIP_SparsityCompressionAttr>:$sparsity_compression,
 
-        OptionalAttr<VPU_SEAttr>:$seAttr
+        OptionalAttr<VPU_SEAttrInterface>:$seAttr
     );
 
     let results = (outs
@@ -2077,6 +2094,7 @@ def VPUIP_GroupSparseBufferOp :
             (`,` $storageElementTable^ `` custom<OptionalTypes>(type($storageElementTable)))?
         `)`
         attr-dict
+        prop-dict
         `` custom<OptionalTypes>(type($data))
         `->` type(results)
     }];
@@ -2193,7 +2211,7 @@ def VPUIP_StorageElementTableOp :
         TypeAttr:$dataElemType,
         I64ArrayAttr:$seSize,
         IntAttr:$seDepth,
-        OptionalAttr<VPU_SEAttr>:$seAttr,
+        OptionalAttr<VPU_SEAttrInterface>:$seAttr,
         OptionalAttr<I64ArrayAttr>:$dataStrides,
         OptionalAttr<I32ElementsAttr>:$basePtrs
     );
@@ -2352,8 +2370,8 @@ def VPUIP_ExpandDMAOp :
 
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -2374,8 +2392,8 @@ def VPUIP_ExpandDMAOp :
     let hasVerifier = 1;
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -2386,6 +2404,7 @@ def VPUIP_ExpandDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -2415,8 +2434,8 @@ def VPUIP_UpsamplingDMAOp :
         OptionalAttr<VPUIP_DMADescriptorAttr>:$dma_descriptor,
         OptionalAttr<I64ArrayAttr>:$expand,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata
     );
@@ -2438,8 +2457,8 @@ def VPUIP_UpsamplingDMAOp :
     ];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -2452,6 +2471,7 @@ def VPUIP_UpsamplingDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `->` type(results)
@@ -2633,8 +2653,8 @@ def VPUIP_UpsamplingOp :
     }];
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::SHAVE_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::SHAVE_NN;
         }
     }] # VPUIP_InferLayerReturnTypes<1>.impl;
 }
@@ -2658,8 +2678,8 @@ def VPUIP_BarProgDMAOp :
         AnyMemRef:$input,
         AnyMemRef:$output_buff,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
         VPUIP_PhysicalBarrierRangeAttr: $physical_barrier_range
@@ -2670,8 +2690,8 @@ def VPUIP_BarProgDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -2681,6 +2701,7 @@ def VPUIP_BarProgDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `physical_barrier_range` `(` $physical_barrier_range `)`
@@ -2708,8 +2729,8 @@ def VPUIP_FetchDMAOp :
         AnyMemRef:$input,
         AnyMemRef:$output_buff,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
         VPUIP_FetchDMAAttr:$fetch_dma
@@ -2720,8 +2741,8 @@ def VPUIP_FetchDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -2731,6 +2752,7 @@ def VPUIP_FetchDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `fetch_dma` `(` $fetch_dma `)`
@@ -2758,8 +2780,8 @@ def VPUIP_EnqueueDMAOp :
         AnyMemRef:$input,
         AnyMemRef:$output_buff,
         OptionalAttr<IntAttr>:$port,
-        UnitAttr:$is_out_of_order,
-        UnitAttr:$is_critical,
+        UnitProp:$is_out_of_order,
+        UnitProp:$is_critical,
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<VPUIP_DmaProfilingMetadataAttr>:$profilingMetadata,
         VPUIP_EnqueueDMAAttr: $enqueue_dma_attr
@@ -2770,8 +2792,8 @@ def VPUIP_EnqueueDMAOp :
     );
 
     let extraClassDeclaration = [{
-        static vpux::VPU::ExecutorKind getExecutorKind() {
-            return vpux::VPU::ExecutorKind::DMA_NN;
+        static vpux::config::ExecutorKind getExecutorKind() {
+            return vpux::config::ExecutorKind::DMA_NN;
         }
 
         vpux::DotNodeColor getNodeColor() {
@@ -2781,6 +2803,7 @@ def VPUIP_EnqueueDMAOp :
 
     let assemblyFormat = [{
         attr-dict
+        prop-dict
         `inputs` `(` $input `:` type($input) `)`
         `outputs` `(` $output_buff `:` type($output_buff) `)`
         `enqueue_dma_attr` `(` $enqueue_dma_attr `)`

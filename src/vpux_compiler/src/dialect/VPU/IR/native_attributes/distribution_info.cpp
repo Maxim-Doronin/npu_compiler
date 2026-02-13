@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -42,10 +42,14 @@ VPU::DistributionInfo vpux::VPU::DistributionInfo::getClassFromAttr(vpux::VPU::D
                                  ? parseIntArrayOfArrayAttr<int64_t>(distributionAttr.getMemoryOffsets())
                                  : SmallVector<SmallVector<int64_t>>{};
     auto equalMemoryAndComputeView = distributionAttr.getEqualMemoryAndComputeView() ? true : false;
+    std::optional<SmallVector<int64_t>> memoryNumTiles =
+            distributionAttr.getMemoryNumTiles()
+                    ? std::make_optional(parseIntArrayAttr<int64_t>(distributionAttr.getMemoryNumTiles()))
+                    : std::nullopt;
 
     return vpux::VPU::DistributionInfo(mode, numTiles, kernel, strides, pad, numClusters, alignment,
                                        uniformDistributedSegments, computeShapes, computeOffsets, memoryShapes,
-                                       memoryOffsets, equalMemoryAndComputeView);
+                                       memoryOffsets, equalMemoryAndComputeView, memoryNumTiles);
 }
 
 VPU::DistributionInfoAttr vpux::VPU::DistributionInfo::getAttrFromClass(
@@ -81,10 +85,14 @@ VPU::DistributionInfoAttr vpux::VPU::DistributionInfo::getAttrFromClass(
     mlir::UnitAttr equalMemoryAndComputeViewAttr =
             distribution.hasEqualMemoryAndComputeView() ? mlir::UnitAttr::get(ctx) : nullptr;
 
+    mlir::ArrayAttr memoryNumTilesAttr = distribution.getMemoryNumTiles().has_value()
+                                                 ? vpux::getIntArrayAttr(ctx, distribution.getMemoryNumTiles().value())
+                                                 : nullptr;
+
     return vpux::VPU::DistributionInfoAttr::get(ctx, modeAttr, numTilesAttr, kernelAttr, padAttr, stridesAttr,
                                                 numClustersAttr, alignmentAttr, uniformDistributedSegmentsAttr,
                                                 computeShapesAttr, computeOffsetsAttr, memoryShapesAttr,
-                                                memoryOffsetsAttr, equalMemoryAndComputeViewAttr);
+                                                memoryOffsetsAttr, equalMemoryAndComputeViewAttr, memoryNumTilesAttr);
 }
 
 void VPU::DistributionInfo::printFormat(llvm::raw_ostream& stream) const {
@@ -121,4 +129,8 @@ void VPU::DistributionInfo::printFormat(llvm::raw_ostream& stream) const {
     }
     printTo(stream, "]");
     printTo(stream, ", _equalMemoryAndComputeView = {0}>", _equalMemoryAndComputeView);
+    if (_memoryNumTiles.has_value()) {
+        printTo(stream, ", memory_num_tiles = ");
+        ListFormatProvider::format(_memoryNumTiles.value(), stream, {});
+    }
 }

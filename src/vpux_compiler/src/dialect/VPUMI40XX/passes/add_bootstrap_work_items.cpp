@@ -118,7 +118,7 @@ void AddBootstrapWorkItemsPass::safeRunOnFunc() {
 
     auto parentModule = netFunc.getOperation()->getParentOfType<mlir::ModuleOp>();
     const auto tilesCount = config::getTileExecutor(parentModule).getCount();
-    const auto dmaExecutorCount = config::getAvailableExecutor(parentModule, VPU::ExecutorKind::DMA_NN).getCount();
+    const auto dmaExecutorCount = config::getAvailableExecutor(parentModule, config::ExecutorKind::DMA_NN).getCount();
 
     if (workloadManagementModeOpt.hasValue()) {
         _workloadManagementMode = workloadManagementModeOpt.getValue();
@@ -214,7 +214,7 @@ void AddBootstrapWorkItemsPass::safeRunOnFunc() {
         reindexEnqueueOps(enquOps);
         mpi.getWorkItemTasksMutable().assign(enquOps[0].getResult());
         mpi.setWorkItemCount(enquOps.size());
-        mpi.setBootsrapWorkItemsCountAttr(builder.getI64IntegerAttr(totalNumberBootstrapWorkItems));
+        mpi.setBootstrapWorkItemsCountAttr(builder.getI64IntegerAttr(totalNumberBootstrapWorkItems));
     } else {
         VPUX_THROW("We expect at least one enqueue operation in the function.");
     }

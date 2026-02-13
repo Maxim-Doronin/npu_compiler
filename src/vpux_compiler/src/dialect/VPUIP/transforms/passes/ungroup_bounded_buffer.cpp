@@ -180,9 +180,9 @@ mlir::LogicalResult UngroupConcatViewOp::matchAndRewrite(VPUIP::ConcatViewOp ori
     auto ungroupOutput = rewriter.create<VPUIP::UngroupBoundedBufferOp>(origOp->getLoc(), origOp.getOutputBuff());
 
     // Iterate over the ungrouped inputs and create individual ConcatViewOps for data and shapes.
-    auto dataConcatOp = rewriter.create<VPUIP::ConcatViewOp>(appendLoc(origOp->getLoc(), "_data"), dataResults,
+    auto dataConcatOp = rewriter.create<VPUIP::ConcatViewOp>(appendLoc(origOp->getLoc(), "data"), dataResults,
                                                              ungroupOutput.getData());
-    auto shapeConcatOp = rewriter.create<VPUIP::ConcatViewOp>(appendLoc(origOp->getLoc(), "_shape"), shapeResults,
+    auto shapeConcatOp = rewriter.create<VPUIP::ConcatViewOp>(appendLoc(origOp->getLoc(), "shape"), shapeResults,
                                                               ungroupOutput.getDynamicShape());
 
     // Group the individual results back into a single BoundedBuffer.

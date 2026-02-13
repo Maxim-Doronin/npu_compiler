@@ -181,6 +181,7 @@ def VPURegMapped_WorkloadManagementBarrierProgrammingMode :
             I64EnumAttrCase<"NO_BARRIER_DMAS_SCHEDULED",        1>,
             I64EnumAttrCase<"INITIAL_BARRIER_DMAS_SCHEDULED",   2>,
             I64EnumAttrCase<"ALL_BARRIER_DMAS_SCHEDULED",       3>,
+            I64EnumAttrCase<"ALL_BARRIER_DMAS_SCHEDULED_4K",    4>,
             I64EnumAttrCase<"UNKNOWN",                          255>
         ]
     > {

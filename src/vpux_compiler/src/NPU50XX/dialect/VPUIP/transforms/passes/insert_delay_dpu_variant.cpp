@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,7 +27,8 @@ namespace vpux::VPUIP::arch50xx {
 
 class InsertDelayDPUVariant final : public VPUIP::arch50xx::impl::InsertDelayDPUVariantBase<InsertDelayDPUVariant> {
 public:
-    explicit InsertDelayDPUVariant(bool dpuProfilingEnabled, Logger log): _dpuProfilingEnabled(dpuProfilingEnabled) {
+    explicit InsertDelayDPUVariant(bool dpuProfilingEnabled, bool fwPdecDelayEnabled, Logger log)
+            : _dpuProfilingEnabled(dpuProfilingEnabled), _fwPdecDelayEnabled(fwPdecDelayEnabled) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -38,6 +39,9 @@ public:
         if (dpuProfilingEnabled.hasValue()) {
             _dpuProfilingEnabled = dpuProfilingEnabled.getValue();
         }
+        if (fwPdecDelayEnabled.hasValue()) {
+            _fwPdecDelayEnabled = fwPdecDelayEnabled.getValue();
+        }
         return mlir::success();
     }
 
@@ -45,6 +49,7 @@ private:
     void safeRunOnFunc() final;
 
     bool _dpuProfilingEnabled;
+    bool _fwPdecDelayEnabled;
 };
 
 void InsertDelayDPUVariant::safeRunOnFunc() {
@@ -124,7 +129,9 @@ void InsertDelayDPUVariant::safeRunOnFunc() {
         // Note: This is only done when ODU autopad is used by an operation, as these cases were discovered to lead to
         // a race condition. The likely cause is the unaligned memory accesses when the channels are not aligned to 16
         // bytes.
-        if (usesAutopad) {
+        // Note: If the PDEC delay feature is enabled in the firmware, this variant should not be added, as the firmware
+        // will take care of the delay itself
+        if (usesAutopad && !_fwPdecDelayEnabled) {
             // There is currently no per-variant HWP control, so the dummy variant that is added at the end would be
             // profiled. This would result in incorrect numbers, so avoid inserting this variant when profiling
             // E#160727: remove this skip once per-variant HWP is supported
@@ -142,6 +149,7 @@ void InsertDelayDPUVariant::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPUIP::arch50xx::createInsertDelayDPUVariantPass(bool dpuProfilingEnabled,
+                                                                                   bool fwPdecDelayEnabled,
                                                                                    Logger log) {
-    return std::make_unique<InsertDelayDPUVariant>(dpuProfilingEnabled, log);
+    return std::make_unique<InsertDelayDPUVariant>(dpuProfilingEnabled, fwPdecDelayEnabled, log);
 }

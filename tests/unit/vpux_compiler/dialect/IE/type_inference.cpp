@@ -37,9 +37,13 @@ public:
     }
 
     mlir::OwningOpRef<mlir::tensor::EmptyOp> createOperand(ArrayRef<int64_t> shape, DimsOrder order,
-                                                           mlir::ValueRange dynamicSizes) {
-        return builder->create<mlir::tensor::EmptyOp>(builder->getUnknownLoc(), shape, mlir::Float32Type::get(&ctx),
-                                                      dynamicSizes, getTensorAttr(&ctx, order, nullptr));
+                                                           ArrayRef<int64_t> bounds) {
+        auto tensorAttr = getTensorAttr(&ctx, order, nullptr, BoundsRef(bounds));
+        auto emptyOp = builder->create<mlir::tensor::EmptyOp>(builder->getUnknownLoc(), bounds,
+                                                              mlir::Float32Type::get(&ctx), tensorAttr);
+        auto tensorType = mlir::RankedTensorType::get(shape, mlir::Float32Type::get(&ctx), tensorAttr);
+        emptyOp->getResult(0).setType(tensorType);
+        return emptyOp;
     }
 
     mlir::DictionaryAttr createAttributes(ArrayRef<mlir::NamedAttribute> attributes) {
@@ -88,7 +92,7 @@ SmallVector<BinaryOpTestParams> getBinaryOpTestCases() {
 
 TEST_F(MLIR_IETypeInferenceTest, MultiplyOp) {
     for (auto [lhsShape, lhsOrder, rhsShape, rhsOrder] : getBinaryOpTestCases()) {
-        bool takeLeft = lhsShape.size() >= rhsShape.size();
+        bool takeLeft = lhsShape.size() > rhsShape.size();
         auto expectedDims = takeLeft ? lhsShape : rhsShape;
         auto expectedOrder = mlir::AffineMapAttr::get((takeLeft ? lhsOrder : rhsOrder).toAffineMap(&ctx));
 
@@ -112,14 +116,9 @@ TEST_F(MLIR_IETypeInferenceTest, MultiplyOp) {
 }
 
 TEST_F(MLIR_IETypeInferenceTest, MultiplyOp_DynamicSecondInput) {
-    mlir::OwningOpRef<mlir::arith::ConstantOp> dyn1 = builder->create<mlir::arith::ConstantOp>(
-            builder->getUnknownLoc(), builder->getIndexType(), builder->getIndexAttr(800));
-    mlir::OwningOpRef<mlir::arith::ConstantOp> dyn2 = builder->create<mlir::arith::ConstantOp>(
-            builder->getUnknownLoc(), builder->getIndexType(), builder->getIndexAttr(1280));
     auto lhs = createOperand({1, 32, 1, 1}, vpux::DimsOrder::NHWC);
-
     auto rhs = createOperand({1, 32, mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic}, vpux::DimsOrder::NHWC,
-                             {dyn1->getResult(), dyn2->getResult()});
+                             {1, 32, 800, 1280});
 
     IE::MultiplyOp::Properties properties{};
     properties.auto_broadcast = IE::AutoBroadcastTypeAttr::get(&ctx, IE::AutoBroadcastType::NUMPY);
@@ -128,15 +127,17 @@ TEST_F(MLIR_IETypeInferenceTest, MultiplyOp_DynamicSecondInput) {
     ASSERT_TRUE(mlir::succeeded(IE::MultiplyOp::inferReturnTypeComponents(&ctx, builder->getUnknownLoc(),
                                                                           {lhs->getResult(), rhs->getResult()}, {},
                                                                           &properties, {}, typeComponents)));
+    ASSERT_EQ(typeComponents.size(), 1);
+    SmallVector<int64_t> expectedDims = {1, 32, mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic};
+    ASSERT_EQ(typeComponents[0].getDims(), ArrayRef<int64_t>(expectedDims));
 
     auto tensorAttr = mlir::dyn_cast_or_null<TensorAttr>(typeComponents[0].getAttribute());
     ASSERT_TRUE(tensorAttr != nullptr);
 
     auto bounds = tensorAttr.getBounds();
     ASSERT_FALSE(bounds.empty()) << "Expected bounds to be present in TensorAttr";
-
-    SmallVector<int64_t> expectedDims = {1, 32, mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic};
-    ASSERT_EQ(typeComponents[0].getDims(), ArrayRef<int64_t>(expectedDims));
+    SmallVector<int64_t> expectedBounds = {1, 32, 800, 1280};
+    ASSERT_EQ(bounds.raw(), ArrayRef<int64_t>(expectedBounds));
 }
 
 TEST_F(MLIR_IETypeInferenceTest, DivideOp) {

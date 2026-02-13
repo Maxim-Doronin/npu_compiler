@@ -115,10 +115,10 @@ module @TwoFunctions {
 
         %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -131,10 +131,10 @@ module @TwoFunctions {
 
         // CHECK-DAG: [[BARR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK: VPURT.Task updates([[BARR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
 
         // CHECK: VPURT.Task waits([[BARR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -146,10 +146,10 @@ module @TwoFunctions {
 
         %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -163,10 +163,10 @@ module @TwoFunctions {
         // CHECK-DAG: [[BARR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BARR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
 
         // CHECK: VPURT.Task waits([[BARR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -219,10 +219,10 @@ module @ThreeFunctions {
         %1 = VPUIP.SubView %arg0 [0, 2, 0, 0] [1, 4, 10, 12] : memref<1x8x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR> to memref<1x4x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>
 
         VPURT.Task {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<1x6x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs(%arg1 : memref<1x6x10x12xf16, @DDR>) -> memref<1x6x10x12xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x6x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs(%arg1 : memref<1x6x10x12xf16, @DDR>) -> memref<1x6x10x12xf16, @DDR>
         }
         VPURT.Task {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x4x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs(%arg2 : memref<1x4x10x12xf16, @DDR>) -> memref<1x4x10x12xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x4x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs(%arg2 : memref<1x4x10x12xf16, @DDR>) -> memref<1x4x10x12xf16, @DDR>
         }
         return %arg1, %arg2 : memref<1x6x10x12xf16, @DDR>, memref<1x4x10x12xf16, @DDR>
 
@@ -236,10 +236,10 @@ module @ThreeFunctions {
         // CHECK: [[IN_SUBVIEW2:%.+]] = VPUIP.SubView [[RESHAPE]] [0, 3, 0, 0] [1, 4, 10, 12] : memref<1x10x10x12xf16, @DDR> to memref<1x4x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN_SUBVIEW1]] : memref<1x6x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs([[DDR_OUT]] : memref<1x6x10x12xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN_SUBVIEW1]] : memref<1x6x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs([[DDR_OUT]] : memref<1x6x10x12xf16, @DDR>)
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[IN_SUBVIEW2]] : memref<1x4x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs([[OUT]] : memref<1x4x10x12xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[IN_SUBVIEW2]] : memref<1x4x10x12xf16, {order = #NCHW, strides = [1200, 120, 12, 1]}, @DDR>) outputs([[OUT]] : memref<1x4x10x12xf16, @DDR>)
 
         // CHECK: return [[ARG1]], [[ARG2]] : memref<1x6x10x12xf16, @DDR>, memref<1x4x10x12xf16, @DDR>
     }
@@ -250,10 +250,10 @@ module @ThreeFunctions {
         %1 = VPUIP.SubView %arg1 [0, 1, 0, 0] [1, 2, 10, 12] : memref<1x4x10x12xf16, @DDR> to memref<1x2x10x12xf16, {order = #NCHW, strides = [480, 120, 12, 1]}, @DDR>
 
         VPURT.Task {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%0 : memref<1x2x10x12xf16, {order = #NCHW, strides = [720, 120, 12, 1]}, @DDR>) outputs(%arg2 : memref<1x2x10x12xf16, @DDR>) -> memref<1x2x10x12xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x2x10x12xf16, {order = #NCHW, strides = [720, 120, 12, 1]}, @DDR>) outputs(%arg2 : memref<1x2x10x12xf16, @DDR>) -> memref<1x2x10x12xf16, @DDR>
         }
         VPURT.Task {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x2x10x12xf16, {order = #NCHW, strides = [480, 120, 12, 1]}, @DDR>) outputs(%arg3 : memref<1x2x10x12xf16, @DDR>) -> memref<1x2x10x12xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x2x10x12xf16, {order = #NCHW, strides = [480, 120, 12, 1]}, @DDR>) outputs(%arg3 : memref<1x2x10x12xf16, @DDR>) -> memref<1x2x10x12xf16, @DDR>
         }
         return %arg2, %arg3 : memref<1x2x10x12xf16, @DDR>, memref<1x2x10x12xf16, @DDR>
 
@@ -266,10 +266,10 @@ module @ThreeFunctions {
         // CHECK: [[IN_OUT_SUBVIEW:%.+]] = VPUIP.SubView [[IN_OUT]] [0, 1, 0, 0] [1, 2, 10, 12] : memref<1x4x10x12xf16, @DDR> to memref<1x2x10x12xf16, {order = #NCHW, strides = [480, 120, 12, 1]}, @DDR>
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN_DDR_SUBVIEW]] : memref<1x2x10x12xf16, {order = #NCHW, strides = [720, 120, 12, 1]}, @DDR>) outputs([[OUT_DDR1]] : memref<1x2x10x12xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN_DDR_SUBVIEW]] : memref<1x2x10x12xf16, {order = #NCHW, strides = [720, 120, 12, 1]}, @DDR>) outputs([[OUT_DDR1]] : memref<1x2x10x12xf16, @DDR>)
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[IN_OUT_SUBVIEW]] : memref<1x2x10x12xf16, {order = #NCHW, strides = [480, 120, 12, 1]}, @DDR>) outputs([[OUT_DDR2]] : memref<1x2x10x12xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[IN_OUT_SUBVIEW]] : memref<1x2x10x12xf16, {order = #NCHW, strides = [480, 120, 12, 1]}, @DDR>) outputs([[OUT_DDR2]] : memref<1x2x10x12xf16, @DDR>)
 
         // CHECK: return [[ARG2]], [[ARG3]] : memref<1x2x10x12xf16, @DDR>, memref<1x2x10x12xf16, @DDR>
     }
@@ -282,10 +282,10 @@ module @ThreeFunctions {
         %2 = VPUIP.SubView %arg2 [0, 2, 0, 0] [1, 1, 10, 12] : memref<1x3x10x12xf16, @DDR> to memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>
 
         VPURT.Task {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x10x12xf16, @DDR>) outputs(%0 : memref<1x2x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>) -> memref<1x2x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x10x12xf16, @DDR>) outputs(%0 : memref<1x2x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>) -> memref<1x2x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>
         }
         VPURT.Task {
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%1 : memref<1x1x10x12xf16, {order = #NCHW, strides = [240, 120, 12, 1]}, @DDR>) outputs(%2 : memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>) -> memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%1 : memref<1x1x10x12xf16, {order = #NCHW, strides = [240, 120, 12, 1]}, @DDR>) outputs(%2 : memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>) -> memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>
         }
         return %arg2 : memref<1x3x10x12xf16, @DDR>
 
@@ -299,10 +299,10 @@ module @ThreeFunctions {
         // CHECK: [[OUT_SUBVIEW2:%.+]] = VPUIP.SubView [[OUT]] [0, 2, 0, 0] [1, 1, 10, 12] : memref<1x3x10x12xf16, @DDR> to memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN_DDR1]] : memref<1x2x10x12xf16, @DDR>) outputs([[OUT_SUBVIEW1]] : memref<1x2x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN_DDR1]] : memref<1x2x10x12xf16, @DDR>) outputs([[OUT_SUBVIEW1]] : memref<1x2x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>)
 
         // CHECK: VPURT.Task {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[IN_DDR2_SUBVIEW1]] : memref<1x1x10x12xf16, {order = #NCHW, strides = [240, 120, 12, 1]}, @DDR>) outputs([[OUT_SUBVIEW2]] : memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[IN_DDR2_SUBVIEW1]] : memref<1x1x10x12xf16, {order = #NCHW, strides = [240, 120, 12, 1]}, @DDR>) outputs([[OUT_SUBVIEW2]] : memref<1x1x10x12xf16, {order = #NCHW, strides = [360, 120, 12, 1]}, @DDR>)
 
         // CHECK: return [[ARG2]] : memref<1x3x10x12xf16, @DDR>
     }
@@ -446,10 +446,10 @@ module @NestedFunctionsNetworkInputOutput {
 
         %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -461,10 +461,10 @@ module @NestedFunctionsNetworkInputOutput {
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
 
         // CHECK: VPURT.Task waits([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -521,10 +521,10 @@ module @NestedFunctionsDDR {
 
         %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -536,10 +536,10 @@ module @NestedFunctionsDDR {
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
 
         // CHECK: VPURT.Task waits([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -569,13 +569,13 @@ module @NestedFunctionsDDR {
         %3 = VPURT.DeclareBuffer <DDR> <49152> -> memref<1x3x64x64xf16, @DDR>
 
         VPURT.Task updates(%0 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
             %4 = func.call @foo1(%2, %3) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%3 : memref<1x3x64x64xf16, @DDR>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%3 : memref<1x3x64x64xf16, @DDR>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -587,13 +587,13 @@ module @NestedFunctionsDDR {
         // CHECK-DAG: [[TMP1:%.+]] = VPURT.DeclareBuffer <DDR> <49152> -> memref<1x3x64x64xf16, @DDR>
 
         // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP0]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP0]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
         // CHECK:   func.call @foo1([[TMP0]], [[TMP1]]) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
 
         // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[TMP1]] : memref<1x3x64x64xf16, @DDR>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[TMP1]] : memref<1x3x64x64xf16, @DDR>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -617,10 +617,10 @@ module @NestedFunctionsMiddleAllocateBuffers {
 
         %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
+            %2 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %2 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %2 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%0 : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -632,10 +632,10 @@ module @NestedFunctionsMiddleAllocateBuffers {
         // CHECK-DAG: [[BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
         // CHECK: VPURT.Task updates([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>)
 
         // CHECK: VPURT.Task waits([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -648,13 +648,13 @@ module @NestedFunctionsMiddleAllocateBuffers {
         %3 = VPURT.DeclareBuffer <DDR> <98304> -> memref<1x3x64x64xf16, @DDR>
 
         VPURT.Task updates(%0 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
             %4 = func.call @foo2(%2, %3) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 1 : i64} inputs(%3 : memref<1x3x64x64xf16, @DDR>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%3 : memref<1x3x64x64xf16, @DDR>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -667,13 +667,13 @@ module @NestedFunctionsMiddleAllocateBuffers {
         // CHECK-DAG: [[TMP1:%.+]] = VPURT.DeclareBuffer <DDR> <98304> -> memref<1x3x64x64xf16, @DDR>
 
         // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP0]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP0]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
         // CHECK:   func.call @foo2([[TMP0]], [[TMP1]]) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
 
         // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP1]] : memref<1x3x64x64xf16, @DDR>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP1]] : memref<1x3x64x64xf16, @DDR>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -686,13 +686,13 @@ module @NestedFunctionsMiddleAllocateBuffers {
         %3 = VPURT.DeclareBuffer <DDR> <49152> -> memref<1x3x64x64xf16, @DDR>
 
         VPURT.Task updates(%0 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x3x64x64xf16, @DDR>) outputs(%2 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
             %4 = func.call @foo1(%2, %3) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %4 = VPUIP.NNDMA {port = 0 : i64} inputs(%3 : memref<1x3x64x64xf16, @DDR>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
+            %4 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%3 : memref<1x3x64x64xf16, @DDR>) outputs(%arg1 : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         }
         return %arg1 : memref<1x3x64x64xf16, @DDR>
 
@@ -704,13 +704,13 @@ module @NestedFunctionsMiddleAllocateBuffers {
         // CHECK-DAG: [[TMP1:%.+]] = VPURT.DeclareBuffer <DDR> <49152> -> memref<1x3x64x64xf16, @DDR>
 
         // CHECK: VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP0]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[IN]] : memref<1x3x64x64xf16, @DDR>) outputs([[TMP0]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
         // CHECK:   func.call @foo1([[TMP0]], [[TMP1]]) : (memref<1x3x64x64xf16, @DDR>, memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
 
         // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[TMP1]] : memref<1x3x64x64xf16, @DDR>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[TMP1]] : memref<1x3x64x64xf16, @DDR>) outputs([[OUT]] : memref<1x3x64x64xf16, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x3x64x64xf16, @DDR>
     }
@@ -736,10 +736,10 @@ module @NestedFunctionsWithViewOps {
 
         %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task updates(%1 : !VPURT.Barrier) {
-            %3 = VPUIP.NNDMA {port = 0 : i64} inputs(%arg0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) outputs(%0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) -> memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>
+            %3 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) outputs(%0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) -> memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>
         }
         VPURT.Task waits(%1 : !VPURT.Barrier) {
-            %3 = VPUIP.NNDMA {port = 1 : i64} inputs(%0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) -> memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
+            %3 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%0 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) outputs(%arg1 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) -> memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
         }
 
         return %arg1 : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
@@ -757,10 +757,10 @@ module @NestedFunctionsWithViewOps {
         // CHECK:     [[SV_OUT:%.+]] = VPUIP.SubView [[RESHAPE]] [0, 0, 0, 0] [1, 2, 64, 64] : memref<1x4x64x64xf16, @DDR> to memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
 
         // CHECK: VPURT.Task updates([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 0 : i64} inputs([[SV_IN]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) outputs([[TMP]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>)
+        // CHECK:   VPUIP.NNDMA <{port = 0 : i64}> inputs([[SV_IN]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>) outputs([[TMP]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>)
 
         // CHECK: VPURT.Task waits([[BAR]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.NNDMA {port = 1 : i64} inputs([[TMP]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) outputs([[SV_OUT]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>)
+        // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[TMP]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, [@CMX_NN, 0]>) outputs([[SV_OUT]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>)
 
         // CHECK: return [[ARG1]] : memref<1x2x64x64xf16, {order = #NCHW, strides = [16384, 4096, 64, 1]}, @DDR>
     }

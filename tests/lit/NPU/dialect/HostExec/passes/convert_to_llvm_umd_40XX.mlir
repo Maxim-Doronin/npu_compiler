@@ -1,10 +1,109 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --vpu-arch=%arch% --mlir-elide-elementsattrs-if-larger 8 --convert-to-llvm-umd-calls  %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#map = affine_map<(d0)[s0] -> (-d0 + s0, 47)>
+#map1 = affine_map<(d0)[s0] -> (-d0 + s0, 256)>
+#map2 = affine_map<(d0)[s0] -> (d0 + s0 - 47)>
+#map3 = affine_map<(d0)[s0] -> (d0 + s0 - 256)>
+module @ConvChain attributes {config.compilationMode = #config.compilation_mode<HostCompile>} {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "Parameter_1" tensorNames = ["input"] : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1024, 1024]> : tensor<4xsi64>, order = #NCHW}>
+  } outputsInfo : {
+    DataInfo "add1.0" friendlyName = "output" tensorNames = ["output"] : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1024, 1024]> : tensor<4xsi64>, order = #NCHW}>
+  }
+  HostExec.Binary @Module1 {
+    HostExec.BinaryData @serialized_merged_vpu_func_0 <object = "\7FELF\02\01\00\00\00\00\00">
+    func.func private @merged_vpu_func_0(memref<1x3x188x256xf16>, memref<1x188x256x3xf16>) -> memref<1x188x256x3xf16>
+  }
+  HostExec.Binary @Module2 {
+    HostExec.BinaryData @serialized_main_func0_static <object = "\7FELF\02\01\00\00\00\00\00\00">
+    func.func private @main_func0_static(memref<1x3x47x256xf16>, memref<1x47x256x3xf16>) -> memref<1x47x256x3xf16>
+  }
+  func.func @main(%arg0: memref<1x3x?x?xf16>, %arg1: memref<1x3x?x?xf16>) -> memref<1x3x?x?xf16> attributes {config.pureHostCompileFunc} {
+    %0 = llvm.mlir.constant(6 : index) : i64
+    %3 = llvm.mlir.constant(188 : index) : i64
+    %4 = builtin.unrealized_conversion_cast %3 : i64 to index
+    %5 = llvm.mlir.constant(46 : index) : i64
+    %6 = llvm.mlir.constant(4 : index) : i64
+    %7 = llvm.mlir.constant(256 : index) : i64
+    %8 = builtin.unrealized_conversion_cast %7 : i64 to index
+    %9 = llvm.mlir.constant(47 : index) : i64
+    %10 = builtin.unrealized_conversion_cast %9 : i64 to index
+    %11 = llvm.mlir.constant(0 : index) : i64
+    %12 = builtin.unrealized_conversion_cast %11 : i64 to index
+    %13 = llvm.mlir.constant(3 : index) : i64
+    %14 = builtin.unrealized_conversion_cast %13 : i64 to index
+    %15 = llvm.mlir.constant(2 : index) : i64
+    %16 = builtin.unrealized_conversion_cast %15 : i64 to index
+    %dim = memref.dim %arg0, %16 : memref<1x3x?x?xf16>
+    %17 = builtin.unrealized_conversion_cast %dim : index to i64
+    %dim_0 = memref.dim %arg0, %14 : memref<1x3x?x?xf16>
+    %18 = builtin.unrealized_conversion_cast %dim_0 : index to i64
+    %19 = llvm.mul %17, %18 : i64
+    %20 = llvm.mul %19, %0 : i64
+    %21 = builtin.unrealized_conversion_cast %20 : i64 to index
+    %alloc = memref.alloc(%21) {alignment = 64 : i64} : memref<?xi8>
+    %view = memref.view %alloc[%12][%dim, %dim_0] : memref<?xi8> to memref<1x?x?x3xf16>
+    %22 = llvm.urem %17, %9 : i64
+    %23 = builtin.unrealized_conversion_cast %22 : i64 to index
+    %24 = llvm.urem %18, %7 : i64
+    %25 = builtin.unrealized_conversion_cast %24 : i64 to index
+    %26 = llvm.add %17, %5 : i64
+    %27 = llvm.udiv %26, %9 : i64
+    %28 = llvm.srem %27, %6 : i64
+    %29 = llvm.sub %27, %28 : i64
+    %30 = llvm.mul %29, %9 : i64
+    %31 = builtin.unrealized_conversion_cast %30 : i64 to index
+    %32 = llvm.sdiv %30, %3 : i64
+    %33 = builtin.unrealized_conversion_cast %32 : i64 to index
+    %34 = async.create_group %33 : !async.group
+    scf.for %arg2 = %12 to %dim step %4 {
+      scf.for %arg3 = %12 to %dim_0 step %8 {
+        %subview = memref.subview %arg0[0, 0, %arg2, %arg3] [1, 3, 188, 256] [1, 1, 1, 1] : memref<1x3x?x?xf16> to memref<1x3x188x256xf16, strided<[?, ?, ?, 1], offset: ?>>
+        %71 = builtin.unrealized_conversion_cast %subview : memref<1x3x188x256xf16, strided<[?, ?, ?, 1], offset: ?>> to memref<1x3x188x256xf16>
+        %subview_1 = memref.subview %view[0, %arg2, %arg3, 0] [1, 188, 256, 3] [1, 1, 1, 1] : memref<1x?x?x3xf16> to memref<1x188x256x3xf16, strided<[?, ?, 3, 1], offset: ?>>
+        %72 = builtin.unrealized_conversion_cast %subview_1 : memref<1x188x256x3xf16, strided<[?, ?, 3, 1], offset: ?>> to memref<1x188x256x3xf16>
+        %token, %bodyResults = async.execute -> !async.value<memref<1x188x256x3xf16>> {
+          %75 = Core.NestedCall @Module1::@merged_vpu_func_0(%71, %72) : (memref<1x3x188x256xf16>, memref<1x188x256x3xf16>) -> memref<1x188x256x3xf16>
+          async.yield %72 : memref<1x188x256x3xf16>
+        }
+        %73 = async.add_to_group %token, %34 : !async.token
+        %74 = async.await %bodyResults : !async.value<memref<1x188x256x3xf16>>
+      }
+    } {no_await_all = true}
+    %35 = llvm.sub %17, %30 : i64
+    %36 = llvm.sdiv %35, %9 : i64
+    %37 = builtin.unrealized_conversion_cast %36 : i64 to index
+    %38 = async.create_group %37 : !async.group {no_reset_cmdlist = true}
+    scf.for %arg2 = %31 to %dim step %10 {
+      scf.for %arg3 = %12 to %dim_0 step %8 {
+        %subview = memref.subview %arg0[0, 0, %arg2, %arg3] [1, 3, 47, 256] [1, 1, 1, 1] : memref<1x3x?x?xf16> to memref<1x3x47x256xf16, strided<[?, ?, ?, 1], offset: ?>>
+        %56 = builtin.unrealized_conversion_cast %subview : memref<1x3x47x256xf16, strided<[?, ?, ?, 1], offset: ?>> to memref<1x3x47x256xf16>
+        %subview_1 = memref.subview %view[0, %arg2, %arg3, 0] [1, 47, 256, 3] [1, 1, 1, 1] : memref<1x?x?x3xf16> to memref<1x47x256x3xf16, strided<[?, ?, 3, 1], offset: ?>>
+        %57 = builtin.unrealized_conversion_cast %subview_1 : memref<1x47x256x3xf16, strided<[?, ?, 3, 1], offset: ?>> to memref<1x47x256x3xf16>
+        %token, %bodyResults = async.execute -> !async.value<memref<1x47x256x3xf16>> {
+          %60 = Core.NestedCall @Module2::@main_func0_static(%56, %57) : (memref<1x3x47x256xf16>, memref<1x47x256x3xf16>) -> memref<1x47x256x3xf16>
+          async.yield %57 : memref<1x47x256x3xf16>
+        }
+        %58 = async.add_to_group %token, %38 : !async.token
+        %59 = async.await %bodyResults : !async.value<memref<1x47x256x3xf16>>
+      }
+    } {no_reset_cmdlist = true}
+    async.await_all %38
+    return %arg1 : memref<1x3x?x?xf16>
+
+    //CHECK-COUNT-1: llvm.call @npu_level_zero_submit_commandlist
+    //CHECK-NOT: llvm.call @npu_level_zero_submit_commandlist
+  }
+}
+
+// -----
 
 module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
   //CHECK: llvm.mlir.global internal constant @main1_kernel
@@ -50,7 +149,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
     HostExec.BinaryData @serialized_main1 <object = "\7FELF\02\01\00\00\10\00\00\00\00\00\00\00\00\00\00\00\02\00\00\00\00\00\00\00\00\00\00\00">
     func.func private @main1(memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
   }
-  func.func @main(%arg0: memref<1x720x1000x16xf16>, %arg1: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16> {
+  func.func @main(%arg0: memref<1x720x1000x16xf16>, %arg1: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16> attributes {config.pureHostCompileFunc} {
     %0 = llvm.mlir.constant(0 : index) : i64
     %1 = llvm.mlir.constant(720 : index) : i64
     %2 = llvm.mlir.constant(90 : index) : i64
@@ -105,7 +204,7 @@ module @Add attributes {config.compilationMode = #config.compilation_mode<HostCo
     HostExec.BinaryData @serialized_main_func2 <object = "\7FELF\02\01\00\00">
     func.func private @main_func2(memref<1x80x1000x16xf16>, memref<1x80x1000x16xf16>, memref<1x80x1000x16xf16>) -> memref<1x80x1000x16xf16>
   }
-  func.func @main(%arg0: memref<1x16x720x1000xf16>, %arg1: memref<1x16x720x1000xf16>, %arg2: memref<1x16x720x1000xf16>) -> memref<1x16x720x1000xf16> {
+  func.func @main(%arg0: memref<1x16x720x1000xf16>, %arg1: memref<1x16x720x1000xf16>, %arg2: memref<1x16x720x1000xf16>) -> memref<1x16x720x1000xf16> attributes {config.pureHostCompileFunc} {
     %0 = llvm.mlir.constant(80 : index) : i64
     %1 = builtin.unrealized_conversion_cast %0 : i64 to index
     %2 = llvm.mlir.constant(720 : index) : i64

@@ -32,7 +32,7 @@ mlir::Type getAuxiliaryBufferType(mlir::Value classProbs) {
 void VPU::ProposalOp::build(mlir::OpBuilder& odsBuilder, mlir::OperationState& odsState, mlir::Value classProbs,
                             mlir::Value bboxDelta, mlir::Value imageShape, IE::ProposalAttr proposalAttr) {
     const auto auxBuffType = getAuxiliaryBufferType(classProbs);
-    auto auxBuffer = VPU::createAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
+    auto auxBuffer = VPU::createEmptyAuxiliaryBuffer(odsBuilder, odsState.location, auxBuffType);
     build(odsBuilder, odsState, classProbs, bboxDelta, imageShape, auxBuffer, proposalAttr);
 }
 
@@ -69,6 +69,6 @@ llvm::LogicalResult VPU::ProposalOp::verify() {
     return VPU::compareTypes(getOperation()->getLoc(), auxBufferType, expectedType);
 }
 
-SmallVector<mlir::Value> VPU::ProposalOp::getAuxiliaryBuffers() {
-    return {getAuxiliary()};
+SmallVector<mlir::OpOperand*> VPU::ProposalOp::getAuxiliaryBuffers() {
+    return {&getAuxiliaryMutable()};
 }

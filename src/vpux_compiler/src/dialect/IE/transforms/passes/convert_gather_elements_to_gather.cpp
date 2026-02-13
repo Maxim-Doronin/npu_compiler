@@ -11,6 +11,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTGATHERELEMENTSTOGATHER
@@ -139,13 +140,13 @@ mlir::LogicalResult GatherElementsOpConverter::matchAndRewrite(IE::GatherElement
     // Create SqueezeOp
     auto axisOneArray = generateAxesValue(tileOpInShape.size(), axis);
     const auto axisOneArrayAttr = getIntArrayAttr(ctx, axisOneArray);
-    auto squeezeOp = rewriter.create<IE::SqueezeOp>(appendLoc(location, "_squeeze"), maybeTileOp.getInput(), nullptr,
-                                                    axisOneArrayAttr);
+    auto squeezeOpResult = rewriter.createOrFold<IE::SqueezeOp>(appendLoc(location, "squeeze"), maybeTileOp.getInput(),
+                                                                nullptr, axisOneArrayAttr);
 
     // Create GatherOp
     int64_t batchDims = 0;
-    rewriter.replaceOpWithNewOp<IE::GatherOp>(origOp, origOp.getOperand(0), squeezeOp, nullptr, getIntAttr(ctx, axis),
-                                              batchDims, nullptr);
+    rewriter.replaceOpWithNewOp<IE::GatherOp>(origOp, origOp.getOperand(0), squeezeOpResult, nullptr,
+                                              getIntAttr(ctx, axis), batchDims, nullptr);
 
     return mlir::success();
 }
@@ -171,14 +172,12 @@ private:
 
 void ConvertGatherElementsToGatherPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<GatherElementsOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

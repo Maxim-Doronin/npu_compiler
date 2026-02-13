@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -40,6 +40,7 @@ add_npu_library(npu_compiler_npu37xx
         npu_compiler_dialect_vpuip_utils
         npu_compiler_dialect_elfnpu37xx
         npu_compiler_pipelines
+        npu_compiler_locverif
         npu_llvm_utils
         npu_ov_utils
         npu_profiling_utils

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -13,6 +13,16 @@ npu_embed_bin_file(
     SOURCE_FILE "${PROJECT_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_5_1.cachebin"
     HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_cache_data_5_1.hpp.inc"
     VARIABLE_NAME "COST_MODEL_CACHE_5_1")
+npu_embed_bin_file(
+    TARGET cost_model_data_5_2
+    SOURCE_FILE "${PROJECT_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_5_1.vpunn"
+    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_data_5_2.hpp.inc"
+    VARIABLE_NAME "COST_MODEL_5_2")
+npu_embed_bin_file(
+    TARGET cost_model_cache_data_5_2
+    SOURCE_FILE "${PROJECT_SOURCE_DIR}/thirdparty/vpucostmodel/models/vpu_5_2.cachebin"
+    HEADER_FILE "${PROJECT_BINARY_DIR}/${gen_base_dst_include_dir}/dialect/VPU/generated/cost_model_cache_data_5_2.hpp.inc"
+    VARIABLE_NAME "COST_MODEL_CACHE_5_2")
 
 file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_npu50xx
@@ -27,7 +37,6 @@ add_npu_library(npu_compiler_npu50xx
         npu_compiler_dialect_vpurt_transforms
         npu_compiler_dialect_vpuip
         npu_compiler_dialect_vpuip_transforms
-        npu_compiler_dialect_ie_transforms
         npu_compiler_core
         npu_compiler_dialect_const
         npu_compiler_dialect_core
@@ -44,6 +53,7 @@ add_npu_library(npu_compiler_npu50xx
         npu_compiler_npu37xx
         npu_compiler_npu40xx
         npu_compiler_pipelines
+        npu_compiler_locverif
         npu_llvm_utils
         npu_ov_utils
         npu_profiling_utils
@@ -53,6 +63,8 @@ add_npu_library(npu_compiler_npu50xx
     DEPENDS
         cost_model_data_5_1
         cost_model_cache_data_5_1
+        cost_model_data_5_2
+        cost_model_cache_data_5_2
     SYSTEM_INCLUDES
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/sw_runtime_kernels>

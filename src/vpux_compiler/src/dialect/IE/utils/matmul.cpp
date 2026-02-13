@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -119,6 +120,29 @@ bool isMatmulSoftmaxMatmulAndNotAligned(IE::MatMulOp matmulOp) {
     return false;
 }
 
+bool isGroupedMatMulBeneficialToGroupConv(IE::MatMulOp matmulOp) {
+    const auto input1Shape = getShape(matmulOp.getInput1());
+    const auto input2Shape = getShape(matmulOp.getInput2());
+    const int rank3D = 3;
+    Shape input1Shape3d =
+            input1Shape.size() > rank3D ? Shape(input1Shape.begin() + 1, input1Shape.end()) : input1Shape.toValues();
+    if (input1Shape.size() > rank3D) {
+        input1Shape3d[Dims3D::Act::B] *= *input1Shape.begin();
+    }
+    auto input2Shape3d =
+            input2Shape.size() > rank3D ? Shape(input2Shape.begin() + 1, input2Shape.end()) : input2Shape.toValues();
+    if (input2Shape.size() > rank3D) {
+        input2Shape3d[Dims3D::Act::B] *= *input2Shape.begin();
+    }
+    const auto maxKernelSize = config::getMaxKernelSize(matmulOp);
+    auto inputChannel = matmulOp.getTransposeB() ? input2Shape3d[Dims3D::Act::IC] : input2Shape3d[Dims3D::Act::H];
+    auto outputChannel = matmulOp.getTransposeB() ? input2Shape3d[Dims3D::Act::H] : input2Shape3d[Dims3D::Act::IC];
+
+    return input1Shape3d[Dims3D::Act::B] >= VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT &&
+           input2Shape3d[Dims3D::Act::B] >= VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT && inputChannel <= maxKernelSize &&
+           outputChannel == 1;
+}
+
 // Does single group (2D MatMul) fit into CMX
 bool isGroupedMatMulBeneficial(IE::MatMulOp matmulOp, ShapeRef input1Shape, ShapeRef input2Shape) {
     const auto availableCMXBytes = vpux::VPU::getTotalCMXSize(matmulOp);
@@ -137,6 +161,11 @@ bool isGroupedMatMulBeneficial(IE::MatMulOp matmulOp, ShapeRef input1Shape, Shap
     auto expandedCMXUsagePerGroup = IE::getExpandedCMXUsagePerGroup(matmulOp, input1Shape3d, input2Shape3d);
 
     if (IE::isMatmulSoftmaxMatmulAndNotAligned(matmulOp)) {
+        return false;
+    }
+
+    // EnsureNCEOpsSizeRequirements pass doesn't promise handling of IC out of NCE dimension limit
+    if (input1Shape3d[Dims3D::Act::IC] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
         return false;
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -553,6 +553,10 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
 mlir::LogicalResult MergeVFRegionRewriter::matchAndRewrite(VPU::VerticalFusionOp vfOp,
                                                            mlir::PatternRewriter& rewriter) const {
     _log.trace("Starting vertical fusion for region with VerticalFusionOp {0} at location {1}", vfOp, vfOp->getLoc());
+    if (vfOp.getIsManualConfigured()) {
+        _log.trace("Skipping vertical fusion for manually configured VerticalFusionOp at location {0}", vfOp->getLoc());
+        return mlir::failure();
+    }
 
     VPU::VerticalFusionOp vfBlock = nullptr;
     VPU::VerticalFusionOp parentVFOp = nullptr;
@@ -560,7 +564,7 @@ mlir::LogicalResult MergeVFRegionRewriter::matchAndRewrite(VPU::VerticalFusionOp
         parentVFOp = operand.getDefiningOp<VPU::VerticalFusionOp>();
         vfBlock = nullptr;
 
-        if (parentVFOp == nullptr) {
+        if (parentVFOp == nullptr || parentVFOp.getIsManualConfigured()) {
             continue;
         }
 

@@ -114,7 +114,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg40XX::NNrtConfigOp::getRelocationIn
 }
 
 void vpux::NPUReg40XX::NNrtConfigOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr sym_name,
-                                           mlir::UnitAttr isActKernelInvocations, mlir::SymbolRefAttr actShaveRt,
+                                           bool isActKernelInvocations, mlir::SymbolRefAttr actShaveRt,
                                            mlir::ArrayAttr actShaveStacks, mlir::SymbolRefAttr dmaHwpBase,
                                            mlir::SymbolRefAttr hwpWorkpointCfg,
                                            vpux::NPUReg40XX::Descriptors::VpuNNRTConfig&& descriptor) {

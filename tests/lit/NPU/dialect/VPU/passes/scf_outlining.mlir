@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,7 +57,7 @@ module @ControlFlowOutliningStaticShape {
 // CHECK:    [[OUTPUT:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[CST]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, {{[^:]+}}} : tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}> -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:    return [[OUTPUT]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:  }
-// CHECK:  func.func @main(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {
+// CHECK:  func.func @main(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
 // CHECK:      [[LOCAL_BUFF:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:      [[CST_1:%.+]] = arith.constant 0 : index
 // CHECK:      [[CST_64:%.+]] = arith.constant 64 : index
@@ -148,7 +148,7 @@ module @ControlFlowOutliningStaticShape1 {
 // CHECK:      [[OUTPUT0:%.+]] = VPU.NCE.MaxPool([[INPUT0]], [[CST]] ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:      return [[OUTPUT0]] : tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:    }
-// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x200x200xf16, {order = #NHWC}>) -> tensor<1x16x200x200xf16, {order = #NHWC}> {
+// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x200x200xf16, {order = #NHWC}>) -> tensor<1x16x200x200xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
 // CHECK:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x16x200x200xf16, {order = #NHWC}>
 // CHECK:      [[CST0:%.+]] = arith.constant 0 : index
 // CHECK:      [[CST200:%.+]] = arith.constant 200 : index
@@ -223,7 +223,7 @@ module @ControlFlowOutliningDynamicShape1 {
 // CHECK:      [[OUTPUT:%.+]] = VPU.NCE.Eltwise([[INPUT0]], [[INPUT1]]) {is_inplace = true, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:      return [[OUTPUT]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:    }
-// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> {
+// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> attributes {config.pureHostCompileFunc} {
 // CHECK:        [[CST0:%.+]] = arith.constant 3 : index
 // CHECK:        [[DIM0:%.+]] = tensor.dim [[INPUT0]], [[CST0]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:        [[BUFFER:%.+]] = tensor.empty([[DIM0]]) : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
@@ -305,7 +305,7 @@ module @ControlFlowOutliningMultipleOutput {
 // CHECK:     [[OUT0:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[CST]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [256, 32, 3, 3], strides = [1, 1]} : tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}> -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:     return [[OUT0]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:   }
-// CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {
+// CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
 // CHECK:     [[BUFFER:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:     [[FROM:%.+]] = arith.constant 0 : index
 // CHECK:     [[TILL:%.+]] = arith.constant 64 : index
@@ -366,7 +366,7 @@ module @Add {
   // CHECK:   [[RESULT:%.+]] = VPU.PermuteCast
   // CHECK:   return [[RESULT]] : tensor<1x1x100x100xf32>
   // CHECK:   }
-  // CHECK:   func.func @main([[ARGS0:%.+]]: tensor<1x1x100x100xf32>, [[ARGS1:%.+]]: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32> {
+  // CHECK:   func.func @main([[ARGS0:%.+]]: tensor<1x1x100x100xf32>, [[ARGS1:%.+]]: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32> attributes {config.pureHostCompileFunc} {
   // CHECK:   [[RESULTS:%.+]] = call @main_func0([[ARGS0]], [[ARGS1]]) : (tensor<1x1x100x100xf32>, tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32>
   // CHECK:   return [[RESULTS]] : tensor<1x1x100x100xf32>
   // CHECK:   }
@@ -441,7 +441,7 @@ module @SparseTensorWithCstInputs {
   // CHECK:     return [[CONV]] : tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:   }
 
-  // CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {
+  // CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
   // CHECK:     [[BUFFER:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
   // CHECK:     [[FROM:%.+]] = arith.constant 0 : index
   // CHECK:     [[TILL:%.+]] = arith.constant 64 : index
@@ -518,7 +518,7 @@ module @SparseTensorWithBlockInput {
   // CHECK:    return [[CONV]] : tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:  }
 
-  // CHECK:  func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<256x32x3x3xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {
+  // CHECK:  func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<256x32x3x3xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
   // CHECK:    [[CST:%.+]] = const.Declare tensor<256x1x1x384xi1> = dense<0.000000e+00> : tensor<256x32x3x3xf16, {order = #NHWC}>, [#const.GetSparsityMap]
   // CHECK:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
   // CHECK:    [[C0:%.+]] = arith.constant 0 : index
@@ -534,5 +534,61 @@ module @SparseTensorWithBlockInput {
   // CHECK:      scf.yield [[INSERTED_SLICE]] : tensor<1x256x64x64xf16, {order = #NHWC}>
   // CHECK:    }
   // CHECK:    return [[SCF_FOR]] : tensor<1x256x64x64xf16, {order = #NHWC}>
+  // CHECK:  }
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+module @ExtractSliceMoveToTop {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input1" tensorNames = ["input1"] : tensor<1x16x1600x1600xf32>
+    DataInfo "input2" tensorNames = ["input2"] : tensor<1x16x1600x1600xf32>
+  } outputsInfo : {
+    DataInfo "Add_3.0" friendlyName = "output" : tensor<1x16x1600x1600xf32>
+  }
+  func.func @main(%arg0: tensor<1x16x1600x1600xf32>, %arg1: tensor<1x16x1600x1600xf32>) -> tensor<1x16x1600x1600xf32> {
+    %c10 = arith.constant 10 : index
+    %c1600 = arith.constant 1600 : index
+    %c0 = arith.constant 0 : index
+    %0 = VPU.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x16x1600x1600xf32> -> tensor<1x1600x16x1600xf32, {order = #NHWC}>
+    %1 = VPU.PermuteCast(%arg1) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x16x1600x1600xf32> -> tensor<1x1600x16x1600xf32, {order = #NHWC}>
+    %2 = tensor.empty() : tensor<1x1600x16x1600xf32, {order = #NHWC}>
+    %3 = scf.for %arg2 = %c0 to %c1600 step %c10 iter_args(%arg3 = %2) -> (tensor<1x1600x16x1600xf32, {order = #NHWC}>) {
+      %extracted_slice = tensor.extract_slice %0[0, 0, 0, %arg2] [1, 1600, 16, 10] [1, 1, 1, 1] : tensor<1x1600x16x1600xf32, {order = #NHWC}> to tensor<1x1600x16x10xf32, {order = #NHWC}>
+      %5 = VPU.Convert(%extracted_slice) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1600x16x10xf32, {order = #NHWC}> -> tensor<1x1600x16x10xf16, {order = #NHWC}>
+      %extracted_slice_0 = tensor.extract_slice %1[0, 0, 0, %arg2] [1, 1600, 16, 10] [1, 1, 1, 1] : tensor<1x1600x16x1600xf32, {order = #NHWC}> to tensor<1x1600x16x10xf32, {order = #NHWC}>
+      %6 = VPU.Convert(%extracted_slice_0) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1600x16x10xf32, {order = #NHWC}> -> tensor<1x1600x16x10xf16, {order = #NHWC}>
+      %7 = VPU.NCE.Eltwise(%5, %6) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x1600x16x10xf32, {order = #NHWC}>
+      %inserted_slice = tensor.insert_slice %7 into %arg3[0, 0, 0, %arg2] [1, 1600, 16, 10] [1, 1, 1, 1] : tensor<1x1600x16x10xf32, {order = #NHWC}> into tensor<1x1600x16x1600xf32, {order = #NHWC}>
+      scf.yield %inserted_slice : tensor<1x1600x16x1600xf32, {order = #NHWC}>
+    }
+    %4 = VPU.PermuteCast(%3) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x1600x16x1600xf32, {order = #NHWC}> -> tensor<1x16x1600x1600xf32>
+    return %4 : tensor<1x16x1600x1600xf32>
+  }
+
+  // CHECK:  func.func private @main_func2([[INPUT0:%.+]]: tensor<1x1600x16x10xf32, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x1600x16x10xf32, {order = #NHWC}>) -> tensor<1x1600x16x10xf32, {order = #NHWC}> {
+  // CHECK:    [[CONVERT_0:%.+]] = VPU.Convert([[INPUT0]]) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1600x16x10xf32, {order = #NHWC}> -> tensor<1x1600x16x10xf16, {order = #NHWC}>
+  // CHECK:    [[CONVERT_1:%.+]] = VPU.Convert([[INPUT1]]) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x1600x16x10xf32, {order = #NHWC}> -> tensor<1x1600x16x10xf16, {order = #NHWC}>
+  // CHECK:    [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[CONVERT_0]], [[CONVERT_1]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x1600x16x10xf32, {order = #NHWC}>
+  // CHECK:    return [[ELTWISE]] : tensor<1x1600x16x10xf32, {order = #NHWC}>
+  // CHECK:  }
+
+  // CHECK:  func.func @main([[ARG0:%.+]]: tensor<1x16x1600x1600xf32>, [[ARG1:%.+]]: tensor<1x16x1600x1600xf32>) -> tensor<1x16x1600x1600xf32> attributes {config.pureHostCompileFunc} {
+  // CHECK:    [[C10:%.+]] = arith.constant 10 : index
+  // CHECK:    [[C1600:%.+]] = arith.constant 1600 : index
+  // CHECK:    [[C0:%.+]] = arith.constant 0 : index
+  // CHECK:    [[CONVERTED_ARG:%.+]]:2 = call @main_func0([[ARG0]], [[ARG1]]) : (tensor<1x16x1600x1600xf32>, tensor<1x16x1600x1600xf32>) -> (tensor<1x1600x16x1600xf32, {order = #NHWC}>, tensor<1x1600x16x1600xf32, {order = #NHWC}>)
+  // CHECK:    [[OUTPUT:%.+]] = tensor.empty() : tensor<1x1600x16x1600xf32, {order = #NHWC}>
+  // CHECK:    [[RESULT:%.+]] = scf.for [[ARG2:%.+]] = [[C0]] to [[C1600]] step [[C10]] iter_args([[ARG3:%.+]] = [[OUTPUT]]) -> (tensor<1x1600x16x1600xf32, {order = #NHWC}>) {
+  // CHECK:      [[EXTRACTED_SLICE_0:%.+]] = tensor.extract_slice [[CONVERTED_ARG]]#0[0, 0, 0, [[ARG2]]] [1, 1600, 16, 10] [1, 1, 1, 1] : tensor<1x1600x16x1600xf32, {order = #NHWC}> to tensor<1x1600x16x10xf32, {order = #NHWC}>
+  // CHECK:      [[EXTRACTED_SLICE_1:%.+]] = tensor.extract_slice [[CONVERTED_ARG]]#1[0, 0, 0, [[ARG2]]] [1, 1600, 16, 10] [1, 1, 1, 1] : tensor<1x1600x16x1600xf32, {order = #NHWC}> to tensor<1x1600x16x10xf32, {order = #NHWC}>
+  // CHECK:      [[FUNC_RESULT:%.+]] = func.call @main_func2([[EXTRACTED_SLICE_0]], [[EXTRACTED_SLICE_1]]) : (tensor<1x1600x16x10xf32, {order = #NHWC}>, tensor<1x1600x16x10xf32, {order = #NHWC}>) -> tensor<1x1600x16x10xf32, {order = #NHWC}>
+  // CHECK:      [[INSERT_SLICE:%.+]] = tensor.insert_slice [[FUNC_RESULT]] into [[ARG3]][0, 0, 0, [[ARG2]]] [1, 1600, 16, 10] [1, 1, 1, 1] : tensor<1x1600x16x10xf32, {order = #NHWC}> into tensor<1x1600x16x1600xf32, {order = #NHWC}>
+  // CHECK:      scf.yield [[INSERT_SLICE]] : tensor<1x1600x16x1600xf32, {order = #NHWC}>
+  // CHECK:    }
+  // CHECK:    [[CONVERTED_RESULT:%.+]] = call @main_func1([[RESULT]]) : (tensor<1x1600x16x1600xf32, {order = #NHWC}>) -> tensor<1x16x1600x1600xf32>
+  // CHECK:    return [[CONVERTED_RESULT]] : tensor<1x16x1600x1600xf32>
   // CHECK:  }
 }

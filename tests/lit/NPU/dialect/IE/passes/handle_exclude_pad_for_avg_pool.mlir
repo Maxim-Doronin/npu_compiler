@@ -342,3 +342,24 @@ func.func @HandleExcludePadForAvgPoolPadWithZeroCase5(%arg0 : tensor<1x256x96x32
 
     // CHECK:       return [[AVGPOOL]]
 }
+
+// -----
+
+// CHECK-LABEL: @HandleExcludePadForAvgPoolPadWithZeroAndLargeKernelCase
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x1024x6x6xf16>
+func.func @HandleExcludePadForAvgPoolPadWithZeroAndLargeKernelCase(%arg0 : tensor<1x1024x6x6xf16>) -> (tensor<1x1024x1x1xf16>) {
+    %0 = IE.AvgPool(%arg0) {
+        exclude_pads,
+        kernel_size = [7, 7],
+        pads_begin = [0, 0],
+        pads_end = [1, 1],
+        rounding_type = #IE.rounding_type<FLOOR>,
+        strides = [1, 1]
+    } : tensor<1x1024x6x6xf16> -> tensor<1x1024x1x1xf16>
+    return %0 : tensor<1x1024x1x1xf16>
+
+    //CHECK:        [[AVGPOOL:%.+]] = IE.AvgPool([[INPUT]])
+    //CHECK-SAME:   {kernel_size = [6, 6], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x1024x6x6xf16> -> tensor<1x1024x1x1xf16>
+
+    // CHECK:       return [[AVGPOOL]]
+}

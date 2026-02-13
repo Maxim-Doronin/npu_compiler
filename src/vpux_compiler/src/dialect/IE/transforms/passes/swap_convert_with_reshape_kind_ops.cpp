@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -33,6 +34,7 @@ public:
 
 public:
     class OpSwapConverter;
+    class PropagateConvertToFuseConverter;
 
 private:
     void safeRunOnFunc() final;
@@ -47,6 +49,15 @@ bool isReshapeKindOp(mlir::Operation* op) {
     }
     return mlir::isa<IE::AffineReshapeOp, IE::DepthToSpaceOp, IE::ReshapeOp, IE::SqueezeOp, IE::TransposeOp,
                      IE::UnsqueezeOp>(op);
+}
+
+enum class PropagationDecision { NoPropagate, PropagateForward, PropagateBackward };
+
+bool canPropagateThroughOp(mlir::Operation* op) {
+    if (op == nullptr) {
+        return false;
+    }
+    return isReshapeKindOp(op) || mlir::isa<IE::GatherOp>(op);
 }
 
 // For OV 2.0 API U8 we can have:
@@ -133,6 +144,198 @@ mlir::LogicalResult SwapConvertWithReshapeKindOps::OpSwapConverter::matchAndRewr
     return mlir::failure();
 }
 
+//
+// PropagateConvertToFuseConverter
+//
+
+class SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter final :
+        public mlir::OpRewritePattern<IE::ConvertOp> {
+public:
+    PropagateConvertToFuseConverter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ConvertOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ConvertOp origConvertOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+
+    // Find the Convert pair can be propagated to fuse
+    mlir::Operation* findPropagationTarget(mlir::Operation* startOp) const;
+
+    // Decide propagation direction based on data types
+    PropagationDecision decidePropagationDirection(IE::ConvertOp firstConvert, IE::ConvertOp lastConvert) const;
+
+    // Propagate Convert operation through the chain (forward direction)
+    void propagateConvertForward(IE::ConvertOp firstConvert, IE::ConvertOp lastConvert,
+                                 mlir::PatternRewriter& rewriter) const;
+
+    // Propagate Convert operation through the chain (backward direction)
+    void propagateConvertBackward(IE::ConvertOp firstConvert, IE::ConvertOp lastConvert,
+                                  mlir::PatternRewriter& rewriter) const;
+};
+
+mlir::Operation* SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::findPropagationTarget(
+        mlir::Operation* startOp) const {
+    mlir::Operation* currentOp = startOp;
+    while (currentOp && currentOp->hasOneUse()) {
+        auto nextOp = *currentOp->getUsers().begin();
+        if (canPropagateThroughOp(nextOp)) {
+            if (auto gatherOp = mlir::dyn_cast<IE::GatherOp>(nextOp)) {
+                if (gatherOp.getInput() != currentOp->getResult(0)) {
+                    // No propagation if the current Op is not Gather's data input
+                    break;
+                }
+            }
+            currentOp = nextOp;
+        } else if (mlir::isa<IE::ConvertOp>(nextOp)) {
+            // Found target ConvertOp
+            return nextOp;
+        } else {
+            break;
+        }
+    }
+
+    return nullptr;
+}
+
+PropagationDecision SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::decidePropagationDirection(
+        IE::ConvertOp firstConvert, IE::ConvertOp lastConvert) const {
+    const auto firstInputType = mlir::cast<vpux::NDTypeInterface>(firstConvert.getInput().getType()).getElementType();
+    const auto firstOutputType = mlir::cast<vpux::NDTypeInterface>(firstConvert.getOutput().getType()).getElementType();
+    const auto lastOutputType = mlir::cast<vpux::NDTypeInterface>(lastConvert.getOutput().getType()).getElementType();
+    const auto firstInputSize = getElemTypeSize(firstInputType).to<Bit>().count();
+    const auto middleTypeSize = getElemTypeSize(firstOutputType).to<Bit>().count();
+    const auto lastOutputSize = getElemTypeSize(lastOutputType).to<Bit>().count();
+    if (!firstInputSize || !middleTypeSize || !lastOutputSize) {
+        return PropagationDecision::NoPropagate;
+    }
+
+    int64_t minTypeSize = std::min({firstInputSize, middleTypeSize, lastOutputSize});
+    if (minTypeSize == lastOutputSize) {
+        return PropagationDecision::PropagateForward;
+    } else if (minTypeSize == firstInputSize) {
+        return PropagationDecision::PropagateBackward;
+    }
+
+    return PropagationDecision::NoPropagate;
+}
+
+void SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::propagateConvertForward(
+        IE::ConvertOp firstConvert, IE::ConvertOp lastConvert, mlir::PatternRewriter& rewriter) const {
+    // Get the chain of operations between first and last convert
+    SmallVector<mlir::Operation*> propagationChain;
+    mlir::Operation* currentOp = *firstConvert.getOutput().getUsers().begin();
+    while (currentOp && currentOp != lastConvert) {
+        propagationChain.push_back(currentOp);
+        currentOp = *currentOp->getUsers().begin();
+    }
+
+    auto lastConvertOutputType = mlir::cast<vpux::NDTypeInterface>(lastConvert.getOutput().getType());
+    auto targetElementType = lastConvertOutputType.getElementType();
+
+    // Create new Convert after first Convert
+    rewriter.setInsertionPointAfter(firstConvert);
+    auto newConvertOp =
+            rewriter.create<IE::ConvertOp>(lastConvert.getLoc(), firstConvert.getOutput(), targetElementType);
+
+    // Update all intermediate operations
+    mlir::Value currentValue = newConvertOp.getOutput();
+    for (auto* op : propagationChain) {
+        auto currentOutputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+        auto newOutputType = currentOutputType.changeElemType(targetElementType);
+
+        rewriter.startOpModification(op);
+        op->getResult(0).setType(newOutputType);
+        op->setOperand(0, currentValue);
+        rewriter.finalizeOpModification(op);
+
+        currentValue = op->getResult(0);
+    }
+
+    rewriter.replaceOp(lastConvert, currentValue);
+}
+
+void SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::propagateConvertBackward(
+        IE::ConvertOp firstConvert, IE::ConvertOp lastConvert, mlir::PatternRewriter& rewriter) const {
+    // Get the chain of operations between first and last convert
+    SmallVector<mlir::Operation*> propagationChain;
+    mlir::Operation* currentOp = *firstConvert.getOutput().getUsers().begin();
+    while (currentOp && currentOp != lastConvert) {
+        propagationChain.push_back(currentOp);
+        currentOp = *currentOp->getUsers().begin();
+    }
+
+    auto originalInputType = mlir::cast<vpux::NDTypeInterface>(firstConvert.getInput().getType());
+    auto originalElementType = originalInputType.getElementType();
+
+    // Update all intermediate operations
+    for (auto* op : propagationChain) {
+        auto currentOutputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
+        auto newOutputType = currentOutputType.changeElemType(originalElementType);
+
+        rewriter.startOpModification(op);
+        op->getResult(0).setType(newOutputType);
+        rewriter.finalizeOpModification(op);
+    }
+
+    // Create new Convert before the last Convert
+    auto lastOp = propagationChain.back();
+    rewriter.setInsertionPointAfter(lastOp);
+    auto newConvertOp =
+            rewriter.create<IE::ConvertOp>(firstConvert.getLoc(), lastOp->getResult(0), firstConvert.getDstElemType());
+
+    rewriter.replaceOp(firstConvert, firstConvert.getInput());
+
+    rewriter.startOpModification(lastConvert);
+    lastConvert->setOperand(0, newConvertOp.getOutput());
+    rewriter.finalizeOpModification(lastConvert);
+}
+
+mlir::LogicalResult SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::matchAndRewrite(
+        IE::ConvertOp origConvertOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Propagate Convert operation '{0}' at '{1}'", origConvertOp->getName(), origConvertOp->getLoc());
+
+    if (!origConvertOp.getOutput().hasOneUse()) {
+        return matchFailed(rewriter, origConvertOp, "The Convert has more than one consumer");
+    }
+
+    auto firstUser = *origConvertOp.getOutput().getUsers().begin();
+    if (!canPropagateThroughOp(firstUser)) {
+        return matchFailed(rewriter, origConvertOp, "The Convert consumer is not a reshape kind operation or gather");
+    }
+
+    if (auto gatherOp = mlir::dyn_cast<IE::GatherOp>(firstUser)) {
+        if (gatherOp.getInput() != origConvertOp.getOutput()) {
+            return matchFailed(rewriter, origConvertOp, "The Convert is not Gather's data input");
+        }
+    }
+
+    auto targetOp = findPropagationTarget(firstUser);
+    if (!targetOp || !mlir::isa<IE::ConvertOp>(targetOp)) {
+        return matchFailed(rewriter, origConvertOp, "Could not find target Convert to fuse");
+    }
+
+    auto lastConvertOp = mlir::cast<IE::ConvertOp>(targetOp);
+
+    // Decide propagation direction and finish propagation
+    auto decision = decidePropagationDirection(origConvertOp, lastConvertOp);
+    switch (decision) {
+    case PropagationDecision::PropagateForward:
+        propagateConvertForward(origConvertOp, lastConvertOp, rewriter);
+        break;
+    case PropagationDecision::PropagateBackward:
+        propagateConvertBackward(origConvertOp, lastConvertOp, rewriter);
+        break;
+    default:
+        return matchFailed(rewriter, origConvertOp, "Not propagate as no benefit");
+    }
+
+    _log.trace("Propagate Convert operation to fuse successfully");
+    return mlir::success();
+}
+
 void SwapConvertWithReshapeKindOps::safeRunOnFunc() {
     auto func = getOperation();
 
@@ -140,6 +343,7 @@ void SwapConvertWithReshapeKindOps::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SwapConvertWithReshapeKindOps::OpSwapConverter>(&ctx, _log);
+    patterns.add<SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

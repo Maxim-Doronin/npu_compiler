@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -123,7 +123,7 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
         }
 
         log.trace("Free memory for the dead buffers");
-        scan.freeNonAlive();
+        scan.freeDeadRanges();
 
         log = log.unnest();
     };
@@ -159,7 +159,7 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
         // then whole scheduling loop can be skipped as there would be no buffer
         // to allocate
         const auto executor = VPUIP::VPUIPDialect::getExecutorKind(curExecOp);
-        if (executor == VPU::ExecutorKind::DPU) {
+        if (executor == config::ExecutorKind::DPU) {
             continue;
         }
 
