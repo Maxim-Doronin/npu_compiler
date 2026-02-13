@@ -318,7 +318,10 @@ ml-dtypes==0.5.3 \
     --hash=sha256:d0f730a17cf4f343b2c7ad50cee3bd19e969e793d2be6ed911f43086460096e4 \
     --hash=sha256:da65e5fd3eea434ccb8984c3624bc234ddcc0d9f4c81864af611aaebcc08a50e \
     --hash=sha256:e12e29764a0e66a7a31e9b8bf1de5cc0423ea72979f45909acd4292de834ccd3
-    # via onnx
+    # via
+    #   onnx
+    #   onnx-ir
+    #   onnxscript
 mpmath==1.3.0 \
     --hash=sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f \
     --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
@@ -387,8 +390,10 @@ numpy==2.2.5 \
     #   accelerate
     #   ml-dtypes
     #   onnx
+    #   onnx-ir
     #   onnxruntime
     #   onnxruntime-tools
+    #   onnxscript
     #   torchvision
     #   transformers
 onnx==1.20.1 \
@@ -417,7 +422,13 @@ onnx==1.20.1 \
     --hash=sha256:eb335d7bcf9abac82a0d6a0fda0363531ae0b22cfd0fc6304bff32ee29905def
     # via
     #   -r .github/actions/compile-models/requirements.in
+    #   onnx-ir
     #   onnxruntime-tools
+    #   onnxscript
+onnx-ir==0.1.16 \
+    --hash=sha256:a8182f2ba716640aafdd10c5c973a02e2a4f7c10ed57b6b000a3be90e9ea6d38 \
+    --hash=sha256:dda5c90f9d941767d3bba43adca20923b7fc020eee0cbf947b847a21701f93d9
+    # via onnxscript
 onnxruntime==1.24.1 \
     --hash=sha256:1099f3629832580fedf415cfce2462a56cc9ca2b560d6300c24558e2ac049134 \
     --hash=sha256:1cabe71ca14dcfbf812d312aab0a704507ac909c137ee6e89e4908755d0fc60e \
@@ -444,6 +455,10 @@ onnxruntime-tools==1.7.0 \
     --hash=sha256:1dff888b5c482ac5bc627f12e108445fefcb3d600c43f63633975316fe617ad8 \
     --hash=sha256:6dbdcee49424e066bcd10357c37d51bc422ae26494e3c2f0c1970d534f967f6d
     # via -r .github/actions/compile-models/requirements.in
+onnxscript==0.6.2 \
+    --hash=sha256:20e3c3fd1da19b3655549d5455a2df719db47374fe430e01e865ae69127c37b9 \
+    --hash=sha256:abb2e6f464db40c9b8c7fbb3e64cca04cf3f4495e67c4eda5eac17b784191ce3
+    # via -r .github/actions/compile-models/requirements.in
 packaging==25.0 \
     --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
     --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
@@ -452,6 +467,7 @@ packaging==25.0 \
     #   huggingface-hub
     #   onnxruntime
     #   onnxruntime-tools
+    #   onnxscript
     #   transformers
 pillow==12.1.1 \
     --hash=sha256:02f84dfad02693676692746df05b89cf25597560db2857363a208e393429f5e9 \
@@ -896,6 +912,8 @@ typing-extensions==4.13.2 \
     # via
     #   huggingface-hub
     #   onnx
+    #   onnx-ir
+    #   onnxscript
     #   torch
 urllib3==2.6.3 \
     --hash=sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed \

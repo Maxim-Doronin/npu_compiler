@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - develop
+      - 'releases/*'
 
 concurrency:
   group: linux-${{ github.event_name }}-${{ github.ref_name }}-ubuntu_22_04
