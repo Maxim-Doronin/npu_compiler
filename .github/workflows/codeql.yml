@@ -52,10 +52,12 @@ jobs:
       packages: read
       statuses: read
       security-events: write
+      attestations: write
       id-token: write
     with:
       os: ubuntu_24_04
       build-runner: ubuntu-latest-32-cores
       build-plugin: true
       build-driver: false
+      build-cid: false
       with-codeql: true

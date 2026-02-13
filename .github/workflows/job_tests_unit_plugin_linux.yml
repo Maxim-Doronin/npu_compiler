@@ -1,4 +1,4 @@
-name: Linux MLIR Unit Tests
+name: Linux Plugin Unit Tests
 on:
   workflow_call:
     inputs:
