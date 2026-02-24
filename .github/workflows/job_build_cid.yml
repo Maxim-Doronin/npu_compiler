@@ -287,6 +287,15 @@ jobs:
             -S ${OPENVINO_REPO} \
             -B ${OPENVINO_BUILD_DIR}
 
+      - name: Get versions with build manifest
+        uses: ./npu_actions/.github/actions/versions
+        id: versions-with-manifest
+        if: ${{ !steps.cache-restore.outputs.cache-hit }}
+        with:
+          build-manifest-dir: ${{ env.CID_PACKAGE_ARTIFACTS_DIR }}
+          openvino-repo-path: ${{ env.OPENVINO_REPO }}
+          npu-compiler-repo-path: ${{ env.NPU_COMPILER_REPO }}
+
       - name: CMake build - CiD targets
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         run: |
@@ -299,6 +308,12 @@ jobs:
       - name: CMake cpack - CiD target
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
         run: |
+          SCRIPT_PATH="${{ runner.temp }}/add_to_package.cmake"
+          cat > "${SCRIPT_PATH}" << 'EOF'
+          message(STATUS "Copying manifest ${SRC_MANIFEST} to: ${CPACK_TEMPORARY_INSTALL_DIRECTORY}")
+          file(COPY "${SRC_MANIFEST}" DESTINATION "${CPACK_TEMPORARY_INSTALL_DIRECTORY}")
+          EOF
+
           cpack -V \
             --config "${OPENVINO_BUILD_DIR}/CPackConfig.cmake" \
             -C "${CMAKE_BUILD_TYPE}" \
@@ -306,7 +321,9 @@ jobs:
             -B "${CID_PACKAGE_ARTIFACTS_DIR}" \
             -D CPACK_COMPONENTS_ALL=CiD \
             -D CPACK_CMAKE_GENERATOR=Ninja \
-            -D CPACK_PACKAGE_FILE_NAME="${{ steps.package-name.outputs.cid-package-base-name }}"
+            -D CPACK_PACKAGE_FILE_NAME="${{ steps.package-name.outputs.cid-package-base-name }}" \
+            -D SRC_MANIFEST="${{ steps.versions-with-manifest.outputs.build-manifest-path }}" \
+            -D CPACK_PRE_BUILD_SCRIPTS="${SCRIPT_PATH}"
 
       - name: CiD Package renaming
         run: |
