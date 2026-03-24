@@ -318,6 +318,8 @@ jobs:
             -B "${CID_PACKAGE_ARTIFACTS_DIR}" \
             -D CPACK_COMPONENTS_ALL=${COMPONENT} \
             -D CPACK_CMAKE_GENERATOR=${GENERATOR} \
+            -D CPACK_INCLUDE_TOPLEVEL_DIRECTORY=OFF \
+            -D CPACK_COMPONENT_INCLUDE_TOPLEVEL_DIRECTORY=OFF \
             -D CPACK_PACKAGE_FILE_NAME="${{ steps.package-name.outputs.cid-package-base-name }}"
 
       - name: CiD Package renaming

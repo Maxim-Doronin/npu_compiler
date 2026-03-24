@@ -55,6 +55,9 @@ outputs:
   llvm-sha:
     description: 'LLVM SHA detected in NPU Compiler submodule'
     value: ${{ steps.get-llvm-sha.outputs.llvm-sha }}
+  llvm-version:
+    description: 'LLVM version detected in NPU Compiler submodule'
+    value: ${{ steps.get-llvm-version.outputs.llvm-version }}
   tbb-version:
     description: 'TBB version detected from OpenVINO'
     value: ${{ steps.get-tbb-version.outputs.tbb-version }}
@@ -217,6 +220,34 @@ runs:
         echo "LLVM commit sha = $LLVM_SHA"
         echo "llvm-sha=$LLVM_SHA" >> $GITHUB_OUTPUT
 
+    - name: Get LLVM version
+      id: get-llvm-version
+      shell: bash
+      run: |
+        LLVM_VERSION="N/A"
+
+        if [[ -n "${{ inputs.npu-compiler-repo-path }}" ]]; then
+          LLVM_VERSION_FILE="${{ inputs.npu-compiler-repo-path }}/thirdparty/llvm-project/cmake/Modules/LLVMVersion.cmake"
+
+          if [[ -f "$LLVM_VERSION_FILE" ]]; then
+            LLVM_VERSION_MAJOR=$(grep -oE 'LLVM_VERSION_MAJOR[[:space:]]+[0-9]+' "$LLVM_VERSION_FILE" | grep -oE '[0-9]+')
+            LLVM_VERSION_MINOR=$(grep -oE 'LLVM_VERSION_MINOR[[:space:]]+[0-9]+' "$LLVM_VERSION_FILE" | grep -oE '[0-9]+')
+            LLVM_VERSION_PATCH=$(grep -oE 'LLVM_VERSION_PATCH[[:space:]]+[0-9]+' "$LLVM_VERSION_FILE" | grep -oE '[0-9]+')
+
+            if [[ -n "$LLVM_VERSION_MAJOR" && -n "$LLVM_VERSION_MINOR" && -n "$LLVM_VERSION_PATCH" ]]; then
+              LLVM_VERSION="$LLVM_VERSION_MAJOR.$LLVM_VERSION_MINOR.$LLVM_VERSION_PATCH"
+            fi
+
+            LLVM_SHA="${{ steps.get-llvm-sha.outputs.llvm-sha }}"
+            if [[ "$LLVM_VERSION" != "N/A" && "$LLVM_SHA" != "N/A" ]]; then
+              LLVM_VERSION="$LLVM_VERSION.${LLVM_SHA:0:7}"
+            fi
+          fi
+        fi
+
+        echo "LLVM version = $LLVM_VERSION"
+        echo "llvm-version=$LLVM_VERSION" >> $GITHUB_OUTPUT
+
     - name: Get TBB version from OpenVINO
       id: get-tbb-version
       shell: bash
@@ -249,17 +280,13 @@ runs:
         jq -n \
           --arg openvino_sha "${{ steps.read-openvino-sha.outputs.openvino-sha }}" \
           --arg npu_compiler_sha "${{ steps.get-npu-sha.outputs.npu-compiler-sha }}" \
-          --arg llvm_sha "${{ steps.get-llvm-sha.outputs.llvm-sha }}" \
+          --arg llvm_version "${{ steps.get-llvm-version.outputs.llvm-version }}" \
           --arg tbb_version "${{ steps.get-tbb-version.outputs.tbb-version }}" \
-          --arg opencv_sha "${{ steps.read-ocv-sha.outputs.ocv-sha }}" \
-          --arg omz_sha "${{ steps.read-omz-sha.outputs.omz-sha }}" \
           '{
             openvino_sha: $openvino_sha,
             npu_compiler_sha: $npu_compiler_sha,
-            llvm_sha: $llvm_sha,
+            llvm_version: $llvm_version,
             tbb_version: $tbb_version,
-            opencv_sha: $opencv_sha,
-            omz_sha: $omz_sha            
           }' > "$OUTPUT_DIR/build_manifest.json"
         
         MANIFEST_PATH=$(cd "$OUTPUT_DIR" && pwd)/build_manifest.json
