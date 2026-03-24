@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -96,7 +96,8 @@ constexpr std::string_view UNSUPPORTED_PLATFORM_ERROR_MESSAGE =
 
 void checkPlatformSupportedForCompilation(const std::string_view platform) {
     const std::unordered_set supportedPlatforms{ov::intel_npu::Platform::NPU3720, ov::intel_npu::Platform::NPU5000,
-                                                ov::intel_npu::Platform::NPU5010, ov::intel_npu::Platform::NPU4000};
+                                                ov::intel_npu::Platform::NPU5010, ov::intel_npu::Platform::NPU5020,
+                                                ov::intel_npu::Platform::NPU4000};
 
     if (!supportedPlatforms.count(ov::intel_npu::Platform::standardize(platform))) {
         VPUX_THROW(UNSUPPORTED_PLATFORM_ERROR_MESSAGE.data(), platform, intel_npu::PLATFORM::key());
@@ -266,32 +267,8 @@ void backendCompilation(mlir::OwningOpRef<mlir::ModuleOp>& vpuipModule, const De
     auto wlmStillEnabled = wlmStatus == WorkloadManagementStatus::ENABLED;
     auto backendPipelineStrategy = createBackendPipelineStrategy(getArchKind(config));
     backendPipelineStrategy->buildELFPipeline(elfPm, config, elfTiming, log, wlmStillEnabled);
-    if (getWlmRollback(config).value_or(false)) {
-        auto backupModule = mlir::OwningOpRef<mlir::ModuleOp>(vpuipModule.get().clone());
-        // We moved away from the exception-based fallback mechanism because the MLIRContext remained in an invalid
-        // state when the exception was thrown, it assumed that it was still executing the pass leading to broken
-        // compile time stats. Now we rely on the PassManager::run result and WLM status attribute to decide if we need
-        // to rollback. This allows MLIR to run the pass instrumentation and set the context to the correct state.
-        compileResult = compileNetwork(vpuipModule.get(), elfPm, elfTiming);
-        wlmStatus = config::getWorkloadManagementStatus(vpuipModule.get());
-        if (mlir::failed(compileResult) && wlmStatus == WorkloadManagementStatus::FAILED) {
-            log.warning("Failed to export to ELF with current config, reverting to simple ELF pipeline");
-            vpuipModule.get()->replaceAllUsesWith(backupModule.get()->getResults());
-            vpuipModule = std::move(backupModule);
-            mlir::PassManager simpleElfPm(vpuipModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-            devConf.setup(simpleElfPm, config, /*isSubPipeline=*/true);
-            backendPipelineStrategy->buildELFPipeline(simpleElfPm, config, elfTiming, log,
-                                                      /*useWlm=*/false);
-            config::setWorkloadManagementStatus(vpuipModule.get(), WorkloadManagementStatus::DISABLED);
-            VPUX_THROW_UNLESS(mlir::succeeded(compileNetwork(vpuipModule.get(), simpleElfPm, elfTiming)),
-                              "Compilation failed");
-        } else {
-            VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
-        }
-    } else {
-        compileResult = compileNetwork(vpuipModule.get(), elfPm, elfTiming);
-        VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
-    }
+    compileResult = compileNetwork(vpuipModule.get(), elfPm, elfTiming);
+    VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
 }
 
 auto exportToELF(mlir::ModuleOp module, Logger log) {
@@ -674,7 +651,8 @@ CompilerSetup::CompilerSetup(const intel_npu::Config& config) {
     auto arch = config::getArch(platform);
     config::registerConstraints(registry, platform);
     IE::registerStrategies(registry, arch);
-    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{platform, arch});
+    VPU::initializeSingletons(registry, VPU::DeviceVersion{platform, arch});
+    VPUIP::registerStrategies(registry, arch);
 
     ctx = createContext(registry, arch);
     if ((threadPool = createThreadpool(config))) {
@@ -801,7 +779,15 @@ CompilerImpl::CompilerImpl() {
     // deterministic destruction order akin to calling llvm_shutdown from main as in LLVM
     // samples.
     [[maybe_unused]] static llvm::llvm_shutdown_obj shutdown;
-
+#ifndef VPUX_DEVELOPER_BUILD
+    [[maybe_unused]] static auto ignoreStdIOErr = llvm::make_scope_exit([]() {
+        // Ignoring standard I/O errors; permission to write to stdout/stderr might be restricted (e.g. by ONNX
+        // Runtime). If these errors persist, they can cause the program to exit unexpectedly. clearing them ensures a
+        // clean shutdown.
+        llvm::errs().clear_error();
+        llvm::outs().clear_error();
+    });
+#endif
 #ifdef ENABLE_PROFILING_ITT
     // Release ITT resources on DLL unload
     [[maybe_unused]] static auto ittResourceReleaser = llvm::make_scope_exit(__itt_release_resources);

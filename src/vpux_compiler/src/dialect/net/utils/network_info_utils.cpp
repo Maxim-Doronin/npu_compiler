@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,34 @@ void addBlockToEmptyRegion(mlir::Region& region) {
     }
 }
 }  // namespace
+
+net::NetworkInfoOp getNetworkInfo(mlir::Operation* op) {
+    auto moduleOp = vpux::getModuleOp(op);
+
+    auto netOps = moduleOp.getOps<net::NetworkInfoOp>();
+    assert(std::distance(netOps.begin(), netOps.end()) == 1 && "Must have exactly 1 'net::NetworkInfoOp' in Module");
+    return *netOps.begin();
+}
+
+mlir::func::FuncOp getMainFunc(mlir::Operation* op) {
+    auto moduleOp = getModuleOp(op);
+    auto netInfo = getNetworkInfo(moduleOp);
+    auto netFunc = moduleOp.lookupSymbol<mlir::func::FuncOp>(netInfo.getEntryPointAttr());
+
+    assert(netFunc != nullptr && "Can't find entryPoint");
+
+    return netFunc;
+}
+
+std::pair<net::NetworkInfoOp, mlir::func::FuncOp> getFromModule(mlir::Operation* op) {
+    auto moduleOp = getModuleOp(op);
+    auto netInfo = getNetworkInfo(moduleOp);
+    auto netFunc = moduleOp.lookupSymbol<mlir::func::FuncOp>(netInfo.getEntryPointAttr());
+
+    assert(netFunc != nullptr && "Can't find entryPoint");
+
+    return {netInfo, netFunc};
+}
 
 void setupSections(net::NetworkInfoOp netInfo, bool enableProfiling) {
     addBlockToEmptyRegion(netInfo.getInputsInfo());

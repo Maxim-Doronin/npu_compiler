@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,7 +35,10 @@ net.NetworkInfo entryPoint : @LegalizeStridedDmas inputsInfo : {
     DataInfo "Multiply_3" friendlyName = "Result_4" tensorNames = ["Multiply_Result"] : tensor<4x6xui8> {dynamicStrides}
 }
 
-// CHECK-LABEL: @LegalizeStridedDmas
+// CHECK-LABEL: func.func @LegalizeStridedDmas
+// CHECK-SAME:  [[ARG_0:%[^:]+]]: memref<4x6xui8, @DDR>
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: memref<4x6xui8, @DDR>
+// CHECK-SAME:  [[ARG_2:%[^:]+]]: memref<4x6xui8, @DDR>
 func.func @LegalizeStridedDmas(%arg0: !DDRType, %arg1: !DDRType, %arg2: !DDRType) -> !DDRType {
     %0 = VPUIP.GenericReshape inputs(%arg0 : !DDRType) -> !FlatDDRType
     %1 = VPUIP.GenericReshape inputs(%arg1 : !DDRType) -> !FlatDDRType
@@ -55,12 +58,12 @@ func.func @LegalizeStridedDmas(%arg0: !DDRType, %arg1: !DDRType, %arg2: !DDRType
 
     // CHECK:   [[ALLOC_INPUT0:%.+]] = memref.alloc() : memref<4x6xui8, @DDR>
     // CHECK:   [[NNDMA_0:%.+]] = VPUIP.NNDMA {stridedInput}
-    // CHECK-SAME:  inputs(%arg0 : memref<4x6xui8, @DDR>)
+    // CHECK-SAME:  inputs([[ARG_0]] : memref<4x6xui8, @DDR>)
     // CHECK-SAME:  outputs([[ALLOC_INPUT0]] : memref<4x6xui8, @DDR>)
 
     // CHECK:   [[ALLOC_INPUT1:%.+]] = memref.alloc() : memref<4x6xui8, @DDR>
     // CHECK:   [[NNDMA_1:%.+]] = VPUIP.NNDMA {stridedInput}
-    // CHECK-SAME:  inputs(%arg1 : memref<4x6xui8, @DDR>)
+    // CHECK-SAME:  inputs([[ARG_1]] : memref<4x6xui8, @DDR>)
     // CHECK-SAME:  outputs([[ALLOC_INPUT1]] : memref<4x6xui8, @DDR>)
 
     // CHECK:   [[RESHAPE_OUTPUT:%.+]] = VPUIP.GenericReshape inputs([[ALLOC_OUTPUT]] : memref<4x6xui8, @DDR>) -> memref<1x24x1x1xui8, @DDR>
@@ -68,7 +71,7 @@ func.func @LegalizeStridedDmas(%arg0: !DDRType, %arg1: !DDRType, %arg2: !DDRType
     // CHECK:   [[CONCAT_VIEW_OUT:%.+]] = VPUIP.ConcatView inputs([[INCOMPATIBLE_OUT_DMA]] : memref<1x24x1x1xui8, @DDR>) outputs([[ALLOC_OUTPUT]]
     // CHECK:   VPUIP.NNDMA {stridedOutput}
     // CHECK-SAME:  inputs([[CONCAT_VIEW_OUT]]
-    // CHECK-SAME:  outputs(%arg2 : memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR>
+    // CHECK-SAME:  outputs([[ARG_2]] : memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR>
 }
 
 // -----
@@ -102,7 +105,10 @@ net.NetworkInfo entryPoint : @LegalizeStridedDmasOneInput inputsInfo : {
     DataInfo "Multiply_3" friendlyName = "Result_4" tensorNames = ["Multiply_Result"] : tensor<1x4x6xui8> {dynamicStrides}
 }
 
-// CHECK-LABEL: @LegalizeStridedDmasOneInput
+// CHECK-LABEL: func.func @LegalizeStridedDmasOneInput
+// CHECK-SAME:  [[ARG_0:%[^:]+]]: memref<4x6xui8, @DDR>
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: memref<4x6xui8, @DDR>
+// CHECK-SAME:  [[ARG_2:%[^:]+]]: memref<4x6xui8, @DDR>
 func.func @LegalizeStridedDmasOneInput(%arg0: !DDRType, %arg1: !DDRType, %arg2: !DDRType) -> !DDRType {
     %0 = VPUIP.GenericReshape inputs(%arg0 : !DDRType) -> !FlatDDRType
     %1 = VPUIP.GenericReshape inputs(%arg1 : !DDRType) -> !FlatDDRType
@@ -123,7 +129,7 @@ func.func @LegalizeStridedDmasOneInput(%arg0: !DDRType, %arg1: !DDRType, %arg2: 
     // CHECK:   [[ALLOC_INPUT0:%.+]] = memref.alloc() : memref<4x6xui8, @DDR>
 
     // CHECK:   [[NNDMA_0:%.+]] = VPUIP.NNDMA {stridedInput}
-    // CHECK-SAME:  inputs(%arg1 : memref<4x6xui8, @DDR>)
+    // CHECK-SAME:  inputs([[ARG_1]] : memref<4x6xui8, @DDR>)
     // CHECK-SAME:  outputs([[ALLOC_INPUT0]] : memref<4x6xui8, @DDR>)
 
     // CHECK-NOT: VPUIP.NNDMA {stridedInput} inputs([[ARG0_RESHAPE]]
@@ -131,7 +137,7 @@ func.func @LegalizeStridedDmasOneInput(%arg0: !DDRType, %arg1: !DDRType, %arg2: 
     // CHECK:   [[RESHAPE_OUTPUT:%.+]] = VPUIP.GenericReshape inputs([[ALLOC_OUTPUT]] : memref<4x6xui8, @DDR>) -> memref<1x24x1x1xui8, @DDR>
     // CHECK:   [[INCOMPATIBLE_OUT_DMA:%.+]] = VPUIP.NNDMA
     // CHECK:   [[CONCAT_VIEW_OUT:%.+]] = VPUIP.ConcatView inputs([[INCOMPATIBLE_OUT_DMA]] : memref<1x24x1x1xui8, @DDR>) outputs([[ALLOC_OUTPUT]]
-    // CHECK:   VPUIP.NNDMA {stridedOutput} inputs([[CONCAT_VIEW_OUT]] : memref<4x6xui8, @DDR>) outputs(%arg2 : memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR>
+    // CHECK:   VPUIP.NNDMA {stridedOutput} inputs([[CONCAT_VIEW_OUT]] : memref<4x6xui8, @DDR>) outputs([[ARG_2]] : memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR>
 }
 
 // -----
@@ -354,6 +360,8 @@ net.NetworkInfo entryPoint : @LegalizeStridedDmasWithConcatInBetween inputsInfo 
 }
 
 // Below test case checks if a ViewOp that can be reached from function argument in 2 different ways is handled correctly
+// CHECK-LABEL: func.func @LegalizeStridedDmasWithConcatInBetween
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: memref<2x6xui8, @DDR>
 func.func @LegalizeStridedDmasWithConcatInBetween(%arg0: memref<4x6xui8, @DDR>, %arg1: !DDRSlice) -> !DDRSlice {
     %sub0 = VPUIP.SubView %arg0 [0, 0] [2, 6] : memref<4x6xui8, @DDR> to !DDRSlice
     %sub1 = VPUIP.SubView %arg0 [2, 0] [2, 6] : memref<4x6xui8, @DDR> to !DDRSlice
@@ -374,5 +382,5 @@ func.func @LegalizeStridedDmasWithConcatInBetween(%arg0: memref<4x6xui8, @DDR>, 
 
     // CHECK: VPUIP.NNDMA {stridedInput}  inputs(%2 : memref<2x6xui8, @DDR>) outputs(%alloc : memref<2x6xui8, @CMX_NN>) -> memref<2x6xui8, @CMX_NN>
     // CHECK: VPUIP.NNDMA {stridedInput}  inputs(%2 : memref<2x6xui8, @DDR>) outputs(%alloc_0 : memref<2x6xui8, @CMX_NN>) -> memref<2x6xui8, @CMX_NN>
-    // CHECK: VPUIP.NNDMA {stridedOutput}  inputs(%results : memref<2x6xui8, @CMX_NN>) outputs(%arg1 : memref<2x6xui8, @DDR>) -> memref<2x6xui8, @DDR>
+    // CHECK: VPUIP.NNDMA {stridedOutput}  inputs(%results : memref<2x6xui8, @CMX_NN>) outputs([[ARG_1]] : memref<2x6xui8, @DDR>) -> memref<2x6xui8, @DDR>
 }

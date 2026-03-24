@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -94,6 +94,9 @@ void HostPipelineStrategy::buildPipeline(mlir::OpPassManager& pm) {
     strategy->buildIEPipeline(nestedNPUPm, _log);
     strategy->buildLowerIE2VPUPipeline(nestedNPUPm, _log);
     strategy->buildVPUPipeline(nestedNPUPm, _log);
+
+    // resolve debatcher undef func call
+    pm.addPass(vpux::HostExec::createWrapFuncCallPass(_log));
 
     // unpack @NPU module
     pm.addPass(Core::createUnpackNestedModulesPass(_log, Core::NestingMode::EntryPoint));

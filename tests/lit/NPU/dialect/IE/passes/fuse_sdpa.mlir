@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -109,4 +109,26 @@ func.func @FuseSDPA_AdjustSDPA(%arg0: tensor<1x18x12x8xf32>, %arg1: tensor<1x18x
 
   // CHECK: [[TRANSPOSEV:%.+]] = IE.Transpose([[ARG2]]) {order_value = #NCWH} : tensor<1x18x16x4xf32> -> tensor<1x18x4x16xf32>
   // CHECK: [[SDPA:%.+]] = IE.SDPA([[ARG0]], [[ARG1]], [[TRANSPOSEV]], [[ARG3]], [[ARG4]]) {operandSegmentSizes = array<i32: 1, 1, 1, 1, 1>} : tensor<1x18x12x8xf32>, tensor<1x18x16x8xf32>, tensor<1x18x4x16xf32>, tensor<1x1x1x1xf32>, tensor<1xf32> -> tensor<1x18x12x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NoFuseSDPA_IllegalConfig_tSL64_sSL256_e64
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x1x64x64xf32>, [[ARG1:%.+]]: tensor<1x1x256x64xf32>, [[ARG2:%.+]]: tensor<1xf32>, [[ARG3:%.+]]: tensor<1x1x64x256xf32>, [[ARG4:%.+]]: tensor<1x1x256x256xf32>)
+func.func @NoFuseSDPA_IllegalConfig_tSL64_sSL256_e64(%arg0: tensor<1x1x64x64xf32>, %arg1: tensor<1x1x256x64xf32>, %arg2: tensor<1xf32>, %arg3: tensor<1x1x64x256xf32>, %arg4: tensor<1x1x256x256xf32>) -> tensor<1x1x64x256xf32> {
+  %0 = IE.Reshape(%arg0) {shape_value = [64, 64]} : tensor<1x1x64x64xf32> -> tensor<64x64xf32>
+  %1 = IE.Reshape(%arg1) {shape_value = [256, 64]} : tensor<1x1x256x64xf32> -> tensor<256x64xf32>
+  %2 = IE.FullyConnected(%0, %1) : tensor<64x64xf32>, tensor<256x64xf32> -> tensor<64x256xf32>
+  %3 = IE.Reshape(%2) {shape_value = [1, 1, 64, 256]} : tensor<64x256xf32> -> tensor<1x1x64x256xf32>
+  %4 = IE.Multiply(%3, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x64x256xf32>, tensor<1xf32> -> tensor<1x1x64x256xf32>
+  %5 = IE.Add(%4, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x64x256xf32>, tensor<1x1x64x256xf32> -> tensor<1x1x64x256xf32>
+  %6 = IE.SoftMax(%5) {axisInd = 3 : i64} : tensor<1x1x64x256xf32> -> tensor<1x1x64x256xf32>
+  %7 = IE.Reshape(%6) {shape_value = [64, 256]} : tensor<1x1x64x256xf32> -> tensor<64x256xf32>
+  %8 = IE.Reshape(%arg4) {shape_value = [256, 256]} : tensor<1x1x256x256xf32> -> tensor<256x256xf32>
+  %9 = IE.FullyConnected(%7, %8) : tensor<64x256xf32>, tensor<256x256xf32> -> tensor<64x256xf32>
+  %10 = IE.Reshape(%9) {shape_value = [1, 1, 64, 256]} : tensor<64x256xf32> -> tensor<1x1x64x256xf32>
+
+  return %10 : tensor<1x1x64x256xf32>
+
+    // CHECK-NOT: IE.SDPA
 }

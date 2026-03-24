@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,7 +22,7 @@ namespace ELF {
 
 std::unique_ptr<mlir::Pass> createAddELFSymbolTablePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddELFRelocationsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createAddRelocationsForDynamicStridesDMAs(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createAddRelocationsForDynamicStridesDMAsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSetOpOffsetsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSetEntryPointPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddNetworkMetadataPass(Logger log = Logger::global());

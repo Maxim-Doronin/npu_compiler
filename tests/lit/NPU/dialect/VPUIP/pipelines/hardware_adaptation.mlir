@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -273,8 +273,8 @@ module @ThreeFunctions {
         // CHECK:   VPUIP.NNDMA <{port = 1 : i64}> inputs([[INTERNAL_DATA]] : memref<1x1x60x60xf16, @DDR>) outputs([[TMP_SUBVIEW2]] : memref<1x1x60x60xf16, {order = #NCHW, strides = [14400, 3600, 60, 1]}, @DDR>)
 
         // CHECK: VPURT.Task waits([[BARR2]] : !VPURT.Barrier) {
-        // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[TMP]] as %arg2: memref<1x4x60x60xf16, @DDR>) outputs([[OUT]] as %arg3: memref<1x4x60x60xf16, @DDR>) on tile 0
-        // CHECK:     VPUIP.SW.Kernel.run {attrs = [0, 0]}(%arg2, %arg3) : memref<1x4x60x60xf16, @DDR>, memref<1x4x60x60xf16, @DDR>
+        // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[TMP]] as [[ARG_2:%[^:]+]]: memref<1x4x60x60xf16, @DDR>) outputs([[OUT]] as [[ARG_3:%[^:]+]]: memref<1x4x60x60xf16, @DDR>) on tile 0
+        // CHECK:     VPUIP.SW.Kernel.run {attrs = [0, 0]}([[ARG_2]], [[ARG_3]]) : memref<1x4x60x60xf16, @DDR>, memref<1x4x60x60xf16, @DDR>
 
         // CHECK: return [[ARG1]] : memref<1x4x60x60xf16, @DDR>
     }

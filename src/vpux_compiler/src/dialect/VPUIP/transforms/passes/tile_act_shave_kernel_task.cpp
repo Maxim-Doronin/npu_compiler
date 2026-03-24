@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -678,8 +678,7 @@ bool doesSwKernelSupportTiling(VPUIP::SwKernelOp swKernelOp, vpux::Logger log) {
 
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
-        auto module = swKernelOp.getOperation()->getParentOfType<mlir::ModuleOp>();
-        const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
+        const auto dmaPortNum = config::getNumOfDMAPorts(swKernelOp);
 
         if (isBeneficialForUsingPermuteDMA(arch, inputType, outputType, memPerm.value(), dmaPortNum, log)) {
             return false;

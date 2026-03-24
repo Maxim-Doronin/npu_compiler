@@ -1,5 +1,7 @@
-// Copyright (C) 2024-2025 Intel Corporation.
+//
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
+//
 
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
@@ -10,9 +12,11 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_reduce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sprlut_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
 
@@ -137,11 +141,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEReduceOp::getTilingStrategy(TilingMo
 //
 
 bool vpux::VPU::NCEReduceOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
-
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
-    if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
+    const auto enabledTileNum = config::getNumOfTiles(getOperation());
+
+    if (batchSize > 1 && batchSize <= enabledTileNum) {
         return strategy == VPU::MultiClusterStrategy::SplitOverBatch;
     }
 
@@ -222,4 +226,22 @@ vpux::NDTypeInterface vpux::VPU::NCEReduceOp::getDistributedTypeForOpOperand(mli
 
     VPUX_THROW("Failed to compute distributed type for op {0}", clusteredOp);
     return nullptr;
+}
+
+mlir::LogicalResult vpux::VPU::NCEReduceOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                              mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+    const auto type = mlir::cast<mlir::ShapedType>(getInput().getType());
+
+    auto inputPadding = getInputPadding() ? parseIntArrayAttr<int64_t>(*getInputPadding())
+                                          : SmallVector<int64_t>(type.getRank(), 0);
+    auto outputPadding = getOutputPadding() ? parseIntArrayAttr<int64_t>(*getOutputPadding())
+                                            : SmallVector<int64_t>(type.getRank(), 0);
+    auto axes = parseIntArrayAttr<int64_t>(getAxesAttr());
+    auto outDims = reifyReduceTensors(builder, getOperand(), axes, inputPadding, outputPadding, true, loc);
+    if (mlir::failed(outDims)) {
+        return mlir::failure();
+    }
+    reifiedReturnShapes.emplace_back(std::move(outDims.value()));
+    return mlir::success();
 }

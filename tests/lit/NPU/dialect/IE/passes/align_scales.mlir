@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @AlignConcatScales
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @AlignConcatScales(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<3.068850e-01> : tensor<1x1x1x1xf16>
@@ -26,8 +27,8 @@ func.func @AlignConcatScales(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+00> : tensor<16x16x5x3xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_2]], [[CST_3]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[CLAMP:%.+]] = IE.Clamp([[FQ_0]]) {max = 0.306884765625 : f64, min = 0.000000e+00 : f64} : tensor<1x16x1x8xf16> -> tensor<1x16x1x8xf16>
@@ -40,6 +41,7 @@ func.func @AlignConcatScales(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16
 // -----
 
 // CHECK-LABEL: @AlignConcatMaxPool
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x128x1x256xf16>, [[ARG_1:%[^:]+]]: tensor<1x128x1x256xf16>)
 func.func @AlignConcatMaxPool(%arg0: tensor<1x128x1x256xf16>, %arg1: tensor<1x128x1x256xf16>) -> tensor<1x128x1x128xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<3.068850e+00> : tensor<1x1x1x1xf16>
@@ -59,8 +61,8 @@ func.func @AlignConcatMaxPool(%arg0: tensor<1x128x1x256xf16>, %arg1: tensor<1x12
 
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-3.67068768> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<10.7297029> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
-  // CHECK: [[ADD:%.+]] = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x1x256xf16>, tensor<1x128x1x256xf16> -> tensor<1x128x1x256xf16>
-  // CHECK: [[ADD_0:%.+]] = IE.Add(%arg1, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x1x256xf16>, tensor<1x128x1x256xf16> -> tensor<1x128x1x256xf16>
+  // CHECK: [[ADD:%.+]] = IE.Add([[ARG_0]], [[ARG_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x1x256xf16>, tensor<1x128x1x256xf16> -> tensor<1x128x1x256xf16>
+  // CHECK: [[ADD_0:%.+]] = IE.Add([[ARG_1]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x1x256xf16>, tensor<1x128x1x256xf16> -> tensor<1x128x1x256xf16>
   // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ADD]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x128x1x256xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x128x1x256xf16>
   // CHECK: [[CLAMP:%.+]] = IE.Clamp([[FQ]]) {max = 7.55859375 : f64, min = -2.69921875 : f64} : tensor<1x128x1x256xf16> -> tensor<1x128x1x256xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[ADD_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x128x1x256xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x128x1x256xf16>
@@ -77,6 +79,7 @@ func.func @AlignConcatMaxPool(%arg0: tensor<1x128x1x256xf16>, %arg1: tensor<1x12
 
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 // CHECK-LABEL: @AlignInNotOutConcatReshapeFQAgnostic
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x2x3x4xf16>, [[ARG_1:%[^:]+]]: tensor<1x2x4x3xf16>)
 func.func @AlignInNotOutConcatReshapeFQAgnostic(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x4x3xf16>) -> tensor<1x1x12x4xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<3.18300e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<3.068850e+00> : tensor<1x1x1x1xf16>
@@ -96,10 +99,10 @@ func.func @AlignInNotOutConcatReshapeFQAgnostic(%arg0: tensor<1x2x3x4xf16>, %arg
 
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<10.7297029> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-3.67068768> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
-  // CHECK: [[ADD:%.+]] = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x3x4xf16>, tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[ADD:%.+]] = IE.Add([[ARG_0]], [[ARG_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x3x4xf16>, tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ADD]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP:%.+]] = IE.Clamp([[FQ]]) {max = 3.18359375 : f64, min = -1.500000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
-  // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize(%arg1, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x4x3xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x4x3xf16>
+  // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_1]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x4x3xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x4x3xf16>
   // CHECK: [[CLAMP_0:%.+]] = IE.Clamp([[FQ_0]]) {max = 3.068359375 : f64, min = 0.000000e+00 : f64} : tensor<1x2x4x3xf16> -> tensor<1x2x4x3xf16>
   // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[CLAMP_0]]) {order_value = #NCWH} : tensor<1x2x4x3xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CONCAT:%.+]] = IE.Concat([[CLAMP]], [[TRANSPOSE]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 2, 0, 0]]} : tensor<1x2x3x4xf16>, tensor<1x2x3x4xf16> -> tensor<1x4x3x4xf16>
@@ -113,6 +116,7 @@ func.func @AlignInNotOutConcatReshapeFQAgnostic(%arg0: tensor<1x2x3x4xf16>, %arg
 // -----
 
 // CHECK-LABEL: @NotAlignToDifferentFQRanges
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @NotAlignToDifferentFQRanges(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<-3.068850e-01> : tensor<1x1x1x1xf16>
@@ -132,8 +136,8 @@ func.func @NotAlignToDifferentFQRanges(%arg0: tensor<16x8x8xf16>, %arg1: tensor<
   // CHECK: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<5.000000e+01> : tensor<1x1x1x1xf16>
   // CHECK: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-5.000000e+01> : tensor<1x1x1x1xf16>
   // CHECK: [[CST_3:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+01> : tensor<16x16x5x3xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE_0]], [[CST_2]], [[CST_1]], [[CST_2]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[CONCAT:%.+]] = IE.Concat([[FQ]], [[FQ_0]])
@@ -149,6 +153,7 @@ func.func @NotAlignToDifferentFQRanges(%arg0: tensor<16x8x8xf16>, %arg1: tensor<
 // Positive-only FQ [0, 2.05828] mixed with signed FQ [-1.22277, 1.21322]
 // Would waste 37.27% of range (1.22277 / 3.28106 > 0.35), so alignment is blocked
 // CHECK-LABEL: @NotAlignDueToPrecisionWaste
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<1x16x1x8xf16>)
 func.func @NotAlignDueToPrecisionWaste(%arg0: tensor<1x16x8x8xf16>, %arg1: tensor<1x16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<2.058590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -168,8 +173,8 @@ func.func @NotAlignDueToPrecisionWaste(%arg0: tensor<1x16x8x8xf16>, %arg1: tenso
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.212890e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.222660e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+00> : tensor<16x16x5x3xf16>
-  // CHECK: [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize(%arg1, [[CST_2]], [[CST_1]], [[CST_2]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_1]], [[CST_2]], [[CST_1]], [[CST_2]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[CONCAT:%.+]] = IE.Concat([[FQ]], [[FQ_0]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 8, 0]]} : tensor<1x16x8x8xf16>, tensor<1x16x1x8xf16> -> tensor<1x16x9x8xf16>
   // CHECK: [[CONV:%.+]] = IE.Convolution([[CONCAT]], [[CST_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [0, 1], strides = [1, 1]} : tensor<1x16x9x8xf16>, tensor<16x16x5x3xf16> -> tensor<1x16x5x8xf16>
 
@@ -179,6 +184,7 @@ func.func @NotAlignDueToPrecisionWaste(%arg0: tensor<1x16x8x8xf16>, %arg1: tenso
 // -----
 
 // CHECK-LABEL: @AlignOnlyFQAgnostic
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x2x3x4xf16>, [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf16>, [[ARG_2:%[^:]+]]: tensor<1x2x3x4xf16>)
 func.func @AlignOnlyFQAgnostic(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4xf16>, %arg2: tensor<1x2x3x4xf16>) -> (tensor<1x1x3x2xf16>, tensor<1x2x3x4xf16>) {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<-1.5000e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<4.0000e+00> : tensor<1x1x1x1xf16>
@@ -212,14 +218,14 @@ func.func @AlignOnlyFQAgnostic(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<5.29977036> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.500000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_4:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-2.400390e+00> : tensor<1x1x1x1xf16>
-  // CHECK: [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP:%.+]] = IE.Clamp([[FQ]]) {max = 4.000000e+00 : f64, min = -1.500000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[SPLIT:%.+]]:2 = IE.Split([[CLAMP]]) {axis_value = 1 : i64, num_splits = 2 : i64} : tensor<1x2x3x4xf16> -> tensor<1x1x3x4xf16>, tensor<1x1x3x4xf16>
   // CHECK: [[AVGPOOL:%.+]] = IE.AvgPool([[SPLIT]]#0) {kernel_size = [1, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2]} : tensor<1x1x3x4xf16> -> tensor<1x1x3x2xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[AVGPOOL]], [[CST_4]], [[CST_3]], [[CST_4]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x1x3x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x3x2xf16>
-  // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize(%arg1, [[CST_1]], [[CST_2]], [[CST_1]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[ARG_1]], [[CST_1]], [[CST_2]], [[CST_1]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP_0:%.+]] = IE.Clamp([[FQ_1]]) {max = 3.750000e+00 : f64, min = -1.750000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
-  // CHECK: [[FQ_2:%.+]] = IE.FakeQuantize(%arg2, [[CST_1]], [[CST_2]], [[CST_1]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[FQ_2:%.+]] = IE.FakeQuantize([[ARG_2]], [[CST_1]], [[CST_2]], [[CST_1]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP_1:%.+]] = IE.Clamp([[FQ_2]]) {max = 5.30078125 : f64, min = -6.250000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CONCAT:%.+]] = IE.Concat([[CLAMP_0]], [[CLAMP_1]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 2, 0, 0]]} : tensor<1x2x3x4xf16>, tensor<1x2x3x4xf16> -> tensor<1x4x3x4xf16>
   // CHECK: [[REDUCESUM:%.+]] = IE.ReduceSum([[CONCAT]]) {axes_value = [1], keep_dims} : tensor<1x4x3x4xf16> -> tensor<1x1x3x4xf16>
@@ -235,6 +241,7 @@ func.func @AlignOnlyFQAgnostic(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4
 // -----
 
 // CHECK-LABEL: @NotAlignSameFQRanges
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x7x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>, [[ARG_2:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @NotAlignSameFQRanges(%arg0: tensor<16x7x8xf16>, %arg1: tensor<16x1x8xf16>, %arg2: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<-0.000000e-01> : tensor<1x1x1x1xf16>
@@ -257,9 +264,9 @@ func.func @NotAlignSameFQRanges(%arg0: tensor<16x7x8xf16>, %arg1: tensor<16x1x8x
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.548830e-01> : tensor<1x1x1x1xf16>
 
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 7, 8]} : tensor<16x7x8xf16> -> tensor<1x16x7x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
-  // CHECK: [[RESHAPE_1:%.+]] = IE.Reshape(%arg2) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 7, 8]} : tensor<16x7x8xf16> -> tensor<1x16x7x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE_1:%.+]] = IE.Reshape([[ARG_2]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x7x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x7x8xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE_0]], [[CST_2]], [[CST_3]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[RESHAPE_1]], [[CST_2]], [[CST_3]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
@@ -272,6 +279,7 @@ func.func @NotAlignSameFQRanges(%arg0: tensor<16x7x8xf16>, %arg1: tensor<16x1x8x
 // -----
 
 // CHECK-LABEL: @AlignConsecutiveCocats
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x32x144x128xf16>, [[ARG_1:%[^:]+]]: tensor<1x32x144x128xf16>)
 func.func @AlignConsecutiveCocats(%arg0: tensor<1x32x144x128xf16>, %arg1: tensor<1x32x144x128xf16>) -> tensor<1x32x144x384xf16> {
   %cst = const.Declare tensor<32x1x1x2xf16> = dense<1.000000e+00> : tensor<32x1x1x2xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<6.000000e+00> : tensor<1x1x1x1xf16>
@@ -300,9 +308,9 @@ func.func @AlignConsecutiveCocats(%arg0: tensor<1x32x144x128xf16>, %arg1: tensor
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.500000e+02> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<32x1x1x2xf16> = dense<1.000000e+00> : tensor<32x1x1x2xf16>
-  // CHECK: [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x144x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x144x128xf16>
+  // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x144x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x144x128xf16>
   // CHECK: [[CLAMP:%.+]] = IE.Clamp([[FQ]]) {max = 2.540000e+02 : f64, min = 6.000000e+00 : f64} : tensor<1x32x144x128xf16> -> tensor<1x32x144x128xf16>
-  // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize(%arg1, [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x144x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x144x128xf16>
+  // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_1]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x144x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x144x128xf16>
   // CHECK: [[CLAMP_0:%.+]] = IE.Clamp([[FQ_0]]) {max = 2.500000e+02 : f64, min = 6.000000e+00 : f64} : tensor<1x32x144x128xf16> -> tensor<1x32x144x128xf16>
   // CHECK: [[CONCAT:%.+]] = IE.Concat([[CLAMP]], [[CLAMP_0]]) {per_axis = #IE.Concat<axis = 3 : i64>} : tensor<1x32x144x128xf16>, tensor<1x32x144x128xf16> -> tensor<1x32x144x256xf16>
   // CHECK: [[SLICE:%.+]] = IE.Slice [[CONCAT]] [0, 0, 0, 255] [1, 32, 144, 1] : tensor<1x32x144x256xf16> to tensor<1x32x144x1xf16>
@@ -320,6 +328,7 @@ func.func @AlignConsecutiveCocats(%arg0: tensor<1x32x144x128xf16>, %arg1: tensor
 // -----
 
 // CHECK-LABEL: @AlignDifferentInOutWithClampOnSameBranch
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @AlignDifferentInOutWithClampOnSameBranch(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<3.068850e-01> : tensor<1x1x1x1xf16>
@@ -341,8 +350,8 @@ func.func @AlignDifferentInOutWithClampOnSameBranch(%arg0: tensor<16x8x8xf16>, %
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+00> : tensor<16x16x5x3xf16>
   // CHECK-DAG: [[CST_4:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.779300e-01> : tensor<1x1x1x1xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
 
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_2]], [[CST_4]], [[CST_2]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[FQ_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
@@ -358,6 +367,7 @@ func.func @AlignDifferentInOutWithClampOnSameBranch(%arg0: tensor<16x8x8xf16>, %
 // -----
 
 // CHECK-LABEL: @AlignDifferentInOutWithClampOnDifferentBranch
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @AlignDifferentInOutWithClampOnDifferentBranch(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<8.068850e-01> : tensor<1x1x1x1xf16>
@@ -380,8 +390,8 @@ func.func @AlignDifferentInOutWithClampOnDifferentBranch(%arg0: tensor<16x8x8xf1
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_4:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+00> : tensor<16x16x5x3xf16>
   // CHECK-DAG: [[CST_5:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.779300e-01> : tensor<1x1x1x1xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
 
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_3]], [[CST_5]], [[CST_3]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[FQ_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
@@ -397,6 +407,7 @@ func.func @AlignDifferentInOutWithClampOnDifferentBranch(%arg0: tensor<16x8x8xf1
 // -----
 
 // CHECK-LABEL: @NotAlignDifferentInOutWithRangeOutOfRequest
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @NotAlignDifferentInOutWithRangeOutOfRequest(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x9x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<3.068850e-01> : tensor<1x1x1x1xf16>
@@ -414,8 +425,8 @@ func.func @NotAlignDifferentInOutWithRangeOutOfRequest(%arg0: tensor<16x8x8xf16>
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.068850e-01> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
 
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_1]], [[CST_0]], [[CST_1]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[RESHAPE_0]], [[CST_1]], [[CST_0]], [[CST_1]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x1x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x8xf16>
@@ -429,6 +440,7 @@ func.func @NotAlignDifferentInOutWithRangeOutOfRequest(%arg0: tensor<16x8x8xf16>
 // -----
 
 // CHECK-LABEL: @PartialAlignDifferentInOut
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @PartialAlignDifferentInOut(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x5x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<8.068850e-01> : tensor<1x1x1x1xf16>
@@ -453,8 +465,8 @@ func.func @PartialAlignDifferentInOut(%arg0: tensor<16x8x8xf16>, %arg1: tensor<1
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_4:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+00> : tensor<16x16x5x3xf16>
   // CHECK-DAG: [[CST_5:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.778080e-02> : tensor<1x1x1x1xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_3]], [[CST_5]], [[CST_3]], [[CST_5]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[FQ_0]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x8x8xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[MAXPOOL]], [[CST_3]], [[CST_5]], [[CST_3]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
@@ -471,6 +483,7 @@ func.func @PartialAlignDifferentInOut(%arg0: tensor<16x8x8xf16>, %arg1: tensor<1
 // -----
 
 // CHECK-LABEL: @PartialAlignDifferentInOutRangeWithMultiUser
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<16x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @PartialAlignDifferentInOutRangeWithMultiUser(%arg0: tensor<16x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> (tensor<1x16x5x8xf16>, tensor<1x16x8x8xf16>) {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<8.068850e-01> : tensor<1x1x1x1xf16>
@@ -497,8 +510,8 @@ func.func @PartialAlignDifferentInOutRangeWithMultiUser(%arg0: tensor<16x8x8xf16
   // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_4:%.+]] = const.Declare tensor<16x16x5x3xf16> = dense<1.000000e+00> : tensor<16x16x5x3xf16>
   // CHECK-DAG: [[CST_5:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<3.778080e-02> : tensor<1x1x1x1xf16>
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 8, 8]} : tensor<16x8x8xf16> -> tensor<1x16x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST_3]], [[CST_5]], [[CST_3]], [[CST_5]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[FQ_0]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x8x8xf16> -> tensor<1x16x8x8xf16>
   // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[MAXPOOL]], [[CST_3]], [[CST_5]], [[CST_3]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
@@ -516,6 +529,7 @@ func.func @PartialAlignDifferentInOutRangeWithMultiUser(%arg0: tensor<16x8x8xf16
 // -----
 
 // CHECK-LABEL: @AlignSliceWithOutClamp
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @AlignSliceWithOutClamp(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<13.068850e-01> : tensor<1x1x1x1xf16>
@@ -528,7 +542,7 @@ func.func @AlignSliceWithOutClamp(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x
 
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_0:%.+]] =  const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8] : tensor<1x16x8x8xf16> to tensor<1x10x8x8xf16>
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x10x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x10x8x8xf16>
 
@@ -538,6 +552,7 @@ func.func @AlignSliceWithOutClamp(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x
 // -----
 
 // CHECK-LABEL: @AlignSliceWithClamp
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @AlignSliceWithClamp(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -551,7 +566,7 @@ func.func @AlignSliceWithClamp(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf
 
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_0:%.+]] =  const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8] : tensor<1x16x8x8xf16> to tensor<1x10x8x8xf16>
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x10x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x10x8x8xf16>
   // CHECK:     [[CLAMP:%.+]] = IE.Clamp([[FQ_1]]) {max = 5.0703125 : f64, min = 1.000000e+00 : f64} : tensor<1x10x8x8xf16> -> tensor<1x10x8x8xf16>
@@ -562,6 +577,7 @@ func.func @AlignSliceWithClamp(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf
 // -----
 
 // CHECK-LABEL: @NotAlignSliceWithBigRange
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @NotAlignSliceWithBigRange(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+01> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -576,7 +592,7 @@ func.func @NotAlignSliceWithBigRange(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<5.070310e+00> : tensor<1x1x1x1xf16>
 
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]])
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]])
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8]
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_1]])
 
@@ -586,6 +602,7 @@ func.func @NotAlignSliceWithBigRange(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10
 // -----
 
 // CHECK-LABEL: @NotAlignSliceWithNoOverlap
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @NotAlignSliceWithNoOverlap(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<6.000000e+00> : tensor<1x1x1x1xf16>
@@ -602,7 +619,7 @@ func.func @NotAlignSliceWithNoOverlap(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x1
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<5.070310e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
 
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]])
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]])
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8]
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_2]], [[CST_1]], [[CST_2]], [[CST_1]])
 
@@ -613,6 +630,7 @@ func.func @NotAlignSliceWithNoOverlap(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x1
 // -----
 
 // CHECK-LABEL: @NotAlignSliceWithDifferentInOutRange
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @NotAlignSliceWithDifferentInOutRange(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -628,7 +646,7 @@ func.func @NotAlignSliceWithDifferentInOutRange(%arg0: tensor<1x16x8x8xf16>) -> 
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<5.070310e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf16>
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]])
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]])
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8]
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_2]])
 
@@ -639,6 +657,7 @@ func.func @NotAlignSliceWithDifferentInOutRange(%arg0: tensor<1x16x8x8xf16>) -> 
 // -----
 
 // CHECK-LABEL: @NotAlignSliceWithPerTensorFq
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @NotAlignSliceWithPerTensorFq(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -659,7 +678,7 @@ func.func @NotAlignSliceWithPerTensorFq(%arg0: tensor<1x16x8x8xf16>) -> tensor<1
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x10x1x1xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x10x1x1xf16>
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]])
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]])
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8]
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_1]], [[CST_2]], [[CST_1]], [[CST_2]])
 
@@ -670,6 +689,7 @@ func.func @NotAlignSliceWithPerTensorFq(%arg0: tensor<1x16x8x8xf16>) -> tensor<1
 // -----
 
 // CHECK-LABEL: @AlignConcatWithSlice
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<32x8x8xf16>, [[ARG_1:%[^:]+]]: tensor<16x1x8xf16>)
 func.func @AlignConcatWithSlice(%arg0: tensor<32x8x8xf16>, %arg1: tensor<16x1x8xf16>) -> tensor<1x16x9x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<8.068850e+00> : tensor<1x1x1x1xf16>
@@ -691,8 +711,8 @@ func.func @AlignConcatWithSlice(%arg0: tensor<32x8x8xf16>, %arg1: tensor<16x1x8x
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<8.070310e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
 
-  // CHECK: [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 32, 8, 8]} : tensor<32x8x8xf16> -> tensor<1x32x8x8xf16>
-  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape(%arg1) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
+  // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 32, 8, 8]} : tensor<32x8x8xf16> -> tensor<1x32x8x8xf16>
+  // CHECK: [[RESHAPE_0:%.+]] = IE.Reshape([[ARG_1]]) {shape_value = [1, 16, 1, 8]} : tensor<16x1x8xf16> -> tensor<1x16x1x8xf16>
   // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[RESHAPE]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x32x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x32x8x8xf16>
   // CHECK: [[CLAMP:%.+]] =  IE.Clamp([[FQ]]) {max = 7.55859375 : f64, min = 0.000000e+00 : f64} : tensor<1x32x8x8xf16> -> tensor<1x32x8x8xf16>
   // CHECK: [[SLICE:%.+]] = IE.Slice [[CLAMP]] [0, 0, 0, 0] [1, 16, 8, 8] : tensor<1x32x8x8xf16> to tensor<1x16x8x8xf16>
@@ -709,6 +729,7 @@ func.func @AlignConcatWithSlice(%arg0: tensor<32x8x8xf16>, %arg1: tensor<16x1x8x
 // -----
 
 // CHECK-LABEL: @AlignAllFQ
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x2x3x4xf16>, [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf16>, [[ARG_2:%[^:]+]]: tensor<1x2x3x4xf16>)
 func.func @AlignAllFQ(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4xf16>, %arg2: tensor<1x2x3x4xf16>) -> (tensor<1x1x3x2xf16>, tensor<1x2x3x4xf16>) {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<-1.5000e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<4.0000e+00> : tensor<1x1x1x1xf16>
@@ -735,15 +756,15 @@ func.func @AlignAllFQ(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4xf16>, %a
 
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-6.25101137> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<5.29977036> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
-  // CHECK: [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP:%.+]] = IE.Clamp([[FQ]]) {max = 4.000000e+00 : f64, min = -1.500000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[SPLIT:%.+]]:2 = IE.Split([[CLAMP]]) {axis_value = 1 : i64, num_splits = 2 : i64} : tensor<1x2x3x4xf16> -> tensor<1x1x3x4xf16>, tensor<1x1x3x4xf16>
   // CHECK: [[MAXPOOL:%.+]] = IE.MaxPool([[SPLIT]]#0) {kernel_size = [1, 2], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 2]} : tensor<1x1x3x4xf16> -> tensor<1x1x3x2xf16>
   // CHECK: [[FQ_0:%.+]] = IE.FakeQuantize([[MAXPOOL]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x1x3x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x3x2xf16>
   // CHECK: [[CLAMP_0:%.+]] = IE.Clamp([[FQ_0]]) {max = 2.500000e+00 : f64, min = -2.400390625 : f64} : tensor<1x1x3x2xf16> -> tensor<1x1x3x2xf16>
-  // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize(%arg1, [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[FQ_1:%.+]] = IE.FakeQuantize([[ARG_1]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP_1:%.+]] = IE.Clamp([[FQ_1]]) {max = 3.750000e+00 : f64, min = -1.750000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
-  // CHECK: [[FQ_2:%.+]] = IE.FakeQuantize(%arg2, [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
+  // CHECK: [[FQ_2:%.+]] = IE.FakeQuantize([[ARG_2]], [[CST]], [[CST_0]], [[CST]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x3x4xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CLAMP_2:%.+]] = IE.Clamp([[FQ_2]]) {max = 5.30078125 : f64, min = -6.250000e+00 : f64} : tensor<1x2x3x4xf16> -> tensor<1x2x3x4xf16>
   // CHECK: [[CONCAT:%.+]] = IE.Concat([[CLAMP_1]], [[CLAMP_2]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 2, 0, 0]]} : tensor<1x2x3x4xf16>, tensor<1x2x3x4xf16> -> tensor<1x4x3x4xf16>
   // CHECK: [[REDUCEMAX:%.+]] = IE.ReduceMax([[CONCAT]]) {axes_value = [1], keep_dims} : tensor<1x4x3x4xf16> -> tensor<1x1x3x4xf16>
@@ -756,12 +777,13 @@ func.func @AlignAllFQ(%arg0: tensor<1x2x3x4xf16>, %arg1: tensor<1x2x3x4xf16>, %a
 
 // -----
 
-// CHECK-LABEL: @AlignSliceWithClampAdaptiveStrippingFalse
 module {
 config.PipelineOptions @Options {
     config.Option @config.EnableAdaptiveStripping : false
 }
 
+// CHECK-LABEL: @AlignSliceWithClampAdaptiveStrippingFalse
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @AlignSliceWithClampAdaptiveStrippingFalse(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<0.993771e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -775,7 +797,7 @@ func.func @AlignSliceWithClampAdaptiveStrippingFalse(%arg0: tensor<1x16x8x8xf16>
 
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<9.936520e-01> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8] : tensor<1x16x8x8xf16> to tensor<1x10x8x8xf16>
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x10x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x10x8x8xf16>
   // CHECK:     [[CLAMP:%.+]] = IE.Clamp([[FQ_1]]) {max = 0.9912109375 : f64, min = 0.000000e+00 : f64} : tensor<1x10x8x8xf16> -> tensor<1x10x8x8xf16>
@@ -785,12 +807,13 @@ func.func @AlignSliceWithClampAdaptiveStrippingFalse(%arg0: tensor<1x16x8x8xf16>
 
 // -----
 
-// CHECK-LABEL: @NotAlignSliceWithClampAdaptiveStrippingTrue
 module {
 config.PipelineOptions @Options {
     config.Option @config.EnableAdaptiveStripping : true
 }
 
+// CHECK-LABEL: @NotAlignSliceWithClampAdaptiveStrippingTrue
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>)
 func.func @NotAlignSliceWithClampAdaptiveStrippingTrue(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x10x8x8xf16> {
   %cst = const.Declare tensor<1x1x1x1xf16> = dense<0.993771e+00> : tensor<1x1x1x1xf16>
   %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -805,7 +828,7 @@ func.func @NotAlignSliceWithClampAdaptiveStrippingTrue(%arg0: tensor<1x16x8x8xf1
   // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<9.936520e-01> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<9.912100e-01> : tensor<1x1x1x1xf16>
-  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
+  // CHECK:     [[FQ_0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
   // CHECK:     [[SLICE:%.+]] = IE.Slice [[FQ_0]] [0, 0, 0, 0] [1, 10, 8, 8] : tensor<1x16x8x8xf16> to tensor<1x10x8x8xf16>
   // CHECK:     [[FQ_1:%.+]] = IE.FakeQuantize([[SLICE]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x10x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x10x8x8xf16>
   // CHECK: return [[FQ_1]] : tensor<1x10x8x8xf16>

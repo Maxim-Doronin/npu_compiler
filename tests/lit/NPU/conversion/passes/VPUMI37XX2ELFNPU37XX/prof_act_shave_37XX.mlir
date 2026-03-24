@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,6 +22,11 @@ module @actShaveProfiling {
     func.func private @builtin_hswish(memref<*xf16>, memref<*xf16>) attributes {VPU.kernel_code = "activation_hswish.cpp", VPU.kernel_entry = "activation_hswish"}
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
+
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x1x1x1000xf16, @DDR>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x1x1x1000xf16, @DDR>
+  // CHECK-SAME:    [[ARG_2:%[^:]+]]: memref<4xui32>
   func.func @main(%arg0: memref<1x1x1x1000xf16, @DDR>, %arg1: memref<1x1x1x1000xf16, @DDR>, %arg2: memref<4xui32>) -> (memref<1x1x1x1000xf16, @DDR>, memref<4xui32>) {
     %0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
     %1 = VPURT.DeclareBuffer <CMX_NN> [0] <2000> -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
@@ -58,9 +63,9 @@ module @actShaveProfiling {
     // CHECK-SAME:       inputs([[PROF_BUF]] : memref<4xui32, [@CMX_NN, 0]>)
     // CHECK-SAME:       outputs([[PROF_OUT]] : memref<4xui32, @DDR>)
 
-    // CHECK:       [[SYM_IN:%.+]] = ELFNPU37XX.Symbol %arg0 name("input") size(2000) : memref<1x1x1x1000xf16, @DDR>
-    // CHECK:       [[SYM_OUT:%.+]] = ELFNPU37XX.Symbol %arg1 name("output") size(2000) : memref<1x1x1x1000xf16, @DDR>
-    // CHECK:       [[SYM_PROF:%.+]] = ELFNPU37XX.Symbol %arg2 name("profilingOutput") size(16) : memref<4xui32>
+    // CHECK:       [[SYM_IN:%.+]] = ELFNPU37XX.Symbol [[ARG_0]] name("input") size(2000) : memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[SYM_OUT:%.+]] = ELFNPU37XX.Symbol [[ARG_1]] name("output") size(2000) : memref<1x1x1x1000xf16, @DDR>
+    // CHECK:       [[SYM_PROF:%.+]] = ELFNPU37XX.Symbol [[ARG_2]] name("profilingOutput") size(16) : memref<4xui32>
 
 
     // CHECK:       [[VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR:%.+]] = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") <{isBuiltin}> : i8

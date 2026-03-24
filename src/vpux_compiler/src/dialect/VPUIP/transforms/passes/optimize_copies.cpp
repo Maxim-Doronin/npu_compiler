@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -2860,6 +2860,202 @@ mlir::LogicalResult CopyOpSequenceWithSubview::matchAndRewrite(VPUIP::CopyOp cop
     return mlir::failure();
 }
 
+// Optimize below pattern:
+
+//   Input    Indices
+//      |      |
+//     GatherDMA (DDR->Distributed CMX)
+//          |
+//        PermuteCast
+//          |
+//        Copy (Distributed CMX -> DDR)
+//          |
+//       SubView
+//          |
+//       Copy(DDR->Distributed CMX)
+//          |
+//         NCE
+
+// To:
+//              Indices
+//                |
+//     Input    Subview
+//         |      |
+//        GatherDMA (DDR->Distributed CMX, indices subviewed)
+//           |
+//       PermuteCast
+//           |
+//          NCE
+
+class GatherDMAWithSubview : public mlir::OpRewritePattern<VPUIP::GatherDMAOp> {
+public:
+    GatherDMAWithSubview(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<VPUIP::GatherDMAOp>(ctx, benefit), log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(VPUIP::GatherDMAOp gatherDMAOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger log;
+    // GatherDMA multi cluster only support SOB now.
+    const Dim SUPPORTED_AXIS = Dim(0);
+};
+
+mlir::LogicalResult GatherDMAWithSubview::matchAndRewrite(VPUIP::GatherDMAOp gatherDMAOp,
+                                                          mlir::PatternRewriter& rewriter) const {
+    const auto gatherOutType = mlir::cast<vpux::NDTypeInterface>(gatherDMAOp.getOutput().getType());
+    const auto gatherOutDistributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(gatherOutType);
+    if (gatherOutDistributedType == nullptr ||
+        gatherOutDistributedType.getDistribution().getMode().getValue() != VPU::DistributionMode::SEGMENTED) {
+        return mlir::failure();
+    }
+
+    if (!gatherDMAOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto permuteCastOp = mlir::dyn_cast_or_null<VPUIP::PermuteCastOp>(*gatherDMAOp->getUsers().begin());
+    if (permuteCastOp == nullptr || !permuteCastOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    // PermuteCast has the same logic shape
+    if (getShape(permuteCastOp->getOperand(0)) != getShape(permuteCastOp->getResult(0))) {
+        return mlir::failure();
+    }
+
+    auto copyToDDROp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(*permuteCastOp->getUsers().begin());
+    if (copyToDDROp == nullptr || copyToDDROp->use_empty()) {
+        return mlir::failure();
+    }
+
+    auto indiceInputCopyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(gatherDMAOp.getIndices().getDefiningOp());
+    if (indiceInputCopyOp == nullptr || !indiceInputCopyOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto indicesDistributedType =
+            mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(indiceInputCopyOp.getOutput().getType());
+    if (indicesDistributedType == nullptr ||
+        indicesDistributedType.getDistribution().getMode().getValue() != VPU::DistributionMode::SEGMENTED) {
+        return mlir::failure();
+    }
+
+    auto getSubViewCopyPairs = [&](VPUIP::CopyOp copyToDDROp) {
+        SmallVector<std::pair<VPUIP::SubViewOp, VPUIP::CopyOp>> subViewCopyPairs;
+
+        auto getSubviewAxis = [](VPUIP::SubViewOp subview) {
+            auto inShape = getShape(subview.getSource());
+            auto outShape = getShape(subview.getResult());
+            SmallVector<Dim> subviewAxes = {};
+            for (auto idx : irange(inShape.size())) {
+                const auto dim = Dim(idx);
+                if (inShape[dim] != outShape[dim]) {
+                    subviewAxes.push_back(dim);
+                }
+            }
+            return subviewAxes;
+        };
+
+        for (auto user : copyToDDROp->getUsers()) {
+            auto subViewOp = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(user);
+            if (subViewOp == nullptr || !subViewOp->hasOneUse()) {
+                continue;
+            }
+
+            auto subviewAxis = getSubviewAxis(subViewOp);
+            if (subviewAxis.size() != 1 || subviewAxis.front() != SUPPORTED_AXIS) {
+                continue;
+            }
+
+            auto copyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(*subViewOp->getUsers().begin());
+            if (copyOp == nullptr || !copyOp->hasOneUse()) {
+                continue;
+            }
+            auto copyOutDistributedType =
+                    mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(copyOp.getOutput().getType());
+            if (copyOutDistributedType == nullptr ||
+                copyOutDistributedType.getDistribution().getMode().getValue() != VPU::DistributionMode::SEGMENTED) {
+                continue;
+            }
+            subViewCopyPairs.push_back(std::make_pair(subViewOp, copyOp));
+        }
+        return subViewCopyPairs;
+    };
+
+    auto subViewCopyPairs = getSubViewCopyPairs(copyToDDROp);
+    if (subViewCopyPairs.empty()) {
+        return mlir::failure();
+    }
+
+    for (auto [subViewOp, copyOp] : subViewCopyPairs) {
+        auto copyOutDistributedType = mlir::cast<vpux::VPUIP::DistributedBufferType>(copyOp.getOutput().getType());
+        auto offsetAttr = subViewOp.getStaticOffsets();
+        auto offsetsArray = parseIntArrayAttr<int64_t>(offsetAttr);
+        auto sizeAttr = subViewOp.getStaticSizes();
+        auto sizeArray = parseIntArrayAttr<int64_t>(sizeAttr);
+
+        rewriter.setInsertionPointAfter(copyOp);
+
+        // Create new indices
+        Shape newIndicesShape(indicesDistributedType.getShape().raw());
+        newIndicesShape[SUPPORTED_AXIS] = sizeArray.front();
+
+        const auto origDistribution = indicesDistributedType.getDistribution();
+        auto newDistributedAttr = VPU::getNonOverlappedDistributedAttr(
+                newIndicesShape, origDistribution.getMode(), origDistribution.getNumTiles(),
+                origDistribution.getNumClusters(), origDistribution.getAlignment(),
+                origDistribution.getUniformDistributedSegments(), indicesDistributedType.getElementType(),
+                gatherDMAOp->getContext());
+
+        auto newIndicesType =
+                indicesDistributedType.changeShapeForExplicitDistribution(newIndicesShape, newDistributedAttr);
+        auto newIndicesBuffer = rewriter.create<VPURT::AllocDistributed>(
+                appendLoc(subViewOp->getLoc(), "_new_indices_buffer"), newIndicesType, nullptr, nullptr);
+
+        SmallVector<int64_t> newCopyOffsets(gatherOutType.getShape().size());
+        newCopyOffsets.front() = offsetsArray.front();
+
+        auto newSubViewOp = rewriter.create<VPUIP::SubViewOp>(subViewOp->getLoc(), indiceInputCopyOp.getInput(),
+                                                              newCopyOffsets, newIndicesShape.raw());
+        auto newIndicesCopyOp = rewriter.create<VPUIP::CopyOp>(copyOp->getLoc(), newSubViewOp, newIndicesBuffer);
+
+        // Create new GatherDMA with new indices
+        auto newGatherOutType = copyOutDistributedType.changeDimsOrder(gatherOutType.getDimsOrder());
+        auto newGatherOutBuffer = rewriter.create<VPURT::AllocDistributed>(
+                appendLoc(copyOp->getLoc(), "_new_CMX_buffer"), newGatherOutType, nullptr, nullptr);
+
+        auto newGatherDMAOp = rewriter.create<VPUIP::GatherDMAOp>(
+                appendLoc(subViewOp->getLoc(), "_new_gatherDMA"), gatherDMAOp.getInput(), newIndicesCopyOp.getOutput(),
+                newGatherOutBuffer, gatherDMAOp.getElementSize(), gatherDMAOp.getPadding(),
+                gatherDMAOp.getPort().value(), VPUIP::GatherAddressingMode::INDEXED);
+        auto newPermuteCastOp = rewriter.create<VPUIP::PermuteCastOp>(
+                appendLoc(subViewOp->getLoc(), "_new_permuteCast"), copyOutDistributedType, newGatherDMAOp.getOutput(),
+                permuteCastOp.getDstOrderAttr(), permuteCastOp.getMemPermAttr());
+
+        rewriter.replaceOp(copyOp, newPermuteCastOp->getResult(0));
+        if (subViewOp->use_empty()) {
+            rewriter.eraseOp(subViewOp);
+        }
+    }
+
+    if (copyToDDROp->use_empty()) {
+        rewriter.eraseOp(copyToDDROp);
+    }
+    if (permuteCastOp->use_empty()) {
+        rewriter.eraseOp(permuteCastOp);
+    }
+    if (gatherDMAOp->use_empty()) {
+        rewriter.eraseOp(gatherDMAOp);
+    }
+    if (indiceInputCopyOp->use_empty()) {
+        rewriter.eraseOp(indiceInputCopyOp);
+    }
+
+    return mlir::success();
+}
+
 //
 // OptimizeCopiesPass
 //
@@ -2910,6 +3106,7 @@ void OptimizeCopiesPass::safeRunOnFunc() {
     mlir::RewritePatternSet patternsCopyOpSequenceWithSubview(&ctx);
     patternsCopyOpSequenceWithSubview.add<CopyOpSequenceWithSubview>(&ctx, benefitLevels[0], _workloadManagementMode,
                                                                      _log);
+    patternsCopyOpSequenceWithSubview.add<GatherDMAWithSubview>(&ctx, benefitLevels[1], _log);
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patternsCopyOpSequenceWithSubview),
                                                  getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
@@ -2933,6 +3130,7 @@ void vpux::VPUIP::registerOptimizeCopiesRewriters(vpux::RewriterRegistry& regist
     registry.registerRewriter<SubViewWithCopy>("subview-copy", benefitLevels[3], log);
     registry.registerRewriter<CopyOpSequenceWithSubview>("copy-op-sequence-with-subview", benefitLevels[0],
                                                          workloadManagementMode, log);
+    registry.registerRewriter<GatherDMAWithSubview>("gather-dma-with-subview", benefitLevels[1], log);
 }
 
 void vpux::VPUIP::registerOptimizeCopiesSection(vpux::RewriterRegistry& registry) {

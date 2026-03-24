@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -647,21 +647,24 @@ mlir::Value emitEltwiseWithPostOp(mlir::Operation* op, mlir::ValueRange args, ll
         val = rewriter.create<SrcIOp>(op->getLoc(), resultTypes, args);
     }
     if (auto postOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(op)) {
-        if (auto postOpAttr = postOp.getPostOp()) {
-            val = llvm::TypeSwitch<mlir::Attribute, mlir::Value>(postOpAttr)
-                          .Case<IE::ReluAttr>([&](auto attr) {
-                              VPUX_UNUSED(attr);
-                              return emitLeakyReLU(val, 0., rewriter);
-                          })
-                          .template Case<IE::LeakyReluAttr>([&](auto attr) {
-                              VPUX_UNUSED(attr);
-                              return emitLeakyReLU(val, attr.getNegativeSlope().getValueAsDouble(), rewriter);
-                          })
-                          .Default([&](auto attr) -> mlir::Value {
-                              VPUX_UNUSED(attr);
-                              VPUX_THROW("Unsupported postop for operation '{0}' at '{1}'", op->getName(),
-                                         op->getLoc());
-                          });
+        auto clampAttr = postOp.getClampAttr();
+        auto postOpAttr = postOp.getPostOp();
+
+        if (clampAttr != nullptr ||
+            (postOpAttr != nullptr && !mlir::isa<IE::ReluAttr, IE::LeakyReluAttr>(postOpAttr))) {
+            VPUX_THROW("Unsupported post-processing for operation '{0}' at '{1}'", op->getName(), op->getLoc());
+        }
+
+        if (postOpAttr != nullptr) {
+            llvm::TypeSwitch<mlir::Attribute, void>(postOpAttr)
+                    .Case<IE::ReluAttr>([&](auto attr) {
+                        VPUX_UNUSED(attr);
+                        val = emitLeakyReLU(val, 0., rewriter);
+                    })
+                    .template Case<IE::LeakyReluAttr>([&](auto attr) {
+                        VPUX_UNUSED(attr);
+                        val = emitLeakyReLU(val, attr.getNegativeSlope().getValueAsDouble(), rewriter);
+                    });
         }
     }
     return val;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,9 +11,10 @@
 func.func @LegalizeDilatedConvolutionTwoDimension(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x32x18x24xf16> {
     %filter = const.Declare tensor<32x3x3x3xf16> = dense<1.0> : tensor<32x3x3x3xf16>
     %bias = const.Declare tensor<1x32x1x1xf16> = dense<1.0> : tensor<1x32x1x1xf16>
-    %0 = IE.Convolution(%arg0, %filter, %bias)
-         {dilations = [8, 6], pads_begin = [1, 2], pads_end = [3, 4], strides = [1, 1], post_op = #IE.Relu<>} :
-         tensor<1x3x30x30xf16>, tensor<32x3x3x3xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x18x24xf16>
+    %0 = IE.Convolution(%arg0, %filter, %bias) {
+        clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
+        dilations = [8, 6], pads_begin = [1, 2], pads_end = [3, 4], strides = [1, 1]
+    } : tensor<1x3x30x30xf16>, tensor<32x3x3x3xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x18x24xf16>
     return %0 : tensor<1x32x18x24xf16>
 
     // CHECK-DAG: [[FILTERS:%.+]] = const.Declare tensor<32x3x3x3xf16> = dense<1.000000e+00> : tensor<32x3x3x3xf16>
@@ -33,7 +34,7 @@ func.func @LegalizeDilatedConvolutionTwoDimension(%arg0: tensor<1x3x30x30xf16>) 
     // CHECK: [[ACT_SLICE1:%.+]] = IE.Slice [[INPUT]] [0, 0, 15, 0] [1, 3, 15, 30] : tensor<1x3x30x30xf16> to tensor<1x3x15x30xf16>
     // CHECK: [[CONV1:%.+]] = IE.Convolution([[ACT_SLICE1]], [[EXPAND_DILATED1]], [[BIAS_1]]) {dilations = [1, 1], pads_begin = [0, 2], pads_end = [3, 4], strides = [1, 1]} : tensor<1x3x15x30xf16>, tensor<32x3x1x13xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x18x24xf16>
 
-    // CHECK: [[ADD0:%.+]] = IE.Add([[CONV0]], [[CONV1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, post_op = #IE.Relu<>} : tensor<1x32x18x24xf16>, tensor<1x32x18x24xf16> -> tensor<1x32x18x24xf16>
+    // CHECK: [[ADD0:%.+]] = IE.Add([[CONV0]], [[CONV1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>, clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}} : tensor<1x32x18x24xf16>, tensor<1x32x18x24xf16> -> tensor<1x32x18x24xf16>
 
     // CHECK: return [[ADD0]]
 }

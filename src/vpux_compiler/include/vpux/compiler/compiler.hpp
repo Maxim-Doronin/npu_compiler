@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/icompiler.hpp"
 #include "vpux/compiler/version.hpp"
-#include "vpux/utils/IE/icompiler.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 
 namespace vpux {

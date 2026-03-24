@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -132,6 +132,8 @@ func.func @ShapeCastWithExplicitSegmentedMulticastedInputDistributedTensorType(%
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @ShapeCastWithInStrideDimAtNAndNotSplit
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x144x64x128xf16, {order = #NHWC, strides = [2359296, 1, 18432, 144]}, @DDR>)
 func.func @ShapeCastWithInStrideDimAtNAndNotSplit(%arg0: memref<1x144x64x128xf16, {order = #NHWC, strides = [2359296, 1, 18432, 144]}, @DDR>)
             -> memref<1x48x192x128xf16, {order = #NHWC, strides = [2359296, 1, 6144, 48]}, @DDR> {
 
@@ -141,7 +143,7 @@ func.func @ShapeCastWithInStrideDimAtNAndNotSplit(%arg0: memref<1x144x64x128xf16
     return %0 : memref<1x48x192x128xf16, {order = #NHWC, strides = [2359296, 1, 6144, 48]}, @DDR>
 
     // CHECK:        [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [1, 48, 192, 128]}
-    // CHECK-SAME:         inputs(%arg0 : memref<1x144x64x128xf16, {order = #NHWC, strides = [2359296, 1, 18432, 144]}, @DDR>)
+    // CHECK-SAME:         inputs([[ARG_0]] : memref<1x144x64x128xf16, {order = #NHWC, strides = [2359296, 1, 18432, 144]}, @DDR>)
     // CHECK-SAME:                     -> memref<1x48x192x128xf16, {order = #NHWC, strides = [2359296, 1, 6144, 48]}, @DDR>
 }
 
@@ -149,6 +151,8 @@ func.func @ShapeCastWithInStrideDimAtNAndNotSplit(%arg0: memref<1x144x64x128xf16
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @ShapeCastWithInStrideDimAtWAndNotSplit
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x16x32x512xf16, {order = #NHWC, strides = [524288, 1, 16384, 32]}, @DDR>)
 func.func @ShapeCastWithInStrideDimAtWAndNotSplit(%arg0: memref<1x16x32x512xf16, {order = #NHWC, strides = [524288, 1, 16384, 32]}, @DDR>)
             -> memref<2x16x16x512xf16, {order = #NHWC, strides = [262144, 1, 16384, 32]}, @DDR> {
 
@@ -158,7 +162,7 @@ func.func @ShapeCastWithInStrideDimAtWAndNotSplit(%arg0: memref<1x16x32x512xf16,
     return %0 : memref<2x16x16x512xf16, {order = #NHWC, strides = [262144, 1, 16384, 32]}, @DDR>
 
     // CHECK:        [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [2, 16, 16, 512]}
-    // CHECK-SAME:         inputs(%arg0 : memref<1x16x32x512xf16, {order = #NHWC, strides = [524288, 1, 16384, 32]}, @DDR>)
+    // CHECK-SAME:         inputs([[ARG_0]] : memref<1x16x32x512xf16, {order = #NHWC, strides = [524288, 1, 16384, 32]}, @DDR>)
     // CHECK-SAME:                     -> memref<2x16x16x512xf16, {order = #NHWC, strides = [262144, 1, 16384, 32]}, @DDR>
 }
 
@@ -166,6 +170,8 @@ func.func @ShapeCastWithInStrideDimAtWAndNotSplit(%arg0: memref<1x16x32x512xf16,
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @ShapeCastWithInStrideDimAtWAndSplitIntoAfterDim
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x512x256xf16, {order = #NHWC, strides = [262144, 1, 512, 2]}, @DDR>)
 func.func @ShapeCastWithInStrideDimAtWAndSplitIntoAfterDim(%arg0: memref<1x1x512x256xf16, {order = #NHWC, strides = [262144, 1, 512, 2]}, @DDR>)
             -> memref<1x16x512x16xf16, {order = #NHWC, strides = [262144, 2, 512, 32]}, @DDR> {
 
@@ -175,7 +181,7 @@ func.func @ShapeCastWithInStrideDimAtWAndSplitIntoAfterDim(%arg0: memref<1x1x512
     return %0 : memref<1x16x512x16xf16, {order = #NHWC, strides = [262144, 2, 512, 32]}, @DDR>
 
     // CHECK:        [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [1, 16, 512, 16]}
-    // CHECK-SAME:         inputs(%arg0 : memref<1x1x512x256xf16, {order = #NHWC, strides = [262144, 1, 512, 2]}, @DDR>)
+    // CHECK-SAME:         inputs([[ARG_0]] : memref<1x1x512x256xf16, {order = #NHWC, strides = [262144, 1, 512, 2]}, @DDR>)
     // CHECK-SAME:                     -> memref<1x16x512x16xf16, {order = #NHWC, strides = [262144, 2, 512, 32]}, @DDR>
 }
 
@@ -183,6 +189,8 @@ func.func @ShapeCastWithInStrideDimAtWAndSplitIntoAfterDim(%arg0: memref<1x1x512
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @ShapeCastWithInStrideDimAtWAndSplitIntoFrontDim
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x512x1x256xf16, {order = #NHWC, strides = [262144, 1, 262144, 1024]}, @DDR>)
 func.func @ShapeCastWithInStrideDimAtWAndSplitIntoFrontDim(%arg0: memref<1x512x1x256xf16, {order = #NHWC, strides = [262144, 1, 262144, 1024]}, @DDR>)
             -> memref<1x512x16x16xf16, {order = #NHWC, strides = [262144, 1, 16384,  1024]}, @DDR> {
 
@@ -192,7 +200,7 @@ func.func @ShapeCastWithInStrideDimAtWAndSplitIntoFrontDim(%arg0: memref<1x512x1
     return %0 : memref<1x512x16x16xf16, {order = #NHWC, strides = [262144, 1, 16384,  1024]}, @DDR>
 
     // CHECK:        [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [1, 512, 16, 16]}
-    // CHECK-SAME:         inputs(%arg0 : memref<1x512x1x256xf16, {order = #NHWC, strides = [262144, 1, 262144, 1024]}, @DDR>)
+    // CHECK-SAME:         inputs([[ARG_0]] : memref<1x512x1x256xf16, {order = #NHWC, strides = [262144, 1, 262144, 1024]}, @DDR>)
     // CHECK-SAME:                     -> memref<1x512x16x16xf16, {order = #NHWC, strides = [262144, 1, 16384, 1024]}, @DDR>
 }
 

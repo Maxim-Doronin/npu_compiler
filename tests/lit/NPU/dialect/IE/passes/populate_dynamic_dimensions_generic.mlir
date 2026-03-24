@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -177,16 +177,19 @@ func.func @EltwiseGreaterEqual(%arg0: tensor<1x?xf16, {bounds = #const.OpaqueI64
 // -----
 
 // CHECK-LABEL: EltwiseMinimum
+// CHECK: [[IN:%.+]]: tensor<1x3x?x?xf32
 func.func @EltwiseMinimum(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>) -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}> {
     %cst = const.Declare tensor<1x3x1x1xf32> =  dense<0.500000e+00> : tensor<1x3x1x1xf32>
     %0 = IE.Minimum(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>, tensor<1x3x1x1xf32> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>
     return %0 : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>
 
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<5.000000e-01> : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[MINIMUM:%.+]] = IE.Minimum([[IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x3x1x1xf32> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK-DAG: [[DYN_DIM_IDX_2:%.+]] = arith.constant 2 : index
-    // CHECK-DAG: [[DYN_DIM_VALUE_2:%.+]] = tensor.dim %0, [[DYN_DIM_IDX_2]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-DAG: [[DYN_DIM_VALUE_2:%.+]] = tensor.dim [[MINIMUM]], [[DYN_DIM_IDX_2]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK-DAG: [[DYN_DIM_IDX_3:%.+]] = arith.constant 3 : index
-    // CHECK-DAG: [[DYN_DIM_VALUE_3:%.+]] = tensor.dim %0, [[DYN_DIM_IDX_3]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-DAG: [[DYN_DIM_VALUE_3:%.+]] = tensor.dim [[MINIMUM]], [[DYN_DIM_IDX_3]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK-DAG: [[STATIC_DIM_1:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
     // CHECK-DAG: [[STATIC_DIM_2:%.+]] = const.Declare tensor<1xsi64> = dense<3> : tensor<1xsi64>
@@ -201,7 +204,7 @@ func.func @EltwiseMinimum(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64E
 
     // CHECK-DAG: [[NEW_SHAPE:%.+]] = IE.Concat([[STATIC_DIM_1]], [[STATIC_DIM_2]], [[DYN_DIM_2]], [[DYN_DIM_3]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<4xsi64>
 
-    // CHECK: [[DYN_RESHAPE:%.+]] = IE.DynamicReshape(%0, [[NEW_SHAPE]]) {only_set_shape, output_bounds = [1, 3, 128, 128], output_shape = [1, 3, -9223372036854775808, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK: [[DYN_RESHAPE:%.+]] = IE.DynamicReshape([[MINIMUM]], [[NEW_SHAPE]]) {only_set_shape, output_bounds = [1, 3, 128, 128], output_shape = [1, 3, -9223372036854775808, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK: return [[DYN_RESHAPE]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 }
@@ -209,16 +212,19 @@ func.func @EltwiseMinimum(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64E
 // -----
 
 // CHECK-LABEL: EltwiseMaximum
+// CHECK: [[IN:%.+]]: tensor<1x3x?x?xf32
 func.func @EltwiseMaximum(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>) -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}> {
     %cst = const.Declare tensor<1x3x1x1xf32> =  dense<0.500000e+00> : tensor<1x3x1x1xf32>
     %0 = IE.Maximum(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>, tensor<1x3x1x1xf32> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>
     return %0 : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>
 
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<5.000000e-01> : tensor<1x3x1x1xf32>
+    // CHECK-DAG: [[MAXIMUM:%.+]] = IE.Maximum([[IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x3x1x1xf32> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK-DAG: [[DYN_DIM_IDX_2:%.+]] = arith.constant 2 : index
-    // CHECK-DAG: [[DYN_DIM_VALUE_2:%.+]] = tensor.dim %0, [[DYN_DIM_IDX_2]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-DAG: [[DYN_DIM_VALUE_2:%.+]] = tensor.dim [[MAXIMUM]], [[DYN_DIM_IDX_2]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK-DAG: [[DYN_DIM_IDX_3:%.+]] = arith.constant 3 : index
-    // CHECK-DAG: [[DYN_DIM_VALUE_3:%.+]] = tensor.dim %0, [[DYN_DIM_IDX_3]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-DAG: [[DYN_DIM_VALUE_3:%.+]] = tensor.dim [[MAXIMUM]], [[DYN_DIM_IDX_3]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK-DAG: [[STATIC_DIM_1:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
     // CHECK-DAG: [[STATIC_DIM_2:%.+]] = const.Declare tensor<1xsi64> = dense<3> : tensor<1xsi64>
@@ -233,7 +239,7 @@ func.func @EltwiseMaximum(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64E
 
     // CHECK-DAG: [[NEW_SHAPE:%.+]] = IE.Concat([[STATIC_DIM_1]], [[STATIC_DIM_2]], [[DYN_DIM_2]], [[DYN_DIM_3]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<4xsi64>
 
-    // CHECK: [[DYN_RESHAPE:%.+]] = IE.DynamicReshape(%0, [[NEW_SHAPE]]) {only_set_shape, output_bounds = [1, 3, 128, 128], output_shape = [1, 3, -9223372036854775808, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK: [[DYN_RESHAPE:%.+]] = IE.DynamicReshape([[MAXIMUM]], [[NEW_SHAPE]]) {only_set_shape, output_bounds = [1, 3, 128, 128], output_shape = [1, 3, -9223372036854775808, -9223372036854775808]} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi64> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 
     // CHECK: return [[DYN_RESHAPE]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 128, 128]> : tensor<4xsi64>, order = #NCHW}>
 }

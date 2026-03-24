@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,6 +39,9 @@ struct DefaultHWOptions :
             *this, "enable-multi-schedule-heuristic",
             ::llvm::cl::desc("Enables compiler to schedule with different heuristic logics and compare costs"),
             ::llvm::cl::init(true)};
+    BoolOption enableLoopAllocation{*this, "enable-loop-allocation",
+                                    ::llvm::cl::desc("Enables loop allocation for tiling and vertical fusion regions"),
+                                    ::llvm::cl::init(false)};
 
     // TODO: E#118871 Switch this option to true by default
     BoolOption enableBarrierSchedWithFunctionOutlining{

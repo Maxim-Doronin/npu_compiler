@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,7 +16,7 @@ func.func @OptimizeWorkloadForDepthwiseConv(%arg0: tensor<1x128x56x56xf16, {orde
     %1 = VPU.Copy(%cst0) {out_mem_space = [@CMX_NN, 0]} : tensor<128x16x1x1xf16, {order = #NHWC}> -> tensor<128x16x1x1xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
     %2 = VPU.Copy(%wt) {out_mem_space = [@CMX_NN, 0]} : tensor<128x1x1x4xsi32, {order = #NHWC}> -> tensor<128x1x1x4xsi32, {mem_space = [@CMX_NN, 0], order = #NHWC}>
     %4 = VPU.NCE.DepthConvolution(%0, %1, %2) {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [128, 1, 3, 3], strides = [1, 1]} -> tensor<1x128x54x54xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}> {
-      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
     }
 
     %5 = VPU.Copy(%4) : tensor<1x128x54x54xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
@@ -25,10 +25,10 @@ func.func @OptimizeWorkloadForDepthwiseConv(%arg0: tensor<1x128x56x56xf16, {orde
     return %5 : tensor<1x128x54x54xf16, {order = #NHWC}>
 
     // CHECK:       VPU.NCE.DepthConvolution
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
 }
 
 // -----
@@ -44,7 +44,7 @@ func.func @OptimizeWorkloadForDepthwiseConvWithU8(%arg0: tensor<1x128x56x56x!qEl
     %1 = VPU.Copy(%cst0) {out_mem_space = [@CMX_NN, 0]} : tensor<128x16x1x1xf16, {order = #NHWC}> -> tensor<128x16x1x1xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
     %2 = VPU.Copy(%wt) {out_mem_space = [@CMX_NN, 0]} : tensor<128x1x1x4xsi32, {order = #NHWC}> -> tensor<128x1x1x4xsi32, {mem_space = [@CMX_NN, 0], order = #NHWC}>
     %4 = VPU.NCE.DepthConvolution(%0, %1, %2) {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [128, 1, 3, 3], strides = [1, 1]} -> tensor<1x128x54x54x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}> {
-      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
     }
 
     %5 = VPU.Copy(%4) : tensor<1x128x54x54x!qElemType, {mem_space = [@CMX_NN, 0], order = #NHWC}>
@@ -55,13 +55,13 @@ func.func @OptimizeWorkloadForDepthwiseConvWithU8(%arg0: tensor<1x128x56x56x!qEl
     // CHECK:       VPU.NCE.DepthConvolution
 
 
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
     // CHECK-NOT:     VPU.DPU.Workload outOffsets [0, 16, 0, 0]
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
     // CHECK-NOT:     VPU.DPU.Workload outOffsets [0, 48, 0, 0]
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
     // CHECK-NOT:     VPU.DPU.Workload outOffsets [0, 80, 0, 0]
-    // CHECK:         VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 28, 28] <left = 0 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 28, 28] pad [0, 1, 0, 1] <CUBOID_16x16>
 }
 
 // -----
@@ -120,8 +120,8 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [256, 1, 3, 3],
             strides = [1, 1]} -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 128, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 128, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %2 : !Output_CMX
@@ -129,14 +129,14 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
 
     // CHECK:       VPU.NCE.DepthConvolution
     // split workload into size 32 to enable small kernel optimization
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 160, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 224, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 160, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 224, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 }
 
 // -----
@@ -195,8 +195,8 @@ func.func @DepthConvWithL1aOpt16(%arg0: !Input_CMX) -> !Output_CMX {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [160, 1, 3, 3],
             strides = [1, 1]} -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 80, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 80, 0, 0] outSizes [1, 80, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 80, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 80, 0, 0] outSizes [1, 80, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %2 : !Output_CMX
@@ -204,12 +204,12 @@ func.func @DepthConvWithL1aOpt16(%arg0: !Input_CMX) -> !Output_CMX {
 
     // CHECK:       VPU.NCE.DepthConvolution
     // split workload into size 16&32 to enable small kernel optimization
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 16, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 80, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 112, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 144, 0, 0] outSizes [1, 16, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 16, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 80, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 112, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 144, 0, 0] outSizes [1, 16, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 }
 
 // -----
@@ -279,8 +279,8 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [128, 1, 3, 3],
             strides = [1, 1]} -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %2 : !Output_CMX
@@ -288,16 +288,16 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
 
     // CHECK:       VPU.NCE.DepthConvolution
     // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42]
-    // CHECK-SAME:              <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK-SAME:              pad [1, 1, 1, 1] <CUBOID_16x16>
     // CHECK-SAME:              attributes {cluster_id = 0 : i64}
     // CHECK:          VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42]
-    // CHECK-SAME:              <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK-SAME:              pad [1, 1, 1, 1] <CUBOID_16x16>
     // CHECK-SAME:              attributes {cluster_id = 0 : i64}
     // CHECK:          VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 24, 42]
-    // CHECK-SAME:              <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK-SAME:              pad [1, 1, 1, 1] <CUBOID_16x16>
     // CHECK-SAME:              attributes {cluster_id = 1 : i64}
     // CHECK:          VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 24, 42]
-    // CHECK-SAME:              <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16>
+    // CHECK-SAME:              pad [1, 1, 1, 1] <CUBOID_16x16>
     // CHECK-SAME:              attributes {cluster_id = 1 : i64}
 }
 
@@ -356,8 +356,8 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [256, 1, 3, 3],
             strides = [1, 1]} -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 128, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 128, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %2 : !Output_CMX
@@ -365,14 +365,14 @@ func.func @DepthConvWithL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
 
     // CHECK:       VPU.NCE.DepthConvolution
     // split workload into size 32 to enable small kernel optimization
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 160, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 224, 0, 0] outSizes [1, 32, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 160, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 224, 0, 0] outSizes [1, 32, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 }
 
 // -----
@@ -430,8 +430,8 @@ func.func @DepthConvWithoutL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [2048, 1, 3, 3],
             strides = [1, 1]} -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1024, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 1024, 0, 0] outSizes [1, 1024, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1024, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 1024, 0, 0] outSizes [1, 1024, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %2 : !Output_CMX
@@ -439,36 +439,36 @@ func.func @DepthConvWithoutL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
 
     // CHECK:       VPU.NCE.DepthConvolution
     // Don't split workload into size 32 to enable small kernel optimization
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 256, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 320, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 384, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 448, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 512, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 576, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 640, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 704, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 768, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 832, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 896, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 960, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1024, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1088, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1152, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1216, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1280, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1344, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1408, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1472, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1536, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1600, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1664, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1728, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1792, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1856, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1920, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1984, 0, 0] outSizes [1, 64, 24, 42] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 128, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 256, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 320, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 384, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 448, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 512, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 576, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 640, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 704, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 768, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 832, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 896, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 960, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1024, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1088, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1152, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1216, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1280, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1344, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1408, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1472, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1536, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1600, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1664, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1728, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1792, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1856, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1920, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1984, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 }

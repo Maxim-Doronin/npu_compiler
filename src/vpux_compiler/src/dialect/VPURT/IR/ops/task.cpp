@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -94,7 +94,7 @@ VPURT::TaskQueueType vpux::VPURT::getTaskQueueType(TaskOp taskOp, bool ignoreInd
         auto* wrappedTaskOp = taskOp.getInnerTaskOp();
         auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(wrappedTaskOp);
         VPUX_THROW_WHEN(swKernelOp == nullptr, "Could not get SW kernel task");
-        auto numTiles = VPU::getNumTiles(swKernelOp);
+        auto numTiles = config::getNumOfTiles(swKernelOp);
         auto tileIndex = swKernelOp.getTileIndex().value_or(0);
         auto listIndex = swKernelOp.getListIndex().value_or(0);
         queueType.id = getShaveQueueIdEncoding(numTiles, tileIndex, listIndex);

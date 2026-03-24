@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -482,16 +482,23 @@ void vpux::VPU::inferLSTMSequenceLayoutInfo(mlir::Operation* op, IE::LayerLayout
     IE::fillDefaultLayoutInfo(info, inputFilter, outputFilter);
 
     size_t ind = firstOptionalInputInd;
+    if (lstmSequenceOp.getSequenceLengthData()) {
+        info.setInput(ind++, DimsOrder::NCHW);  // sequenceLengthData
+    }
     if (lstmSequenceOp.getWeights()) {
         info.setInput(ind++, DimsOrder::NWHC);  // weights
     }
+
     // recurrenceWeights order. It depends by lower-level implementation.
     auto useDpu = VPU::getShaveControlsDpu(config::getArch(op));
+
     useDpu = useDpu ? VPU::LSTMSequenceOp::isSupported(lstmSequenceOp, useDpu) : useDpu;
     auto recurrenceWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NWHC;
+
     info.setInput(ind++, recurrenceWeightsOrder);
     if (lstmSequenceOp.getBiases()) {
         auto biasesWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NCWH;
+
         info.setInput(ind++, biasesWeightsOrder);  // biases
     }
 }
@@ -501,20 +508,30 @@ mlir::LogicalResult vpux::VPU::verifyLSTMSequenceLayoutInfo(mlir::Operation* op)
     VPUX_THROW_UNLESS(lstmSequenceOp, "Expected a VPU::LSTMSequenceOp, got {0}", op);
     auto useDpu = lstmSequenceOp.getUseDpuAttr() ? lstmSequenceOp.getUseDpuAttr().getValue() : false;
     auto recurrenceWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NWHC;
+
     // optional input order check
     if (lstmSequenceOp.getBiases()) {
         auto biasesWeightsOrder = useDpu ? DimsOrder::NCHW : DimsOrder::NCWH;
+
         if (DimsOrder::fromValue(lstmSequenceOp.getBiases()) != biasesWeightsOrder) {
             return mlir::failure();
         }
     }
+
+    if (lstmSequenceOp.getSequenceLengthData()) {
+        if (DimsOrder::fromValue(lstmSequenceOp.getSequenceLengthData()) != DimsOrder::NCHW) {
+            return mlir::failure();
+        }
+    }
+
     if (DimsOrder::fromValue(lstmSequenceOp.getInputData()) != DimsOrder::NCHW ||
         DimsOrder::fromValue(lstmSequenceOp.getInitialHiddenState()) != DimsOrder::NCHW ||
         DimsOrder::fromValue(lstmSequenceOp.getInitialCellState()) != DimsOrder::NCHW ||
-        DimsOrder::fromValue(lstmSequenceOp.getReccurenceWeights()) != recurrenceWeightsOrder ||
+        DimsOrder::fromValue(lstmSequenceOp.getRecurrenceWeights()) != recurrenceWeightsOrder ||
         DimsOrder::fromValue(lstmSequenceOp.getSyncBuffer()) != DimsOrder::NCHW) {
         return mlir::failure();
     }
+
     return mlir::success();
 }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -194,7 +194,7 @@ TEST_F(MLIR_VPU_LayerVPUNNCost, SWKernel_LayerCost) {
         const auto outputTensors = std::vector<VPUNN::VPUTensor>{outputTensor};
         VPUNN::SHAVEWorkload::Parameters params = {1};
         const auto vpunnLayer =
-                std::make_shared<VPUNN::SHAVEWorkload>("Softmax", vpuDevice, inputTensors, outputTensors, params);
+                std::make_shared<VPUNN::SHAVEWorkload>("SoftMax", vpuDevice, inputTensors, outputTensors, params);
 
         EXPECT_EQ(layerCost.getStrategyCost(kernelOp, VPU::MultiClusterStrategy::Clustering),
                   getSWVPUNNCost(vpunnLayer, module.get(), VPU::MultiClusterStrategy::Clustering));

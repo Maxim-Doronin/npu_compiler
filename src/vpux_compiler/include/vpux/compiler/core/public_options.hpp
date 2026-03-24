@@ -1,6 +1,5 @@
 //
-//
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -77,9 +76,9 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
             llvm::cl::desc("This option was deprecated but some external tools pass it, currently it has no effect."),
             llvm::cl::init(true)};
 
-    BoolOption enableSplitBilinerIntoHAndW{*this, "split-bilinear-into-H-and-W",
-                                           llvm::cl::desc("Enable split-bilinear-into-H-and-W pass"),
-                                           llvm::cl::init(false)};
+    BoolOption enableSplitBilinearIntoHAndW{*this, "split-bilinear-into-H-and-W",
+                                            llvm::cl::desc("Enable split-bilinear-into-H-and-W pass"),
+                                            llvm::cl::init(false)};
 
     BoolOption enableOutputPipelining{*this, "output-pipelining", llvm::cl::desc("Enable output pipelining"),
                                       llvm::cl::init(true)};

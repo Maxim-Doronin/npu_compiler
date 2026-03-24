@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,10 +11,12 @@
 #include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
+#include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/AffineMap.h>
@@ -457,6 +459,194 @@ mlir::LogicalResult MoveThroughOneInputEltwise::matchAndRewrite(mlir::Operation*
 }
 
 //
+// MoveConcatThroughTranspose
+//
+
+class MoveConcatThroughTranspose final : public mlir::OpRewritePattern<IE::ConcatOp> {
+public:
+    MoveConcatThroughTranspose(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ConcatOp>(ctx), _log(log) {
+        this->setDebugName("MoveConcatThroughTranspose");
+    }
+
+private:
+    mlir::LogicalResult matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+    // Helper methods
+    IE::TransposeOp findSingleTransposeInput(mlir::OperandRange inputs,
+                                             const mlir::DenseSet<int64_t>& modifiedAxes) const;
+    IE::TransposeOp findPostConcatTranspose(mlir::Operation* userOp) const;
+    bool doTransposesCancel(mlir::AffineMap preTranspose, mlir::AffineMap postTranspose) const;
+    mlir::LogicalResult validateNonTransposeInputs(mlir::OperandRange inputs, mlir::AffineMap inversePermutation) const;
+
+    Logger _log;
+};
+
+// Find single Transpose input among concat inputs - must be from the largest input on concat axis
+IE::TransposeOp MoveConcatThroughTranspose::findSingleTransposeInput(
+        mlir::OperandRange inputs, const mlir::DenseSet<int64_t>& modifiedAxes) const {
+    return IE::findSingleOpFromLargestInput<IE::TransposeOp>(inputs, modifiedAxes, _log);
+}
+
+// Find Transpose after Concat (directly or after SoftMax)
+IE::TransposeOp MoveConcatThroughTranspose::findPostConcatTranspose(mlir::Operation* userOp) const {
+    if (auto transposeOp = mlir::dyn_cast<IE::TransposeOp>(userOp)) {
+        return transposeOp;
+    }
+
+    if (auto softmaxOp = mlir::dyn_cast<IE::SoftMaxOp>(userOp)) {
+        if (softmaxOp->hasOneUse()) {
+            return mlir::dyn_cast<IE::TransposeOp>(*softmaxOp->getUsers().begin());
+        }
+    }
+
+    _log.trace("No Transpose found after Concat (directly or after SoftMax)");
+    return nullptr;
+}
+
+// Check if two transpose operations can cancel each other
+bool MoveConcatThroughTranspose::doTransposesCancel(mlir::AffineMap preTranspose, mlir::AffineMap postTranspose) const {
+    if (!preTranspose.isPermutation() || !postTranspose.isPermutation()) {
+        _log.trace("One or both transpose orders are not permutations");
+        return false;
+    }
+
+    // They cancel if: post(pre(x)) = x, i.e., composed map is identity
+    const auto composedMap = postTranspose.compose(preTranspose);
+    return composedMap.isIdentity();
+}
+
+// Validate that non-Transpose inputs are either constant or can handle inverse transpose
+mlir::LogicalResult MoveConcatThroughTranspose::validateNonTransposeInputs(mlir::OperandRange inputs,
+                                                                           mlir::AffineMap inversePermutation) const {
+    for (auto input : inputs) {
+        if (mlir::isa_and_present<IE::TransposeOp>(input.getDefiningOp())) {
+            continue;
+        }
+
+        // Non-Transpose input: must be constant or inverse transpose must be trivial
+        auto constOp = input.getDefiningOp<Const::DeclareOp>();
+        if (constOp == nullptr) {
+            // Check if inverse transpose is trivial based on this input's MemShape
+            const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+            const auto inputMemShape = inputType.getMemShape();
+            if (!isTrivialPermute(inputMemShape, inversePermutation)) {
+                _log.trace("Non-Transpose input is not constant and inverse transpose is non-trivial");
+                return mlir::failure();
+            }
+        }
+    }
+
+    return mlir::success();
+}
+
+mlir::LogicalResult MoveConcatThroughTranspose::matchAndRewrite(IE::ConcatOp origConcatOp,
+                                                                mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got '{0}' at '{1}'", origConcatOp->getName(), origConcatOp->getLoc());
+
+    auto inputs = origConcatOp.getInputs();
+    if (inputs.size() < 2) {
+        return mlir::failure();
+    }
+
+    // Check concat has only single axis
+    const auto modifiedAxes = IE::getConcatAxes(origConcatOp);
+    if (modifiedAxes.size() != 1) {
+        _log.trace("Only single concat axis is supported, but got {0}", modifiedAxes.size());
+        return mlir::failure();
+    }
+
+    // Find single Transpose input from the largest input on concat axis
+    auto singleTransposeOp = findSingleTransposeInput(inputs, modifiedAxes);
+    if (singleTransposeOp == nullptr) {
+        return mlir::failure();
+    }
+
+    // Validate compute op pattern: ComputeOp -> Transpose
+    auto computeOp = singleTransposeOp.getInput().getDefiningOp();
+    if (!IE::isValidComputeOp(computeOp)) {
+        return mlir::failure();
+    }
+
+    // Get and validate pre-concat transpose order
+    const auto transposeOrder = singleTransposeOp.getOrderValue();
+    if (!transposeOrder.has_value() || !transposeOrder->isPermutation()) {
+        _log.trace("Invalid transpose order");
+        return mlir::failure();
+    }
+    const auto orderMap = transposeOrder.value();
+
+    // Find and validate post-concat transpose - check all users
+    IE::TransposeOp postConcatTranspose = nullptr;
+    mlir::AffineMap postTransposeOrder;
+
+    for (auto userOp : origConcatOp->getUsers()) {
+        auto currentTranspose = findPostConcatTranspose(userOp);
+        if (currentTranspose == nullptr) {
+            _log.trace("Not all users have Transpose pattern");
+            return mlir::failure();
+        }
+
+        const auto currentOrder = currentTranspose.getOrderValue();
+        if (!currentOrder.has_value()) {
+            return mlir::failure();
+        }
+
+        // First user: save the transpose order
+        if (postConcatTranspose == nullptr) {
+            postConcatTranspose = currentTranspose;
+            postTransposeOrder = currentOrder.value();
+        } else {
+            // Subsequent users: verify they have the same transpose order
+            if (currentOrder.value() != postTransposeOrder) {
+                _log.trace("Users have different Transpose orders");
+                return mlir::failure();
+            }
+        }
+    }
+
+    // Check if transposes can cancel each other
+    if (!doTransposesCancel(orderMap, postTransposeOrder)) {
+        return mlir::failure();
+    }
+
+    // Validate non-Transpose inputs
+    const auto inversePermutation = mlir::inversePermutation(orderMap);
+    if (mlir::failed(validateNonTransposeInputs(inputs, inversePermutation))) {
+        return mlir::failure();
+    }
+
+    // Calculate new concat axis after transpose
+    const auto transposePermutation = DimsOrder::fromAffineMap(orderMap);
+    const auto dimsPermutation = transposePermutation.toPermutation();
+    const auto origConcatAxis = *modifiedAxes.begin();
+    const auto transposedConcatAxis = dimsPermutation[origConcatAxis];
+    const auto newConcatAxis = transposedConcatAxis.ind();
+
+    // Build new inputs with inverse transpose for non-Transpose inputs
+    SmallVector<mlir::Value> newInputs;
+    newInputs.reserve(inputs.size());
+
+    for (auto input : inputs) {
+        if (auto transposeOp = mlir::dyn_cast_if_present<IE::TransposeOp>(input.getDefiningOp())) {
+            newInputs.push_back(transposeOp.getInput());
+        } else {
+            auto newTranspose = rewriter.create<IE::TransposeOp>(input.getLoc(), input, nullptr,
+                                                                 mlir::AffineMapAttr::get(inversePermutation));
+            newInputs.push_back(newTranspose.getOutput());
+        }
+    }
+
+    // Create new Concat and forward Transpose
+    auto newConcat = rewriter.create<IE::ConcatOp>(origConcatOp.getLoc(), newInputs, Dim(newConcatAxis));
+    rewriter.replaceOpWithNewOp<IE::TransposeOp>(origConcatOp, newConcat.getOutput(), nullptr,
+                                                 singleTransposeOp.getOrderValueAttr());
+
+    _log.trace("Successfully moved Concat through Transpose");
+    return mlir::success();
+}
+
+//
 // MoveTransposeThroughRMS
 //
 
@@ -553,6 +743,7 @@ void PropagateTransposePass::safeRunOnFunc() {
     patterns.add<IE::MoveTransposeAffineReshapeThroughAdd>(&ctx, vpux::benefitHigh, _log);
     patterns.add<MoveTransposeThroughMultiply>(&ctx, _log);
     patterns.add<MoveThroughOneInputEltwise>(&ctx, _log);
+    patterns.add<MoveConcatThroughTranspose>(&ctx, _log);
     patterns.add<MoveTransposeThroughRMS>(&ctx, _log);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {

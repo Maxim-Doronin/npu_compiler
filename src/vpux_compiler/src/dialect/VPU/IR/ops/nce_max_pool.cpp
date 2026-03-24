@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -157,15 +157,14 @@ mlir::LogicalResult vpux::VPU::NCEMaxPoolOp::verify() {
     }
 
     if (getWeightsTable() != nullptr) {
-        const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
-        auto OC = outputType.getShape()[Dims4D::Act::C];
-
-        if (VPU::canAutopadOutput(op)) {
-            OC = vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
-        }
-
         const auto weightsTableShape = getShape(getWeightsTable());
-        const auto expectedWeightsTableShape = NCESparsity::inferWeightsTableShape(OC);
+
+        // The weights table must always have the number of output channels aligned to 16, even if the operation
+        // produces fewer channels
+        const auto outputShape = getShape(getOutput());
+        const auto weightsTableOC =
+                alignValUp(outputShape[Dims4D::Act::C], vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT);
+        const auto expectedWeightsTableShape = NCESparsity::inferWeightsTableShape(weightsTableOC);
 
         if (weightsTableShape != expectedWeightsTableShape) {
             return errorAt(op, "Got wrong shape for 'weightsTable' '{0}', expected '{1}'", weightsTableShape,
@@ -261,11 +260,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEMaxPoolOp::getTilingStrategy(TilingM
 //
 
 bool vpux::VPU::NCEMaxPoolOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
-
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
-    if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
+    const auto enabledTileNum = config::getNumOfTiles(getOperation());
+
+    if (batchSize > 1 && batchSize <= enabledTileNum) {
         return strategy == VPU::MultiClusterStrategy::SplitOverBatch;
     }
 

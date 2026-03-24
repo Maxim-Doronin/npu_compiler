@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,7 +15,7 @@ namespace VPU {
 /** @brief Singleton container for various architecture-specific factories and utilities. */
 class SingletonCache final : public mlir::DialectInterface::Base<SingletonCache> {
     std::unique_ptr<ICostModelFactory> _costModelFactory;
-    std::unique_ptr<IShaveCostModelUtils> _shaveCostModelUtils;
+    std::unique_ptr<CostModelShaveUtil> _shaveCostModelUtils;
 
 public:
     // required by MLIR's internal type-id infrastructure:
@@ -33,12 +33,12 @@ public:
         _costModelFactory = std::move(costModelFactory);
     }
 
-    const IShaveCostModelUtils& getShaveCostModelUtils() const {
+    const CostModelShaveUtil& getShaveCostModelUtils() const {
         assert(_shaveCostModelUtils != nullptr && "Shave cost model utils is not set");
         return *_shaveCostModelUtils;
     }
 
-    void setShaveCostModelUtils(std::unique_ptr<IShaveCostModelUtils> shaveCostModelUtils) {
+    void setShaveCostModelUtils(std::unique_ptr<CostModelShaveUtil> shaveCostModelUtils) {
         _shaveCostModelUtils = std::move(shaveCostModelUtils);
     }
 };
@@ -50,10 +50,10 @@ void setCostModelFactory(mlir::MLIRContext* context, std::unique_ptr<ICostModelF
 const ICostModelFactory& getCostModelFactory(mlir::MLIRContext* context);
 
 /** @brief Sets the shave cost model utilities in the singleton cache for the given MLIR context. */
-void setShaveCostModelUtils(mlir::MLIRContext* context, std::unique_ptr<IShaveCostModelUtils> shaveCostModelUtils);
+void setShaveCostModelUtils(mlir::MLIRContext* context, std::unique_ptr<CostModelShaveUtil> shaveCostModelUtils);
 
 /** @brief Gets the shave cost model utilities from the singleton cache for the given MLIR context. */
-const IShaveCostModelUtils& getShaveCostModelUtils(mlir::MLIRContext* context);
+const CostModelShaveUtil& getShaveCostModelUtils(mlir::MLIRContext* context);
 
 }  // namespace VPU
 }  // namespace vpux

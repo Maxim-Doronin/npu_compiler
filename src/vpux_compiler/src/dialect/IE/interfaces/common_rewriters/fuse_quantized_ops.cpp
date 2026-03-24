@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -104,7 +104,7 @@ mlir::LogicalResult FuseWithMaxPool::matchAndRewrite(IE::QuantizeOp quantizeOp, 
     // Since we are not subtracting the input zero-point, the non-linear post-op will operate on improper data.
     // Only zero-centered values would be supported. Currently, quantized MaxPool is disabled for all post-ops.
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(maxPoolOp.getOperation());
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+    if (layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
         return mlir::failure();
     }
 
@@ -154,7 +154,7 @@ mlir::LogicalResult FuseWithAveragePool::matchAndRewrite(IE::QuantizeOp quantize
     // Since we are not subtracting the input zero-point, the non-linear post-op will operate on improper data.
     // Only zero-centered values would be supported. Currently, quantized AveragePool is disabled for all post-ops.
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(avgPoolOp.getOperation());
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+    if (layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
         return mlir::failure();
     }
 

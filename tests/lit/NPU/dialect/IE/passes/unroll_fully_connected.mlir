@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,10 @@
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
 // CHECK-LABEL: @UnrollMatMul
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<16x3072xf32>,
-// CHECK-SAME:   [[WEIGHTS:%arg1]]: tensor<1x1024x4096xf32>,
-// CHECK-SAME:   [[IN_PARAM:%arg2]]: tensor<1x1x1xf32>,
-// CHECK-SAME:   [[OUT_PARAM:%arg3]]: tensor<1x1x4096xf32>
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<16x3072xf32>,
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1024x4096xf32>,
+// CHECK-SAME:   [[IN_PARAM:%arg[0-9]+]]: tensor<1x1x1xf32>,
+// CHECK-SAME:   [[OUT_PARAM:%arg[0-9]+]]: tensor<1x1x4096xf32>
 func.func @UnrollMatMul(%LHS_1: tensor<16x3072xf32>,
                         %WEIGHTS: tensor<1x1024x4096xf32>,
                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -77,7 +77,7 @@ func.func @UnrollMatMul(%LHS_1: tensor<16x3072xf32>,
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
 // CHECK-LABEL: @DontUnrollMatMulNot4bit
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<16x3072xf32>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<16x3072xf32>,
 func.func @DontUnrollMatMulNot4bit(%LHS_1: tensor<16x3072xf32>,
                         %WEIGHTS: tensor<1x1024x4096xf32>,
                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -122,7 +122,7 @@ func.func @DontUnrollMatMulNot4bit(%LHS_1: tensor<16x3072xf32>,
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
 // CHECK-LABEL: @DontUnrollMatMulNoPerfBenefit
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<16x96xf32>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<16x96xf32>,
 func.func @DontUnrollMatMulNoPerfBenefit(%LHS_1: tensor<16x96xf32>,
                         %WEIGHTS: tensor<1x32x64xf32>,
                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -292,10 +292,10 @@ func.func @SkipMatMulWithUnsupportedConcat(%LHS: tensor<16x96xf32>,
 #map = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
 
 // CHECK-LABEL: @UnrollMatMulReshapeTranspose
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<16x3072xf32>,
-// CHECK-SAME:   [[WEIGHTS:%arg1]]: tensor<1x1024x4096xf32>,
-// CHECK-SAME:   [[IN_PARAM:%arg2]]: tensor<1x1x1xf32>,
-// CHECK-SAME:   [[OUT_PARAM:%arg3]]: tensor<1x1x4096xf32>
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<16x3072xf32>,
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1024x4096xf32>,
+// CHECK-SAME:   [[IN_PARAM:%arg[0-9]+]]: tensor<1x1x1xf32>,
+// CHECK-SAME:   [[OUT_PARAM:%arg[0-9]+]]: tensor<1x1x4096xf32>
 func.func @UnrollMatMulReshapeTranspose(%LHS_1: tensor<16x3072xf32>,
                                         %WEIGHTS: tensor<1x1024x4096xf32>,
                                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -358,10 +358,10 @@ func.func @UnrollMatMulReshapeTranspose(%LHS_1: tensor<16x3072xf32>,
 // -----
 
 // CHECK-LABEL: @UnrollMatMulWithOnlyReshape
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<16x3072xf32>,
-// CHECK-SAME:   [[WEIGHTS:%arg1]]: tensor<2048x1x1024xf32>,
-// CHECK-SAME:   [[IN_PARAM:%arg2]]: tensor<1x1x1xf32>,
-// CHECK-SAME:   [[OUT_PARAM:%arg3]]: tensor<2048x1x1xf32>
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<16x3072xf32>,
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<2048x1x1024xf32>,
+// CHECK-SAME:   [[IN_PARAM:%arg[0-9]+]]: tensor<1x1x1xf32>,
+// CHECK-SAME:   [[OUT_PARAM:%arg[0-9]+]]: tensor<2048x1x1xf32>
 func.func @UnrollMatMulWithOnlyReshape( %LHS_1: tensor<16x3072xf32>,
                                         %WEIGHTS: tensor<2048x1x1024xf32>,
                                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -454,10 +454,10 @@ func.func @SkipMatMulWith2dReshape(%LHS: tensor<32xf16>, %RHS: tensor<32xf16>) -
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
 // CHECK-LABEL: @UnrollMatMulForConvAccumulate
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<1x3072xf32>,
-// CHECK-SAME:   [[WEIGHTS:%arg1]]: tensor<1x1024x3584xf32>,
-// CHECK-SAME:   [[IN_PARAM:%arg2]]: tensor<1x1x1xf32>,
-// CHECK-SAME:   [[OUT_PARAM:%arg3]]: tensor<1x1x3584xf32>
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf32>,
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1024x3584xf32>,
+// CHECK-SAME:   [[IN_PARAM:%arg[0-9]+]]: tensor<1x1x1xf32>,
+// CHECK-SAME:   [[OUT_PARAM:%arg[0-9]+]]: tensor<1x1x3584xf32>
 func.func @UnrollMatMulForConvAccumulate(%LHS_1: tensor<1x3072xf32>,
                         %WEIGHTS: tensor<1x1024x3584xf32>,
                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -519,10 +519,10 @@ func.func @UnrollMatMulForConvAccumulate(%LHS_1: tensor<1x3072xf32>,
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
 // CHECK-LABEL: @UnrollMatMulWithDPUAccumulateForLargeSize
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<1x3072xf32>,
-// CHECK-SAME:   [[RHS_1:%arg1]]: tensor<1x1024x9000xf32>,
-// CHECK-SAME:   [[RHS_2:%arg2]]: tensor<1x1x1xf32>,
-// CHECK-SAME:   [[RHS_3:%arg3]]: tensor<1x1x9000xf32>
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf32>,
+// CHECK-SAME:   [[RHS_1:%arg[0-9]+]]: tensor<1x1024x9000xf32>,
+// CHECK-SAME:   [[RHS_2:%arg[0-9]+]]: tensor<1x1x1xf32>,
+// CHECK-SAME:   [[RHS_3:%arg[0-9]+]]: tensor<1x1x9000xf32>
 func.func @UnrollMatMulWithDPUAccumulateForLargeSize(
         %LHS_1: tensor<1x3072xf32>,
         %WEIGHTS: tensor<1x1024x9000xf32>,
@@ -588,11 +588,11 @@ func.func @UnrollMatMulWithDPUAccumulateForLargeSize(
 !qElemType = !quant.uniform<i4:f16, 1.000000e+00>
 
 // CHECK-LABEL: @UnrollMatMulForDynamicDequantize
-// CHECK-SAME:   [[WEIGHTS:%arg0]]: tensor<1x1024x3584x!qElemType>,
-// CHECK-SAME:   [[SCALE_1:%arg1]]: tensor<1x1x3584xf32>,
-// CHECK-SAME:   [[SCALE_2:%arg2]]: tensor<1x1x3584xf32>,
-// CHECK-SAME:   [[SCALE_3:%arg3]]: tensor<1x1x3584xf32>,
-// CHECK-SAME:   [[LHS_1:%arg4]]: tensor<1x3072xf32>
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1024x3584x!qElemType>,
+// CHECK-SAME:   [[SCALE_1:%arg[0-9]+]]: tensor<1x1x3584xf32>,
+// CHECK-SAME:   [[SCALE_2:%arg[0-9]+]]: tensor<1x1x3584xf32>,
+// CHECK-SAME:   [[SCALE_3:%arg[0-9]+]]: tensor<1x1x3584xf32>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf32>
 func.func @UnrollMatMulForDynamicDequantize(%WEIGHTS: tensor<1x1024x3584x!qElemType>,
                         %SCALE_1: tensor<1x1x3584xf32>,
                         %SCALE_2: tensor<1x1x3584xf32>,
@@ -652,11 +652,11 @@ func.func @UnrollMatMulForDynamicDequantize(%WEIGHTS: tensor<1x1024x3584x!qElemT
 !qElemType = !quant.uniform<u2:f16, 1.000000e+00>
 
 // CHECK-LABEL: @UnrollMatMulForU2DynamicDequantize
-// CHECK-SAME:   [[WEIGHTS:%arg0]]: tensor<1x1024x3584x!qElemType>,
-// CHECK-SAME:   [[SCALE_1:%arg1]]: tensor<1x1x3584xf32>,
-// CHECK-SAME:   [[SCALE_2:%arg2]]: tensor<1x1x3584xf32>,
-// CHECK-SAME:   [[SCALE_3:%arg3]]: tensor<1x1x3584xf32>,
-// CHECK-SAME:   [[LHS_1:%arg4]]: tensor<1x3072xf32>
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1024x3584x!qElemType>,
+// CHECK-SAME:   [[SCALE_1:%arg[0-9]+]]: tensor<1x1x3584xf32>,
+// CHECK-SAME:   [[SCALE_2:%arg[0-9]+]]: tensor<1x1x3584xf32>,
+// CHECK-SAME:   [[SCALE_3:%arg[0-9]+]]: tensor<1x1x3584xf32>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf32>
 func.func @UnrollMatMulForU2DynamicDequantize(%WEIGHTS: tensor<1x1024x3584x!qElemType>,
                         %SCALE_1: tensor<1x1x3584xf32>,
                         %SCALE_2: tensor<1x1x3584xf32>,
@@ -715,10 +715,10 @@ func.func @UnrollMatMulForU2DynamicDequantize(%WEIGHTS: tensor<1x1024x3584x!qEle
 #HCW = affine_map<(d0, d1, d2) -> (d1, d0, d2)>
 
 // CHECK-LABEL: @UnrollMatMulReshapeTranspose102
-// CHECK-SAME:   [[LHS_1:%arg0]]: tensor<1x12288xf32>,
-// CHECK-SAME:   [[WEIGHTS:%arg1]]: tensor<1x4608x4096xf32>,
-// CHECK-SAME:   [[IN_PARAM:%arg2]]: tensor<1x1x1xf32>,
-// CHECK-SAME:   [[OUT_PARAM:%arg3]]: tensor<1x4608x1xf32>
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x12288xf32>,
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x4608x4096xf32>,
+// CHECK-SAME:   [[IN_PARAM:%arg[0-9]+]]: tensor<1x1x1xf32>,
+// CHECK-SAME:   [[OUT_PARAM:%arg[0-9]+]]: tensor<1x4608x1xf32>
 func.func @UnrollMatMulReshapeTranspose102(%LHS_1: tensor<1x12288xf32>,
                                         %WEIGHTS: tensor<1x4608x4096xf32>,
                                         %IN_PARAM: tensor<1x1x1xf32>,
@@ -787,8 +787,8 @@ func.func @UnrollMatMulReshapeTranspose102(%LHS_1: tensor<1x12288xf32>,
 !qElemType = !quant.uniform<i4:f16, 1.000000e+00>
 
 // CHECK-LABEL: @UnrollMatMulForDequantize
-// CHECK-SAME:   [[INPUT:%arg0]]: tensor<1x1024x3584x!qElemType>,
-// CHECK-SAME:   [[LHS_1:%arg1]]: tensor<1x3072xf32>
+// CHECK-SAME:   [[INPUT:%arg[0-9]+]]: tensor<1x1024x3584x!qElemType>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf32>
 func.func @UnrollMatMulForDequantize(%INPUT: tensor<1x1024x3584x!qElemType>, %LHS_1: tensor<1x3072xf32>) -> tensor<1x3584xf32> {
     %RHS_1 = IE.Dequantize(%INPUT) {dstElemType = f32} : tensor<1x1024x3584x!qElemType> -> tensor<1x1024x3584xf32>
     %RHS_2 = IE.Dequantize(%INPUT) {dstElemType = f32} : tensor<1x1024x3584x!qElemType> -> tensor<1x1024x3584xf32>
@@ -843,8 +843,8 @@ func.func @UnrollMatMulForDequantize(%INPUT: tensor<1x1024x3584x!qElemType>, %LH
 !qElemType = !quant.uniform<i8:f16, 1.000000e+00>
 
 // CHECK-LABEL: @DontUnrollMatMulForDequantize
-// CHECK-SAME:   [[INPUT:%arg0]]: tensor<1x1024x3584x!qElemType>,
-// CHECK-SAME:   [[LHS_1:%arg1]]: tensor<1x3072xf32>
+// CHECK-SAME:   [[INPUT:%arg[0-9]+]]: tensor<1x1024x3584x!qElemType>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf32>
 func.func @DontUnrollMatMulForDequantize(%INPUT: tensor<1x1024x3584x!qElemType>, %LHS_1: tensor<1x3072xf32>) -> tensor<1x3584xf32> {
     %RHS_1 = IE.Dequantize(%INPUT) {dstElemType = f32} : tensor<1x1024x3584x!qElemType> -> tensor<1x1024x3584xf32>
     %RHS_2 = IE.Dequantize(%INPUT) {dstElemType = f32} : tensor<1x1024x3584x!qElemType> -> tensor<1x1024x3584xf32>
@@ -883,13 +883,13 @@ func.func @DontUnrollMatMulForDequantize(%INPUT: tensor<1x1024x3584x!qElemType>,
 // Test case: inputChannels (3072) cannot be evenly divided by numChunks (5)
 // Performance metric passes threshold but should not unroll due to indivisible channels
 // CHECK-LABEL: @DontUnrollMatMulWhenInputChannelsNotDivisible
-// CHECK-SAME:   [[WEIGHTS:%arg0]]: tensor<1x1x3584x!qElemType>,
-// CHECK-SAME:   [[SCALE_1:%arg1]]: tensor<1x1x3584xf16>,
-// CHECK-SAME:   [[SCALE_2:%arg2]]: tensor<1x1x3584xf16>,
-// CHECK-SAME:   [[SCALE_3:%arg3]]: tensor<1x1x3584xf16>,
-// CHECK-SAME:   [[SCALE_4:%arg4]]: tensor<1x1x3584xf16>,
-// CHECK-SAME:   [[SCALE_5:%arg5]]: tensor<1x1x3584xf16>,
-// CHECK-SAME:   [[LHS_1:%arg6]]: tensor<1x3072xf16>
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1x3584x!qElemType>,
+// CHECK-SAME:   [[SCALE_1:%arg[0-9]+]]: tensor<1x1x3584xf16>,
+// CHECK-SAME:   [[SCALE_2:%arg[0-9]+]]: tensor<1x1x3584xf16>,
+// CHECK-SAME:   [[SCALE_3:%arg[0-9]+]]: tensor<1x1x3584xf16>,
+// CHECK-SAME:   [[SCALE_4:%arg[0-9]+]]: tensor<1x1x3584xf16>,
+// CHECK-SAME:   [[SCALE_5:%arg[0-9]+]]: tensor<1x1x3584xf16>,
+// CHECK-SAME:   [[LHS_1:%arg[0-9]+]]: tensor<1x3072xf16>
 func.func @DontUnrollMatMulWhenInputChannelsNotDivisible(%WEIGHTS: tensor<1x1x3584x!qElemType>,
                         %SCALE_1: tensor<1x1x3584xf16>,
                         %SCALE_2: tensor<1x1x3584xf16>,

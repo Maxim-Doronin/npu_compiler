@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,12 +33,12 @@ func.func @SparseConvWeights(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref
         -> memref<32x16x3x3xf16, #NHWC, @CMX_NN>, memref<32x1x1x256xi1, @CMX_NN>
 
     %output_cmx = memref.alloc() : memref<1x32x64x64xf16, #NHWC, @CMX_NN>
-    %conv_out = VPUIP.NCEClusterTask {
+    %conv_out = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%input : memref<1x16x64x64xf16, #NHWC, @CMX_NN>)
         weights(%weights_data : memref<32x16x3x3xf16, #NHWC, @CMX_NN>)
         weights_sparsity_map(%weights_sm : memref<32x1x1x256xi1, @CMX_NN>)
@@ -139,12 +139,12 @@ func.func @SparseConvWeightsDistributed(%arg0: !IODistributed) -> !IODistributed
     %weights_data, %weights_sm = VPUIP.UngroupSparseBuffer(%weights) {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
 
-    %output = VPUIP.NCEClusterTask {
+    %output = VPUIP.NCEClusterTask <{
         kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         kernel_size = [3, 3],
         kernel_strides = [1, 1],
         task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
         input(%arg0: !IODistributed)
         weights(%weights_data : !WeightsDistributed)
         weights_sparsity_map(%weights_sm : !WeightsSMDistributed)

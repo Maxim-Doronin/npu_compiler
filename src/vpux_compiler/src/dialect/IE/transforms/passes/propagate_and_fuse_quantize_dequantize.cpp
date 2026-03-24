@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -205,7 +206,7 @@ bool isValidToPropagateQuantize(mlir::Operation* op, bool seOpsEnabled, mlir::Ty
     }
     // 3. Check that operation supports quantization params propagation.
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(elemTypeInfoOp.getOperation());
-        layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+        layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
         // A quantization-agnostic operation is no longer quantization-agnostic after it is fused with a post-op
         // (because post-op's are not quantization-agnostic). Since most post-op's will be fused by this time, this
         // check is here to prevent the propagation of output quantization through both the ElemTypeInfoOp and its
@@ -365,7 +366,7 @@ bool isValidToPropagateDequantize(mlir::Operation* user, bool seOpsEnabled, mlir
     }
     // 2. Check if operation supports quantization params propagation.
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(user);
-        layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+        layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
         // A quantization-agnostic operation is no longer quantization-agnostic after it is fused with a post-op
         // (because post-op's are not quantization-agnostic). Since most post-op's will be fused by this time, this
         // check is here to prevent the propagation of input quantization through both the ElemTypeInfoOp and its
@@ -511,47 +512,32 @@ mlir::LogicalResult PropagateDequantize::matchAndRewrite(IE::DequantizeOp origOp
 class PropagateAndFuseQuantizeDequantizePass final :
         public IE::impl::PropagateAndFuseQuantizeDequantizeBase<PropagateAndFuseQuantizeDequantizePass> {
 public:
-    explicit PropagateAndFuseQuantizeDequantizePass(const bool seOpsEnabled, Logger log): _seOpsEnabled(seOpsEnabled) {
+    explicit PropagateAndFuseQuantizeDequantizePass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnFunc() final;
 
 private:
-    bool _seOpsEnabled;
 };
-
-mlir::LogicalResult PropagateAndFuseQuantizeDequantizePass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void PropagateAndFuseQuantizeDequantizePass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto config = getDefaultGreedyRewriteConfig();
     auto func = getOperation();
+    auto moduleOp = getModuleOp(func);
+    const auto seOpsEnabled = config::hasEnableSEPtrsOperations(moduleOp);
 
     mlir::RewritePatternSet pqPatterns(&ctx);
-    pqPatterns.add<PropagateQuantize>(&ctx, _log.nest(), _seOpsEnabled);
+    pqPatterns.add<PropagateQuantize>(&ctx, _log.nest(), seOpsEnabled);
     if (mlir::failed(applyPatternsGreedily(func, std::move(pqPatterns), config))) {
         signalPassFailure();
     }
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FuseDequantizeWithMultiplier>(&ctx, _log);
-    patterns.add<PropagateDequantize>(&ctx, _log.nest(), _seOpsEnabled);
+    patterns.add<PropagateDequantize>(&ctx, _log.nest(), seOpsEnabled);
 
     if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), config))) {
         signalPassFailure();
@@ -564,7 +550,6 @@ void PropagateAndFuseQuantizeDequantizePass::safeRunOnFunc() {
 // createPropagateAndFuseQuantizeDequantizePass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createPropagateAndFuseQuantizeDequantizePass(const bool seOpsEnabled,
-                                                                                   Logger log) {
-    return std::make_unique<PropagateAndFuseQuantizeDequantizePass>(seOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createPropagateAndFuseQuantizeDequantizePass(Logger log) {
+    return std::make_unique<PropagateAndFuseQuantizeDequantizePass>(log);
 }

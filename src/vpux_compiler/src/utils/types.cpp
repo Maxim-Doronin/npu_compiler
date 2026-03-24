@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
@@ -19,6 +20,7 @@
 #include "vpux/utils/core/error.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/IR/BuiltinTypes.h>
 
@@ -230,6 +232,23 @@ Byte vpux::getExpectedBufferSize(mlir::Type type) {
     constexpr size_t offset = CHAR_BIT - 1;
     const auto alignedBits = (static_cast<size_t>(totalBits) + offset) & ~offset;
     return Byte(alignedBits / CHAR_BIT);
+}
+
+AddressType vpux::getAlignment(mlir::Value val, AddressType defaultAlignment) {
+    if (auto allocOp = val.getDefiningOp<mlir::memref::AllocOp>()) {
+        if (auto alignment = allocOp.getAlignment()) {
+            return checked_cast<AddressType>(alignment.value());
+        }
+    } else if (auto allocOp = val.getDefiningOp<VPURT::Alloc>()) {
+        if (auto alignment = allocOp.getAlignment()) {
+            return checked_cast<AddressType>(alignment.value());
+        }
+    } else if (auto allocOp = val.getDefiningOp<VPURT::AllocDistributed>()) {
+        if (auto alignment = allocOp.getAlignment()) {
+            return checked_cast<AddressType>(alignment.value());
+        }
+    }
+    return defaultAlignment;
 }
 
 //

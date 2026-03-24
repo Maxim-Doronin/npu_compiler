@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -40,9 +41,7 @@ private:
 void UseUserPrecisionPass::safeRunOnModule() {
     auto module = getOperation();
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(module);
 
     auto userInputs = netInfo.getInputsDataInfo();
     auto userOutputs = netInfo.getOutputsDataInfo();

@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <gtest/gtest.h>
 
 #include "zero_compiler_in_driver.h"

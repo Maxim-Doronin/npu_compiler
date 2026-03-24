@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -168,7 +168,7 @@ func.func @ConvertReduceSumToPoolingReduceDimOne(%arg0: tensor<1x1x1x50xf16>) ->
   %0 = IE.ReduceSum(%arg0) {axes_value = [0]}: tensor<1x1x1x50xf16> -> tensor<1x1x50xf16>
   return %0 : tensor<1x1x50xf16>
 
-  // CHECK:       %0 = IE.Reshape([[INPUT]]) {shape_value = [1, 1, 50]} : tensor<1x1x1x50xf16> -> tensor<1x1x50xf16>
+  // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 1, 50]} : tensor<1x1x1x50xf16> -> tensor<1x1x50xf16>
   // CHECK-NOT:   ReduceSum
 }
 

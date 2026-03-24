@@ -49,6 +49,17 @@ TEST_P(GroupConvolutionLayerTest_SW, NPU5010) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(GroupConvolutionLayerTest_HW, NPU5020) {
+    rel_threshold = 0.01;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(GroupConvolutionLayerTest_SW, NPU5020) {
+    rel_threshold = 0.01;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

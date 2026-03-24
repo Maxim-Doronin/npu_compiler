@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/PatternMatch.h>
@@ -110,9 +111,7 @@ private:
 void OutlineCodeGenCapsulesPass::safeRunOnModule() {
     auto& ctx = getContext();
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp func;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, func);
+    auto func = net::getMainFunc(moduleOp);
 
     auto swModule = VPUIP::getVPUSWModule(moduleOp, _log);
     size_t counter = 0;

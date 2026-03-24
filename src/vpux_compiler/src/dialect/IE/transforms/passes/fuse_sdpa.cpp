@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -184,28 +184,48 @@ mlir::Operation* getScaleOp(mlir::Operation* op) {
     return nullptr;
 }
 
-bool isLegalSDPA(mlir::Value inputQ) {
-    auto tensorType = mlir::cast<NDTypeInterface>(inputQ.getType());
-    const auto rank = tensorType.getRank();
-    if (rank < 2 || rank > 4) {
+// Legal SDPA configurations: {headSize, tSL, sSL, e}
+struct SDPAConfig {
+    int64_t headSize;
+    int64_t tSL;
+    int64_t sSL;
+    int64_t e;
+};
+
+static const SmallVector<SDPAConfig> LEGAL_SDPA_CONFIGS = {{1, 1, 64, 64}};
+
+bool isLegalSDPA(mlir::Value inputQ, mlir::Value inputK) {
+    auto tensorTypeQ = mlir::cast<NDTypeInterface>(inputQ.getType());
+    auto tensorTypeK = mlir::cast<NDTypeInterface>(inputK.getType());
+
+    const auto rankQ = tensorTypeQ.getRank();
+    const auto rankK = tensorTypeK.getRank();
+
+    if (rankQ < 2 || rankQ > 4) {
         return false;
     }
-    auto shape = tensorType.getShape().raw();
-    const int supportedH = 1;
-    const int supportedW = 64;
-    if (shape[rank - 2] != supportedH || shape[rank - 1] != supportedW) {
+    if (rankK < 2 || rankK > 4) {
         return false;
     }
-    return true;
+
+    auto shapeQ = tensorTypeQ.getShape().raw();
+    auto shapeK = tensorTypeK.getShape().raw();
+
+    const auto headSize = (rankQ == 3) ? shapeQ[0] : shapeQ[0] * shapeQ[1];
+    const auto tSL = shapeQ[rankQ - 2];
+    const auto e = shapeQ[rankQ - 1];
+    const auto sSL = shapeK[rankK - 2];
+
+    auto matches = [&](const SDPAConfig& config) {
+        return (config.headSize == headSize) && (config.sSL == sSL) && (config.tSL == tSL) && (config.e == e);
+    };
+
+    return llvm::any_of(LEGAL_SDPA_CONFIGS, matches);
 }
 
 void FuseSDPAPass::safeRunOnFunc() {
     auto func = getOperation();
-    const auto arch = config::getArch(func);
-    // Force to fuse only on 40XX for now
-    if (arch != config::ArchKind::NPU40XX) {
-        return;
-    }
+
     func->walk([&](IE::SDPAOp sdpaOp) {
         auto inputKType = mlir::cast<NDTypeInterface>(sdpaOp.getInputK().getType());
         auto inputVType = mlir::cast<NDTypeInterface>(sdpaOp.getInputV().getType());
@@ -235,7 +255,7 @@ void FuseSDPAPass::safeRunOnFunc() {
         sdpaOp->replaceAllUsesWith(newSdpaOp);
     });
     func->walk([&](IE::ReshapeOp reshape0Op) {
-        auto fc0Op = reshape0Op.getOperand(0).getDefiningOp<IE::FullyConnectedOp>();
+        auto fc0Op = reshape0Op.getOperand().getDefiningOp<IE::FullyConnectedOp>();
         if (!fc0Op) {
             return;
         }
@@ -256,7 +276,7 @@ void FuseSDPAPass::safeRunOnFunc() {
         auto softmaxOp = reshape1Op->getOperand(0).getDefiningOp<IE::SoftMaxOp>();
         if (!softmaxOp) {
             if (isAdaptiveStripping(reshape1Op->getOperand(0), inputQ, inputK, mask)) {
-                if (!isLegalSDPA(inputQ)) {
+                if (!isLegalSDPA(inputQ, inputK)) {
                     return;
                 }
                 createSDPA(reshape0Op, inputQ, inputK, inputV, mask, nullptr);
@@ -288,10 +308,10 @@ void FuseSDPAPass::safeRunOnFunc() {
             }
         }
 
-        // For performance increase for certain networks, we limit the supported dimensions to {N, C, 1, 64} for inputQ
+        // For performance increase for certain networks, we limit the supported dimensions
         // Follow next ticket for updates on supported dimensions:
         // E#160851
-        if (!isLegalSDPA(inputQ)) {
+        if (!isLegalSDPA(inputQ, inputK)) {
             return;
         }
         createSDPA(reshape0Op, inputQ, inputK, inputV, mask, nullptr, transposeK);

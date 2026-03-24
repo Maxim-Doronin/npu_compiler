@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -160,6 +160,6 @@ void AddRelocationsForDynamicStridesDmas::safeRunOnFunc() {
 // createRemoveEmptyELFSectionsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::ELF::createAddRelocationsForDynamicStridesDMAs(Logger log) {
+std::unique_ptr<mlir::Pass> vpux::ELF::createAddRelocationsForDynamicStridesDMAsPass(Logger log) {
     return std::make_unique<AddRelocationsForDynamicStridesDmas>(log);
 }

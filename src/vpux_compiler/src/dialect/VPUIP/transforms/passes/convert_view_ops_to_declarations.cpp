@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
@@ -75,42 +76,74 @@ Byte ViewLikeRewrite::calculateOffset(mlir::Value val) const {
     return offset;
 }
 
+/*
+    Below function only handles a subset of ViewLikeOps which can actually
+    occur between dynamic strides DMA and function argument. This is enforced
+    by a separate legalization pass.
+    Legal ops:
+    SubView - doesn't affect input strides so is legal
+    PermuteCast - doesn't affect input strides so it is legal
+    GenericReshape which expands/contracts original tensor by unit dimensions
+        it does affect original tensor strides but original shape can be recovered
+        if only unit dimensions are affected
+*/
 Shape ViewLikeRewrite::calculateDimOffsets(mlir::Value val) const {
     Shape viewOffsets{};
-    Shape addendOffsets{};
-
     if (auto source = _aliasInfo->getSource(val)) {
         viewOffsets = calculateDimOffsets(source);
     }
 
-    if (auto declareOp = mlir::dyn_cast_or_null<VPURT::DeclareBufferOp>(val.getDefiningOp())) {
-        if (declareOp->hasAttr(vpux::viewOffsetsAttrName)) {
-            addendOffsets = Shape(parseIntArrayAttr<int64_t>(
-                    mlir::dyn_cast_or_null<mlir::ArrayAttr>(declareOp->getAttr(vpux::viewOffsetsAttrName))));
-        }
-    }
+    return llvm::TypeSwitch<mlir::Operation*, Shape>(val.getDefiningOp())
+            .Case<VPUIP::SubViewOp>([&](VPUIP::SubViewOp subViewOp) {
+                auto addendOffsetsVec = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets());
+                if (viewOffsets.empty()) {
+                    return Shape(addendOffsetsVec);
+                }
+                std::transform(viewOffsets.begin(), viewOffsets.end(), addendOffsetsVec.begin(), viewOffsets.begin(),
+                               std::plus<>{});
+                return viewOffsets;
+            })
+            .Case<VPUIP::GenericReshapeOp>([&](VPUIP::GenericReshapeOp genericReshapeOp) {
+                if (viewOffsets.empty()) {
+                    return viewOffsets;
+                }
+                auto inType = mlir::cast<NDTypeInterface>(genericReshapeOp.getInput().getType());
+                auto outType = mlir::cast<NDTypeInterface>(genericReshapeOp.getOutput().getType());
+                auto inShape = inType.getShape();
+                auto inStride = inType.getMemStrides();
+                auto inShapeStrideZip = llvm::zip_equal(inShape, inStride);
+                llvm::SmallVector<std::tuple<int64_t, MemSize<MemType::Bit>>> inShapeStride(inShapeStrideZip.begin(),
+                                                                                            inShapeStrideZip.end());
+                auto outStrides = outType.getMemStrides();
+                auto outShape = outType.getShape();
+                auto outShapeStrideZip = llvm::zip_equal(outShape, outStrides);
+                llvm::SmallVector<std::tuple<int64_t, MemSize<MemType::Bit>>> outShapeStride(outShapeStrideZip.begin(),
+                                                                                             outShapeStrideZip.end());
 
-    if (auto subViewOp = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(val.getDefiningOp())) {
-        addendOffsets = Shape(parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets()));
-    }
+                SmallVector<int64_t> reshapedOffsets(outShape.size(), 0);
+                size_t outPosIdx = 0;
+                for (size_t idx = 0; idx < inShape.size(); idx++) {
+                    auto outPos =
+                            std::find(outShapeStride.begin() + outPosIdx, outShapeStride.end(), inShapeStride[idx]);
+                    if (outPos != outShapeStride.end()) {
+                        outPosIdx = std::distance(outShapeStride.begin(), outPos);
+                        reshapedOffsets[outPosIdx] = viewOffsets[Dim(idx)];
+                    }
+                }
 
-    auto viewOffsetsVec = to_small_vector(viewOffsets);
-    if (!viewOffsetsVec.empty()) {
-        auto tensorRank = checked_cast<size_t>(mlir::cast<vpux::NDTypeInterface>(val.getType()).getRank());
-        if (tensorRank > viewOffsetsVec.size()) {
-            viewOffsetsVec.insert(viewOffsetsVec.end(), tensorRank - viewOffsetsVec.size(), 0);
-        }
-    }
-    if (!addendOffsets.empty()) {
-        auto addendOffsetsVec = to_small_vector(addendOffsets);
-        if (viewOffsetsVec.size() < addendOffsetsVec.size()) {
-            viewOffsetsVec.insert(viewOffsetsVec.end(), addendOffsetsVec.size() - viewOffsetsVec.size(), 0);
-        }
-        std::transform(viewOffsetsVec.begin(), viewOffsetsVec.end(), addendOffsetsVec.begin(), viewOffsetsVec.begin(),
-                       std::plus<>{});
-    }
-
-    return Shape(viewOffsetsVec);
+                return Shape(reshapedOffsets);
+            })
+            .Case<VPUIP::PermuteCastOp>([&](VPUIP::PermuteCastOp permuteCastOp) {
+                if (viewOffsets.empty()) {
+                    return viewOffsets;
+                }
+                auto perm = permuteCastOp.getDstOrder();
+                auto dstOrder = DimsOrder::fromAffineMap(perm);
+                return dstOrder.toLogicalOrder(MemShape(to_small_vector(viewOffsets)));
+            })
+            .Default([&](mlir::Operation*) {
+                return viewOffsets;
+            });
 }
 
 mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface origOp,
@@ -125,7 +158,6 @@ mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface o
 
     const auto origVal = mlir::isa<VPUIP::NonDistributedCastOp>(origOp) ? origOp->getOperand(0) : origOp->getResult(0);
     const Byte offset = calculateOffset(origVal);
-    auto dimOffsets = calculateDimOffsets(origVal);
 
     const auto rootVal = _aliasInfo->getRoot(origVal);
 
@@ -156,11 +188,13 @@ mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface o
     auto newDeclareOp = rewriter.replaceOpWithNewOp<VPURT::DeclareBufferOp>(origOp, outType, section, sectionIndexAttr,
                                                                             offset.count(), swizzlingKey);
 
-    if (!dimOffsets.empty() &&
-        (section == VPURT::BufferSection::NetworkInput || section == VPURT::BufferSection::NetworkOutput) &&
+    if ((section == VPURT::BufferSection::NetworkInput || section == VPURT::BufferSection::NetworkOutput) &&
         vpux::net::isArgStrided(origOp->getParentOfType<mlir::ModuleOp>(),
                                 declareOp.getNonEmptySectionIndex().front())) {
-        newDeclareOp->setAttr(vpux::viewOffsetsAttrName, getIntArrayAttr(getContext(), dimOffsets));
+        auto dimOffsets = calculateDimOffsets(origVal);
+        if (!dimOffsets.empty()) {
+            newDeclareOp->setAttr(vpux::viewOffsetsAttrName, getIntArrayAttr(getContext(), dimOffsets));
+        }
     }
 
     return mlir::success();

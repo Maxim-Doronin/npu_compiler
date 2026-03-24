@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,10 +9,6 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Value.h>
-
-namespace vpux::VPUIP {
-class LayerOpInterface;
-}
 
 namespace vpux {
 
@@ -33,12 +29,6 @@ bool hasOneUniqueUser(mlir::Operation* op);
 //
 
 bool isBufAllocOp(mlir::Operation* op);
-
-//
-// getInputsSanitized
-//
-
-mlir::SmallVector<mlir::Value> getInputsSanitized(VPUIP::LayerOpInterface layerOp);
 
 //
 // getModuleOp
@@ -64,15 +54,4 @@ OpT getTopParentOpOfType(mlir::Operation* op) {
 //
 
 mlir::func::ReturnOp findReturnOp(mlir::func::FuncOp funcOp);
-
-// searchOpConsumers
-//
-
-/// @brief Search op on the consumer chain(bypass view like operations), until target operation is found or reach the
-/// last consumer.
-/// @return mlir::Operation if target op is found, otherwise return mlir::failure().
-/// @param op The operation to start searching from
-/// @param isTargetOpFound Predicate function to identify target operations
-mlir::FailureOr<mlir::Operation*> searchOpConsumers(mlir::Operation* op,
-                                                    const std::function<bool(mlir::Operation*)>& isTargetOpFound);
 }  // namespace vpux

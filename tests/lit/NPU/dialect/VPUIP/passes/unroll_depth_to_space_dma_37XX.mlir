@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,8 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @UnrollDepthToSpaceDMABlockFirstNHWC
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x8x2x3xf16, #NHWC>, [[ARG_1:%.+]]: memref<1x2x4x6xf16, #NHWC>)
 func.func @UnrollDepthToSpaceDMABlockFirstNHWC(%input: memref<1x8x2x3xf16, #NHWC>, %output: memref<1x2x4x6xf16, #NHWC>) -> memref<1x2x4x6xf16, #NHWC> {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -43,7 +45,7 @@ func.func @UnrollDepthToSpaceDMABlockFirstNHWC(%input: memref<1x8x2x3xf16, #NHWC
     //CHECK:    [[OUTPUT_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <128> -> memref<1x4x2x3xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier)  {
     //CHECK:        VPUIP.NNDMA
-    //CHECK:            inputs(%arg0 : memref<1x8x2x3xf16, #NHWC>)
+    //CHECK:            inputs([[ARG_0]] : memref<1x8x2x3xf16, #NHWC>)
     //CHECK:            outputs([[INPUT_BUFFER]] : memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x8x2x3xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    }
 
@@ -66,12 +68,14 @@ func.func @UnrollDepthToSpaceDMABlockFirstNHWC(%input: memref<1x8x2x3xf16, #NHWC
     //CHECK:    VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier)  {
     //CHECK:        VPUIP.NNDMA
     //CHECK:            inputs([[OUTPUT_BUFFER]] : memref<1x2x4x6xf16, #NHWC, [@CMX_NN, 0]>)
-    //CHECK:            outputs(%arg1 : memref<1x2x4x6xf16, #NHWC>) -> memref<1x2x4x6xf16, #NHWC>
+    //CHECK:            outputs([[ARG_1]] : memref<1x2x4x6xf16, #NHWC>) -> memref<1x2x4x6xf16, #NHWC>
     //CHECK:    }
 
-    //CHECK:    return %arg1 : memref<1x2x4x6xf16, #NHWC>
+    //CHECK:    return [[ARG_1]] : memref<1x2x4x6xf16, #NHWC>
 }
 
+// CHECK-LABEL: @UnrollDepthToSpaceDMADepthFirstNHWC
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x8x2x1xf16, #NHWC>, [[ARG_1:%.+]]: memref<1x2x4x2xf16, #NHWC>)
 func.func @UnrollDepthToSpaceDMADepthFirstNHWC(%input: memref<1x8x2x1xf16, #NHWC>, %output: memref<1x2x4x2xf16, #NHWC>) -> memref<1x2x4x2xf16, #NHWC> {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     %bar1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -111,7 +115,7 @@ func.func @UnrollDepthToSpaceDMADepthFirstNHWC(%input: memref<1x8x2x1xf16, #NHWC
 
     //CHECK:    VPURT.Task updates([[BARRIER_0]] : !VPURT.Barrier)  {
     //CHECK:        VPUIP.NNDMA
-    //CHECK:            inputs(%arg0 : memref<1x8x2x1xf16, #NHWC>)
+    //CHECK:            inputs([[ARG_0]] : memref<1x8x2x1xf16, #NHWC>)
     //CHECK:            outputs([[INPUT_BUFFER]] : memref<1x8x2x1xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x8x2x1xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    }
 
@@ -150,10 +154,10 @@ func.func @UnrollDepthToSpaceDMADepthFirstNHWC(%input: memref<1x8x2x1xf16, #NHWC
     //CHECK:    VPURT.Task waits([[BARRIER_1]] : !VPURT.Barrier)  {
     //CHECK:        VPUIP.NNDMA
     //CHECK:            inputs([[OUTPUT_BUFFER]] : memref<1x2x4x2xf16, #NHWC, [@CMX_NN, 0]>)
-    //CHECK:            outputs(%arg1 : memref<1x2x4x2xf16, #NHWC>) -> memref<1x2x4x2xf16, #NHWC>
+    //CHECK:            outputs([[ARG_1]] : memref<1x2x4x2xf16, #NHWC>) -> memref<1x2x4x2xf16, #NHWC>
     //CHECK:    }
 
-    //CHECK:    return %arg1 : memref<1x2x4x2xf16, #NHWC>
+    //CHECK:    return [[ARG_1]] : memref<1x2x4x2xf16, #NHWC>
 }
 
 // -----

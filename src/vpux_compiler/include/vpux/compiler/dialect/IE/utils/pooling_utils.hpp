@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -62,6 +62,8 @@ bool isIdentityPooling(ConcreteOp poolingOp) {
 
     return poolingOp.getPostOpAttr() == nullptr && poolingOp.getClampAttr() == nullptr;
 }
+
+bool isAvgPoolSupportedElementType(mlir::Type elemType);
 
 mlir::Operation* createIdentityAvgPool(mlir::Value input, mlir::Type outType, mlir::OpBuilder& builder,
                                        mlir::Location loc);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,27 @@
 
 using namespace vpux::VPURegMapped;
 using namespace npu40xx;
+
+// Helper trait to detect if Type_Fields has Field_ppe_bf16_roundType member
+template <typename T, typename = void>
+struct has_Field_ppe_bf16_roundType : std::false_type {};
+
+template <typename T>
+struct has_Field_ppe_bf16_roundType<T, std::void_t<typename T::Field_ppe_bf16_roundType>> : std::true_type {};
+
+// Helper trait to detect if Type_Fields has Field_act_denseType member
+template <typename T, typename = void>
+struct has_Field_act_denseType : std::false_type {};
+
+template <typename T>
+struct has_Field_act_denseType<T, std::void_t<typename T::Field_act_denseType>> : std::true_type {};
+
+// Helper trait to detect if Type_Fields has Field_sp_adr_offsetType member
+template <typename T, typename = void>
+struct has_Field_sp_adr_offsetType : std::false_type {};
+
+template <typename T>
+struct has_Field_sp_adr_offsetType<T, std::void_t<typename T::Field_sp_adr_offsetType>> : std::true_type {};
 
 // Implementations of the lowering function that do not change between architectures:
 namespace vpux::VPUIPDPU {
@@ -217,7 +238,9 @@ struct FieldsIDUInputLayerCfgOp {
 template <typename Type_Fields, typename DpuInvariantDescriptorType>
 void lowerToRegIDUInputLayerCfgOp(VPUIPDPU::IDUInputLayerCfgOp op, DpuInvariantDescriptorType& descriptor) {
     descriptor.template write<typename Type_Fields::Field_cm_sp_patternType>(op.getSparsityPattern());
-    descriptor.template write<typename Type_Fields::Field_act_denseType>(1);
+    if constexpr (has_Field_act_denseType<Type_Fields>::value) {
+        descriptor.template write<typename Type_Fields::Field_act_denseType>(1);
+    }
     descriptor.template write<typename Type_Fields::Field_wt_denseType>(1);
     descriptor.template write<typename Type_Fields::Field_layer1_wt_sp_insType>(1);
     descriptor.template write<typename Type_Fields::Field_layer1_cmp_enType>(op.getInputCompressed());
@@ -500,8 +523,10 @@ void lowerToRegPPEFpConvertOp(VPUIPDPU::PPEFpConvertOp op, DpuInvariantDescripto
     if (op.getFtzMode().has_value()) {
         descriptor.template write<typename Type_Fields::Field_ppe_fp16_ftzType>(op.getFtzMode().value());
     }
-    if (op.getBf16RoundMode().has_value()) {
-        descriptor.template write<typename Type_Fields::Field_ppe_bf16_roundType>(op.getBf16RoundMode().value());
+    if constexpr (has_Field_ppe_bf16_roundType<Type_Fields>::value) {
+        if (op.getBf16RoundMode().has_value()) {
+            descriptor.template write<typename Type_Fields::Field_ppe_bf16_roundType>(op.getBf16RoundMode().value());
+        }
     }
 }
 
@@ -900,8 +925,10 @@ void fillValuesForHaloRegion(VPUIPDPU::ODUHaloRegionOp opHaloReg, DpuVariantDesc
                                     typename Type_Functions::Function_target_width_msbType>(
             opHaloReg.getTargetWidth(), msbWidthValue, lsbWidthValue);
 
-    descriptor.template write<halo_regionA, typename Type_Fields::Field_sp_adr_offsetType>(
-            opHaloReg.getSparsityOffset().value_or(0));
+    if constexpr (has_Field_sp_adr_offsetType<Type_Fields>::value) {
+        descriptor.template write<halo_regionA, typename Type_Fields::Field_sp_adr_offsetType>(
+                opHaloReg.getSparsityOffset().value_or(0));
+    }
     descriptor.template write<halo_regionA, typename Type_Fields::Field_tile_selectType>(
             static_cast<uint64_t>(opHaloReg.getCastToTile()));
     descriptor.template write<halo_regionA, typename Type_Fields::Field_enableType>(1);

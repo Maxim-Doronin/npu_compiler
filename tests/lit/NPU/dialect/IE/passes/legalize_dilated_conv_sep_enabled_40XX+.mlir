@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --legalize-dilated-conv="enable-sep-dilated-group-conv=true" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-experimental-se-ptrs-operations=true" --legalize-dilated-conv %s | FileCheck %s
 // REQUIRES: arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @DontLegalizeDilatedGroupConvolution

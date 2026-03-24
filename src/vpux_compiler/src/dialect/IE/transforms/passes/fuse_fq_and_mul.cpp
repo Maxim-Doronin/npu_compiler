@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/eltwise_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -19,14 +20,19 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
-#define GEN_PASS_DECL_FUSEFQANDMUL
-#define GEN_PASS_DEF_FUSEFQANDMUL
+#define GEN_PASS_DECL_FUSEQUANTIZATIONMULTIPLY
+#define GEN_PASS_DEF_FUSEQUANTIZATIONMULTIPLY
 #include "vpux/compiler/dialect/IE/passes.hpp.inc"
 }  // namespace vpux::IE
 
 using namespace vpux;
 
 namespace {
+
+SmallVector<float> getConstContentVals(vpux::Const::Content constContent) {
+    return constContent.isSplat() ? SmallVector<float>{constContent.getSplatValue<float>()}
+                                  : SmallVector<float>(constContent.getValues<float>());
+}
 
 //
 // FuseFQAndMul
@@ -127,11 +133,6 @@ mlir::LogicalResult FuseFQAndMul::matchAndRewrite(IE::MultiplyOp multiplyOp, mli
 
     _log.trace("Fuse Mul '{0}' into FQ '{1}'", multiplyOp->getLoc(), fakeQuantOp->getLoc());
 
-    auto getConstContentVals = [](Const::Content constContent) {
-        return constContent.isSplat() ? SmallVector<float>{constContent.getSplatValue<float>()}
-                                      : SmallVector<float>(constContent.getValues<float>());
-    };
-
     auto mulConstShape = Shape(getShape(mulConstOp.getOutput()));
     auto outType = mlir::cast<NDTypeInterface>(outHighConst.getType());
     auto newOutType = mulConstOp.getContent().isSplat() ? outType : outType.changeShape(mulConstShape);
@@ -180,13 +181,199 @@ mlir::LogicalResult FuseFQAndMul::matchAndRewrite(IE::MultiplyOp multiplyOp, mli
     return mlir::success();
 }
 
+class FuseDQAndMul final : public mlir::OpRewritePattern<IE::MultiplyOp> {
+public:
+    FuseDQAndMul(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::MultiplyOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::MultiplyOp multiplyOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    bool isLegalToFuseDQ(IE::MultiplyOp multiplyOp) const;
+
+private:
+    Logger _log;
+};
+
+bool FuseDQAndMul::isLegalToFuseDQ(IE::MultiplyOp multiplyOp) const {
+    bool lhsIsActivation = vpux::VPU::isEltwiseLhsActivation<IE::MultiplyOp>(multiplyOp);
+
+    auto dequantizeOp = lhsIsActivation ? multiplyOp.getInput1().getDefiningOp<IE::DequantizeOp>()
+                                        : multiplyOp.getInput2().getDefiningOp<IE::DequantizeOp>();
+    if (dequantizeOp == nullptr || !dequantizeOp->hasOneUse()) {
+        return false;
+    }
+
+    auto dequantInput = dequantizeOp.getInput();
+    const auto isConstInputOp = mlir::isa_and_present<Const::DeclareOp>(dequantInput.getDefiningOp());
+    const auto isBlockArg = mlir::isa_and_present<mlir::BlockArgument>(dequantInput);
+
+    if (!isConstInputOp && !isBlockArg) {
+        return false;
+    }
+
+    auto mulConstOp = lhsIsActivation ? multiplyOp.getInput2().getDefiningOp<Const::DeclareOp>()
+                                      : multiplyOp.getInput1().getDefiningOp<Const::DeclareOp>();
+    if (mulConstOp == nullptr) {
+        return false;
+    }
+
+    auto inputType = dequantInput.getType();
+    auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(inputType);
+    if (!tensorType) {
+        return false;
+    }
+
+    auto elemType = tensorType.getElementType();
+    auto uniformQType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType);
+    auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType);
+
+    if (!uniformQType && !perAxisQType) {
+        return false;
+    }
+
+    const auto mulConstContent = mulConstOp.getContent();
+    if (mulConstContent.isSplat()) {
+        return true;
+    }
+
+    if (uniformQType) {
+        return false;
+    }
+
+    auto mulConstShape = getShape(mulConstOp.getOutput());
+    const auto mulNonOneAxisCount = std::count_if(mulConstShape.begin(), mulConstShape.end(), [](auto size) {
+        return size > 1;
+    });
+
+    if (mulNonOneAxisCount != 1) {
+        return false;
+    }
+
+    const auto firstNonOneValue = std::find_if(mulConstShape.begin(), mulConstShape.end(), [](auto value) {
+        return value != 1;
+    });
+
+    const auto firstNonOneIndex =
+            firstNonOneValue != mulConstShape.end() ? std::distance(mulConstShape.begin(), firstNonOneValue) : -1;
+
+    if (perAxisQType) {
+        const auto quantAxis = perAxisQType.getQuantizedDimension();
+        const auto scalesSize = perAxisQType.getScales().size();
+        return (quantAxis == firstNonOneIndex) &&
+               (scalesSize == 1 || static_cast<size_t>(mulConstShape.totalSize()) == scalesSize);
+    }
+    return false;
+}
+
+/*
+    Input is Constant Weights:
+
+         Quantized Weights (Const)
+         (scale = S, zp = Z)
+                  |
+                  v
+         +----------------+                       Quantized Weights (Const)
+         |   Dequantize   |                        (scale = S * C, zp = Z)
+         +----------------+                                  |
+                  |                                          v
+                  v                  =====>          +----------------+
+            +----------+                             |   Dequantize   |
+            | Multiply | <--- C                      +----------------+
+            +----------+                                     |
+                  |                                          v
+                  v
+
+
+
+    Input is BlockArgument:
+
+
+       Quantized Weights(BlockArgs)                   Quantized Weights
+        (scale = S, zp = Z)                          (scale = S, zp = Z)
+                |                                              |
+                v                                              v
+        +----------------+                           +------------------+
+        |   Dequantize   |                           |  QuantizeCast    |
+        +----------------+                           | (scale = S*C)    |
+                |                                    +------------------+
+                v                                              |
+          +----------+              =====>                     v
+          | Multiply | ← C                            +----------------+
+          +----------+                                |   Dequantize   |
+                |                                     +----------------+
+                v
+
+*/
+
+mlir::LogicalResult FuseDQAndMul::matchAndRewrite(IE::MultiplyOp multiplyOp, mlir::PatternRewriter& rewriter) const {
+    if (!isLegalToFuseDQ(multiplyOp)) {
+        return mlir::failure();
+    }
+
+    const auto lhsIsActivation = vpux::VPU::isEltwiseLhsActivation<IE::MultiplyOp>(multiplyOp);
+
+    auto dequantOp = lhsIsActivation ? multiplyOp.getInput1().getDefiningOp<IE::DequantizeOp>()
+                                     : multiplyOp.getInput2().getDefiningOp<IE::DequantizeOp>();
+    auto mulConstOp = lhsIsActivation ? multiplyOp.getInput2().getDefiningOp<Const::DeclareOp>()
+                                      : multiplyOp.getInput1().getDefiningOp<Const::DeclareOp>();
+
+    if (dequantOp == nullptr || mulConstOp == nullptr) {
+        return mlir::failure();
+    }
+
+    auto dequantInput = dequantOp.getInput();
+    auto inputType = dequantInput.getType();
+
+    const auto mulConstVals = getConstContentVals(mulConstOp.getContent());
+
+    const auto newInputType = [&]() -> mlir::Type {
+        auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(inputType);
+        if (!ndType) {
+            return nullptr;
+        }
+        auto elemType = ndType.getElementType();
+
+        if (mlir::isa<mlir::quant::UniformQuantizedType>(elemType)) {
+            if (mulConstVals.size() != 1) {
+                return nullptr;
+            }
+            return IE::rescaleUniformQuantizedType(inputType, mulConstVals.front());
+        }
+
+        if (mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
+            auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType);
+            auto newPerAxisQType = IE::rescaleUniformQuantizedPerAxisType(perAxisQType, mulConstVals);
+            return ndType.changeElemType(newPerAxisQType);
+        }
+
+        return nullptr;
+    }();
+
+    if (newInputType == nullptr) {
+        return mlir::failure();
+    }
+
+    auto newInputElemType = mlir::cast<vpux::NDTypeInterface>(newInputType).getElementType();
+
+    auto dstElemTypeAttr = mlir::TypeAttr::get(newInputElemType);
+
+    auto newDequantInput =
+            rewriter.createOrFold<IE::QuantizeCastOp>(dequantOp.getLoc(), newInputType, dequantInput, dstElemTypeAttr);
+
+    rewriter.replaceOpWithNewOp<IE::DequantizeOp>(multiplyOp, multiplyOp.getType(), newDequantInput,
+                                                  dequantOp.getDstElemTypeAttr());
+    return mlir::success();
+}
+
 //
-// FuseFQAndMulPass
+// FuseQuantizationMultiplyPass
 //
 
-class FuseFQAndMulPass final : public IE::impl::FuseFQAndMulBase<FuseFQAndMulPass> {
+class FuseQuantizationMultiplyPass final : public IE::impl::FuseQuantizationMultiplyBase<FuseQuantizationMultiplyPass> {
 public:
-    explicit FuseFQAndMulPass(const bool fuseFQAndMulWithNonConstInput, Logger log)
+    explicit FuseQuantizationMultiplyPass(const bool fuseFQAndMulWithNonConstInput, Logger log)
             : _fuseFQAndMulWithNonConstInput(fuseFQAndMulWithNonConstInput) {
         Base::initLogger(log, Base::getArgumentName());
     }
@@ -198,7 +385,7 @@ private:
     bool _fuseFQAndMulWithNonConstInput = false;
 };
 
-mlir::LogicalResult FuseFQAndMulPass::initialize(mlir::MLIRContext* ctx) {
+mlir::LogicalResult FuseQuantizationMultiplyPass::initialize(mlir::MLIRContext* ctx) {
     if (mlir::failed(Base::initialize(ctx))) {
         return mlir::failure();
     }
@@ -212,17 +399,18 @@ mlir::LogicalResult FuseFQAndMulPass::initialize(mlir::MLIRContext* ctx) {
     return mlir::success();
 }
 
-void FuseFQAndMulPass::safeRunOnFunc() {
+void FuseQuantizationMultiplyPass::safeRunOnFunc() {
     auto& ctx = getContext();
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FuseFQAndMul>(&ctx, _log, _fuseFQAndMulWithNonConstInput);
-
+    patterns.add<FuseDQAndMul>(&ctx, _log);
     auto func = getOperation();
     collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createFuseFQAndMulPass(const bool fuseFQAndMulWithNonConstInput, Logger log) {
-    return std::make_unique<FuseFQAndMulPass>(fuseFQAndMulWithNonConstInput, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createFuseQuantizationMultiplyPass(const bool fuseFQAndMulWithNonConstInput,
+                                                                         Logger log) {
+    return std::make_unique<FuseQuantizationMultiplyPass>(fuseFQAndMulWithNonConstInput, log);
 }

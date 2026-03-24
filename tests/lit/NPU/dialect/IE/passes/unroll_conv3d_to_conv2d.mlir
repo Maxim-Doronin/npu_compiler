@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -274,11 +274,12 @@ func.func @ConvertNceOpsTo4DGroupConvolution3DWithStride(%arg0: tensor<1x32x5x28
 // -----
 
 // CHECK-LABEL: @ConvertNceOpsTo4DConvolution5DAggregateHW
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x16x16x64xf16>
 func.func @ConvertNceOpsTo4DConvolution5DAggregateHW(%arg0: tensor<1x1x16x16x64xf16>) -> tensor<1x1x16x16x64xf16> {
     %FILTERS = const.Declare tensor<1x1x2x1x1xf16> = dense<1.000000e+00> : tensor<1x1x2x1x1xf16>
     %RESULT = IE.Convolution(%arg0, %FILTERS) {dilations = [1,1,1], pads_begin = [1,0,0], pads_end = [0,0,0], strides = [1,1,1]} : tensor<1x1x16x16x64xf16>, tensor<1x1x2x1x1xf16> -> tensor<1x1x16x16x64xf16>
     return %RESULT : tensor<1x1x16x16x64xf16>
-    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 1, 16, 1024]} : tensor<1x1x16x16x64xf16> -> tensor<1x1x16x1024xf16>
+    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 1, 16, 1024]} : tensor<1x1x16x16x64xf16> -> tensor<1x1x16x1024xf16>
     // CHECK:       [[CST:%.+]] = const.Declare tensor<1x1x2x1xf16> = dense<1.000000e+00> : tensor<1x1x2x1x1xf16>, [#const.Reshape<[1, 1, 2, 1]>]
     // CHECK:       [[VAL0:%.+]] = IE.Convolution
     // CHECK-SAME:      dilations = [1, 1]
@@ -293,11 +294,12 @@ func.func @ConvertNceOpsTo4DConvolution5DAggregateHW(%arg0: tensor<1x1x16x16x64x
 // -----
 
 // CHECK-LABEL: @ConvertNceOpsTo4DConvolution5DAggregateDH
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x16x16x16xf16>
 func.func @ConvertNceOpsTo4DConvolution5DAggregateDH(%arg0: tensor<1x16x16x16x16xf16>) -> tensor<1x16x16x16x16xf16> {
     %FILTERS = const.Declare tensor<16x16x1x1x1xf16> = dense<1.000000e+00> : tensor<16x16x1x1x1xf16>
     %RESULT = IE.Convolution(%arg0, %FILTERS) {dilations = [1,1,1], pads_begin = [0,0,0], pads_end = [0,0,0], strides = [1,1,1]} : tensor<1x16x16x16x16xf16>, tensor<16x16x1x1x1xf16> -> tensor<1x16x16x16x16xf16>
     return %RESULT : tensor<1x16x16x16x16xf16>
-    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 256, 16]} : tensor<1x16x16x16x16xf16> -> tensor<1x16x256x16xf16>
+    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 256, 16]} : tensor<1x16x16x16x16xf16> -> tensor<1x16x256x16xf16>
     // CHECK:       [[CST:%.+]] = const.Declare tensor<16x16x1x1xf16> = dense<1.000000e+00> : tensor<16x16x1x1x1xf16>, [#const.Reshape<[16, 16, 1, 1]>]
     // CHECK:       [[VAL0:%.+]] = IE.Convolution
     // CHECK-SAME:      dilations = [1, 1]
@@ -330,11 +332,12 @@ func.func @ConvertNceOpsTo4DConvolution5DNonOneStrides(%arg0: tensor<1x256x16x28
 // -----
 
 // CHECK-LABEL: @ConvertNceOpsTo4DGroupConvolution5DAggregateHW
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x2x16x16x64xf16>
 func.func @ConvertNceOpsTo4DGroupConvolution5DAggregateHW(%arg0: tensor<1x2x16x16x64xf16>) -> tensor<1x2x16x16x64xf16> {
     %FILTERS = const.Declare tensor<2x1x2x1x1xf16> = dense<1.000000e+00> : tensor<2x1x2x1x1xf16>
     %RESULT = IE.GroupConvolution(%arg0, %FILTERS) {dilations = [1,1,1], groups = 2 : i64, pads_begin = [1,0,0], pads_end = [0,0,0], strides = [1,1,1]} : tensor<1x2x16x16x64xf16>, tensor<2x1x2x1x1xf16> -> tensor<1x2x16x16x64xf16>
     return %RESULT : tensor<1x2x16x16x64xf16>
-    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 2, 16, 1024]} : tensor<1x2x16x16x64xf16> -> tensor<1x2x16x1024xf16>
+    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 2, 16, 1024]} : tensor<1x2x16x16x64xf16> -> tensor<1x2x16x1024xf16>
     // CHECK:       [[CST:%.+]] = const.Declare tensor<2x1x2x1xf16> = dense<1.000000e+00> : tensor<2x1x2x1x1xf16>, [#const.Reshape<[2, 1, 2, 1]>]
     // CHECK:       [[VAL0:%.+]] = IE.GroupConvolution
     // CHECK-SAME:      dilations = [1, 1]

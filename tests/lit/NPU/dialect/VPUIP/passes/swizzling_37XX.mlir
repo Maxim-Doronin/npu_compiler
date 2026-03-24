@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,13 +23,12 @@ func.func @SetSwizzlingForDpuToDpuBuffer(%in : memref<1x16x56x56xf16, #NHWC, @DD
             outputs(%buf0 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x56x56xf16, #NHWC, @CMX_NN>
 
-    %1 = VPUIP.NCEClusterTask
-        {
+    %1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%0 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
         weights(%weights : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -49,13 +48,12 @@ func.func @SetSwizzlingForDpuToDpuBuffer(%in : memref<1x16x56x56xf16, #NHWC, @DD
         {
         }
 
-    %2 = VPUIP.NCEClusterTask
-        {
+    %2 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
         weights(%weights : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -109,13 +107,12 @@ func.func @DoNotSetSwizzlingDueToCmxUsageIncrease(%in : memref<1x16x176x175xf16,
             outputs(%buf0 : memref<1x16x176x175xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x176x175xf16, #NHWC, @CMX_NN>
 
-    %1 = VPUIP.NCEClusterTask
-        {
+    %1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<MAXPOOL>
-        }
+        }>
         input(%0 : memref<1x16x176x175xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
         parent_input(%0 : memref<1x16x176x175xf16, #NHWC, @CMX_NN>)
@@ -134,13 +131,12 @@ func.func @DoNotSetSwizzlingDueToCmxUsageIncrease(%in : memref<1x16x176x175xf16,
         {
         }
 
-    %2 = VPUIP.NCEClusterTask
-        {
+    %2 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<MAXPOOL>
-        }
+        }>
         input(%1 : memref<1x16x176x175xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
         parent_input(%1 : memref<1x16x176x175xf16, #NHWC, @CMX_NN>)
@@ -232,13 +228,12 @@ func.func @SetSwizzlingForDpuToDpuBufferInMultiCluster(%input : !Input_DDR,
 
     %3 = VPUIP.Copy { out_mem_space = @CMX_NN } inputs(%weights: !Weights_DDR) outputs(%weights_cmx: !WeightsDistributed) -> !WeightsDistributed
 
-    %4 = VPUIP.NCEClusterTask
-        {
+    %4 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : !InputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -258,13 +253,12 @@ func.func @SetSwizzlingForDpuToDpuBufferInMultiCluster(%input : !Input_DDR,
         {
         }
 
-    %5 = VPUIP.NCEClusterTask
-        {
+    %5 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%4 : !OutputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -359,13 +353,12 @@ func.func @SetSwizzlingForConstantsMultiClusterDuplicated(%input : !Input_DDR) -
 
     %3 = VPUIP.Copy { out_mem_space = @CMX_NN } inputs(%weights: !Weights_DDR) outputs(%weights_cmx: !WeightsDistributed) -> !WeightsDistributed
 
-    %4 = VPUIP.NCEClusterTask
-        {
+    %4 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : !InputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -473,14 +466,12 @@ func.func @SetSwizzlingForConstantsSOK(%input : !Input_DDR) -> !Output_DDR
 
     %3 = VPUIP.Copy { out_mem_space = @CMX_NN } inputs(%weights: !Weights_DDR) outputs(%weights_cmx: !WeightsDistributed) -> !WeightsDistributed
 
-    %4 = VPUIP.NCEClusterTask
-        {
+    %4 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 177 : i64} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
-            minimumHardwareExecutionCost = 177 : i64,
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : !InputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -586,14 +577,12 @@ func.func @SetSwizzlingForQuantConstantsSOK(%input : !Input_DDR) -> !Output_DDR
 
     %3 = VPUIP.Copy { out_mem_space = @CMX_NN } inputs(%weights: memref<64x16x1x1x!qElemType3, #NHWC>) outputs(%weights_cmx: !WeightsDistributed) -> !WeightsDistributed
 
-    %4 = VPUIP.NCEClusterTask
-        {
+    %4 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 177 : i64} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
-            minimumHardwareExecutionCost = 177 : i64,
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : !InputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -653,13 +642,12 @@ func.func @DoNotSwizzleDueToAlignmentMemIncrease(%in : memref<1x16x180x180xf16, 
             outputs(%buf0 : memref<1x16x180x180xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x180x180xf16, #NHWC, @CMX_NN>
 
-    %1 = VPUIP.NCEClusterTask
-        {
+    %1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%0 : memref<1x16x180x180xf16, #NHWC, @CMX_NN>)
         weights(%weights : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -679,13 +667,12 @@ func.func @DoNotSwizzleDueToAlignmentMemIncrease(%in : memref<1x16x180x180xf16, 
         {
         }
 
-    %2 = VPUIP.NCEClusterTask
-        {
+    %2 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : memref<1x16x180x180xf16, #NHWC, @CMX_NN>)
         weights(%weights_0 : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -706,13 +693,12 @@ func.func @DoNotSwizzleDueToAlignmentMemIncrease(%in : memref<1x16x180x180xf16, 
         }
 
 
-    %3 = VPUIP.NCEClusterTask
-        {
+    %3 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%2 : memref<1x16x180x180xf16, #NHWC, @CMX_NN>)
         weights(%weights : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -813,13 +799,12 @@ func.func @SetSwizzlingForConstantButNotActivationDueToCmxSizeLimit(%input : !In
 
     %3 = VPUIP.Copy { out_mem_space = @CMX_NN } inputs(%weights: !Weights_DDR) outputs(%weights_cmx: !WeightsDistributed) -> !WeightsDistributed
 
-    %4 = VPUIP.NCEClusterTask
-        {
+    %4 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : !InputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -839,13 +824,12 @@ func.func @SetSwizzlingForConstantButNotActivationDueToCmxSizeLimit(%input : !In
         {
         }
 
-    %5 = VPUIP.NCEClusterTask
-        {
+    %5 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%4 : !OutputDistributed)
         weights(%3 : !WeightsDistributed)
         weight_table(%2 : !WeightsTableDistributed)
@@ -929,14 +913,12 @@ func.func @SetSwizzlingForDpuToDpuBufferWithInplace(%in0 : memref<1x240x8x98xf16
                inputs(%in0 : memref<1x240x8x98xf16, #NHWC, @DDR>)
                outputs(%buf0 : memref<1x240x8x98xf16, #NHWC, [@CMX_NN, 0]>)
                 -> memref<1x240x8x98xf16, #NHWC, [@CMX_NN, 0]>
-    %1 = VPUIP.NCEClusterTask
-           {
-               constantsFused = true,
+        %1 = VPUIP.NCEClusterTask {constantsFused = true} <{
                kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                kernel_size = [3, 3],
                kernel_strides = [1, 1],
                task_type = #VPUIP.nce_task_type<CONV>
-           }
+           }>
            input(%0 : memref<1x240x8x98xf16, #NHWC, [@CMX_NN, 0]>)
            weights(%weights0 : memref<80x240x3x3xf16, #NHWC, [@CMX_NN, 0]>)
            weight_table(%weight_table0 : memref<80x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -965,14 +947,12 @@ func.func @SetSwizzlingForDpuToDpuBufferWithInplace(%in0 : memref<1x240x8x98xf16
                inputs(%in1 : memref<1x80x8x98xf16, #NHWC, @DDR>)
                outputs(%buf2 : memref<1x80x8x98xf16, #NHWC, [@CMX_NN, 0]>)
                 -> memref<1x80x8x98xf16, #NHWC, [@CMX_NN, 0]>
-    %3 = VPUIP.NCEClusterTask
-           {
-               constantsFused = true,
+    %3 = VPUIP.NCEClusterTask {constantsFused = true} <{
                kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                kernel_size = [3, 3],
                kernel_strides = [1, 1],
                task_type = #VPUIP.nce_task_type<CONV>
-           }
+           }>
            input(%2 : memref<1x80x8x98xf16, #NHWC, [@CMX_NN, 0]>)
            weights(%weights1 : memref<80x80x3x3xf16, #NHWC, [@CMX_NN, 0]>)
            weight_table(%weight_table1 : memref<80x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -997,11 +977,10 @@ func.func @SetSwizzlingForDpuToDpuBufferWithInplace(%in0 : memref<1x240x8x98xf16
            }
 
     // Add with is_inplace = true
-    %4 = VPUIP.NCEClusterTask
-           {
+    %4 = VPUIP.NCEClusterTask <{
                is_inplace = true,
                task_type = #VPUIP.nce_task_type<ELTWISE>
-           }
+           }>
            input(%3 : memref<1x80x6x96xf16, #NHWC, [@CMX_NN, 0]>)
            weights(%1 : memref<1x80x6x96xf16, #NHWC, [@CMX_NN, 0]>)
            parent_input(%3 : memref<1x80x6x96xf16, #NHWC, [@CMX_NN, 0]>)
@@ -1035,12 +1014,11 @@ func.func @SetSwizzlingForDpuToDpuBufferWithInplace(%in0 : memref<1x240x8x98xf16
                inputs(%weight_table2 : memref<80x1x1x4xsi32>)
                outputs(%buf5 : memref<80x1x1x4xsi32, [@CMX_NN, 0]>)
                 -> memref<80x1x1x4xsi32, [@CMX_NN, 0]>
-    %7 = VPUIP.NCEClusterTask
-           {
+    %7 = VPUIP.NCEClusterTask <{
                kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                kernel_size = [1, 1], kernel_strides = [1, 1],
                task_type = #VPUIP.nce_task_type<DWCONV>
-           }
+           }>
            input(%4 : memref<1x80x6x96xf16, #NHWC, [@CMX_NN, 0]>)
            weights(%5 : memref<80x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
            weight_table(%6 : memref<80x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -1099,6 +1077,12 @@ config.Resources 1 of @NCE at 1.700000e+03 MHz {
     config.ExecutorResource 1 of @DPU
 }
 
+// CHECK: func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled
+// CHECK-SAME: [[ARG0:%[^:]+]]: memref<1x256x5x40xf16, #NHWC, @DDR>,
+// CHECK-SAME: [[ARG1:%[^:]+]]: memref<1x256x7x40xf16, #NHWC, @DDR>,
+// CHECK-SAME: [[WEIGHT_TABLE_0:%[^:]+]]: memref<256x1x1x4xsi32, #NHWC, @CMX_NN>,
+// CHECK-SAME: [[WEIGHT_TABLE_1:%[^:]+]]: memref<256x1x1x4xsi32, #NHWC, @CMX_NN>,
+// CHECK-SAME: [[WEIGHTS:%[^:]+]]: memref<256x256x3x3xf16, #NHWC, @CMX_NN>
 func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled(%arg0 : memref<1x256x5x40xf16, #NHWC, @DDR>,
                         %arg1 : memref<1x256x7x40xf16, #NHWC, @DDR>,
                         %weight_table_0 : memref<256x1x1x4xsi32, #NHWC, @CMX_NN>,
@@ -1122,15 +1106,13 @@ func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled(%arg0 : memref<1x256x
             outputs(%buf1 : memref<1x256x7x40xf16, #NHWC, @CMX_NN>)
              -> memref<1x256x7x40xf16, #NHWC, @CMX_NN>
 
-    %2 = VPUIP.NCEClusterTask
-        {
+    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 99787 : i64} <{
             is_superdense,
             kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [2, 2],
-            minimumHardwareExecutionCost = 99787 : i64,
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%0 : memref<1x256x5x40xf16, #NHWC, @CMX_NN>)
         weights(%weights : memref<256x256x3x3xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table_0 : memref<256x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -1160,14 +1142,12 @@ func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled(%arg0 : memref<1x256x
             }
         }
 
-    %3 = VPUIP.NCEClusterTask
-        {
+    %3 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 99787 : i64} <{
             is_superdense,
             kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [3, 3], kernel_strides = [2, 2],
-            minimumHardwareExecutionCost = 99787 : i64,
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : memref<1x256x7x40xf16, #NHWC, @CMX_NN>)
         weights(%weights : memref<256x256x3x3xf16, #NHWC, @CMX_NN>)
         weight_table(%weight_table_1 : memref<256x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -1216,9 +1196,9 @@ func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled(%arg0 : memref<1x256x
     // CHECK:      [[OUTPUT_1:%.+]] = memref.alloc() : memref<1x256x2x20xf16, #NHWC, @DDR>
     // CHECK:      [[OUTPUT_2:%.+]] = memref.alloc() : memref<1x256x3x20xf16, #NHWC, @DDR>
 
-    // CHECK:      [[COPY_IN_1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x256x5x40xf16, #NHWC, @DDR>) outputs([[INPUT_1]] : memref<1x256x5x40xf16, #NHWC, @CMX_NN>) -> memref<1x256x5x40xf16, #NHWC, @CMX_NN>
-    // CHECK:      [[COPY_IN_2:%.+]] = VPUIP.Copy inputs(%arg1 : memref<1x256x7x40xf16, #NHWC, @DDR>) outputs([[INPUT_2]] : memref<1x256x7x40xf16, #NHWC, @CMX_NN>) -> memref<1x256x7x40xf16, #NHWC, @CMX_NN>
-    // CHECK:      [[CONV_1:%.+]] = VPUIP.NCEClusterTask {is_superdense, kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [2, 2], minimumHardwareExecutionCost = 99787 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK:      [[COPY_IN_1:%.+]] = VPUIP.Copy inputs([[ARG0]] : memref<1x256x5x40xf16, #NHWC, @DDR>) outputs([[INPUT_1]] : memref<1x256x5x40xf16, #NHWC, @CMX_NN>) -> memref<1x256x5x40xf16, #NHWC, @CMX_NN>
+    // CHECK:      [[COPY_IN_2:%.+]] = VPUIP.Copy inputs([[ARG1]] : memref<1x256x7x40xf16, #NHWC, @DDR>) outputs([[INPUT_2]] : memref<1x256x7x40xf16, #NHWC, @CMX_NN>) -> memref<1x256x7x40xf16, #NHWC, @CMX_NN>
+    // CHECK:      [[CONV_1:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 99787 : i64} <{is_superdense, kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
     // CHECK-SAME:   input([[COPY_IN_1]] : memref<1x256x5x40xf16, #NHWC, @CMX_NN>) weights(%arg4 : memref<256x256x3x3xf16, #NHWC, @CMX_NN>) weight_table(%arg2 : memref<256x1x1x4xsi32, #NHWC, @CMX_NN>)
     // CHECK-SAME:   parent_input([[COPY_IN_1]] : memref<1x256x5x40xf16, #NHWC, @CMX_NN>) parent_output([[CONV_OUT_1]] : memref<1x256x2x20xf16, #NHWC, @CMX_NN>) outputs([[CONV_OUT_1]] : memref<1x256x2x20xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:   -> memref<1x256x2x20xf16, #NHWC, @CMX_NN> variants : {
@@ -1227,8 +1207,8 @@ func.func @CannotSwizzledDueToMultiUserWhichCannotSwizzled(%arg0 : memref<1x256x
     // CHECK-NEXT:      } PPE : {
     // CHECK-NEXT:        PPETask {ppe = #VPU.PPEStub<>}
     // CHECK-NEXT:      }
-    // CHECK:      [[CONV_2:%.+]] = VPUIP.NCEClusterTask {is_superdense, kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [2, 2], minimumHardwareExecutionCost = 99787 : i64, task_type = #VPUIP.nce_task_type<CONV>}
-    // CHECK-SAME:   input([[COPY_IN_2]] : memref<1x256x7x40xf16, #NHWC, @CMX_NN>) weights(%arg4 : memref<256x256x3x3xf16, #NHWC, @CMX_NN>) weight_table(%arg3 : memref<256x1x1x4xsi32, #NHWC, @CMX_NN>)
+    // CHECK:      [[CONV_2:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 99787 : i64} <{is_superdense, kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
+    // CHECK-SAME:   input([[COPY_IN_2]] : memref<1x256x7x40xf16, #NHWC, @CMX_NN>) weights([[WEIGHTS]] : memref<256x256x3x3xf16, #NHWC, @CMX_NN>) weight_table([[WEIGHT_TABLE_1]] : memref<256x1x1x4xsi32, #NHWC, @CMX_NN>)
     // CHECK-SAME:   parent_input([[COPY_IN_2]] : memref<1x256x7x40xf16, #NHWC, @CMX_NN>) parent_output([[CONV_OUT_2]] : memref<1x256x3x20xf16, #NHWC, @CMX_NN>) outputs([[CONV_OUT_2]] : memref<1x256x3x20xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:   -> memref<1x256x3x20xf16, #NHWC, @CMX_NN> variants : {
     // CHECK-NEXT:        DPUTask {cluster_id = 0 : i64, inEnd = [39, 4, 255], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [19, 1, 255], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -323,19 +323,21 @@ public:
         eraseLater(initialHiddenState);
         auto initialCellState = prepareInput(builder, baseParams, 2);
         eraseLater(initialCellState);
-        auto weights = prepareInput(builder, baseParams, 3);
+        auto sequenceLengthData = prepareInput(builder, baseParams, 3);
+        eraseLater(sequenceLengthData);
+        auto weights = prepareInput(builder, baseParams, 4);
         eraseLater(weights);
-        auto recurrenceWeights = prepareInput(builder, baseParams, 4);
+        auto recurrenceWeights = prepareInput(builder, baseParams, 5);
         eraseLater(recurrenceWeights);
-        auto bias = prepareInput(builder, baseParams, 5);
+        auto bias = prepareInput(builder, baseParams, 6);
         eraseLater(bias);
 
         // Create LSTMSequence operation
         return builder.create<IE::LSTMSequenceOp>(
                 loc, mlir::Value(inputData->getResult()), mlir::Value(initialHiddenState->getResult()),
-                mlir::Value(initialCellState->getResult()), mlir::Value(weights->getResult()),
-                mlir::Value(recurrenceWeights->getResult()), mlir::Value(bias->getResult()),
-                nullptr /*sequenceLengthAttr*/, IE::RNNSequenceDirection::FORWARD);
+                mlir::Value(initialCellState->getResult()), mlir::Value(sequenceLengthData->getResult()),
+                mlir::Value(weights->getResult()), mlir::Value(recurrenceWeights->getResult()),
+                mlir::Value(bias->getResult()), nullptr /*sequenceLengthAttr*/, IE::RNNSequenceDirection::FORWARD);
     }
     std::string getOpName(std::shared_ptr<BaseParams> /*baseParams*/) override {
         return IE::LSTMSequenceOp::getOperationName().str();
@@ -588,6 +590,10 @@ std::vector<std::shared_ptr<BaseParams>> InferReturnTypeComponentsData = {
                         ShapeInfo{
                                 SmallVector<int64_t>{1, 1, 128},  // initialCellStateShape
                                 SmallVector<int64_t>{}            // initialCellStateBounds
+                        },
+                        ShapeInfo{
+                                SmallVector<int64_t>{1},  // sequenceLengthDataShape
+                                SmallVector<int64_t>{}    // sequenceLengthDataBounds
                         },
                         ShapeInfo{
                                 SmallVector<int64_t>{1, 4 * 128, 512},  // weightsShape

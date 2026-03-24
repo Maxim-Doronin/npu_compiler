@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @Fold
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x16x16xf32, #NHWC>)
 func.func @Fold(%arg0: memref<1x3x16x16xf32, #NHWC>) -> memref<1x3x16x16xf32, #NHWC> {
     %0 = const.Declare memref<1x3x16x16xf32, #NHWC> =
         dense<1.000000e+00> : tensor<1x3x16x16xf32>, [#const.Reorder<#NHWC>]
@@ -25,7 +26,7 @@ func.func @Fold(%arg0: memref<1x3x16x16xf32, #NHWC>) -> memref<1x3x16x16xf32, #N
     // CHECK-DAG:       [[CST:%.+]] = const.Declare memref<1x3x16x16xf32, #NHWC>
     // CHECK-SAME:       dense<1.000000e+00> : tensor<1x3x16x16xf32>, [#const.Reorder<#NHWC>]
 
-    // CHECK:       [[VAR0:%.+]] = VPUIP.Copy inputs([[CST]] : memref<1x3x16x16xf32, #NHWC>) outputs(%arg0 : memref<1x3x16x16xf32, #NHWC>)
+    // CHECK:       [[VAR0:%.+]] = VPUIP.Copy inputs([[CST]] : memref<1x3x16x16xf32, #NHWC>) outputs([[ARG_0]] : memref<1x3x16x16xf32, #NHWC>)
     // CHECK:       return [[VAR0]] : memref<1x3x16x16xf32, #NHWC>
 }
 
@@ -34,6 +35,7 @@ func.func @Fold(%arg0: memref<1x3x16x16xf32, #NHWC>) -> memref<1x3x16x16xf32, #N
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @FuseGenericReshapes
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x16x2xf32>)
 func.func @FuseGenericReshapes(%arg0: memref<1x3x16x2xf32>) -> memref<1x3x16x2xf32> {
     %0 = const.Declare memref<1x3x2x16xf32> =
         dense<1.000000e+00> : tensor<1x3x2x16xf32>
@@ -58,7 +60,7 @@ func.func @FuseGenericReshapes(%arg0: memref<1x3x16x2xf32>) -> memref<1x3x16x2xf
     // CHECK:       [[VAR0:%.+]] = memref.alloc() : memref<1x3x2x16xf32>
     // CHECK:       [[VAR1:%.+]] = VPUIP.Copy inputs([[CST]] : memref<1x3x2x16xf32>) outputs([[VAR0]] : memref<1x3x2x16xf32>)
     // CHECK:       [[VAR2:%.+]] = VPUIP.GenericReshape inputs([[VAR1]] : memref<1x3x2x16xf32>) -> memref<1x3x16x2xf32>
-    // CHECK:       [[VAR3:%.+]] = VPUIP.Copy inputs([[VAR2]] : memref<1x3x16x2xf32>) outputs(%arg0 : memref<1x3x16x2xf32>)
+    // CHECK:       [[VAR3:%.+]] = VPUIP.Copy inputs([[VAR2]] : memref<1x3x16x2xf32>) outputs([[ARG_0]] : memref<1x3x16x2xf32>)
     // CHECK:       return [[VAR3]] : memref<1x3x16x2xf32>
 }
 
@@ -89,13 +91,14 @@ func.func @FuseGenericReshapes(%arg0: memref<1x3x16x2xf32>) -> memref<1x3x16x2xf
 }>
 
 // CHECK-LABEL: @GenericReshapeDistributed
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x16x32x48xf16, #NHWC, @CMX_NN
 func.func @GenericReshapeDistributed(%arg0: !InputDistributed) -> !OutputDistributed {
     %0 = VPUIP.GenericReshape inputs(%arg0 : !InputDistributed) -> !OutputDistributed
 
     return %0 : !OutputDistributed
 
     // CHECK:       [[RES:%.+]] = VPUIP.GenericReshape
-    // CHECK-SAME:          inputs(%arg0 : !VPUIP.DistributedBuffer<1x16x32x48xf16, #NHWC, @CMX_NN
+    // CHECK-SAME:          inputs([[ARG_0]] : !VPUIP.DistributedBuffer<1x16x32x48xf16, #NHWC, @CMX_NN
     // CHECK-SAME:              mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
     // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 16, 16, 48], [1, 16, 16, 48]], compute_offsets = [[0, 0, 0, 0], [0, 0, 16, 0]],
     // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 16, 20, 48], [1, 16, 18, 48]], memory_offsets = [[0, 0, 0, 0], [0, 0, 14, 0]]
@@ -112,11 +115,12 @@ func.func @GenericReshapeDistributed(%arg0: !InputDistributed) -> !OutputDistrib
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @GenericReshapeWithStrides4DTo4D
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>)
 func.func @GenericReshapeWithStrides4DTo4D(%arg0: memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}> {
     %0 = VPUIP.GenericReshape inputs(%arg0 : memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
     return %0 : memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
 
-    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
+    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs([[ARG_0]] : memref<1x16x4x8xf32, {order = #NCHW, strides = [1024, 32, 8, 1]}>) -> memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
     // CHECK:       return [[VAR0]] : memref<16x4x4x2xf32, {order = #NCHW, strides = [32, 8, 2, 1]}>
 }
 
@@ -126,11 +130,12 @@ func.func @GenericReshapeWithStrides4DTo4D(%arg0: memref<1x16x4x8xf32, {order = 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @GenericReshapeWithStrides2DTo4D
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>)
 func.func @GenericReshapeWithStrides2DTo4D(%arg0: memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}> {
     %0 = VPUIP.GenericReshape inputs(%arg0 : memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
     return %0 : memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
 
-    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
+    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs([[ARG_0]] : memref<2048x8192xf32, {order = #NC, strides = [16384, 1]}>) -> memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
     // CHECK:       return [[VAR0]] : memref<1x1x2048x8192xf32, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}>
 }
 
@@ -140,11 +145,12 @@ func.func @GenericReshapeWithStrides2DTo4D(%arg0: memref<2048x8192xf32, {order =
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @GenericReshapeWithStrides5DTo4D
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>)
 func.func @GenericReshapeWithStrides5DTo4D(%arg0: memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}> {
     %0 = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
     return %0 : memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
 
-    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
+    // CHECK:       [[VAR0:%.+]] = VPUIP.GenericReshape inputs([[ARG_0]] : memref<1x1x16x1x32xf32, {order = #NCDHW, strides = [2048, 1024, 64, 32, 1]}>) -> memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
     // CHECK:       return [[VAR0]] : memref<4x4x4x8xf32, {order = #NCHW, strides = [256, 64, 8, 1]}>
 }
 

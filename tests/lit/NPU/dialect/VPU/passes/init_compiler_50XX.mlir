@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,7 +15,7 @@ module @test {
 // CHECK-DAG:    {{    }}config.Option @config.AutoPaddingODU : false
 // CHECK-DAG:    {{    }}config.Option @config.AutoPaddingIDU : false
 // CHECK-DAG:    {{    }}config.Option @config.MaxKernelSize : 15
-// CHECK-DAG:    {{    }}config.Option @config.FragmentationAvoidRatioPipeliningLargeWeights : 3.600000e-01 : f32
+// CHECK-DAG:    {{    }}config.Option @config.FragmentationAvoidRatioPipeliningLargeWeights : 3.200000e-01 : f32
 // CHECK-DAG:    {{  }}}
 
 // CHECK-DAG:    {{  }}config.ExecutorResource 2 of @DMA_NN

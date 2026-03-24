@@ -1,7 +1,8 @@
 #
-# Copyright (C) 2025 Intel Corporation.
+# Copyright (C) 2025-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
+
 import lldb
 
 # Define the constant for dynamic dimension representation

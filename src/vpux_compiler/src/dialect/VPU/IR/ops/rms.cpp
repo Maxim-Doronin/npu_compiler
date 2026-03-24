@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,19 +23,11 @@ mlir::LogicalResult vpux::VPU::RMSOp::inferReturnTypes(mlir::MLIRContext* ctx, s
     }
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(rms.getInput().getType());
-    const auto gammaType = mlir::cast<vpux::NDTypeInterface>(rms.getGamma().getType());
     const auto inputShape = inType.getShape().raw();
-    const auto gammaShape = gammaType.getShape().raw();
     const auto inputRank = inputShape.size();
-    const auto gammaRank = gammaShape.size();
 
     if ((inputRank < 3) || (inputRank > 4)) {
         return errorAt(loc, "Input tensor rank should be 3 or 4. Got {0}D tensor.", inputRank);
-    }
-
-    if (inputShape[inputRank - 1] != gammaShape[gammaRank - 1]) {
-        return errorAt(loc, "Input width should be the same as gamma. Got input width = {0} and gamma width = {1}",
-                       inputShape[inputRank - 1], gammaShape[0]);
     }
 
     inferredReturnTypes.push_back(inType);

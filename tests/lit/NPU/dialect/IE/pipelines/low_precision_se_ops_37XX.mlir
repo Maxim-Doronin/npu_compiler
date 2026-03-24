@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,7 +46,7 @@ func.func @QuantizedInterpolate(%input: tensor<1x16x10x10xui8>) -> tensor<1x16x2
 
     return %last_fq : tensor<1x16x20x20xf32>
 
-    // CHECK:     [[INPUT_QUANT:%.+]] = IE.QuantizeCast(%arg0) {dstElemType = !qElemType} :
+    // CHECK:     [[INPUT_QUANT:%.+]] = IE.QuantizeCast([[INPUT]]) {dstElemType = !qElemType} :
     // CHECK-SAME:     tensor<1x16x10x10xui8> -> tensor<1x16x10x10x!qElemType>
 
     // CHECK:     [[INTERP:%.+]] = IE.Interpolate([[INPUT_QUANT:%.+]])

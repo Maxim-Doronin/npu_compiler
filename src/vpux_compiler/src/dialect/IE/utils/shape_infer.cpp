@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -153,7 +154,7 @@ mlir::FailureOr<Shape> vpux::IE::getShapeCastExpandedShape(mlir::Operation* oper
         return mlir::failure();
     }
 
-    if (unExpandedShape.empty()) {
+    if (unExpandedShape.empty() || expandedShape.isDynamic()) {
         return mlir::failure();
     }
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(operation->getOperand(0).getType());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,6 +27,25 @@ SmallVector<mlir::PatternBenefit> vpux::getBenefitLevels(uint32_t levels) {
     return benefitLevels;
 }
 
+// Extract benefit levels starting from startIndex, extracting numLevels elements
+// For example: extractBenefitLevels([4,3,2,1,0], 1, 3) returns [3,2,1]
+llvm::ArrayRef<mlir::PatternBenefit> vpux::extractBenefitLevels(llvm::ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                                                size_t startIndex, size_t numLevels) {
+    VPUX_THROW_UNLESS(startIndex + numLevels <= benefitLevels.size(),
+                      "extractBenefitLevels: startIndex {0} + numLevels {1} exceeds benefitLevels size {2}", startIndex,
+                      numLevels, benefitLevels.size());
+    return benefitLevels.slice(startIndex, numLevels);
+}
+
+// Extract benefit levels from a benefit vector
+llvm::ArrayRef<mlir::PatternBenefit> vpux::extractBenefitLevels(llvm::ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                                                size_t numLevels) {
+    VPUX_THROW_UNLESS(numLevels <= benefitLevels.size(),
+                      "extractBenefitLevels: numLevels {0} exceeds benefitLevels size {1}", numLevels,
+                      benefitLevels.size());
+    return extractBenefitLevels(benefitLevels, 0, numLevels);
+}
+
 //
 // FunctionPass
 //
@@ -43,6 +62,8 @@ void vpux::FunctionPass::runOnOperation() {
     }
 
     auto passName = getName();
+    // Enable IE_NPU_LOG_FILTER to match both formats: "PassName" (getName) and "pass-name" (getArgument)
+    _log.setAlternateName(passName);
     try {
         vpux::Logger::global().trace("Started {0} pass on function '{1}'", passName, currentOp.getName());
 
@@ -67,6 +88,8 @@ void vpux::ModulePass::initLogger(Logger log, StringLiteral passName) {
 void vpux::ModulePass::runOnOperation() {
     auto currentOp = getOperation();
     auto passName = getName();
+    // Enable IE_NPU_LOG_FILTER to match both formats: "PassName" (getName) and "pass-name" (getArgument)
+    _log.setAlternateName(passName);
     try {
         vpux::Logger::global().trace("Started {0} pass on module '{1}'", passName, currentOp.getName());
         safeRunOnModule();

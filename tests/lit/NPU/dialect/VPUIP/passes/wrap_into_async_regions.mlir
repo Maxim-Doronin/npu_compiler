@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @LinearGraph
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x1x100xf16>, [[ARG_1:%[^:]+]]: memref<1x1x1x100xf16>) -> memref<1x1x1x100xf16>
 func.func @LinearGraph(%arg0: memref<1x1x1x100xf16>, %arg1: memref<1x1x1x100xf16>) -> memref<1x1x1x100xf16> {
     %0 = memref.alloc() :  memref<1x1x1x100xf16>
     %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
@@ -29,14 +30,14 @@ func.func @LinearGraph(%arg0: memref<1x1x1x100xf16>, %arg1: memref<1x1x1x100xf16
 
     // CHECK:       [[TOKEN1:%.+]], [[FUTURE1:%.+]] = async.execute -> !async.value<memref<1x1x1x100xf16>>
     // CHECK-SAME:          VPUIP.executor = @SHAVE_ACT
-    // CHECK:           [[INNER_VAR1:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu inputs(%arg0 as {{[^:]+}}: memref<1x1x1x100xf16>) outputs([[VAR0]] as {{[^:]+}}: memref<1x1x1x100xf16>)
+    // CHECK:           [[INNER_VAR1:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu inputs([[ARG_0]] as {{[^:]+}}: memref<1x1x1x100xf16>) outputs([[VAR0]] as {{[^:]+}}: memref<1x1x1x100xf16>)
     // CHECK:           async.yield [[INNER_VAR1]]
 
     // CHECK:       [[VAR1:%.+]] = async.await [[FUTURE1]]
 
     // CHECK:       [[TOKEN2:%.+]], [[FUTURE2:%.+]] = async.execute -> !async.value<memref<1x1x1x100xf16>>
     // CHECK-SAME:          VPUIP.executor = @DMA_NN
-    // CHECK:           [[INNER_VAR2:%.+]] = VPUIP.Copy inputs([[VAR1]] : memref<1x1x1x100xf16>) outputs(%arg1 : memref<1x1x1x100xf16>)
+    // CHECK:           [[INNER_VAR2:%.+]] = VPUIP.Copy inputs([[VAR1]] : memref<1x1x1x100xf16>) outputs([[ARG_1]] : memref<1x1x1x100xf16>)
     // CHECK:           async.yield [[INNER_VAR2]]
 
     // CHECK:       [[VAR2:%.+]] = async.await [[FUTURE2]]
@@ -52,6 +53,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @ConcatView
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<50x1x1xf16>, [[ARG_1:%[^:]+]]: memref<100x1x1xf16>) -> memref<100x1x1xf16>
 func.func @ConcatView(%arg0: memref<50x1x1xf16>, %arg1: memref<100x1x1xf16>) -> memref<100x1x1xf16> {
     %0 = VPUIP.SubView %arg1 [0, 0 ,0] [50, 1, 1] : memref<100x1x1xf16> to memref<50x1x1xf16>
     %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
@@ -69,21 +71,21 @@ func.func @ConcatView(%arg0: memref<50x1x1xf16>, %arg1: memref<100x1x1xf16>) -> 
     %4 = VPUIP.ConcatView inputs(%1, %3 : memref<50x1x1xf16>, memref<50x1x1xf16>) outputs(%arg1 : memref<100x1x1xf16>) -> memref<100x1x1xf16>
     return %4 : memref<100x1x1xf16>
 
-    // CHECK:       [[VAR0:%.+]] = VPUIP.SubView %arg1 [0, 0, 0] [50, 1, 1]
+    // CHECK:       [[VAR0:%.+]] = VPUIP.SubView [[ARG_1]] [0, 0, 0] [50, 1, 1]
     // CHECK:       [[TOKEN1:%.+]], [[FUTURE1:%.+]] = async.execute -> !async.value<memref<50x1x1xf16>>
     // CHECK-SAME:          VPUIP.executor = @SHAVE_ACT
-    // CHECK:           [[INNER_VAR1:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu inputs(%arg0 as {{[^:]+}}: memref<50x1x1xf16>) outputs([[VAR0]] as {{[^:]+}}: memref<50x1x1xf16>)
+    // CHECK:           [[INNER_VAR1:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu inputs([[ARG_0]] as {{[^:]+}}: memref<50x1x1xf16>) outputs([[VAR0]] as {{[^:]+}}: memref<50x1x1xf16>)
     // CHECK:           async.yield [[INNER_VAR1]]
     // CHECK:       [[VAR1:%.+]] = async.await [[FUTURE1]]
 
-    // CHECK:       [[VAR2:%.+]] = VPUIP.SubView %arg1 [50, 0, 0] [50, 1, 1]
+    // CHECK:       [[VAR2:%.+]] = VPUIP.SubView [[ARG_1]] [50, 0, 0] [50, 1, 1]
     // CHECK:       [[TOKEN3:%.+]], [[FUTURE3:%.+]] = async.execute -> !async.value<memref<50x1x1xf16>>
     // CHECK-SAME:          VPUIP.executor = @DMA_NN
-    // CHECK:           [[INNER_VAR3:%.+]] = VPUIP.Copy inputs(%arg0 : memref<50x1x1xf16>) outputs([[VAR2]] : memref<50x1x1xf16>)
+    // CHECK:           [[INNER_VAR3:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<50x1x1xf16>) outputs([[VAR2]] : memref<50x1x1xf16>)
     // CHECK:           async.yield [[INNER_VAR3]]
     // CHECK:       [[VAR3:%.+]] = async.await [[FUTURE3]]
 
-    // CHECK:       [[VAR4:%.+]] = VPUIP.ConcatView inputs([[VAR1]], [[VAR3]] : memref<50x1x1xf16>, memref<50x1x1xf16>) outputs(%arg1 : memref<100x1x1xf16>)
+    // CHECK:       [[VAR4:%.+]] = VPUIP.ConcatView inputs([[VAR1]], [[VAR3]] : memref<50x1x1xf16>, memref<50x1x1xf16>) outputs([[ARG_1]] : memref<100x1x1xf16>)
 
     // CHECK:       return [[VAR4]] : memref<100x1x1xf16>
 }
@@ -93,6 +95,7 @@ func.func @ConcatView(%arg0: memref<50x1x1xf16>, %arg1: memref<100x1x1xf16>) -> 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DistributedOp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x32x16x16xf16, #NHWC, @DDR>)
 func.func @DistributedOp(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>) -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}> {
     %0 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, alignment = [1, 16, 1, 1]}>
     %1 = VPUIP.Copy
@@ -105,7 +108,7 @@ func.func @DistributedOp(%arg0: memref<1x32x16x16xf16, #NHWC, @DDR>) -> !VPUIP.D
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute -> !async.value
     // CHECK-SAME:          VPUIP.executor = @DMA_NN
     // CHECK:           [[R2:%.+]] = VPUIP.Copy
-    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          inputs([[ARG_0]]
     // CHECK-SAME:          outputs([[BUF0]]
     // CHECK:           async.yield [[R2]]
 

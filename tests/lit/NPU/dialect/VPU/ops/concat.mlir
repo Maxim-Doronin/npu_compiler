@@ -1,20 +1,19 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
-// -----
-
 // CHECK-LABEL: @OneInputFold
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<4x4xf32>)
 func.func @OneInputFold(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
     %0 = VPU.Concat(%arg0) { per_axis = #IE.Concat<axis = 1> } : tensor<4x4xf32> -> tensor<4x4xf32>
     return %0 : tensor<4x4xf32>
 
     // CHECK-NOT: VPU.Concat
-    // CHECK:     return %arg0
+    // CHECK:     return [[ARG_0]]
 }
 
 // -----
@@ -22,6 +21,9 @@ func.func @OneInputFold(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: FuseRightConcat
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x250x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
 func.func @FuseRightConcat(%arg0: tensor<1x64x250x250xf16, {order = #NHWC}>,
                            %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>,
                            %arg2: tensor<1x32x125x250xf16, {order = #NHWC}>)
@@ -47,7 +49,7 @@ func.func @FuseRightConcat(%arg0: tensor<1x64x250x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]]) {
     // CHECK-SAME:       static_offsets = [
     // CHECK-SAME:           [0, 0, 0, 0],
     // CHECK-SAME:           [0, 64, 0, 0],
@@ -66,6 +68,9 @@ func.func @FuseRightConcat(%arg0: tensor<1x64x250x250xf16, {order = #NHWC}>,
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: FuseLeftConcat
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x64x250x250xf16, {order = #NHWC}>
 func.func @FuseLeftConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                           %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>,
                           %arg2: tensor<1x64x250x250xf16, {order = #NHWC}>)
@@ -91,7 +96,7 @@ func.func @FuseLeftConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]]) {
     // CHECK-SAME:       static_offsets = [
     // CHECK-SAME:           [0, 0, 0, 0],
     // CHECK-SAME:           [0, 0, 125, 0],
@@ -110,6 +115,10 @@ func.func @FuseLeftConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: FuseTwoConcats
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x64x250x125xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_3:%[^:]+]]: tensor<1x64x250x125xf16, {order = #NHWC}>
 func.func @FuseTwoConcats(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                           %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>,
                           %arg2: tensor<1x64x250x125xf16, {order = #NHWC}>,
@@ -145,7 +154,7 @@ func.func @FuseTwoConcats(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2, %arg3) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]]) {
     // CHECK-SAME:       static_offsets = [
     // CHECK-SAME:           [0, 0, 0, 0],
     // CHECK-SAME:           [0, 0, 125, 0],
@@ -166,6 +175,9 @@ func.func @FuseTwoConcats(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: SkipConcatWithTwoConsumers
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x250x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
 func.func @SkipConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #NHWC}>,
                                       %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>,
                                       %arg2: tensor<1x32x125x250xf16, {order = #NHWC}>)
@@ -193,8 +205,8 @@ func.func @SkipConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
         tensor<1x96x250x250xf16, {order = #NHWC}>,
         tensor<1x32x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[TILING_CONCAT:%.+]] = VPU.Concat(%arg1, %arg2)
-    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, [[TILING_CONCAT]])
+    // CHECK:   [[TILING_CONCAT:%.+]] = VPU.Concat([[ARG_1]], [[ARG_2]])
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[TILING_CONCAT]])
 
     // CHECK:   return [[MAIN_CONCAT]], [[TILING_CONCAT]]
 }
@@ -204,6 +216,9 @@ func.func @SkipConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: FuseConcatWithTwoConsumers
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x250x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
 func.func @FuseConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #NHWC}>,
                                       %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>,
                                       %arg2: tensor<1x32x125x250xf16, {order = #NHWC}>)
@@ -237,7 +252,7 @@ func.func @FuseConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
                 tensor<1x96x250x250xf16, {order = #NHWC}>,
                 tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat(%arg0, %arg1, %arg2) {
+    // CHECK:   [[MAIN_CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]]) {
     // CHECK-SAME:      static_offsets = [
     // CHECK-SAME:          [0, 0, 0, 0],
     // CHECK-SAME:          [0, 64, 0, 0],
@@ -248,7 +263,7 @@ func.func @FuseConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
     // CHECK-SAME:      tensor<1x32x125x250xf16, {order = #NHWC}>
     // CHECK-SAME:          -> tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   [[ANOTHER_CONCAT:%.+]] = VPU.Concat(%arg1, %arg2, %arg0) {
+    // CHECK:   [[ANOTHER_CONCAT:%.+]] = VPU.Concat([[ARG_1]], [[ARG_2]], [[ARG_0]]) {
     // CHECK-SAME:      static_offsets = [
     // CHECK-SAME:          [0, 0, 0, 0],
     // CHECK-SAME:          [0, 0, 125, 0],
@@ -259,7 +274,7 @@ func.func @FuseConcatWithTwoConsumers(%arg0: tensor<1x64x250x250xf16, {order = #
     // CHECK-SAME:      tensor<1x64x250x250xf16, {order = #NHWC}>
     // CHECK-SAME:          -> tensor<1x96x250x250xf16, {order = #NHWC}>
 
-    // CHECK:   return %0, %1 : tensor<1x96x250x250xf16, {order = #NHWC}>, tensor<1x96x250x250xf16, {order = #NHWC}>
+    // CHECK:   return [[MAIN_CONCAT]], [[ANOTHER_CONCAT]] : tensor<1x96x250x250xf16, {order = #NHWC}>, tensor<1x96x250x250xf16, {order = #NHWC}>
 }
 
 
@@ -306,6 +321,8 @@ func.func @SkipDynamicConcats(%input0: tensor<1x32x125x250xf16, {dynamic_dims_ma
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: FuseConstants
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>
 func.func @FuseConstants(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> tensor<1x96x250x250xf16, {order = #NHWC}> {
@@ -334,7 +351,7 @@ func.func @FuseConstants(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
     return %MAIN_CONCAT : tensor<1x96x250x250xf16, {order = #NHWC}>
 
     // CHECK:   [[CST_PRODUCER:%.+]] = const.Declare
-    // CHECK:   [[CONCAT:%.+]] = VPU.Concat([[CST_PRODUCER]], %arg0, %arg1)
+    // CHECK:   [[CONCAT:%.+]] = VPU.Concat([[CST_PRODUCER]], [[ARG_0]], [[ARG_1]])
 
     // CHECK:   return [[CONCAT]] : tensor<1x96x250x250xf16, {order = #NHWC}>
 }
@@ -377,6 +394,8 @@ func.func @FuseConstants(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 }>
 
 // CHECK-LABEL: ConcatWithExplicitOverlappedDistributedTensorType
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPU.DistributedTensor<1x32x128x128xf16, #NHWC, @CMX_NN,
+// CHECK-SAME: [[ARG_1:%[^:]+]]: !VPU.DistributedTensor<1x16x128x128xf16, #NHWC, @CMX_NN,
 func.func @ConcatWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistributed0,
                                                              %arg1: !InputDistributed1)
     -> !OutputDistributed {
@@ -390,7 +409,7 @@ func.func @ConcatWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistri
 
     return %concat : !OutputDistributed
 
-    // CHECK:        [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
+    // CHECK:        [[CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:         !VPU.DistributedTensor<1x32x128x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
     // CHECK-SAME:             num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64
@@ -448,6 +467,8 @@ func.func @ConcatWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistri
 }>
 
 // CHECK-LABEL: ConcatWithExplicitSegmentedDistributedTensorType
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPU.DistributedTensor<1x32x128x128xf16, #NHWC, @CMX_NN,
+// CHECK-SAME: [[ARG_1:%[^:]+]]: !VPU.DistributedTensor<1x16x128x128xf16, #NHWC, @CMX_NN,
 func.func @ConcatWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistributed0,
                                                              %arg1: !InputDistributed1)
     -> !OutputDistributed {
@@ -461,7 +482,7 @@ func.func @ConcatWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistrib
 
     return %concat : !OutputDistributed
 
-    // CHECK:        [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
+    // CHECK:        [[CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:         !VPU.DistributedTensor<1x32x128x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
     // CHECK-SAME:             num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64

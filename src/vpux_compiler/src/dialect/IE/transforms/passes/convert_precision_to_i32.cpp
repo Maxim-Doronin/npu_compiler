@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
@@ -15,6 +16,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/convert_op_types.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 
@@ -137,6 +139,23 @@ void ConvertPrecisionToI32Pass::safeRunOnModule() {
     module.walk([&](IE::NonZeroOp op) {
         mlir::Type sInt32Type = mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
         op->setAttr(op.getDstElemTypeAttrName(), mlir::TypeAttr::get(sInt32Type));
+    });
+    // Cast Select condition to si32 when output is si32.
+    module.walk([&](IE::SelectOp op) {
+        const auto outElemType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
+        if (!outElemType.isSignedInteger(32)) {
+            return;
+        }
+        const auto condElemType = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType()).getElementType();
+        if (condElemType.isSignedInteger(32)) {
+            return;
+        }
+        mlir::Type sInt32Type = mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+        mlir::OpBuilder builder(op);
+
+        auto condCast = builder.create<IE::ConvertOp>(appendLoc(op.getLoc(), "convert_si32"), op.getInput1(),
+                                                      mlir::TypeAttr::get(sInt32Type));
+        op.getInput1Mutable().assign(condCast.getOutput());
     });
     if (mlir::failed(runConvertPrecision(module, typeConverter, target, _log))) {
         signalPassFailure();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,8 @@
 !weightsType = tensor<64x1x1x16xf16, {order = #NHWC}>
 !outputType = tensor<1x64x120x110x!quant.uniform<u8:f16, 2.0>, {order = #NHWC}>
 
+// CHECK-LABEL: @LowerSparsifyOpUniformQuantUnalignedShape
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4x120x110x!qElemType, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<64x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<64x1x1x16xf16, {order = #NHWC}>
 func.func @LowerSparsifyOpUniformQuantUnalignedShape(%arg0: !inputType, %wt: tensor<64x1x1x4xsi32>, %weights: !weightsType) -> !outputType {
     %0 = VPU.Sparsify(%arg0) : !inputType -> !sparseType
     %1 = VPU.NCE.CompressConvolution(%0, %weights, %wt) {
@@ -25,7 +27,7 @@ func.func @LowerSparsifyOpUniformQuantUnalignedShape(%arg0: !inputType, %wt: ten
 
     return %1 : !outputType
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+    // CHECK:       [[VAL0:%.+]] = VPU.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
     // CHECK-SAME:    : tensor<1x4x120x110x!qElemType, {order = #NHWC}> -> tensor<1x16x120x110x!qElemType, {order = #NHWC}>
     // CHECK-DAG:       [[CST_WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1x!qElemType1, {order = #NHWC}>
     // CHECK-SAME:      : tensor<16x16x1x1xf32>, [#const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>, #const.Sparsify<false>]
@@ -48,7 +50,7 @@ func.func @LowerSparsifyOpUniformQuantUnalignedShape(%arg0: !inputType, %wt: ten
     // CHECK-SAME:    : !VPU.SparseTensor<data=tensor<1x16x120x110x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x16x120x110xi1, {order = #NHWC}>> to
     // CHECK-SAME:      !VPU.SparseTensor<data=tensor<1x4x120x110x!qElemType, {order = #NHWC}>, sparsity_map=tensor<1x4x120x110xi1, {order = #NHWC}>>
 
-    // CHECK:       [[VAL3:%.+]] = VPU.NCE.CompressConvolution([[VAL2]], %arg2, %arg1)
+    // CHECK:       [[VAL3:%.+]] = VPU.NCE.CompressConvolution([[VAL2]], [[ARG_2]], [[ARG_1]])
     // CHECK:       return [[VAL3]]
 }
 
@@ -62,6 +64,8 @@ func.func @LowerSparsifyOpUniformQuantUnalignedShape(%arg0: !inputType, %wt: ten
 !weightsType = tensor<64x1x1x16xf16, {order = #NHWC}>
 !outputType = tensor<1x64x31x31xf16, {order = #NHWC}>
 
+// CHECK-LABEL: @LowerSparsifyOpFloatUnalignedShape
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4x31x31xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<64x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<64x1x1x16xf16, {order = #NHWC}>)
 func.func @LowerSparsifyOpFloatUnalignedShape(%arg0: !inputType, %wt: tensor<64x1x1x4xsi32>, %weights: !weightsType) -> !outputType {
     %0 = VPU.Sparsify(%arg0) : !inputType -> !sparseType
     %1 = VPU.NCE.CompressConvolution(%0, %weights, %wt) {
@@ -74,7 +78,7 @@ func.func @LowerSparsifyOpFloatUnalignedShape(%arg0: !inputType, %wt: tensor<64x
 
     return %1 : !outputType
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+    // CHECK:       [[VAL0:%.+]] = VPU.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
     // CHECK-SAME:    : tensor<1x4x31x31xf16, {order = #NHWC}> -> tensor<1x16x31x31xf16, {order = #NHWC}>
     // CHECK-DAG:       [[CST_WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}>
     // CHECK-SAME:      : tensor<16x16x1x1xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>, #const.Sparsify<false>]
@@ -97,6 +101,6 @@ func.func @LowerSparsifyOpFloatUnalignedShape(%arg0: !inputType, %wt: tensor<64x
     // CHECK-SAME:    : !VPU.SparseTensor<data=tensor<1x16x31x31xf16, {order = #NHWC}>, sparsity_map=tensor<1x16x31x31xi1, {order = #NHWC}>> to
     // CHECK-SAME:      !VPU.SparseTensor<data=tensor<1x4x31x31xf16, {order = #NHWC}>, sparsity_map=tensor<1x4x31x31xi1, {order = #NHWC}>>
 
-    // CHECK:       [[VAL3:%.+]] = VPU.NCE.CompressConvolution([[VAL2]], %arg2, %arg1)
+    // CHECK:       [[VAL3:%.+]] = VPU.NCE.CompressConvolution([[VAL2]], [[ARG_2]], [[ARG_1]])
     // CHECK:       return [[VAL3]]
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -76,8 +76,7 @@ mlir::LogicalResult SwapDepth2SpaceAndScaleShift::matchAndRewrite(IE::DepthToSpa
 
         auto broadcastOp = IE::createBroadcast(rewriter, loc, origValue, broadcastShape);
 
-        return rewriter.createOrFold<IE::ReshapeOp>(loc, broadcastOp, nullptr, false,
-                                                    getIntArrayAttr(ctx, ShapeRef(reshapeShape)));
+        return rewriter.createOrFold<IE::ReshapeOp>(loc, broadcastOp, getIntArrayAttr(ctx, ShapeRef(reshapeShape)));
     };
     auto newScaleShift = rewriter.create<IE::ScaleShiftOp>(loc, d2sOp.getInput(), getNewValue(scaleShift.getWeights()),
                                                            getNewValue(scaleShift.getBiases()));

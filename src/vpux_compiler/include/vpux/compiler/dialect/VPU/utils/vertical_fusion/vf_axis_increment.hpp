@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/core/attributes/dim.hpp"
+
+#include <mlir/Support/LLVM.h>
 
 namespace vpux::VPU {
 

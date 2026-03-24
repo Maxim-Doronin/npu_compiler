@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,18 +27,18 @@ module @M2IProfiling {
     // CHECK:        profilingOutputsInfo : {
     // CHECK-NEXT:     DataInfo "m2i" : tensor<64xui8>
     // CHECK-NEXT:   }
-    // CHECK:        func.func @main(%arg0: memref<1x768x512x1xui8, @DDR>, %arg1: memref<1x512x512x3xui8, @DDR>, %arg2: memref<64xui8>) -> (memref<1x512x512x3xui8, @DDR>, memref<64xui8>)
+    // CHECK:        func.func @main([[ARG_0:%[^:]+]]: memref<1x768x512x1xui8, @DDR>, [[ARG_1:%[^:]+]]: memref<1x512x512x3xui8, @DDR>, [[ARG_2:%[^:]+]]: memref<64xui8>) -> (memref<1x512x512x3xui8, @DDR>, memref<64xui8>)
     // CHECK:        [[PROF_BUF:%.+]] = memref.alloc() : memref<64xui8, [@CMX_NN, 0]>
     // CHECK:        [[PROF_OUT0:%.+]] = VPUIP.SubView [[PROF_BUF]] [0] [64] : memref<64xui8, [@CMX_NN, 0]> to memref<64xui8, [@CMX_NN, 0]>
     // CHECK-NEXT:   [[OP_RESULT_1:%.+]], [[OP_RESULT_PROF_1:%.+]] = VPUIP.M2ITask
     // CHECK-SAME:   profilingMetadata = #VPUIP.M2IProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64>
     // CHECK-SAME:   profiling_data([[PROF_OUT0]] : memref<64xui8, [@CMX_NN, 0]>)
 
-    // CHECK:        [[PROF_OUTPUT:%.+]] = VPUIP.SubView %arg2 [0] [64] : memref<64xui8> to memref<64xui8>
+    // CHECK:        [[PROF_OUTPUT:%.+]] = VPUIP.SubView [[ARG_2]] [0] [64] : memref<64xui8> to memref<64xui8>
     // CHECK:        [[CONCAT_PROF_RES:%.+]] = VPUIP.ConcatView inputs([[OP_RESULT_PROF_1]] : memref<64xui8, [@CMX_NN, 0]>) outputs([[PROF_BUF]] : memref<64xui8, [@CMX_NN, 0]>) -> memref<64xui8, [@CMX_NN, 0]>
 
     // CHECK:        [[PROF_BUF_COPY:%.+]] = VPUIP.NNDMA <{profiling_buffer_mgmt}> inputs([[CONCAT_PROF_RES]] : memref<64xui8, [@CMX_NN, 0]>) outputs([[PROF_OUTPUT]] : memref<64xui8>) -> memref<64xui8>
-    // CHECK:        [[CONCAT_PROF_RES_FULL:%.+]] = VPUIP.ConcatView inputs([[PROF_BUF_COPY]] : memref<64xui8>) outputs(%arg2 : memref<64xui8>) -> memref<64xui8>
+    // CHECK:        [[CONCAT_PROF_RES_FULL:%.+]] = VPUIP.ConcatView inputs([[PROF_BUF_COPY]] : memref<64xui8>) outputs([[ARG_2]] : memref<64xui8>) -> memref<64xui8>
 
     // CHECK:        return [[R1:%.+]], [[CONCAT_PROF_RES_FULL]] : memref<1x512x512x3xui8, @DDR>, memref<64xui8>
 }
@@ -84,7 +84,7 @@ module @M2IProfilingMultitile {
     // CHECK:        profilingOutputsInfo : {
     // CHECK-NEXT:     DataInfo "m2i" : tensor<128xui8>
     // CHECK-NEXT:   }
-    // CHECK:        func.func @main(%arg0: memref<1x768x512x1xui8, @DDR>, %arg1: memref<2x512x512x3xui8, @DDR>, %arg2: memref<128xui8>)
+    // CHECK:        func.func @main([[ARG_0:%[^:]+]]: memref<1x768x512x1xui8, @DDR>, [[ARG_1:%[^:]+]]: memref<2x512x512x3xui8, @DDR>, [[ARG_2:%[^:]+]]: memref<128xui8>)
     // CHECK:        [[PROF_BUF:%.+]] = memref.alloc() : memref<128xui8, [@CMX_NN, 0]>
 
     // CHECK:        [[PROF_BUF_SLOT_1:%.+]] = VPUIP.SubView [[PROF_BUF]] [0] [64] : memref<128xui8, [@CMX_NN, 0]> to memref<64xui8, [@CMX_NN, 0]>
@@ -97,11 +97,11 @@ module @M2IProfilingMultitile {
     // CHECK-SAME:   profilingMetadata = #VPUIP.M2IProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 1 : i64>
     // CHECK-SAME:   profiling_data([[PROF_BUF_SLOT_2]] : memref<64xui8, [@CMX_NN, 0]>)
 
-    // CHECK:        [[PROF_OUTPUT:%.+]] = VPUIP.SubView %arg2 [0] [128] : memref<128xui8> to memref<128xui8>
+    // CHECK:        [[PROF_OUTPUT:%.+]] = VPUIP.SubView [[ARG_2]] [0] [128] : memref<128xui8> to memref<128xui8>
     // CHECK:        [[CONCAT_PROF_RES:%.+]] = VPUIP.ConcatView inputs([[OP_RESULT_PROF_1]], [[OP_RESULT_PROF_2]] : memref<64xui8, [@CMX_NN, 0]>, memref<64xui8, [@CMX_NN, 0]>) outputs([[PROF_BUF]] : memref<128xui8, [@CMX_NN, 0]>) -> memref<128xui8, [@CMX_NN, 0]>
 
     // CHECK:        [[PROF_BUF_COPY:%.+]] = VPUIP.NNDMA <{profiling_buffer_mgmt}> inputs([[CONCAT_PROF_RES]] : memref<128xui8, [@CMX_NN, 0]>) outputs([[PROF_OUTPUT]] : memref<128xui8>) -> memref<128xui8>
-    // CHECK:        [[CONCAT_PROF_RES_FULL:%.+]] = VPUIP.ConcatView inputs([[PROF_BUF_COPY]] : memref<128xui8>) outputs(%arg2 : memref<128xui8>) -> memref<128xui8>
+    // CHECK:        [[CONCAT_PROF_RES_FULL:%.+]] = VPUIP.ConcatView inputs([[PROF_BUF_COPY]] : memref<128xui8>) outputs([[ARG_2]] : memref<128xui8>) -> memref<128xui8>
 
     // CHECK:        return [[R1:%.+]], [[CONCAT_PROF_RES_FULL]] : memref<2x512x512x3xui8, @DDR>, memref<128xui8>
 

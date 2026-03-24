@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -150,6 +150,10 @@ DMATransactionConfig getDMATransactionConfig(VPUASM::NNDMAOp dmaOp, bool isConve
         transactionConfig = VPUASM::getDMATransactionConfigFromTransaction(transaction);
     } else {
         if (auto descriptorAttr = dmaOp.getDmaDescriptorAttr()) {
+            // Reject conversion DMAs that still use the DMADescriptorAttr.
+            // Let through ReadOnlyDMA ops for now until they adopt DMATransactionAttr.
+            VPUX_THROW_WHEN(isConversionEnabled && !dmaOp.getOutputBuffs().empty(),
+                            "Conversion DMA with DMADescriptorAttr");
             transactionConfig = VPUASM::getDMATransactionConfigFromDescriptorAttr(descriptorAttr, isConversionEnabled,
                                                                                   isActivationDecompression);
         } else {

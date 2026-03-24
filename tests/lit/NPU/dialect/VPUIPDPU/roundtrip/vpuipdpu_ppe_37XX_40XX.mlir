@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -42,14 +42,14 @@ module @Test_1a { // Use case #1a: u8 DPU in, u8 DPU out - with activation scali
 }
 
 // CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
-// CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
+// CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
 // CHECK:       VPUIPDPU.PPEFpConvert convert_mode(NONE)
-// CHECK:       VPUIPDPU.PPEIntBiasAdd %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
-// CHECK:       VPUIPDPU.PPEIntScaleMult %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEIntBiasAdd [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEIntScaleMult [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
 // CHECK:       VPUIPDPU.PPEIntPreluMult prelu_mult_static(1)
-// CHECK:       VPUIPDPU.PPEIntScaleShift %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEIntScaleShift [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
 // CHECK:       VPUIPDPU.PPEIntPreluShift prelu_shift_static(0)
 // CHECK:       VPUIPDPU.PPEIntRound round_mode(RNE)
 // CHECK:       VPUIPDPU.PPEIntZeroPointOffset zero_point_static(-128)
@@ -94,7 +94,7 @@ module @Test_1b { // Use case #1b: u8 DPU in, u8 DPU out - with activation trunc
 }
 
 // CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
-// CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
+// CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
 // CHECK:       VPUIPDPU.PPEFpConvert convert_mode(NONE)
@@ -145,14 +145,14 @@ module @Test_2 { // Use case #2: u8 DPU in, fp16 DPU out
 }
 
 // CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
-// CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
+// CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
 // CHECK:       VPUIPDPU.PPEFpConvert convert_mode(NONE)
-// CHECK:       VPUIPDPU.PPEIntBiasAdd %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
-// CHECK:       VPUIPDPU.PPEIntScaleMult %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEIntBiasAdd [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEIntScaleMult [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
 // CHECK:       VPUIPDPU.PPEIntPreluMult prelu_mult_static(0)
-// CHECK:       VPUIPDPU.PPEIntScaleShift %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEIntScaleShift [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
 // CHECK:       VPUIPDPU.PPEIntConvert convert_mode(FP16)
 // CHECK:       VPUIPDPU.PPEIntClamp clamp_high(70)
 // CHECK:     }
@@ -198,10 +198,10 @@ module @Test_3 { // Use case #3: fp16 DPU in, fp16 DPU out
 }
 
 // CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
-// CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
+// CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
-// CHECK:       VPUIPDPU.PPEFpBiasAdd %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
-// CHECK:       VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]> prelu_alpha(1.000000e-01)
+// CHECK:       VPUIPDPU.PPEFpBiasAdd [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEFpScalePreluMult [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]> prelu_alpha(1.000000e-01)
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF)
 // CHECK:       VPUIPDPU.PPEFpConvert convert_mode(FP16) clamp_mode(ON) ftz_mode(OFF)
 // CHECK:       VPUIPDPU.PPEIntBiasAdd bias_static(0)
@@ -256,10 +256,10 @@ module @Test_4 { // Use case #4: fp16 DPU in, u8 DPU out
 }
 
 // CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<CONV>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
-// CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
+// CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:     VPUIPDPU.PPECfg {
-// CHECK:       VPUIPDPU.PPEFpBiasAdd %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
-// CHECK:       VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]> prelu_alpha(1.000000e-01)
+// CHECK:       VPUIPDPU.PPEFpBiasAdd [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]>
+// CHECK:       VPUIPDPU.PPEFpScalePreluMult [[ARG_1]] : memref<16x1x1x1xi64, #NHWC, [@CMX_NN, 0]> prelu_alpha(1.000000e-01)
 // CHECK:       VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF)
 // CHECK:       VPUIPDPU.PPEFpConvert convert_mode(I32)
 // CHECK:       VPUIPDPU.PPEIntBiasAdd bias_static(0)

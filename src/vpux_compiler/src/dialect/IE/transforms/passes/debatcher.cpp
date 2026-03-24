@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -232,9 +232,8 @@ struct DynamicReshapeAttrOpConverter : public OpConverter {
             mlir::Location loc = appendLoc(op->getLoc(), "dynReshape_substitution");
             auto currResultshapeValue =
                     Shape(consumeArrayAttrAsIntegerArray<int64_t>(dynamicReshapeOp, getShapeValueAttrName()));
-            mlir::Operation* reshapeSubstitutionOp =
-                    builder.create<IE::ReshapeOp>(loc, dynamicReshapeOp.getInput(), nullptr, false,
-                                                  getIntArrayAttr(builder.getContext(), currResultshapeValue));
+            mlir::Operation* reshapeSubstitutionOp = builder.create<IE::ReshapeOp>(
+                    loc, dynamicReshapeOp.getInput(), getIntArrayAttr(builder.getContext(), currResultshapeValue));
             ShapeValueAttrOpConverter{const_cast<Logger&>(_log)}.apply(reshapeSubstitutionOp, operands);
             auto origType = mlir::cast<vpux::NDTypeInterface>(dynamicReshapeOp.getResult().getType());
             auto originShape = origType.getShape();

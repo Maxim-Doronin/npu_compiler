@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -55,7 +55,7 @@ module {
     //CHECK-SAME:           iter_args([[LOOP_OUT:%arg[0-9]]]  = [[LOOP_OUTPUT]]) -> (tensor<1x256x64x64xf16, {order = #NHWC}>) {
 
     //CHECK:                [[SLICE_OFFSET:%.+]] = affine.max #[[$MAP]]([[LOOP_ITER]])
-    //CHECK:                [[DIFF1:%.+]] = affine.max #[[$MAP1]](%arg1)
+    //CHECK:                [[DIFF1:%.+]] = affine.max #[[$MAP1]]({{%[^)]+}})
     //CHECK:                [[PAD_LOW:%.+]] = affine.min #[[$MAP2]]()[[[DIFF1]]]
     //CHECK:                [[DIFF2:%.+]] = affine.max #[[$MAP3]]([[SLICE_OFFSET]])
     //CHECK:                [[PAD_HIGH:%.+]] = affine.min #[[$MAP2]]()[[[DIFF2]]]

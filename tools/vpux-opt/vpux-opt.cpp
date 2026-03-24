@@ -1,18 +1,19 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/init.hpp"
 #include "vpux/compiler/tool_registration.hpp"
 #include "vpux/compiler/tools/options.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Tools/mlir-opt/MlirOptMain.h>
 
 #include <cstdlib>
-#include <iostream>
 
 int main(int argc, char* argv[]) {
+    vpux::Logger::setBaseStream(llvm::errs());
     try {
         // TODO: need to rework this unconditional replacement for dummy ops
         // there is an option for vpux-translate we can do it in the same way
@@ -25,7 +26,7 @@ int main(int argc, char* argv[]) {
 
         return mlir::asMainReturnCode(mlir::MlirOptMain(argc, argv, "NPU Optimizer Testing Tool", registry));
     } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+        llvm::errs() << e.what() << '\n';
         return EXIT_FAILURE;
     }
 }

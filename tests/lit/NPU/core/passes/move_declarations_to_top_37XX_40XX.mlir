@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,9 @@ module @VPU.SW {
     }
 }
 
+// CHECK-LABEL: @MoveToTopOfBlock
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<16xf16>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<8xf16>
 func.func @MoveToTopOfBlock(%arg0: memref<16xf16>, %arg1: memref<8xf16>) -> memref<8xf16> {
     %0 = VPUIP.SubView %arg0 [0] [8] : memref<16xf16> to memref<8xf16>
     %decl0 = VPUIP.StaticAlloc<0> -> memref<8xf16>
@@ -58,7 +61,7 @@ func.func @MoveToTopOfBlock(%arg0: memref<16xf16>, %arg1: memref<8xf16>) -> memr
     // CHECK-DAG:   [[DECL16:%.+]] = VPUIP.StaticAlloc<16> -> memref<8xf16>
     // CHECK-DAG:   [[DECL32:%.+]] = VPUIP.StaticAlloc<32> -> memref<8xf16>
 
-    // CHECK:       [[VAR0:%.+]] = VPUIP.SubView %arg0 [0] [8] : memref<16xf16> to memref<8xf16>
+    // CHECK:       [[VAR0:%.+]] = VPUIP.SubView [[ARG_0]] [0] [8] : memref<16xf16> to memref<8xf16>
 
     // CHECK:       [[VAR1:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Add
     // CHECK-SAME:      inputs([[VAR0]]
@@ -83,6 +86,6 @@ func.func @MoveToTopOfBlock(%arg0: memref<16xf16>, %arg1: memref<8xf16>) -> memr
     // CHECK:       }
     // CHECK:       [[VAR5:%.+]] = async.await [[F4]] : !async.value<memref<8xf16>>
 
-    // CHECK:       [[VAR6:%.+]] = VPUIP.Copy inputs([[VAR5]] : memref<8xf16>) outputs(%arg1 : memref<8xf16>)
+    // CHECK:       [[VAR6:%.+]] = VPUIP.Copy inputs([[VAR5]] : memref<8xf16>) outputs([[ARG_1]] : memref<8xf16>)
     // CHECK:       return [[VAR6]] : memref<8xf16>
 }

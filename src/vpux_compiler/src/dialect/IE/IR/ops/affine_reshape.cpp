@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -166,7 +166,7 @@ mlir::LogicalResult FuseAffineReshapes::matchAndRewrite(IE::AffineReshapeOp orig
         return mlir::failure();
     }
 
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, prevOp->getOperand(0), nullptr, false, outputShapeAttr);
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, prevOp->getOperand(0), outputShapeAttr);
     return mlir::success();
 }
 
@@ -204,7 +204,7 @@ mlir::LogicalResult FuseWithReshape::matchAndRewrite(IE::AffineReshapeOp origOp,
     // depending on the resulting input and output shapes.
     // If the Reshape that replaces the two ops ends up being a valid AffineReshape, then it will be converted by
     // Reshape's canonicalizer.
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, prevOp->getOperand(0), nullptr, false, outputShapeAttr);
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, prevOp->getOperand(0), outputShapeAttr);
     return mlir::success();
 }
 

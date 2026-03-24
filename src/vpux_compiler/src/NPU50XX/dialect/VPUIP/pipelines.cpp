@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -27,7 +28,7 @@ void vpux::VPUIP::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     const auto grc = getDefaultGreedyRewriteConfig();
 
     if (options.enableShaveCodeGen) {
-        VPUIP::buildShaveCodeGenPipeline(pm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPUIP(pm);
     }
 
     pm.addPass(VPUIP::createSetZeroOffsetWeightsTablePass(log));
@@ -238,7 +239,6 @@ void vpux::VPUIP::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPUIP::arch50xx::createInsertDelayDPUVariantPass(options.enableProfiling && options.enableDPUProfiling,
                                                                 /*fwPdecDelayEnabled=*/false, log));
 
-    // Ensures legal schedule in the case of a WLM rollback
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
             options.workloadManagementBarrierCountThreshold, options.workloadManagementMode, log));
 
@@ -368,7 +368,7 @@ void vpux::VPUIP::arch50xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     const auto grc = getDefaultGreedyRewriteConfig();
 
     if (options.enableShaveCodeGen) {
-        VPUIP::buildShaveCodeGenPipeline(pm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPUIP(pm);
     }
 
     pm.addPass(VPUIP::createSetMemorySpacePass(VPU::getMemKind<VPU::MemoryKind::DDR>,
@@ -402,7 +402,6 @@ void vpux::VPUIP::arch50xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     VPUIP::buildHardwareAdaptationPipeline(pm, log);
     pm.addPass(VPUIP::createUnrollShaveCacheOpsPass(log));
 
-    // Ensures legal schedule in the case of a WLM rollback
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
             options.workloadManagementBarrierCountThreshold, options.workloadManagementMode, log));
 

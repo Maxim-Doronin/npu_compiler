@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,8 +47,6 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::OpPassManager& pm, cons
         }
         setupParamsAccordingToOptimizationLevel(options->optimizationLevel, *options, useWlm);
         setupPWLMParams(*options, getLogLevel(config));
-        VPUIP::arch40xx::buildVPUIPFinalizePipeline(pm, *options, log.nest());
-
         dpuDryRunMode = VPU::getDPUDryRunMode(options->dpuDryRun);
         backendCompilationOptions->enableDMAProfiling =
                 options->enableProfiling ? options->enableDMAProfiling.getValue() : "false";

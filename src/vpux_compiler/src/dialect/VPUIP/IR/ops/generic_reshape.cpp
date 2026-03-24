@@ -1,14 +1,14 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/reshape_utils.hpp"
 
 using namespace vpux;
 

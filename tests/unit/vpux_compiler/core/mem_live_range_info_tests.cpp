@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common/utils.hpp"
 #include "vpux/compiler/core/mem_live_range_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/string_ref.hpp"
 
 #include <mlir/Dialect/Async/IR/Async.h>
@@ -54,12 +54,12 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
                 %t2, %r2:2 = async.execute [%t0] (%r0 as %arg0 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>)
                         -> (!async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>>, !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>>)
                         attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 2 : i64} {
-                    %1 = VPUIP.NCEClusterTask {
+                    %1 = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<MAXPOOL>
-                        }
+                        }>
                         input(%arg0: memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
                         weight_table(%wt : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
                         parent_input(%arg0: memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
@@ -71,12 +71,12 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
                         }
                         PPE : {
                         }
-                    %2 = VPUIP.NCEClusterTask {
+                    %2 = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<MAXPOOL>
-                        }
+                        }>
                         input(%arg0: memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
                         weight_table(%wt : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
                         parent_input(%arg0: memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>)
@@ -93,9 +93,9 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
 
                 %t3, %r3 = async.execute [%t1, %t2] (%r2#0 as %arg0 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>>, %r1 as %arg1 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 3]>>)
                         -> !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 4]>> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 3 : i64} {
-                    %0 = VPUIP.NCEClusterTask {
+                    %0 = VPUIP.NCEClusterTask <{
                             task_type = #VPUIP.nce_task_type<ELTWISE>
-                        }
+                        }>
                         input(%arg0 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>)
                         weights(%arg1 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 3]>)
                         parent_input(%arg0 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>)
@@ -113,9 +113,9 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
 
                 %t4, %r4 = async.execute [%t1, %t3] (%r2#1 as %arg0 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>>, %r3 as %arg1 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 4]>>)
                         -> !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 5]>> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 4 : i64} {
-                    %0 = VPUIP.NCEClusterTask {
+                    %0 = VPUIP.NCEClusterTask <{
                             task_type = #VPUIP.nce_task_type<ELTWISE>
-                        }
+                        }>
                         input(%arg0 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>)
                         weights(%arg1 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 4]>)
                         parent_input(%arg0 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>)

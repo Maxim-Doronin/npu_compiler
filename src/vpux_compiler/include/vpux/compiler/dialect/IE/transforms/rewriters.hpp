@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,6 +35,16 @@ Parameter      Multiply                             MatMul          MatMul
 void registerDecomposeMultiZPQuantizationRewriters(RewriterRegistry& registry,
                                                    ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index,
                                                    Logger log = Logger::global());
+
+/*
+Replaces:
+Constant -> [Convert (to fp)] -> Multiply (scale) with
+Constant -> DynamicDequantize(weights_q, scale).
+*/
+void registerWeightsDequantizeToDynamicDequantizeRewriters(RewriterRegistry& registry,
+                                                           ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index,
+                                                           mlir::func::FuncOp funcOp, Logger log = Logger::global());
+
 /*
 Replaces Constant (i8) -> Convert (to fp) -> Subtract (zp) -> Multiply (scale) -> with
 Constant (i8) -> Convert (to fp) -> FakeQuantize -> deducing levels and FakeQuantize limits according to actual values
@@ -150,6 +160,26 @@ Merge [Pad] -> [GroupConv] into [GroupConv].
 Merge [Pad] -> [MaxPool] into [MaxPool].
 */
 void registerFusePadOpsRewriters(RewriterRegistry& registry, Logger log = Logger::global());
+
+//
+// BuildBatchOpProcessing Pipeline
+//
+
+/*
+This pass converts `MatMul` inputs to 2d.
+For example, `MatMul` input with 4x1x64 geometry will be split to four inputs with 1x64 dimensions.
+Resulting inputs with filters go to `MatMul` operations and the outputs are concatenated.
+*/
+void registerMatMulInputsTo2dRewriters(RewriterRegistry& registry, Logger log,
+                                       ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index,
+                                       bool enableGroupedMatMul);
+
+/*
+Move ops after concat to place after each batch unrolled matmul.
+Currently only softmax is enabled.
+*/
+void registerPropagateOpThroughBatchConcatRewriters(RewriterRegistry& registry, Logger log,
+                                                    ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index);
 
 //
 // BuildMemPermuteProcessing Pipeline

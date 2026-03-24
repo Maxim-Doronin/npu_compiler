@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -323,7 +323,7 @@ bool vpux::VPU::isSOCSegmentedSWOp(mlir::Operation* op) {
     // phase). E.g., CONV SOK -> MVN (unassigned), we should select SEGMENTED mode for CONV output to avoid not fit CMX
     auto strategy = clusteredOp.getMultiClusterStrategy();
     if (!strategy.has_value()) {
-        const auto numTiles = VPU::getNumTiles(op);
+        const auto numTiles = config::getNumOfTiles(op);
         return clusteredOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverKernel, numTiles);
     }
 
@@ -1589,6 +1589,8 @@ DistributionMode vpux::VPU::getOutputTensorDistributionMode(VPU::ClusteredOpInte
         if (isSOKSegmentedOutputCompatible(clusteredOp.getOperation())) {
             return DistributionMode::SEGMENTED;
         }
+        // For MaxPool with NWCH output layout and large channel, use SEGMENTED mode to avoid IMD hang issue.
+        // E#160387 to track this
         const auto outputOrder = outputType.getDimsOrder();
         if (mlir::isa<VPU::NCEMaxPoolOp>(clusteredOp.getOperation()) && outputOrder == DimsOrder::NWCH &&
             outputShape[Dims4D::Act::C] > 384) {

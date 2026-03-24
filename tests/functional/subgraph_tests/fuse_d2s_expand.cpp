@@ -33,12 +33,12 @@ using FuseD2sDynExpandParams = std::tuple<ov::test::InputShape,  // Input shapes
                                           std::size_t,           // Block size
                                           ov::element::Type,     // inType
                                           bool,                  // Enable FQ
-                                          bool>;                 // Enable Preprocess
+                                          bool>;                 // Avoid Permute
 
 class FuseD2sExpandCommon : public VpuOv2LayerTest, public testing::WithParamInterface<FuseD2sDynExpandParams> {
 public:
     static std::string getTestCaseName(testing::TestParamInfo<FuseD2sDynExpandParams> obj) {
-        const auto& [inShape, bs, inType, enableFQ, enablePreprocess] = obj.param;
+        const auto& [inShape, bs, inType, enableFQ, avoidPermute] = obj.param;
         const std::string sep = "_";
         std::ostringstream result;
         result << "TestKind" << ov::test::utils::testKind(__FILE__) << sep;
@@ -46,7 +46,7 @@ public:
         result << "BlockSize=" << bs << sep;
         result << "inType=" << inType << sep;
         result << "EnableFQ=" << enableFQ << sep;
-        result << "EnablePreprocess=" << enablePreprocess << sep;
+        result << "AvoidPermute=" << avoidPermute << sep;
         return result.str();
     }
     void configure_model() override {
@@ -55,7 +55,7 @@ public:
                                                                        "enable-fuse-d2s-expand=true";
     }
     void SetUp() override {
-        const auto& [inShape, blockSize, inType, enableFQ, enablePreprocess] = GetParam();
+        const auto& [inShape, blockSize, inType, enableFQ, avoidPermute] = GetParam();
 
         init_input_shapes({inShape});
 
@@ -79,8 +79,7 @@ public:
 
         function = std::make_shared<ov::Model>(results, params, "D2sExpand");
         // Applying NHWC layout to input to avoid insertion of Permute before D2S
-        // Partially done to avoid E#192054
-        if (enablePreprocess) {
+        if (avoidPermute) {
             auto preProc = ov::preprocess::PrePostProcessor(function);
             preProc.input().tensor().set_layout(ov::Layout("NHWC"));
             preProc.input().model().set_layout(ov::Layout("NCHW"));
@@ -128,6 +127,11 @@ TEST_P(FuseD2sExpandCommon_HostCompile, NPU5010_HC) {
     run(Platform::NPU5010);
 }
 
+TEST_P(FuseD2sExpandCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 }  // namespace ov::test::subgraph
 
 using namespace ov::test::subgraph;
@@ -138,62 +142,110 @@ namespace {
 //            and have the Expand C=8 to C=16 instead
 // as a result fusion of D2S + Expand will be applied only with those shapes
 
-std::vector<FuseD2sDynExpandParams> params1 = {{/* inputShape = */ generateTestShape(1, 8, 11, 11),
-                                                /* blockSize = */ 2,
-                                                /* inType = */ ov::element::f16,
-                                                /* enableFQ = */ false,
-                                                /* enablePreprocess = */ false}};
-
-std::vector<FuseD2sDynExpandParams> params2 = {{/* inputShape = */ generateTestShape(1, 12, 3, 123),
-                                                /* blockSize = */ 2,
-                                                /* inType = */ ov::element::f16,
-                                                /* enableFQ = */ true,
-                                                /* enablePreprocess = */ false}};
-
-std::vector<FuseD2sDynExpandParams> params3 = {{/* inputShape = */ generateTestShape(1, 12, 1079, 319),
-                                                /* blockSize = */ 2,
-                                                /* inType = */ ov::element::f16,
-                                                /* enableFQ = */ false,
-                                                /* enablePreprocess = */ false}};
-
-std::vector<FuseD2sDynExpandParams> params4 = {{/* inputShape = */ generateTestShape(1, 12, 1079, 319),
-                                                /* blockSize = */ 2,
-                                                /* inType = */ ov::element::f16,
-                                                /* enableFQ = */ true,
-                                                /* enablePreprocess = */ false}};
-
-std::vector<FuseD2sDynExpandParams> paramsDyn1 = {{/* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
-                                                   /* blockSize = */ 2,
-                                                   /* inType = */ ov::element::f16,
-                                                   /* enableFQ = */ false,
-                                                   /* enablePreprocess = */ true}};
-
-std::vector<FuseD2sDynExpandParams> paramsDyn2 = {{/* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
-                                                   /* blockSize = */ 2,
-                                                   /* inType = */ ov::element::f16,
-                                                   /* enableFQ = */ true,
-                                                   /* enablePreprocess = */ true}};
-
-std::vector<FuseD2sDynExpandParams> paramsDyn3 = {{/* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
-                                                   /* blockSize = */ 2,
-                                                   /* inType = */ ov::element::f16,
-                                                   /* enableFQ = */ false,
-                                                   /* enablePreprocess = */ true}};
-
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_f16, FuseD2sExpandCommon, ::testing::ValuesIn(params1),
+// Static Shapes, FP
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_f16, FuseD2sExpandCommon,
+                         ::testing::Values(FuseD2sDynExpandParams{/* inputShape = */ generateTestShape(1, 8, 11, 11),
+                                                                  /* blockSize = */ 2,
+                                                                  /* inType = */ ov::element::f16,
+                                                                  /* enableFQ = */ false,
+                                                                  /* avoidPermute = */ false}),
                          FuseD2sExpandCommon::getTestCaseName);
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_u8q, FuseD2sExpandCommon, ::testing::ValuesIn(params2),
-                         FuseD2sExpandCommon::getTestCaseName);
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_big_f16, FuseD2sExpandCommon, ::testing::ValuesIn(params3),
-                         FuseD2sExpandCommon::getTestCaseName);
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_big_u8q, FuseD2sExpandCommon, ::testing::ValuesIn(params4),
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_big_f16, FuseD2sExpandCommon,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ false,
+                                 /* avoidPermute = */ false}),
                          FuseD2sExpandCommon::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16, FuseD2sExpandCommon_HostCompile, ::testing::ValuesIn(paramsDyn1),
+// Static Shapes, Quantized
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_u8q, FuseD2sExpandCommon,
+                         ::testing::Values(FuseD2sDynExpandParams{/* inputShape = */ generateTestShape(1, 12, 3, 123),
+                                                                  /* blockSize = */ 2,
+                                                                  /* inType = */ ov::element::f16,
+                                                                  /* enableFQ = */ true,
+                                                                  /* avoidPermute = */ false}),
+                         FuseD2sExpandCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_big_u8q, FuseD2sExpandCommon,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ true,
+                                 /* avoidPermute = */ false}),
+                         FuseD2sExpandCommon::getTestCaseName);
+
+// Dynamic Shapes, FP
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ false,
+                                 /* avoidPermute = */ true}),
                          FuseD2sExpandCommon_HostCompile::getTestCaseName);
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q, FuseD2sExpandCommon_HostCompile, ::testing::ValuesIn(paramsDyn2),
+// isolated tiling (missing SCF VF fusion) case due to E#201991
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16_Permute, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ false,
+                                 /* avoidPermute = */ false}),
                          FuseD2sExpandCommon_HostCompile::getTestCaseName);
-INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16, FuseD2sExpandCommon_HostCompile, ::testing::ValuesIn(paramsDyn3),
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ false,
+                                 /* avoidPermute = */ true}),
+                         FuseD2sExpandCommon_HostCompile::getTestCaseName);
+// isolated tiling (missing SCF VF fusion) case due to E#201991
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16_Permute, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ false,
+                                 /* avoidPermute = */ false}),
+                         FuseD2sExpandCommon_HostCompile::getTestCaseName);
+
+// Dynamic Shapes, Quantized
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ true,
+                                 /* avoidPermute = */ true}),
+                         FuseD2sExpandCommon_HostCompile::getTestCaseName);
+// isolated tiling (missing SCF VF fusion) case due to E#201991
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q_Permute, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ true,
+                                 /* avoidPermute = */ false}),
+                         FuseD2sExpandCommon_HostCompile::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_u8q, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ true,
+                                 /* avoidPermute = */ true}),
+                         FuseD2sExpandCommon_HostCompile::getTestCaseName);
+// isolated tiling (missing SCF VF fusion) case due to E#201991
+INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_u8q_Permute, FuseD2sExpandCommon_HostCompile,
+                         ::testing::Values(FuseD2sDynExpandParams{
+                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* blockSize = */ 2,
+                                 /* inType = */ ov::element::f16,
+                                 /* enableFQ = */ true,
+                                 /* avoidPermute = */ false}),
                          FuseD2sExpandCommon_HostCompile::getTestCaseName);
 
 }  // namespace

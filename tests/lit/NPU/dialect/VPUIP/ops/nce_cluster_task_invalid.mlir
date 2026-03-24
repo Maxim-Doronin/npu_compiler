@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,12 +26,12 @@ func.func @checkDimensionLimit(%arg0: memref<1x32x16384x16xf16, #NHWC, @CMX_NN>)
                 -> !async.value<memref<1x64x14x16384xf16, #NHWC, @CMX_NN>>
                     attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
         // expected-error@+1 {{Op dimensions exceed VPU_DIMENSION_LIMIT: [1, 32, 16384, 16]}}
-        %0 = VPUIP.NCEClusterTask {
+        %0 = VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }  input(%arg0 : memref<1x32x16384x16xf16, #NHWC, @CMX_NN>)
+            }>  input(%arg0 : memref<1x32x16384x16xf16, #NHWC, @CMX_NN>)
                 weights(%weights : memref<64x32x3x3xf16, #NHWC, @CMX_NN>)
                 weight_table_sp_ptr(%wt_sp_ptr_cmx: memref<64x1x1x1xsi32, @CMX_NN>)
                 weight_table_scale(%wt_scale_cmx: memref<64x1x1x1xf32, @CMX_NN>)
@@ -76,12 +76,12 @@ func.func @checkOutputDimensionLimit(%arg0: memref<1x32x8190x16xf16, #NHWC, @CMX
                 -> !async.value<memref<1x64x14x8194xf16, #NHWC, @CMX_NN>>
                     attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
         // expected-error@+1 {{Op dimensions exceed VPU_DIMENSION_LIMIT: [1, 64, 14, 8194]}}
-        %0 = VPUIP.NCEClusterTask {
+        %0 = VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }  input(%arg0 : memref<1x32x8190x16xf16, #NHWC, @CMX_NN>)
+            }>  input(%arg0 : memref<1x32x8190x16xf16, #NHWC, @CMX_NN>)
                 weights(%weights : memref<64x32x3x3xf16, #NHWC, @CMX_NN>)
                 weight_table_sp_ptr(%wt_sp_ptr_cmx: memref<64x1x1x1xsi32, @CMX_NN>)
                 weight_table_scale(%wt_scale_cmx: memref<64x1x1x1xf32, @CMX_NN>)

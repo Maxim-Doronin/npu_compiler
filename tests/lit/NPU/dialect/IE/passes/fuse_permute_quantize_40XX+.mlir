@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,8 @@
 !qElemType = !quant.uniform<u8:f16, 2.000000e+00>
 !qElemType1 = !quant.uniform<u8:f16, 5.000000e-01>
 
+// CHECK-LABEL: @SkipConvertWithReshape
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<3x62x62xf32>
 func.func @SkipConvertWithReshape(%arg0: tensor<3x62x62xf32>) -> tensor<1x3x62x62x!qElemType1, {order = #NHWC}> {
     %0 = IE.Convert(%arg0) {
       dstElemType = f16
@@ -36,7 +38,7 @@ func.func @SkipConvertWithReshape(%arg0: tensor<3x62x62xf32>) -> tensor<1x3x62x6
 
     return %4 : tensor<1x3x62x62x!qElemType1, {order = #NHWC}>
 
-    // CHECK:   [[CONVERT:%.+]] = IE.Convert(%arg0)
+    // CHECK:   [[CONVERT:%.+]] = IE.Convert([[ARG_0]])
     // CHECK:   [[RESHAPE:%.+]] = IE.AffineReshape([[CONVERT]])
     // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[RESHAPE]]) {
     // CHECK-SAME:      dstElemType = !qElemType1,
@@ -60,6 +62,8 @@ func.func @SkipConvertWithReshape(%arg0: tensor<3x62x62xf32>) -> tensor<1x3x62x6
 // CHECK-DAG:   [[QUANT_CAST_TYPE:.+]] = !quant.uniform<u8:f16, 5.000000e-01>
 // CHECK-DAG:   [[PERM_QUANT_TYPE:.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
+// CHECK:   @SkipPermuteQuantizeF32
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x62x62xf32>
 func.func @SkipPermuteQuantizeF32(%arg0: tensor<1x3x62x62xf32>) -> tensor<1x3x62x62x!qElemType1, {order = #NHWC}> {
     %0 = IE.Convert(%arg0) {
       dstElemType = f16
@@ -81,7 +85,7 @@ func.func @SkipPermuteQuantizeF32(%arg0: tensor<1x3x62x62xf32>) -> tensor<1x3x62
 
     return %3 : tensor<1x3x62x62x!qElemType1, {order = #NHWC}>
 
-    // CHECK:  [[CONVERT:%.+]] = IE.Convert(%arg0) {dstElemType = f16}
+    // CHECK:  [[CONVERT:%.+]] = IE.Convert([[ARG_0]]) {dstElemType = f16}
 
     // CHECK: [[PERM_QUANT:%.+]] = IE.PermuteQuantize([[CONVERT]]) {
     // CHECK-SAME:        dstElemType = [[PERM_QUANT_TYPE]],
@@ -106,6 +110,8 @@ func.func @SkipPermuteQuantizeF32(%arg0: tensor<1x3x62x62xf32>) -> tensor<1x3x62
 !qElemType = !quant.uniform<u8:f16, 2.000000e+00>
 !qElemType1 = !quant.uniform<u8:f16, 1.000000e+00>
 
+// CHECK-LABEL: @SkipWidth1
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x64x2x1xf16>
 func.func @SkipWidth1(%arg0: tensor<1x64x2x1xf16>) -> tensor<1x64x2x1x!qElemType1, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {
         dstOrder = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -122,7 +128,7 @@ func.func @SkipWidth1(%arg0: tensor<1x64x2x1xf16>) -> tensor<1x64x2x1x!qElemType
 
     return %2 : tensor<1x64x2x1x!qElemType1, {order = #NHWC}>
 
-    // CHECK:   [[REORDER:%.+]] = IE.Reorder(%arg0)
+    // CHECK:   [[REORDER:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK:   [[ADD:%.+]] = IE.Add([[REORDER]], [[REORDER]])
     // CHECK:   [[QUANT_CAST:%.+]] = IE.QuantizeCast([[ADD]])
     // CHECK:   return [[QUANT_CAST]] : tensor<1x64x2x1x!qElemType, {order = #NHWC}>

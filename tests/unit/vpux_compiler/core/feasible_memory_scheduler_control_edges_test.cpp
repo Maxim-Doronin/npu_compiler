@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -156,4 +156,90 @@ TEST_F(MLIR_FeasibleMemorySchedulerControlEdges, OptimizeDepsIfOverlappingCycles
 
         EXPECT_EQ(depsSet, expectedDepsSetPerOp[opIdx]);
     }
+}
+
+// Verifies that control edge cycle overlap optimization is skipped for operations modified by spilling
+TEST_F(MLIR_FeasibleMemorySchedulerControlEdges, SkipCycleOptimizationForModifiedOps) {
+    mlir::MLIRContext ctx(registry);
+
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+        !Type_DDR = memref<1x1x1x32xf16, #NCHW, @DDR>
+
+        module @test {
+            func.func @main(%arg0: !Type_DDR) -> !Type_DDR {
+                %buf0 = VPURT.DeclareBuffer <DDR> <0> -> !Type_DDR
+                %buf1 = VPURT.DeclareBuffer <DDR> <64> -> !Type_DDR
+                %buf2 = VPURT.DeclareBuffer <DDR> <128> -> !Type_DDR
+
+                %t0, %r0 = async.execute -> !async.value<!Type_DDR>
+                    attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 0 : i64,
+                               cycleBegin = 0 : i64, cycleCost = 2 : i64, cycleEnd = 2 : i64} {
+                    %0 = VPUIP.Copy inputs(%arg0 : !Type_DDR) outputs(%buf0 : !Type_DDR) -> !Type_DDR
+                    async.yield %0 : !Type_DDR
+                }
+
+                %t1, %r1 = async.execute -> !async.value<!Type_DDR>
+                    attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 1 : i64,
+                               cycleBegin = 1 : i64, cycleCost = 2 : i64, cycleEnd = 3 : i64} {
+                    %0 = VPUIP.Copy inputs(%buf0 : !Type_DDR) outputs(%buf1 : !Type_DDR) -> !Type_DDR
+                    async.yield %0 : !Type_DDR
+                }
+
+                %t2, %r2 = async.execute -> !async.value<!Type_DDR>
+                    attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 2 : i64,
+                               cycleBegin = 3 : i64, cycleCost = 1 : i64, cycleEnd = 4 : i64} {
+                    %0 = VPUIP.Copy inputs(%buf1 : !Type_DDR) outputs(%buf2 : !Type_DDR) -> !Type_DDR
+                    async.yield %0 : !Type_DDR
+                }
+
+                %r = async.await %r2 : !async.value<!Type_DDR>
+                return %r : !Type_DDR
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    auto log = vpux::Logger::global();
+    AsyncDepsInfo depsInfo{func};
+
+    // Scenario: OP0 and OP1 have overlapping cycles
+    // Normally, the cycle overlap optimization would skip adding a control edge from OP0 to OP1
+    // However, if OP1 is marked as modified by spilling, the edge should still be added
+    std::vector<ScheduledOpOneResource> scheduledOpsResources = {
+            ScheduledOpOneResource(0, 0, 63, ScheduledOpOneResource::EResRelation::PRODUCER),
+            ScheduledOpOneResource(1, 0, 63, ScheduledOpOneResource::EResRelation::CONSUMER),
+            ScheduledOpOneResource(1, 64, 127, ScheduledOpOneResource::EResRelation::PRODUCER),
+            ScheduledOpOneResource(2, 64, 127, ScheduledOpOneResource::EResRelation::CONSUMER),
+            ScheduledOpOneResource(2, 128, 191, ScheduledOpOneResource::EResRelation::PRODUCER)};
+
+    ControlEdgeSet controlEdges;
+    ControlEdgeGenerator controlEdgeGenerator;
+    controlEdgeGenerator.generateControlEdges(scheduledOpsResources.begin(), scheduledOpsResources.end(), controlEdges);
+
+    // Mark OP1 as modified by spilling
+    std::unordered_set<size_t> modifiedOps = {1};
+
+    updateControlEdgesInDepsInfo(depsInfo, controlEdges, log, modifiedOps);
+
+    // OP0 should have no dependencies
+    auto op0Deps = depsInfo.getOpDeps(0);
+    EXPECT_EQ(op0Deps.size(), 0);
+
+    // Since OP1 is modified, the control edge OP0->OP1 should NOT be optimized away
+    // even though they have overlapping cycles
+    auto op1Deps = depsInfo.getOpDeps(1);
+    EXPECT_EQ(op1Deps.size(), 1);
+    EXPECT_EQ(op1Deps[0], 0);
+
+    // OP2 should have OP1 as a dependency
+    auto op2Deps = depsInfo.getOpDeps(2);
+    EXPECT_EQ(op2Deps.size(), 1);
+    EXPECT_EQ(op2Deps[0], 1);
 }

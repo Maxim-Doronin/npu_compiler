@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mempermute-processing %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
+ // CHECK-LABEL: func @MemPermuteInBetweenShapeCast
+ // CHECK-SAME:  ([[ARG:%.+]]: tensor<2x3x96x96xf16>) -> tensor<2x1x94x94xf16>
 func.func @MemPermuteInBetweenShapeCast(%arg0: tensor<2x3x96x96xf16>) -> tensor<2x1x94x94xf16> {
   %cst = const.Declare tensor<1x3x3x3xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}> = dense<0.0> : tensor<1x3x3x3xf16>, [#const.Reorder<affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>>]
   %0 = IE.ShapeCast {shape = [1, 2, 3, 9216]} inputs(%arg0 : tensor<2x3x96x96xf16>) -> tensor<1x2x3x9216xf16>
@@ -16,7 +18,7 @@ func.func @MemPermuteInBetweenShapeCast(%arg0: tensor<2x3x96x96xf16>) -> tensor<
   return %4 : tensor<2x1x94x94xf16>
 
   // CHECK: [[CST:%.+]] = const.Declare tensor<1x3x3x3xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<1x3x3x3xf16>, [#const.Reorder<#NHWC>]
-  // CHECK: [[SHAPCAST:%.+]] = IE.ShapeCast {shape = [1, 2, 3, 9216]} inputs(%arg0 : tensor<2x3x96x96xf16>) -> tensor<1x2x3x9216xf16>
+  // CHECK: [[SHAPCAST:%.+]] = IE.ShapeCast {shape = [1, 2, 3, 9216]} inputs([[ARG]] : tensor<2x3x96x96xf16>) -> tensor<1x2x3x9216xf16>
   // CHECK: [[MEMPERMUTE:%.+]] = IE.MemPermute([[SHAPCAST]]) {dst_order = #NHWC, mem_perm = #NCWH} : tensor<1x2x3x9216xf16> -> tensor<1x3x2x9216xf16, {order = #NHWC}>
   // CHECK: [[SHAPECAST:%.+]] = IE.ShapeCast {shape = [2, 3, 96, 96]} inputs([[MEMPERMUTE]] : tensor<1x3x2x9216xf16, {order = #NHWC}>) -> tensor<2x3x96x96xf16, {order = #NHWC}>
   // CHECK: [[CONV:%.+]] = IE.Convolution([[SHAPECAST]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<2x3x96x96xf16, {order = #NHWC}>, tensor<1x3x3x3xf16, {order = #NHWC}> -> tensor<2x1x94x94xf16, {order = #NHWC}>
@@ -28,6 +30,8 @@ func.func @MemPermuteInBetweenShapeCast(%arg0: tensor<2x3x96x96xf16>) -> tensor<
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: func @MemPermuteInBetweenAffineReshape
+// CHECK-SAME:  ([[ARG_0:%.+]]: tensor<1x112x4x128xf16, {order = #NHWC}>, [[ARG_1:%.+]]: tensor<112x1x1x1xf16, {order = #NHWC}>) -> tensor<1x512x120x1xf16>
 func.func @MemPermuteInBetweenAffineReshape(%arg0: tensor<1x112x4x128xf16, {order = #NHWC}>, %arg1: tensor<112x1x1x1xf16, {order = #NHWC}>) -> tensor<1x512x120x1xf16> {
   %0 = const.Declare tensor<1x512x10x1xf16> = dense<0.000000e+00> : tensor<1x512x10x1xf16>
   %1 = IE.GroupConvolution(%arg0, %arg1) {dilations = [1, 1], groups = 112 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x112x4x128xf16, {order = #NHWC}>, tensor<112x1x1x1xf16, {order = #NHWC}> -> tensor<1x112x4x128xf16, {order = #NHWC}>
@@ -42,7 +46,7 @@ func.func @MemPermuteInBetweenAffineReshape(%arg0: tensor<1x112x4x128xf16, {orde
   return %8 : tensor<1x512x120x1xf16>
 
   // CHECK: [[CST:%.+]] = const.Declare tensor<1x512x10x1xf16> = dense<0.000000e+00> : tensor<1x512x10x1xf16>
-  // CHECK: [[GROUPCONV:%.+]] = IE.GroupConvolution(%arg0, %arg1) {dilations = [1, 1], groups = 112 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x112x4x128xf16, {order = #NHWC}>, tensor<112x1x1x1xf16, {order = #NHWC}> -> tensor<1x112x4x128xf16, {order = #NHWC}>
+  // CHECK: [[GROUPCONV:%.+]] = IE.GroupConvolution([[ARG_0]], [[ARG_1]]) {dilations = [1, 1], groups = 112 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x112x4x128xf16, {order = #NHWC}>, tensor<112x1x1x1xf16, {order = #NHWC}> -> tensor<1x112x4x128xf16, {order = #NHWC}>
   // CHECK: [[SLICE:%.+]] = IE.Slice [[GROUPCONV]] [0, 0, 0, 0] [1, 100, 4, 128] : tensor<1x112x4x128xf16, {order = #NHWC}> to tensor<1x100x4x128xf16, {order = #NHWC}>
   // CHECK: [[PERMUTECAST:%.+]] = IE.PermuteCast([[SLICE]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x100x4x128xf16, {order = #NHWC}> -> tensor<1x4x128x100xf16>
   // CHECK: [[AFFINERESHAPE:%.+]] = IE.AffineReshape([[PERMUTECAST]])

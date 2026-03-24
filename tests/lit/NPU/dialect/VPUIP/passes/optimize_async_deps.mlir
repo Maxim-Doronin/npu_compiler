@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @LinearGraph
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: memref<10xf16>, [[ARG_1:%[^:]+]]: memref<10xf16>
 func.func @LinearGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10xf16> {
     %buf0 = memref.alloc() : memref<10xf16>
     %buf1 = memref.alloc() : memref<10xf16>
@@ -66,7 +67,7 @@ func.func @LinearGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<1
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
     // CHECK-SAME:      inputs([[VAL2]]
-    // CHECK-SAME:      outputs(%arg1
+    // CHECK-SAME:      outputs([[ARG_1]]
 
 
     // CHECK:       [[VAL3:%.+]] = async.await [[F3]] : !async.value<memref<10xf16>>
@@ -82,6 +83,7 @@ func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>)
 }
 
 // CHECK-LABEL: @IndependentBranchesLinearSched
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: memref<10xf16>, [[ARG_1:%[^:]+]]: memref<10xf16>
 func.func @IndependentBranchesLinearSched(%arg0: memref<10xf16>, %arg1: memref<10xf16>, %arg2: memref<20xf16>) -> memref<20xf16> {
     %buf = memref.alloc() : memref<20xf16>
 
@@ -120,13 +122,13 @@ func.func @IndependentBranchesLinearSched(%arg0: memref<10xf16>, %arg1: memref<1
     // CHECK:       [[T0:%.+]], [[F0:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
-    // CHECK-SAME:      inputs(%arg0
+    // CHECK-SAME:      inputs([[ARG_0]]
 
     // CHECK:       [[T1:%.+]], [[F1:%.+]] = async.execute
     // CHECK-SAME:          [[T0]]
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
-    // CHECK-SAME:      inputs(%arg1
+    // CHECK-SAME:      inputs([[ARG_1]]
 
     // CHECK:       [[T3:%.+]], [[F3:%.+]] = async.execute
     // CHECK-NOT:           [[T0]]
@@ -150,6 +152,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @IndependentBranchesParallelSched
+//CHECK-SAME: [[ARG_0:%[^:]+]]: memref<10xf16>, [[ARG_1:%[^:]+]]: memref<10xf16>, [[ARG_2:%[^:]+]]: memref<20xf16>
 func.func @IndependentBranchesParallelSched(%arg0: memref<10xf16>, %arg1: memref<10xf16>, %arg2: memref<20xf16>) -> memref<20xf16> {
     %buf = memref.alloc() : memref<20xf16>
 
@@ -188,12 +191,12 @@ func.func @IndependentBranchesParallelSched(%arg0: memref<10xf16>, %arg1: memref
     // CHECK:       [[T0:%.+]], [[F0:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
-    // CHECK-SAME:      inputs(%arg0
+    // CHECK-SAME:      inputs([[ARG_0]]
 
     // CHECK:       [[T1:%.+]], [[F1:%.+]] = async.execute
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
-    // CHECK-SAME:      inputs(%arg1
+    // CHECK-SAME:      inputs([[ARG_1]]
 
     // CHECK:       [[T3:%.+]], [[F3:%.+]] = async.execute
     // CHECK-SAME:          [[T0]], [[T1]]
@@ -216,6 +219,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @TwoOutputs
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: memref<2xf16>, [[ARG_1:%[^:]+]]: memref<2xf16>, [[ARG_2:%[^:]+]]: memref<2xf16>
 func.func @TwoOutputs(%arg0: memref<2xf16>, %arg1: memref<2xf16>, %arg2: memref<2xf16>) -> (memref<2xf16>, memref<2xf16>) {
     %0 = const.Declare memref<2xf16> = dense<1.0> : tensor<2xf16>
 
@@ -267,14 +271,14 @@ func.func @TwoOutputs(%arg0: memref<2xf16>, %arg1: memref<2xf16>, %arg2: memref<
     // CHECK-NOT:           [[T1]]
     // CHECK-SAME:          [[T2]]
     // CHECK-SAME:          [[F1]] as [[VAL1:%arg[0-9]]]: !async.value<memref<2xf16>>
-    // CHECK:           {{%.+}} = VPUIP.Copy inputs([[VAL1]] : memref<2xf16>) outputs(%arg1 : memref<2xf16>)
+    // CHECK:           {{%.+}} = VPUIP.Copy inputs([[VAL1]] : memref<2xf16>) outputs([[ARG_1]] : memref<2xf16>)
 
     // CHECK:       [[T4:%.+]], [[F4:%.+]] = async.execute
     // CHECK-NOT:           [[T1]]
     // CHECK-NOT:           [[T2]]
     // CHECK-SAME:          [[T3]]
     // CHECK-SAME:          [[F2]] as [[VAL2:%arg[0-9]]]: !async.value<memref<2xf16>>
-    // CHECK:           {{%.+}} = VPUIP.Copy inputs([[VAL2]] : memref<2xf16>) outputs(%arg2 : memref<2xf16>)
+    // CHECK:           {{%.+}} = VPUIP.Copy inputs([[VAL2]] : memref<2xf16>) outputs([[ARG_2]] : memref<2xf16>)
 
     // CHECK:       [[VAL3:%.+]] = async.await [[F3]]
     // CHECK:       [[VAL4:%.+]] = async.await [[F4]]
@@ -292,6 +296,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @DiamondGraph
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: memref<10xf16>, [[ARG_1:%[^:]+]]: memref<10xf16>
 func.func @DiamondGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10xf16> {
     %buf0 = memref.alloc() : memref<10xf16>
     %buf1 = memref.alloc() : memref<10xf16>
@@ -358,7 +363,7 @@ func.func @DiamondGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
     // CHECK-SAME:          @builtin_relu
-    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          inputs([[ARG_0]]
     // CHECK-SAME:          outputs([[BUF0]]
 
     // CHECK:       [[T1:%.+]], [[F1:%.+]] = async.execute
@@ -376,7 +381,7 @@ func.func @DiamondGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<
     // CHECK-SAME:          -> !async.value<memref<10xf16>>
     // CHECK:           VPUIP.SW.Kernel
     // CHECK-SAME:          @builtin_tanh
-    // CHECK-SAME:          inputs(%arg0
+    // CHECK-SAME:          inputs([[ARG_0]]
     // CHECK-SAME:          outputs([[BUF2]]
 
     // CHECK:       [[T3:%.+]], [[F3:%.+]] = async.execute
@@ -402,7 +407,7 @@ func.func @DiamondGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<
     // CHECK-SAME:          @builtin_add
     // CHECK-SAME:          inputs([[VAL1]]
     // CHECK-SAME:                 [[VAL3]]
-    // CHECK-SAME:          outputs(%arg1
+    // CHECK-SAME:          outputs([[ARG_1]]
 
     // CHECK:       [[VAL4:%.+]] = async.await [[F4]] : !async.value<memref<10xf16>>
     // CHECK:       return [[VAL4]] : memref<10xf16>

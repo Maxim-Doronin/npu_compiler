@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,9 +46,9 @@ module @Test_1 {
 }
 
 // CHECK:    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
-// CHECK:    ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg3: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg4: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
+// CHECK:    ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_3:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_4:%.+]]: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
 //CHECK:     VPUIPDPU.IDUCfg {
-//CHECK-NEXT:       VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+//CHECK-NEXT:       VPUIPDPU.IDUInActivations in_activations([[ARG_0]] : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-NEXT:       VPUIPDPU.IDUStorageElement se_size(32)
 //CHECK-NEXT:       VPUIPDPU.IDUKernel kernel_x(1) kernel_y(2)
 //CHECK-NEXT:       VPUIPDPU.IDUStride stride_x(0) stride_y(0)

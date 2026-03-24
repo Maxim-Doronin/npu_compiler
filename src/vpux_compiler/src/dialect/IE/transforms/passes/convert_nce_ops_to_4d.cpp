@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
@@ -63,7 +64,7 @@ mlir::Value extendTensor(mlir::PatternRewriter& rewriter, mlir::Location loc, ml
     newShape.insert(newShape.end() - nonTrivialAxis.ind(), 1);
 
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    return rewriter.createOrFold<IE::ReshapeOp>(loc, input, nullptr, false, newShapeAttr);
+    return rewriter.createOrFold<IE::ReshapeOp>(loc, input, newShapeAttr);
 }
 
 mlir::ArrayAttr append(mlir::MLIRContext* context, mlir::ArrayAttr attr, int64_t value, Dim nonTrivialAxis) {
@@ -80,7 +81,7 @@ mlir::Value composeTensorOnCD(mlir::PatternRewriter& rewriter, mlir::Location lo
     SmallVector<int64_t> newShape{shape[Dims5D::Act::N], shape[Dims5D::Act::C] * shape[Dims5D::Act::D],
                                   shape[Dims5D::Act::H], shape[Dims5D::Act::W]};
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    return rewriter.createOrFold<IE::ReshapeOp>(loc, input, nullptr, false, newShapeAttr);
+    return rewriter.createOrFold<IE::ReshapeOp>(loc, input, newShapeAttr);
 }
 
 mlir::ArrayAttr eraseAttrBegin(mlir::MLIRContext* context, mlir::ArrayAttr attr) {
@@ -157,8 +158,7 @@ mlir::LogicalResult ConvGeneralExpansion<ConcreteOp>::matchAndRewrite(ConcreteOp
 
     const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputType.getShape());
-    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), nullptr, false,
-                                                                 outputShapeAttr);
+    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), outputShapeAttr);
     extendOpLoc(outReshape, "out_reshape");
 
     _log.trace("Replaced with 4D '{0}'", origOp->getName());
@@ -226,8 +226,7 @@ mlir::LogicalResult PoolingGeneralExpansion<ConcreteOp>::matchAndRewrite(Concret
 
     const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputType.getShape());
-    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newPoolingOp->getResult(0), nullptr, false,
-                                                                 outputShapeAttr);
+    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newPoolingOp->getResult(0), outputShapeAttr);
     extendOpLoc(outReshape, "out_reshape");
 
     _log.trace("Replaced with 4D '{0}'", origOp->getName());

@@ -1,9 +1,19 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
+#include <algorithm>
+#include "llvm/Support/Format.h"
+#include "vpux/compiler/utils/logging.hpp"
 
 namespace vpux::HostExec {
 
@@ -16,6 +26,7 @@ enum HostMainFuncArgs {
     HOST_MAIN_FUNC_ARGS_COMMAND_QUEUE,
     HOST_MAIN_FUNC_ARGS_FENCE,
     HOST_MAIN_FUNC_ARGS_EVENT,
+    HOST_MAIN_FUNC_ARGS_EXECUTION_CONTEXT,
     HOST_MAIN_FUNC_ARGS_COUNT
 };
 
@@ -36,6 +47,8 @@ enum HostMainFuncArgs {
     ((numFuncArgs) - vpux::HostExec::HOST_MAIN_FUNC_ARGS_COUNT + vpux::HostExec::HOST_MAIN_FUNC_ARGS_FENCE)
 #define GET_ARG_INDEX_COMMAND_EVENT(numFuncArgs) \
     ((numFuncArgs) - vpux::HostExec::HOST_MAIN_FUNC_ARGS_COUNT + vpux::HostExec::HOST_MAIN_FUNC_ARGS_EVENT)
+#define GET_ARG_INDEX_COMMAND_EXECUTION_CONTEXT(numFuncArgs) \
+    ((numFuncArgs) - vpux::HostExec::HOST_MAIN_FUNC_ARGS_COUNT + vpux::HostExec::HOST_MAIN_FUNC_ARGS_EXECUTION_CONTEXT)
 
 #define HOST_EXEC_NETWORK_METADATA_NAME "HostExec.networkMetadata"
 #define HOST_EXEC_NUM_SUBGRAPH_ATTR_NAME "HostExec.numSubgraphs"
@@ -77,3 +90,33 @@ struct MemRefDesc {
 #define ENABLE_HOSTCOMPILE_PRINT_KERNEL_NAME "ENABLE_PRINT_HOSTCOMPILE_KERNEL_NAME"
 
 }  // namespace vpux::HostExec
+
+namespace llvm {
+template <>
+struct format_provider<vpux::HostExec::MemRefDesc> final {
+    static void format(const vpux::HostExec::MemRefDesc& desc, raw_ostream& os, StringRef) {
+        os << "data:" << llvm::format_hex(reinterpret_cast<uint64_t>(desc.data), 10, true);
+        os << ", offset: " << desc.offset;
+        os << ", elementByteSize: " << desc.elementByteSize;
+        os << ", dimCount: " << desc.dimCount;
+        os << ", networkArgIndex: " << desc.networkArgIndex;
+        os << ", sizes: [";
+        auto dimCount = std::min(desc.dimCount, vpux::HostExec::MaxStrideDim);
+        for (uint64_t i = 0; i < dimCount; ++i) {
+            os << desc.sizes[i];
+            if (i != dimCount - 1) {
+                os << ", ";
+            }
+        }
+        os << "]";
+        os << ", strides: [";
+        for (uint64_t i = 0; i < dimCount; ++i) {
+            os << desc.strides[i];
+            if (i != dimCount - 1) {
+                os << ", ";
+            }
+        }
+        os << "]";
+    }
+};
+}  // namespace llvm

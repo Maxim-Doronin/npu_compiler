@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -129,8 +129,13 @@ VPUMI40XX::ExecutableTaskOpInterface getBarrieredOp(VPURegMapped::TaskOpInterfac
 }
 
 size_t getMetadataSize(mlir::Operation* op, VPURegMapped::TaskType taskType, config::ArchKind archKind) {
+    const auto mapTaskType = [](VPURegMapped::TaskType regMappedType) -> VPU::TaskType {
+        return static_cast<VPU::TaskType>(
+                static_cast<std::underlying_type<VPURegMapped::TaskType>::type>(regMappedType));
+    };
+
     // TODO: E109456
-    VPU::TaskType vpuTaskType = VPURegMapped::TaskTypeMapper<VPURegMapped::TaskType>::map(taskType);
+    VPU::TaskType vpuTaskType = mapTaskType(taskType);
     switch (vpuTaskType) {
     case VPU::TaskType::ActKernelInvocation:
         return config::getConstraint(op, config::METADATA_MAX_KERNEL_INVOCATION_COUNT) / 2;

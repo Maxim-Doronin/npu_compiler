@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/init.hpp"
 #include "vpux/utils/IE/hash.hpp"
 #include "vpux/utils/core/array_ref.hpp"
@@ -37,6 +38,8 @@
 #include <ov_ops/nms_ie_internal.hpp>
 #include <ov_ops/rms.hpp>
 #include <ov_ops/rotary_positional_embeddings.hpp>
+
+#include <intel_npu/ops/flash_attention_tile.hpp>
 
 namespace vpux {
 namespace IE {
@@ -98,7 +101,8 @@ private:
     using Callback = mlir::Operation* (NGraphImporter::*)(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
 
     void extractPrecisionInfo(mlir::OpBuilder& moduleBuilder, const OrigNodePtr& origNode,
-                              const ImportNetworkConfig& importCfg, mlir::Operation* op);
+                              const ImportNetworkConfig& importCfg, mlir::Operation* op,
+                              std::optional<net::PrecisionRequirementOp>& precReqOp);
     static Callback getParser(const std::shared_ptr<ov::Node>& op);
     template <class NodeType>
     mlir::Operation* parseDispatch(mlir::OpBuilder& builder, const OrigNodePtr& origNode);
@@ -250,6 +254,7 @@ private:
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LessEqual>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::NotEqual>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset4::SoftPlus>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset9::SoftSign>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::Greater>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::GreaterEqual>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseAnd>& origNode);
@@ -306,6 +311,8 @@ private:
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::VariadicSplit>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder,
                                const std::shared_ptr<ov::opset13::ScaledDotProductAttention>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::intel_npu::op::FlashAttentionTile>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v16::Identity>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset10::IsNaN>& origNode);

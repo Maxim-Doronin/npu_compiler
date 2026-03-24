@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,6 +20,7 @@
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/Matchers.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -132,13 +133,24 @@ mlir::LogicalResult ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp origO
     VPUX_THROW_UNLESS(typeConverter != nullptr, "TypeConverter was not set");
 
     // Prior legality checks ensures all ops are defined and not null
-    auto filterOp = origOp.getFilter().getDefiningOp<IE::DequantizeOp>();
-    auto weightDeclareOp = filterOp.getInput().getDefiningOp<Const::DeclareOp>();
-    auto newCstDeclareOp = replaceConstDeclare(weightDeclareOp, rewriter);
-
-    auto newDequantizeOp = rewriter.create<IE::DequantizeOp>(origOp->getLoc(), newCstDeclareOp.getOutput(),
-                                                             filterOp.getDstElemTypeAttr());
-    rewriter.replaceOp(origOp, cloneConvolutionOp(rewriter, origOp, origOp.getInput(), newDequantizeOp));
+    auto dequantizeOp = origOp.getFilter().getDefiningOp<IE::DequantizeOp>();
+    IE::ConvolutionOp newConvOp = nullptr;
+    if (dequantizeOp != nullptr) {
+        auto weightDeclareOp = dequantizeOp.getInput().getDefiningOp<Const::DeclareOp>();
+        auto newCstDeclareOp = replaceConstDeclare(weightDeclareOp, rewriter);
+        auto newDequantizeOp = rewriter.create<IE::DequantizeOp>(origOp->getLoc(), newCstDeclareOp.getOutput(),
+                                                                 dequantizeOp.getDstElemTypeAttr());
+        newConvOp = cloneConvolutionOp(rewriter, origOp, origOp.getInput(), newDequantizeOp);
+    } else {
+        auto weightDeclareOp = origOp.getFilter().getDefiningOp<Const::DeclareOp>();
+        auto newCstDeclareOp = replaceConstDeclare(weightDeclareOp, rewriter);
+        newConvOp = cloneConvolutionOp(rewriter, origOp, origOp.getInput(), newCstDeclareOp.getOutput());
+    }
+    auto newConvOutType = mlir::cast<NDTypeInterface>(newConvOp.getOutput().getType());
+    auto newConvOutElemType = mlir::cast<NDTypeInterface>(origOp.getOutput().getType()).getElementType();
+    newConvOutType = newConvOutType.changeElemType(newConvOutElemType);
+    newConvOp->getResult(0).setType(newConvOutType);
+    rewriter.replaceOp(origOp, newConvOp);
 
     return mlir::success();
 }
@@ -254,26 +266,74 @@ void ConvertWeightsToI8Pass::safeRunOnFunc() {
 
     // We can't convert any operations that have operands with symmetric and asymmetric zero points, i.e.: IE::Add
     target.addDynamicallyLegalOp<IE::ConvolutionOp>([&](IE::ConvolutionOp op) {
+        if (!op.getInput() || !op.getFilter()) {
+            return true;
+        }
+
         auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType()).getElementType();
         // Input should be F16 and should not be FQ
         if (!inputType.isF16()) {
             return true;
         }
-        auto inputOp = op.getInput().getDefiningOp();
-        if (inputOp != nullptr && mlir::isa<IE::FakeQuantizeOp, IE::DequantizeOp>(inputOp)) {
+
+        // Input cannot be FakeQuantize or Dequantize
+        if (mlir::matchPattern(op.getInput(), mlir::m_Op<IE::FakeQuantizeOp>()) ||
+            mlir::matchPattern(op.getInput(), mlir::m_Op<IE::DequantizeOp>())) {
             return true;
         }
-        auto filterOp = op.getFilter().getDefiningOp<IE::DequantizeOp>();
-        if (filterOp == nullptr) {
+
+        auto filterOp = op.getFilter();
+        Const::DeclareOp weightDeclareOp = nullptr;
+
+        auto isEligibleQuantType = [](Const::DeclareOp constantOp) -> bool {
+            if (constantOp == nullptr) {
+                return false;
+            }
+            const auto outputType = mlir::cast<vpux::NDTypeInterface>(constantOp.getOutput().getType());
+            const auto outputElemType = outputType.getElementType();
+            if (const auto uniformQuantileType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(outputElemType)) {
+                auto outputQuantileType = uniformQuantileType.getQuantileType();
+                if (!outputQuantileType.isUnsignedInteger(8) && !outputQuantileType.isSignlessInteger(8)) {
+                    return false;
+                }
+            } else if (auto outputQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
+                auto outputStorageType = outputQType.getStorageType();
+                if (!outputStorageType.isUnsignedInteger(8) && !outputStorageType.isSignlessInteger(8)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        if (mlir::matchPattern(filterOp, mlir::m_Op<Const::DeclareOp>())) {
+            auto constantOp = filterOp.getDefiningOp<Const::DeclareOp>();
+            if (!isEligibleQuantType(constantOp)) {
+                return true;
+            }
+            weightDeclareOp = constantOp;
+        } else if (mlir::matchPattern(filterOp, mlir::m_Op<IE::DequantizeOp>(mlir::m_Op<Const::DeclareOp>()))) {
+            auto dequantOp = filterOp.getDefiningOp<IE::DequantizeOp>();
+            if (dequantOp == nullptr) {
+                return true;
+            }
+
+            auto innerConstOp = dequantOp.getInput().getDefiningOp<Const::DeclareOp>();
+            if (!isEligibleQuantType(innerConstOp)) {
+                return true;
+            }
+            weightDeclareOp = innerConstOp;
+        } else {
+            // Fallback case
             return true;
         }
-        auto weightDeclareOp = filterOp.getInput().getDefiningOp<Const::DeclareOp>();
+
         if (weightDeclareOp == nullptr) {
             return true;
         }
 
         return isLegalTensor(mlir::cast<vpux::NDTypeInterface>(weightDeclareOp.getOutput().getType()), moduleOp);
     });
+
     target.addLegalOp<Const::DeclareOp>();
     target.addLegalOp<IE::DequantizeOp>();
 

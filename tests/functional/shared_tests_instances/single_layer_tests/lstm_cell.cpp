@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -28,6 +29,11 @@ TEST_P(LSTMCellLayerTestCommon, NPU5010_HW) {
     rel_threshold = 0.06;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(LSTMCellLayerTestCommon, NPU5020_HW) {
+    rel_threshold = 0.06;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,7 +47,8 @@ void QDQOptimizationAggressivePass::safeRunOnModule() {
     mlir::OpPassManager dynamicPM("builtin.module");
     if (enableQDQOptimizationAggressive) {
         dynamicPM.addNestedPass<mlir::func::FuncOp>(IE::createAdjustFakeQdqParamsPass(_log));
-        dynamicPM.addNestedPass<mlir::func::FuncOp>(IE::createFuseFQAndMulPass(_fuseFQAndMulWithNonConstInput, _log));
+        dynamicPM.addNestedPass<mlir::func::FuncOp>(
+                IE::createFuseQuantizationMultiplyPass(_fuseFQAndMulWithNonConstInput, _log));
         dynamicPM.addNestedPass<mlir::func::FuncOp>(IE::createHandleU16FakeQuantizePass(_log));
     }
 

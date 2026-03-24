@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -658,4 +658,22 @@ func.func @MoveParallelAddOpsAfterConcat(%arg0: tensor<1x1x1537xf32>, %arg1: ten
     // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], [[INPUT_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x1537xf32>, tensor<1x1537xf32> -> tensor<1x2x1537xf32>
 
     // CHECK:       return [[ADD]] : tensor<1x2x1537xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NotMoveParallelAddOpsAfterConcatDueToInputShape
+// CHECK-SAME:      [[INPUT_0:%arg[0-9]]]: tensor<1x96x8x10xf32>,
+// CHECK-SAME:      [[INPUT_1:%arg[0-9]]]: tensor<1x96x8x10xf32>,
+// CHECK-SAME:      [[INPUT_2:%arg[0-9]]]: tensor<1x96x8x10xf32>
+func.func @NotMoveParallelAddOpsAfterConcatDueToInputShape(%arg0: tensor<1x96x8x10xf32>, %arg1: tensor<1x96x8x10xf32>, %arg2: tensor<1x96x8x10xf32>) -> tensor<1x192x8x10xf32> {
+    %0 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x96x8x10xf32>, tensor<1x96x8x10xf32> -> tensor<1x96x8x10xf32>
+    %1 = IE.Add(%arg1, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x96x8x10xf32>, tensor<1x96x8x10xf32> -> tensor<1x96x8x10xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x96x8x10xf32>, tensor<1x96x8x10xf32> -> tensor<1x192x8x10xf32>
+    return %2: tensor<1x192x8x10xf32>
+
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[INPUT_0]], [[INPUT_2]])
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[INPUT_1]], [[INPUT_2]])
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x96x8x10xf32>, tensor<1x96x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       return [[CONCAT]] : tensor<1x192x8x10xf32>
 }

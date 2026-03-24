@@ -1,12 +1,14 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/utils/core/dense_map.hpp"
+#include "vpux/utils/core/array_ref.hpp"
+
+#include <memory>
+#include <unordered_map>
 
 namespace vpux {
 namespace VPU {

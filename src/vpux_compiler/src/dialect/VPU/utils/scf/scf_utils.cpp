@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,8 +16,12 @@
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
+#include <mlir/Analysis/SliceAnalysis.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/AffineExpr.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Operation.h"
@@ -162,6 +166,17 @@ SCFTileInfo vpux::VPU::getWeightsTableSCFTile(mlir::Type origWeightsTableType, m
     weightsTableTile.offsets[0] = outputTile.offsets[Dims4D::Act::C.ind()];
     weightsTableTile.shape[0] = outputTile.shape[Dims4D::Act::C.ind()];
     return weightsTableTile;
+}
+
+mlir::AffineMap vpux::VPU::getAlignValUpMap(mlir::OpBuilder& builder, int64_t alignment) {
+    mlir::AffineExpr dimC;
+    bindDims(builder.getContext(), dimC);
+    auto alignmentExpr = builder.getAffineConstantExpr(alignment);
+    auto oneExpr = builder.getAffineConstantExpr(1);
+
+    // Expression: ((dimC + alignment - 1) floordiv alignment) * alignment
+    mlir::AffineExpr alignedExpr = ((dimC + alignmentExpr - oneExpr).floorDiv(alignmentExpr)) * alignmentExpr;
+    return mlir::AffineMap::get(1, 0, {alignedExpr}, builder.getContext());
 }
 
 std::pair<std::optional<mlir::Range>, std::optional<int64_t>> vpux::VPU::solutionForOutputRange(
@@ -314,120 +329,58 @@ bool vpux::VPU::isNceOpWithPadAttr(mlir::Operation* op) {
 }
 
 /**
- * @brief Decodes block position from string code into an array of TilePosition
+ * @brief Converts tensor.extract_slice operation to VPU.Slice operation
  *
- * Each digit in the string represents the TilePosition for one tiling axis:
- * 0 = MIDDLE, 1 = END, 2 = START, 3 = FULLBLK
+ * This function replaces a tensor.extract_slice operation with a VPU.Slice operation when
+ * all offsets, sizes, and strides are constant values and all strides equal 1.
  *
- * Example: "123" → [END, START, FULLBLK]
- *
- * @param blockPositionCode String of position digits (e.g. "22", "123", "01")
- * @return SmallVector<TilePosition> Positions for each tiling axis
+ * @param extractSliceOp The extract_slice operation to convert
+ * @param builder OpBuilder for creating new operations
+ * @param mapper IRMapping for operand lookup
+ * @return The newly created VPU.SliceOp or nullptr if conversion not applicable
  */
-static SmallVector<TilePosition> decodeBlockPositionFromString(llvm::StringRef blockPositionCode) {
-    SmallVector<TilePosition> positions;
-
-    for (char c : blockPositionCode) {
-        switch (c) {
-        case '0':
-            positions.push_back(TilePosition::MIDDLE);
-            break;
-        case '1':
-            positions.push_back(TilePosition::END);
-            break;
-        case '2':
-            positions.push_back(TilePosition::START);
-            break;
-        case '3':
-            positions.push_back(TilePosition::FULLBLK);
-            break;
-        default:
-            VPUX_THROW("Invalid block position code character: {0}", c);
-            break;
-        }
-    }
-
-    return positions;
-}
-
-/**
- * @brief Calculates the correct slice offsets for tensor.cast operations based on block position
- *
- * This function determines the appropriate offsets for slicing a tensor
- * Sophisticated offset calculation logic based on:
- *    1. Block position (START, MIDDLE, END) - can be inferred from function name or context
- *    2. Padding requirements for convolutions in different positions
- *    3. Alignment requirements for the target architecture
- *    4. Original tensor coordinates in the full image
- *
-
- * @param castOp The original tensor::CastOp operation (for context analysis)
- * @return SmallVector<int64_t> The calculated offsets for each dimension
- */
-SmallVector<int64_t> calculateSliceOffsets(mlir::tensor::CastOp castOp) {
-    auto inputType = mlir::cast<mlir::RankedTensorType>(castOp.getOperand().getType());
-
-    // Slice logic depends on block position, so we need to figure out where we are.
-    // Block position is encoded into parent func name,  for example: func.func private @main_func0_dims_CH_cases_22
-    // 22 means we are in the END position for both height and width dimensions.
-    auto parentFunc = castOp->getParentOfType<mlir::func::FuncOp>();
-    SmallVector<llvm::StringRef, 8> funcNameParts;
-    parentFunc.getName().split(funcNameParts, "_");
-    auto blockPositionCode = funcNameParts.empty() ? llvm::StringRef("") : funcNameParts.back();
-    auto blockPositions = decodeBlockPositionFromString(blockPositionCode);
-
-    // Make sure amount of block positions matches amount of dynamic dims in input tensor shape
-    size_t dynamicDimCount =
-            std::accumulate(inputType.getShape().begin(), inputType.getShape().end(), 0, [](size_t count, int64_t dim) {
-                return dim == mlir::ShapedType::kDynamic ? count + 1 : count;
-            });
-    if (blockPositions.size() != dynamicDimCount) {
-        VPUX_THROW("Mismatch in block positions: expected {0}, got {1}", dynamicDimCount, blockPositions.size());
-    }
-    auto blockPositionsIter = blockPositions.begin();
-    SmallVector<int64_t> offsets;
-    offsets.reserve(dynamicDimCount);
-
-    auto inputBounds = mlir::cast<vpux::Core::BoundedTensorType>(castOp.getOperand().getType()).getBounds().raw();
-    auto outputBounds = mlir::cast<vpux::Core::BoundedTensorType>(castOp.getResult().getType()).getBounds().raw();
-
-    for (const auto& indexedDim : inputType.getShape() | vpux::indexed) {
-        auto indx = indexedDim.index();
-        auto dim = indexedDim.value();
-        if (dim == mlir::ShapedType::kDynamic) {
-            // For dynamic dimensions, use simple heuristic:
-            // Offsets set to 0 for START and FULLBLK positions
-            // Offsets set to (inputBound[i] - outputBound[i]) for END position
-            // MIDDLE position offset calculation can be more complex depending on tile size and alignment, but we could
-            // try (inputBound[i] - outputBound[i])/2 as a placeholder for now
-            // Correct logic will be introduced later by:
-            // TRACK: E#191734
-            switch (*blockPositionsIter) {
-            case TilePosition::START:
-                // Offset is 0 for START position
-                offsets.push_back(0);
-                break;
-            case TilePosition::MIDDLE:
-                // Offset is calculated based on tile size - placeholder logic
-                offsets.push_back((inputBounds[indx] - outputBounds[indx]) / 2);
-                break;
-            case TilePosition::END:
-                // Max possible offset
-                offsets.push_back(inputBounds[indx] - outputBounds[indx]);
-                break;
-            case TilePosition::FULLBLK:
-                // No offset for FULLBLK
-                offsets.push_back(0);
-                break;
+static mlir::Operation* convertStaticExtractSliceToVPUSlice(mlir::tensor::ExtractSliceOp extractSliceOp,
+                                                            mlir::OpBuilder& builder, mlir::IRMapping& mapper) {
+    // Helper lambda to extract constant values from OpFoldResults
+    auto extractConstantValues = [&](ArrayRef<mlir::OpFoldResult> results) -> std::optional<SmallVector<int64_t>> {
+        SmallVector<int64_t> values;
+        for (auto result : results) {
+            auto intValue = mlir::getConstantIntValue(result);
+            if (!intValue.has_value()) {
+                return std::nullopt;
             }
-            blockPositionsIter = std::next(blockPositionsIter);
-        } else {
-            // For static dimensions, offset is always 0
-            offsets.push_back(0);
+            values.push_back(intValue.value());
         }
+        return values;
+    };
+
+    // Try to extract constant offsets and sizes
+    auto cstOffsets = extractConstantValues(extractSliceOp.getMixedOffsets());
+    if (!cstOffsets.has_value()) {
+        return nullptr;
     }
-    return offsets;
+
+    auto cstSizes = extractConstantValues(extractSliceOp.getMixedSizes());
+    if (!cstSizes.has_value()) {
+        return nullptr;
+    }
+
+    bool allStridesOne = llvm::all_of(extractSliceOp.getMixedStrides(), [](auto stride) {
+        auto intValue = mlir::getConstantIntValue(stride);
+        return intValue.has_value() && intValue.value() == 1;
+    });
+
+    if (!allStridesOne) {
+        return nullptr;
+    }
+
+    // Replace with VPU.Slice using static result type
+    auto sliceOp = builder.create<VPU::SliceOp>(
+            extractSliceOp.getLoc(), mapper.lookupOrDefault(extractSliceOp.getSource()),
+            builder.getI64ArrayAttr(cstOffsets.value()), builder.getI64ArrayAttr(cstSizes.value()));
+    return sliceOp;
 }
+
 /**
  * @brief Clones an MLIR operation with ability to remap operations
  * based on specific cases.
@@ -443,15 +396,8 @@ SmallVector<int64_t> calculateSliceOffsets(mlir::tensor::CastOp castOp) {
  */
 mlir::Operation* cloneOperationMapped(mlir::Operation& oldOp, mlir::OpBuilder& builder, mlir::IRMapping& mapper) {
     return llvm::TypeSwitch<mlir::Operation&, mlir::Operation*>(oldOp)
-            .Case<mlir::tensor::CastOp>([&](mlir::tensor::CastOp castOp) {
-                auto outputBounds =
-                        mlir::cast<vpux::Core::BoundedTensorType>(castOp.getResult().getType()).getBounds().raw();
-
-                // Use the dedicated function to calculate slice offsets
-                auto offsets = calculateSliceOffsets(castOp);
-
-                return builder.create<SliceOp>(castOp.getLoc(), mapper.lookup(castOp.getOperand()), offsets,
-                                               outputBounds);
+            .Case<mlir::tensor::ExtractSliceOp>([&](mlir::tensor::ExtractSliceOp extractSliceOp) {
+                return convertStaticExtractSliceToVPUSlice(extractSliceOp, builder, mapper);
             })
             .Default([&builder, &mapper](mlir::Operation& defaultOp) -> mlir::Operation* {
                 return builder.clone(defaultOp, mapper);
@@ -503,7 +449,17 @@ mlir::func::FuncOp vpux::VPU::cloneFuncOp(mlir::func::FuncOp originalFunc, const
                 mapper.map(operand, oldToNewMap[operand]);
             }
 
+            if (mlir::isa<mlir::tensor::CastOp>(oldOp)) {
+                auto srcOperation = oldOp.getOperand(0).getDefiningOp();
+                if (srcOperation != nullptr && mlir::isa<mlir::tensor::ExtractSliceOp, VPU::SliceOp>(srcOperation)) {
+                    oldToNewMap[oldOp.getResult(0)] = mapper.lookupOrDefault(oldOp.getOperand(0));
+                    continue;
+                }
+            }
+
             auto newOp = cloneOperationMapped(oldOp, builder, mapper);
+            VPUX_THROW_WHEN(newOp == nullptr, "Cloning operation {0} failed", oldOp.getName());
+
             if (mlir::isa<VPU::VPUDialect>(newOp->getDialect())) {
                 vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::SHAPE);
             }
@@ -516,8 +472,12 @@ mlir::func::FuncOp vpux::VPU::cloneFuncOp(mlir::func::FuncOp originalFunc, const
                 sliceOp.setStaticSizesAttr(getIntArrayAttr(newOp->getContext(), newShape));
             }
 
-            for (size_t i = 0; i < oldOp.getNumResults(); ++i) {
-                oldToNewMap[oldOp.getResult(i)] = newOp->getResult(i);
+            // Map results only if we didn't already map them (e.g., in extract_slice handling)
+            bool alreadyMapped = oldOp.getNumResults() > 0 && oldToNewMap.contains(oldOp.getResult(0));
+            if (!alreadyMapped) {
+                for (auto [oldResult, newResult] : llvm::zip(oldOp.getResults(), newOp->getResults())) {
+                    oldToNewMap[oldResult] = newResult;
+                }
             }
         }
     }
@@ -525,8 +485,8 @@ mlir::func::FuncOp vpux::VPU::cloneFuncOp(mlir::func::FuncOp originalFunc, const
     SmallVector<mlir::Type> newReturnTypes;
     for (auto& block : newFunc.getBody()) {
         auto terminatorOp = block.getTerminator();
-        for (auto operands : terminatorOp->getOperands()) {
-            newReturnTypes.push_back(operands.getType());
+        for (auto operand : terminatorOp->getOperands()) {
+            newReturnTypes.push_back(operand.getType());
         }
     }
 
@@ -789,47 +749,22 @@ SmallVector<mlir::Value> vpux::VPU::applyIndexBacktracking(mlir::tensor::InsertS
 
         auto upperBound = parentOp.getUpperBound();
         auto stepSize = parentOp.getStep();
+        mlir::AffineExpr s0, s1;
+        bindSymbols(localBuilder.getContext(), s0, s1);
+        mlir::AffineExpr subExpr = s0 - s1;
+        auto affineMap = mlir::AffineMap::get(0, 2, {subExpr}, localBuilder.getContext());
+        // Apply the affine map to compute upperBound - stepSize
+        auto lastTileOffset = mlir::affine::makeComposedFoldedAffineApply(
+                localBuilder, takeOpLoc(insertionPoint, "last_tile_offset"), affineMap, {upperBound, stepSize});
+        // take min between loopIv and adjustedOffset using affine exprs
+        mlir::AffineExpr d0;
+        bindDims(localBuilder.getContext(), d0);
+        auto minAffineMap = mlir::AffineMap::get(1, 1, {d0, s0}, localBuilder.getContext());
+        auto newOffset = mlir::affine::makeComposedFoldedAffineMin(
+                localBuilder, takeOpLoc(insertionPoint, "new_offset"), minAffineMap, {loopIv, lastTileOffset});
+        auto newOffsetValue = mlir::getValueOrCreateConstantIndexOp(
+                localBuilder, takeOpLoc(insertionPoint, "adjusted_offset_val"), newOffset);
 
-        auto nextOffset =
-                localBuilder.create<mlir::arith::AddIOp>(takeOpLoc(insertionPoint, "next_offset"), loopIv, stepSize);
-        auto exceedsBound = localBuilder.create<mlir::arith::CmpIOp>(
-                takeOpLoc(insertionPoint, "exceeds_bound"), mlir::arith::CmpIPredicate::sgt, nextOffset, upperBound);
-        auto ifExceedsBound = localBuilder.create<mlir::scf::IfOp>(
-                takeOpLoc(insertionPoint, "if_exceeds_bound"), llvm::ArrayRef<mlir::Type>{localBuilder.getIndexType()},
-                exceedsBound,
-                /*withElseRegion=*/true);
-
-        {
-            // create affine map that takes the step size and upper bound and return upper_bound - step_size
-
-            mlir::OpBuilder thenBuilder = ifExceedsBound.getThenBodyBuilder();
-            // Create affine expression: s0 - s1 (upperBound - stepSize)
-            mlir::AffineExpr s0, s1;
-            bindSymbols(thenBuilder.getContext(), s0, s1);
-            mlir::AffineExpr subExpr = s0 - s1;
-
-            // Create the affine map with 0 dimensions and 2 symbols
-            auto affineMap = mlir::AffineMap::get(0, 2, {subExpr}, thenBuilder.getContext());
-
-            // Apply the affine map to compute upperBound - stepSize
-            auto adjustedOffset = mlir::affine::makeComposedFoldedAffineApply(
-                    thenBuilder, appendLoc(ifExceedsBound->getLoc(), "adjusted_offset"), affineMap,
-                    {upperBound, stepSize});
-
-            // Convert to a concrete value if needed
-            auto adjustedOffsetVal = mlir::getValueOrCreateConstantIndexOp(
-                    thenBuilder, appendLoc(ifExceedsBound->getLoc(), "adjusted_offset_val"), adjustedOffset);
-
-            thenBuilder.create<mlir::scf::YieldOp>(appendLoc(ifExceedsBound->getLoc(), "yield"),
-                                                   mlir::ValueRange{adjustedOffsetVal});
-        }
-        {
-            mlir::OpBuilder elseBuilder = ifExceedsBound.getElseBodyBuilder();
-            elseBuilder.create<mlir::scf::YieldOp>(appendLoc(ifExceedsBound->getLoc(), "yield"),
-                                                   mlir::ValueRange{loopIv});
-        }
-
-        auto newOffsetValue = ifExceedsBound.getResult(0);
         replaceUsesOfOpWithDominanceCheck(loopIv, newOffsetValue);
         replaceUsesOfOpWithDominanceCheck(offsetValue, newOffsetValue);
         newOffsets.push_back(newOffsetValue);
@@ -928,38 +863,45 @@ mlir::Value getInputOperand(mlir::tensor::PadOp padOp, mlir::OpBuilder builder) 
     return padOp.getSource();
 }
 
+bool isPadInsideSpatiallySegmentedForallLoop(mlir::tensor::PadOp padOp) {
+    if (padOp->getParentOfType<mlir::scf::ForallOp>() == nullptr) {
+        return false;
+    }
+
+    // Expecting scf.forall ... { (tensor.extract_slice -> VPU.Copy ->) tensor.pad -> compute_op } pattern
+    // tensor.extract_slice -> VPU.Copy sequence is optional; if it does not exist, the input is not segmented
+    // in any way for multiclustering
+    auto copyOp = padOp.getSource().getDefiningOp<VPU::CopyOp>();
+    if (copyOp == nullptr) {
+        return false;
+    }
+
+    auto extractSliceOp = copyOp.getInput().getDefiningOp<mlir::tensor::ExtractSliceOp>();
+    if (extractSliceOp == nullptr) {
+        return false;
+    }
+
+    const auto offsets = extractSliceOp.getMixedOffsets();
+    // Check that there is no segmentation along any spatial dimension
+    return std::any_of(offsets.begin() + Dims4D::Act::getSpatialDim(0).ind(), offsets.end(),
+                       [](mlir::OpFoldResult ofr) {
+                           return mlir::isa_and_nonnull<mlir::Value>(ofr);
+                       });
+}
+
 void vpux::VPU::restorePaddingAttribute(mlir::Operation* region, Logger log) {
     SmallVector<std::pair<mlir::Operation*, mlir::tensor::PadOp>> worklist;
     region->walk([&](mlir::tensor::PadOp padOp) {
+        if (isPadInsideSpatiallySegmentedForallLoop(padOp)) {
+            return mlir::WalkResult::advance();
+        }
+
         for (auto user : padOp->getUsers()) {
             if (VPU::isNceOpWithPadAttr(user)) {
                 worklist.push_back({user, padOp});
-            } else if (auto extractSlice = mlir::dyn_cast_or_null<mlir::tensor::ExtractSliceOp>(user)) {
-                if (user->getParentOfType<mlir::scf::ForallOp>() == nullptr) {
-                    continue;
-                }
-                auto offsets = extractSlice.getMixedOffsets();
-                bool isSpatialMC = false;
-                for (auto [idx, offset] : enumerate(offsets)) {
-                    if (!mlir::isa_and_nonnull<mlir::Value>(offset)) {
-                        continue;
-                    }
-
-                    if (idx > static_cast<size_t>(Dims4D::Act::C.ind())) {
-                        isSpatialMC = true;
-                        break;
-                    }
-                }
-
-                if (!isSpatialMC) {
-                    for (auto extractUser : user->getUsers()) {
-                        if (VPU::isNceOpWithPadAttr(extractUser)) {
-                            worklist.push_back({extractUser, padOp});
-                        }
-                    }
-                }
             }
         }
+        return mlir::WalkResult::advance();
     });
 
     OpChainAnalysis opChainAnalysis;
@@ -1011,6 +953,208 @@ void vpux::VPU::restorePaddingAttribute(mlir::Operation* region, Logger log) {
         }
         if (padOp->getUsers().empty()) {
             padOp.erase();
+        }
+    }
+}
+
+bool vpux::VPU::isDependentOnForallIv(mlir::OpFoldResult ofr, mlir::scf::ForallOp forallOp) {
+    if (mlir::getConstantIntValue(ofr).has_value()) {
+        return false;
+    }
+
+    auto value = mlir::dyn_cast_if_present<mlir::Value>(ofr);
+    if (value == nullptr) {
+        return false;
+    }
+
+    auto ivs = forallOp.getInductionVars();
+    if (llvm::is_contained(ivs, value)) {
+        return true;
+    }
+
+    OpChainAnalysis analysis;
+    llvm::SmallSetVector<mlir::Value, DEFAULT_ARG_SET_SIZE> blockOperands;
+    analysis.traverseAndGetBlockArgs(value, blockOperands);
+
+    return llvm::any_of(blockOperands, [&](mlir::Value operand) {
+        return llvm::is_contained(ivs, operand);
+    });
+}
+
+llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement> vpux::VPU::analyzeSkipConnectionsForTiling(
+        const llvm::SetVector<mlir::Operation*>& allOpsToFuse, const TilingOperationStorage::UPtr& tilingStorage,
+        const Logger& log) {
+    // At this stage, we analyze skip connections and record, for each skip-source op, which user branch
+    // requires the largest tile. This information is used later in tile+fuse decisions.
+    // If fusion reaches the skip-source through:
+    //   - the user with the largest tile, we allow fusion as usual;
+    //   - a user with a smaller tile, we do not fuse and only remember the slice op in
+    //     `futureReplacement` for deferred replacement.
+    llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement> skipConnectionMap;
+    if (tilingStorage == nullptr) {
+        log.warning("Could not find tiling storage for the best VF case. Vertical fusion will be applied without skip "
+                    "connection support.\n");
+        return skipConnectionMap;
+    } else {
+        auto allOps = tilingStorage->getAll();
+
+        // Analyze tiling requirements for each skip connection branch
+        log.debug("Analyzing skip connections to determine tile requirements for each branch...");
+
+        for (auto op : allOpsToFuse) {
+            if (op->hasOneUse()) {
+                continue;
+            }
+
+            auto allUsesSameOwner = llvm::all_of(op->getUses(), [&](mlir::OpOperand& use) {
+                return op->getUses().begin()->getOwner() == use.getOwner();
+            });
+            if (allUsesSameOwner) {
+                continue;
+            }
+            log.debug("Skip connection SourceOp: {0}", op->getName());
+
+            SmallVector<mlir::Operation*> users;
+            users.reserve(static_cast<size_t>(std::distance(op->user_begin(), op->user_end())));
+            llvm::copy_if(op->getUsers(), std::back_inserter(users), [&](mlir::Operation* user) {
+                return allOpsToFuse.contains(user);
+            });
+
+            if (users.size() <= 1) {
+                continue;
+            }
+
+            // Structure to store tile info for comparison
+            std::pair<size_t, Shape> userWithBiggestTiles{0, Shape{}};
+            bool allUsersWithTheSameTileSize = true;
+            for (size_t userIdx = 0; userIdx < users.size(); ++userIdx) {
+                auto user = users[userIdx];
+                log.debug("Branch[{0}]: {1}", userIdx, user->getName());
+
+                auto tilingContainer = allOps[user];
+
+                // Find which input of this user comes from skipOp
+                // Find which input of this user comes from skipOp
+                const auto operandsWithIdx = llvm::enumerate(user->getOperands());
+                auto skipInputIt = llvm::find_if(operandsWithIdx, [&](const auto& item) {
+                    return item.value().getDefiningOp() == op;
+                });
+
+                if (skipInputIt == operandsWithIdx.end()) {
+                    log.warning("Could not find input from skip connection!\n");
+                    continue;
+                }
+
+                const auto inputIdxFromSkipOp = (*skipInputIt).index();
+
+                // NOTE: Here we compare only the very first tile (tile index 0) for each branch.
+                // In the general case, each branch has multiple tiles, and a stricter analysis would
+                // compare tile-by-tile across branches (0 with 0, 1 with 1, etc.).
+                // For now, we use only tile #0 as a representative and infer which branch needs a
+                // larger tile from that single comparison, assuming the remaining tiles correlate
+                // in size with the first one.
+                auto tile0 = tilingContainer.find(0);
+                if (tile0 == tilingContainer.end()) {
+                    log.warning("Could not find tile 0!\n");
+                    continue;
+                }
+                const auto& inputTiling = tile0->second.first;
+                const auto& skipOpInputTiling = inputTiling.tiles[inputIdxFromSkipOp];
+
+                if (userWithBiggestTiles.second.empty()) {
+                    userWithBiggestTiles.first = userIdx;
+                    userWithBiggestTiles.second = skipOpInputTiling.shape;
+                    continue;
+                }
+                if (skipOpInputTiling.shape.totalSize() == userWithBiggestTiles.second.totalSize()) {
+                    continue;
+                }
+                allUsersWithTheSameTileSize = false;
+                if (skipOpInputTiling.shape.totalSize() > userWithBiggestTiles.second.totalSize()) {
+                    userWithBiggestTiles.first = userIdx;
+                    userWithBiggestTiles.second = skipOpInputTiling.shape;
+                }
+            }
+            // Print which user has the biggest tiles for this skip connection
+            log.debug("Branch[{0}] requires the biggest tile size of {1} (total size: {2})", userWithBiggestTiles.first,
+                      userWithBiggestTiles.second, userWithBiggestTiles.second.totalSize());
+
+            VPU::PendingSliceReplacement futureReplacement{};
+            futureReplacement.allUsersWithTheSameTileSize = allUsersWithTheSameTileSize;
+            futureReplacement.biggestUserOp = users[userWithBiggestTiles.first];
+            skipConnectionMap[op] = std::move(futureReplacement);
+        }
+    }
+    return skipConnectionMap;
+}
+
+void vpux::VPU::applyDeferredSliceReplacements(
+        mlir::RewriterBase& builder,
+        const llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement>& skipConnectionMap, const Logger& log) {
+    mlir::OpBuilder::InsertionGuard insertionGuard(builder);
+
+    OpChainAnalysis opChainAnalysis;
+
+    llvm::DenseMap<mlir::Value, SmallVector<int64_t>> valueMap;
+    const auto multipleFunc = [&opChainAnalysis, &valueMap](int64_t value0, auto value1) -> int64_t {
+        auto intVal1List = opChainAnalysis.getOpFoldResultValue(value1, valueMap);
+
+        VPUX_THROW_WHEN(!intVal1List.has_value() || intVal1List.value().empty(),
+                        "Failed to get integer value from OpFoldResult");
+        return value0 * intVal1List.value().front();
+    };
+
+    for (const auto& mapEntry : skipConnectionMap) {
+        const auto& deferredReplacement = mapEntry.second;
+        if (!deferredReplacement.biggestUserTiled && !deferredReplacement.allUsersWithTheSameTileSize) {
+            continue;
+        }
+
+        auto tiledValue = deferredReplacement.tiledValue;
+        auto biggestSliceOp = deferredReplacement.biggestTileExtractSlice;
+        auto biggestSliceOffsets = biggestSliceOp.getMixedOffsets();
+
+        auto biggestSliceSizes = biggestSliceOp.getMixedSizes();
+        auto biggestSliceTotalSize =
+                std::accumulate(biggestSliceSizes.begin(), biggestSliceSizes.end(), 1LL, multipleFunc);
+
+        builder.setInsertionPointAfterValue(tiledValue);
+        for (auto sliceToReplace : deferredReplacement.relatedExtractSlices) {
+            auto currentSliceSizes = sliceToReplace.getMixedSizes();
+            auto currentSliceTotalSize =
+                    std::accumulate(currentSliceSizes.begin(), currentSliceSizes.end(), 1LL, multipleFunc);
+
+            if (biggestSliceTotalSize == currentSliceTotalSize) {
+                log.debug("Current slice has the same total size as biggest slice, replacing with biggest slice result "
+                          "directly");
+                builder.replaceOp(sliceToReplace, tiledValue);
+                continue;
+            }
+            VPUX_THROW_UNLESS(biggestSliceTotalSize > currentSliceTotalSize,
+                              "Biggest slice total size should be greater than current slice total size to handle skip "
+                              "connection properly");
+
+            auto currentSliceOffsets = sliceToReplace.getMixedOffsets();
+
+            SmallVector<mlir::OpFoldResult> adjustedOffsets;
+            adjustedOffsets.reserve(currentSliceOffsets.size());
+
+            for (size_t i = 0; i < currentSliceOffsets.size(); ++i) {
+                mlir::AffineExpr d0, d1;
+                bindDims(builder.getContext(), d0, d1);
+                auto offsetMap = mlir::AffineMap::get(2, 0, {d0 - d1}, builder.getContext());
+                auto adjustedOffset = mlir::affine::makeComposedFoldedAffineApply(
+                        builder, sliceToReplace.getLoc(), offsetMap, {currentSliceOffsets[i], biggestSliceOffsets[i]});
+                adjustedOffsets.push_back(adjustedOffset);
+            }
+
+            auto newSliceOp = builder.create<mlir::tensor::ExtractSliceOp>(
+                    sliceToReplace.getLoc(), tiledValue, adjustedOffsets, sliceToReplace.getMixedSizes(),
+                    sliceToReplace.getMixedStrides());
+
+            newSliceOp->setAttr(SKIP_CONNECTION_SLICE_MARKER_ATTR_NAME, builder.getUnitAttr());
+            builder.replaceAllUsesWith(sliceToReplace.getResult(), newSliceOp.getResult());
+            builder.eraseOp(sliceToReplace);
         }
     }
 }

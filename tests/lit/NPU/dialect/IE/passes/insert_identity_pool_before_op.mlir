@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @SkipLReluWithNCEProducer
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>
 func.func @SkipLReluWithNCEProducer(%arg0: tensor<1x128x2x32xf16>) -> tensor<1x128x2x32xf16> {
     %MAX_POOL = IE.MaxPool(%arg0) {
         kernel_size = [3, 3],
@@ -23,7 +24,7 @@ func.func @SkipLReluWithNCEProducer(%arg0: tensor<1x128x2x32xf16>) -> tensor<1x1
 
     return %LRELU : tensor<1x128x2x32xf16>
 
-    // CHECK:   [[MAX_POOL:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:   [[MAX_POOL:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [3, 3],
     // CHECK-SAME:      pads_begin = [1, 1],
     // CHECK-SAME:      pads_end = [1, 1],
@@ -89,13 +90,14 @@ func.func @InsertAvgPoolBetweenMaxPoolAndClamp(%arg0: tensor<1x16x4x4xf16>) -> t
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToConcatAndLRelu
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>, [[ARG_1:%[^:]+]]: tensor<1x128x1x32xf16>
 func.func @InsertAvgPoolToConcatAndLRelu(%arg0: tensor<1x128x2x32xf16>, %arg1: tensor<1x128x1x32xf16>) -> tensor<1x128x3x32xf16> {
     %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 0, 2, 0]]} : tensor<1x128x2x32xf16>, tensor<1x128x1x32xf16> -> tensor<1x128x3x32xf16>
     %1 = IE.LeakyRelu(%0) {negative_slope = 0.000000e+00 : f64} : tensor<1x128x3x32xf16> -> tensor<1x128x3x32xf16>
 
     return %1 : tensor<1x128x3x32xf16>
 
-    // CHECK:   [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0]]} : tensor<1x128x2x32xf16>, tensor<1x128x1x32xf16> -> tensor<1x128x3x32xf16>
+    // CHECK:   [[VAL_0:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0]]} : tensor<1x128x2x32xf16>, tensor<1x128x1x32xf16> -> tensor<1x128x3x32xf16>
     // CHECK:   [[VAL_1:%.+]] = IE.AvgPool([[VAL_0]]) {
     // CHECK-SAME:      exclude_pads,
     // CHECK-SAME:      kernel_size = [1, 1],
@@ -111,13 +113,14 @@ func.func @InsertAvgPoolToConcatAndLRelu(%arg0: tensor<1x128x2x32xf16>, %arg1: t
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToConcatAndClamp
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>, [[ARG_1:%[^:]+]]: tensor<1x128x1x32xf16>
 func.func @InsertAvgPoolToConcatAndClamp(%arg0: tensor<1x128x2x32xf16>, %arg1: tensor<1x128x1x32xf16>) -> tensor<1x128x3x32xf16> {
     %0 = IE.Concat(%arg0, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 0, 2, 0]]} : tensor<1x128x2x32xf16>, tensor<1x128x1x32xf16> -> tensor<1x128x3x32xf16>
     %1 = IE.Clamp(%0) {max = 0.700000e+00 : f64, min = 0.100000e+00 : f64} : tensor<1x128x3x32xf16> -> tensor<1x128x3x32xf16>
 
     return %1 : tensor<1x128x3x32xf16>
 
-    // CHECK:   [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0]]} : tensor<1x128x2x32xf16>, tensor<1x128x1x32xf16> -> tensor<1x128x3x32xf16>
+    // CHECK:   [[VAL_0:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 2, 0]]} : tensor<1x128x2x32xf16>, tensor<1x128x1x32xf16> -> tensor<1x128x3x32xf16>
     // CHECK:   [[VAL_1:%.+]] = IE.AvgPool([[VAL_0]]) {
     // CHECK-SAME:      exclude_pads,
     // CHECK-SAME:      kernel_size = [1, 1],
@@ -133,6 +136,7 @@ func.func @InsertAvgPoolToConcatAndClamp(%arg0: tensor<1x128x2x32xf16>, %arg1: t
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToSplitAndLRelu
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>
 func.func @InsertAvgPoolToSplitAndLRelu(%arg0: tensor<1x128x2x32xf16>) -> (tensor<1x64x2x32xf16>, tensor<1x64x2x32xf16>) {
     %0:2 = IE.Split(%arg0) {axis_value = 1, num_splits = 2} : tensor<1x128x2x32xf16> -> tensor<1x64x2x32xf16>, tensor<1x64x2x32xf16>
     %1 = IE.LeakyRelu(%0#0) {negative_slope = 0.000000e+00 : f64} : tensor<1x64x2x32xf16> -> tensor<1x64x2x32xf16>
@@ -140,7 +144,7 @@ func.func @InsertAvgPoolToSplitAndLRelu(%arg0: tensor<1x128x2x32xf16>) -> (tenso
 
     return %1, %2 : tensor<1x64x2x32xf16> , tensor<1x64x2x32xf16>
 
-    // CHECK:   [[VAL_0:%.+]]:2 = IE.Split(%arg0) {axis_value = 1 : i64, num_splits = 2 : i64} : tensor<1x128x2x32xf16> -> tensor<1x64x2x32xf16>, tensor<1x64x2x32xf16>
+    // CHECK:   [[VAL_0:%.+]]:2 = IE.Split([[ARG_0]]) {axis_value = 1 : i64, num_splits = 2 : i64} : tensor<1x128x2x32xf16> -> tensor<1x64x2x32xf16>, tensor<1x64x2x32xf16>
     // CHECK:   [[VAL_1:%.+]] = IE.AvgPool([[VAL_0]]#0) {
     // CHECK-SAME:      exclude_pads,
     // CHECK-SAME:      kernel_size = [1, 1],
@@ -166,6 +170,7 @@ func.func @InsertAvgPoolToSplitAndLRelu(%arg0: tensor<1x128x2x32xf16>) -> (tenso
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToLReluWhenProducerHasPost
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x25x135x240xf16>
 func.func @InsertAvgPoolToLReluWhenProducerHasPost(%arg0: tensor<1x25x135x240xf16>) -> tensor<1x188x135x240xf16> {
     %cst = const.Declare tensor<188x25x3x3xf16> = dense<7.558590e-01> : tensor<188x25x3x3xf16>
     %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1],
@@ -176,7 +181,7 @@ func.func @InsertAvgPoolToLReluWhenProducerHasPost(%arg0: tensor<1x25x135x240xf1
     return %1 : tensor<1x188x135x240xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<188x25x3x3xf16> = dense<7.558590e-01> : tensor<188x25x3x3xf16>
-    // CHECK:   [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1],
+    // CHECK:   [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1],
     // CHECK-SAME:          post_op = #IE.LeakyRelu<negative_slope = 0.199951171875 : f64>, strides = [1, 1]} :
     // CHECK-SAME:          tensor<1x25x135x240xf16>, tensor<188x25x3x3xf16> -> tensor<1x188x135x240xf16>
     // CHECK:   [[AVG:%.+]] = IE.AvgPool([[CONV]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} :
@@ -188,13 +193,14 @@ func.func @InsertAvgPoolToLReluWhenProducerHasPost(%arg0: tensor<1x25x135x240xf1
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToReshapeAndClamp
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>
 func.func @InsertAvgPoolToReshapeAndClamp(%arg0: tensor<1x128x2x32xf16>) -> tensor<1x2x32x128xf16> {
     %0 = IE.Reshape(%arg0) {shape_value = [1, 2, 32, 128]} : tensor<1x128x2x32xf16> -> tensor<1x2x32x128xf16>
     %1 = IE.Clamp(%0) {max = 0.700000e+00 : f64, min = 0.100000e+00 : f64} : tensor<1x2x32x128xf16> -> tensor<1x2x32x128xf16>
 
     return %1 : tensor<1x2x32x128xf16>
 
-    // CHECK:   [[VAL_0:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 2, 32, 128]} : tensor<1x128x2x32xf16> -> tensor<1x2x32x128xf16>
+    // CHECK:   [[VAL_0:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 2, 32, 128]} : tensor<1x128x2x32xf16> -> tensor<1x2x32x128xf16>
     // CHECK:   [[VAL_1:%.+]] = IE.AvgPool([[VAL_0]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x2x32x128xf16> -> tensor<1x2x32x128xf16>
     // CHECK:   [[VAL_2:%.+]] = IE.Clamp([[VAL_1]]) {max = 0.69999999999999996 : f64, min = 1.000000e-01 : f64} : tensor<1x2x32x128xf16> -> tensor<1x2x32x128xf16>
 
@@ -204,12 +210,13 @@ func.func @InsertAvgPoolToReshapeAndClamp(%arg0: tensor<1x128x2x32xf16>) -> tens
 // -----
 
 // CHECK-LABEL: @DoNotInsertAvgPoolToAddAndClamp
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>, [[ARG_1:%[^:]+]]: tensor<1x128x2x32xf16>
 func.func @DoNotInsertAvgPoolToAddAndClamp(%arg0: tensor<1x128x2x32xf16>, %arg1: tensor<1x128x2x32xf16>) -> tensor<1x128x2x32xf16> {
     %0 = IE.Add(%arg0, %arg1) { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : tensor<1x128x2x32xf16>, tensor<1x128x2x32xf16> -> tensor<1x128x2x32xf16>
     %1 = IE.Clamp(%0) {max = 0.700000e+00 : f64, min = 0.100000e+00 : f64} : tensor<1x128x2x32xf16> -> tensor<1x128x2x32xf16>
     return %1 : tensor<1x128x2x32xf16>
 
-    // CHECK:   [[VAL_0:%.+]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x2x32xf16>, tensor<1x128x2x32xf16> -> tensor<1x128x2x32xf16>
+    // CHECK:   [[VAL_0:%.+]] = IE.Add([[ARG_0]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x2x32xf16>, tensor<1x128x2x32xf16> -> tensor<1x128x2x32xf16>
     // CHECK:   [[VAL_1:%.+]] = IE.Clamp([[VAL_0]]) {max = 0.69999999999999996 : f64, min = 1.000000e-01 : f64} : tensor<1x128x2x32xf16> -> tensor<1x128x2x32xf16>
     // CHECK:   return [[VAL_1]] : tensor<1x128x2x32xf16>
 }
@@ -217,6 +224,7 @@ func.func @DoNotInsertAvgPoolToAddAndClamp(%arg0: tensor<1x128x2x32xf16>, %arg1:
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToFakeQuantizeAndLeakyRelu
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16>
 func.func @InsertAvgPoolToFakeQuantizeAndLeakyRelu(%arg0: tensor<1x16x8x8xf16>) -> tensor<1x16x8x8xf16> {
     %cst = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
     %cst_0 = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
@@ -227,7 +235,7 @@ func.func @InsertAvgPoolToFakeQuantizeAndLeakyRelu(%arg0: tensor<1x16x8x8xf16>) 
 
     // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<7.558590e-01> : tensor<1x1x1x1xf16>
     // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
-    // CHECK:     [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
+    // CHECK:     [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_0]], [[CST]], [[CST_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x16x8x8xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x8x8xf16>
     // CHECK:     [[AVG_POOL:%.+]] = IE.AvgPool([[FQ]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x8x8xf16> -> tensor<1x16x8x8xf16>
     // CHECK:     [[LEAKY_RELU:%.+]] = IE.LeakyRelu([[AVG_POOL]]) {negative_slope = 1.000000e-01 : f64} : tensor<1x16x8x8xf16> -> tensor<1x16x8x8xf16>
 
@@ -237,6 +245,7 @@ func.func @InsertAvgPoolToFakeQuantizeAndLeakyRelu(%arg0: tensor<1x16x8x8xf16>) 
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolToAddWithMultipleUsersAndRelu
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x4x4xf16>, [[ARG_1:%[^:]+]]: tensor<1x128x4x4xf16>
 func.func @InsertAvgPoolToAddWithMultipleUsersAndRelu(%arg0: tensor<1x128x4x4xf16>, %arg1: tensor<1x128x4x4xf16>) -> tensor<1x128x4x4xf16> {
     %add0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     %relu = IE.ReLU(%add0) : tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
@@ -244,7 +253,7 @@ func.func @InsertAvgPoolToAddWithMultipleUsersAndRelu(%arg0: tensor<1x128x4x4xf1
 
     return %add1 : tensor<1x128x4x4xf16>
 
-    // CHECK:    [[ADD0:%.+]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
+    // CHECK:    [[ADD0:%.+]] = IE.Add([[ARG_0]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     // CHECK:    [[AVGPOOL:%.+]] = IE.AvgPool([[ADD0]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     // CHECK:    [[RELU:%.+]] = IE.ReLU([[AVGPOOL]]) : tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     // CHECK:    [[ADD1:%.+]] = IE.Add([[ADD0]], [[RELU]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
@@ -258,6 +267,7 @@ func.func @InsertAvgPoolToAddWithMultipleUsersAndRelu(%arg0: tensor<1x128x4x4xf1
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 // CHECK-LABEL: @SkipMemPermuteWithNCE
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16, {order = #NHWC}>
 func.func @SkipMemPermuteWithNCE(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>)
     -> tensor<1x32x16x64xf16, {order = #NHWC}> {
     %POOLING = IE.MaxPool(%arg0) {
@@ -275,7 +285,7 @@ func.func @SkipMemPermuteWithNCE(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>)
 
     return %PERMUTE : tensor<1x32x16x64xf16, {order = #NHWC}>
 
-    // CHECK:   [[POOLING:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:   [[POOLING:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [5, 5],
     // CHECK-SAME:      pads_begin = [2, 2],
     // CHECK-SAME:      pads_end = [2, 2],
@@ -299,6 +309,7 @@ func.func @SkipMemPermuteWithNCE(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>)
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 // CHECK-LABEL: @SkipMemPermuteWithNCHWInput
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16>
 func.func @SkipMemPermuteWithNCHWInput(%arg0: tensor<1x16x32x64xf16>)
     -> tensor<1x32x16x64xf16, {order = #NHWC}> {
     %PERMUTE = IE.MemPermute(%arg0) {
@@ -308,7 +319,7 @@ func.func @SkipMemPermuteWithNCHWInput(%arg0: tensor<1x16x32x64xf16>)
 
     return %PERMUTE : tensor<1x32x16x64xf16, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute(%arg0) {
+    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute([[ARG_0]]) {
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NCWH
     // CHECK-SAME:  } : tensor<1x16x32x64xf16>
@@ -323,6 +334,7 @@ func.func @SkipMemPermuteWithNCHWInput(%arg0: tensor<1x16x32x64xf16>)
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 // CHECK-LABEL: @SkipMemPermuteWithMisalignedChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x32x64xf16, {order = #NHWC}>
 func.func @SkipMemPermuteWithMisalignedChannels(%arg0: tensor<1x3x32x64xf16, {order = #NHWC}>)
     -> tensor<1x32x3x64xf16, {order = #NHWC}> {
     %PERMUTE = IE.MemPermute(%arg0) {
@@ -332,7 +344,7 @@ func.func @SkipMemPermuteWithMisalignedChannels(%arg0: tensor<1x3x32x64xf16, {or
 
     return %PERMUTE : tensor<1x32x3x64xf16, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute(%arg0) {
+    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute([[ARG_0]]) {
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NWHC
     // CHECK-SAME:  } : tensor<1x3x32x64xf16, {order = #NHWC}>
@@ -347,6 +359,7 @@ func.func @SkipMemPermuteWithMisalignedChannels(%arg0: tensor<1x3x32x64xf16, {or
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 // CHECK-LABEL: @SkipMemPermuteWithBatch
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<2x16x32x64xf16, {order = #NHWC}>
 func.func @SkipMemPermuteWithBatch(%arg0: tensor<2x16x32x64xf16, {order = #NHWC}>)
     -> tensor<2x32x16x64xf16, {order = #NHWC}> {
     %PERMUTE = IE.MemPermute(%arg0) {
@@ -356,7 +369,7 @@ func.func @SkipMemPermuteWithBatch(%arg0: tensor<2x16x32x64xf16, {order = #NHWC}
 
     return %PERMUTE : tensor<2x32x16x64xf16, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute(%arg0) {
+    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute([[ARG_0]]) {
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NWHC
     // CHECK-SAME:  } : tensor<2x16x32x64xf16, {order = #NHWC}>
@@ -371,6 +384,7 @@ func.func @SkipMemPermuteWithBatch(%arg0: tensor<2x16x32x64xf16, {order = #NHWC}
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 // CHECK-LABEL: @SkipMemPermuteWithUnsupportedType
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xsi32, {order = #NHWC}>
 func.func @SkipMemPermuteWithUnsupportedType(%arg0: tensor<1x16x32x64xsi32, {order = #NHWC}>)
     -> tensor<1x32x16x64xsi32, {order = #NHWC}> {
     %PERMUTE = IE.MemPermute(%arg0) {
@@ -380,7 +394,7 @@ func.func @SkipMemPermuteWithUnsupportedType(%arg0: tensor<1x16x32x64xsi32, {ord
 
     return %PERMUTE : tensor<1x32x16x64xsi32, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute(%arg0) {
+    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute([[ARG_0]]) {
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NWHC
     // CHECK-SAME:      } : tensor<1x16x32x64xsi32, {order = #NHWC}>
@@ -392,6 +406,7 @@ func.func @SkipMemPermuteWithUnsupportedType(%arg0: tensor<1x16x32x64xsi32, {ord
 // -----
 
 // CHECK-LABEL: @SkipLReluWithNCEProducer
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>
 func.func @SkipLReluWithNCEProducer(%arg0: tensor<1x128x2x32xf16>) -> tensor<1x128x2x32xf16> {
     %AVG_POOL = IE.AvgPool(%arg0) {
         kernel_size = [3, 3],
@@ -407,7 +422,7 @@ func.func @SkipLReluWithNCEProducer(%arg0: tensor<1x128x2x32xf16>) -> tensor<1x1
 
     return %LRELU : tensor<1x128x2x32xf16>
 
-    // CHECK:   [[AVG_POOL:%.+]] = IE.AvgPool(%arg0) {
+    // CHECK:   [[AVG_POOL:%.+]] = IE.AvgPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [3, 3],
     // CHECK-SAME:      pads_begin = [1, 1],
     // CHECK-SAME:      pads_end = [1, 1],
@@ -425,6 +440,7 @@ func.func @SkipLReluWithNCEProducer(%arg0: tensor<1x128x2x32xf16>) -> tensor<1x1
 // -----
 
 // CHECK-LABEL: @LReluWithNCEProducerAndTwoUsers
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x128x2x32xf16>
 func.func @LReluWithNCEProducerAndTwoUsers(%arg0: tensor<1x128x2x32xf16>)
         -> (tensor<1x128x2x32xf16>, tensor<1x128x2x32xf16>) {
     %MAX_POOL = IE.MaxPool(%arg0) {
@@ -441,7 +457,7 @@ func.func @LReluWithNCEProducerAndTwoUsers(%arg0: tensor<1x128x2x32xf16>)
 
     return %MAX_POOL, %LRELU : tensor<1x128x2x32xf16>, tensor<1x128x2x32xf16>
 
-    // CHECK:   [[ORIG_POOL:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:   [[ORIG_POOL:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [3, 3],
     // CHECK-SAME:      pads_begin = [1, 1],
     // CHECK-SAME:      pads_end = [1, 1],
@@ -471,6 +487,7 @@ func.func @LReluWithNCEProducerAndTwoUsers(%arg0: tensor<1x128x2x32xf16>)
 #map = affine_map<(d0, d1, d2, d3) -> (d3, d2, d1, d0)>
 
 // CHECK-LABEL: @SkipMemPermuteWithUnsupportedOrder
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<2x16x32x64xf16, {order = #NHWC}>
 func.func @SkipMemPermuteWithUnsupportedOrder(%arg0: tensor<2x16x32x64xf16, {order = #NHWC}>)
     -> tensor<16x2x64x32xf16, {order = #NHWC}> {
 
@@ -481,7 +498,7 @@ func.func @SkipMemPermuteWithUnsupportedOrder(%arg0: tensor<2x16x32x64xf16, {ord
 
     return %PERMUTE : tensor<16x2x64x32xf16, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute(%arg0) {
+    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute([[ARG_0]]) {
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #map
     // CHECK-SAME:  } : tensor<2x16x32x64xf16, {order = #NHWC}>
@@ -498,6 +515,7 @@ func.func @SkipMemPermuteWithUnsupportedOrder(%arg0: tensor<2x16x32x64xf16, {ord
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL: @SkipMemPermuteWithSmallHeight
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x1x64xf16, {order = #NHWC}>
 func.func @SkipMemPermuteWithSmallHeight(%arg0: tensor<1x16x1x64xf16, {order = #NHWC}>)
     -> tensor<1x16x1x64xf16> {
     %PERMUTE = IE.MemPermute(%arg0) {
@@ -507,7 +525,7 @@ func.func @SkipMemPermuteWithSmallHeight(%arg0: tensor<1x16x1x64xf16, {order = #
 
     return %PERMUTE : tensor<1x16x1x64xf16>
 
-    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute(%arg0) {
+    // CHECK:   [[PERMUTE:%.+]] = IE.MemPermute([[ARG_0]]) {
     // CHECK-SAME:      dst_order = #NCHW,
     // CHECK-SAME:      mem_perm = #NWCH
     // CHECK-SAME:  } : tensor<1x16x1x64xf16, {order = #NHWC}>
@@ -519,12 +537,13 @@ func.func @SkipMemPermuteWithSmallHeight(%arg0: tensor<1x16x1x64xf16, {order = #
 // -----
 
 // CHECK-LABEL: @InsertAvgPoolIfActivationHasBatch
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x12x10x20xf16>
 func.func @InsertAvgPoolIfActivationHasBatch(%arg0: tensor<1x12x10x20xf16>) -> tensor<3x4x10x20xf16> {
     %reshape = IE.Reshape(%arg0) {shape_value = [3, 4, 10, 20]} : tensor<1x12x10x20xf16> -> tensor<3x4x10x20xf16>
     %relu = IE.ReLU(%reshape) : tensor<3x4x10x20xf16> -> tensor<3x4x10x20xf16>
     return %relu : tensor<3x4x10x20xf16>
 
-    // CHECK:   [[RESHAPE:%.+]] = IE.Reshape(%arg0) {
+    // CHECK:   [[RESHAPE:%.+]] = IE.Reshape([[ARG_0]]) {
     // CHECK-SAME:      shape_value = [3, 4, 10, 20]
     // CHECK-SAME:  } : tensor<1x12x10x20xf16> -> tensor<3x4x10x20xf16>
 
@@ -549,6 +568,7 @@ func.func @InsertAvgPoolIfActivationHasBatch(%arg0: tensor<1x12x10x20xf16>) -> t
 !qElemType1 = !quant.uniform<u8:f16, 1.000000e+00>
 
 // CHECK-LABEL: @SkipMemPermuteWithNCEAcrossQuantizeCast
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x64x64xf16, {order = #NHWC}>
 func.func @SkipMemPermuteWithNCEAcrossQuantizeCast(%arg0: tensor<1x16x64x64xf16, {order = #NHWC}>) -> tensor<1x64x64x16x!qElemType, {order = #NHWC}> {
     %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x64x64xf16, {order = #NHWC}>, tensor<1x16x64x64xf16, {order = #NHWC}> -> tensor<1x16x64x64x!qElemType1, {order = #NHWC}>
     %1 = IE.QuantizeCast(%0) {dstElemType = !qElemType} : tensor<1x16x64x64x!qElemType1, {order = #NHWC}> -> tensor<1x16x64x64x!qElemType, {order = #NHWC}>
@@ -556,7 +576,7 @@ func.func @SkipMemPermuteWithNCEAcrossQuantizeCast(%arg0: tensor<1x16x64x64xf16,
 
     return %2 : tensor<1x64x64x16x!qElemType, {order = #NHWC}>
 
-    // CHECK:       [[ADD:%.+]] = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x64x64xf16, {order = #NHWC}>, tensor<1x16x64x64xf16, {order = #NHWC}> -> tensor<1x16x64x64x!qElemType1, {order = #NHWC}>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[ARG_0]], [[ARG_0]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x64x64xf16, {order = #NHWC}>, tensor<1x16x64x64xf16, {order = #NHWC}> -> tensor<1x16x64x64x!qElemType1, {order = #NHWC}>
     // CHECK:       [[QCAST:%.+]] = IE.QuantizeCast([[ADD]]) {dstElemType = !qElemType} : tensor<1x16x64x64x!qElemType1, {order = #NHWC}> -> tensor<1x16x64x64x!qElemType, {order = #NHWC}>
     // CHECK:       [[MEM_PERM:%.+]] = IE.MemPermute([[QCAST]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x16x64x64x!qElemType, {order = #NHWC}> -> tensor<1x64x64x16x!qElemType, {order = #NHWC}>
     // CHECK:       return [[MEM_PERM]] : tensor<1x64x64x16x!qElemType, {order = #NHWC}>
@@ -577,4 +597,32 @@ func.func @InsertAvgPoolToMixedPrecisionAddAndLeakyRelu(%arg0: tensor<1x128x4x4x
     // CHECK:    [[LEAKY_RELU:%.+]] = IE.LeakyRelu([[AVGPOOL]]) {negative_slope = 0.0999755859375 : f64} : tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
 
     // CHECK:   return [[LEAKY_RELU]] : tensor<1x128x4x4xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @SkipInsertAvgPoolForNon4DClamp
+// CHECK-SAME:      [[ARG0:%[^:]+]]: tensor<1x2x1x12x256xf16>
+func.func @SkipInsertAvgPoolForNon4DClamp(%arg0: tensor<1x2x1x12x256xf16>) -> tensor<1x2x1x12x256xf16> {
+    %0 = IE.Clamp(%arg0) {max = 6.000000e+00 : f64, min = 0.000000e+00 : f64} : tensor<1x2x1x12x256xf16> -> tensor<1x2x1x12x256xf16>
+
+    return %0 : tensor<1x2x1x12x256xf16>
+
+    // CHECK-NOT: IE.AvgPool
+    // CHECK:     [[CLAMP:%.+]] = IE.Clamp([[ARG0]]) {max = 6.000000e+00 : f64, min = 0.000000e+00 : f64} : tensor<1x2x1x12x256xf16> -> tensor<1x2x1x12x256xf16>
+    // CHECK:     return [[CLAMP]] : tensor<1x2x1x12x256xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @SkipInsertAvgPoolForSI16Clamp
+// CHECK-SAME:      [[ARG0:%[^:]+]]: tensor<1x1x12x256xsi16>
+func.func @SkipInsertAvgPoolForSI16Clamp(%arg0: tensor<1x1x12x256xsi16>) -> tensor<1x1x12x256xsi16> {
+    %0 = IE.Clamp(%arg0) {max = 6.000000e+00 : f64, min = 0.000000e+00 : f64} : tensor<1x1x12x256xsi16> -> tensor<1x1x12x256xsi16>
+
+    return %0 : tensor<1x1x12x256xsi16>
+
+    // CHECK-NOT: IE.AvgPool
+    // CHECK:     [[CLAMP:%.+]] = IE.Clamp([[ARG0]]) {max = 6.000000e+00 : f64, min = 0.000000e+00 : f64} : tensor<1x1x12x256xsi16> -> tensor<1x1x12x256xsi16>
+    // CHECK:     return [[CLAMP]] : tensor<1x1x12x256xsi16>
 }

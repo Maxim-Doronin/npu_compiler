@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -86,7 +86,7 @@ func.func @FuseSoftMaxShapeCastAffineReshapeConvert(%arg0: tensor<55x32x64x33xf3
     %4 = IE.AffineReshape(%3) {dim_mapping = [[0, 1], [1], [2], [3]], shape_value = [1, 1760, 64, 33]} : tensor<55x32x64x33xf16> -> tensor<1x1760x64x33xf16>
     %5 = IE.Convert(%4) {dstElemType = f32} : tensor<1x1760x64x33xf16> -> tensor<1x1760x64x33xf32>
     %6 = IE.AffineReshape(%5) {dim_mapping = [[0], [0, 1], [2], [3]], shape_value = [55, 32, 64, 33]} : tensor<1x1760x64x33xf32> -> tensor<55x32x64x33xf32>
-   
+
     return %6 : tensor<55x32x64x33xf32>
 
     // CHECK: [[CONVERT:%.+]] = IE.Convert([[ARG0]]) {dstElemType = f16} : tensor<55x32x64x33xf32> -> tensor<55x32x64x33xf16>

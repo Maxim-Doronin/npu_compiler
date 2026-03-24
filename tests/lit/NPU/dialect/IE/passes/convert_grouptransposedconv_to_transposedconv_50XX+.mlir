@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-group-transposed-conv-to-transposed-conv="enable-sep-transposed-conv=true" --canonicalize %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-se-ptrs-operations=true" --convert-group-transposed-conv-to-transposed-conv --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU50XX
 // COM: F8 is only supported on NPU50+, no need to run these tests on all arches.
 

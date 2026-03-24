@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,7 +47,6 @@
 #include <openvino/op/group_query_attention.hpp>
 
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 
 #include <sstream>
@@ -280,6 +279,7 @@ mlir::LogicalResult exportLLVMIR(mlir::ModuleOp module, llvm::raw_ostream& outpu
 }  // namespace
 
 int main(int argc, char* argv[]) {
+    vpux::Logger::setBaseStream(llvm::errs());
     try {
         // TODO(E#84874):
         // currently, arch is used for both import and export
@@ -297,6 +297,7 @@ int main(int argc, char* argv[]) {
 
             vpux::config::registerConstraints(registry, arch.value());
             vpux::IE::registerStrategies(registry, arch.value());
+            vpux::VPUIP::registerStrategies(registry, arch.value());
         };
         mlir::TranslateToMLIRRegistration("import-IE", "Translate OV IR to IE dialect", importIE, dialectRegistration);
         mlir::TranslateToMLIRRegistration("import-ELF", "Translate blob to ELF dialect", importELF,
@@ -309,7 +310,7 @@ int main(int argc, char* argv[]) {
 
         return mlir::asMainReturnCode(mlir::mlirTranslateMain(argc, argv, "NPU Translation Testing Tool"));
     } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+        llvm::errs() << e.what() << '\n';
         return EXIT_FAILURE;
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitDepthConvWithBigC
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x5120x64x4xf16, {order = #NHWC}>)
 func.func @SplitDepthConvWithBigC(%arg0: tensor<1x5120x64x4xf16, {order = #NHWC}>) -> tensor<1x5120x64x4xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<5120x16x1x1xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<5120x16x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -29,7 +30,7 @@ func.func @SplitDepthConvWithBigC(%arg0: tensor<1x5120x64x4xf16, {order = #NHWC}
     return %0 : tensor<1x5120x64x4xf16, {order = #NHWC}>
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<5120x16x1x1xf16, {order = #NHWC}>
-    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[CST]])
+    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution([[ARG_0]], [[CST]])
     // CHECK-SAME:              {pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:               ppe = #VPU.PPEStub<>, rawFilterShape = [5120, 1, 1, 1], strides = [1, 1],
     // CHECK-SAME:               tilingStrategy = [1, 4, 1, 1]} -> tensor<1x5120x64x4xf16, {order = #NHWC}>
@@ -50,6 +51,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitNCEMaxPoolWithBigC
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x5120x32x4xf16, {order = #NHWC}>)
 func.func @SplitNCEMaxPoolWithBigC(%arg0: tensor<1x5120x32x4xf16, {order = #NHWC}>) -> tensor<1x5120x32x4xf16, {order = #NHWC}> {
     %0 = VPU.NCE.MaxPool(%arg0) {
         kernel_size = [1, 1],
@@ -60,7 +62,7 @@ func.func @SplitNCEMaxPoolWithBigC(%arg0: tensor<1x5120x32x4xf16, {order = #NHWC
 
     return %0 : tensor<1x5120x32x4xf16, {order = #NHWC}>
 
-    // CHECK:       [[MAXPOOL:%.+]] = VPU.NCE.MaxPool(%arg0) {
+    // CHECK:       [[MAXPOOL:%.+]] = VPU.NCE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [1, 1],
     // CHECK-SAME:      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:      tilingStrategy = [1, 2, 1, 1]
@@ -83,6 +85,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitNCEAveragePoolWithBigC
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x5120x32x4xf16, {order = #NHWC}>)
 func.func @SplitNCEAveragePoolWithBigC(%arg0: tensor<1x5120x32x4xf16, {order = #NHWC}>) -> tensor<1x5120x32x4xf16, {order = #NHWC}> {
     %0 = VPU.NCE.AveragePool(%arg0) {
         kernel_size = [1, 1],
@@ -92,7 +95,7 @@ func.func @SplitNCEAveragePoolWithBigC(%arg0: tensor<1x5120x32x4xf16, {order = #
     } -> tensor<1x5120x32x4xf16, {order = #NHWC}>
     return %0 : tensor<1x5120x32x4xf16, {order = #NHWC}>
 
-    // CHECK:  [[AVGPOOL:%.+]] = VPU.NCE.AveragePool(%arg0) {
+    // CHECK:  [[AVGPOOL:%.+]] = VPU.NCE.AveragePool([[ARG_0]]) {
     // CHECK-SAME:   kernel_size = [1, 1],
     // CHECK-SAME:   pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:   strides = [1, 1],
@@ -114,6 +117,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitSparseDepthConvWithBigC
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4080x40x40xf16, {order = #NHWC}>)
 func.func @SplitSparseDepthConvWithBigC(%arg0: tensor<1x4080x40x40xf16, {order = #NHWC}>) -> !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>> {
     %cst0 = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
 
@@ -127,7 +131,7 @@ func.func @SplitSparseDepthConvWithBigC(%arg0: tensor<1x4080x40x40xf16, {order =
     return %0 : !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
 
     // CHECK-DAG: [[INPUT:%.+]] = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
-    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[INPUT]]) {
+    // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution([[ARG_0]], [[INPUT]]) {
     // CHECK:           tilingStrategy = [1, 19, 1, 1]
     // CHECK-SAME:     -> !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
     // CHECK: return [[DWConv]] : !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
@@ -148,6 +152,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitSparseNCEMaxPoolWithBigC
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4080x16x16xf16, {order = #NHWC}>)
 func.func @SplitSparseNCEMaxPoolWithBigC(%arg0: tensor<1x4080x16x16xf16, {order = #NHWC}>) -> tensor<1x4080x16x16xf16, {order = #NHWC}> {
     %0 = VPU.Sparsify(%arg0) : tensor<1x4080x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x4080x16x16xf16, {order = #NHWC}>>
     %wt = const.Declare tensor<4080x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<4080x1x1x4xsi32>
@@ -160,7 +165,7 @@ func.func @SplitSparseNCEMaxPoolWithBigC(%arg0: tensor<1x4080x16x16xf16, {order 
     %2 = VPU.Desparsify(%1) : !VPU.SparseTensor<data=tensor<1x4080x16x16xf16, {order = #NHWC}>> -> tensor<1x4080x16x16xf16, {order = #NHWC}>
     return %2 : tensor<1x4080x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0) : tensor<1x4080x16x16xf16, {order = #NHWC}>
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]]) : tensor<1x4080x16x16xf16, {order = #NHWC}>
     // CHECK-SAME:      -> !VPU.SparseTensor<data=tensor<1x4080x16x16xf16, {order = #NHWC}>>
     // CHECK-DAG: [[WT:%.+]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<4080x1x1x4xsi32>
     // CHECK:       [[VAL1:%.+]] = VPU.NCE.MaxPool([[VAL0]], [[WT]] )
@@ -183,6 +188,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitSparseDepthConvWithBigCWithSOK
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4080x40x40xf16, {order = #NHWC}>)
     func.func @SplitSparseDepthConvWithBigCWithSOK(%arg0: tensor<1x4080x40x40xf16, {order = #NHWC}>) -> !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>> {
         %cst0 = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
 
@@ -197,7 +203,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
         return %0 : !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
 
         // CHECK-DAG: [[INPUT:%.+]] = const.Declare tensor<4080x1x4x4xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<4080x1x4x4xf16>, [#const.Reorder<#NHWC>]
-        // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[INPUT]]) {
+        // CHECK: [[DWConv:%.+]] = VPU.NCE.DepthConvolution([[ARG_0]], [[INPUT]]) {
         // CHECK:            multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
         // CHECK:            tilingStrategy = [1, 12, 1, 1]
         // CHECK-SAME:     -> !VPU.SparseTensor<data=tensor<1x4080x37x37xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x37x37xi1, {order = #NHWC}>>
@@ -218,6 +224,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitSparseNCEMaxPoolWithBigCWithSOK
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4080x16x16xf16, {order = #NHWC}>)
 func.func @SplitSparseNCEMaxPoolWithBigCWithSOK(%arg0: tensor<1x4080x16x16xf16, {order = #NHWC}>) -> tensor<1x4080x16x16xf16, {order = #NHWC}> {
     %0 = VPU.Sparsify(%arg0) : tensor<1x4080x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x4080x16x16xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x16x16xi1, {order = #NHWC}>>
     %wt = const.Declare tensor<4080x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<4080x1x1x4xsi32>
@@ -231,7 +238,7 @@ func.func @SplitSparseNCEMaxPoolWithBigCWithSOK(%arg0: tensor<1x4080x16x16xf16, 
     %2 = VPU.Desparsify(%1) : !VPU.SparseTensor<data=tensor<1x4080x16x16xf16, {order = #NHWC}>, sparsity_map=tensor<1x4080x16x16xi1, {order = #NHWC}>> -> tensor<1x4080x16x16xf16, {order = #NHWC}>
     return %2 : tensor<1x4080x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0) : tensor<1x4080x16x16xf16, {order = #NHWC}>
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]]) : tensor<1x4080x16x16xf16, {order = #NHWC}>
     // CHECK-SAME:      -> !VPU.SparseTensor<data=tensor<1x4080x16x16xf16, {order = #NHWC}>,
     // CHECK-SAME:                           sparsity_map=tensor<1x4080x16x16xi1, {order = #NHWC}>>
     // CHECK-DAG: [[WT:%.+]] = const.Declare tensor<4080x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<4080x1x1x4xsi32>
@@ -261,6 +268,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: @SplitOutputSparseForConvSOKFollowedByConcat
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2032x16x16xf16, {order = #NHWC}>)
     func.func @SplitOutputSparseForConvSOKFollowedByConcat(%arg0: tensor<1x2032x16x16xf16, {order = #NHWC}>) -> tensor<1x4064x16x16xf16, {order = #NHWC}> {
         %s0 = VPU.Sparsify(%arg0) : tensor<1x2032x16x16xf16, {order = #NHWC}> -> !SparseType
         %wt0 = const.Declare tensor<2032x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<2032x1x1x4xsi32>
@@ -297,13 +305,13 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
         %result = VPU.Desparsify(%maxpool2) : !SparseType1 -> tensor<1x4064x16x16xf16, {order = #NHWC}>
         return %result : tensor<1x4064x16x16xf16, {order = #NHWC}>
 
-        // CHECK: [[ToSparsity_0:%.+]] = VPU.Sparsify(%arg0) : tensor<1x2032x16x16xf16, {order = #NHWC}>
+        // CHECK: [[ToSparsity_0:%.+]] = VPU.Sparsify([[ARG_0]]) : tensor<1x2032x16x16xf16, {order = #NHWC}>
         // CHECK:        -> !VPU.SparseTensor<data=tensor<1x2032x16x16xf16, {order = #NHWC}>, sparsity_map=tensor<1x2032x16x16xi1, {order = #NHWC}>>
         // CHECK-DAG: [[WT_0:%.+]] = const.Declare tensor<2032x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<2032x1x1x4xsi32>
         // CHECK: [[MAXPOOL_0:%.+]] = VPU.NCE.MaxPool([[ToSparsity_0]], [[WT_0]] )
         // CHECK:              tilingStrategy = [1, 3, 1, 1]
 
-        // CHECK: [[ToSparsity_1:%.+]] = VPU.Sparsify(%arg0) : tensor<1x2032x16x16xf16, {order = #NHWC}>
+        // CHECK: [[ToSparsity_1:%.+]] = VPU.Sparsify([[ARG_0]]) : tensor<1x2032x16x16xf16, {order = #NHWC}>
         // CHECK:        -> !VPU.SparseTensor<data=tensor<1x2032x16x16xf16, {order = #NHWC}>, sparsity_map=tensor<1x2032x16x16xi1, {order = #NHWC}>>
         // CHECK-DAG: [[WT_1:%.+]] = const.Declare tensor<2032x1x1x4xsi32, {order = #NCHW}> = dense<10> : tensor<2032x1x1x4xsi32>
         // CHECK: [[MAXPOOL_1:%.+]] = VPU.NCE.MaxPool([[ToSparsity_1]], [[WT_1]] )

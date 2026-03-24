@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -121,6 +122,11 @@ TEST_P(DynamicStridedSliceLayerTest, NPU5010_HW) {
     abs_threshold = 0.0f;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(DynamicStridedSliceLayerTest, NPU5020_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 const std::vector<InputType> inputPrecision = {ov::element::i32};
@@ -284,6 +290,11 @@ TEST_F(StridedSliceWithDynamicInputLayerTest, NPU5010_HW) {
     abs_threshold = 0.0f;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_F(StridedSliceWithDynamicInputLayerTest, NPU5020_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace ov::test

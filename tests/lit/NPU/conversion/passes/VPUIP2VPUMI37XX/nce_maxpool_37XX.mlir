@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,11 +22,11 @@ func.func private @maxpool_f16_f16(%arg0: memref<1x64x16x16xf16, #NHWC, @DDR>, %
   %weight_table = VPURT.DeclareBuffer <CMX_NN> [0] <40976> -> memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
 
   VPURT.Task {
-      %8 = VPUIP.NCEClusterTask {
+      %8 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [2, 2],
             kernel_strides = [2, 2],
-            task_type = #VPUIP.nce_task_type<MAXPOOL>}
+            task_type = #VPUIP.nce_task_type<MAXPOOL>}>
           input(%input : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>)
           weight_table(%weight_table : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>)
           parent_input(%parent_input : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>)

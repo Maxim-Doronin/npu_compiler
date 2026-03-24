@@ -2,6 +2,7 @@
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <common_test_utils/node_builders/activation.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
@@ -111,6 +112,10 @@ TEST_P(AvgPoolWithActivationTest, NPU5010_HW_1Tile) {
     configuration["NPU_TILES"] = "1";
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(AvgPoolWithActivationTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 INSTANTIATE_TEST_SUITE_P(smoke_AvgPoolWithActivation, AvgPoolWithActivationTest, ::testing::ValuesIn(activations),

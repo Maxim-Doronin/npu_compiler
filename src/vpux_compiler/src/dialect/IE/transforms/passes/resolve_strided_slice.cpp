@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -172,9 +172,8 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
             newBegin.erase(newBegin.begin() + index);
             beginAttr = getIntArrayAttr(getContext(), newBegin);
             newInputShape.erase(newInputShape.begin() + index);
-            source = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
-                    rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "slice_{0}", index), source, nullptr, false,
-                                                         getIntArrayAttr(getContext(), newInputShape)));
+            source = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::ReshapeOp>(
+                    takeOpLoc(origOp, "slice_{0}", index), source, getIntArrayAttr(getContext(), newInputShape)));
         }
         const auto endsAttr = getIntArrayAttr(getContext(), sizes);
         newOp = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "slice_source"), source, beginAttr, endsAttr);
@@ -186,7 +185,7 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
     }
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
     auto outReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), newOp->getResult(0),
-                                                           nullptr, false, outputShapeAttr);
+                                                           outputShapeAttr);
     rewriter.replaceOp(origOp, outReshape);
 
     _log.trace("Replaced with 'IE::StridedSlice' -> 'IE::Reshape'");

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,12 +10,15 @@
 // This version is exposed via L0 API and reported as (read-only) plugin property NPU_COMPILER_VERSION
 //
 #define NPU_COMPILER_VERSION_MAJOR 7
-#define NPU_COMPILER_VERSION_MINOR 28
+#define NPU_COMPILER_VERSION_MINOR 29
 
 /*
 
 Change Log:
 -----------
+NPU Compiler 7.29.0
+  - 2026 UD12 release
+
 NPU Compiler 7.28.0
   - 2026 UD08 release
   - Add support for options value checking using "isValueSupported" API

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -19,6 +19,8 @@ add_npu_library(${TARGET_NAME}
         npu_compiler_core
         npu_compiler_utils
         npu_compiler_dialect_net
+    LINK_LIBS PUBLIC
+        openvino::npu_ops
     INCLUDES
         $<TARGET_PROPERTY:openvino::npu_al,INTERFACE_INCLUDE_DIRECTORIES>)
 

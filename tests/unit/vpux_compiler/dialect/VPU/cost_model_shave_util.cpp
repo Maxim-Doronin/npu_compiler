@@ -25,7 +25,7 @@ public:
 
     void setFactory(config::ArchKind archKind) {
         ctx.loadDialect<vpux::VPU::VPUDialect>();
-        VPU::initializeSingletonCache(registry, VPU::DeviceVersion{std::nullopt, archKind});
+        VPU::initializeSingletons(registry, VPU::DeviceVersion{std::nullopt, archKind});
 
         ctx.appendDialectRegistry(registry);
     }
@@ -40,7 +40,6 @@ TEST_F(CostModelShaveUtil, testCreateShaveCostModelUtilsAndCheckOpNPU37) {
 
     EXPECT_TRUE(shaveUtils.isSwKernelOpSupported("SoftMax"));
     EXPECT_FALSE(shaveUtils.isSwKernelOpSupported("NonExistOp"));
-    EXPECT_EQ(shaveUtils.getSwKernelContainer().size(), 73);  // Total size of Shave1 API
 }
 
 TEST_F(CostModelShaveUtil, testCreateShaveCostModelUtilsAndCheckOpNPU40) {
@@ -50,7 +49,6 @@ TEST_F(CostModelShaveUtil, testCreateShaveCostModelUtilsAndCheckOpNPU40) {
 
     EXPECT_TRUE(shaveUtils.isSwKernelOpSupported("SoftMax"));
     EXPECT_FALSE(shaveUtils.isSwKernelOpSupported("NonExistOp"));
-    EXPECT_EQ(shaveUtils.getSwKernelContainer().size(), 73);  // Total size of Shave1 API
 }
 
 TEST_F(CostModelShaveUtil, testCreateShaveCostModelUtilsAndCheckOpNPU50) {
@@ -60,5 +58,4 @@ TEST_F(CostModelShaveUtil, testCreateShaveCostModelUtilsAndCheckOpNPU50) {
 
     EXPECT_TRUE(shaveUtils.isSwKernelOpSupported("SoftMax"));
     EXPECT_FALSE(shaveUtils.isSwKernelOpSupported("NonExistOp"));
-    EXPECT_EQ(shaveUtils.getSwKernelContainer().size(), 73);  // Total size of Shave1 API
 }

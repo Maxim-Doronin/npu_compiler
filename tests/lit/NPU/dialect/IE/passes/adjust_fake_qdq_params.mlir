@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -185,7 +185,7 @@ func.func @AdjustFQMulUpFuseConst(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x1
     // CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1x1xf32>
     // CHECK-DAG: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<8.53753681E-6> : tensor<1x1x1x1xf32>, [#const.Rescale<0.20441406965255737 : f64>]
     // CHECK-DAG: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<8.53753681E-6> : tensor<1x1x1x1xf32>
-    // CHECK: [[OUT0:%.+]] = IE.Subtract(%arg0, [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
+    // CHECK: [[OUT0:%.+]] = IE.Subtract([[INPUT_0]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT1:%.+]] = IE.Multiply([[OUT0]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT2:%.+]] = IE.FakeQuantize([[OUT1]], [[CST_1]], [[CST_0]], [[CST_1]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT3:%.+]] = IE.Multiply([[OUT2]], [[OUT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
@@ -254,7 +254,7 @@ func.func @AdjustFQMulDownAdd(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128x3
     // CHECK-NEXT: [[OUT3:%.+]] = IE.FakeQuantize([[OUT2]], [[CST_1]], [[CST_0]], [[CST_1]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT4:%.+]] = IE.Multiply([[OUT3]], [[OUT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT5:%.+]] = IE.Add([[OUT4]], [[OUT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
-    // CHECK-NEXT: [[OUT6:%.+]] = IE.Multiply([[OUT5]], %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1xf32> -> tensor<1x128x32x64xf32>
+    // CHECK-NEXT: [[OUT6:%.+]] = IE.Multiply([[OUT5]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1xf32> -> tensor<1x128x32x64xf32>
 
 
     return %3 : tensor<1x128x32x64xf32>
@@ -321,7 +321,7 @@ func.func @AdjustFQMulDownAddSq(%arg0 : tensor<1x128x32x64xf32>) -> tensor<1x128
     // CHECK-NEXT: [[OUT2:%.+]] = IE.FakeQuantize([[OUT1]], [[CST_1]], [[CST_0]], [[CST_1]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64} : tensor<1x128x32x64xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT3:%.+]] = IE.Multiply([[OUT2]], [[OUT1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
     // CHECK-NEXT: [[OUT4:%.+]] = IE.Add([[OUT3]], [[OUT3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1x128x32x64xf32> -> tensor<1x128x32x64xf32>
-    // CHECK-NEXT: [[OUT5:%.+]] = IE.Multiply([[OUT4]], %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1xf32> -> tensor<1x128x32x64xf32>
+    // CHECK-NEXT: [[OUT5:%.+]] = IE.Multiply([[OUT4]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x32x64xf32>, tensor<1xf32> -> tensor<1x128x32x64xf32>
 
 }
 

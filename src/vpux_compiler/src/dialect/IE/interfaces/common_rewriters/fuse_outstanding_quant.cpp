@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,16 @@
 
 using namespace vpux;
 using namespace IE;
+
+namespace {
+// Helper function to check if operation has a PostOp attached
+inline bool hasPostOp(mlir::Operation* operation) {
+    if (auto layerWithPostOp = mlir::dyn_cast_or_null<IE::LayerWithPostOpInterface>(operation)) {
+        return layerWithPostOp.getPostOp() != nullptr;
+    }
+    return false;
+}
+}  // namespace
 
 template <typename ConcreteOp>
 mlir::LogicalResult IE::findQuantizeOrQuantizedNCE(ConcreteOp origOp, mlir::PatternRewriter& rewriter,
@@ -45,6 +55,13 @@ mlir::LogicalResult IE::findQuantizeOrQuantizedNCE(ConcreteOp origOp, mlir::Patt
                                "ElemTypeInfoOpInterface Ancestor has more than one input for {0} at {1}",
                                operation->getName(), operation->getLoc());
         }
+
+        // Block fusion if operation has PostOp
+        if (hasPostOp(operation)) {
+            return matchFailed(rewriter, origOp, "Ancestor {0} at {1} has PostOp, cannot fuse quantization through it",
+                               operation->getName(), operation->getLoc());
+        }
+
         return mlir::success();
     };
 
@@ -57,6 +74,7 @@ mlir::LogicalResult IE::findQuantizeOrQuantizedNCE(ConcreteOp origOp, mlir::Patt
             }
         }();
 
+        // Verify input operation meets fusion requirements
         if (auto result = verifyInput(input); result.failed()) {
             return result;
         }
@@ -198,6 +216,13 @@ mlir::LogicalResult QuantizeWithAvgPool::matchAndRewrite(IE::AvgPoolOp avgPoolOp
         return matchFailed(rewriter, avgPoolOp, "OrigOp doesn't support mixed precision");
     }
 
+    // Block transformation if AvgPool has a PostOp
+    if (hasPostOp(avgPoolOp.getOperation())) {
+        return matchFailed(rewriter, avgPoolOp,
+                           "AvgPool at {0} has fused PostOp, skipping quantization fusion to preserve consistency",
+                           avgPoolOp->getLoc());
+    }
+
     SmallVector<mlir::Operation*> avgPoolToQuantizeOps;
     // Walk through FakeQuantize-agnostic ops and find quantize or quantized NCE task
     if (auto result = findQuantizeOrQuantizedNCE(avgPoolOp, rewriter, avgPoolOp.getInput(), avgPoolToQuantizeOps, _log);
@@ -213,13 +238,63 @@ mlir::LogicalResult QuantizeWithAvgPool::matchAndRewrite(IE::AvgPoolOp avgPoolOp
         return matchFailed(rewriter, avgPoolOp, "Quantizes for ancestors have been fused at {0} ({1})",
                            quant->getName(), quant->getLoc());
     }
-    VPUX_THROW_UNLESS(mlir::isa<IE::QuantizeOp>(quant), "Expect quant to be QuantizeOp");
+
     auto quantizeOp = mlir::cast<IE::QuantizeOp>(quant);
 
     const mlir::Type elementType = mlir::cast<NDTypeInterface>(quantizeOp.getInput().getType()).getElementType();
 
     // Remove the quantize, and update the type alone the way
     if (auto result = removeQuantOrFusedQuant(avgPoolOp, rewriter, avgPoolToQuantizeOps, quant, elementType,
+                                              _isMixPrecisionSupported, _log);
+        result.failed()) {
+        return result;
+    }
+
+    return mlir::success();
+}
+
+mlir::LogicalResult QuantizeWithConvolution::matchAndRewrite(IE::ConvolutionOp convOp,
+                                                             mlir::PatternRewriter& rewriter) const {
+    const auto isInput16BitsQuantized = [&convOp]() -> bool {
+        auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(convOp.getInput().getType().getElementType());
+        if (qType != nullptr) {
+            auto qStorageType = qType.getStorageType();
+            return qStorageType.isInteger(16);
+        }
+        return false;
+    }();
+
+    if (!isInput16BitsQuantized) {
+        return matchFailed(rewriter, convOp, "OrigOp doesn't have 16 bit integer quantized input");
+    }
+    if (!mlir::isa<Const::DeclareOp>(convOp.getFilter().getDefiningOp())) {
+        return matchFailed(rewriter, convOp, "Filter operand must be DeclareOp");
+    }
+    if (!_isMixPrecisionSupported(convOp, false, _log)) {
+        return matchFailed(rewriter, convOp, "OrigOp doesn't support mixed precision");
+    }
+
+    SmallVector<mlir::Operation*> convToQuantizeOps;
+    // Walk through FakeQuantize-agnostic ops and find quantize or quantized NCE task
+    if (auto result = findQuantizeOrQuantizedNCE(convOp, rewriter, convOp.getInput(), convToQuantizeOps, _log);
+        result.failed()) {
+        return result;
+    }
+
+    _log.trace("[{0}] Pop {1} out of convToQuantizeOps", this->getDebugName(), convToQuantizeOps.back()->getName());
+    mlir::Operation* quant = convToQuantizeOps.pop_back_val();
+
+    if (!mlir::isa<IE::QuantizeOp>(quant)) {
+        return matchFailed(rewriter, convOp, "Quantize for ancestors have been fused at {0} ({1})", quant->getName(),
+                           quant->getLoc());
+    }
+
+    auto quantizeOp = mlir::cast<IE::QuantizeOp>(quant);
+
+    const mlir::Type elementType = mlir::cast<NDTypeInterface>(quantizeOp.getInput().getType()).getElementType();
+
+    // Remove the quantize, and update the type alone the way
+    if (auto result = removeQuantOrFusedQuant(convOp, rewriter, convToQuantizeOps, quant, elementType,
                                               _isMixPrecisionSupported, _log);
         result.failed()) {
         return result;

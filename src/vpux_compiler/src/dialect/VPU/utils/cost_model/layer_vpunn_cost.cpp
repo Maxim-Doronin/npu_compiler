@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
+#include <llvm/ADT/TypeSwitch.h>
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/cost_model_shave_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
@@ -18,8 +20,6 @@
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
-
-#include <llvm/ADT/TypeSwitch.h>
 
 #include <vpu_layer_cost_model.h>
 
@@ -481,13 +481,23 @@ StrategyCost LayerVPUNNCost::getNCELayerCost(VPU::NCEOpInterface nceOp, const VP
 
 StrategyCost LayerVPUNNCost::getSWLayerCost(VPU::SWOpInterface swOp, const VPUNNCostParameters& parameters) const {
     auto swKernelName = swOp->getName().stripDialect().str();
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(swOp->getResult(0).getType());
     auto outputTiling = parameters._tiling;
-    auto isShave2APIUsed = _vpunnCostModel->get_cost_model_shared()->isShave2ApiUsed();
     const auto& shaveUtilInterface = VPU::getShaveCostModelUtils(swOp->getContext());
+    auto isShave2APIUsed = shaveUtilInterface.isShave2ApiUsed();
+
+    // Handle all outputs
+    SmallVector<vpux::NDTypeInterface> outputTypes;
+    // For devices up to 40XX, preserve old behavior: only process first output (index 0)
+    if (_arch <= config::ArchKind::NPU40XX) {
+        outputTypes.push_back(mlir::cast<vpux::NDTypeInterface>(swOp->getResult(0).getType()));
+    } else {
+        for (auto result : swOp->getResults()) {
+            outputTypes.push_back(mlir::cast<vpux::NDTypeInterface>(result.getType()));
+        }
+    }
 
     if (outputTiling.empty()) {
-        outputTiling.push_back(TileInfo(outputType.getShape()));
+        outputTiling.push_back(TileInfo(outputTypes[0].getShape()));
     }
 
     StrategyCost fullCost = 0;
@@ -522,12 +532,34 @@ StrategyCost LayerVPUNNCost::getSWLayerCost(VPU::SWOpInterface swOp, const VPUNN
                                 .extractDenseTile(inputTiles[typeIndex].offsets, inputTiles[typeIndex].shape));
             }
 
-            auto outputTiledType = outputType.extractDenseTile(outputTiling[index].offsets, outputTiling[index].shape);
-            const auto vpunnLayer = getVPUNNSWKernelOp(swOp, outputTiledType, inputNDTypes, isShave2APIUsed);
-
+            std::optional<VPUNN::SHAVEWorkload> vpunnLayer;
             StrategyCost currentCost = 0;
-            if (!vpunnLayer) {
-                currentCost = getSimpleLayerCost(outputTiledType, parameters);
+
+            auto outputTiledType =
+                    outputTypes[0].extractDenseTile(outputTiling[index].offsets, outputTiling[index].shape);
+            // For devices up to 40XX, preserve old behavior: single output tile extraction
+            if (_arch <= config::ArchKind::NPU40XX) {
+                auto workloadPtr = getVPUNNSWKernelOp(swOp, outputTiledType, inputNDTypes);
+                if (workloadPtr) {
+                    vpunnLayer = std::move(*workloadPtr);
+                }
+            } else {
+                // Extract tiled types for all outputs
+                SmallVector<vpux::NDTypeInterface> outputTiledTypes;
+                for (auto outputType : outputTypes) {
+                    outputTiledTypes.push_back(
+                            outputType.extractDenseTile(outputTiling[index].offsets, outputTiling[index].shape));
+                }
+                auto workloadPtr = getVPUNNSWKernelOp(swOp, outputTiledTypes, inputNDTypes);
+                if (workloadPtr) {
+                    vpunnLayer = std::move(*workloadPtr);
+                }
+            }
+
+            if (!vpunnLayer.has_value()) {
+                currentCost = getSimpleLayerCost(
+                        outputTypes[0].extractDenseTile(outputTiling[index].offsets, outputTiling[index].shape),
+                        parameters);
 
             } else {
                 auto distributionMode = DistributionMode::NONE;
@@ -539,7 +571,7 @@ StrategyCost LayerVPUNNCost::getSWLayerCost(VPU::SWOpInterface swOp, const VPUNN
 
                 auto vpunnStrategy = VPU::getVPULayerStrategy(parameters._strategy, _numDPUs, _numTiles, _arch,
                                                               _numShaveActs, false, distributionMode, swOp);
-                currentCost = _vpunnCostModel->Layer(*vpunnLayer, vpunnStrategy);
+                currentCost = _vpunnCostModel->Layer(vpunnLayer.value(), vpunnStrategy);
             }
             fullCost += vpux::VPU::correctSwOpCost(swOp, inputNDTypes, currentCost);
         }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,10 +88,13 @@ void SCFVerticalFusionPass::safeRunOnFunc() {
         const auto options = VPU::TilingContextOptions(VPU::TilingContextOptions::ContextType::TILING,
                                                        /* enableSCFTiling = */ true);
         auto tilingContext = VPU::createTilingContext(op, options);
+        _log.nest().trace("Applying SCF Tiling and Fusion for the operation: {0}", *op);
         const auto fused = tilingContext.applySCFTilingAndFusion(irBuilder, _log);
 
         if (!fused.empty()) {
             fusedOps.insert(fused.begin(), fused.end());
+        } else {
+            _log.nest().trace("No fusion applied for the operation: {0}", *op);
         }
     });
 

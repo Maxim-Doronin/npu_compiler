@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,8 +20,8 @@ bool isSmallKernelOptimizationSupported(mlir::Operation* op, const int64_t KX, c
                                         ArrayRef<VPU::DPUWorkloadOp> workloads) {
     // Errata E#94064: check conditions for NPU50XX, if true, optimization is disabled
     const auto forbiddenConfigurations = llvm::any_of(workloads, [](auto workload) {
-        const auto wlSizes = parseIntArrayAttr<int64_t>(workload.getOutSizes());
-        const auto padCountLeft = workload.getPad().getLeft().getInt();
+        const auto wlSizes = workload.getConstOutputSizes();
+        const auto padCountLeft = workload.getPadAttribute().getLeft().getInt();
         return wlSizes[Dims4D::Act::H.ind()] < 8 && wlSizes[Dims4D::Act::W.ind()] < 5 && padCountLeft == 1;
     });
 

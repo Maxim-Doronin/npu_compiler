@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,18 @@
 #include <mlir/IR/PatternMatch.h>
 
 using namespace vpux;
+
+//
+// isAvgPoolSupportedElementType
+//
+
+bool IE::isAvgPoolSupportedElementType(mlir::Type elemType) {
+    // Must stay in sync with IE_AvgPoolOp input constraint in pooling.td:
+    //   RankedTensorOf<[F16, F32, F64, quant_QuantizedType, SI32, SI64, SI8, UI8]>
+    return elemType.isF16() || elemType.isF32() || elemType.isF64() ||
+           mlir::isa<mlir::quant::QuantizedType>(elemType) || elemType.isSignedInteger(32) ||
+           elemType.isSignedInteger(64) || elemType.isSignedInteger(8) || elemType.isUnsignedInteger(8);
+}
 
 //
 // createIdentityAvgPool

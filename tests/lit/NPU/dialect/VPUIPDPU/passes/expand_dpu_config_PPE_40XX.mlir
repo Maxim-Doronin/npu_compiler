@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,8 +37,8 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.PPECfg {
-    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
-    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(FP16) clamp_mode(ON){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd bias_static(0){{$}}
@@ -89,8 +89,8 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.PPECfg {
-    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
-    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]> prelu_alpha(-0.000000e+00){{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]> prelu_alpha(-0.000000e+00){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(FP16) clamp_mode(ON){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd bias_static(0){{$}}
@@ -142,8 +142,8 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.PPECfg {
-    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
-    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]> prelu_alpha(1.250000e-01){{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]> prelu_alpha(1.250000e-01){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(FP16) clamp_mode(ON){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd bias_static(0){{$}}
@@ -195,8 +195,8 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.PPECfg {
-    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
-    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(BF16) bf16_round_mode(RNE){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd bias_static(0){{$}}
@@ -409,9 +409,9 @@ module {
     // CHECK:       VPUIPDPU.PPECfg {
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(NONE)
-    // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
-    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
-    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleShift %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+    // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleShift {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
     // CHECK-NEXT:    VPUIPDPU.PPEIntPreluMult prelu_mult_static(1)
     // CHECK-NEXT:    VPUIPDPU.PPEIntPreluShift prelu_shift_static(0)
     // CHECK-NEXT:    VPUIPDPU.PPEIntRound round_mode(RNE)
@@ -460,8 +460,8 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.PPECfg {
-    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
-    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.PPEFpScalePreluMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>{{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(OFF){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(I32){{$}}
     // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd bias_static(0){{$}}
@@ -517,9 +517,9 @@ module {
     // CHECK:       VPUIPDPU.PPECfg {
     // CHECK-NEXT:    VPUIPDPU.PPEFpAddMultBypass bypass_mode(ON)
     // CHECK-NEXT:    VPUIPDPU.PPEFpConvert convert_mode(NONE)
-    // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
-    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleMult %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
-    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleShift %arg1 : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+    // CHECK-NEXT:    VPUIPDPU.PPEIntBiasAdd {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleMult {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
+    // CHECK-NEXT:    VPUIPDPU.PPEIntScaleShift {{%[^:]+}}: memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>
     // CHECK-NEXT:    VPUIPDPU.PPEIntPreluMult prelu_mult_static(1)
     // CHECK-NEXT:    VPUIPDPU.PPEIntPreluShift prelu_shift_static(0)
     // CHECK-NEXT:    VPUIPDPU.PPEIntRound round_mode(RNE)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -353,9 +353,8 @@ mlir::Operation* MoveEltwiseBeforeSlice<EltwiseOp>::createNewLayerOp(ArrayRef<El
     targetShape[sliceDimPos] = targetShape[sliceDimPos] / checked_cast<int64_t>(siblingLayerOps.size());
     targetShape.insert(targetShape.begin() + sliceDimPos, checked_cast<int64_t>(siblingLayerOps.size()));
 
-    auto newLhs =
-            rewriter.create<IE::ReshapeOp>(appendLoc(source.getLoc(), "reshape_for_lhs"), canonicalPermuteCast, nullptr,
-                                           false, getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
+    auto newLhs = rewriter.create<IE::ReshapeOp>(appendLoc(source.getLoc(), "reshape_for_lhs"), canonicalPermuteCast,
+                                                 getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
 
     // To ensure we merge multiply ops in the correct order, we need to sort them by the offset of the slice
     auto compareSliceOps = [sliceDim](IE::SliceOp a, IE::SliceOp b) {
@@ -386,7 +385,7 @@ mlir::Operation* MoveEltwiseBeforeSlice<EltwiseOp>::createNewLayerOp(ArrayRef<El
         auto input2TargetShape = SmallVector<int64_t>(targetShape.size(), 1);
         // Reshape input2 to handle the case when 2 inputs have different ranks
         auto input2Reshape = rewriter.createOrFold<IE::ReshapeOp>(
-                appendLoc(source.getLoc(), "reshape_rhs"), rhsPermuteCast, nullptr, false,
+                appendLoc(source.getLoc(), "reshape_rhs"), rhsPermuteCast,
                 getIntArrayAttr(rewriter.getContext(), ShapeRef(input2TargetShape)));
 
         concatRhs.push_back(input2Reshape);
@@ -400,9 +399,8 @@ mlir::Operation* MoveEltwiseBeforeSlice<EltwiseOp>::createNewLayerOp(ArrayRef<El
                                        firstMultiply.getAutoBroadcastAttr(), nullptr, nullptr, nullptr, nullptr);
 
     // Reshape to the original source MemShape
-    auto outputReshape =
-            rewriter.create<IE::ReshapeOp>(appendLoc(multiply.getLoc(), "output_reshape"), multiply, nullptr, false,
-                                           getIntArrayAttr(rewriter.getContext(), getMemShape(source)));
+    auto outputReshape = rewriter.create<IE::ReshapeOp>(appendLoc(multiply.getLoc(), "output_reshape"), multiply,
+                                                        getIntArrayAttr(rewriter.getContext(), getMemShape(source)));
 
     // Cast to the original dims order
     const auto sourceShape = getShape(source);
@@ -458,10 +456,6 @@ bool checkShapes(ArrayRef<int64_t> shapeA, ArrayRef<int64_t> shapeB) {
 
 bool MoveReshapeBeforeSlice::isLegalTransformation(IE::SliceOp sliceOp, IE::ReshapeOp layerOp,
                                                    ArrayRef<IE::ReshapeOp>) const {
-    if (!layerOp.getShapeValue().has_value()) {
-        return false;
-    }
-
     // Transformation is legal when the shapes are changed by either inserting or dropping dimensions of size 1.
     // For example, below 2 cases are both legal:
     // Reshape from 1x2x3 to 2x3
@@ -492,7 +486,7 @@ bool MoveReshapeBeforeSlice::sameAttributes(IE::ReshapeOp layerOp, IE::ReshapeOp
 }
 
 SmallVector<int64_t> MoveReshapeBeforeSlice::getNewSizes(IE::SliceOp, IE::ReshapeOp layerOp) const {
-    return vpux::parseIntArrayAttr<int64_t>(layerOp.getShapeValue().value());
+    return vpux::parseIntArrayAttr<int64_t>(layerOp.getShapeValue());
 }
 
 // Remove n elements with value 1 and record their indices
@@ -567,7 +561,7 @@ mlir::Operation* MoveReshapeBeforeSlice::createNewLayerOp(ArrayRef<IE::ReshapeOp
     }
 
     rewriter.setInsertionPointAfterValue(sliceOp.getSource());
-    return rewriter.create<IE::ReshapeOp>(takeOpLoc(layerOp, "as_reshape"), sliceOp.getSource(), nullptr, false,
+    return rewriter.create<IE::ReshapeOp>(takeOpLoc(layerOp, "as_reshape"), sliceOp.getSource(),
                                           vpux::getIntArrayAttr(rewriter, targetShape));
 }
 
@@ -675,7 +669,7 @@ mlir::Operation* MoveFCBeforeSlice::createNewLayerOp(ArrayRef<IE::FullyConnected
         auto targetShape = to_small_vector(weightsSourceShape);
         targetShape[0] = checked_cast<int64_t>(siblingLayerOps.size());
         targetShape[1] = weightsSourceShape.back() / checked_cast<int64_t>(siblingLayerOps.size());
-        newWeights = rewriter.create<IE::ReshapeOp>(weightsSource.getLoc(), weightsSource, nullptr, false,
+        newWeights = rewriter.create<IE::ReshapeOp>(weightsSource.getLoc(), weightsSource,
                                                     getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
     } else if (sliceAxis == 0) {
         newWeights = weightsSource;
@@ -854,7 +848,7 @@ void MoveReshapeAfterConcat::createNewSubgraphAndReplace(ArrayRef<IE::ReshapeOp>
     }
     auto newConcat = rewriter.create<IE::ConcatOp>(origOp->getLoc(), concatInputs, newConcatAxis);
 
-    auto newReshape = rewriter.create<IE::ReshapeOp>(takeOpLoc(firstReshape, "new_reshape"), newConcat, nullptr, false,
+    auto newReshape = rewriter.create<IE::ReshapeOp>(takeOpLoc(firstReshape, "new_reshape"), newConcat,
                                                      getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
 
     rewriter.replaceOp(origOp, newReshape.getOutput());
@@ -978,7 +972,7 @@ void MoveFCAfterConcat::createNewSubgraphAndReplace(ArrayRef<IE::FullyConnectedO
 
     auto targetShape = getShape(origOp.getOutput());
     auto outputReshape = rewriter.createOrFold<IE::ReshapeOp>(
-            appendLoc(origOp->getLoc(), "output_reshape"), newFullyConnected.getOutput(), nullptr, false,
+            appendLoc(origOp->getLoc(), "output_reshape"), newFullyConnected.getOutput(),
             getIntArrayAttr(rewriter.getContext(), ShapeRef(targetShape)));
 
     rewriter.replaceOp(origOp, outputReshape);
@@ -1133,6 +1127,52 @@ SmallVector<IE::AddOp> MoveAddAfterConcat::getValidInputs(IE::ConcatOp concatOp)
         return ind == sharedInputIndVec.front();
     };
     if (!llvm::all_of(sharedInputIndVec, haveTheSameSharedInputInd)) {
+        return {};
+    }
+
+    //  Perform the transformation for pattern below
+    //
+    //      input1       input2      input3
+    //    (1x1x1537)    (1x1537)    (1x1x1537)
+    //            \    /       \   /
+    //             Add          Add
+    //         (1x1x1537)    (1x1x1537)
+    //                 \       /
+    //                   Concat
+    //                 (1x2x1537)
+    //                     |
+    //
+    //  TO
+    //
+    //      input1      input3
+    //    (1x1x1537)  (1x1x1537)
+    //            \    /
+    //            Concat     input2
+    //          (1x2x1537)  (1x1537)
+    //                 \    /
+    //                   Add
+    //                (1x2x1537)
+    //                    |
+    //
+    // In this operation, the length of dimension N in input2 must be 1 to satisfy broadcasting requirements.
+    //
+    const auto concatRank = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType()).getRank();
+    const auto concatAxis = IE::getConcatAxis(concatOp).value();
+    // Calculate negative index from the end (e.g., for rank=3, axis=2 -> -1)
+    const auto reverseConcatAxis = concatAxis.ind() - concatRank;
+
+    const auto sharedInput = sharedInputIndVec.front() == 1 ? input1 : input2;
+    const auto sharedInputType = mlir::cast<vpux::NDTypeInterface>(sharedInput.getType());
+    const auto sharedInputShape = sharedInputType.getShape();
+    // Convert negative axis to positive index in shared input's coordinate system
+    const auto axisAtSharedInput = reverseConcatAxis + sharedInputType.getRank();
+    if (axisAtSharedInput < 0 || axisAtSharedInput >= sharedInputType.getRank()) {
+        return {};
+    }
+
+    // Verify that the dimension at concat axis is 1 to satisfy broadcasting requirements
+    const auto dimAtAxis = sharedInputShape[Dim(axisAtSharedInput)];
+    if (dimAtAxis != 1) {
         return {};
     }
 

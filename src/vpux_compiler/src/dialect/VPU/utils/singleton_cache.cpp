@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,12 +29,12 @@ const ICostModelFactory& getCostModelFactory(mlir::MLIRContext* context) {
     return registeredInterface.getCostModelFactory();
 }
 
-void setShaveCostModelUtils(mlir::MLIRContext* context, std::unique_ptr<IShaveCostModelUtils> shaveCostModelUtils) {
+void setShaveCostModelUtils(mlir::MLIRContext* context, std::unique_ptr<CostModelShaveUtil> shaveCostModelUtils) {
     auto& registeredInterface = getCache<VPU::SingletonCache, VPU::VPUDialect>(context);
     registeredInterface.setShaveCostModelUtils(std::move(shaveCostModelUtils));
 }
 
-const IShaveCostModelUtils& getShaveCostModelUtils(mlir::MLIRContext* context) {
+const CostModelShaveUtil& getShaveCostModelUtils(mlir::MLIRContext* context) {
     auto& registeredInterface = getCache<VPU::SingletonCache, VPU::VPUDialect>(context);
     return registeredInterface.getShaveCostModelUtils();
 }

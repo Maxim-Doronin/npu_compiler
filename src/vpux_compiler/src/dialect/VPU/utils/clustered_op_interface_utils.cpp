@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,19 +17,13 @@
 
 using namespace vpux;
 
-int64_t VPU::getNumTiles(mlir::Operation* op) {
-    auto moduleOp = op->getParentOfType<mlir::ModuleOp>();
-    auto tileOp = config::getTileExecutor(moduleOp);
-    return tileOp.getCount();
-}
-
 bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::TileInfo& outputTile) {
     auto clusteredOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(op);
     if (clusteredOp == nullptr) {
         return false;
     }
 
-    const auto numTiles = getNumTiles(op);
+    const auto numTiles = config::getNumOfTiles(op);
     const auto minimumOutputHeightForSOH = numTiles;
 
     auto isUniformDistributedSegments = VPU::isUniformDistributedSegmentsSupported(clusteredOp);
@@ -119,7 +113,7 @@ bool VPU::isOperationSplitOverWidthCompatible(mlir::Operation* op, ShapeRef outp
         return false;
     }
 
-    const auto numTiles = getNumTiles(op);
+    const auto numTiles = config::getNumOfTiles(op);
     const auto minimumOutputWidthForSOW = numTiles;
 
     const auto arch = config::getArch(clusteredOp);
@@ -177,7 +171,7 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
         return false;
     }
 
-    const auto numTiles = getNumTiles(op);
+    const auto numTiles = config::getNumOfTiles(op);
 
     if (outputShape == ShapeRef()) {
         outputShape = getShape(clusteredOp->getResult(0));
@@ -275,7 +269,7 @@ bool VPU::isOperationSplitOverBatchCompatible(mlir::Operation* op, ShapeRef outp
 
     // Currently, SOB supported with condition batch being less or equal to number tiles used
     const auto B = outputShape[Dims4D::Act::N];
-    const auto numTiles = getNumTiles(op);
+    const auto numTiles = config::getNumOfTiles(op);
 
     return (B > 1) && (B <= numTiles);
 }

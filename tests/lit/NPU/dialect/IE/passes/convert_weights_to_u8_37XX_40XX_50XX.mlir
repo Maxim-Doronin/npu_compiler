@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,6 +38,46 @@ func.func @KeepI8ForSI8WeightsAsInputs(%arg0: tensor<1x256x2048xf32>, %arg1: ten
   // CHECK-SAME:            {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<256x2048x1x1x!qElemType>, tensor<2048x2048x1x1x!qElemType1> -> tensor<256x2048x1x1xf16>
 
   // CHECK:       return [[CONV_RESULT]] : tensor<256x2048x1x1xf16>
+}
+
+// -----
+
+// CHECK:  !qElemType = !quant.uniform<u8:f16, 1.1534313725490195:123>
+// CHECK:  !qElemType1 = !quant.uniform<i8:f16, 1.1534313725490195:-5>
+!qElemType = !quant.uniform<i8:f16, 1.1534313725490195:-5>
+// CHECK-LABEL: @MixedPrecisionKeepI8ConstantsAsymmetric
+// CHECK-SAME:      [[ARG0:%.+]]: tensor<1x16x16x16xf16>
+func.func @MixedPrecisionKeepI8ConstantsAsymmetric(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16xf16> {
+  %qweights = const.Declare tensor<16x16x1x1x!qElemType> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>]
+  %result = IE.Convolution(%arg0, %qweights) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  return %result : tensor<1x16x16x16xf16>
+
+  // CHECK-DAG: [[WEIGHTS:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
+  // CHECK-SAME{LITERAL}: tensor<16x16x1x1xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType>]
+  // CHECK: [[CONV:%.+]] = IE.Convolution([[ARG0]], [[WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  // CHECK: return [[CONV]]
+
+}
+
+// -----
+
+!qElemType = !quant.uniform<i8:f16, 1.250000e-02:-10>
+
+// CHECK: !qElemType = !quant.uniform<u8:f16, 1.250000e-02:118>
+// CHECK: !qElemType1 = !quant.uniform<i8:f16, 1.250000e-02:-10>
+// CHECK-LABEL: @ConvertAsymmetricI8ConstWeightsToU8WithDequantize
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x8x8x8xf16>
+func.func @ConvertAsymmetricI8ConstWeightsToU8WithDequantize(%arg0: tensor<1x8x8x8xf16>) -> tensor<1x4x8x8xf16> {
+  %weights = const.Declare tensor<4x8x1x1x!qElemType> = dense<1> : tensor<4x8x1x1xsi8>, [#const.CastElemType<f16>, #const.CastElemType<!qElemType>]
+  %weights_dq = IE.Dequantize(%weights) {dstElemType = f16} : tensor<4x8x1x1x!qElemType> -> tensor<4x8x1x1xf16>
+  %conv = IE.Convolution(%arg0, %weights_dq) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x8x8x8xf16>, tensor<4x8x1x1xf16> -> tensor<1x4x8x8xf16>
+  return %conv : tensor<1x4x8x8xf16>
+
+  // CHECK-DAG:      [[CST:%.+]] = const.Declare tensor<4x8x1x1x!qElemType>
+  // CHECK-SAME{LITERAL}: dense<1> : tensor<4x8x1x1xsi8>, [#const.CastElemType<f16>, #const.CastElemType<!qElemType1>, #const.ConvertElemType<!qElemType>]
+  // CHECK:      [[WEIGHTS_DQ:%.+]] = IE.Dequantize([[CST]]) {dstElemType = f16} : tensor<4x8x1x1x!qElemType> -> tensor<4x8x1x1xf16>
+  // CHECK:      [[CONV:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS_DQ]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x8x8x8xf16>, tensor<4x8x1x1xf16> -> tensor<1x4x8x8xf16>
+  // CHECK:      return [[CONV]] : tensor<1x4x8x8xf16>
 }
 
 // -----

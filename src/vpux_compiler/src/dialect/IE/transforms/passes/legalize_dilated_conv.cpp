@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,7 +43,7 @@ struct SliceAndPaddingParameters {
 };
 
 mlir::Value createNewOp(mlir::PatternRewriter& rewriter, mlir::Operation* origOp, ArrayRef<mlir::Value> operands,
-                        ShapeRef padStart, ShapeRef padEnd, bool updatePad, bool removePostOp, StringRef locSuffix) {
+                        ShapeRef padStart, ShapeRef padEnd, bool updatePad, bool clearPPE, StringRef locSuffix) {
     mlir::IRMapping mapper;
     mlir::Builder builder(origOp->getContext());
     mapper.map(origOp->getOperands(), operands);
@@ -60,11 +60,11 @@ mlir::Value createNewOp(mlir::PatternRewriter& rewriter, mlir::Operation* origOp
         newOp->setAttr("pads_begin", padBeginAttr);
     }
 
-    if (removePostOp) {
+    if (clearPPE) {
         auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(newOp);
         VPUX_THROW_WHEN(layerWithPostOp == nullptr, "Cannot remove the post-op of a non-LayerWithPostOp operation: {0}",
                         newOp->getName());
-        layerWithPostOp.clearPostOp();
+        layerWithPostOp.clearPPE();
     }
 
     VPUX_THROW_UNLESS(newOp->hasAttr("dilations"), "operation does not have dilations attribute");
@@ -431,7 +431,7 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
         }
         const auto locSuffix = "conv_" + locSuffixBase;
         newConvs.push_back(createNewOp(rewriter, origOp, operands, parameter.padStart, parameter.padEnd, true,
-                                       origOp.getPostOpAttr() != nullptr, locSuffix));
+                                       IE::hasPPE(origOp), locSuffix));
     }
 
     // 4. add the new convolution one by one
@@ -455,11 +455,16 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
 
     } else {
         auto conv = newConvs.front().getDefiningOp();
+        auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(conv);
         if (const auto postOp = origOp.getPostOpAttr()) {
-            auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(conv);
             VPUX_THROW_WHEN(layerWithPostOp == nullptr, "Cannot bind post-op to non-LayerWithPostOp operation: {0}",
                             conv->getName());
             layerWithPostOp.setPostOpAttr(postOp);
+        }
+        if (const auto clamp = origOp.getClampAttr()) {
+            VPUX_THROW_WHEN(layerWithPostOp == nullptr, "Cannot bind clamp to non-LayerWithPostOp operation: {0}",
+                            conv->getName());
+            layerWithPostOp.setClampAttr(clamp);
         }
         rewriter.replaceOp(origOp, conv->getResult(0));
     }
@@ -470,31 +475,13 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
 class LegalizeDilatedConvolutionPass final :
         public IE::impl::LegalizeDilatedConvolutionBase<LegalizeDilatedConvolutionPass> {
 public:
-    explicit LegalizeDilatedConvolutionPass(bool enableSEPDilatedGroupConv, Logger log)
-            : _enableSEPDilatedGroupConv{enableSEPDilatedGroupConv} {
+    explicit LegalizeDilatedConvolutionPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnFunc() final;
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
-private:
-    bool _enableSEPDilatedGroupConv;
 };
-
-mlir::LogicalResult LegalizeDilatedConvolutionPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // LIT test override
-    if (enableSEPDilatedGroupConv.hasValue()) {
-        _enableSEPDilatedGroupConv = enableSEPDilatedGroupConv.getValue();
-    }
-
-    return mlir::success();
-}
 
 bool isLegalGroupConvOpImpl(IE::GroupConvolutionOp op, bool enableDilatedGroupConv, Logger log) {
     const auto dilations = parseIntArrayAttr<int64_t>(op.getDilations());
@@ -518,9 +505,12 @@ bool isLegalConvOp(IE::ConvolutionOp op) {
 
 void LegalizeDilatedConvolutionPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    const auto func = getOperation();
+    const auto moduleOp = getModuleOp(func);
+    const auto hasEnableExperimentalSEPtrsOps = config::hasEnableExperimentalSEPtrsOperations(moduleOp);
 
     auto isLegalGroupConvOp = [&](IE::GroupConvolutionOp op) {
-        return isLegalGroupConvOpImpl(op, _enableSEPDilatedGroupConv, _log);
+        return isLegalGroupConvOpImpl(op, hasEnableExperimentalSEPtrsOps, _log);
     };
 
     mlir::ConversionTarget target(ctx);
@@ -537,7 +527,6 @@ void LegalizeDilatedConvolutionPass::safeRunOnFunc() {
     patterns.add<ConvGeneralRewriter<IE::GroupConvolutionOp>>(&ctx, _log);
     patterns.add<ConvGeneralRewriter<IE::ConvolutionOp>>(&ctx, _log);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }
@@ -549,6 +538,6 @@ void LegalizeDilatedConvolutionPass::safeRunOnFunc() {
 // createLegalizeDilatedConvolutionPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createLegalizeDilatedConvolutionPass(bool enableDilatedGroupConv, Logger log) {
-    return std::make_unique<LegalizeDilatedConvolutionPass>(enableDilatedGroupConv, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createLegalizeDilatedConvolutionPass(Logger log) {
+    return std::make_unique<LegalizeDilatedConvolutionPass>(log);
 }

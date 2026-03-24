@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -42,10 +42,14 @@ bool IE::arch50xx::isMixPrecisionSupported(mlir::Operation* origOp, const bool, 
 bool IE::arch50xx::checkPostOp(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput,
                                bool isFloatInput) {
     VPUX_UNUSED(isFloatInput);
-    const auto postOp = layerWithPostOp.getPostOp();
 
-    // Because in the PPE pipeline the quantization scale happens before post-op effects are applied, the following
-    // limitation occurs: If we have per axis quantization at output this would produce per axis Clamp intervals and
-    // LeakyReLU alphas which would not be supported.
-    return !isPerAxisQuantizedOutput || mlir::isa<IE::ReluAttr>(postOp);
+    if (isPerAxisQuantizedOutput) {
+        // In the PPE pipeline the quantization scale happens before post-op effects are applied, the following
+        // limitation occurs: If we have per axis quantization at output this would produce per axis Clamp intervals and
+        // LeakyReLU alphas which would not be supported.
+        bool isRelu = mlir::isa_and_nonnull<IE::ReluAttr>(layerWithPostOp.getPostOp());
+        bool noClamp = layerWithPostOp.getClampAttr() == nullptr;
+        return isRelu && noClamp;
+    }
+    return true;
 }

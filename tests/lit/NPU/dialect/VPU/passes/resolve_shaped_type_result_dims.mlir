@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -64,7 +64,7 @@ func.func @NCEMaxPool(%arg0: tensor<1x16x?x15xf16, {mem_space = @CMX_NN, bounds 
         ppe = #VPU.PPEStub<>,
         strides = [1, 1]
     } -> tensor<1x16x?x15xf16, {mem_space = @CMX_NN, bounds = #const.OpaqueI64Elements<[1, 16, 340, 15]> : tensor<4xsi64>, order = #NCHW}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] pad [0, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
     %DIM = tensor.dim %arg0, %C2 : tensor<1x16x?x15xf16, {mem_space = @CMX_NN, bounds = #const.OpaqueI64Elements<[1, 16, 340, 15]> : tensor<4xsi64>, order = #NHWC}>
     return %MAXPOOL,%DIM : tensor<1x16x?x15xf16, {mem_space = @CMX_NN, bounds = #const.OpaqueI64Elements<[1, 16, 340, 15]> : tensor<4xsi64>, order = #NCHW}>, index

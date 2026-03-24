@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,6 +35,8 @@ std::string getPlatform(const std::string& device) {
         return "4000";
     } else if (device == "NPU.5010") {
         return "5010";
+    } else if (device == "NPU.5020") {
+        return "5020";
     } else {
         throw std::runtime_error("Target device is unknown.");
     }

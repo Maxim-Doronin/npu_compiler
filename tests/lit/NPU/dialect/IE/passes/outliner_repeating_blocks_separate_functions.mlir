@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -573,7 +573,7 @@ module @TwoRepeatingBlockTypes {
     // CHECK-SAME:         : tensor<1x3x300x300xf32> -> tensor<1x3x300x300xf32>
     // CHECK:          [[AVGPOOL2_2:%.+]] = IE.AvgPool([[AVGPOOL2_1]]) {kernel_size = [3, 3], pads_begin = [1, 1], pads_end = [1, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]}
     // CHECK-SAME:         : tensor<1x3x300x300xf32> -> tensor<1x3x300x300xf32>
-    // CHECK:          return %2 : tensor<1x3x300x300xf32>
+    // CHECK:          return [[AVGPOOL2_2]] : tensor<1x3x300x300xf32>
     // CHECK:      }
 
     // CHECK:      func.func private @main_fn2_block1([[ARG0:%.+]]: tensor<1x3x300x300xf32>) -> tensor<1x3x300x300xf32> {

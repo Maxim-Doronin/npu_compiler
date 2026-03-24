@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -62,7 +62,7 @@ public:
 
         overwriteIfUnset(options.enableConvertFFTToConv, false);
         overwriteIfUnset(options.enableDecomposeGRUSequence, false);
-        overwriteIfUnset(options.enableConvertToReduceMeanSquare, false);
+        overwriteIfUnset(options.enableConvertToReduceSquare, false);
     }
 };
 

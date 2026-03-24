@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -315,6 +315,7 @@ func.func @ApplyTilingSparseQuantNCEConv(%arg0: tensor<1x32x80x80x!qElemType, {o
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: func.func @ApplyTilingDepthToSpace
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x384x10x120xf16, {order = #NHWC}>)
 func.func @ApplyTilingDepthToSpace(%arg0: tensor<1x384x10x120xf16, {order = #NHWC}>) -> tensor<1x24x40x480xf16, {order = #NHWC}> {
     %0 = VPU.DepthToSpace(%arg0) {
         block_size = 4 : i64,
@@ -323,13 +324,13 @@ func.func @ApplyTilingDepthToSpace(%arg0: tensor<1x384x10x120xf16, {order = #NHW
     } : tensor<1x384x10x120xf16, {order = #NHWC}> -> tensor<1x24x40x480xf16, {order = #NHWC}>
     return %0 : tensor<1x24x40x480xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 384, 5, 120] : tensor<1x384x10x120xf16, {order = #NHWC}> to tensor<1x384x5x120xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 384, 5, 120] : tensor<1x384x10x120xf16, {order = #NHWC}> to tensor<1x384x5x120xf16, {order = #NHWC}>
     // CHECK:           [[D2S0:%.+]] = VPU.DepthToSpace([[SLICE0]])
     // CHECK-SAME:              block_size = 4 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<BLOCKS_FIRST>
     // CHECK-SAME:          : tensor<1x384x5x120xf16, {order = #NHWC}> -> tensor<1x24x20x480xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 5, 0] [1, 384, 5, 120] : tensor<1x384x10x120xf16, {order = #NHWC}> to tensor<1x384x5x120xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 5, 0] [1, 384, 5, 120] : tensor<1x384x10x120xf16, {order = #NHWC}> to tensor<1x384x5x120xf16, {order = #NHWC}>
     // CHECK:           [[D2S1:%.+]] = VPU.DepthToSpace([[SLICE1]])
     // CHECK-SAME:              block_size = 4 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<BLOCKS_FIRST>
@@ -347,6 +348,7 @@ func.func @ApplyTilingDepthToSpace(%arg0: tensor<1x384x10x120xf16, {order = #NHW
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ApplyTilingD2SPadded
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x12x540x960xf16, {order = #NHWC}>)
 func.func @ApplyTilingD2SPadded(
           %arg0: tensor<1x12x540x960xf16, {order = #NHWC}>
 ) -> tensor<1x16x1080x1920xf16, {order = #NHWC}> {
@@ -360,42 +362,42 @@ func.func @ApplyTilingD2SPadded(
     -> tensor<1x16x1080x1920xf16, {order = #NHWC}>
 
     return %20 : tensor<1x16x1080x1920xf16, {order = #NHWC}>
-    // CHECK:           [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
     // CHECK:           [[D2S0:%.+]] = VPU.DepthToSpace([[SLICE0]])
     // CHECK-SAME:              block_size = 2 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<DEPTH_FIRST>
     // CHECK-SAME:              padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 13 : i64>
     // CHECK-SAME:          : tensor<1x12x270x320xf16, {order = #NHWC}> -> tensor<1x16x540x640xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 320] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 320] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
     // CHECK:           [[D2S1:%.+]] = VPU.DepthToSpace([[SLICE1]])
     // CHECK-SAME:              block_size = 2 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<DEPTH_FIRST>
     // CHECK-SAME:              padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 13 : i64>
     // CHECK-SAME:          : tensor<1x12x270x320xf16, {order = #NHWC}> -> tensor<1x16x540x640xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE2:%.+]] = VPU.Slice %arg0 [0, 0, 0, 640] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE2:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 640] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
     // CHECK:           [[D2S2:%.+]] = VPU.DepthToSpace([[SLICE2]])
     // CHECK-SAME:              block_size = 2 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<DEPTH_FIRST>
     // CHECK-SAME:              padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 13 : i64>
     // CHECK-SAME:          : tensor<1x12x270x320xf16, {order = #NHWC}> -> tensor<1x16x540x640xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE3:%.+]] = VPU.Slice %arg0 [0, 0, 270, 0] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE3:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 270, 0] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
     // CHECK:           [[D2S3:%.+]] = VPU.DepthToSpace([[SLICE3]])
     // CHECK-SAME:              block_size = 2 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<DEPTH_FIRST>
     // CHECK-SAME:              padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 13 : i64>
     // CHECK-SAME:          : tensor<1x12x270x320xf16, {order = #NHWC}> -> tensor<1x16x540x640xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE4:%.+]] = VPU.Slice %arg0 [0, 0, 270, 320] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE4:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 270, 320] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
     // CHECK:           [[D2S4:%.+]] = VPU.DepthToSpace([[SLICE4]])
     // CHECK-SAME:              block_size = 2 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<DEPTH_FIRST>
     // CHECK-SAME:              padded_channels = #IE.ChannelPadding<input = 0 : i64, output = 13 : i64>
     // CHECK-SAME:          : tensor<1x12x270x320xf16, {order = #NHWC}> -> tensor<1x16x540x640xf16, {order = #NHWC}>
 
-    // CHECK:           [[SLICE5:%.+]] = VPU.Slice %arg0 [0, 0, 270, 640] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
+    // CHECK:           [[SLICE5:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 270, 640] [1, 12, 270, 320] : tensor<1x12x540x960xf16, {order = #NHWC}> to tensor<1x12x270x320xf16, {order = #NHWC}>
     // CHECK:           [[D2S5:%.+]] = VPU.DepthToSpace([[SLICE5]])
     // CHECK-SAME:              block_size = 2 : i64
     // CHECK-SAME:              mode = #IE.depth_to_space_mode<DEPTH_FIRST>
@@ -412,6 +414,7 @@ func.func @ApplyTilingD2SPadded(
 // -----
 
 // CHECK-LABEL:   func.func @ApplyTilingSpaceToDepth
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x48x160x80xf16>)
 func.func @ApplyTilingSpaceToDepth(%arg0: tensor<1x48x160x80xf16>) -> tensor<1x768x40x20xf16> {
     %0 = VPU.SpaceToDepthOp(%arg0) {
         block_size = 4 : i64,
@@ -420,13 +423,13 @@ func.func @ApplyTilingSpaceToDepth(%arg0: tensor<1x48x160x80xf16>) -> tensor<1x7
     } : tensor<1x48x160x80xf16> -> tensor<1x768x40x20xf16>
     return %0 : tensor<1x768x40x20xf16>
 
-    // CHECK:           [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 48, 160, 40] : tensor<1x48x160x80xf16> to tensor<1x48x160x40xf16>
+    // CHECK:           [[SLICE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 48, 160, 40] : tensor<1x48x160x80xf16> to tensor<1x48x160x40xf16>
     // CHECK:           [[S2D0:%.+]] = VPU.SpaceToDepthOp([[SLICE0]])
     // CHECK-SAME:              block_size = 4 : i64
     // CHECK-SAME:              mode = #IE.space_to_depth_mode<BLOCKS_FIRST>
     // CHECK-SAME:          : tensor<1x48x160x40xf16> -> tensor<1x768x40x10xf16>
 
-    // CHECK:           [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 40] [1, 48, 160, 40] : tensor<1x48x160x80xf16> to tensor<1x48x160x40xf16>
+    // CHECK:           [[SLICE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 40] [1, 48, 160, 40] : tensor<1x48x160x80xf16> to tensor<1x48x160x40xf16>
     // CHECK:           [[S2D1:%.+]] = VPU.SpaceToDepthOp([[SLICE1]])
     // CHECK-SAME:              block_size = 4 : i64
     // CHECK-SAME:              mode = #IE.space_to_depth_mode<BLOCKS_FIRST>

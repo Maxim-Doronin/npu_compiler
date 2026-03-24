@@ -23,6 +23,12 @@ using DynamicStridesTestParams = std::tuple<ov::Shape, std::vector<std::vector<s
 class DynamicStridesTestBase : public ::testing::TestWithParam<DynamicStridesTestParams> {
 protected:
     void SetUp() override {
+        if (utils::getTestDeviceId() == "3720") {
+            GTEST_SKIP() << "Dynamic strides are unsupported on NPU3720";
+        }
+        if (strcmp(test_utils::TARGET_DEVICE, "IMD") == 0) {
+            GTEST_SKIP() << "Skipping dynamic strides test for IMD backend due to missing inference support";
+        }
     }
 
     virtual std::shared_ptr<ov::Model> getTestModel(ov::Shape inputShape) = 0;
@@ -93,6 +99,7 @@ protected:
     }
 
     void run() {
+        _npuCompilationParams[ov::intel_npu::platform.name()] = utils::getTestDeviceId();
         auto fullTensor = std::get<0>(GetParam());
         auto slicings = std::get<1>(GetParam());
         size_t sliceIdx = 0;
@@ -155,13 +162,7 @@ protected:
     }
 };
 
-TEST_P(DynamicStridesBehaviorTest, NPU4000_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU4000;
-    run();
-}
-
-TEST_P(DynamicStridesBehaviorTest, NPU5010_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU5010;
+TEST_P(DynamicStridesBehaviorTest, DynamicStridesTest) {
     run();
 }
 
@@ -184,11 +185,13 @@ DynamicStridesTestParams smallTensorAll4DTilings{{8, 8, 8, 8},
                                                   {2, 2, 2, 2}}};
 
 INSTANTIATE_TEST_SUITE_P(All4DTilingPermutations, DynamicStridesBehaviorTest,
-                         ::testing::Values(smallTensorAll4DTilings));
+                         ::testing::Values(smallTensorAll4DTilings),
+                         (utils::appendPlatformTypeTestName<DynamicStridesBehaviorTest>));
 
 DynamicStridesTestParams bigTensorTiling{{1, 16, 1280, 1280}, {{1, 4, 20, 4}}};
 
-INSTANTIATE_TEST_SUITE_P(BigTensorTiling, DynamicStridesBehaviorTest, ::testing::Values(bigTensorTiling));
+INSTANTIATE_TEST_SUITE_P(BigTensorTiling, DynamicStridesBehaviorTest, ::testing::Values(bigTensorTiling),
+                         (utils::appendPlatformTypeTestName<DynamicStridesBehaviorTest>));
 
 // More complex model with internal slices, used to exercise logic for calculating tile offsets at runtime.
 class DynamicStridesWithSlicesBehaviorTest : public DynamicStridesTestBase {
@@ -230,18 +233,13 @@ protected:
     }
 };
 
-TEST_P(DynamicStridesWithSlicesBehaviorTest, NPU4000_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU4000;
-    run();
-}
-
-TEST_P(DynamicStridesWithSlicesBehaviorTest, NPU5010_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU5010;
+TEST_P(DynamicStridesWithSlicesBehaviorTest, DynamicStridesTest) {
     run();
 }
 
 INSTANTIATE_TEST_SUITE_P(All4DTilingPermutations, DynamicStridesWithSlicesBehaviorTest,
-                         ::testing::Values(smallTensorAll4DTilings));
+                         ::testing::Values(smallTensorAll4DTilings),
+                         (utils::appendPlatformTypeTestName<DynamicStridesWithSlicesBehaviorTest>));
 
 // Simple model with permutation added. Tests if dynamic strides relocation is permuted correctly.
 class DynamicStridesWithTransposeBehaviorTest : public DynamicStridesTestBase {
@@ -262,18 +260,13 @@ protected:
     }
 };
 
-TEST_P(DynamicStridesWithTransposeBehaviorTest, NPU4000_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU4000;
-    run();
-}
-
-TEST_P(DynamicStridesWithTransposeBehaviorTest, NPU5010_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU5010;
+TEST_P(DynamicStridesWithTransposeBehaviorTest, DynamicStridesTest) {
     run();
 }
 
 INSTANTIATE_TEST_SUITE_P(All4DTilingPermutations, DynamicStridesWithTransposeBehaviorTest,
-                         ::testing::Values(smallTensorAll4DTilings));
+                         ::testing::Values(smallTensorAll4DTilings),
+                         (utils::appendPlatformTypeTestName<DynamicStridesWithTransposeBehaviorTest>));
 
 class DynamicStridesWithStridedSlicesBehaviorTest : public DynamicStridesTestBase {
 protected:
@@ -308,18 +301,13 @@ protected:
     }
 };
 
-TEST_P(DynamicStridesWithStridedSlicesBehaviorTest, NPU4000_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU4000;
-    run();
-}
-
-TEST_P(DynamicStridesWithStridedSlicesBehaviorTest, NPU5010_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU5010;
+TEST_P(DynamicStridesWithStridedSlicesBehaviorTest, DynamicStridesTest) {
     run();
 }
 
 INSTANTIATE_TEST_SUITE_P(All4DTilingPermutations, DynamicStridesWithStridedSlicesBehaviorTest,
-                         ::testing::Values(smallTensorAll4DTilings));
+                         ::testing::Values(smallTensorAll4DTilings),
+                         (utils::appendPlatformTypeTestName<DynamicStridesWithStridedSlicesBehaviorTest>));
 
 // Simple model with reshaped inputs to shapes incompatible with input arguments.
 class DynamicStridesWithIncompatibleReshapeBehaviorTest : public DynamicStridesTestBase {
@@ -345,15 +333,10 @@ protected:
     }
 };
 
-TEST_P(DynamicStridesWithIncompatibleReshapeBehaviorTest, NPU4000_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU4000;
-    run();
-}
-
-TEST_P(DynamicStridesWithIncompatibleReshapeBehaviorTest, NPU5010_HW) {
-    _npuCompilationParams[ov::intel_npu::platform.name()] = Platform::NPU5010;
+TEST_P(DynamicStridesWithIncompatibleReshapeBehaviorTest, DynamicStridesTest) {
     run();
 }
 
 INSTANTIATE_TEST_SUITE_P(All4DTilingPermutations, DynamicStridesWithIncompatibleReshapeBehaviorTest,
-                         ::testing::Values(smallTensorAll4DTilings));
+                         ::testing::Values(smallTensorAll4DTilings),
+                         (utils::appendPlatformTypeTestName<DynamicStridesWithIncompatibleReshapeBehaviorTest>));

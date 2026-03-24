@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -147,8 +147,7 @@ module @MatMulWithGroupQuant {
             tensor<3x1x4096xf32>
                 -> tensor<3x1024x4096xf32>
 
-        %SHAPE_CST = const.Declare tensor<2xsi64> = dense<[3072, 4096]> : tensor<2xsi64>
-        %RESHAPE = IE.Reshape(%FQ, %SHAPE_CST) : tensor<3x1024x4096xf32>, tensor<2xsi64> -> tensor<3072x4096xf32>
+        %RESHAPE = IE.Reshape(%FQ) {shape_value = [3072, 4096]} : tensor<3x1024x4096xf32> -> tensor<3072x4096xf32>
         %GEMM = IE.MatMul(%arg0, %RESHAPE) : tensor<16x3072xf32>, tensor<3072x4096xf32> -> tensor<16x4096xf32>
         // CHECK:   [[SLICE_0:%.+]] = IE.Slice [[CONVERT_LHS]] [0, 0, 0, 0] [1, 1, 16, 1024] : tensor<1x1x16x3072xf16> to tensor<1x1x16x1024xf16>
         // CHECK:   [[SLICE_1:%.+]] = IE.Slice [[CONVERT_LHS]] [0, 0, 0, 1024] [1, 1, 16, 1024] : tensor<1x1x16x3072xf16> to tensor<1x1x16x1024xf16>
@@ -318,7 +317,7 @@ module @MemPermuteProcessingWithNDMemPermute {
         // CHECK:       [[PERMUTEQUANT2:%.+]] = IE.PermuteQuantize([[SLICE2]]) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x192x288x288xf16> -> tensor<1x192x288x288xf16, {order = #NHWC}>
         // CHECK:       [[CONV1:%.+]] = IE.Convolution([[PERMUTEQUANT1]], [[CST]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x192x288x288xf16, {order = #NHWC}>, tensor<64x192x3x3xf16, {order = #NHWC}> -> tensor<1x64x288x288xf16, {order = #NHWC}>
         // CHECK:       [[CONV2:%.+]] = IE.Convolution([[PERMUTEQUANT2]], [[CST]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x192x288x288xf16, {order = #NHWC}>, tensor<64x192x3x3xf16, {order = #NHWC}> -> tensor<1x64x288x288xf16, {order = #NHWC}>
-        // CHECK:       [[CONCAT2:%.+]] = IE.Concat([[CONV1]], [[CONV2]]) 
+        // CHECK:       [[CONCAT2:%.+]] = IE.Concat([[CONV1]], [[CONV2]])
         // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [1, 0, 0, 0]]} : tensor<1x64x288x288xf16, {order = #NHWC}>, tensor<1x64x288x288xf16, {order = #NHWC}> -> tensor<2x64x288x288xf16, {order = #NHWC}>
         // CHECK:       [[SIGMOID:%.+]] = IE.Sigmoid([[CONCAT2]]) : tensor<2x64x288x288xf16, {order = #NHWC}> -> tensor<2x64x288x288xf16, {order = #NHWC}>
         // CHECK:       [[SHAPE_CAST1:%.+]] = IE.ShapeCast {shape = [1, 64, 2, 82944]} inputs([[SIGMOID]] : tensor<2x64x288x288xf16, {order = #NHWC}>) -> tensor<1x64x2x82944xf16, {order = #NHWC}>
@@ -430,7 +429,7 @@ net.NetworkInfo entryPoint : @main
                     %arg2: tensor<1x4x1x1xf16>,
                     %arg3: tensor<1x2048x256x1xf16, {order = #NHWC}>,
                     %arg4: tensor<1x4x256x2048xf16>) -> tensor<4x1x256x2048xf16> {
-        
+
         %0 = IE.Convolution(%arg0, %arg1, %arg2) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x4x256x1xf16, {order = #NHWC}>, tensor<4x4x1x1xf16, {order = #NHWC}>, tensor<1x4x1x1xf16> -> tensor<1x4x256x1xf16, {order = #NHWC}>
         %1 = IE.PermuteCast(%arg3) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x2048x256x1xf16, {order = #NHWC}> -> tensor<1x256x1x2048xf16>
         %2 = IE.AffineReshape(%1) {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 256, 2048]} : tensor<1x256x1x2048xf16> -> tensor<1x1x256x2048xf16>

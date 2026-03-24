@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -51,16 +51,16 @@ module @Test_1 {
 }
 
 //CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
-//CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg3: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg4: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
+//CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_3:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_4:%.+]]: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
 //CHECK:     VPUIPDPU.ODUCfg {
 //CHECK:       VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16)
 //CHECK:       VPUIPDPU.ODUDataReuse activation_reuse(NTHW_8)
 //CHECK:       VPUIPDPU.ODUPermuteData permute_mode(PERMUTE_ZXY)
 //CHECK:       VPUIPDPU.ODUSwizzleData swizzle_key(SWIZZLE_KEY_1)
-//CHECK:       VPUIPDPU.ODUSparsity %arg4 : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>
-//CHECK:       VPUIPDPU.ODUOutActivations out_activations(%arg1 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>) data_type(ODU_DTYPE_FP16)
-//CHECK:       VPUIPDPU.ODUCast cast_output(%arg2 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>)
-//CHECK:       VPUIPDPU.ODUCast cast_output(%arg3 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>)
+//CHECK:       VPUIPDPU.ODUSparsity [[ARG_4]] : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>
+//CHECK:       VPUIPDPU.ODUOutActivations out_activations([[ARG_1]] : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>) data_type(ODU_DTYPE_FP16)
+//CHECK:       VPUIPDPU.ODUCast cast_output([[ARG_2]] : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>)
+//CHECK:       VPUIPDPU.ODUCast cast_output([[ARG_3]] : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK:     }
 //CHECK:   }
 //CHECK:   VPUIPDPU.DPUVariant @DPUVariant_0 invariant(@DeclareTaskBuffer_DPUInvariant_0) {nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, taskLocation = @DeclareTaskBuffer_DPUVariant_0, task_index = !VPURegMapped.Index<0:0:0>} DPUCfg : {
@@ -105,12 +105,12 @@ module @Test_2 {
 }
 
 //CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
-//CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
+//CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
 //CHECK:     VPUIPDPU.ODUCfg {
 //CHECK:       VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16)
 //CHECK:       VPUIPDPU.ODUPermuteData permute_mode(PERMUTE_ZXY)
 //CHECK:       VPUIPDPU.ODUSparsity compression_enabled(true) sparse_value(0)
-//CHECK:       VPUIPDPU.ODUOutActivations out_activations(%arg1 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>)
+//CHECK:       VPUIPDPU.ODUOutActivations out_activations([[ARG_1]] : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK:     }
 //CHECK:   }
 //CHECK:   VPUIPDPU.DPUVariant @DPUVariant_0 invariant(@DeclareTaskBuffer_DPUInvariant_0) {nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, taskLocation = @DeclareTaskBuffer_DPUVariant_0, task_index = !VPURegMapped.Index<0:0:0>} DPUCfg : {
@@ -154,14 +154,14 @@ module @Test_3 {
 }
 
 //CHECK:   VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0}> DPUCfg : {
-//CHECK:   ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
+//CHECK:   ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>):
 //CHECK:     VPUIPDPU.ODUCfg {
 //CHECK:       VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16)
 //CHECK:       VPUIPDPU.ODUDataReuse activation_reuse(NTHW_16)
 //CHECK:       VPUIPDPU.ODUPermuteData permute_mode(PERMUTE_YXZ)
 //CHECK:       VPUIPDPU.ODUSwizzleData swizzle_key(SWIZZLE_KEY_1)
-//CHECK:       VPUIPDPU.ODUSparsity %arg2 : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]> sparse_value(0)
-//CHECK:       VPUIPDPU.ODUOutActivations out_activations(%arg1 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>) data_type(ODU_DTYPE_FP16)
+//CHECK:       VPUIPDPU.ODUSparsity [[ARG_2]] : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]> sparse_value(0)
+//CHECK:       VPUIPDPU.ODUOutActivations out_activations([[ARG_1]] : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>) data_type(ODU_DTYPE_FP16)
 //CHECK:     }
 //CHECK:   }
 //CHECK:   VPUIPDPU.DPUVariant @DPUVariant_0 invariant(@DeclareTaskBuffer_DPUInvariant_0) {nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, taskLocation = @DeclareTaskBuffer_DPUVariant_0, task_index = !VPURegMapped.Index<0:0:0>} DPUCfg : {

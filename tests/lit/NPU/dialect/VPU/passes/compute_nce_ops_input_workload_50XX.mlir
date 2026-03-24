@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,7 +41,7 @@ module @AddInputWorkloadsOC  {
             mode = <LPRELU>
         >
     } -> !Output_CMX {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 4, 4] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<MATRIX>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 4, 4] pad [0, 0, 0, 0] #VPU.mpe_mode<MATRIX>
     }
     return %0 : !Output_CMX
   }
@@ -53,7 +53,7 @@ module @AddInputWorkloadsOC  {
   // CHECK-SAME:          inSizes [1, 16, 4, 4]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 3, 4, 4]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <MATRIX>
 
 }
@@ -91,8 +91,8 @@ module @DWConvInputWorkloadsAutopaddingODU  {
             rawFilterShape = [3, 1, 1, 1],
             strides = [1, 1]
         } -> !Output_CMX {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 30, 60]  #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16>
-            VPU.DPU.Workload outOffsets [0, 0, 30, 0] outSizes [1, 3, 30, 60] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 30, 60]  pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 30, 0] outSizes [1, 3, 30, 60] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
         }
     return %0 : !Output_CMX
   }
@@ -104,7 +104,7 @@ module @DWConvInputWorkloadsAutopaddingODU  {
   // CHECK-SAME:          inSizes [1, 16, 30, 60]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 3, 30, 60]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_16x16>
 
   // CHECK:           VPU.DPU.Workload
@@ -112,7 +112,7 @@ module @DWConvInputWorkloadsAutopaddingODU  {
   // CHECK-SAME:          inSizes [1, 16, 30, 60]
   // CHECK-SAME:          outOffsets [0, 0, 30, 0]
   // CHECK-SAME:          outSizes [1, 3, 30, 60]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_16x16>
 }
 
@@ -145,8 +145,8 @@ module @MaxPoolInputWorkloadsAutopaddingODU  {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             strides = [1, 1]
         } -> !Output_CMX {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 30, 60]  #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16>
-            VPU.DPU.Workload outOffsets [0, 0, 30, 0] outSizes [1, 3, 30, 60] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 30, 60]  pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 30, 0] outSizes [1, 3, 30, 60] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
         }
     return %0 : !Output_CMX
   }
@@ -158,7 +158,7 @@ module @MaxPoolInputWorkloadsAutopaddingODU  {
   // CHECK-SAME:          inSizes [1, 16, 30, 60]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 3, 30, 60]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_16x16>
 
   // CHECK:           VPU.DPU.Workload
@@ -166,7 +166,7 @@ module @MaxPoolInputWorkloadsAutopaddingODU  {
   // CHECK-SAME:          inSizes [1, 16, 30, 60]
   // CHECK-SAME:          outOffsets [0, 0, 30, 0]
   // CHECK-SAME:          outSizes [1, 3, 30, 60]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_16x16>
 }
 
@@ -200,8 +200,8 @@ module @AveragePoolInputWorkloadsAutopaddingODU  {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             strides = [1, 1]
         } -> !Output_CMX {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 30, 60]  #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16>
-            VPU.DPU.Workload outOffsets [0, 0, 30, 0] outSizes [1, 3, 30, 60] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 30, 60]  pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 30, 0] outSizes [1, 3, 30, 60] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
         }
     return %0 : !Output_CMX
   }
@@ -213,7 +213,7 @@ module @AveragePoolInputWorkloadsAutopaddingODU  {
   // CHECK-SAME:          inSizes [1, 16, 30, 60]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 3, 30, 60]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_16x16>
 
   // CHECK:           VPU.DPU.Workload
@@ -221,7 +221,7 @@ module @AveragePoolInputWorkloadsAutopaddingODU  {
   // CHECK-SAME:          inSizes [1, 16, 30, 60]
   // CHECK-SAME:          outOffsets [0, 0, 30, 0]
   // CHECK-SAME:          outSizes [1, 3, 30, 60]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_16x16>
 }
 
@@ -259,9 +259,9 @@ module @EltwiseInputWorkloads  {
             bias = 0.000000e+00 : f64,
             adder = 0.000000e+00 : f64>
       } -> !Output_CMX {
-      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1376, 1, 1] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_8x16> attributes {cluster_id = 0 : i64}
-      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1360, 1, 1] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_8x16> attributes {cluster_id = 1 : i64}
-      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1360, 1, 1] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_8x16> attributes {cluster_id = 2 : i64}
+      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1376, 1, 1] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_8x16> attributes {cluster_id = 0 : i64}
+      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1360, 1, 1] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_8x16> attributes {cluster_id = 1 : i64}
+      VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 1360, 1, 1] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_8x16> attributes {cluster_id = 2 : i64}
     }
     return %0 : !Output_CMX
   }
@@ -272,7 +272,7 @@ module @EltwiseInputWorkloads  {
   // CHECK-SAME:          inSizes [1, 1376, 1, 1]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 1376, 1, 1]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_8x16>
 
   // CHECK:           VPU.DPU.Workload
@@ -280,7 +280,7 @@ module @EltwiseInputWorkloads  {
   // CHECK-SAME:          inSizes [1, 1360, 1, 1]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 1360, 1, 1]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_8x16>
 
   // CHECK:           VPU.DPU.Workload
@@ -288,6 +288,6 @@ module @EltwiseInputWorkloads  {
   // CHECK-SAME:          inSizes [1, 1360, 1, 1]
   // CHECK-SAME:          outOffsets [0, 0, 0, 0]
   // CHECK-SAME:          outSizes [1, 1360, 1, 1]
-  // CHECK-SAME:          <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+  // CHECK-SAME:          pad [0, 0, 0, 0]
   // CHECK-SAME:          <CUBOID_8x16>
 }

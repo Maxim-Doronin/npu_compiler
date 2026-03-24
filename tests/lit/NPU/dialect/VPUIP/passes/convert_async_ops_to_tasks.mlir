@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @LinearGraph
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<10xf16>, [[ARG_1:%[^:]+]]: memref<10xf16>)
 func.func @LinearGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10xf16> {
     %buf0 = VPURT.DeclareBuffer <DDR> <0> -> memref<10xf16, @DDR>
     %t0, %f0 = async.execute -> !async.value<memref<10xf16, @DDR>>
@@ -31,21 +32,22 @@ func.func @LinearGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<1
     // CHECK-NEXT:  VPURT.Task
     // CHECK-SAME:      updates([[B0]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
-    // CHECK-SAME:      inputs(%arg0 : memref<10xf16>)
+    // CHECK-SAME:      inputs([[ARG_0]] : memref<10xf16>)
     // CHECK-SAME:      outputs([[BUF0]] : memref<10xf16, @DDR>
 
     // CHECK:  VPURT.Task
     // CHECK-SAME:      waits([[B0]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
     // CHECK-SAME:      inputs([[BUF0]] : memref<10xf16, @DDR>)
-    // CHECK-SAME:      outputs(%arg1 : memref<10xf16>)
+    // CHECK-SAME:      outputs([[ARG_1]] : memref<10xf16>)
 
-    // CHECK:  return %arg1 : memref<10xf16>
+    // CHECK:  return [[ARG_1]] : memref<10xf16>
 }
 
 // -----
 
 // CHECK-LABEL: @IndependentBranchesLinearSched
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<10xf16>, [[ARG_1:%[^:]+]]: memref<10xf16>, [[ARG_2:%[^:]+]]: memref<20xf16>)
 func.func @IndependentBranchesLinearSched(%arg0: memref<10xf16>, %arg1: memref<10xf16>, %arg2: memref<20xf16>) -> memref<20xf16> {
     %buf0 = VPURT.DeclareBuffer <DDR> <0> -> memref<10xf16, @DDR>
     %t0, %f0 = async.execute -> !async.value<memref<10xf16, @DDR>>
@@ -84,23 +86,23 @@ func.func @IndependentBranchesLinearSched(%arg0: memref<10xf16>, %arg1: memref<1
     // CHECK:       VPURT.Task
     // CHECK-SAME:      updates([[B0]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
-    // CHECK-SAME:      inputs(%arg0 : memref<10xf16>)
+    // CHECK-SAME:      inputs([[ARG_0]] : memref<10xf16>)
     // CHECK-SAME:      outputs([[BUF0]] : memref<10xf16, @DDR>
 
     // CHECK:       VPURT.Task
     // CHECK-SAME:      waits([[B0]] : !VPURT.Barrier)
     // CHECK-SAME:      updates([[B1]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
-    // CHECK-SAME:      inputs(%arg1 : memref<10xf16>)
+    // CHECK-SAME:      inputs([[ARG_1]] : memref<10xf16>)
     // CHECK-SAME:      outputs([[BUF1]] : memref<10xf16, @DDR>)
 
     // CHECK:       VPURT.Task
     // CHECK-SAME:      waits([[B1]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
     // CHECK-SAME:      inputs([[BUF2]] : memref<20xf16, @DDR>)
-    // CHECK-SAME:      outputs(%arg2 : memref<20xf16>)
+    // CHECK-SAME:      outputs([[ARG_2]] : memref<20xf16>)
 
-    // CHECK:       return %arg2 : memref<20xf16>
+    // CHECK:       return [[ARG_2]] : memref<20xf16>
 }
 
 // -----
@@ -166,6 +168,7 @@ func.func @IndependentBranchesParallelSched(%arg0: memref<10xf16>, %arg1: memref
 // -----
 
 // CHECK-LABEL: @TwoOutputs
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<2xf16>, [[ARG_1:%[^:]+]]: memref<2xf16>, [[ARG_2:%[^:]+]]: memref<2xf16>)
 func.func @TwoOutputs(%arg0: memref<2xf16>, %arg1: memref<2xf16>, %arg2: memref<2xf16>) -> (memref<2xf16>, memref<2xf16>) {
     %cst = const.Declare memref<2xf16, @DDR> = dense<1.0> : tensor<2xf16>
 
@@ -211,7 +214,7 @@ func.func @TwoOutputs(%arg0: memref<2xf16>, %arg1: memref<2xf16>, %arg2: memref<
     // CHECK:       VPURT.Task
     // CHECK-SAME:      updates([[B0]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
-    // CHECK-SAME:      inputs(%arg0 : memref<2xf16>)
+    // CHECK-SAME:      inputs([[ARG_0]] : memref<2xf16>)
     // CHECK-SAME:      outputs([[BUF0]] : memref<2xf16, @DDR>)
 
     // CHECK:       VPURT.Task
@@ -226,15 +229,15 @@ func.func @TwoOutputs(%arg0: memref<2xf16>, %arg1: memref<2xf16>, %arg2: memref<
     // CHECK-SAME:      updates([[B2]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
     // CHECK-SAME:      inputs([[BUF0]] : memref<2xf16, @DDR>)
-    // CHECK-SAME:      outputs(%arg1 : memref<2xf16>)
+    // CHECK-SAME:      outputs([[ARG_1]] : memref<2xf16>)
 
     // CHECK:       VPURT.Task
     // CHECK-SAME:      waits([[B2]] : !VPURT.Barrier)
     // CHECK-NEXT:  VPUIP.NNDMA
     // CHECK-SAME:      inputs([[BUF1]] : memref<2xf16, @DDR>)
-    // CHECK-SAME:      outputs(%arg2 : memref<2xf16>)
+    // CHECK-SAME:      outputs([[ARG_2]] : memref<2xf16>)
 
-    // CHECK:  return %arg1, %arg2
+    // CHECK:  return [[ARG_1]], [[ARG_2]]
 }
 
 // -----

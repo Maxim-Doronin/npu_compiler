@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/transposed_convolution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -97,8 +98,8 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
     origFilterShape.erase(origFilterShape.begin());
 
     const auto filter4DShapeAttr = getIntArrayAttr(rewriter.getContext(), origFilterShape);
-    auto reshaped4DFilter = rewriter.createOrFold<IE::ReshapeOp>(
-            takeOpLoc(origOp, "reshape_filter"), dwConvFilter->getResult(0), nullptr, false, filter4DShapeAttr);
+    auto reshaped4DFilter = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_filter"),
+                                                                 dwConvFilter->getResult(0), filter4DShapeAttr);
 
     const auto postOp = origOp.getPostOpAttr();
     const auto clampOp = origOp.getClampAttr();
@@ -134,34 +135,19 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
 class ConvertGroupTransposedConvToGroupConvPass final :
         public IE::impl::ConvertGroupTransposedConvToGroupConvBase<ConvertGroupTransposedConvToGroupConvPass> {
 public:
-    explicit ConvertGroupTransposedConvToGroupConvPass(const bool enableSEPTransposedConv, Logger log)
-            : _enableSEPTransposedConv(enableSEPTransposedConv) {
+    explicit ConvertGroupTransposedConvToGroupConvPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
 private:
     void safeRunOnFunc() final;
-    bool _enableSEPTransposedConv;
 };
-
-mlir::LogicalResult ConvertGroupTransposedConvToGroupConvPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (enableSEPTransposedConv.hasValue()) {
-        _enableSEPTransposedConv = enableSEPTransposedConv.getValue();
-    }
-
-    return mlir::success();
-}
 
 void ConvertGroupTransposedConvToGroupConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    const auto func = getOperation();
+    const auto moduleOp = getModuleOp(func);
+    const auto enableSEPtrsOps = config::hasEnableSEPtrsOperations(moduleOp);
 
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
@@ -169,9 +155,8 @@ void ConvertGroupTransposedConvToGroupConvPass::safeRunOnFunc() {
 
     const auto isLegalGroupTransposedConv = [&](IE::GroupTransposedConvolutionOp groupTransposedConv) {
         _log.trace("Got '{0}' at '{1}'", groupTransposedConv->getName(), groupTransposedConv->getLoc());
-        if (_enableSEPTransposedConv &&
-            VPU::isSupportedSEPTransposedConv(groupTransposedConv, logCb, /*checkLayout=*/false,
-                                              /*checkChannelAlignment=*/false)) {
+        if (enableSEPtrsOps && VPU::isSupportedSEPTransposedConv(groupTransposedConv, logCb, /*checkLayout=*/false,
+                                                                 /*checkChannelAlignment=*/false)) {
             _log.nest(1).trace("GroupTransposedConvolutionOp can be executed using SEP");
             return true;
         }
@@ -195,7 +180,6 @@ void ConvertGroupTransposedConvToGroupConvPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<GroupTransposedConvConverter>(&ctx, _log);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }
@@ -207,7 +191,6 @@ void ConvertGroupTransposedConvToGroupConvPass::safeRunOnFunc() {
 // createConvertGroupTransposedConvToGroupConvPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertGroupTransposedConvToGroupConvPass(
-        const bool enableSEPTransposedConv, Logger log) {
-    return std::make_unique<ConvertGroupTransposedConvToGroupConvPass>(enableSEPTransposedConv, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertGroupTransposedConvToGroupConvPass(Logger log) {
+    return std::make_unique<ConvertGroupTransposedConvToGroupConvPass>(log);
 }

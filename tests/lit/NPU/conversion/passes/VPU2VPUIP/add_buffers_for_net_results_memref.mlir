@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,7 +35,7 @@ module @Network {
 
         // CHECK: [[RESULTS:%.+]] = VPUIP.SW.Kernel
         // CHECK: memref.copy [[RESULTS]], [[ARG1]] : memref<1x1000xf16> to memref<1x1000xf16>
-        // CHECK: %arg1 : memref<1x1000xf16>
+        // CHECK: [[ARG1]] : memref<1x1000xf16>
     }
 }
 

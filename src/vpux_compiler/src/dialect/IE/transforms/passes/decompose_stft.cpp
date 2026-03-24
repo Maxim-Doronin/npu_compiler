@@ -1,15 +1,15 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
-#include "vpux/compiler/dialect/IE/utils/concat_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -26,23 +26,6 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
-
-// Helper function to create a slice operation for frame extraction
-IE::SliceOp createFrameSlice(mlir::PatternRewriter& rewriter, mlir::Location loc, mlir::Value input,
-                             ArrayRef<int64_t> inputShape, int64_t frameIdx, int64_t frameStep, int64_t frameSize,
-                             mlir::Type elemType, mlir::MLIRContext* ctx) {
-    SmallVector<int64_t> offsets(inputShape.size(), 0);
-    SmallVector<int64_t> sizes = to_small_vector(inputShape);
-    offsets[offsets.size() - 1] = frameIdx * frameStep;  // Start at frame offset
-    sizes[sizes.size() - 1] = frameSize;                 // Frame size length
-
-    SmallVector<int64_t> frameShape = to_small_vector(inputShape);
-    frameShape[frameShape.size() - 1] = frameSize;
-
-    return rewriter.create<IE::SliceOp>(appendLoc(loc, "frame_{0}_slice", frameIdx),
-                                        mlir::RankedTensorType::get(frameShape, elemType), input,
-                                        getIntArrayAttr(ctx, offsets), getIntArrayAttr(ctx, sizes));
-}
 
 //
 // STFTOpConverter
@@ -71,6 +54,8 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
     auto frameSize = origOp.getFrameSize();
     auto frameStep = origOp.getFrameStep();
     auto transposeFrames = origOp.getTransposeFrames();
+
+    _log.trace("Signal type: {0}, Output type: {1}", signal.getType(), origOp.getResult().getType());
 
     auto frameSizeConstOp = frameSize.getDefiningOp<Const::DeclareOp>();
     auto frameStepConstOp = frameStep.getDefiningOp<Const::DeclareOp>();
@@ -119,81 +104,155 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
         return mlir::failure();
     }
 
+    _log.trace("Using Convolution-based STFT decomposition with {0} frames", numFrames);
+
+    // ============================================================
+    // CONVOLUTION-BASED APPROACH (replacing Slice + Reshape + Concat)
+    // ============================================================
+
+    // Reshape input signal to [batch, 1, signalLength, 1] for convolution (4D)
+    SmallVector<int64_t> inputConvShape = {batchSize, 1, signalLength, 1};
+    const auto inputConvType = mlir::RankedTensorType::get(inputConvShape, elemType);
+    const auto inputConvShapeAttr = getIntArrayAttr(ctx, inputConvShape);
+
+    auto inputReshaped = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "input_reshape_for_conv"), inputConvType, signal,
+                                                        inputConvShapeAttr);
+    _log.trace("Reshaped input to {0} for convolution", inputConvShape);
+
+    // Create identity convolution weights [frameSizeVal, 1, frameSizeVal]
+    // Each output channel extracts one position from the sliding window
+    const auto OC = frameSizeVal;  // Output channels
+    const auto IC = 1;             // Input channels
+    const auto KY = frameSizeVal;  // Kernel height
+    const auto KX = 1;             // Kernel width (1D convolution)
+
+    const Shape weightsShape = {OC, IC, KY, KX};
+    SmallVector<float> weightsData(weightsShape.totalSize(), 0.0f);
+
+    for (int64_t i = 0; i < frameSizeVal; i++) {
+        // Calculate flat index for weights[i, 0, i, 0]
+        auto beginIndex = i * KY + i;
+        weightsData[beginIndex] = 1.0f;
+    }
+
+    const auto weightsElemType = mlir::Float16Type::get(ctx);
+    const auto weightsType = mlir::RankedTensorType::get(weightsShape.raw(), weightsElemType);
+
+    // Create the weights constant using the helper function from the file
+    auto weightsConstOp = Const::buildWeightsConst(rewriter, appendLoc(loc, "conv_identity_weights"), weightsType,
+                                                   ArrayRef(weightsData));
+
+    _log.trace("Created identity convolution weights with shape {0}", weightsShape);
+
+    // Perform Convolution to extract all frames at once
+    const auto stridesAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{frameStepVal, 1});
+    const auto dilationsAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
+    const auto padsBeginAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
+    const auto padsEndAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
+
+    // Output shape: [batch, frameSizeVal, numFrames]
+    SmallVector<int64_t> convOutputShape = {batchSize, frameSizeVal, numFrames, 1};
+
+    auto convOp = rewriter.create<IE::ConvolutionOp>(appendLoc(loc, "frame_extraction_conv"),
+                                                     inputReshaped.getOutput(),   // input
+                                                     weightsConstOp,              // filter
+                                                     /*bias=*/nullptr,            // bias
+                                                     /*scale=*/nullptr,           // scale
+                                                     stridesAttr,                 // strides
+                                                     padsBeginAttr,               // pads_begin
+                                                     padsEndAttr,                 // pads_end
+                                                     dilationsAttr,               // dilations
+                                                     /*post_op=*/nullptr,         // post_op
+                                                     /*clamp=*/nullptr,           // clamp
+                                                     /*static_scale=*/nullptr,    // static_scale
+                                                     /*output_padding=*/nullptr,  // output_padding
+                                                     /*input_padding=*/nullptr    // input_padding
+    );
+
+    _log.trace("Performed convolution for frame extraction, output shape: {0}\n", convOutputShape);
+
+    // Reshape from 4D [1, 512, 3, 1] to 3D [1, 512, 3]
+    SmallVector<int64_t> convReshaped3DShape = {batchSize, frameSizeVal, numFrames};
+    const auto convReshaped3DType = mlir::RankedTensorType::get(convReshaped3DShape, elemType);
+    const auto convReshaped3DShapeAttr = getIntArrayAttr(ctx, convReshaped3DShape);
+
+    auto convReshaped = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "conv_output_reshape"), convReshaped3DType,
+                                                       convOp.getOutput(), convReshaped3DShapeAttr);
+    _log.trace("Reshaped conv output from 4D to 3D: {0}\n", convReshaped3DShape);
+
+    // Transpose to [batch, numFrames, frameSizeVal]
+    SmallVector<int64_t> transposeOrder = {0, 2, 1};  // Swap channels and width
+    SmallVector<int64_t> framesShape = {batchSize, numFrames, frameSizeVal};
+    const auto framesType = mlir::RankedTensorType::get(framesShape, elemType);
+    const auto permutationMap = mlir::AffineMap::getPermutationMap(transposeOrder, ctx);
+    const auto permutationMapAttr = mlir::AffineMapAttr::get(permutationMap);
+
+    auto framesTransposed = rewriter.create<IE::TransposeOp>(appendLoc(loc, "frames_transpose"), framesType,
+                                                             convReshaped.getOutput(), nullptr, permutationMapAttr);
+    _log.trace("Transposed frames to shape {0}", framesShape);
+
+    // Continue with windowing and RDFT
+    mlir::Value windowedFrames = framesTransposed.getOutput();
     if (window) {
+        // Apply windowing with NUMPY broadcasting.
+        // The window is typically 1D with shape [frameSizeVal]. In 3D, frames are [batch, numFrames, frameSizeVal].
+        // NUMPY broadcasting will broadcast the window correctly in 3D.
+        // This way, when converted to 4D, it becomes [1, 1, frameSizeVal, 1] (height dimension)
+        // instead of [1, frameSizeVal, 1, 1] (channel dimension), and broadcasts correctly without Slice.
+
+        mlir::Value windowForMultiply = window;
         const auto windowType = mlir::cast<vpux::NDTypeInterface>(window.getType());
         const auto windowShape = windowType.getShape();
 
-        if (windowShape.size() != 1 || windowShape.raw()[0] != frameSizeVal) {
-            _log.error("Window shape must be [frame_size={0}], got {1}", frameSizeVal, windowShape);
-            return mlir::failure();
+        // If window is 1D [frameSizeVal], reshape to 3D [1, 1, frameSizeVal] for proper broadcasting
+        if (windowShape.size() == 1 && windowShape.raw()[0] == frameSizeVal) {
+            SmallVector<int64_t> newWindowShape = {1, 1, frameSizeVal};
+            const auto newWindowType = mlir::RankedTensorType::get(newWindowShape, windowType.getElementType());
+            auto newWindowShapeAttr = getIntArrayAttr(ctx, newWindowShape);
+
+            windowForMultiply = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "window_reshape_for_broadcast"),
+                                                               newWindowType, window,
+                                                               newWindowShapeAttr  // shape_value
+                                                               )
+                                        .getOutput();
+
+            _log.trace("Reshaped window from {0} to {1} for broadcast-compatible windowing", windowShape,
+                       newWindowShape);
         }
-    }
 
-    SmallVector<mlir::Value> frames;
-    frames.reserve(numFrames);
-
-    SmallVector<int64_t> inputSignalShape = to_small_vector(signalShape.raw());
-
-    for (int64_t frameIdx = 0; frameIdx < numFrames; frameIdx++) {
-        auto sliceOp = createFrameSlice(rewriter, loc, signal, inputSignalShape, frameIdx, frameStepVal, frameSizeVal,
-                                        elemType, ctx);
-        frames.push_back(sliceOp.getResult());
-        _log.trace("Created frame {0}: offset={1}, size={2}", frameIdx, frameIdx * frameStepVal, frameSizeVal);
-    }
-
-    SmallVector<mlir::Value> reshapedFrames;
-    reshapedFrames.reserve(numFrames);
-
-    for (auto frame : frames) {
-        SmallVector<int64_t> frameWithAxisShape = {batchSize, 1, frameSizeVal};
-        const auto frameWithAxisType = mlir::RankedTensorType::get(frameWithAxisShape, elemType);
-        const auto frameWithAxisShapeAttr = getIntArrayAttr(ctx, frameWithAxisShape);
-
-        auto frameReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "frame_add_axis"), frameWithAxisType, frame,
-                                                             nullptr, false, frameWithAxisShapeAttr);
-        reshapedFrames.push_back(frameReshapeOp.getOutput());
-    }
-
-    const auto concatAxis = 1;
-    const auto concatAxisAttr = getIntAttr(ctx, concatAxis);
-    auto concatOp = rewriter.create<IE::ConcatOp>(appendLoc(loc, "frames_concat"), reshapedFrames, concatAxisAttr);
-
-    auto framesResult = concatOp.getResult();
-    const auto actualFramesType = mlir::cast<vpux::NDTypeInterface>(framesResult.getType());
-    const auto actualFramesShape = actualFramesType.getShape();
-
-    mlir::Value windowedFrames = framesResult;
-    if (window) {
         auto autoBroadcastAttr = IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NUMPY);
 
-        windowedFrames = rewriter.create<IE::MultiplyOp>(appendLoc(loc, "windowing_multiply"), framesResult, window,
+        windowedFrames = rewriter.create<IE::MultiplyOp>(appendLoc(loc, "windowing_multiply"),
+                                                         framesTransposed.getOutput(), windowForMultiply,
                                                          autoBroadcastAttr, nullptr, nullptr, nullptr, nullptr)
                                  .getOutput();
-        _log.trace("Applied windowing function");
+        _log.trace("Applied windowing function with reshaped window shape: {0}",
+                   mlir::cast<vpux::NDTypeInterface>(windowForMultiply.getType()).getShape());
     }
 
-    SmallVector<int64_t> rdftAxes = {static_cast<int64_t>(actualFramesShape.size() - 1)};
+    // RDFT operates on the last dimension of the input tensor
+    const auto windowedFramesType = mlir::cast<vpux::NDTypeInterface>(windowedFrames.getType());
+    const auto windowedFramesRank = windowedFramesType.getRank();
+    SmallVector<int64_t> rdftAxes = {static_cast<int64_t>(windowedFramesRank - 1)};
     SmallVector<int64_t> rdftSignalSize = {frameSizeVal};
 
     const auto rdftAxesAttr = getIntArrayAttr(ctx, rdftAxes);
     const auto rdftSignalSizeAttr = getIntArrayAttr(ctx, rdftSignalSize);
 
-    SmallVector<int64_t> rdftOutputShape = to_small_vector(actualFramesShape.raw());
-    rdftOutputShape.back() = frameSizeVal / 2 + 1;
-    rdftOutputShape.push_back(2);
-
+    // RDFT output: [batch, numFrames, frameSizeVal/2+1, 2]
+    SmallVector<int64_t> rdftOutputShape = {batchSize, numFrames, frameSizeVal / 2 + 1, 2};
     const auto rdftOutputType = mlir::RankedTensorType::get(rdftOutputShape, elemType);
 
     auto rdftOp = rewriter.create<IE::RDFTOp>(appendLoc(loc, "rdft"), rdftOutputType, windowedFrames, nullptr, nullptr,
                                               rdftAxesAttr, rdftSignalSizeAttr);
+    _log.trace("Applied RDFT, output shape: {0}", rdftOutputShape);
 
     auto rdftOutput = rdftOp.getResult();
 
     mlir::Value finalOutput = rdftOutput;
     if (transposeFrames) {
         SmallVector<int64_t> transposeOrder = {0, 2, 1, 3};
-        SmallVector<int64_t> transposedShape = to_small_vector(rdftOutputShape);
-        std::swap(transposedShape[1], transposedShape[2]);
+        SmallVector<int64_t> transposedShape = {batchSize, frameSizeVal / 2 + 1, numFrames, 2};
 
         const auto transposedType = mlir::RankedTensorType::get(transposedShape, elemType);
         const auto permutationMap = mlir::AffineMap::getPermutationMap(transposeOrder, ctx);
@@ -217,13 +276,18 @@ mlir::LogicalResult STFTOpConverter::matchAndRewrite(IE::STFTOp origOp, mlir::Pa
         const auto squeezedType = mlir::RankedTensorType::get(squeezedShape, elemType);
         const auto squeezedShapeAttr = getIntArrayAttr(ctx, squeezedShape);
 
-        auto squeezeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "output_squeeze"), squeezedType, finalOutput,
-                                                        nullptr, false, squeezedShapeAttr);
-        finalOutput = squeezeOp.getOutput();
+        finalOutput = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "output_squeeze"), squeezedType, finalOutput,
+                                                     squeezedShapeAttr)
+                              .getOutput();
+        _log.trace("Squeezed output to shape: {0}", squeezedShape);
     }
+
+    _log.trace("Final output shape before replacement: {0}",
+               mlir::cast<vpux::NDTypeInterface>(finalOutput.getType()).getShape());
+
     rewriter.replaceOp(origOp, finalOutput);
 
-    _log.trace("Successfully decomposed STFT operation with {0} unrolled frames", numFrames);
+    _log.trace("Successfully decomposed STFT using convolution-based approach");
 
     return mlir::success();
 }
@@ -247,8 +311,7 @@ void DecomposeSTFTPass::safeRunOnFunc() {
 
     mlir::ConversionTarget target(ctx);
     target.addIllegalOp<IE::STFTOp>();
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
+    target.addLegalOp<IE::ConvolutionOp>();
     target.addLegalOp<IE::MultiplyOp>();
     target.addLegalOp<IE::RDFTOp>();
     target.addLegalOp<IE::ReshapeOp>();

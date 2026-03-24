@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -135,6 +136,15 @@ TEST_P(RangeLayerTestCommon, NPU5010_HW) {
 TEST_P(RangeLayerTestDynamic, NPU5010_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(RangeLayerTestCommon, NPU5020_HW) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
+
+TEST_P(RangeLayerTestDynamic, NPU5020_HW) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
 }
 
 }  // namespace test

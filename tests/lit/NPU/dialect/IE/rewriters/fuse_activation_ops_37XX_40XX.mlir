@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -121,6 +121,7 @@ func.func @FakeQuantAddWithLeakyReluFusedTest(%arg0: tensor<1x128x1x8xf16>) -> t
 // -----
 
 // CHECK-LABEL: @AvgPoolWithLeakyReluFuseTest
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x4x4xf16>
 func.func @AvgPoolWithLeakyReluFuseTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf16> {
     %0 = IE.AvgPool(%arg0)
          {
@@ -138,7 +139,7 @@ func.func @AvgPoolWithLeakyReluFuseTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1
 
     return %1 : tensor<1x16x3x3xf16>
 
-    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool(%arg0) {
+    // CHECK:       [[AVG_POOL:%.+]] = IE.AvgPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [2, 2],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -223,6 +224,7 @@ func.func @SkipFakeQuantMultiplyWithLeakyReluFusedTest(%arg0: tensor<1x128x1x8xf
 // -----
 
 // CHECK-LABEL: @SkipMaxPoolWithReluTest
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x4x4xf16>
 func.func @SkipMaxPoolWithReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf16> {
     %0 = IE.MaxPool(%arg0)
          {
@@ -238,7 +240,7 @@ func.func @SkipMaxPoolWithReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3
 
     return %1 : tensor<1x16x3x3xf16>
 
-    // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [2, 2],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -255,6 +257,7 @@ func.func @SkipMaxPoolWithReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3
 // -----
 
 // CHECK-LABEL: @SkipMaxPoolWithLeakyReluTest
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x4x4xf16>
 func.func @SkipMaxPoolWithLeakyReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf16> {
     %0 = IE.MaxPool(%arg0)
          {
@@ -270,7 +273,7 @@ func.func @SkipMaxPoolWithLeakyReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1
 
     return %1 : tensor<1x16x3x3xf16>
 
-    // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:      kernel_size = [2, 2],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],

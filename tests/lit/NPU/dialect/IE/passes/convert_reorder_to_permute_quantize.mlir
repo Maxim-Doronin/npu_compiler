@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertReorder
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x224x224xf16>)
 func.func @ConvertReorder(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x3x224x224xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {
         dstOrder = #NHWC
@@ -17,7 +18,7 @@ func.func @ConvertReorder(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x3x224x224x
     return %0 : tensor<1x3x224x224xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.Reorder
-    // CHECK:       IE.PermuteQuantize(%arg0) {
+    // CHECK:       IE.PermuteQuantize([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = f16,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -92,6 +93,7 @@ func.func @SkipIncompatibleShape(%arg0: tensor<1x3x225x225xui8>) -> tensor<1x3x2
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertReorderForAlignedShape
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x320x384x1xf16>)
 func.func @ConvertReorderForAlignedShape(%arg0: tensor<1x320x384x1xf16>) -> tensor<1x320x384x1xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {
         dstOrder = #NHWC
@@ -100,7 +102,7 @@ func.func @ConvertReorderForAlignedShape(%arg0: tensor<1x320x384x1xf16>) -> tens
     return %0 : tensor<1x320x384x1xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.Reorder
-    // CHECK:       IE.PermuteQuantize(%arg0) {
+    // CHECK:       IE.PermuteQuantize([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = f16,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -232,11 +234,11 @@ func.func @ConvertQuantU8Reorder(%arg0: tensor<1x4x16x64x!qElemType>) -> tensor<
     %REORDER = IE.Reorder(%arg0) {
         dstOrder = #NHWC
     } : tensor<1x4x16x64x!qElemType> -> tensor<1x4x16x64x!qElemType, {order = #NHWC}>
- 
+
     return %REORDER : tensor<1x4x16x64x!qElemType, {order = #NHWC}>
- 
+
     // CHECK-NOT:   IE.Reorder
- 
+
     // CHECK: [[PQ:%.+]] = IE.PermuteQuantize([[INPUT]])
     // CHECK: {dstElemType = !qElemType, dst_order = #NHWC, mem_perm = #NHWC
     // CHECK: pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]}

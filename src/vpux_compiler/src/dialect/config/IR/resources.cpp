@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -355,6 +355,16 @@ mlir::LogicalResult vpux::config::ResourcesOp::verify() {
 }
 
 //
+// DMAResources
+//
+
+int64_t vpux::config::getNumOfDMAPorts(mlir::Operation* op) {
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
+    return dmaOp.getCount();
+}
+
+//
 // EngineResources
 //
 
@@ -380,6 +390,12 @@ int64_t vpux::config::getTotalNumOfEngines(mlir::ModuleOp moduleOp, config::Exec
 
 int64_t vpux::config::getTotalNumOfEngines(mlir::Operation* op, config::ExecutorKind execKind) {
     return getTotalNumOfEngines(op->getParentOfType<mlir::ModuleOp>(), execKind);
+}
+
+int64_t vpux::config::getNumOfTiles(mlir::Operation* op) {
+    auto moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    auto tileOp = config::getTileExecutor(moduleOp);
+    return tileOp.getCount();
 }
 
 config::ResourcesOp config::addTileExecutor(mlir::ModuleOp mainModule, size_t count) {

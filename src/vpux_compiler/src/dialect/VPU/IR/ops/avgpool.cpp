@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,8 +29,10 @@ mlir::LogicalResult vpux::VPU::AvgPoolOp::inferReturnTypes(mlir::MLIRContext* ct
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(avgPool.getInput().getType());
 
-    const auto shapeI64 = inferAvgPoolOutputShape(ShapeInfo::fromNDType(inType), windowStrides, dataPaddingBelow,
-                                                  dataPaddingAbove, windowShape, roundingType);
+    auto inShapeInfo = ShapeInfo::fromNDType(inType);
+
+    const auto shapeI64 = inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove,
+                                                  windowShape, std::nullopt, std::nullopt, roundingType);
 
     const auto outType = inType.changeShape(ShapeRef(shapeI64.shape));
     inferredReturnTypes.push_back(outType);

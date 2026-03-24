@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @MergeNonTiledRegion
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x48x1024x4xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<80x48x1x1xf16, {order = #NHWC}>, [[ARG_2:%[^:]+]]: tensor<48x80x1x1xf16, {order = #NHWC}>)
 func.func @MergeNonTiledRegion(
                 %arg0: tensor<1x48x1024x4xf16, {order = #NHWC}>,
                 %arg1: tensor<80x48x1x1xf16, {order = #NHWC}>,
@@ -46,9 +48,9 @@ func.func @MergeNonTiledRegion(
    // Merge non-tiled operations when the pipelining is enabled
    //CHECK: [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion
    //CHECK-SAME:    tilingStrategy = [1, 1, 2, 1]
-   //CHECK: [[CONV0:%.+]] = VPU.NCE.Convolution(%arg3, %arg4, %arg5)
+   //CHECK: [[CONV0:%.+]] = VPU.NCE.Convolution({{%[^,]+}}, {{%[^,]+}}, {{%[^)]+}})
    //CHECK: [[SOFTMAX:%.+]] = VPU.SoftMax([[CONV0]])
-   //CHECK: [[CONV1:%.+]] = VPU.NCE.Convolution([[SOFTMAX]], %arg6, %arg7)
+   //CHECK: [[CONV1:%.+]] = VPU.NCE.Convolution([[SOFTMAX]], {{%[^,]+}}, {{%[^)]+}})
    //CHECK: VPU.Yield [[CONV1]]
 
    //CHECK: return [[VERTICAL_FUSION]] : tensor<1x48x1024x4xf16, {order = #NHWC}>

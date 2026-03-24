@@ -36,6 +36,11 @@ TEST_P(SplitLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(SplitLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    setBatchCompilerMode("unroll");
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

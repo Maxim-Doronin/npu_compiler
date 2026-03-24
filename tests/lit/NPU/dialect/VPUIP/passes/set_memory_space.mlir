@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,7 @@ module @VPU.SW {
     }
 }
 
-// CHECK: func.func @MultipleAllocs([[ARG0:%.+]]: memref<1x1000xf16, @DDR>, [[ARG1:%.+]]: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
+// CHECK: func.func @MultipleAllocs([[ARG0:%[^:]+]]: memref<1x1000xf16, @DDR>, [[ARG1:%[^:]+]]: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
 func.func @MultipleAllocs(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref<1x1000xf16> {
     %0 = memref.alloc() : memref<1x1000xf16>
     %1 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_softmax
@@ -46,7 +46,7 @@ func.func @MultipleAllocs(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) 
     // CHECK:       [[VAR4:%.+]] = VPUIP.SW.Kernel
     // CHECK-SAME:      @builtin_softmax
     // CHECK-SAME:      inputs([[VAR3]] as {{[^:]+}}: memref<1x1000xf16>)
-    // CHECK-SAME:      outputs(%arg1 as {{[^:]+}}: memref<1x1000xf16>)
+    // CHECK-SAME:      outputs([[ARG1]] as {{[^:]+}}: memref<1x1000xf16>)
     // CHECK:       return [[VAR4]] : memref<1x1000xf16, @DDR>
 }
 
@@ -58,7 +58,7 @@ module @VPU.SW {
     }
 }
 
-// CHECK: func.func @ReshapeInGraph([[ARG0:%.+]]: memref<1x512x1x1xf32, @DDR>, [[ARG1:%.+]]: memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
+// CHECK: func.func @ReshapeInGraph([[ARG0:%[^:]+]]: memref<1x512x1x1xf32, @DDR>, [[ARG1:%[^:]+]]: memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
 func.func @ReshapeInGraph(%arg0: memref<1x512x1x1xf32>, %arg1: memref<1x512x1x1xf32>) -> memref<1x512x1x1xf32> {
     %0 = VPUIP.GenericReshape inputs(%arg0 : memref<1x512x1x1xf32>) -> memref<1x512xf32>
     %1 = memref.alloc() : memref<1x512xf32>
@@ -71,14 +71,14 @@ func.func @ReshapeInGraph(%arg0: memref<1x512x1x1xf32>, %arg1: memref<1x512x1x1x
     %4 = VPUIP.Copy inputs(%3 : memref<1x512x1x1xf32>) outputs(%arg1 : memref<1x512x1x1xf32>) -> memref<1x512x1x1xf32>
     return %4 : memref<1x512x1x1xf32>
 
-    // CHECK:       [[VAR0:%.+]] =  VPUIP.GenericReshape inputs(%arg0 : memref<1x512x1x1xf32, @DDR>) -> memref<1x512xf32, @DDR>
+    // CHECK:       [[VAR0:%.+]] =  VPUIP.GenericReshape inputs([[ARG0]] : memref<1x512x1x1xf32, @DDR>) -> memref<1x512xf32, @DDR>
     // CHECK:       [[VAR1:%.+]] =  memref.alloc() : memref<1x512xf32, @DDR>
     // CHECK:       [[VAR2:%.+]] = VPUIP.SW.Kernel
     // CHECK-SAME:      @builtin_softmax
     // CHECK-SAME:      inputs([[VAR0]] as {{[^:]+}}: memref<1x512xf32>)
     // CHECK-SAME:      outputs([[VAR1]] as {{[^:]+}}: memref<1x512xf32>)
     // CHECK:       [[VAR3:%.+]] =  VPUIP.GenericReshape inputs([[VAR2]] : memref<1x512xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
-    // CHECK:       [[VAR4:%.+]] =  VPUIP.Copy inputs([[VAR3]] : memref<1x512x1x1xf32, @DDR>) outputs(%arg1 : memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
+    // CHECK:       [[VAR4:%.+]] =  VPUIP.Copy inputs([[VAR3]] : memref<1x512x1x1xf32, @DDR>) outputs([[ARG1]] : memref<1x512x1x1xf32, @DDR>) -> memref<1x512x1x1xf32, @DDR>
     // CHECK:       return [[VAR4]] : memref<1x512x1x1xf32, @DDR>
 }
 
@@ -90,7 +90,7 @@ module @VPU.SW {
     }
 }
 
-// CHECK: func.func @Async([[ARG0:%.+]]: memref<1x1000xf16, @DDR>, [[ARG1:%.+]]: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
+// CHECK: func.func @Async([[ARG0:%[^:]+]]: memref<1x1000xf16, @DDR>, [[ARG1:%[^:]+]]: memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
 func.func @Async(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref<1x1000xf16> {
     %0 = memref.alloc() : memref<1x1000xf16>
 
@@ -126,7 +126,7 @@ func.func @Async(%arg0: memref<1x1000xf16>, %arg1: memref<1x1000xf16>) -> memref
     // CHECK-SAME:          -> !async.value<memref<1x1000xf16, @DDR>>
     // CHECK:           [[VAR2:%.+]] = VPUIP.Copy
     // CHECK-SAME:          inputs([[VAR1]] : memref<1x1000xf16, @DDR>)
-    // CHECK-SAME:          outputs(%arg1 : memref<1x1000xf16, @DDR>)
+    // CHECK-SAME:          outputs([[ARG1]] : memref<1x1000xf16, @DDR>)
     // CHECK-SAME:          -> memref<1x1000xf16, @DDR>
     // CHECK:           async.yield [[VAR2]] : memref<1x1000xf16, @DDR>
 

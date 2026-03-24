@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,12 +17,15 @@ namespace vpux::IE::arch50xx {
 
 class InitialLowPrecisionTransformationsPipelineStrategy final : public IDynamicRewriterStrategy {
 public:
-    explicit InitialLowPrecisionTransformationsPipelineStrategy(mlir::func::FuncOp funcOp): _funcOp(funcOp) {
+    explicit InitialLowPrecisionTransformationsPipelineStrategy(const bool enableDynamicQuantizationForStaticCase,
+                                                                mlir::func::FuncOp funcOp)
+            : _enableDynamicQuantizationForStaticCase(enableDynamicQuantizationForStaticCase), _funcOp(funcOp) {
     }
 
     void registerRewriters(RewriterRegistry& registry, Logger& log) const override;
 
 private:
+    bool _enableDynamicQuantizationForStaticCase;
     mlir::func::FuncOp _funcOp;
 };
 

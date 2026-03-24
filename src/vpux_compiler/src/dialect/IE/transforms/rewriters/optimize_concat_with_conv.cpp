@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -172,7 +172,7 @@ mlir::LogicalResult OptimizeConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::P
     _log.trace("Process concat op at {0}", origOp->getLoc());
 
     for (auto input : concatInputs) {
-        auto newInReshape = rewriter.create<IE::ReshapeOp>(appendLoc(input.getLoc(), "reshape"), input, nullptr, false,
+        auto newInReshape = rewriter.create<IE::ReshapeOp>(appendLoc(input.getLoc(), "reshape"), input,
                                                            getIntArrayAttr(ctx, reshapeOutShape.raw()));
         auto permuteCastOp =
                 rewriter.create<IE::PermuteCastOp>(appendLoc(newInReshape.getLoc(), "permute_cast"), newInReshape,
@@ -241,9 +241,8 @@ mlir::LogicalResult OptimizeConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::P
                                                DimsOrder::NCHW.toAffineMap(ctx), outMemPerm);
 
     auto concatOutShape = getShape(origOp);
-    auto newOutReshape =
-            rewriter.create<IE::ReshapeOp>(appendLoc(newOutPermuteCast.getLoc(), "reshape_"), newOutPermuteCast,
-                                           nullptr, false, getIntArrayAttr(ctx, concatOutShape.raw()));
+    auto newOutReshape = rewriter.create<IE::ReshapeOp>(appendLoc(newOutPermuteCast.getLoc(), "reshape_"),
+                                                        newOutPermuteCast, getIntArrayAttr(ctx, concatOutShape.raw()));
     rewriter.replaceAllUsesWith(origOp, newOutReshape);
     _log.trace("Successfully replaced concat with conv.");
     return mlir::success();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,8 +18,7 @@ void ConvertToMixedPrecisionStrategy::addPatterns(mlir::RewritePatternSet& patte
     patterns.add<vpux::IE::FloatOutAddRewriter>(ctx, IE::arch37xx::isMixPrecisionSupported, true, log);
     patterns.add<vpux::IE::FloatOutTransposedConvRewriter>(ctx, IE::arch37xx::isMixPrecisionSupported, log);
     patterns.add<vpux::IE::FloatOutMatMulRewriter>(ctx, IE::arch37xx::isMixPrecisionSupported, log);
-
-    patterns.add<vpux::IE::FloatOutAvgPoolRewriter>(ctx, log);
+    patterns.add<vpux::IE::FloatOutAvgPoolRewriter>(ctx, IE::arch37xx::isMixPrecisionSupported, log);
     patterns.add<vpux::IE::QuantizeWithNCERewriter>(ctx, IE::arch37xx::isMixPrecisionSupported,
                                                     IE::arch37xx::checkPostOp, false, log);
 

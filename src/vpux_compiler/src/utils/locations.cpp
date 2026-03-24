@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/range.hpp"
@@ -60,9 +61,7 @@ mlir::Location vpux::getValueLocation(mlir::Value val) {
             }
         }
 
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto [netInfo, netFunc] = net::getFromModule(moduleOp);
 
         if (ownerOp != netFunc) {
             // Note: one cannot provably deduce a single location as a

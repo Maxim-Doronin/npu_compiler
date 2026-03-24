@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -66,6 +66,7 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x15x15xf16> {
 // CHECK-LABEL: @CMajorConvCase2
 module @CMajorConvCase2 {
 
+// CHECK:    func.func @main([[ARG_0:%[^:]+]]: tensor<1x3x62x62xf16, {order = #NHWC}>) -> tensor<1x48x60x60xf16, {order = #NHWC}> {
 func.func @main(%arg0: tensor<1x3x62x62xf16, {order = #NHWC}>) -> tensor<1x48x60x60xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<48x3x3x3xf16> = dense<1.0> : tensor<48x3x3x3xf16>
 
@@ -80,7 +81,7 @@ func.func @main(%arg0: tensor<1x3x62x62xf16, {order = #NHWC}>) -> tensor<1x48x60
     return %2 : tensor<1x48x60x60xf16, {order = #NHWC}>
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<48x3x3x3xf16, {order = #NHWC}>
-    // CHECK:       [[VAR0:%.+]] = IE.Convolution(%arg0, [[CST]])
+    // CHECK:       [[VAR0:%.+]] = IE.Convolution([[ARG_0]], [[CST]])
     // CHECK-SAME:       -> tensor<1x48x60x60xf16, {order = #NHWC}>
     // CHECK:       return [[VAR0]] : tensor<1x48x60x60xf16, {order = #NHWC}>
 }
@@ -95,12 +96,13 @@ func.func @main(%arg0: tensor<1x3x62x62xf16, {order = #NHWC}>) -> tensor<1x48x60
 // CHECK-LABEL: @SwMultiply
 module @SwMultiply {
 
+// CHECK:    func.func @main([[ARG_0:%[^:]+]]: tensor<1x16x30x25xf16>) -> tensor<1x16x30x25xf16> {
 func.func @main(%arg0: tensor<1x16x30x25xf16>) -> tensor<1x16x30x25xf16> {
     %0 = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x30x25xf16>, tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16>
 
     return %0 : tensor<1x16x30x25xf16>
 
-    // CHECK:    [[VAR0:%.+]] = IE.Multiply(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+    // CHECK:    [[VAR0:%.+]] = IE.Multiply([[ARG_0]], [[ARG_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
     // CHECK-SAME:     tensor<1x16x30x25xf16>, tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16>
 
     // CHECK:    return [[VAR0]] : tensor<1x16x30x25xf16>

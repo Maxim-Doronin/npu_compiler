@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --compress-weights-btc --dump-statistics-of-task-ops -o /dev/null %s | FileCheck %s
+// RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --compress-weights-btc --dump-statistics-of-task-ops -o /dev/null %s 2>&1 | FileCheck %s
 // REQUIRES: arch-NPU37XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -116,12 +116,12 @@ module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.c
     }
 
     VPURT.Task waits(%inputs_ready : !VPURT.Barrier) updates(%conv_complete : !VPURT.Barrier) {
-      VPUIP.NCEClusterTask {
+      VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 8],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%input_0 : memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 0]>)
         weights(%weights0 : memref<16x4x8x16x!qtype, #NHWC, [@CMX_NN, 0]>)
         weight_table(%weight_table0 : memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>)
@@ -142,12 +142,12 @@ module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.c
     }
 
     VPURT.Task waits(%inputs_ready : !VPURT.Barrier) updates(%conv_complete : !VPURT.Barrier) {
-      VPUIP.NCEClusterTask {
+      VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 8],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%input_1 : memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 1]>)
         weights(%weights1 : memref<16x4x8x16x!qtype, #NHWC, [@CMX_NN, 1]>)
         weight_table(%weight_table1 : memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>)

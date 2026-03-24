@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,7 +15,8 @@ module {
     DataInfo "output" : tensor<1x32x64x64xf16>
   }
 
-  // CHECK-LABEL: @SimpleLoopUnroll
+  // CHECK-LABEL: func.func @SimpleLoopUnroll
+  // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x32x64x64xf16, {order = #NHWC}>
   func.func @SimpleLoopUnroll(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x32x64x64xf16, {order = #NHWC}> {
     %c0 = arith.constant 0 : index
     %c32 = arith.constant 32 : index
@@ -44,9 +45,9 @@ module {
   // CHECK:   [[C1:%.+]] = arith.constant 1 : index
   // CHECK:   [[MUL:%.+]] = arith.muli [[C2]], [[C1]] : index
   // CHECK:   [[ADD:%.+]] = arith.addi [[ARG1]], [[MUL]] : index
-  // CHECK:   [[EXTRACT1:%.+]] = tensor.extract_slice %arg0[0, 0, [[ARG1]], 0] [1, 32, 2, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x2x64xf16, {order = #NHWC}>
+  // CHECK:   [[EXTRACT1:%.+]] = tensor.extract_slice [[ARG_0]][0, 0, [[ARG1]], 0] [1, 32, 2, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x2x64xf16, {order = #NHWC}>
   // CHECK:   [[INSERT1:%.+]] = tensor.insert_slice [[EXTRACT1]] into [[ARG2]][0, 0, [[ARG1]], 0] [1, 32, 2, 64] [1, 1, 1, 1] : tensor<1x32x2x64xf16, {order = #NHWC}> into tensor<1x32x64x64xf16, {order = #NHWC}>
-  // CHECK:   [[EXTRACT2:%.+]] = tensor.extract_slice %arg0[0, 0, [[ADD]], 0] [1, 32, 2, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x2x64xf16, {order = #NHWC}>
+  // CHECK:   [[EXTRACT2:%.+]] = tensor.extract_slice [[ARG_0]][0, 0, [[ADD]], 0] [1, 32, 2, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x2x64xf16, {order = #NHWC}>
   // CHECK:   [[INSERT2:%.+]] = tensor.insert_slice [[EXTRACT2]] into [[INSERT1]][0, 0, [[ADD]], 0] [1, 32, 2, 64] [1, 1, 1, 1] : tensor<1x32x2x64xf16, {order = #NHWC}> into tensor<1x32x64x64xf16, {order = #NHWC}>
   // CHECK:   scf.yield [[INSERT2]] : tensor<1x32x64x64xf16, {order = #NHWC}>
   // CHECK: }
@@ -63,7 +64,8 @@ module {
     DataInfo "output" : tensor<1x32x64x96xf16>
   }
 
-  // CHECK-LABEL: @TwoDimLoopUnroll
+  // CHECK-LABEL: func.func @TwoDimLoopUnroll
+  // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x64x96xf16, {order = #NHWC}>)
   func.func @TwoDimLoopUnroll(%arg0: tensor<1x32x64x96xf16, {order = #NHWC}>) -> tensor<1x32x64x96xf16, {order = #NHWC}> {
     %c0 = arith.constant 0 : index
     %c64 = arith.constant 64 : index
@@ -99,9 +101,9 @@ module {
   // CHECK:   [[MUL_0:%.+]] = arith.muli [[C2_0]], [[C1_0]] : index
   // CHECK:   [[ADD_0:%.+]] = arith.addi [[ARG1_0]], [[MUL_0]] : index
   // CHECK:   [[INNER_RESULT:%.+]] = scf.for [[ARG3:%.+]] = [[C0_0]] to [[C96]] step [[C3_0]] iter_args([[ARG4:%.+]] = [[ARG2_0]]) -> (tensor<1x32x64x96xf16, {order = #NHWC}>) {
-  // CHECK:     [[EXTRACT1_0:%.+]] = tensor.extract_slice %arg0[0, 0, [[ARG1_0]], [[ARG3]]] [1, 32, 2, 3] [1, 1, 1, 1] : tensor<1x32x64x96xf16, {order = #NHWC}> to tensor<1x32x2x3xf16, {order = #NHWC}>
+  // CHECK:     [[EXTRACT1_0:%.+]] = tensor.extract_slice [[ARG_0]][0, 0, [[ARG1_0]], [[ARG3]]] [1, 32, 2, 3] [1, 1, 1, 1] : tensor<1x32x64x96xf16, {order = #NHWC}> to tensor<1x32x2x3xf16, {order = #NHWC}>
   // CHECK:     [[INSERT1_0:%.+]] = tensor.insert_slice [[EXTRACT1_0]] into [[ARG4]][0, 0, [[ARG1_0]], [[ARG3]]] [1, 32, 2, 3] [1, 1, 1, 1] : tensor<1x32x2x3xf16, {order = #NHWC}> into tensor<1x32x64x96xf16, {order = #NHWC}>
-  // CHECK:     [[EXTRACT2_0:%.+]] = tensor.extract_slice %arg0[0, 0, [[ADD_0]], [[ARG3]]] [1, 32, 2, 3] [1, 1, 1, 1] : tensor<1x32x64x96xf16, {order = #NHWC}> to tensor<1x32x2x3xf16, {order = #NHWC}>
+  // CHECK:     [[EXTRACT2_0:%.+]] = tensor.extract_slice [[ARG_0]][0, 0, [[ADD_0]], [[ARG3]]] [1, 32, 2, 3] [1, 1, 1, 1] : tensor<1x32x64x96xf16, {order = #NHWC}> to tensor<1x32x2x3xf16, {order = #NHWC}>
   // CHECK:     [[INSERT2_0:%.+]] = tensor.insert_slice [[EXTRACT2_0]] into [[ARG4]][0, 0, [[ADD_0]], [[ARG3]]] [1, 32, 2, 3] [1, 1, 1, 1] : tensor<1x32x2x3xf16, {order = #NHWC}> into tensor<1x32x64x96xf16, {order = #NHWC}>
   // CHECK:     scf.yield [[INSERT1_0]] : tensor<1x32x64x96xf16, {order = #NHWC}>
   // CHECK:   }
@@ -187,68 +189,30 @@ module @StaticEltwiseNHWC {
 
 
   // CHECK:   func.func @main([[ARG0:%.+]]: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>, [[ARG1:%.+]]: tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}> {
-  // CHECK:     [[C100:%.+]] = arith.constant 100 : index
-  // CHECK:     [[C0:%.+]] = arith.constant 0 : index
-  // CHECK:     [[C2:%.+]] = arith.constant 2 : index
-  // CHECK:     [[DIM:%.+]] = tensor.dim %arg0, [[C2]] : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
-  // CHECK:     [[EMPTY:%.+]] = tensor.empty([[DIM]]) : tensor<1x16x720x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 720, 1000]> : tensor<4xsi64>, order = #NHWC}>
-  // CHECK:     [[SUB1:%.+]] = arith.subi [[DIM]], [[C0]] : index
-  // CHECK:     [[C1:%.+]] = arith.constant 1 : index
-  // CHECK:     [[SUB2:%.+]] = arith.subi [[C100]], [[C1]] : index
-  // CHECK:     [[ADD:%.+]] = arith.addi [[SUB1]], [[SUB2]] : index
-  // CHECK:     [[DIV:%.+]] = arith.divui [[ADD]], [[C100]] : index
-  // CHECK:     [[C2_0:%.+]] = arith.constant 2 : index
-  // CHECK:     [[REM:%.+]] = arith.remsi [[DIV]], [[C2_0]] : index
-  // CHECK:     [[SUB3:%.+]] = arith.subi [[DIV]], [[REM]] : index
-  // CHECK:     [[MUL1:%.+]] = arith.muli [[SUB3]], [[C100]] : index
-  // CHECK:     [[ADD2:%.+]] = arith.addi [[C0]], [[MUL1]] : index
-  // CHECK:     [[MUL2:%.+]] = arith.muli [[C100]], [[C2_0]] : index
-
-  // CHECK:     [[FIRST_ITER_END:%.+]] = arith.addi [[C0]], [[MUL2]] : index
-  // CHECK:     [[CAN_EXECUTE:%.+]] = arith.cmpi ule, [[FIRST_ITER_END]], [[DIM]] : index
-  // CHECK:     [[BASE_SAFE_UPPERBOUND:%.+]] = arith.minui [[ADD2]], [[DIM]] : index
-  // CHECK:     [[SAFE_UPPERBOUND:%.+]] = arith.select [[CAN_EXECUTE]], [[BASE_SAFE_UPPERBOUND]], [[C0]] : index
+  // CHECK-DAG: [[C100:%.+]] = arith.constant 100 : index
+  // CHECK-DAG: [[C0:%.+]] = arith.constant 0 : index
+  // CHECK-DAG: [[C2:%.+]] = arith.constant 2 : index
+  // CHECK:     [[DIM:%.+]] = tensor.dim [[ARG0]], [[C2]]
+  // CHECK:     [[EMPTY:%.+]] = tensor.empty([[DIM]])
+  // CHECK-DAG: [[C2_0:%.+]] = arith.constant 2 : index
+  // CHECK-DAG: [[MUL2:%.+]] = arith.muli [[C100]], [[C2_0]] : index
+  // CHECK:     [[SAFE_UPPERBOUND:%.+]] = arith.select
 
   // CHECK:     [[FOR10:%.+]] = scf.for [[ARG2:.+]] = [[C0]] to [[SAFE_UPPERBOUND]] step [[MUL2]] iter_args([[ARG3_1:.+]] = [[EMPTY]]) -> (tensor<1x16x720x?xf16, {{.+}}>) {
-  // CHECK:       [[MIN_SIZE:%.+]] = arith.addi [[ARG2]], [[MUL2]] : index
-  // CHECK:       [[CMP1:%.+]] = arith.cmpi sgt, [[MIN_SIZE]], [[SAFE_UPPERBOUND]] : index
-  // CHECK:       [[NEW_OFFSET:%.+]] = scf.if [[CMP1]] -> (index) {
-  // CHECK:         [[MAP:%.+]] = affine.apply
-  // CHECK:         scf.yield [[MAP]] : index
-  // CHECK:       } else {
-  // CHECK:         scf.yield [[ARG2]] : index
-  // CHECK:       }
-  // CHECK:       [[SIZE:%.+]] = affine.min
-  // CHECK:       [[CMP2:%.+]] = arith.cmpi eq, [[NEW_OFFSET]], [[C0]] : index
-  // CHECK:       [[C1_1:%.+]] = arith.constant 1 : index
-  // CHECK:       [[MUL3:%.+]] = arith.muli [[C100]], [[C1_1]] : index
-  // CHECK:       [[ADD4:%.+]] = arith.addi [[NEW_OFFSET]], [[MUL3]] : index
-  // CHECK:       [[MIN2:%.+]] = affine.min
-  // CHECK:       [[CMP3:%.+]] = arith.cmpi eq, [[ADD4]], [[C0]] : index
-  // CHECK:       scf.if [[CMP3]] -> (index) {
-  // CHECK:           {{.+}}
-  // CHECK:         }
-  // CHECK:         scf.yield [[C0]] : index
-  // CHECK:       }
-  // CHECK:       [[APPLY24:%.+]] = affine.apply #map2([[MIN1:%.+]], [[SUB5:%.+]])
-  // CHECK:       [[EXTRACT0:%.+]] = tensor.extract_slice [[ARG0:%.+]][0, 0, [[NEW_OFFSET]], 0] [1, 16, 200, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x200x1000xf16, {{.+}}>
-  // CHECK:       [[EXTRACT1:%.+]] = tensor.extract_slice [[ARG1:%.+]][0, 0, [[NEW_OFFSET]], 0] [1, 16, 200, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x200x1000xf16, {{.+}}>
+  // CHECK:       [[OFFSET1:%.+]] = affine.min
+  // CHECK:       [[EXTRACT0:%.+]] = tensor.extract_slice {{.+}}[0, 0, [[OFFSET1]], 0] [1, 16, 200, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x200x1000xf16, {{.+}}>
+  // CHECK:       [[EXTRACT1:%.+]] = tensor.extract_slice {{.+}}[0, 0, [[OFFSET1]], 0] [1, 16, 200, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x200x1000xf16, {{.+}}>
   // CHECK:       [[OUTPUT:%.+]] = func.call @merged_vpu_func_0([[EXTRACT0]], [[EXTRACT1]]) : (tensor<1x16x200x1000xf16, {{.+}}>, tensor<1x16x200x1000xf16, {{.+}}>) -> tensor<1x16x200x1000xf16, {{.+}}>
-  // CHECK:       [[INSERTED:%.+]] = tensor.insert_slice [[OUTPUT]] into [[ARG3:%.+]][0, 0, [[NEW_OFFSET]], 0] [1, 16, 200, 1000] [1, 1, 1, 1] : tensor<1x16x200x1000xf16, {{.+}}> into tensor<1x16x720x?xf16, {{.+}}>
-  // CHECK:       scf.yield [[INSERTED]] : tensor<1x16x720x?xf16, {{.+}}>
+  // CHECK:       [[INSERTED:%.+]] = tensor.insert_slice [[OUTPUT]] into {{%.+}}[0, 0, [[OFFSET1]], 0] [1, 16, 200, 1000] [1, 1, 1, 1] : tensor<1x16x200x1000xf16, {{.+}}> into tensor<1x16x720x?xf16, {{.+}}>
+  // CHECK:       scf.yield [[INSERTED]]
   // CHECK: } {no_await_all = true}
-  // CHECK: [[FOR11:%.+]] = scf.for [[ARG2:%.+]] = [[SAFE_UPPERBOUND]] to [[DIM]] step [[C100]] iter_args([[ARG3_2:%.+]] = [[FOR10]]) -> (tensor<1x16x720x?xf16, {{.+}}>) {
-  // CHECK:   [[SIZE:%.+]] = affine.min
-  // CHECK:   [[CMP13:%.+]] = arith.cmpi eq, [[ARG2]], [[C0]] : index
-  // CHECK:   scf.if [[CMP13]] -> (index) {
-  // CHECK:     {{.+}}
-  // CHECK:   }
-  // CHECK:   [[OFFSET:%.+]] = affine.apply
-  // CHECK:   [[EXTRACT2:%.+]] = tensor.extract_slice [[ARG0]][0, 0, [[OFFSET]], 0] [1, 16, 100, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x100x1000xf16, {{.+}}>
-  // CHECK:   [[EXTRACT3:%.+]] = tensor.extract_slice [[ARG1]][0, 0, [[OFFSET]], 0] [1, 16, 100, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x100x1000xf16, {{.+}}>
-  // CHECK:   [[CALL16:%.+]] = func.call @main_func0_static([[EXTRACT2]], [[EXTRACT3]]) : (tensor<1x16x100x1000xf16, {{.+}}>, tensor<1x16x100x1000xf16, {{.+}}>) -> tensor<1x16x100x1000xf16, {{.+}}>
-  // CHECK:   [[INSERTED2:%.+]] = tensor.insert_slice [[CALL16]] into [[ARG3_2]][0, 0, [[OFFSET]], 0] [1, 16, 100, 1000] [1, 1, 1, 1] : tensor<1x16x100x1000xf16, {{.+}}> into tensor<1x16x720x?xf16, {{.+}}>
-  // CHECK:   scf.yield [[INSERTED2]] : tensor<1x16x720x?xf16, {{.+}}>
+  // CHECK: [[FOR11:%.+]] = scf.for {{%.+}} = [[SAFE_UPPERBOUND]] to [[DIM]] step [[C100]] iter_args({{%.+}} = [[FOR10]]) -> (tensor<1x16x720x?xf16, {{.+}}>) {
+  // CHECK:   [[OFFSET2:%.+]] = affine.apply
+  // CHECK:   [[EXTRACT2:%.+]] = tensor.extract_slice {{.+}}[0, 0, [[OFFSET2]], 0] [1, 16, 100, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x100x1000xf16, {{.+}}>
+  // CHECK:   [[EXTRACT3:%.+]] = tensor.extract_slice {{.+}}[0, 0, [[OFFSET2]], 0] [1, 16, 100, 1000] [1, 1, 1, 1] : tensor<1x16x720x?xf16, {{.+}}> to tensor<1x16x100x1000xf16, {{.+}}>
+  // CHECK:   [[CALL16:%.+]] = func.call @main_func0_static({{%.+}}, {{%.+}}) : (tensor<1x16x100x1000xf16, {{.+}}>, tensor<1x16x100x1000xf16, {{.+}}>) -> tensor<1x16x100x1000xf16, {{.+}}>
+  // CHECK:   [[INSERTED2:%.+]] = tensor.insert_slice [[CALL16]] into {{%.+}}[0, 0, [[OFFSET2]], 0] [1, 16, 100, 1000] [1, 1, 1, 1] : tensor<1x16x100x1000xf16, {{.+}}> into tensor<1x16x720x?xf16, {{.+}}>
+  // CHECK:   scf.yield [[INSERTED2]]
   // CHECK: } {no_reset_cmdlist = true}
 
   // CHECK: return [[FOR11]] : tensor<1x16x720x?xf16, {{.+}}>

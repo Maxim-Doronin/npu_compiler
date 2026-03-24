@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -73,6 +73,27 @@ mlir::Type VPU::SparseTensorType::parse(mlir::AsmParser& parser) {
         }
         return get(data, sparsityMap, storageElementTable, mlir::UnitAttr::get(parser.getContext()),
                    sparsityCompression);
+    }
+    if (mlir::succeeded(parser.parseOptionalKeyword("storage_element_table"))) {
+        if (parser.parseEqual()) {
+            return Type();
+        }
+        if (parser.parseType<mlir::Type>(storageElementTable)) {
+            return Type();
+        }
+        if (mlir::succeeded(parser.parseOptionalComma())) {
+            if (parser.parseAttribute(seAttr)) {
+                return Type();
+            }
+            if (parser.parseGreater()) {
+                return Type();
+            }
+            return get(data, sparsityMap, storageElementTable, isWeights, sparsityCompression, seAttr);
+        }
+        if (parser.parseGreater()) {
+            return Type();
+        }
+        return get(data, sparsityMap, storageElementTable);
     }
     if (parser.parseKeyword("sparsity_map")) {
         return Type();

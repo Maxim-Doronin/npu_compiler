@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-se-ptrs-operations=true" %s | FileCheck %s --strict-whitespace
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu enable-se-ptrs-operations=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-se-ptrs-operations=true" %s | FileCheck %s --strict-whitespace
 // REQUIRES: arch-NPU50XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -200,7 +200,7 @@ net.NetworkInfo entryPoint : @main
                     %arg2: tensor<1x4x1x1xf16>,
                     %arg3: tensor<1x2048x256x1xf16, {order = #NHWC}>,
                     %arg4: tensor<1x4x256x2048xf16>) -> tensor<4x1x256x2048xf16> {
-        
+
         %0 = IE.Convolution(%arg0, %arg1, %arg2) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x4x256x1xf16, {order = #NHWC}>, tensor<4x4x1x1xf16, {order = #NHWC}>, tensor<1x4x1x1xf16> -> tensor<1x4x256x1xf16, {order = #NHWC}>
         %1 = IE.PermuteCast(%arg3) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x2048x256x1xf16, {order = #NHWC}> -> tensor<1x256x1x2048xf16>
         %2 = IE.AffineReshape(%1) {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 256, 2048]} : tensor<1x256x1x2048xf16> -> tensor<1x1x256x2048xf16>

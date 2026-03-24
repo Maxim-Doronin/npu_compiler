@@ -1,5 +1,7 @@
-# Copyright (C) 2026 Intel Corporation.
+#
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+#
 
 # Install library related files to components
 # Note: The status of BUILD_COMPILER_FOR_DRIVER will

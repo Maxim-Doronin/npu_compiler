@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,7 +10,7 @@
 #C = affine_map<(d0) -> (d0)>
 
 module @VPU.SW {
-  func.func private @builtin_LSTMSequence(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+  func.func private @builtin_LSTMSequence(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, none, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
@@ -122,7 +122,7 @@ func.func @UnrollSWKernelWithDynamicShapes() -> !DistributedShape {
             %outputShape: !DistributedShape)
         on tile 0 -> (
             !OutputDistributed1, !OutputDistributed2, !OutputDistributed3, !DistributedShape) {
-      VPUIP.SW.Kernel.run {attrs = [2]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15) :
+      VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 2, [-1, -1]]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15) :
         !InputDistributed1, !InputDistributed2, !InputDistributed3, !InputDistributed4, !InputDistributed5, !OutputDistributed1, !OutputDistributed2, !OutputDistributed3
         }
     }

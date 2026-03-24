@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,6 +26,11 @@ namespace vpux::IE {
 class StrategyFactory37XX : public IE::StrategyFactory {
     std::unique_ptr<IE::IConvertQuantizeOpsToNceOpsStrategy> getConvertQuantizeOpsToNceOpsStrategy() override {
         return std::make_unique<IE::arch37xx::ConvertQuantizeOpsToNceOpsStrategy>();
+    }
+
+    std::unique_ptr<IDynamicRewriterStrategy> getWeightsDequantizeToDynamicDequantizeStrategy(
+            ArrayRef<mlir::PatternBenefit>, size_t) override {
+        return nullptr;
     }
 
     std::unique_ptr<IDynamicRewriterStrategy> getWeightsDequantizeToFakeQuantizeStrategy(
@@ -71,7 +76,7 @@ class StrategyFactory37XX : public IE::StrategyFactory {
     }
 
     std::unique_ptr<IDynamicRewriterStrategy> getInitialLowPrecisionTransformationsPipelineStrategy(
-            mlir::func::FuncOp func) override {
+            mlir::func::FuncOp func, bool /*enableDynamicQuantizationForStaticCase*/) override {
         return std::make_unique<IE::arch37xx::InitialLowPrecisionTransformationsPipelineStrategy>(func);
     }
 };

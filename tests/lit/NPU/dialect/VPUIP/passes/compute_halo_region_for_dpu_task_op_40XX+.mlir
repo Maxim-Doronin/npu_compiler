@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,12 +52,12 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
     %weights1 = VPURT.DeclareBuffer <CMX_NN> [1] <34816> -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -89,12 +89,12 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -130,7 +130,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:                haloRegions = [],
 // CHECK-SAME:               outEnd = [31, 7, 15],
@@ -144,7 +144,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 // CHECK-SAME:               outEnd = [31, 15, 15],
 // CHECK-SAME:               outStart = [0, 8, 0],
 
-// CHECK:         VPUIP.NCEClusterTask {
+// CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -230,12 +230,12 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
     %weights2 = VPURT.DeclareBuffer <CMX_NN> [2] <37888> -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 2]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -267,12 +267,12 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -304,12 +304,12 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input2: !Input2)
             weights(%weights2: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
             parent_input(%input2: !Input2)
@@ -345,7 +345,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:      variants : {
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 0 : i64,
@@ -364,7 +364,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 // CHECK-SAME:               outEnd = [16, 31, 15],
 // CHECK-SAME:               outStart = [0, 16, 0],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -382,7 +382,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
 //CHECK-SAME:                outEnd = [17, 31, 15],
 //CHECK-SAME:                outStart = [10, 0, 0],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 2 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -500,12 +500,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     %weights2 = VPURT.DeclareBuffer <CMX_NN> [2] <22400> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -537,12 +537,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -574,12 +574,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input2: !Input2)
             weights(%weights2: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
             parent_input(%input2: !Input2)
@@ -615,7 +615,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 0 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -629,7 +629,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-SAME:               outEnd = [9, 9, 31],
 // CHECK-SAME:               outStart = [0, 0, 16],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -643,7 +643,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 //CHECK-SAME:                outEnd = [9, 9, 63],
 //CHECK-SAME:                outStart = [0, 0, 48],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 2 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -803,12 +803,12 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     %weights3 = VPURT.DeclareBuffer <CMX_NN> [3] <45056> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 3]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -840,12 +840,12 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -877,12 +877,12 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input2: !Input2)
             weights(%weights2: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
             parent_input(%input2: !Input2)
@@ -932,12 +932,12 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input3: !Input3)
             weights(%weights3: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 3]>)
             parent_input(%input3: !Input3)
@@ -973,7 +973,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 0 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -991,7 +991,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 // CHECK-SAME:               outStart = [0, 0, 16],
 
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1006,7 +1006,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 //CHECK-SAME:                outEnd = [15, 15, 63],
 //CHECK-SAME:                outStart = [0, 8, 32],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 2 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -1034,7 +1034,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
 //CHECK-SAME:               outEnd = [15, 17, 31],
 //CHECK-SAME:               outStart = [0, 10, 16],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 3 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -1166,12 +1166,12 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     %weights3 = VPURT.DeclareBuffer <CMX_NN> [3] <22848> -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 3]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -1203,12 +1203,12 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -1240,12 +1240,12 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input2: !Input2)
             weights(%weights2: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
             parent_input(%input2: !Input2)
@@ -1268,12 +1268,12 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input3: !Input3)
             weights(%weights3: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 3]>)
             parent_input(%input3: !Input3)
@@ -1327,7 +1327,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 0 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1343,7 +1343,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 // CHECK-SAME:               outEnd = [15, 19, 15],
 // CHECK-SAME:               outStart = [0, 10, 0],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1359,7 +1359,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 //CHECK-SAME:                outEnd = [16, 19, 15],
 //CHECK-SAME:                outStart = [10, 0, 0],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 2 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -1369,7 +1369,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
 //CHECK-SAME:               outEnd = [15, 21, 15],
 //CHECK-SAME:               outStart = [0, 2, 0],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 3 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -1501,12 +1501,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     %weights2 = VPURT.DeclareBuffer <CMX_NN> [2] <22400> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -1538,12 +1538,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -1575,12 +1575,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input2: !Input2)
             weights(%weights2: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
             parent_input(%input2: !Input2)
@@ -1616,7 +1616,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 0 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1630,7 +1630,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-SAME:               outEnd = [9, 9, 31],
 // CHECK-SAME:               outStart = [0, 0, 16],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1644,7 +1644,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 //CHECK-SAME:                outEnd = [9, 9, 63],
 //CHECK-SAME:                outStart = [0, 0, 48],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 2 : i64,
 //CHECK-SAME:               haloRegions = [
@@ -1763,12 +1763,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     %weights2 = VPURT.DeclareBuffer <CMX_NN> [2] <22400> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input0: !Input0)
             weights(%weights0: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%input0: !Input0)
@@ -1800,12 +1800,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input1: !Input1)
             weights(%weights1: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
             parent_input(%input1: !Input1)
@@ -1837,12 +1837,12 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%input2: !Input2)
             weights(%weights2: memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
             parent_input(%input2: !Input2)
@@ -1878,7 +1878,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 
 }
 
-// CHECK:        VPUIP.NCEClusterTask {
+// CHECK:        VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 0 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1892,7 +1892,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 // CHECK-SAME:               outEnd = [9, 9, 31],
 // CHECK-SAME:               outStart = [0, 0, 16],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 // CHECK:               DPUTask {
 // CHECK-SAME:               cluster_id = 1 : i64,
 // CHECK-SAME:               haloRegions = [
@@ -1906,7 +1906,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
 //CHECK-SAME:                outEnd = [9, 9, 63],
 //CHECK-SAME:                outStart = [0, 0, 48],
 
-//CHECK:         VPUIP.NCEClusterTask {
+//CHECK:         VPUIP.NCEClusterTask <{
 //CHECK:               DPUTask {
 //CHECK-SAME:               cluster_id = 2 : i64,
 //CHECK-SAME:               haloRegions = [

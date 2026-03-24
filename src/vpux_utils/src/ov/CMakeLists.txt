@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2026 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -13,7 +13,6 @@ set(TARGET_NAME npu_ov_utils)
 
 list(APPEND SOURCES
         config.cpp
-        icompiler.cpp
 )
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 

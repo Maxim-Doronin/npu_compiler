@@ -595,24 +595,24 @@ bool InputConcatPattern::insertNCEOperation() {
 
             auto newOperandType = newOperands[0].getType();
 
-            auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(nceOp);
+            const auto& ppeConfig = VPU::getPpeConfig(ctx);
+            auto ppeAttr = ppeConfig.retrievePPEAttribute(nceOp);
 
             // Update Clamp in PPE to align with the original NCE task
             auto nceOpIface = mlir::dyn_cast<VPU::NCEOpInterface>(nceOp);
             VPUX_THROW_WHEN(nceOpIface == nullptr, "Can't find NCEOpInterface");
 
             const auto origPPETask = nceOpIface.getPPE();
-            const auto& clampAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterClamp>();
+            const auto& clampAdapter = ppeConfig.getFactoryAs<VPU::IPpeAdapterClamp>();
             ppeAttr = clampAdapter.updateClamps(ppeAttr, origPPETask);
             const auto elemType = mlir::cast<vpux::NDTypeInterface>(newOperandType).getElementType();
             if (mlir::isa<mlir::quant::QuantizedType>(elemType)) {
-                if (const auto quantParamsAdapter =
-                            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterQuantParams*>()) {
+                if (const auto quantParamsAdapter = ppeConfig.getFactoryAs<VPU::IPpeAdapterQuantParams*>()) {
                     const auto kernelShape = parseIntArrayAttr<int64_t>(kernelSizeAttr);
                     ppeAttr = quantParamsAdapter->recomputeQuantParams(ppeAttr, elemType, elemType, kernelShape);
                 }
             }
-            if (const auto scaleAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterScaleBias*>()) {
+            if (const auto scaleAdapter = ppeConfig.getFactoryAs<VPU::IPpeAdapterScaleBias*>()) {
                 ppeAttr = scaleAdapter->updateScale(ppeAttr, {1.0});
             }
 

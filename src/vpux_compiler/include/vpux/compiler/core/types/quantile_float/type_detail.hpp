@@ -1,35 +1,35 @@
-// Copyright (C) 2024-2025 Intel Corporation
+//
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #pragma once
 #include <mlir/IR/TypeSupport.h>
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/logger/logger.hpp"
-
-using namespace mlir;
 
 namespace vpux {
 namespace detail {
 
 /// Quantile float Type Storage and Uniquing.
 struct QuantileFloatTypeStorage : public mlir::TypeStorage {
-    Type storageType;
-    Type quantileType;
+    mlir::Type storageType;
+    mlir::Type quantileType;
     const double* quantilesElements;
     size_t quantilesParamsSize;
 
     struct KeyTy {
-        KeyTy(Type storageType, Type quantileType, ArrayRef<double> quantiles)
+        KeyTy(mlir::Type storageType, mlir::Type quantileType, ArrayRef<double> quantiles)
                 : storageType(storageType), quantileType(quantileType), quantiles(quantiles) {
         }
 
-        Type storageType;
-        Type quantileType;
+        mlir::Type storageType;
+        mlir::Type quantileType;
         ArrayRef<double> quantiles;
-        Type getStorageType() const {
+        mlir::Type getStorageType() const {
             return storageType;
         }
-        Type getQuantileType() const {
+        mlir::Type getQuantileType() const {
             return quantileType;
         }
         ArrayRef<double> getQuantiles() const {
@@ -65,7 +65,7 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
               quantilesParamsSize(quantiles.size()) {
     }
 
-    static QuantileFloatTypeStorage* construct(TypeStorageAllocator& allocator, KeyTy key) {
+    static QuantileFloatTypeStorage* construct(mlir::TypeStorageAllocator& allocator, KeyTy key) {
         ArrayRef<double> quantiles = allocator.copyInto(key.quantiles);
         return new (allocator.allocate<QuantileFloatTypeStorage>()) QuantileFloatTypeStorage(key, quantiles);
     }
@@ -78,11 +78,11 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
         return ArrayRef<double>(quantilesElements, quantilesParamsSize);
     }
 
-    Type getStorageType() const {
+    mlir::Type getStorageType() const {
         return storageType;
     }
 
-    Type getQuantileType() const {
+    mlir::Type getQuantileType() const {
         return quantileType;
     }
 };

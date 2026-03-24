@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -452,6 +452,34 @@ func.func @ConvertToQuantizeWithGroupConvWithPostOp(%arg0: tensor<1x64x64x100xf1
   // CHECK:       [[CST_FILTER:%.+]] = const.Declare
   // CHECK:       [[GROUPCONV:%.+]] = IE.GroupConvolution([[ARG0]], [[CST_FILTER]])
   // CHECK-SAME:      post_op = #IE.Relu<>
+  // CHECK:       [[QUANTIZE:%.+]] = IE.Quantize([[GROUPCONV]]) {dstElemType = [[QELEMTYPE]]}
+  // CHECK-SAME:      : tensor<1x64x64x100xf16, {order = #NHWC}> -> tensor<1x64x64x100x[[QELEMTYPE]], {order = #NHWC}>
+  // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[QUANTIZE]]) {dstElemType = ui8}
+  // CHECK-SAME:      : tensor<1x64x64x100x[[QELEMTYPE]], {order = #NHWC}> -> tensor<1x64x64x100xui8, {order = #NHWC}>
+  // CHECK:       return [[QUANTIZE_CAST]]
+}
+
+// -----
+
+// CHECK-DAG: [[QELEMTYPE:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK: func.func @ConvertToQuantizeWithGroupConvWithClamp
+// CHECK-SAME:  [[ARG0:%.+]]: tensor<1x64x64x100xf16, {order = #NHWC}>
+func.func @ConvertToQuantizeWithGroupConvWithClamp(%arg0: tensor<1x64x64x100xf16, {order = #NHWC}>) -> tensor<1x64x64x100xui8, {order = #NHWC}> {
+  %cst_filter = const.Declare tensor<64x1x1x1xf16, {order = #NHWC}> = dense<2.0> : tensor<64x1x1x1xf16, {order = #NHWC}>
+  %0 = IE.GroupConvolution(%arg0, %cst_filter) {
+    clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
+    dilations = [1, 1], groups = 64 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
+  } : tensor<1x64x64x100xf16, {order = #NHWC}>, tensor<64x1x1x1xf16, {order = #NHWC}> -> tensor<1x64x64x100xf16, {order = #NHWC}>
+  %1 = IE.Round(%0) {mode = #IE.round_mode<HALF_TO_EVEN>} : tensor<1x64x64x100xf16, {order = #NHWC}> -> tensor<1x64x64x100xf16, {order = #NHWC}>
+  %2 = IE.Clamp(%1) {min = 0.0, max = 255.0} : tensor<1x64x64x100xf16, {order = #NHWC}> -> tensor<1x64x64x100xf16, {order = #NHWC}>
+  %3 = IE.Convert(%2) {dstElemType = ui8} : tensor<1x64x64x100xf16, {order = #NHWC}> -> tensor<1x64x64x100xui8, {order = #NHWC}>
+  return %3 : tensor<1x64x64x100xui8, {order = #NHWC}>
+
+  // CHECK:       [[CST_FILTER:%.+]] = const.Declare
+  // CHECK:       [[GROUPCONV:%.+]] = IE.GroupConvolution([[ARG0]], [[CST_FILTER]])
+  // CHECK-SAME:      clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}
   // CHECK:       [[QUANTIZE:%.+]] = IE.Quantize([[GROUPCONV]]) {dstElemType = [[QELEMTYPE]]}
   // CHECK-SAME:      : tensor<1x64x64x100xf16, {order = #NHWC}> -> tensor<1x64x64x100x[[QELEMTYPE]], {order = #NHWC}>
   // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[QUANTIZE]]) {dstElemType = ui8}

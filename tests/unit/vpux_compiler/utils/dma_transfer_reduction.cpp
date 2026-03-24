@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,10 @@
 #include <gtest/gtest.h>
 
 #include "common/utils.hpp"
+#include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/core/IR/indexed_symbol_attr.hpp"
 #include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/dma_transaction_utils.hpp"
 #include "vpux/utils/core/range.hpp"
 

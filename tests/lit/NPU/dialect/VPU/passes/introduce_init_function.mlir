@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1240,4 +1240,73 @@ module @DoNotNestFunctions {
     // CHECK-MAIN:  func.func @main([[DUMMY:%.+]]: tensor<2x2xf16>, [[CST_ADD42:%.+]]: tensor<2x2xf16>) -> tensor<2x2xf16>
     // CHECK-MAIN:      [[CALL:%.+]] = call @subview_cst([[DUMMY]], [[CST_ADD42]])
     // CHECK-MAIN:      return [[CALL]]
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
+        }
+  }
+#-}
+
+// CHECK-INIT-LABEL: @SameBlobConstants
+// CHECK-MAIN-LABEL: @SameBlobConstants
+module @SameBlobConstants {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input" : tensor<2x2xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xf16>
+    }
+
+    // CHECK-INIT:  net.NetworkInfo entryPoint : @init inputsInfo : {
+    // CHECK-INIT:      DataInfo "vpux_ow_0" : tensor<4xf16>
+    // CHECK-INIT:      DataInfo "vpux_ow_0" : tensor<2x2xf16>
+    // CHECK-INIT:      DataInfo "vpux_ow_0" : tensor<2x2xi16>
+    // CHECK-INIT:  } outputsInfo : {
+    // CHECK-INIT:      DataInfo "vpux_tw_0_hash_76496828816726723" : tensor<3x2xf16>
+    // CHECK-INIT:      DataInfo "vpux_tw_0_hash_5941465860595514491" : tensor<2x2xf16>
+    // CHECK-INIT:      DataInfo "vpux_tw_0_hash_6966838352033817055" : tensor<2x3xf16>
+
+    // CHECK-MAIN:  net.NetworkInfo entryPoint : @main inputsInfo : {
+    // CHECK-MAIN:      DataInfo "input" : tensor<2x2xf16>
+    // CHECK-MAIN:      DataInfo "vpux_tw_0_hash_76496828816726723" : tensor<3x2xf16>
+    // CHECK-MAIN:      DataInfo "vpux_tw_0_hash_5941465860595514491" : tensor<2x2xf16>
+    // CHECK-MAIN:      DataInfo "vpux_tw_0_hash_6966838352033817055" : tensor<2x3xf16>
+    // CHECK-MAIN:  } outputsInfo : {
+    // CHECK-MAIN:      DataInfo "output" : tensor<2x2xf16>
+
+    // CHECK-INIT:  func.func @init
+    // CHECK-INIT-SAME:     ([[NEWSHAPE:%.+]]: tensor<4xf16>, [[ORIG:%.+]]: tensor<2x2xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
+    // CHECK-INIT-SAME:     -> (tensor<3x2xf16>, tensor<2x2xf16>, tensor<2x3xf16>)
+    // CHECK-INIT:      [[MULTIPLIER:%.+]] = const.Declare {{.+}} dense<2.000000e+00>
+    // CHECK-INIT:      [[CST_MULT2:%.+]] = IE.Multiply([[NEWSHAPE]], [[MULTIPLIER]])
+    // CHECK-INIT:      [[RESHAPE:%.+]] = IE.Reshape([[CST_MULT2]]) {{.*}} -> tensor<2x2xf16>
+    // CHECK-INIT:      [[PAD_NEWSHAPE:%.+]] = IE.Pad([[RESHAPE]]) {{.*}} -> tensor<3x2xf16>
+
+    // CHECK-INIT:      [[ADDEND:%.+]] = const.Declare {{.+}} dense<4.200000e+01>
+    // CHECK-INIT:      [[CST_ADD42:%.+]] = IE.Add([[ORIG]], [[ADDEND]])
+
+    // CHECK-INIT:      [[CVT:%.+]] = IE.Convert([[NEWTYPE]]) {{.*}} -> tensor<2x2xf16>
+    // CHECK-INIT:      [[PAD_NEWTYPE:%.+]] = IE.Pad([[CVT]]) {{.*}} -> tensor<2x3xf16>
+
+    // CHECK-INIT:      return [[PAD_NEWSHAPE]], [[CST_ADD42]], [[PAD_NEWTYPE]]
+
+    func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %orig = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
+            [#const.Add<42.0>]
+        %newshape = const.Declare tensor<3x2xf16> = dense_resource<vpux_ow_0> : tensor<4xf16>,
+            [#const.Rescale<2.0>, #const.Reshape<[2, 2]>, #const.PadWithZero<[0, 0], [1, 0]>]
+        %newtype = const.Declare tensor<2x3xf16> = dense_resource<vpux_ow_0> : tensor<2x2xi16>,
+            [#const.CastElemType<f16>, #const.PadWithZero<[0, 0], [0, 1]>]
+
+        return %dummy : tensor<2x2xf16>
+    }
+
+    // CHECK-MAIN:  func.func @main([[DUMMY:%.+]]: tensor<2x2xf16>, [[PAD_NEWSHAPE:%.+]]: tensor<3x2xf16>,
+    // CHECK-MAIN-SAME:     [[CST_ADD42:%.+]]: tensor<2x2xf16>, [[PAD_NEWTYPE:%.+]]: tensor<2x3xf16>)
+    // CHECK-MAIN-SAME:     -> tensor<2x2xf16>
+    // CHECK-MAIN:      return [[DUMMY]]
 }

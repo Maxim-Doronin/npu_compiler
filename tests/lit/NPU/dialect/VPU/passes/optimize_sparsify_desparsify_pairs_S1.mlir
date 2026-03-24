@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @OptimizeMultipleConsumers
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @OptimizeMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
     %0 = VPU.Sparsify(%arg0) : tensor<1x16x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
     %1 = VPU.NCE.Convolution(%0, %weights, %wt) {
@@ -37,8 +39,8 @@ func.func @OptimizeMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHW
 
     return %8, %12 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -51,7 +53,7 @@ func.func @OptimizeMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHW
     // CHECK:       [[VAL4:%.+]] = VPU.Sparsify([[VAL3]])
     // CHECK:       [[VAL5:%.+]] = VPU.Desparsify([[VAL4]]
 
-    // CHECK:       [[VAL6:%.+]] = VPU.NCE.Convolution([[VAL2]], %arg2, %arg1)
+    // CHECK:       [[VAL6:%.+]] = VPU.NCE.Convolution([[VAL2]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -67,6 +69,8 @@ func.func @OptimizeMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHW
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @OptimizeMultipleMixedConsumers
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @OptimizeMultipleMixedConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
     %0 = VPU.Sparsify(%arg0) : tensor<1x16x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
     %1 = VPU.NCE.Convolution(%0, %weights, %wt) {
@@ -93,9 +97,9 @@ func.func @OptimizeMultipleMixedConsumers(%arg0: tensor<1x16x16x16xf16, {order =
         } : tensor<1x16x16x16xf16, {order = #NHWC}> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     return %8, %9 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
 
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -126,6 +130,10 @@ func.func @OptimizeMultipleMixedConsumers(%arg0: tensor<1x16x16x16xf16, {order =
 !PostConcatType = tensor<1x16x16x16xf16, {order = #NHWC}>
 !DefaultType = tensor<1x16x16x16xf16, {order = #NHWC}>
 
+// CHECK-LABEL: @OptimizeConcat
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x8x16x16xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>
+// CHECK-SAME:      [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>
 func.func @OptimizeConcat(%arg0: !PreConcatType, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> (!DefaultType, !DefaultType) {
     %0 = VPU.Sparsify(%arg0) : !PreConcatType -> !VPU.SparseTensor<data=!PreConcatType>
     %1 = VPU.Desparsify(%0) : !VPU.SparseTensor<data=!PreConcatType> -> !PreConcatType
@@ -150,15 +158,15 @@ func.func @OptimizeConcat(%arg0: !PreConcatType, %wt: tensor<16x1x1x4xsi32>, %we
 
     return %6, %7 : !DefaultType, !DefaultType
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
     // CHECK-NOT:   VPU.Desparsify
     // CHECK-NOT:   VPU.Desparsify
     // CHECK:       [[VAL1:%.+]] = VPU.Concat([[VAL0]], [[VAL0]])
     // CHECK-SAME:      !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
     // CHECK-NOT:   VPU.Sparsify
     // CHECK-NOT:   VPU.Sparsify
-    // CHECK:       [[VAL2:%.+]] = VPU.NCE.Convolution([[VAL1]], %arg2, %arg1)
-    // CHECK:       [[VAL3:%.+]] = VPU.NCE.Convolution([[VAL1]], %arg2, %arg1)
+    // CHECK:       [[VAL2:%.+]] = VPU.NCE.Convolution([[VAL1]], [[ARG_2]], [[ARG_1]])
+    // CHECK:       [[VAL3:%.+]] = VPU.NCE.Convolution([[VAL1]], [[ARG_2]], [[ARG_1]])
     // CHECK:       return [[VAL2]], [[VAL3]]
 }
 
@@ -172,6 +180,10 @@ func.func @OptimizeConcat(%arg0: !PreConcatType, %wt: tensor<16x1x1x4xsi32>, %we
 !PostConcatType = tensor<1x16x16x16xf16, {order = #NHWC}>
 !DefaultType = tensor<1x16x16x16xf16, {order = #NHWC}>
 
+// CHECK-LABEL: @OptimizeConcatMixedConsumers
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x8x16x16xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>
+// CHECK-SAME:      [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>
 func.func @OptimizeConcatMixedConsumers(%arg0: !PreConcatType, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> (!DefaultType, !PostConcatType) {
     %0 = VPU.Sparsify(%arg0) : !PreConcatType -> !VPU.SparseTensor<data=!PreConcatType>
     %1 = VPU.Desparsify(%0) : !VPU.SparseTensor<data=!PreConcatType> -> !PreConcatType
@@ -196,7 +208,7 @@ func.func @OptimizeConcatMixedConsumers(%arg0: !PreConcatType, %wt: tensor<16x1x
 
     return %5, %6 : !DefaultType, !PostConcatType
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
     // CHECK-NOT:   VPU.Desparsify
     // CHECK-NOT:   VPU.Desparsify
 
@@ -205,7 +217,7 @@ func.func @OptimizeConcatMixedConsumers(%arg0: !PreConcatType, %wt: tensor<16x1x
 
     // CHECK:       [[VAL2:%.+]] = VPU.Desparsify([[VAL1]])
 
-    // CHECK:       [[VAL3:%.+]] = VPU.NCE.Convolution([[VAL1]], %arg2, %arg1)
+    // CHECK:       [[VAL3:%.+]] = VPU.NCE.Convolution([[VAL1]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 

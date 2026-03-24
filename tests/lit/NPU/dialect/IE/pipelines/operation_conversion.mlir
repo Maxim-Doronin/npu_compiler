@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 
 
 // CHECK-LABEL: @OperationConversionAllOpsSubset
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x8x12xf16>)
 func.func @OperationConversionAllOpsSubset(%arg0: tensor<1x16x8x12xf16>) -> tensor<1x12x8x1xf16> {
   %0 = IE.ReduceSum(%arg0) {axes_value = [1], keep_dims} : tensor<1x16x8x12xf16> -> tensor<1x1x8x12xf16>
   %1 = IE.ExtractImagePatches(%0) {autoPad = #IE.pad_type<VALID>, rates = [1, 1], sizes = [1, 12], strides = [1, 1]} : tensor<1x1x8x12xf16> -> tensor<1x12x8x1xf16>
@@ -22,7 +23,7 @@ func.func @OperationConversionAllOpsSubset(%arg0: tensor<1x16x8x12xf16>) -> tens
 
   //CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00> : tensor<1x16x1x1xf32>, [#const.CastElemType<f16>]
   //CHECK-DAG: [[CST0:%.+]] = const.Declare tensor<1xf16> = dense<2.000000e+00> : tensor<1xf16>
-  //CHECK:     [[VAL0:%.+]] = IE.Convolution(%arg0, [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x8x12xf16>, tensor<1x16x1x1xf16> -> tensor<1x1x8x12xf16>
+  //CHECK:     [[VAL0:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x8x12xf16>, tensor<1x16x1x1xf16> -> tensor<1x1x8x12xf16>
   //CHECK:     [[VAL1:%.+]] = IE.Transpose([[VAL0]]) {order_value = #NWHC} : tensor<1x1x8x12xf16> -> tensor<1x12x8x1xf16>
   //CHECK:     [[VAL2:%.+]] = IE.SquaredDiff([[VAL1]], [[CST0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x12x8x1xf16>, tensor<1xf16> -> tensor<1x12x8x1xf16>
 

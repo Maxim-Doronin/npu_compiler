@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <npu_37xx_nnrt.hpp>
 
@@ -1412,7 +1413,13 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
             builder = mlir::OpBuilder::atBlockEnd(relocSection.getBlock());
 
             addend = declarator.getByteOffset();
-
+            if (addend % 16 != 0) {
+                // addedn is not 16B aligned, use offset from parentOutput instead, which should have proper alignment.
+                // The offset difference will be accounted for during serialization
+                auto parentOutput = invariant.getParentOutput();
+                declarator = mlir::cast<VPURT::DeclareBufferOp>(parentOutput.getDefiningOp());
+                addend = declarator.getByteOffset();
+            }
             bufferMemSpace = mlir::cast<vpux::NDTypeInterface>(output.getType()).getMemSpace();
             bufferSection = VPURT::symbolizeBufferSection(bufferMemSpace.getLeafName());
             VPUX_THROW_UNLESS(bufferSection.has_value(), "Buffer with no section associated");
@@ -1434,6 +1441,8 @@ void ConvertVPUMI37XX2ELFPass::createDPURelocs(mlir::func::FuncOp func) {
             // index
             static constexpr uint32_t base0Offset = offsetof(nn_public::VpuDPUInvariantRegisters, base_adr[0]);
             static constexpr uint32_t base1Offset = offsetof(nn_public::VpuDPUInvariantRegisters, base_adr[1]);
+
+            VPUX_THROW_WHEN(addend % 16, "Base address not aligned to 16B multiple.");
 
             builder.create<ELFNPU37XX::RelocOp>(output.getLoc(), invariant, regsOffset + base0Offset,
                                                 ELFNPU37XX::RelocationType::R_VPU_32_MULTICAST_BASE, sourceSym, addend,
@@ -1894,15 +1903,13 @@ void ConvertVPUMI37XX2ELFPass::createDMARelocs(mlir::func::FuncOp& funcOp, mlir:
 
 void ConvertVPUMI37XX2ELFPass::safeRunOnModule() {
     mlir::MLIRContext* ctx = &(getContext());
-    mlir::func::FuncOp funcOp;
     mlir::ModuleOp moduleOp = getOperation();
 
     ShaveBinaryResources::loadElfData(moduleOp);
 
     _log.trace("ConvertVPUMI37XX2ELFPass::safeRunOnFunc(): START\n {0}\n", moduleOp);
 
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+    auto [netInfo, funcOp] = net::getFromModule(moduleOp);
 
     relocationManager.init(funcOp);
 

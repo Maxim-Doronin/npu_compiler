@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertExpandToConv16Channels
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64x224xf16, {order = #NHWC}>)
 func.func @ConvertExpandToConv16Channels(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
     -> tensor<1x16x64x224xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -18,7 +19,7 @@ func.func @ConvertExpandToConv16Channels(%arg0: tensor<1x3x64x224xf16, {order = 
 
     return %EXPAND : tensor<1x16x64x224xf16, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -55,6 +56,7 @@ func.func @ConvertExpandToConv16Channels(%arg0: tensor<1x3x64x224xf16, {order = 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertExpandToConv4Channels
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64x224xf16, {order = #NHWC}>)
 func.func @ConvertExpandToConv4Channels(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
     -> tensor<1x4x64x224xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -64,7 +66,7 @@ func.func @ConvertExpandToConv4Channels(%arg0: tensor<1x3x64x224xf16, {order = #
 
     return %EXPAND : tensor<1x4x64x224xf16, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -835,6 +837,7 @@ func.func @ConvertExpandQuantizeNoSlicePadded(%arg0: tensor<1x3x299x299xf16, {or
 // -----
 
 // CHECK-LABEL: @SkipExpandNCHW
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64x224xf16>)
 func.func @SkipExpandNCHW(%arg0: tensor<1x3x64x224xf16>) -> tensor<1x16x64x224xf16> {
     %EXPAND = IE.Expand(%arg0) {
         pads_begin = [0, 0, 0, 0],
@@ -843,7 +846,7 @@ func.func @SkipExpandNCHW(%arg0: tensor<1x3x64x224xf16>) -> tensor<1x16x64x224xf
 
     return %EXPAND : tensor<1x16x64x224xf16>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:      pads_end = [0, 13, 0, 0]
     // CHECK-SAME:  } : tensor<1x3x64x224xf16> -> tensor<1x16x64x224xf16>
@@ -854,6 +857,7 @@ func.func @SkipExpandNCHW(%arg0: tensor<1x3x64x224xf16>) -> tensor<1x16x64x224xf
 // -----
 
 // CHECK-LABEL: @SkipExpand3d
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64xf16>)
 func.func @SkipExpand3d(%arg0: tensor<1x3x64xf16>) -> tensor<1x16x64xf16> {
     %EXPAND = IE.Expand(%arg0) {
         pads_begin = [0, 0, 0],
@@ -862,7 +866,7 @@ func.func @SkipExpand3d(%arg0: tensor<1x3x64xf16>) -> tensor<1x16x64xf16> {
 
     return %EXPAND : tensor<1x16x64xf16>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 0, 0],
     // CHECK-SAME:      pads_end = [0, 13, 0]
     // CHECK-SAME:  } : tensor<1x3x64xf16> -> tensor<1x16x64xf16>
@@ -875,6 +879,7 @@ func.func @SkipExpand3d(%arg0: tensor<1x3x64xf16>) -> tensor<1x16x64xf16> {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SkipNonZeroPadsBegin
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64x224xf16, {order = #NHWC}>)
 func.func @SkipNonZeroPadsBegin(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
     -> tensor<1x16x64x224xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -884,7 +889,7 @@ func.func @SkipNonZeroPadsBegin(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
 
     return %EXPAND : tensor<1x16x64x224xf16, {order = #NHWC}>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 1, 0, 0],
     // CHECK-SAME:      pads_end = [0, 12, 0, 0]
     // CHECK-SAME:  } : tensor<1x3x64x224xf16, {order = #NHWC}> -> tensor<1x16x64x224xf16, {order = #NHWC}>
@@ -897,6 +902,7 @@ func.func @SkipNonZeroPadsBegin(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SkipPaddingOverHeight
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64x224xf16, {order = #NHWC}>)
 func.func @SkipPaddingOverHeight(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
     -> tensor<1x3x66x224xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -906,7 +912,7 @@ func.func @SkipPaddingOverHeight(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
 
     return %EXPAND : tensor<1x3x66x224xf16, {order = #NHWC}>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:      pads_end = [0, 0, 2, 0]
     // CHECK-SAME:  } : tensor<1x3x64x224xf16, {order = #NHWC}> -> tensor<1x3x66x224xf16, {order = #NHWC}>
@@ -919,6 +925,7 @@ func.func @SkipPaddingOverHeight(%arg0: tensor<1x3x64x224xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SkipBatch
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<2x3x64x224xf16, {order = #NHWC}>)
 func.func @SkipBatch(%arg0: tensor<2x3x64x224xf16, {order = #NHWC}>)
     -> tensor<2x16x64x224xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -928,7 +935,7 @@ func.func @SkipBatch(%arg0: tensor<2x3x64x224xf16, {order = #NHWC}>)
 
     return %EXPAND : tensor<2x16x64x224xf16, {order = #NHWC}>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:      pads_end = [0, 13, 0, 0]
     // CHECK-SAME:  } : tensor<2x3x64x224xf16, {order = #NHWC}> -> tensor<2x16x64x224xf16, {order = #NHWC}>
@@ -941,6 +948,7 @@ func.func @SkipBatch(%arg0: tensor<2x3x64x224xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SkipFloat32Expand
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x64x224xf32, {order = #NHWC}>)
 func.func @SkipFloat32Expand(%arg0: tensor<1x3x64x224xf32, {order = #NHWC}>)
     -> tensor<1x16x64x224xf32, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -950,7 +958,7 @@ func.func @SkipFloat32Expand(%arg0: tensor<1x3x64x224xf32, {order = #NHWC}>)
 
     return %EXPAND : tensor<1x16x64x224xf32, {order = #NHWC}>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:      pads_end = [0, 13, 0, 0]
     // CHECK-SAME:  } : tensor<1x3x64x224xf32, {order = #NHWC}> -> tensor<1x16x64x224xf32, {order = #NHWC}>
@@ -968,6 +976,7 @@ func.func @SkipFloat32Expand(%arg0: tensor<1x3x64x224xf32, {order = #NHWC}>)
 // CHECK-DAG: [[Q_WEIGHTS:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
 // Note that "CHECK-LABEL" directive is deliberately skipped here because it resets Q_ACT and Q_WEIGHTS
+// CHECK: @ConvertQuantizedExpand([[ARG_0:%[^:]+]]: tensor<1x3x64x224x!qElemType, {order = #NHWC}>)
 func.func @ConvertQuantizedExpand(%arg0: tensor<1x3x64x224x!qElemType, {order = #NHWC}>)
     -> tensor<1x16x64x224x!qElemType, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -979,7 +988,7 @@ func.func @ConvertQuantizedExpand(%arg0: tensor<1x3x64x224x!qElemType, {order = 
 
     // CHECK-NOT:   IE.Expand
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1018,6 +1027,7 @@ func.func @ConvertQuantizedExpand(%arg0: tensor<1x3x64x224x!qElemType, {order = 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertLargeExpand
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x512x896xf16, {order = #NHWC}>)
 func.func @ConvertLargeExpand(%arg0: tensor<1x3x512x896xf16, {order = #NHWC}>)
     -> tensor<1x16x512x896xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -1028,7 +1038,7 @@ func.func @ConvertLargeExpand(%arg0: tensor<1x3x512x896xf16, {order = #NHWC}>)
     return %EXPAND : tensor<1x16x512x896xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.Expand
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1067,6 +1077,7 @@ func.func @ConvertLargeExpand(%arg0: tensor<1x3x512x896xf16, {order = #NHWC}>)
 // CHECK-DAG: [[Q_TYPE:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
 // Note that "CHECK-LABEL" directive is deliberately skipped here because it resets Q_TYPE
+// CHECK: @FuseQuantizeProducer([[ARG_0:%[^:]+]]: tensor<1x1x19x80xf16, {order = #NHWC}>)
 func.func @FuseQuantizeProducer(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>)
     -> tensor<1x4x19x80x!qElemType1, {order = #NHWC}> {
     %IN_SHAPE_CAST = IE.ShapeCast {
@@ -1094,7 +1105,7 @@ func.func @FuseQuantizeProducer(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>)
 
     return %EXPAND : tensor<1x4x19x80x!qElemType1, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1134,6 +1145,7 @@ func.func @FuseQuantizeProducer(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>)
 // CHECK-DAG: [[Q_ACT_TYPE:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
 // Note that "CHECK-LABEL" directive is deliberately skipped here because it resets Q_ACT_TYPE
+// CHECK: @FuseQuantizeWithoutShapeCast([[ARG_0:%[^:]+]]: tensor<1x1x19x80xf16, {order = #NHWC}>)
 func.func @FuseQuantizeWithoutShapeCast(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>)
     -> tensor<1x4x19x80x!qElemType1, {order = #NHWC}> {
     %ADD = IE.Add(%arg0, %arg0) {
@@ -1153,7 +1165,7 @@ func.func @FuseQuantizeWithoutShapeCast(%arg0: tensor<1x1x19x80xf16, {order = #N
 
     return %EXPAND : tensor<1x4x19x80x!qElemType1, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1195,6 +1207,7 @@ func.func @FuseQuantizeWithoutShapeCast(%arg0: tensor<1x1x19x80xf16, {order = #N
 // CHECK-DAG: [[Q_ACT_TYPE:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
 // Note that "CHECK-LABEL" directive is deliberately skipped here because it resets Q_ACT_TYPE
+// CHECK: @FuseQuantizeWithAvgPool([[ARG_0:%[^:]+]]: tensor<1x1x19x80xf16, {order = #NHWC}>)
 func.func @FuseQuantizeWithAvgPool(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>)
     -> tensor<1x4x19x80x!qElemType, {order = #NHWC}> {
     %AvgPool = IE.AvgPool(%arg0) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0],
@@ -1208,7 +1221,7 @@ func.func @FuseQuantizeWithAvgPool(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>
 
     return %EXPAND : tensor<1x4x19x80x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1248,6 +1261,7 @@ func.func @FuseQuantizeWithAvgPool(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>
 // CHECK-DAG: [[Q_TYPE:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
 // Note that "CHECK-LABEL" directive is deliberately skipped here because it resets Q_TYPE
+// CHECK: @FuseQuantizeWithShapeCastAvgPool([[ARG_0:%[^:]+]]: tensor<1x1x19x80xf16, {order = #NHWC}>)
 func.func @FuseQuantizeWithShapeCastAvgPool(%arg0: tensor<1x1x19x80xf16, {order = #NHWC}>)
     -> tensor<1x4x19x80x!qElemType, {order = #NHWC}> {
     %IN_SHAPE_CAST = IE.ShapeCast {
@@ -1269,7 +1283,7 @@ func.func @FuseQuantizeWithShapeCastAvgPool(%arg0: tensor<1x1x19x80xf16, {order 
 
     return %EXPAND : tensor<1x4x19x80x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1308,6 +1322,7 @@ func.func @FuseQuantizeWithShapeCastAvgPool(%arg0: tensor<1x1x19x80xf16, {order 
 // CHECK-DAG: [[Q_TYPE:!.+]] = !quant.uniform<u8:f16, 1.000000e+00>
 
 // Note that "CHECK-LABEL" directive is deliberately skipped here because it resets Q_TYPE
+// CHECK: @FuseQuantizeWithShapeCastAvgPoolDifferentShapes([[ARG_0:%[^:]+]]: tensor<1x1x19x160xf16, {order = #NHWC}>)
 func.func @FuseQuantizeWithShapeCastAvgPoolDifferentShapes(%arg0: tensor<1x1x19x160xf16, {order = #NHWC}>)
     -> tensor<1x4x19x80x!qElemType, {order = #NHWC}> {
     %IN_SHAPE_CAST = IE.ShapeCast {
@@ -1329,7 +1344,7 @@ func.func @FuseQuantizeWithShapeCastAvgPoolDifferentShapes(%arg0: tensor<1x1x19x
 
     return %EXPAND : tensor<1x4x19x80x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME:      dim_mapping = [
     // CHECK-SAME:          [0], [1], [2], [3]
     // CHECK-SAME:      ],
@@ -1363,6 +1378,7 @@ func.func @FuseQuantizeWithShapeCastAvgPoolDifferentShapes(%arg0: tensor<1x1x19x
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SkipLargeKernelAndSmallSpatialSize
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x387x45x80xf16, {order = #NHWC}>)
 func.func @SkipLargeKernelAndSmallSpatialSize(%arg0: tensor<1x387x45x80xf16, {order = #NHWC}>)
     -> tensor<1x400x45x80xf16, {order = #NHWC}> {
     %EXPAND = IE.Expand(%arg0) {
@@ -1372,7 +1388,7 @@ func.func @SkipLargeKernelAndSmallSpatialSize(%arg0: tensor<1x387x45x80xf16, {or
 
     return %EXPAND : tensor<1x400x45x80xf16, {order = #NHWC}>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:      pads_end = [0, 13, 0, 0]
     // CHECK-SAME:  } : tensor<1x387x45x80xf16, {order = #NHWC}> -> tensor<1x400x45x80xf16, {order = #NHWC}>
@@ -1544,6 +1560,7 @@ func.func @ConvertExpandToConvWithInputH2CReshape(%arg0: tensor<1x7x262144x1xf16
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertExpandToNHWCLayout
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x8x2048x1xf16>)
 func.func @ConvertExpandToNHWCLayout(%arg0: tensor<1x8x2048x1xf16>)
     -> tensor<1x8x2048x16xf16> {
     %EXPAND = IE.Expand(%arg0) {
@@ -1553,7 +1570,7 @@ func.func @ConvertExpandToNHWCLayout(%arg0: tensor<1x8x2048x1xf16>)
 
     return %EXPAND : tensor<1x8x2048x16xf16>
 
-    // CHECK:   [[PERMUTE_INPUT:%.+]] = IE.PermuteCast(%arg0) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x8x2048x1xf16> -> tensor<1x1x8x2048xf16, {order = #NHWC}>
+    // CHECK:   [[PERMUTE_INPUT:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x8x2048x1xf16> -> tensor<1x1x8x2048xf16, {order = #NHWC}>
     // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[PERMUTE_INPUT]])
     // CHECK-SAME(LITERAL): {dim_mapping = [[0], [1], [2], [3]], shape_value = [1, 16, 8, 128]} : tensor<1x1x8x2048xf16, {order = #NHWC}> -> tensor<1x16x8x128xf16, {order = #NHWC}>
     // CHECK:   [[EXPAND_WEIGHTS:%.+]] = const.Declare tensor<256x16x1x1xf16, {order = #NHWC}> = dense<"0x

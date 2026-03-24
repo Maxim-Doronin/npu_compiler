@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,28 +7,34 @@
 // REQUIRES: arch-NPU37XX
 
 module @OneDMAWithoutAttributes {
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     VPURT.Task {
       %0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
-    // CHECK:       [[VAL0:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    // CHECK:       [[VAL0:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[ARG_0]] : memref<1x2x3x4xf16, @DDR>) outputs([[ARG_1]] : memref<1x2x3x4xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 
     return %arg1 : memref<1x2x3x4xf16, @DDR>
-    // CHECK:       return %arg1 : memref<1x2x3x4xf16, @DDR>
+    // CHECK:       return [[ARG_1]] : memref<1x2x3x4xf16, @DDR>
   }
 }
 
 // -----
 
 module @OneDMAWithAttributes {
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     VPURT.Task {
       %0 = VPUIP.NNDMA <{is_out_of_order, is_critical, port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR>
     }
-    // CHECK:       [[VAL0:%.+]] = VPUMI37XX.NNDMA <{is_critical, is_out_of_order, port = 0 : i64}> inputs(%arg0 : memref<1x2x3x4xf16, @DDR>) outputs(%arg1 : memref<1x2x3x4xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+    // CHECK:       [[VAL0:%.+]] = VPUMI37XX.NNDMA <{is_critical, is_out_of_order, port = 0 : i64}> inputs([[ARG_0]] : memref<1x2x3x4xf16, @DDR>) outputs([[ARG_1]] : memref<1x2x3x4xf16, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 
     return %arg1 : memref<1x2x3x4xf16, @DDR>
-    // CHECK:       return %arg1 : memref<1x2x3x4xf16, @DDR>
+    // CHECK:       return [[ARG_1]] : memref<1x2x3x4xf16, @DDR>
   }
 }
 

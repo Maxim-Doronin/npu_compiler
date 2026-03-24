@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -3001,7 +3001,11 @@ SmallVector<VPURT::BarrierPagesSplitHandler::EnqueueDmaData> vpux::VPURT::Barrie
                             auto maybeSyncTask = _firstAndLastTaskPerPage[lastEnqDmaData.pageInd].value().second;
                             if (_barrierInfo.isSyncPoint(maybeSyncTask) &&
                                 _barrierInfo.getTaskQueueType(maybeSyncTask) != enqueueDmaQueueType) {
-                                auto enqDmaWaitBar = *std::min_element(lastEnqDmaData.waitBars.begin(),
+                                // Get largest barrier index as sync point is guaranteed to wait on last barrier in page
+                                // and if this barrier is also wait barrier for enqueue DMA then enqueue DMA needs to be
+                                // moved after sync point. Otherwise there would be no way to add later update barrier
+                                // for this enqueue DMA to guarantee sync-task waits on last tasks from all HW FIFOs
+                                auto enqDmaWaitBar = *std::max_element(lastEnqDmaData.waitBars.begin(),
                                                                        lastEnqDmaData.waitBars.end());
                                 if (enqDmaWaitBar == (_firstBarrierInPage[lastEnqDmaData.pageInd + 1] - 1)) {
                                     auto syncPointUpdateBars = _barrierInfo.getUpdateBarriers(maybeSyncTask);
@@ -3009,10 +3013,10 @@ SmallVector<VPURT::BarrierPagesSplitHandler::EnqueueDmaData> vpux::VPURT::Barrie
                                             *std::min_element(syncPointUpdateBars.begin(), syncPointUpdateBars.end())};
                                     lastEnqDmaData.insertBefore++;
                                     lastEnqDmaData.pageInd++;
-                                    _log.trace("Enqueue DMA for task {0} is to be inserted before sync point {1}. Move "
-                                               "it after barrier {2}(page {3})",
-                                               taskInd, maybeSyncTask, lastEnqDmaData.waitBars[0],
-                                               lastEnqDmaData.pageInd);
+                                    _log.nest().trace(
+                                            "Enqueue DMA for task {0} is to be inserted before sync point {1}. Move "
+                                            "it after barrier {2}(page {3})",
+                                            taskInd, maybeSyncTask, lastEnqDmaData.waitBars[0], lastEnqDmaData.pageInd);
                                 }
                             }
                         }

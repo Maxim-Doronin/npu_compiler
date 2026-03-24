@@ -43,6 +43,10 @@ TEST_F(PadFqSubGraphTest, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_F(PadFqSubGraphTest, NPU5020_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 TEST_F(PadFqSubGraphTest, NPU4000_TestKindSubgraph) {
     setDefaultHardwareMode();

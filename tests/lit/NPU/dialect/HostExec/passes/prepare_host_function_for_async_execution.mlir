@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,7 +67,7 @@ module @ControlFlowOutliningDynamicShape  {
     // CHECK-LABEL: @ControlFlowOutliningDynamicShape
 
     // CHECK: module [[MODULE0:@.+]] {
-    // CHECK: func.func private [[FUNC0:@.+]](%arg0: tensor<1x16x256x?xf16
+    // CHECK: func.func private [[FUNC0:@.+]]([[ARG_0:%[^:]+]]: tensor<1x16x256x?xf16
 
     // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>,
     // CHECK-SAME: [[ARG1:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>)
@@ -163,11 +163,11 @@ module @ControlFlowOutliningDynamicShape  {
       return %arg1 : memref<1x16x?x1280xf16>
 
       // CHECK: module [[MODULE0:@.+]] {
-      // CHECK: func.func private [[FUNC0:@.+]](%arg0: memref<1x16x30x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+      // CHECK: func.func private [[FUNC0:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x30x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
       // CHECK: module [[MODULE1:@.+]] {
-      // CHECK: func.func private [[FUNC1:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+      // CHECK: func.func private [[FUNC1:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
       // CHECK: module [[MODULE2:@.+]] {
-      // CHECK: func.func private [[FUNC2:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+      // CHECK: func.func private [[FUNC2:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
 
       // CHECK: func.func @AwaitAllCheckForLoop1D([[ARG0:%.+]]: memref<1x16x?x1280xf16>, [[ARG1:%.+]]: memref<1x16x?x1280xf16>, [[ARG2:%.+]]: index, [[ARG3:%.+]]: index)
       // CHECK: [[FALSE:%.+]] = arith.constant false
@@ -282,11 +282,11 @@ module @ControlFlowOutliningDynamicShape  {
       return %arg1 : memref<1x16x?x?xf16>
 
       // CHECK: module [[MODULE0:@.+]] {
-      // CHECK: func.func private [[FUNC0:@.+]](%arg0: memref<1x16x30x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+      // CHECK: func.func private [[FUNC0:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x30x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
       // CHECK: module [[MODULE1:@.+]] {
-      // CHECK: func.func private [[FUNC1:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+      // CHECK: func.func private [[FUNC1:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
       // CHECK: module [[MODULE2:@.+]] {
-      // CHECK: func.func private [[FUNC2:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+      // CHECK: func.func private [[FUNC2:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
 
       // CHECK: func.func @AwaitAllCheckForLoop2D([[ARG0:%.+]]: memref<1x16x?x?xf16>, [[ARG1:%.+]]: memref<1x16x?x?xf16>, [[ARG2:%.+]]: index, [[ARG3:%.+]]: index, [[ARG4:%.+]]: index, [[ARG5:%.+]]: index)
       // CHECK: [[FALSE:%.+]] = arith.constant false

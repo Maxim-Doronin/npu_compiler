@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ func.func @NceConvMaxKernelSize(%arg0: tensor<1x16x16x16xf16, {mem_space = @CMX_
                 rawFilterShape = [16, 16, 16, 16],
                 strides = [1, 1]
             } : tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN}> -> tensor<1x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -43,7 +43,7 @@ func.func @NceDepthConvMaxKernelSize(%arg0: tensor<1x16x40x40xf16, {order = #NHW
                 rawFilterShape = [16, 1, 16, 16],
                 strides = [1, 1]
             } -> tensor<1x16x25x25xf16, {order = #NHWC, mem_space = @CMX_NN}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 25, 25] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 25, 25] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x16x25x25xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -65,7 +65,7 @@ func.func @NceMaxPoolMaxKernelSize(%arg0: tensor<1x16x20x20xf16, {order = #NHWC,
                 ppe = #VPU.PPEStub<>,
                 strides = [1, 1]
             } -> tensor<1x16x5x5xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 20, 20] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 20, 20] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x16x5x5xf16, {order = #NHWC, mem_space = @CMX_NN}>

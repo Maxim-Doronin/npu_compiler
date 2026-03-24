@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -211,6 +211,8 @@ struct TileShapeCompare {
         return tile1.shape < tile2.shape;
     }
 };
+
+bool isTilingWLRestrictedDepthwise(mlir::Operation* origOp, const OutputTiling& tiles);
 
 bool isDivisibleTile(mlir::Operation* op, ShapeRef tileAxis, Dim tileDim);
 

@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -105,6 +106,11 @@ TEST_P(Squeeze15LayerTestCommon, NPU5010_HW) {
     setSkipCompilationCallback(skipCompilationCallback);
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(Squeeze15LayerTestCommon, NPU5020_HW) {
+    setSkipCompilationCallback(skipCompilationCallback);
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace ov::test

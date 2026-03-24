@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/utils/core/type_traits.hpp"
 
 #include <climits>
+#include <cstdint>
 
 namespace vpux {
 

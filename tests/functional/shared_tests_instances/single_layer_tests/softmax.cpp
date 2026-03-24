@@ -119,10 +119,50 @@ TEST_P(SoftMaxConvertFP32LayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(SoftMaxLayerTestCommon, NPU5020_SW) {
+    setSkipCompilationCallback(SkipDynamicShapes(GetParam()));
+
+    abs_threshold = 1e-3;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(SoftMaxLayerTestCommon, NPU5020_HW) {
+    setSkipCompilationCallback(SkipDynamicShapes(GetParam()));
+
+    abs_threshold = 1e-3;
+    setDefaultHardwareMode();
+    setBatchCompilerMode("unroll");
+    run(Platform::NPU5020);
+}
+
+TEST_P(ShaveCodeGenSoftMaxLayerTestCommon, NPU5020_SW) {
+    abs_threshold = 1e-3;
+    setPluginCompilerType();
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(ShaveCodeGenSoftMaxLayerTestCommon, NPU5020_HW) {
+    abs_threshold = 1e-3;
+    setPluginCompilerType();
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(SoftMaxConvertFP32LayerTest, NPU5020_HW) {
+    setSkipCompilationCallback(SkipDynamicShapes(GetParam()));
+
+    abs_threshold = 1e-3;
+    setDefaultHardwareMode();
+    setBatchCompilerMode("unroll");
+    run(Platform::NPU5020);
+}
 
 }  // namespace ov::test
 
 using ov::test::ShaveCodeGenSoftMaxLayerTestCommon;
+using ov::test::SoftMaxConvertFP32LayerTest;
 using ov::test::SoftMaxLayerTestCommon;
 
 namespace {
@@ -274,6 +314,20 @@ INSTANTIATE_TEST_SUITE_P(
                          testing::Values(2),                                                                   // Axis
                          testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
         ShaveCodeGenSoftMaxLayerTestCommon::getTestCaseName);
+
+//
+// Test SoftMax and ConvertFP32 fusion functionality
+//
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_precommit_SoftMaxConvertFP32, SoftMaxConvertFP32LayerTest,
+        testing::Combine(testing::Values(ov::element::f32),  // Model type
+                         testing::Values(ov::element::f32),  // In type
+                         testing::Values(ov::element::f32),  // Out type
+                         testing::ValuesIn(ov::test::static_shapes_to_test_representation({{1, 2, 72, 128}})),  // Shape
+                         testing::Values(3),                                                                    // Axis
+                         testing::Values(test_utils::TARGET_DEVICE), testing::Values(ov::test::Config{})),
+        SoftMaxConvertFP32LayerTest::getTestCaseName);
 
 //
 // Test tiling functionality

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -310,6 +310,7 @@ config::ArchKind vpux::config::getArch(config::Platform platform) {
         return config::ArchKind::NPU40XX;
     case config::Platform::NPU5000:
     case config::Platform::NPU5010:
+    case config::Platform::NPU5020:
         return config::ArchKind::NPU50XX;
     }
 
@@ -379,7 +380,7 @@ void config::setCompileMethodDebatch(mlir::ModuleOp module) {
 }
 
 bool config::hasCompileMethodDebatch(mlir::ModuleOp module) {
-    return module ? module->hasAttr(debatchCompileMethod) : false;
+    return module != nullptr ? module->hasAttr(debatchCompileMethod) : false;
 }
 
 //
@@ -395,7 +396,85 @@ void config::setPureHostCompileFuncAttribute(mlir::func::FuncOp func) {
 }
 
 bool config::isPureHostCompileFunc(mlir::func::FuncOp func) {
-    return func ? func->hasAttr(pureHostCompileFunc) : false;
+    return func != nullptr ? func->hasAttr(pureHostCompileFunc) : false;
+}
+
+//
+// FunctionToPack
+//
+
+namespace {
+constexpr StringLiteral functionToPackAttrName = "config.functionToPack";
+}  // namespace
+
+void config::setFunctionToPackAttribute(mlir::func::FuncOp func, llvm::StringRef targetModuleName) {
+    VPUX_THROW_WHEN(targetModuleName.empty(), "Target module name must not be empty for FunctionToPack attribute");
+    func->setAttr(functionToPackAttrName, mlir::StringAttr::get(func.getContext(), targetModuleName));
+}
+
+std::string config::getFunctionToPackTargetModule(mlir::func::FuncOp func) {
+    if (func == nullptr || !func->hasAttr(functionToPackAttrName)) {
+        return {};
+    }
+
+    auto attr = func->getAttr(functionToPackAttrName);
+    if (auto strAttr = mlir::dyn_cast<mlir::StringAttr>(attr)) {
+        return strAttr.getValue().str();
+    }
+
+    return {};
+}
+
+void config::removeFunctionToPackAttribute(mlir::func::FuncOp func) {
+    if (func != nullptr) {
+        func->removeAttr(functionToPackAttrName);
+    }
+}
+
+//
+// FunctionToPackEntryPoint
+//
+
+namespace {
+constexpr StringLiteral functionToPackEntryPointAttrName = "config.functionToPackEntryPoint";
+}  // namespace
+
+void config::setFunctionToPackEntryPointAttribute(mlir::func::FuncOp func) {
+    if (func != nullptr) {
+        func->setAttr(functionToPackEntryPointAttrName, mlir::UnitAttr::get(func.getContext()));
+    }
+}
+
+bool config::hasFunctionToPackEntryPointAttribute(mlir::func::FuncOp func) {
+    return func != nullptr ? func->hasAttr(functionToPackEntryPointAttrName) : false;
+}
+
+void config::removeFunctionToPackEntryPointAttribute(mlir::func::FuncOp func) {
+    if (func != nullptr) {
+        func->removeAttr(functionToPackEntryPointAttrName);
+    }
+}
+
+//
+// PackedModule
+//
+
+namespace {
+constexpr StringLiteral packedModuleAttrName = "config.packedModule";
+}  // namespace
+
+void config::setPackedModuleAttribute(mlir::ModuleOp module) {
+    module->setAttr(packedModuleAttrName, mlir::UnitAttr::get(module.getContext()));
+}
+
+bool config::hasPackedModuleAttribute(mlir::ModuleOp module) {
+    return module != nullptr ? module->hasAttr(packedModuleAttrName) : false;
+}
+
+void config::removePackedModuleAttribute(mlir::ModuleOp module) {
+    if (module != nullptr) {
+        module->removeAttr(packedModuleAttrName);
+    }
 }
 
 //

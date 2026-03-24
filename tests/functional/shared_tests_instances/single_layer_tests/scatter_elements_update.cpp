@@ -1,4 +1,5 @@
-// Copyright (C) 2026 Intel Corporation.
+//
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -42,6 +43,16 @@ TEST_P(ScatterElementsUpdateLayerTestCommon, NPU5010_HW) {
 TEST_P(ScatterElementsUpdate12LayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+
+TEST_P(ScatterElementsUpdateLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(ScatterElementsUpdate12LayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

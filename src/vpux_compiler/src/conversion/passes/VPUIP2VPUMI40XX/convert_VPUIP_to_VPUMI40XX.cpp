@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -27,6 +28,7 @@
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
+#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/FileSystem.h>
 
 #include <vector>
@@ -187,8 +189,7 @@ void createProfilingMetadataOp(mlir::func::FuncOp funcOp, Logger log) {
     auto ctx = funcOp.getContext();
     auto moduleOp = getModuleOp(funcOp);
 
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+    auto netInfo = net::getNetworkInfo(moduleOp);
 
     if (netInfo.getProfilingOutputsInfo().empty()) {
         return;
@@ -206,37 +207,97 @@ void createProfilingMetadataOp(mlir::func::FuncOp funcOp, Logger log) {
     builderFunc.create<VPUMI40XX::ProfilingMetadataOp>(mlir::UnknownLoc::get(ctx), trivialIndexType, elemAttr);
 }
 
-template <typename TaskType>
-bool noCond(TaskType) {
-    return true;
-}
+struct MappedInferenceTaskInfo {
+    SmallVector<SmallVector<mlir::Value>> dmaHeads;
+    SmallVector<SmallVector<mlir::Value>> actKernelRangeHeads;
+    SmallVector<SmallVector<mlir::Value>> actKernelInvocationHeads;
+    SmallVector<mlir::Value> invariantHeads;
+    SmallVector<mlir::Value> variantHeads;
+    SmallVector<SmallVector<int64_t>> dmaCount;
+    SmallVector<int64_t> invariantCount;
+    SmallVector<int64_t> variantCount;
+    SmallVector<SmallVector<int64_t>> rangeCount;
+    SmallVector<SmallVector<int64_t>> invocationCount;
+    mlir::Value barrierTasks = nullptr;
+    int64_t barrierCount = 0;
+    bool hasInvocations = false;
+};
 
-template <typename TaskType, typename Condition = decltype(noCond<TaskType>)>
-size_t countTasksIf(mlir::func::FuncOp& funcOp, Condition&& condition = noCond) {
-    auto tasks = funcOp.template getOps<TaskType>();
-    return std::count_if(tasks.begin(), tasks.end(), std::forward<Condition>(condition));
-}
+MappedInferenceTaskInfo collectMappedInferenceTaskInfo(mlir::func::FuncOp funcOp, size_t tileCount, size_t dmaTileCount,
+                                                       size_t shavesPerTileCount, size_t dmaDirectionRank) {
+    MappedInferenceTaskInfo info;
+    info.dmaHeads.assign(dmaTileCount, mlir::SmallVector<mlir::Value>(dmaDirectionRank));
+    info.actKernelRangeHeads.assign(tileCount, mlir::SmallVector<mlir::Value>(shavesPerTileCount));
+    info.actKernelInvocationHeads.assign(tileCount, mlir::SmallVector<mlir::Value>(shavesPerTileCount));
+    info.invariantHeads.assign(tileCount, mlir::Value());
+    info.variantHeads.assign(tileCount, mlir::Value());
+    info.dmaCount.assign(dmaTileCount, mlir::SmallVector<int64_t>(dmaDirectionRank, 0));
+    info.invariantCount.assign(tileCount, 0);
+    info.variantCount.assign(tileCount, 0);
+    info.rangeCount.assign(tileCount, mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
+    info.invocationCount.assign(tileCount, mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
 
-template <typename TaskType, typename Condition = decltype(noCond<TaskType>)>
-mlir::Value findTaskIf(mlir::func::FuncOp& funcOp, Condition&& condition = noCond) {
-    auto tasks = funcOp.template getOps<TaskType>();
-    auto target = std::find_if(tasks.begin(), tasks.end(), std::forward<Condition>(condition));
-    return target != tasks.end() ? (*target).getResult() : mlir::Value();
-}
+    auto extractIndex = [](mlir::Operation* op, [[maybe_unused]] size_t maxTile, [[maybe_unused]] size_t maxList) {
+        auto taskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op);
+        assert(taskOp);
 
-template <typename TaskType, typename Condition = decltype(noCond<TaskType>)>
-int64_t gatherTasks(mlir::SmallVector<mlir::Value>& taskValues, mlir::func::FuncOp& funcOp, uint32_t tileIdx,
-                    uint32_t listIdx) {
-    auto indexCond = [tileIdx, listIdx](auto op) {
-        auto type = mlir::dyn_cast<vpux::VPURegMapped::IndexType>(op.getIndex().getType());
-        return (type.getTileIdx() == tileIdx) && (type.getListIdx() == listIdx);
+        const auto indexType = taskOp.getIndexType();
+        const auto tileIdx = indexType.getTileIdx();
+        const auto listIdx = indexType.getListIdx();
+
+        assert(tileIdx < maxTile);
+        assert(listIdx < maxList);
+        return std::tuple<uint32_t, uint32_t>{tileIdx, listIdx};
     };
 
-    auto head = findTaskIf<TaskType>(funcOp, indexCond);
-    if (head) {
-        taskValues.push_back(head);
-    }
-    return countTasksIf<TaskType>(funcOp, indexCond);
+    funcOp.walk([&](mlir::Operation* op) {
+        llvm::TypeSwitch<mlir::Operation*, void>(op)
+                .Case<VPUMI40XX::NNDMAOp>([&](auto dma) {
+                    auto [tileIdx, listIdx] = extractIndex(op, dmaTileCount, dmaDirectionRank);
+                    info.dmaCount[tileIdx][listIdx]++;
+                    if (!info.dmaHeads[tileIdx][listIdx]) {
+                        info.dmaHeads[tileIdx][listIdx] = dma.getResult();
+                    }
+                })
+                .Case<VPUMI40XX::DPUInvariantOp>([&](auto inv) {
+                    auto [tileIdx, _] = extractIndex(op, tileCount, 1);
+                    info.invariantCount[tileIdx]++;
+                    if (!info.invariantHeads[tileIdx]) {
+                        info.invariantHeads[tileIdx] = inv.getResult();
+                    }
+                })
+                .Case<VPUMI40XX::DPUVariantOp>([&](auto var) {
+                    auto [tileIdx, _] = extractIndex(op, tileCount, 1);
+                    info.variantCount[tileIdx]++;
+                    if (!info.variantHeads[tileIdx]) {
+                        info.variantHeads[tileIdx] = var.getResult();
+                    }
+                })
+                .Case<VPUMI40XX::ActKernelRangeOp>([&](auto range) {
+                    auto [tileIdx, shaveIdx] = extractIndex(op, tileCount, shavesPerTileCount);
+                    info.rangeCount[tileIdx][shaveIdx]++;
+                    if (!info.actKernelRangeHeads[tileIdx][shaveIdx]) {
+                        info.actKernelRangeHeads[tileIdx][shaveIdx] = range.getResult();
+                    }
+                })
+                .Case<VPUMI40XX::ActKernelInvocationOp>([&](auto invo) {
+                    auto [tileIdx, shaveIdx] = extractIndex(op, tileCount, shavesPerTileCount);
+                    info.invocationCount[tileIdx][shaveIdx]++;
+                    info.hasInvocations = true;
+                    if (!info.actKernelInvocationHeads[tileIdx][shaveIdx]) {
+                        info.actKernelInvocationHeads[tileIdx][shaveIdx] = invo.getResult();
+                    }
+                })
+                .Case<VPUMI40XX::ConfigureBarrierOp>([&](auto barrier) {
+                    if (!info.barrierTasks) {
+                        info.barrierTasks = barrier.getResult();
+                    }
+                    info.barrierCount++;
+                })
+                .Default([](mlir::Operation*) {});
+    });
+
+    return info;
 }
 
 std::pair<mlir::Value, SmallVector<mlir::Value>> setupActKernelRt(
@@ -315,33 +376,18 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
     const auto shavesPerTileCount =
             static_cast<size_t>(config::getAvailableExecutor(moduleOp, config::ExecutorKind::SHAVE_ACT).getCount());
 
+    auto taskInfo =
+            collectMappedInferenceTaskInfo(funcOp, tileCount, dmaTileCount, shavesPerTileCount, dmaDirectionRank);
+
     mlir::SmallVector<mlir::SmallVector<mlir::Value>> dmaTasks(dmaTileCount);
     mlir::SmallVector<mlir::ValueRange> dmaTasksArg(dmaTileCount);
     size_t dmaTasksArgLength = 0;
-    mlir::SmallVector<mlir::Value> invariantTasks, variantTasks;
-    mlir::SmallVector<mlir::SmallVector<mlir::Value>> actKernelRanges(tileCount), actKernelInvocations(tileCount);
-    mlir::SmallVector<mlir::ValueRange> actKernelRangesArgs(tileCount), actKernelInvocationsArgs(tileCount);
-    size_t actKernRangesTasksArgLength = 0;
-    size_t actKernInvocationsTasksArgLength = 0;
-    mlir::Value barrierTasks;
-    mlir::Value actShvRt;
-    SmallVector<mlir::Value> actShaveStacks;
-
-    mlir::SmallVector<mlir::SmallVector<int64_t>> dmaCount(dmaTileCount,
-                                                           mlir::SmallVector<int64_t>(dmaDirectionRank, 0));
-    mlir::SmallVector<int64_t> invariantCount(tileCount, 0), variantCount(tileCount, 0);
-    mlir::SmallVector<mlir::SmallVector<int64_t>> rangeCount(tileCount,
-                                                             mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
-    mlir::SmallVector<mlir::SmallVector<int64_t>> invoCount(tileCount,
-                                                            mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
-
-    int64_t barrierCount = 0;
-    bool hasInvocations = false;
-
     for (size_t tileIdx = 0; tileIdx < dmaTileCount; ++tileIdx) {
         // dmaTasks
         for (size_t srcType = 0; srcType < dmaDirectionRank; ++srcType) {
-            dmaCount[tileIdx][srcType] = gatherTasks<VPUMI40XX::NNDMAOp>(dmaTasks[tileIdx], funcOp, tileIdx, srcType);
+            if (taskInfo.dmaHeads[tileIdx][srcType]) {
+                dmaTasks[tileIdx].push_back(taskInfo.dmaHeads[tileIdx][srcType]);
+            }
         }
         if (!dmaTasks[tileIdx].empty()) {
             dmaTasksArg[tileIdx] = mlir::ValueRange(dmaTasks[tileIdx]);
@@ -349,18 +395,29 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
         }
     }
 
+    mlir::SmallVector<mlir::Value> invariantTasks;
+    mlir::SmallVector<mlir::Value> variantTasks;
+    invariantTasks.reserve(tileCount);
+    variantTasks.reserve(tileCount);
+    mlir::SmallVector<mlir::SmallVector<mlir::Value>> actKernelRanges(tileCount), actKernelInvocations(tileCount);
+    mlir::SmallVector<mlir::ValueRange> actKernelRangesArgs(tileCount), actKernelInvocationsArgs(tileCount);
+    size_t actKernRangesTasksArgLength = 0;
+    size_t actKernInvocationsTasksArgLength = 0;
     for (size_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
-        // invariantTasks
-        invariantCount[tileIdx] = gatherTasks<VPUMI40XX::DPUInvariantOp>(invariantTasks, funcOp, tileIdx, 0);
-
-        // variantTasks
-        variantCount[tileIdx] = gatherTasks<VPUMI40XX::DPUVariantOp>(variantTasks, funcOp, tileIdx, 0);
+        if (taskInfo.invariantHeads[tileIdx]) {
+            invariantTasks.push_back(taskInfo.invariantHeads[tileIdx]);
+        }
+        if (taskInfo.variantHeads[tileIdx]) {
+            variantTasks.push_back(taskInfo.variantHeads[tileIdx]);
+        }
 
         for (size_t shaveIdx = 0; shaveIdx < shavesPerTileCount; ++shaveIdx) {
-            rangeCount[tileIdx][shaveIdx] =
-                    gatherTasks<VPUMI40XX::ActKernelRangeOp>(actKernelRanges[tileIdx], funcOp, tileIdx, shaveIdx);
-            invoCount[tileIdx][shaveIdx] = gatherTasks<VPUMI40XX::ActKernelInvocationOp>(actKernelInvocations[tileIdx],
-                                                                                         funcOp, tileIdx, shaveIdx);
+            if (taskInfo.actKernelRangeHeads[tileIdx][shaveIdx]) {
+                actKernelRanges[tileIdx].push_back(taskInfo.actKernelRangeHeads[tileIdx][shaveIdx]);
+            }
+            if (taskInfo.actKernelInvocationHeads[tileIdx][shaveIdx]) {
+                actKernelInvocations[tileIdx].push_back(taskInfo.actKernelInvocationHeads[tileIdx][shaveIdx]);
+            }
         }
         if (!actKernelRanges[tileIdx].empty()) {
             actKernelRangesArgs[tileIdx] = mlir::ValueRange(actKernelRanges[tileIdx]);
@@ -370,17 +427,14 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
             actKernelInvocationsArgs[tileIdx] = mlir::ValueRange(actKernelInvocations[tileIdx]);
             actKernInvocationsTasksArgLength = tileIdx + 1;
         }
-
-        auto tileInvoCount =
-                std::accumulate(invoCount[tileIdx].begin(), invoCount[tileIdx].end(), static_cast<int64_t>(0));
-        if (tileInvoCount != 0) {
-            hasInvocations = true;
-        }
     }
 
-    // barrierTasks
-    barrierTasks = findTaskIf<VPUMI40XX::ConfigureBarrierOp>(funcOp);
-    barrierCount = countTasksIf<VPUMI40XX::ConfigureBarrierOp>(funcOp);
+    mlir::Value barrierTasks = taskInfo.barrierTasks;
+    auto barrierCount = taskInfo.barrierCount;
+    auto hasInvocations = taskInfo.hasInvocations;
+
+    mlir::Value actShvRt;
+    SmallVector<mlir::Value> actShaveStacks;
 
     // create MappedInferenceOp
     mlir::OpBuilder builderFunc(&(funcOp.getBody().front().back()));
@@ -408,22 +462,22 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
             mlir::ValueRange(actShaveStacks),            // mlir::ValueRange actShaveStacks
             nullptr,                                     // mlir::Value dmaHwpBase
             nullptr,                                     // mlir::Value hwpWorkpointCfg
-            getIntArrayOfArray(ctx, dmaCount),           // mlir::ArrayAttr dmaCount
-            builderFunc.getI64ArrayAttr(ArrayRef(invariantCount)),  // mlir::ArrayAttr invariantCount
-            builderFunc.getI64ArrayAttr(ArrayRef(variantCount)),    // mlir::ArrayAttr variantCount
-            getIntArrayOfArray(ctx, rangeCount),                    // mlir::ArrayAttr actKernelRangesCount
-            getIntArrayOfArray(ctx, invoCount),                     // mlir::ArrayAttr actKernelInvocationsCount
-            0,                                                      // mlir::IntegerAttr mediaCount
-            barrierCount,                                           // mlir::IntegerAttr barrierCount
-            nullptr,                                                // mlir::IntegerAttr workItemCount
-            nullptr,                                                // mlir::IntegerAttr bootstrapBarriersCount
-            nullptr,                                                // mlir::IntegerAttr bootstrapWorkItemTasksCount
-            nullptr,                                                // mlir::IntegerAttr finalBarrierId
-            nullptr,                                                // mlir::AnyMemRef barrierConfigurationTasks
-            nullptr,                                                // mlir::IntegerAttr barrierConfigurationTasksCount
-            nullptr,                                                // mlir::Value numOfBarrierReprogrammings
-            nullptr,                                                // mlir::Value mappedInferenceVersion
-            nullptr                                                 // VPURegMapped::BarrierProgrammingModeAttr
+            getIntArrayOfArray(ctx, taskInfo.dmaCount),  // mlir::ArrayAttr dmaCount
+            builderFunc.getI64ArrayAttr(ArrayRef(taskInfo.invariantCount)),  // mlir::ArrayAttr invariantCount
+            builderFunc.getI64ArrayAttr(ArrayRef(taskInfo.variantCount)),    // mlir::ArrayAttr variantCount
+            getIntArrayOfArray(ctx, taskInfo.rangeCount),                    // mlir::ArrayAttr actKernelRangesCount
+            getIntArrayOfArray(ctx, taskInfo.invocationCount),  // mlir::ArrayAttr actKernelInvocationsCount
+            0,                                                  // mlir::IntegerAttr mediaCount
+            barrierCount,                                       // mlir::IntegerAttr barrierCount
+            nullptr,                                            // mlir::IntegerAttr workItemCount
+            nullptr,                                            // mlir::IntegerAttr bootstrapBarriersCount
+            nullptr,                                            // mlir::IntegerAttr bootstrapWorkItemTasksCount
+            nullptr,                                            // mlir::IntegerAttr finalBarrierId
+            nullptr,                                            // mlir::AnyMemRef barrierConfigurationTasks
+            nullptr,                                            // mlir::IntegerAttr barrierConfigurationTasksCount
+            nullptr,                                            // mlir::Value numOfBarrierReprogrammings
+            nullptr,                                            // mlir::Value mappedInferenceVersion
+            nullptr                                             // VPURegMapped::BarrierProgrammingModeAttr
     );
 }
 

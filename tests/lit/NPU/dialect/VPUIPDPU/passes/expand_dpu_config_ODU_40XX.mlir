@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,7 @@ module {
     // CHECK:       VPUIPDPU.ODUCfg {
     // CHECK-NEXT:    VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16){{$}}
     // CHECK-NEXT:    ODUDataReuse activation_reuse(NTHW_4){{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations(%arg3 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>){{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations({{%[^:]+}}: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>){{$}}
     // CHECK-NEXT:  }
 
       ELF.CreateSection @task.dpu.variant.0.0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
@@ -92,9 +92,9 @@ module {
     // CHECK:       VPUIPDPU.ODUCfg {
     // CHECK-NEXT:    VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16){{$}}
     // CHECK-NEXT:    ODUDataReuse activation_reuse(NTHW_8){{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUSparsity %arg4 : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUSparsity {{%[^:]+}}: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>{{$}}
     // CHECK-NEXT:    VPUIPDPU.ODUSwizzleData swizzle_key(SWIZZLE_KEY_1){{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations(%arg3 : memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>){{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations({{%[^:]+}}: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>){{$}}
     // CHECK-NEXT:  }
 
       ELF.CreateSection @task.dpu.variant.0.0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
@@ -152,8 +152,8 @@ module {
     // CHECK-NEXT:    VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16){{$}}
     // CHECK-NEXT:    ODUDataReuse activation_reuse(NTHW_16){{$}}
     // CHECK-NEXT:    VPUIPDPU.ODUPermuteData permute_mode(PERMUTE_YXZ){{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUSparsity %arg4 : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>{{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations(%arg3 : memref<1x16x64x64x!qElemType, #NCWH, [@CMX_NN, 0]>) data_width(ODU_DTYPE_8BIT){{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUSparsity {{%[^:]+}}: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]>{{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations({{%[^:]+}}: memref<1x16x64x64x!qElemType, #NCWH, [@CMX_NN, 0]>) data_width(ODU_DTYPE_8BIT){{$}}
     // CHECK-NEXT:  }
 
       ELF.CreateSection @task.dpu.variant.0.0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
@@ -212,9 +212,9 @@ module {
     // CHECK:       VPUIPDPU.ODUCfg {
     // CHECK-NEXT:    VPUIPDPU.ODUOutTensorSize dim_x(64) dim_y(64) dim_z(16){{$}}
     // CHECK-NEXT:    ODUDataReuse activation_reuse(NTHW_8){{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUSparsity %arg3 : memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]> sparse_value(10){{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUSparsity {{%[^:]+}}: memref<1x16x64x64xi1, #NHWC, [@CMX_NN, 0]> sparse_value(10){{$}}
     // CHECK-NEXT:    VPUIPDPU.ODUSwizzleData swizzle_key(SWIZZLE_KEY_1){{$}}
-    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations(%arg2 : memref<1x16x64x64x!qElemType, #NHWC, [@CMX_NN, 0]>) data_width(ODU_DTYPE_8BIT){{$}}
+    // CHECK-NEXT:    VPUIPDPU.ODUOutActivations out_activations({{%[^:]+}}: memref<1x16x64x64x!qElemType, #NHWC, [@CMX_NN, 0]>) data_width(ODU_DTYPE_8BIT){{$}}
     // CHECK-NEXT:    VPUIPDPU.ODUMemoryMode mem_mode(MODE_SUPERDENSE){{$}}
 
       ELF.CreateSection @task.dpu.variant.0.0 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {

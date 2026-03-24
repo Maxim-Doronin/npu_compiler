@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2025 Intel Corporation.
+# Copyright (C) 2025-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -16,4 +16,6 @@ add_npu_library(${TARGET_NAME}
         npu_ov_utils
         npu_elf
         openvino::npu_al
-        npu_compiler_dialect_hostexec)
+        npu_compiler_dialect_hostexec
+        npu_compiler_dialect_elfnpu37xx
+        npu_compiler_dialect_elf)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -301,6 +301,60 @@ void PpeFactory::callback<IE::ReluAttr>(IE::LayerWithPostOpInterface operation, 
     }
 }
 
+struct ClampIntersectionResult {
+    double low;
+    double high;
+    PPEMode mode;
+    double adder;
+};
+
+static ClampIntersectionResult calcClampIntersection(const double currentLow, const double currentHigh,
+                                                     const double newLow, const double newHigh,
+                                                     IE::LayerWithPostOpInterface operation) {
+    // The clamping interval must be adapted to the scale (since scaling occurs before clamping), intersected with the
+    // quantization min-max interval and then shifted by the zero-point (since zero-point addition occurs before
+    // clamping).
+    const auto inputElemType = mlir::cast<NDTypeInterface>(operation->getOperand(0).getType()).getElementType();
+    const auto outputElemType = mlir::cast<NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+    VPUX_THROW_WHEN(mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outputElemType),
+                    "PPE clamping for per-axis quantized outputs is not supported");
+
+    if (const auto outputElemQType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(outputElemType)) {
+        const auto scale = outputElemQType.getScale();
+        const auto zp = outputElemQType.getZeroPoint();
+        const auto storageMin = checked_cast<double>(outputElemQType.getStorageTypeMin());
+        const auto storageMax = checked_cast<double>(outputElemQType.getStorageTypeMax());
+
+        if (mlir::isa<IE::MaxPoolOp>(operation)) {
+            // Special case for MaxPool since it is quantization-agnostic.
+            // TODO: E#148432 FP8 FakeConvert should be propagated in the same way I8 FakeQuantize is.
+            VPUX_THROW_WHEN(isFloat8Quantized(outputElemType) || isFloat8Quantized(inputElemType),
+                            "FP8 MaxPool->Clamp is not fully supported yet.");
+
+            ClampIntersectionResult intersection;
+            intersection.low = std::max(std::max(storageMin, newLow / scale), currentLow - zp) + zp;
+            intersection.high = std::min(std::min(storageMax, newHigh / scale), currentHigh - zp) + zp;
+            intersection.mode = PPEMode::NOOP;
+            intersection.adder = 0.0;
+            return intersection;
+        } else {
+            ClampIntersectionResult intersection;
+            intersection.low = std::max(std::max(storageMin - zp, newLow / scale), currentLow);
+            intersection.high = std::min(std::min(storageMax - zp, newHigh / scale), currentHigh);
+            intersection.mode = PPEMode::NOOP;
+            intersection.adder = static_cast<double>(zp);
+            return intersection;
+        }
+    } else {
+        ClampIntersectionResult intersection;
+        intersection.low = std::max(currentLow, newLow);
+        intersection.high = std::min(currentHigh, newHigh);
+        intersection.mode = PPEMode::LRELUX;
+        intersection.adder = 0.0;
+        return intersection;
+    }
+}
+
 template <>
 void PpeFactory::callback<IE::ClampAttr>(IE::LayerWithPostOpInterface operation, IE::ClampAttr clamp,
                                          AttrBuilder& builder) const {
@@ -311,39 +365,11 @@ void PpeFactory::callback<IE::ClampAttr>(IE::LayerWithPostOpInterface operation,
     const auto clampLow = clamp.getMin().getValueAsDouble();
     const auto clampHigh = clamp.getMax().getValueAsDouble();
 
-    const auto outputElemType = mlir::cast<NDTypeInterface>(operation->getResult(0).getType()).getElementType();
-    VPUX_THROW_WHEN(mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(outputElemType),
-                    "PPE clamping for per-axis quantized outputs is not supported");
-
-    if (const auto outputElemQType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(outputElemType)) {
-        const auto scale = outputElemQType.getScale();
-        const auto zp = outputElemQType.getZeroPoint();
-
-        if (mlir::isa<IE::MaxPoolOp>(operation)) {
-            // Special case for MaxPool since it is quantization-agnostic.
-            const auto inputElemType = mlir::cast<NDTypeInterface>(operation->getOperand(0).getType()).getElementType();
-            // TODO: E#148432 FP8 FakeConvert should be propagated in the same way I8 FakeQuantize is.
-            VPUX_THROW_WHEN(isFloat8Quantized(outputElemType) || isFloat8Quantized(inputElemType),
-                            "FP8 MaxPool->Clamp is not fully supported yet.");
-
-            builder.clampLow =
-                    std::max(checked_cast<double>(outputElemQType.getStorageTypeMin()), clampLow / scale) + zp;
-            builder.clampHigh =
-                    std::min(checked_cast<double>(outputElemQType.getStorageTypeMax()), clampHigh / scale) + zp;
-
-        } else {
-            builder.adder = zp;
-            builder.clampLow =
-                    std::max(checked_cast<double>(outputElemQType.getStorageTypeMin() - zp), clampLow / scale);
-            builder.clampHigh =
-                    std::min(checked_cast<double>(outputElemQType.getStorageTypeMax() - zp), clampHigh / scale);
-        }
-
-    } else {
-        builder.clampLow = clampLow;
-        builder.clampHigh = clampHigh;
-        builder.mode = VPU::PPEMode::LRELUX;
-    }
+    auto intersection = calcClampIntersection(builder.clampLow, builder.clampHigh, clampLow, clampHigh, operation);
+    builder.clampLow = intersection.low;
+    builder.clampHigh = intersection.high;
+    builder.mode = intersection.mode;
+    builder.adder = intersection.adder;
 }
 
 template <>
@@ -475,6 +501,22 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
                 .Default([](const auto postOp) {
                     VPUX_THROW("Received unknown PPE post-op: {0}", postOp.getName());
                 });
+    }
+
+    if (layerWithPostOp != nullptr && layerWithPostOp.getClampAttr() != nullptr) {
+        const auto clamp = layerWithPostOp.getClampAttr();
+        const auto clampMin = clamp.getAs<mlir::FloatAttr>("min").getValueAsDouble();
+        const auto clampMax = clamp.getAs<mlir::FloatAttr>("max").getValueAsDouble();
+
+        const auto intersection =
+                calcClampIntersection(builder.clampLow, builder.clampHigh, clampMin, clampMax, layerWithPostOp);
+
+        builder.clampLow = intersection.low;
+        builder.clampHigh = intersection.high;
+
+        if (builder.mode == PPEMode::NOOP) {
+            builder.mode = intersection.mode;
+        }
     }
 
     // Sometimes (i.e. EnsureNCEOpsSizeRequirements) PPE Factory is used to regenerate an attribute for an NCE

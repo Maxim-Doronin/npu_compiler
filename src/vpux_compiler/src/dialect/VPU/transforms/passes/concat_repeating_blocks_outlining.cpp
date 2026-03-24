@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/utils/hash.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -448,10 +449,8 @@ public:
 
 private:
     void safeRunOnModule() final {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp mainFuncOp;
         auto moduleOp = getOperation();
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        auto mainFuncOp = net::getMainFunc(moduleOp);
 
         _log.debug("Searching for outlining instances around concat operations");
         ConcatOutliner outliner(_minSeqLength, _singleFunctionPerConcat, _log);
@@ -602,9 +601,7 @@ private:
 
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp mainFuncOp;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        auto mainFuncOp = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(mainFuncOp);
@@ -652,9 +649,7 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp mainFuncOp;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+        auto mainFuncOp = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder::atBlockBegin(&mainFuncOp.getBody().front());
         DenseMap<mlir::Value, mlir::Value> oldToNewArgMap;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,4 +31,10 @@ namespace vpux::IE {
 
 void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch);
 
-}
+}  // namespace vpux::IE
+
+namespace vpux::VPUIP {
+
+void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch);
+
+}  // namespace vpux::VPUIP

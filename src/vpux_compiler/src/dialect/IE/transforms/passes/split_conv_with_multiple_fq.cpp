@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
@@ -112,11 +113,18 @@ bool checkPost(mlir::Operation* postOp, Logger log) {
     const auto logCb = [&](const formatv_object_base& msg) {
         log.trace("{0}", msg.str());
     };
-    if (mainOp == nullptr || !mainOp.isSupportedPostOp(postOp, logCb) || mainOp.getPostOp() != nullptr) {
+
+    if (mainOp == nullptr || mainOp.hasPPE()) {
         return false;
     }
-    log.nest().trace("Got supported Post Operation at '{0}' ", postOp->getLoc());
+    if (mlir::isa_and_nonnull<IE::ClampOp>(postOp) && !mainOp.isSupportedClampOp(postOp, logCb)) {
+        return false;
+    }
+    if (!mainOp.isSupportedPostOp(postOp, logCb)) {
+        return false;
+    }
 
+    log.nest().trace("Got supported Post Operation at '{0}' ", postOp->getLoc());
     return true;
 }
 

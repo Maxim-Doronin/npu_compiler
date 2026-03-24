@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -51,15 +51,15 @@ func.func @ParsePrintDistributedBuffer(%arg0: !MemRef1) -> !MemRef1 {
 
     return %3 : !MemRef1
 
-    //CHECK:        %token_0, [[RESULTS:%.+]] = async.execute [%token]
+    //CHECK:        {{%[^,]+}}, [[RESULTS:%.+]] = async.execute [{{%[^]]+}}]
     //CHECK-SAME:        attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
     //CHECK:                [[RESULTS_SW:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MVN
-    //CHECK-SAME:               inputs({{[^:]+}} as %arg2: !VPUIP.DistributedBuffer
-    //CHECK-SAME:                      {{[^:]+}} as %arg3: !VPUIP.DistributedBuffer
-    //CHECK-SAME:               outputs({{[^:]+}} as %arg4: !VPUIP.DistributedBuffer
-    //CHECK-SAME:                       {{[^:]+}} as %arg5: !VPUIP.DistributedBuffer
-    //CHECK:                VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg2, %arg4) : !VPUIP.DistributedBuffer
-    //CHECK:                VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg3, %arg5) : !VPUIP.DistributedBuffer
+    //CHECK-SAME:               inputs({{[^:]+}} as [[ARG_2:%[^:]+]]: !VPUIP.DistributedBuffer
+    //CHECK-SAME:                      {{[^:]+}} as [[ARG_3:%[^:]+]]: !VPUIP.DistributedBuffer
+    //CHECK-SAME:               outputs({{[^:]+}} as [[ARG_4:%[^:]+]]: !VPUIP.DistributedBuffer
+    //CHECK-SAME:                       {{[^:]+}} as [[ARG_5:%[^:]+]]: !VPUIP.DistributedBuffer
+    //CHECK:                VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_2]], [[ARG_4]]) : !VPUIP.DistributedBuffer
+    //CHECK:                VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_3]], [[ARG_5]]) : !VPUIP.DistributedBuffer
     //CHECK:              async.yield [[RESULTS_SW]]#0, [[RESULTS_SW]]#1
 
 }
@@ -101,8 +101,8 @@ module {
     //CHECK:        [[ALOC_3:%.+]] = memref.alloc() : memref<4xsi32>
     //CHECK:        [[SW_OP_OUTPUT:%.+]] = VPUIP.GroupBoundedBuffer([[ALOC_2]], [[ALOC_3]])
     //CHECK:        [[RESULT:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
-    //CHECK-SAME:   inputs([[SW_OP_INPUT]] as %arg0: !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>)
-    //CHECK-SAME:   outputs([[SW_OP_OUTPUT]] as %arg1: !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>)
+    //CHECK-SAME:   inputs([[SW_OP_INPUT]] as {{%[^:]+}}: !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>)
+    //CHECK-SAME:   outputs([[SW_OP_OUTPUT]] as {{%[^:]+}}: !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>)
     //CHECK:        return [[RESULT]] : !VPUIP.BoundedBuffer<data=memref<1x8x384x384xf16>, dynamic_shape=memref<4xsi32>>
 }
 
@@ -142,7 +142,7 @@ module {
     //CHECK:        [[ALOC_1:%.+]] = memref.alloc() : memref<1x8x384x384xf16>
     //CHECK:        [[ALOC_2:%.+]] = memref.alloc() : memref<4xsi32>
     //CHECK:        [[RESULT:%.+]]:2 = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 2, 0, 0>}
-    //CHECK-SAME:   inputs([[ALOC]] as %arg0: memref<1x8x384x384xf16>)
-    //CHECK-SAME:   outputs([[ALOC_1]] as %arg1: memref<1x8x384x384xf16>)
+    //CHECK-SAME:   inputs([[ALOC]] as {{%[^:]+}}: memref<1x8x384x384xf16>)
+    //CHECK-SAME:   outputs([[ALOC_1]] as {{%[^:]+}}: memref<1x8x384x384xf16>)
     //CHECK:        return [[RESULT]]#0, [[ALOC_2]] : memref<1x8x384x384xf16>, memref<4xsi32>
 }

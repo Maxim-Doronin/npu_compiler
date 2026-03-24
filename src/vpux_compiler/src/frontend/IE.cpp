@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/import/reshape.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
@@ -35,13 +36,11 @@
 #include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/cal_range_data.hpp"
 #include "vpux/compiler/utils/locations.hpp"
 #include "vpux/compiler/utils/logging.hpp"
-#include "vpux/compiler/utils/range_bound.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/compiler/utils/types.hpp"
@@ -451,6 +450,7 @@ NGraphImporter::Callback NGraphImporter::getParser(const std::shared_ptr<ov::Nod
             MAP_ENTRY(ov::opset5::LSTMSequence),
             MAP_ENTRY(ov::opset1::Ceiling),
             MAP_ENTRY(ov::opset4::SoftPlus),
+            MAP_ENTRY(ov::opset9::SoftSign),
             MAP_ENTRY(ov::opset1::Equal),
             MAP_ENTRY(ov::opset1::Select),
             MAP_ENTRY(ov::opset9::NonMaxSuppression),
@@ -511,6 +511,7 @@ NGraphImporter::Callback NGraphImporter::getParser(const std::shared_ptr<ov::Nod
             MAP_ENTRY(ov::op::v16::Identity),
             MAP_ENTRY(ov::opset10::IsNaN),
             MAP_ENTRY(ov::opset10::IsInf),
+            MAP_ENTRY(ov::intel_npu::op::FlashAttentionTile),
     };
 
 #undef MAP_ENTRY
@@ -638,10 +639,13 @@ bool NGraphImporter::hasValidBounds(const ov::PartialShape& partialShape) {
 // extractPrecisionInfo
 //
 void NGraphImporter::extractPrecisionInfo(mlir::OpBuilder& moduleBuilder, const OrigNodePtr& origNode,
-                                          const ImportNetworkConfig& importCfg, mlir::Operation* op) {
+                                          const ImportNetworkConfig& importCfg, mlir::Operation* op,
+                                          std::optional<net::PrecisionRequirementOp>& precReqOp) {
     using RTMap = std::map<std::string, ov::Any>;
-    std::optional<net::PrecisionRequirementOp> precOp;
     if (!importCfg.executionModeAccuracy) {
+        return;
+    }
+    if (op == nullptr) {
         return;
     }
     RTMap& rt = origNode->get_rt_info();
@@ -651,11 +655,11 @@ void NGraphImporter::extractPrecisionInfo(mlir::OpBuilder& moduleBuilder, const 
 
         if (precisionInfo != rt.end()) {
             auto* ctx = moduleBuilder.getContext();
-            if (!precOp.has_value()) {
-                precOp = moduleBuilder.create<net::PrecisionRequirementOp>(mlir::UnknownLoc::get(ctx));
-                precOp.value().getPrecisionInfo().emplaceBlock();
+            if (!precReqOp.has_value()) {
+                precReqOp = moduleBuilder.create<net::PrecisionRequirementOp>(mlir::UnknownLoc::get(ctx));
+                precReqOp.value().getPrecisionInfo().emplaceBlock();
             }
-            auto precBuilder = mlir::OpBuilder::atBlockBegin(&precOp.value().getPrecisionInfo().front(),
+            auto precBuilder = mlir::OpBuilder::atBlockBegin(&precReqOp.value().getPrecisionInfo().front(),
                                                              moduleBuilder.getListener());
             const auto opName = origNode->get_friendly_name();
             const auto opType = op->getName();
@@ -725,6 +729,7 @@ mlir::func::FuncOp NGraphImporter::buildMainFunc(mlir::OpBuilder& moduleBuilder,
     }
 
     bool upperBoundMissing = false;
+    std::optional<net::PrecisionRequirementOp> precReqOp;
     for (const auto& origNode : _netGraph->get_ordered_ops()) {
         _log.trace("Convert {0} layer {1}", origNode->get_type_name(), origNode->get_friendly_name());
         const auto parser = NGraphImporter::getParser(origNode);
@@ -735,7 +740,7 @@ mlir::func::FuncOp NGraphImporter::buildMainFunc(mlir::OpBuilder& moduleBuilder,
                                     origNode->get_type_name() != std::string("Result") &&
                                     origNode->get_type_name() != std::string("Identity"),
                             "Valid parser but NULL operation.\n");
-            extractPrecisionInfo(moduleBuilder, origNode, importCfg, op);
+            extractPrecisionInfo(moduleBuilder, origNode, importCfg, op, precReqOp);
         } else {
             const auto& typeInfo = origNode->get_type_info();
             VPUX_THROW_UNLESS(importCfg.stubLayers == DummyOpMode::ENABLED,
@@ -1060,17 +1065,17 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
             return mlir::DenseElementsAttr::getFromRawBuffer(tensorType, rawBuffer);
         }
 
-        std::string cstName;
         ov::RTMap& runtimeInfoMap = origNode->get_rt_info();
-
-        cstName = [&]() -> std::string {
+        auto [cstName, hasWeightlessCacheAttr] = [&]() -> std::pair<std::string, bool> {
             const auto& weightlessCacheAttrIt =
                     runtimeInfoMap.find(ov::WeightlessCacheAttribute::get_type_info_static());
 
             if (weightlessCacheAttrIt != runtimeInfoMap.end()) {
                 auto& weightlessCacheAttr = weightlessCacheAttrIt->second.as<ov::WeightlessCacheAttribute>();
                 if (origNode->get_element_type() == weightlessCacheAttr.original_dtype) {
-                    return formatv("{0}{1}", vpux::Const::IMPORTED_WEIGHT_PREFIX, weightlessCacheAttr.bin_offset).str();
+                    return {formatv("{0}{1}", vpux::Const::IMPORTED_WEIGHT_PREFIX, weightlessCacheAttr.bin_offset)
+                                    .str(),
+                            true};
                 } else {
                     Logger::global().debug(
                             "Weightless cache attribute type {0} does not match constant type {1} for node '{2}'",
@@ -1079,11 +1084,18 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
                 }
             }
 
-            return "INTERNAL_CONSTANT";
+            return {"INTERNAL_CONSTANT", false};
         }();
 
-        return Const::createExternalConstContent(tensorType, rawBuffer, cstName,
-                                                 /*deepCopyConstData=*/!_sharedConstants);
+        Const::ExternalConstContentCreationOptions options;
+        options.deepCopyConstData = !_sharedConstants;
+        // Note: If two constants mapped to the exact same resource name when
+        // weightless cache attribute is used, it means that OV model itself
+        // uses the same binary buffer for these two constants (likely, model
+        // compression is done). Thus, compiler can *re-use* the existing
+        // resource as well.
+        options.allowDuplicatesForTheSameResourceName = hasWeightlessCacheAttr;
+        return Const::createExternalConstContent(tensorType, rawBuffer, cstName, options);
     }();
 
     Const::ContentSetup contentSetup(value.getType());
@@ -1935,11 +1947,12 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     VPUX_THROW_UNLESS(inputs.size() == 2, "nGraph Reshape node '{0}' has unsupported number of inputs '{1}'",
                       origNode->get_friendly_name(), inputs.size());
 
-    mlir::Operation* op;
+    mlir::Operation* op = nullptr;
     if (origNode->output(0).get_partial_shape().is_static()) {
-        op = builder.create<IE::ReshapeOp>(createLocation(origNode), inputs[0], inputs[1], origNode->get_special_zero(),
-                                           nullptr);
-        addOutputs(origNode, op);
+        const auto loc = createLocation(origNode);
+        const auto parsedShape = vpux::IE::Reshape::parseOutShape(loc, inputs, origNode->get_special_zero());
+        VPUX_THROW_WHEN(mlir::failed(parsedShape), "Failed to import IE.ReshapeOp with static shape");
+        op = builder.create<IE::ReshapeOp>(loc, inputs[0], getIntArrayAttr(builder.getContext(), parsedShape.value()));
     } else {
         const auto outputShape = importShape(origNode->output(0).get_partial_shape());
         const auto outputShapeAttr = getIntArrayAttr(builder.getContext(), outputShape);
@@ -1947,8 +1960,8 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
         const auto outputBoundsAttr = getIntArrayAttr(builder.getContext(), outputBounds);
         op = builder.create<IE::DynamicReshapeOp>(createLocation(origNode), inputs[0], inputs[1], outputShapeAttr,
                                                   outputBoundsAttr);
-        addOutputs(origNode, op);
     }
+    addOutputs(origNode, op);
     return op;
 }
 
@@ -3267,6 +3280,11 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     const auto directionAttr = importRNNSequenceDirection(origNode->get_direction());
 
+    auto seqLenNodeConst = dynamic_cast<ov::opset7::Constant*>(origNode->input_value(3).get_node());
+    auto seqLenParam = dynamic_cast<ov::opset7::Parameter*>(origNode->input_value(3).get_node());
+
+    IE::LSTMSequenceOp op;
+
     const auto isDynamic = [](auto node) {
         return node.get_partial_shape().is_dynamic();
     };
@@ -3274,14 +3292,9 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     const auto hasDynamicInputs = llvm::any_of(origNode->inputs(), isDynamic);
     const auto hasDynamicOutputs = llvm::any_of(origNode->outputs(), isDynamic);
 
-    mlir::IntegerAttr seqLenAttr = nullptr;
-    if (!hasDynamicInputs && !hasDynamicOutputs) {
-        auto seqLenNode = dynamic_cast<ov::opset7::Constant*>(origNode->input_value(3).get_node());
-        VPUX_THROW_UNLESS(
-                seqLenNode != nullptr,
-                "nGraph LSTMSequence node '{0}' has unsupported sequenceLengths input. It must be a Constant node",
-                origNode->get_friendly_name());
-        auto seqLenValues = seqLenNode->cast_vector<uint32_t>();
+    if (!hasDynamicInputs && !hasDynamicOutputs && seqLenNodeConst != nullptr) {
+        auto seqLenValues = seqLenNodeConst->cast_vector<uint32_t>();
+
         VPUX_THROW_UNLESS(
                 seqLenValues.size() > 0,
                 "nGraph LSTMSequence node '{0}' has unsupported sequenceLengths input. It must contain more than "
@@ -3295,11 +3308,17 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
                           "nGraph LSTMSequence node '{0}' has unsupported sequenceLengths input. It must contain all "
                           "the same values",
                           origNode->get_friendly_name());
-        seqLenAttr = getIntAttr(_ctx, checked_cast<uint32_t>(seqLenValues[0]));
+        const auto seqLenAttr = getIntAttr(_ctx, checked_cast<uint32_t>(seqLenValues[0]));
+
+        op = builder.create<IE::LSTMSequenceOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], nullptr,
+                                                inputs[4], inputs[5], inputs[6], seqLenAttr, directionAttr);
+    } else if (seqLenParam != nullptr || hasDynamicInputs || hasDynamicOutputs) {
+        op = builder.create<IE::LSTMSequenceOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], inputs[3],
+                                                inputs[4], inputs[5], inputs[6], nullptr, directionAttr);
+    } else {
+        VPUX_THROW("nGraph LSTMSequence node '{0}' has unsupported input type", origNode->get_friendly_name());
     }
 
-    auto op = builder.create<IE::LSTMSequenceOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], inputs[4],
-                                                 inputs[5], inputs[6], seqLenAttr, directionAttr);
     addOutputs(origNode, op);
     return op;
 }
@@ -3502,6 +3521,38 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     return op;
 }
 
+mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
+                                           const std::shared_ptr<ov::intel_npu::op::FlashAttentionTile>& origNode) {
+    static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::intel_npu::op::FlashAttentionTile>::value,
+                  "opset operation mismatch");
+
+    const auto inputs = getInputs(origNode);
+    const auto size = inputs.size();
+    VPUX_THROW_UNLESS(size >= 6 && size <= 7,
+                      "internal FlashAttentionTile node '{0}' has unsupported number of inputs '{1}'",
+                      origNode->get_friendly_name(), inputs.size());
+
+    mlir::Value attentionMask = nullptr;
+    const auto attentionMaskIdx = 6;
+
+    if (size == attentionMaskIdx + 1) {
+        attentionMask = inputs[attentionMaskIdx];
+    }
+
+    auto config = origNode->get_config();
+
+    auto ctx = builder.getContext();
+    auto isHeadAttr = mlir::BoolAttr::get(ctx, config.is_head);
+    auto isTailAttr = mlir::BoolAttr::get(ctx, config.is_tail);
+    auto seqLenPadding = getIntAttr(ctx, 0);
+    auto op =
+            builder.create<IE::FlashSDPAOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], inputs[3],
+                                            inputs[4], inputs[5], attentionMask, isHeadAttr, isTailAttr, seqLenPadding);
+
+    addOutputs(origNode, op);
+    return op;
+}
+
 mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& /*builder*/,
                                            const std::shared_ptr<ov::op::v16::Identity>& origNode) {
     static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::v16::Identity>::value,
@@ -3545,6 +3596,21 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
                       origNode->get_friendly_name(), inputs.size());
 
     auto op = builder.create<IE::SoftPlusOp>(createLocation(origNode), inputs[0]);
+
+    addOutputs(origNode, op);
+    return op;
+}
+
+mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
+                                           const std::shared_ptr<ov::opset9::SoftSign>& origNode) {
+    static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::v9::SoftSign>::value,
+                  "opset operation mismatch");
+
+    const auto inputs = getInputs(origNode);
+    VPUX_THROW_UNLESS(inputs.size() == 1, "nGraph SoftSign node '{0}' has unsupported number of inputs '{1}'",
+                      origNode->get_friendly_name(), inputs.size());
+
+    auto op = builder.create<IE::SoftSignOp>(createLocation(origNode), inputs[0]);
 
     addOutputs(origNode, op);
     return op;

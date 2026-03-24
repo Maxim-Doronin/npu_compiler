@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -108,9 +109,7 @@ void DMATaskProfilingHwDdrPass::safeRunOnModule() {
     VPUX_THROW_UNLESS(enableDMAProfiling.hasValue(), "No option");
     auto dmaProfilingMode = getDMAProfilingMode(arch, enableDMAProfiling);
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp funcOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+    auto [netInfo, funcOp] = net::getFromModule(moduleOp);
 
     switch (dmaProfilingMode) {
     case DMAProfilingMode::STATIC_HWP: {

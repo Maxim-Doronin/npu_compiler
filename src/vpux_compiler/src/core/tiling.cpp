@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -494,6 +494,23 @@ SmallVector<int64_t> vpux::getAlignment(mlir::Operation* op, const ShapeRef divi
 
         VPUX_THROW("Got '{0}' with unsupported multi-cluster strategy '{1}' at '{2}'", op->getName(), mcStrategy,
                    op->getLoc());
+    }
+
+    if (mlir::isa<VPU::SDPAExtendedOp>(op)) {
+        auto moduleOp = getModuleOp(op);
+        auto numTiles = config::getTileExecutor(moduleOp).getCount();
+        auto numShaves = config::getNumOfEnginesOnTile(moduleOp, config::ExecutorKind::SHAVE_ACT);
+        auto optimalNumberOfLanes = 4;
+        auto mcStrategy = VPU::getMultiClusterStrategyFromOp(op);
+        if (mcStrategy == VPU::MultiClusterStrategy::SplitOverKernel) {
+            return SmallVector<int64_t>{1, numTiles * numShaves, 1, 1};
+        } else if (mcStrategy == VPU::MultiClusterStrategy::SplitOverHeight) {
+            return SmallVector<int64_t>{1, 1, numTiles * numShaves * optimalNumberOfLanes, 1};
+        } else {
+            // In case of single cluster function is called with mcStrategy=none
+            // same happens and for VPU::MultiClusterStrategy::Clustering
+            return SmallVector<int64_t>{1, 1, 1, 1};
+        }
     }
 
     if (mlir::isa<VPU::SWOpInterface>(op)) {

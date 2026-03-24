@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -294,6 +294,7 @@ def VPU_LSTMSequenceOp :
         VPU_LayerOp<
             "LSTMSequence",
         [
+                AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface, ["isOperationSplitOverKernelCompatible",
                                                                      "isOperationSplitOverBatchCompatible"]>
@@ -301,17 +302,23 @@ def VPU_LSTMSequenceOp :
         > {
     let summary = "LSTMSequence VPU layer";
 
+    let description = [{
+        The 'initial_output_offset_attr' attribute is used in kernel for tiling logic, representing the offset for tiled seq_length_dimension for output.
+    }];
+
     let arguments = (ins
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputData,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$initialHiddenState,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$initialCellState,
-        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$reccurenceWeights,
+        Optional<AnyTypeOf<[RankedTensorOf<[SI32, SI64]>, VPU_DistributedTensor]>>:$sequenceLengthData,
+        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$recurrenceWeights,
         Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$biases,
         AnyTypeOf<[RankedTensorOf<[SI32]>, VPU_DistributedTensor]>:$syncBuffer,
 
         OptionalAttr<IntAttr>:$sequenceLength,
         IE_RNNSequenceDirectionAttr:$direction,
         OptionalAttr<BoolAttr>:$useDpu,
+        OptionalAttr<I64ArrayAttr>:$initial_output_offset_attr,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
 
@@ -326,21 +333,25 @@ def VPU_LSTMSequenceOp :
             "::mlir::Value":$inputData,
             "::mlir::Value":$initialHiddenState,
             "::mlir::Value":$initialCellState,
-            "::mlir::Value":$reccurenceWeights,
+            "::mlir::Value":$sequenceLengthData,
+            "::mlir::Value":$recurrenceWeights,
             "::mlir::Value":$biases,
             "::mlir::IntegerAttr":$sequenceLength,
             "vpux::IE::RNNSequenceDirectionAttr":$direction,
             "::mlir::BoolAttr":$useDpu,
+            "::mlir::ArrayAttr":$initial_output_offset_attr,
             "vpux::VPU::MultiClusterStrategyAttr":$multiClusterStrategy
         )>,
         OpBuilder<(ins
             "::mlir::Value":$inputData,
             "::mlir::Value":$initialHiddenState,
             "::mlir::Value":$initialCellState,
-            "::mlir::Value":$reccurenceWeights,
+            "::mlir::Value":$sequenceLengthData,
+            "::mlir::Value":$recurrenceWeights,
             "::mlir::Value":$biases,
             "::mlir::IntegerAttr":$sequenceLength,
             "vpux::IE::RNNSequenceDirectionAttr":$direction,
+            "::mlir::ArrayAttr":$initial_output_offset_attr,
             "vpux::VPU::MultiClusterStrategyAttr":$multiClusterStrategy
         )>
     ];

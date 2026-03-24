@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @FoldStrideIntoKernel
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x8x128x128xf16, {order = #NHWC}>)
 func.func @FoldStrideIntoKernel(%arg0: tensor<1x8x128x128xf16, {order = #NHWC}>) -> tensor<1x2x128x64xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<2x8x1x2xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<2x8x1x2xf16>, [#const.Reorder<#NHWC>]
   %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 2]} : tensor<1x8x128x128xf16, {order = #NHWC}>, tensor<2x8x1x2xf16, {order = #NHWC}> -> tensor<1x2x128x64xf16, {order = #NHWC}>
@@ -16,7 +17,7 @@ func.func @FoldStrideIntoKernel(%arg0: tensor<1x8x128x128xf16, {order = #NHWC}>)
 
   // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<2x16x1x1xf16, {order = #NHWC}>
   // CHECK:       [[INPUT:%.+]] = IE.ShapeCast {shape = [1, 16, 128, 64]}
-  // CHECK-SAME:      inputs(%arg0 : tensor<1x8x128x128xf16, {order = #NHWC}>) -> tensor<1x16x128x64xf16, {order = #NHWC}>
+  // CHECK-SAME:      inputs([[ARG_0]] : tensor<1x8x128x128xf16, {order = #NHWC}>) -> tensor<1x16x128x64xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT]], [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}
   // CHECK:       return [[CONV_RET]]
 }
@@ -25,13 +26,14 @@ func.func @FoldStrideIntoKernel(%arg0: tensor<1x8x128x128xf16, {order = #NHWC}>)
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @NotFoldStrideIntoKernelForDifferentKXGreaterStride
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x8x128x128xf16, {order = #NHWC}>)
 func.func @NotFoldStrideIntoKernelForDifferentKXGreaterStride(%arg0: tensor<1x8x128x128xf16, {order = #NHWC}>) -> tensor<1x2x128x64xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<2x8x1x4xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<2x8x1x4xf16>, [#const.Reorder<#NHWC>]
     %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 2], strides = [1, 2]} : tensor<1x8x128x128xf16, {order = #NHWC}>, tensor<2x8x1x4xf16, {order = #NHWC}> -> tensor<1x2x128x64xf16, {order = #NHWC}>
     return %0 : tensor<1x2x128x64xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<2x8x1x4xf16, {order = #NHWC}>
-  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution(%arg0, [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 2], strides = [1, 2]}
+  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[ARG_0]], [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 2], strides = [1, 2]}
   // CHECK:       return [[CONV_RET]]
 }
 
@@ -39,13 +41,14 @@ func.func @NotFoldStrideIntoKernelForDifferentKXGreaterStride(%arg0: tensor<1x8x
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @NotFoldStrideIntoKernelForWmodStideNone0
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x8x128x128xf16, {order = #NHWC}>)
 func.func @NotFoldStrideIntoKernelForWmodStideNone0(%arg0: tensor<1x8x128x128xf16, {order = #NHWC}>) -> tensor<1x2x128x43xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<2x8x1x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<2x8x1x3xf16>, [#const.Reorder<#NHWC>]
     %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 3]} : tensor<1x8x128x128xf16, {order = #NHWC}>, tensor<2x8x1x3xf16, {order = #NHWC}> -> tensor<1x2x128x43xf16, {order = #NHWC}>
     return %0 : tensor<1x2x128x43xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<2x8x1x3xf16, {order = #NHWC}>
-  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution(%arg0, [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 3]}
+  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[ARG_0]], [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 3]}
   // CHECK:       return [[CONV_RET]]
 }
 
@@ -53,13 +56,14 @@ func.func @NotFoldStrideIntoKernelForWmodStideNone0(%arg0: tensor<1x8x128x128xf1
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @NotFoldStrideIntoKernelWhenChannelAligned
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x128x128xf16, {order = #NHWC}>)
 func.func @NotFoldStrideIntoKernelWhenChannelAligned(%arg0: tensor<1x16x128x128xf16, {order = #NHWC}>) -> tensor<1x16x128x43xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<16x16x1x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<16x16x1x3xf16>, [#const.Reorder<#NHWC>]
     %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 3]} : tensor<1x16x128x128xf16, {order = #NHWC}>, tensor<16x16x1x3xf16, {order = #NHWC}> -> tensor<1x16x128x43xf16, {order = #NHWC}>
     return %0 : tensor<1x16x128x43xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[CST_WEIGHTS:%.+]] = const.Declare tensor<16x16x1x3xf16, {order = #NHWC}>
-  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution(%arg0, [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 3]}
+  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[ARG_0]], [[CST_WEIGHTS]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 3]}
   // CHECK:       return [[CONV_RET]]
 }
 
@@ -67,6 +71,7 @@ func.func @NotFoldStrideIntoKernelWhenChannelAligned(%arg0: tensor<1x16x128x128x
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShape
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShape(%arg0: tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<3x3x1x1xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<3x3x1x1xf16>, [#const.Reorder<#NHWC>]
   %bias = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<1.0e-01> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -75,7 +80,7 @@ func.func @AdjustConvolutionShape(%arg0: tensor<1x3x1080x1920xf16, {order = #NHW
 
   // CHECK-DAG:   [[BIAS_CST:%.+]] = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<9.997550e-02> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<48x48x1x1xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs(%arg0 : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs([[ARG_0]] : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]], [[BIAS_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 3, 1080, 1920]} inputs([[CONV_RET]] : tensor<1x48x1080x120xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -85,6 +90,7 @@ func.func @AdjustConvolutionShape(%arg0: tensor<1x3x1080x1920xf16, {order = #NHW
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeNoneSplatBias
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeNoneSplatBias(%arg0: tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<3x3x1x1xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<3x3x1x1xf16>, [#const.Reorder<#NHWC>]
   %bias = const.Declare tensor<1x3x1x1xf16, {order = #NHWC}> = dense<[1.0, 2.0, 3.0]> : tensor<3xf16>, [#const.Reshape<[1, 3, 1, 1]>, #const.Reorder<#NHWC>]
@@ -93,7 +99,7 @@ func.func @AdjustConvolutionShapeNoneSplatBias(%arg0: tensor<1x3x1080x1920xf16, 
 
   // CHECK-DAG:   [[BIAS_CST:%.+]] = const.Declare tensor<1x48x1x1xf16, {order = #NHWC}> = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<3xf16>, [#const.Reshape<[1, 3, 1, 1]>, #const.Reorder<#NHWC>, #const.Broadcast<1 : i64, 48 : i64>, #const.Reshape<[1, 48, 1, 1]>]
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<48x48x1x1xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs(%arg0 : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs([[ARG_0]] : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]], [[BIAS_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 3, 1080, 1920]} inputs([[CONV_RET]] : tensor<1x48x1080x120xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -103,6 +109,7 @@ func.func @AdjustConvolutionShapeNoneSplatBias(%arg0: tensor<1x3x1080x1920xf16, 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat1andPadingRight
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat1andPadingRight(%arg0: tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<3x3x1x2xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<3x3x1x2xf16>, [#const.Reorder<#NHWC>]
   %bias = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<1.0e-01> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -111,7 +118,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPadingRight(%arg0: tensor<1x3x10
 
   // CHECK-DAG:   [[BIAS_CST:%.+]] = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<9.997550e-02> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<48x48x1x2xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs(%arg0 : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs([[ARG_0]] : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]], [[BIAS_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 3, 1080, 1920]} inputs([[CONV_RET]] : tensor<1x48x1080x120xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -121,6 +128,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPadingRight(%arg0: tensor<1x3x10
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat1andPaddingLeft
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat1andPaddingLeft(%arg0: tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<3x3x1x2xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<3x3x1x2xf16>, [#const.Reorder<#NHWC>]
   %bias = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<1.0e-01> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -129,7 +137,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPaddingLeft(%arg0: tensor<1x3x10
 
   // CHECK-DAG:   [[BIAS_CST:%.+]] = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<9.997550e-02> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<48x48x1x2xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs(%arg0 : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs([[ARG_0]] : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]], [[BIAS_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 3, 1080, 1920]} inputs([[CONV_RET]] : tensor<1x48x1080x120xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -139,6 +147,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPaddingLeft(%arg0: tensor<1x3x10
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat1andPaddingLeftRight
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat1andPaddingLeftRight(%arg0: tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<3x3x1x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<3x3x1x3xf16>, [#const.Reorder<#NHWC>]
   %bias = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<1.0e-01> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -147,7 +156,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPaddingLeftRight(%arg0: tensor<1
 
   // CHECK-DAG:   [[BIAS_CST:%.+]] = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<9.997550e-02> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
   // CHECK-DAG:   [[FILTER_CST:%.+]] =  const.Declare tensor<48x48x1x3xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs(%arg0 : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 48, 1080, 120]} inputs([[ARG_0]] : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x48x1080x120xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]], [[BIAS_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 3, 1080, 1920]} inputs([[CONV_RET]] : tensor<1x48x1080x120xf16, {order = #NHWC}>) -> tensor<1x3x1080x1920xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -157,6 +166,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPaddingLeftRight(%arg0: tensor<1
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat1andPaddingStride
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat1andPaddingStride(%arg0: tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x3x1080x960xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<3x3x1x3xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<3x3x1x3xf16>, [#const.Reorder<#NHWC>]
   %bias = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<1.0e-01> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -165,7 +175,7 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPaddingStride(%arg0: tensor<1x3x
 
   // CHECK-DAG:   [[BIAS_CST:%.+]] = const.Declare tensor<1x1x1x1xf16, {order = #NHWC}> = dense<9.997550e-02> : tensor<1x1x1x1xf16>, [#const.Reorder<#NHWC>]
   // CHECK-DAG:   [[FILTER_CST:%.+]] =  const.Declare tensor<48x96x1x2xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 96, 1080, 60]} inputs(%arg0 : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x96x1080x60xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 96, 1080, 60]} inputs([[ARG_0]] : tensor<1x3x1080x1920xf16, {order = #NHWC}>) -> tensor<1x96x1080x60xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]], [[BIAS_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 3, 1080, 960]} inputs([[CONV_RET]] : tensor<1x48x1080x60xf16, {order = #NHWC}>) -> tensor<1x3x1080x960xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -175,13 +185,14 @@ func.func @AdjustConvolutionShapeWithKXGreat1andPaddingStride(%arg0: tensor<1x3x
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @NotAdjustConvolutionShapeWhenTensorFitCMX
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x12x2x8xf16, {order = #NHWC}>)
 func.func @NotAdjustConvolutionShapeWhenTensorFitCMX(%arg0: tensor<1x12x2x8xf16, {order = #NHWC}>) -> tensor<1x2x2x8xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<2x12x1x2xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<2x12x1x2xf16>, [#const.Reorder<#NHWC>]
   %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 1], strides = [1, 1]} : tensor<1x12x2x8xf16, {order = #NHWC}>, tensor<2x12x1x2xf16, {order = #NHWC}> -> tensor<1x2x2x8xf16, {order = #NHWC}>
   return %0 : tensor<1x2x2x8xf16, {order = #NHWC}>
 
   // CHECK:       [[CST_WEIGHTS_0:%.+]] = const.Declare tensor<2x12x1x2xf16, {order = #NHWC}>
-  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution(%arg0, [[CST_WEIGHTS_0]])
+  // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[ARG_0]], [[CST_WEIGHTS_0]])
   // CHECK:       return [[CONV_RET]]
 }
 
@@ -189,13 +200,14 @@ func.func @NotAdjustConvolutionShapeWhenTensorFitCMX(%arg0: tensor<1x12x2x8xf16,
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat3andPaddingBeginStride
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x4x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat3andPaddingBeginStride(%arg0: tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x4x1080x960xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<4x4x1x4xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<4x4x1x4xf16>, [#const.Reorder<#NHWC>]
   %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 2], pads_end = [0, 0], strides = [1, 2]} : tensor<1x4x1080x1920xf16, {order = #NHWC}>, tensor<4x4x1x4xf16, {order = #NHWC}> -> tensor<1x4x1080x960xf16, {order = #NHWC}>
   return %0 : tensor<1x4x1080x960xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<16x32x1x2xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 32, 1080, 240]} inputs(%arg0 : tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x1080x240xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 32, 1080, 240]} inputs([[ARG_0]] : tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x1080x240xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 4, 1080, 960]} inputs([[CONV_RET]] : tensor<1x16x1080x240xf16, {order = #NHWC}>) -> tensor<1x4x1080x960xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -205,13 +217,14 @@ func.func @AdjustConvolutionShapeWithKXGreat3andPaddingBeginStride(%arg0: tensor
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat3andPaddingEndStride
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x4x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat3andPaddingEndStride(%arg0: tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x4x1080x960xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<4x4x1x4xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<4x4x1x4xf16>, [#const.Reorder<#NHWC>]
   %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 2], strides = [1, 2]} : tensor<1x4x1080x1920xf16, {order = #NHWC}>, tensor<4x4x1x4xf16, {order = #NHWC}> -> tensor<1x4x1080x960xf16, {order = #NHWC}>
   return %0 : tensor<1x4x1080x960xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<16x32x1x2xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 32, 1080, 240]} inputs(%arg0 : tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x1080x240xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 32, 1080, 240]} inputs([[ARG_0]] : tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x1080x240xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 4, 1080, 960]} inputs([[CONV_RET]] : tensor<1x16x1080x240xf16, {order = #NHWC}>) -> tensor<1x4x1080x960xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]
@@ -221,13 +234,14 @@ func.func @AdjustConvolutionShapeWithKXGreat3andPaddingEndStride(%arg0: tensor<1
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @AdjustConvolutionShapeWithKXGreat3andPaddingBeginEndStride
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x4x1080x1920xf16, {order = #NHWC}>)
 func.func @AdjustConvolutionShapeWithKXGreat3andPaddingBeginEndStride(%arg0: tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x4x1080x960xf16, {order = #NHWC}> {
   %cst = const.Declare tensor<4x4x1x4xf16, {order = #NHWC}> = dense<1.250000e-01> : tensor<4x4x1x4xf16>, [#const.Reorder<#NHWC>]
   %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [0, 1], strides = [1, 2]} : tensor<1x4x1080x1920xf16, {order = #NHWC}>, tensor<4x4x1x4xf16, {order = #NHWC}> -> tensor<1x4x1080x960xf16, {order = #NHWC}>
   return %0 : tensor<1x4x1080x960xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[FILTER_CST:%.+]] = const.Declare tensor<16x32x1x3xf16, {order = #NHWC}>
-  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 32, 1080, 240]} inputs(%arg0 : tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x1080x240xf16, {order = #NHWC}>
+  // CHECK:       [[INPUT_CAST:%.+]] = IE.ShapeCast {shape = [1, 32, 1080, 240]} inputs([[ARG_0]] : tensor<1x4x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x1080x240xf16, {order = #NHWC}>
   // CHECK:       [[CONV_RET:%.+]] = IE.Convolution([[INPUT_CAST]], [[FILTER_CST]])
   // CHECK:       [[RET_CAST:%.+]] = IE.ShapeCast {shape = [1, 4, 1080, 960]} inputs([[CONV_RET]] : tensor<1x16x1080x240xf16, {order = #NHWC}>) -> tensor<1x4x1080x960xf16, {order = #NHWC}>
   // CHECK:       return [[RET_CAST]]

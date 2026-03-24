@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,9 +12,11 @@
 #include "vpux/compiler/core/mem_live_range_info.hpp"
 #include "vpux/compiler/core/prefetch_data_ops.hpp"
 #include "vpux/compiler/core/schedule_analysis_utils.hpp"
+#include "vpux/compiler/core/schedule_builder_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
@@ -28,11 +30,15 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
+#include "vpux/compiler/core/loop_allocator.hpp"
+
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
 #include <vpu_cost_model.h>
+#include <limits>
+#include <vpux/compiler/utils/dma.hpp>
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_FEASIBLEALLOCATION
@@ -662,23 +668,59 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     auto& liveRangeInfo = getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>>();
     auto& depsInfo = getAnalysis<AsyncDepsInfo>();
 
-    linearizeComputeOps(_linearizeSchedule, _enablePipelining, func, depsInfo);
-
     // VPUNN cost model
     const auto arch = config::getArch(module);
     const auto vpuDevice = vpux::VPU::getVPUDeviceType(module);
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
     auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
 
+    const auto availableSize = scan.totalFreeSize();
+
     // If schedule analysis is enabled dynamic spilling stats will be gathered
     vpux::SpillStats dynamicSpillingBeforePrefetching;
     vpux::SpillStats dynamicSpillingAfterPrefetching;
     vpux::SpillStats dynamicSpillingAfterSpillOptimizations;
 
+    // Helper lambda to generate compute regions and perform loop-based allocation
+    auto generateComputeRegionsAndAllocate = [&](AsyncDepsInfo& taskDepsInfo,
+                                                 llvm::StringLiteral allocatorName) -> ComputeRegionVec {
+        ComputeRegionVec regions;
+        if (!_enableLoopAllocation) {
+            return regions;
+        }
+
+        // Build aliases info for current function state
+        auto taskAliasesInfo = AliasesInfoMemType<VPU::MemoryKind::CMX_NN>{func};
+
+        // Build consumer map and extract compute regions from async operations
+        taskDepsInfo.buildConsMap();
+        regions = getComputeRegionsFromAsyncExec(taskAliasesInfo, taskDepsInfo, _log);
+
+        // Allocate memory for detected loop tiling regions
+        if (!regions.empty()) {
+            LoopAllocator loopAllocator(regions, availableSize, _log, allocatorName);
+            loopAllocator.allocateLoopTilingRegions();
+        }
+
+        return regions;
+    };
+
+    // Generate compute regions for initial schedule
+    auto computeRegionVec = generateComputeRegionsAndAllocate(depsInfo, "loop-allocator");
+    if (_enableLoopAllocation) {
+        if (computeRegionVec.empty()) {
+            _log.info("No compute regions found for loop-based allocation.");
+        } else {
+            _log.info("Found {0} compute region(s) for loop-based allocation.", computeRegionVec.size());
+        }
+    }
+
+    linearizeComputeOps(_linearizeSchedule, _enablePipelining, func, depsInfo);
+
     // feasible memory scheduler - list scheduler
     FeasibleMemoryScheduler scheduler(_memKind, _secondLvlMemKind, liveRangeInfo, depsInfo, _log, scan, arch, vpuDevice,
                                       costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
-                                      /*activelySpillForPrefetching*/ false);
+                                      /*activelySpillForPrefetching*/ false, std::move(computeRegionVec));
 
     // 1. initial schedule
     auto scheduledOps = scheduler.generateSchedule();
@@ -703,35 +745,41 @@ void FeasibleAllocationPass::safeRunOnFunc() {
             std::vector<ConcurrentMemorySchedulerRunner::SchedulerTask> tasks;
             auto liveRange = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>{
                     func, AliasesInfoMemType<VPU::MemoryKind::CMX_NN>(func)};
-
-            // Prefetch scheduler task
             LinearScan<mlir::Value, LinearScanHandler> prefetchScan(maxSize.count(), reservedMemVec, alignment);
+
+            // Base prefetch scheduler task
             auto scheduleFuncBase = [&](AsyncDepsInfo& taskDepsInfo,
                                         LinearScan<mlir::Value, LinearScanHandler>& taskScan,
                                         MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>& liveRange)
                     -> FeasibleMemoryScheduler::ScheduledOpInfoVec {
+                // Re-generate compute regions after IR modification
+                auto regions = generateComputeRegionsAndAllocate(taskDepsInfo, "loop-allocator-prefetch");
+
                 FeasibleMemoryScheduler schedulerWithPrefetch(
                         _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, vpuDevice,
                         costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
-                        /*activelySpillForPrefetching*/ false);
+                        /*activelySpillForPrefetching*/ false, std::move(regions));
                 return schedulerWithPrefetch.generateSchedule();
             };
             tasks.emplace_back(scheduleFuncBase, depsInfo, prefetchScan, liveRange);
 
             // Aggressive prefetch scheduler task
-            // Different from prefetch scheduler task, this scheduler actively spill buffers to resolve memory
-            // fragmentation It's more likely to successfully prefetch data ops ConcurrentMemorySchedulerRunner executes
-            // tasks concurrently and get the best result When memory fragmentation happens, aggressive prefetch
-            // scheduler gets different result Otherwise the results should be the same
+            // Different from prefetch scheduler task, this scheduler actively spills buffers to resolve memory
+            // fragmentation. It's more likely to successfully prefetch data ops. ConcurrentMemorySchedulerRunner
+            // executes tasks concurrently and gets the best result. When memory fragmentation happens, aggressive
+            // prefetch scheduler gets different result. Otherwise the results should be the same.
             if (_enableMultiScheduleHeuristic) {
                 auto scheduleFuncAggressive = [&](AsyncDepsInfo& taskDepsInfo,
                                                   LinearScan<mlir::Value, LinearScanHandler>& taskScan,
                                                   MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>& liveRange)
                         -> FeasibleMemoryScheduler::ScheduledOpInfoVec {
+                    // Re-generate compute regions after IR modification
+                    auto regions = generateComputeRegionsAndAllocate(taskDepsInfo, "loop-allocator-aggressive");
+
                     FeasibleMemoryScheduler schedulerWithAggressivePrefetch(
                             _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, vpuDevice,
                             costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
-                            /*activelySpillForPrefetching*/ true);
+                            /*activelySpillForPrefetching*/ true, std::move(regions));
                     const auto& res = schedulerWithAggressivePrefetch.generateSchedule();
                     if (_enableScheduleStatistics) {
                         schedulerWithAggressivePrefetch.printFragmentFixCountLog();

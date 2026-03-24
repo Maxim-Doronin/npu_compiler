@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -61,19 +61,17 @@ func.func @SETableSingleCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR
         -> !Weights_CMX, !WeightsSM_CMX
     %out_cmx = memref.alloc() : !Output_CMX
 
-    %conv_out = VPUIP.NCEClusterTask {
+    %conv_out = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%in_data : !Input_CMX)
-        input_sparsity_map(%in_sm : !InputSM_CMX)
         input_storage_element_table(%in_se : !InputSE_CMX)
         weights(%w_data : !Weights_CMX)
         weights_sparsity_map(%w_sm : !WeightsSM_CMX)
         parent_input(%in_data : !Input_CMX)
-        parent_input_sparsity_map(%in_sm : !InputSM_CMX)
         parent_input_storage_element_table(%in_se : !InputSE_CMX)
         parent_output(%out_cmx : !Output_CMX)
         outputs(%out_cmx : !Output_CMX)
@@ -187,14 +185,12 @@ func.func @SETableMultiCluster(%input_data: !Input_DDR, %input_sm: !InputSM_DDR)
     %w_data, %w_sm = VPUIP.UngroupSparseBuffer(%weights)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data : !InputDistributed)
-        input_sparsity_map(%in_sm : !InputSMDistributed)
         input_storage_element_table(%in_se : !InputSEDistributed)
         weights(%w_data : !WeightsDistributed)
         weights_sparsity_map(%w_sm : !WeightsSMDistributed)
         parent_input(%in_data : !InputDistributed)
-        parent_input_sparsity_map(%in_sm : !InputSMDistributed)
         parent_input_storage_element_table(%in_se : !InputSEDistributed)
         parent_output(%out_cmx : !OutputDistributed)
         outputs(%out_cmx : !OutputDistributed)
@@ -318,14 +314,12 @@ func.func @Interpolate(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -> !Out
     %w_data, %w_sm = VPUIP.UngroupSparseBuffer(%weights)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data : !InputDistributed)
-        input_sparsity_map(%in_sm : !InputSMDistributed)
         input_storage_element_table(%in_se : !InputSEDistributed)
         weights(%w_data : !WeightsDistributed)
         weights_sparsity_map(%w_sm : !WeightsSMDistributed)
         parent_input(%in_data : !InputDistributed)
-        parent_input_sparsity_map(%in_sm : !InputSMDistributed)
         parent_input_storage_element_table(%in_se : !InputSEDistributed)
         parent_output(%out_cmx : !OutputDistributed)
         outputs(%out_cmx : !OutputDistributed)
@@ -456,14 +450,12 @@ func.func @InterpolateSESize(%input_data: !Input_DDR, %input_sm: !InputSM_DDR) -
     %w_data, %w_sm = VPUIP.UngroupSparseBuffer(%weights)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data : !InputDistributed)
-        input_sparsity_map(%in_sm : !InputSMDistributed)
         input_storage_element_table(%in_se : !InputSEDistributed)
         weights(%w_data : !WeightsDistributed)
         weights_sparsity_map(%w_sm : !WeightsSMDistributed)
         parent_input(%in_data : !InputDistributed)
-        parent_input_sparsity_map(%in_sm : !InputSMDistributed)
         parent_input_storage_element_table(%in_se : !InputSEDistributed)
         parent_output(%out_cmx : !OutputDistributed)
         outputs(%out_cmx : !OutputDistributed)
@@ -594,14 +586,12 @@ func.func @InterpolateOutputOffsets(%input_data: !Input_DDR, %input_sm: !InputSM
     %w_data, %w_sm = VPUIP.UngroupSparseBuffer(%weights)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data : !InputDistributed)
-        input_sparsity_map(%in_sm : !InputSMDistributed)
         input_storage_element_table(%in_se : !InputSEDistributed)
         weights(%w_data : !WeightsDistributed)
         weights_sparsity_map(%w_sm : !WeightsSMDistributed)
         parent_input(%in_data : !InputDistributed)
-        parent_input_sparsity_map(%in_sm : !InputSMDistributed)
         parent_input_storage_element_table(%in_se : !InputSEDistributed)
         parent_output(%out_cmx : !OutputDistributed)
         outputs(%out_cmx : !OutputDistributed)
@@ -756,14 +746,12 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     %w_data_0, %w_sm_0 = VPUIP.UngroupSparseBuffer(%weights_0)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx_0 = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out_0 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out_0 = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data_0 : !InputDistributed)
-        input_sparsity_map(%in_sm_0 : !InputSMDistributed)
         input_storage_element_table(%in_se_0 : !InputSEDistributed)
         weights(%w_data_0 : !WeightsDistributed)
         weights_sparsity_map(%w_sm_0 : !WeightsSMDistributed)
         parent_input(%in_data_0 : !InputDistributed)
-        parent_input_sparsity_map(%in_sm_0 : !InputSMDistributed)
         parent_input_storage_element_table(%in_se_0 : !InputSEDistributed)
         parent_output(%out_cmx_0 : !OutputDistributed)
         outputs(%out_cmx_0 : !OutputDistributed)
@@ -810,14 +798,12 @@ func.func @InterpolateTileAndMultiCluster(%input_data: !Input_DDR, %input_sm_0: 
     %w_data_1, %w_sm_1 = VPUIP.UngroupSparseBuffer(%weights_1)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx_1 = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out_1 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out_1 = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data_1 : !InputDistributed)
-        input_sparsity_map(%in_sm_1 : !InputSMDistributed)
         input_storage_element_table(%in_se_1 : !InputSEDistributed)
         weights(%w_data_1 : !WeightsDistributed)
         weights_sparsity_map(%w_sm_1 : !WeightsSMDistributed)
         parent_input(%in_data_1 : !InputDistributed)
-        parent_input_sparsity_map(%in_sm_1 : !InputSMDistributed)
         parent_input_storage_element_table(%in_se_1 : !InputSEDistributed)
         parent_output(%out_cmx_1 : !OutputDistributed)
         outputs(%out_cmx_1 : !OutputDistributed)
@@ -981,14 +967,12 @@ func.func @InterpolateBilinearAlignCornersOutputOffsets(%input_data: !Input_DDR,
     %w_data, %w_sm = VPUIP.UngroupSparseBuffer(%weights)  {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
     %out_cmx = VPURT.AllocDistributed -> !OutputDistributed
-    %conv_out = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    %conv_out = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in_data : !InputDistributed)
-        input_sparsity_map(%in_sm : !InputSMDistributed)
         input_storage_element_table(%in_se : !InputSEDistributed)
         weights(%w_data : !WeightsDistributed)
         weights_sparsity_map(%w_sm : !WeightsSMDistributed)
         parent_input(%in_data : !InputDistributed)
-        parent_input_sparsity_map(%in_sm : !InputSMDistributed)
         parent_input_storage_element_table(%in_se : !InputSEDistributed)
         parent_output(%out_cmx : !OutputDistributed)
         outputs(%out_cmx : !OutputDistributed)

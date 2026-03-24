@@ -16,6 +16,7 @@ namespace ov {
 namespace test {
 
 class ComparisonLayerTestCommon : public ComparisonLayerTest, virtual public VpuOv2LayerTest {
+protected:
     void SetUp() override {
         std::vector<InputShape> inputShapes;
         ComparisonTypes comparisonOpType;
@@ -84,9 +85,64 @@ class ComparisonLayerTestDynamic : public ComparisonLayerTest, virtual public Vp
 };
 
 class ComparisonLayerTest_Tiling : public ComparisonLayerTestCommon {};
+
 class ShaveCodeGenComparisonLayerTestCommon : public ComparisonLayerTestCommon {
     void configure_model() override {
         configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-shave-code-gen=true";
+    }
+};
+
+// The NPU compiler represents boolean as u8 in its compiled metadata (#109588). The Level Zero
+// backend allocates I/O buffers using that compiler metadata precision (u8), then during infer()
+// copies user tensors into those buffers via ITensor::copy_to(), which requires an exact element
+// type match.
+//
+// infer() - convert boolean inputs to u8 before set_tensor()
+// (allowed by the plugin in src\plugins\intel_npu\src\common\src\sync_infer_request.cpp).
+// get_plugin_outputs() - convert u8 outputs back to boolean before comparison.
+class ComparisonLayerTest_BOOL : public ComparisonLayerTestCommon, virtual public VpuOv2LayerTest {
+protected:
+    void infer() override {
+        inferRequest = compiledModel.create_infer_request();
+
+        auto toU8 = [](const ov::Tensor& src) -> ov::Tensor {
+            ov::Tensor dst(ov::element::u8, src.get_shape());
+            const auto* s = src.data<const ov::fundamental_type_for<ov::element::boolean>>();
+            auto* d = dst.data<uint8_t>();
+            for (size_t i = 0; i < src.get_size(); ++i) {
+                d[i] = s[i] ? 1 : 0;
+            }
+            return dst;
+        };
+
+        for (const auto& item : inputs) {
+            const auto& tensor = item.second;
+            inferRequest.set_tensor(item.first,
+                                    tensor.get_element_type() == ov::element::boolean ? toU8(tensor) : tensor);
+        }
+
+        inferRequest.infer();
+    }
+
+    std::vector<ov::Tensor> get_plugin_outputs() override {
+        infer();
+
+        auto toBoolean = [](const ov::Tensor& src) -> ov::Tensor {
+            ov::Tensor dst(ov::element::boolean, src.get_shape());
+            const auto* s = src.data<uint8_t>();
+            auto* d = dst.data<ov::fundamental_type_for<ov::element::boolean>>();
+            for (size_t i = 0; i < src.get_size(); ++i) {
+                d[i] = s[i] != 0;
+            }
+            return dst;
+        };
+
+        std::vector<ov::Tensor> outputs;
+        for (size_t i = 0; i < compiledModel.outputs().size(); ++i) {
+            auto tensor = inferRequest.get_tensor(compiledModel.output(i));
+            outputs.push_back(tensor.get_element_type() == ov::element::u8 ? toBoolean(tensor) : tensor);
+        }
+        return outputs;
     }
 };
 
@@ -96,6 +152,11 @@ TEST_P(ComparisonLayerTestCommon, NPU3720_SW) {
 }
 
 TEST_P(ComparisonLayerTest_Tiling, NPU3720_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU3720);
+}
+
+TEST_P(ComparisonLayerTest_BOOL, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
@@ -115,6 +176,11 @@ TEST_P(ComparisonLayerTestDynamic, NPU4000_SW) {
     run(Platform::NPU4000);
 }
 
+TEST_P(ComparisonLayerTest_BOOL, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(ShaveCodeGenComparisonLayerTestCommon, NPU4000) {
     setReferenceSoftwareMode();
     setPluginCompilerType();
@@ -131,10 +197,20 @@ TEST_P(ComparisonLayerTestDynamic, NPU5010_SW) {
     run(Platform::NPU5010);
 }
 
+TEST_P(ComparisonLayerTest_BOOL, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
 TEST_P(ShaveCodeGenComparisonLayerTestCommon, NPU5010) {
     setReferenceSoftwareMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
+}
+
+TEST_P(ComparisonLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test
@@ -220,6 +296,15 @@ const auto comparison_params_dynamic = ::testing::Combine(
         ::testing::ValuesIn(secondInputTypes), ::testing::ValuesIn(precision),
         ::testing::Values(test_utils::TARGET_DEVICE), ::testing::Values(additionalConfig));
 
+std::vector<ComparisonTypes> comparisonOpTypesBOOL_MLIR = {ComparisonTypes::LESS_EQUAL};
+std::vector<ov::element::Type> precision_bool = {ov::element::boolean};
+
+const auto comparison_params_bool =
+        ::testing::Combine(::testing::ValuesIn(static_shapes_to_test_representation(inputShapesComparisonParams)),
+                           ::testing::ValuesIn(comparisonOpTypesBOOL_MLIR), ::testing::ValuesIn(secondInputTypes),
+                           ::testing::ValuesIn(precision_bool), ::testing::Values(test_utils::TARGET_DEVICE),
+                           ::testing::Values(additionalConfig));
+
 INSTANTIATE_TEST_SUITE_P(smoke_Comparison, ComparisonLayerTestCommon, comparison_params,
                          ComparisonLayerTestCommon::getTestCaseName);
 
@@ -240,12 +325,15 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Comparison, ShaveCodeGenComparisonLayer
 INSTANTIATE_TEST_SUITE_P(DISABLED_TMP_smoke_tiling_Comparison, ShaveCodeGenComparisonLayerTestCommon,
                          tiling_comparison_params, ShaveCodeGenComparisonLayerTestCommon::getTestCaseName);
 
-//  Dynamic shapes cases
+// Dynamic shapes cases
 INSTANTIATE_TEST_SUITE_P(smoke_ComparisonDynamic, ComparisonLayerTestDynamic, comparison_params_dynamic,
                          ComparisonLayerTestDynamic::getTestCaseName);
 
-// isNaN tests
+// BOOL tests
+INSTANTIATE_TEST_SUITE_P(smoke_Comparison_BOOL, ComparisonLayerTest_BOOL, comparison_params_bool,
+                         ComparisonLayerTest_BOOL::getTestCaseName);
 
+// isNaN tests
 std::vector<std::vector<ov::Shape>> input_shapes_is_ops_static = {{{1}, {1}},
                                                                   {{1, 2}, {1}},
                                                                   {{3, 1}, {1}},

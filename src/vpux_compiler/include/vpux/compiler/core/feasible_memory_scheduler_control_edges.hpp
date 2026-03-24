@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,6 +67,7 @@ void updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneResource>
                                                Logger& log);
 
 // Apply dependencies from controlEdges set into depsInfo.
-void updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log);
+void updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log,
+                                  const std::unordered_set<size_t>& modifiedOps = {});
 
 }  // namespace vpux

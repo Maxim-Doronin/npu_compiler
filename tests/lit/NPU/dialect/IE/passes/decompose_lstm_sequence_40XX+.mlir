@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @DecomposeLSTMSequence(%arg0: tensor<1x3x64xf32>) -> (tensor<1x2x3x128
     %cst_2 = const.Declare tensor<2x512x128xf32> = dense<3.000000e+00> : tensor<2x512x128xf32>
     %cst_3 = const.Declare tensor<2x512xf32> = dense<4.000000e+00> : tensor<2x512xf32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 3 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>} : tensor<1x3x64xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>, tensor<2x512x64xf32>, tensor<2x512x128xf32>, tensor<2x512xf32> -> tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 3 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>} : tensor<1x3x64xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>, tensor<2x512x64xf32>, tensor<2x512x128xf32>, tensor<2x512xf32> -> tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
 
@@ -26,7 +26,7 @@ func.func @DecomposeLSTMSequence(%arg0: tensor<1x3x64xf32>) -> (tensor<1x2x3x128
 // CHECK:   [[VAL_6:%.+]] = IE.Unsqueeze([[VAL_0]]) {axes_value = [1]} : tensor<1x3x64xf32> -> tensor<1x1x3x64xf32>
 // CHECK:   [[VAL_7:%.+]] = IE.Broadcast([[VAL_6]], [[VAL_2]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<1x1x3x64xf32>, tensor<4xsi32> -> tensor<1x2x3x64xf32>
 // CHECK:   [[VAL_9:%.+]] = IE.MatMul([[VAL_7]], [[VAL_3]]) {transpose_b} : tensor<1x2x3x64xf32>, tensor<1x2x512x64xf32> -> tensor<1x2x3x512xf32>
-// CHECK:   [[VAL_10:%.+]], [[VAL_11:%.+]], [[VAL_12:%.+]] = IE.LSTMSequence([[VAL_9]], [[VAL_4]], [[VAL_4]], [[VAL_5]], [[VAL_1]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1>, sequenceLength = 3 : i64} : tensor<1x2x3x512xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>, tensor<2x512x128xf32>, tensor<2x1x512xf32> -> tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
+// CHECK:   [[VAL_10:%.+]], [[VAL_11:%.+]], [[VAL_12:%.+]] = IE.LSTMSequence([[VAL_9]], [[VAL_4]], [[VAL_4]], [[VAL_5]], [[VAL_1]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 0, 1, 1>, sequenceLength = 3 : i64} : tensor<1x2x3x512xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>, tensor<2x512x128xf32>, tensor<2x1x512xf32> -> tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
 // CHECK:   return [[VAL_10]], [[VAL_11]], [[VAL_12]] : tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
 }
 
@@ -40,7 +40,7 @@ func.func @DecomposeUnsupportedLSTMSequenceToLSTMCells(%arg0: tensor<1x3x64xf32>
     %cst_2 = const.Declare tensor<2x512x300xf32> = dense<3.000000e+00> : tensor<2x512x300xf32>
     %cst_3 = const.Declare tensor<2x512xf32> = dense<4.000000e+00> : tensor<2x512xf32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 3 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>} : tensor<1x3x64xf32>, tensor<1x2x300xf32>, tensor<1x2x300xf32>, tensor<2x512x64xf32>, tensor<2x512x300xf32>, tensor<2x512xf32> -> tensor<1x2x3x300xf32>, tensor<1x2x300xf32>, tensor<1x2x300xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 3 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>} : tensor<1x3x64xf32>, tensor<1x2x300xf32>, tensor<1x2x300xf32>, tensor<2x512x64xf32>, tensor<2x512x300xf32>, tensor<2x512xf32> -> tensor<1x2x3x300xf32>, tensor<1x2x300xf32>, tensor<1x2x300xf32>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x2x3x300xf32>, tensor<1x2x300xf32>, tensor<1x2x300xf32>
 
@@ -111,7 +111,7 @@ func.func @DecomposeDynamicLSTMSequence(%arg0: tensor<1x?x512xf32, {bounds = #co
     %cst_1 = const.Declare tensor<1x512x512xf32> = dense<0.000000e+00> : tensor<1x512x512xf32>
     %cst_2 = const.Declare tensor<1x512x128xf32> = dense<0.000000e+00> : tensor<1x512x128xf32>
     %cst_3 = const.Declare tensor<1x512xf32> = dense<0.000000e+00> : tensor<1x512xf32>
-    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %arg1, %arg2, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>} : tensor<1x?x512xf32, {bounds = #const.OpaqueI64Elements<[1, 35, 512]> : tensor<3xsi64>, order = #CHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>, tensor<1x512x512xf32>, tensor<1x512x128xf32>, tensor<1x512xf32> -> tensor<1x1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %arg1, %arg2, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>} : tensor<1x?x512xf32, {bounds = #const.OpaqueI64Elements<[1, 35, 512]> : tensor<3xsi64>, order = #CHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>, tensor<1x512x512xf32>, tensor<1x512x128xf32>, tensor<1x512xf32> -> tensor<1x1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>
 
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1xsi64> = dense<[1, 1, 512, 512]> : tensor<4xsi64>, [#const.SubView<[0], [1]>]
@@ -131,7 +131,7 @@ func.func @DecomposeDynamicLSTMSequence(%arg0: tensor<1x?x512xf32, {bounds = #co
     // CHECK:   [[SLICE_3:%.+]] = IE.Slice [[SHAPE_OF_1]] [2] [1] : tensor<4xsi64> to tensor<1xsi64>
     // CHECK:   [[CONCAT_1:%.+]] = IE.Concat([[CST]], [[CST_2]], [[SLICE_3]], [[CST_0]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<4xsi64>
     // CHECK:   [[DYN_RESHAPE_1:%.+]] = IE.DynamicReshape([[MAT_MUL]], [[CONCAT_1]]) {output_bounds = [1, 1, 35, 512], output_shape = [1, 1, -9223372036854775808, 512]} : tensor<1x1x35x512xf32>, tensor<4xsi64> -> tensor<1x1x?x512xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 512]> : tensor<4xsi64>, order = #NCHW}>
-    // CHECK:   [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] = IE.LSTMSequence([[DYN_RESHAPE_1]], [[ARG_1]], [[ARG_2]], [[CST_3]], [[CST_4]]) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1>} : tensor<1x1x?x512xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 512]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>, tensor<1x512x128xf32>, tensor<1x1x512xf32> -> tensor<1x1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>
+    // CHECK:   [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] = IE.LSTMSequence([[DYN_RESHAPE_1]], [[ARG_1]], [[ARG_2]], [[CST_3]], [[CST_4]]) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 0, 1, 1>} : tensor<1x1x?x512xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 512]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>, tensor<1x512x128xf32>, tensor<1x1x512xf32> -> tensor<1x1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>
     // CHECK:   return [[OUT_HV]], [[OUT_HS]], [[OUT_CS]] : tensor<1x1x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 35, 128]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x128xf32>, tensor<1x1x128xf32>
 }
 
@@ -146,7 +146,7 @@ func.func @DecomposeDynamicBidirectionalLSTMSequence(%arg0: tensor<1x?x640xf32, 
     %cst = const.Declare tensor<1xsi64> = dense<256> : tensor<1xsi64>
     %cst_0 = const.Declare tensor<1xsi64> = dense<2> : tensor<1xsi64>
     %cst_1 = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
-    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %arg1, %arg2, %arg4, %arg5, %arg6) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>} : tensor<1x?x640xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 640]> : tensor<3xsi64>, order = #CHW}>, tensor<1x2x256xf32>, tensor<1x2x256xf32>, tensor<2x1024x640xf32>, tensor<2x1024x256xf32>, tensor<2x1024xf32> -> tensor<1x2x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x2x256xf32>, tensor<1x2x256xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %arg1, %arg2, %arg4, %arg5, %arg6) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>} : tensor<1x?x640xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 640]> : tensor<3xsi64>, order = #CHW}>, tensor<1x2x256xf32>, tensor<1x2x256xf32>, tensor<2x1024x640xf32>, tensor<2x1024x256xf32>, tensor<2x1024xf32> -> tensor<1x2x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x2x256xf32>, tensor<1x2x256xf32>
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x2x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x2x256xf32>, tensor<1x2x256xf32>
 
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1xsi64> = dense<[1, 1, 512, 1024]> : tensor<4xsi64>, [#const.SubView<[3], [1]>]
@@ -175,7 +175,7 @@ func.func @DecomposeDynamicBidirectionalLSTMSequence(%arg0: tensor<1x?x640xf32, 
     // CHECK:   [[SLICE_12:%.+]] = IE.Slice [[SHAPE_OF_1]] [2] [1] : tensor<4xsi64> to tensor<1xsi64>
     // CHECK:   [[CONCAT_1:%.+]] = IE.Concat([[CST_0]], [[CST_1]], [[SLICE_12]], [[CST]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<4xsi64>
     // CHECK:   [[DYN_RESHAPE_1:%.+]] = IE.DynamicReshape([[MAT_MUL_0]], [[CONCAT_1]]) {output_bounds = [1, 1, 512, 1024], output_shape = [1, 1, -9223372036854775808, 1024]} : tensor<1x1x512x1024xf32>, tensor<4xsi64> -> tensor<1x1x?x1024xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 1024]> : tensor<4xsi64>, order = #NCHW}>
-    // CHECK:   [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] = IE.LSTMSequence([[DYN_RESHAPE_1]], [[SLICE_0]], [[SLICE_2]], [[SLICE_6]], [[UNSQUEEZE_1]]) {direction = #IE.rnn_seq_direction<FORWARD>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1>} : tensor<1x1x?x1024xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 1024]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>, tensor<1x1024x256xf32>, tensor<1x1x1024xf32> -> tensor<1x1x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>
+    // CHECK:   [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] = IE.LSTMSequence([[DYN_RESHAPE_1]], [[SLICE_0]], [[SLICE_2]], [[SLICE_6]], [[UNSQUEEZE_1]]) {direction = #IE.rnn_seq_direction<FORWARD>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 0, 1, 1>} : tensor<1x1x?x1024xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 1024]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>, tensor<1x1024x256xf32>, tensor<1x1x1024xf32> -> tensor<1x1x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>
     // CHECK:   [[SHAPE_OF_2:%.+]] = IE.ShapeOf([[ARG_0]]) {dstElemType = si64} : tensor<1x?x640xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 640]> : tensor<3xsi64>, order = #CHW}> -> tensor<3xsi64>
     // CHECK:   [[SLICE_13:%.+]] = IE.Slice [[SHAPE_OF_2]] [0] [1] : tensor<3xsi64> to tensor<1xsi64>
     // CHECK:   [[SLICE_14:%.+]] = IE.Slice [[SHAPE_OF_2]] [1] [2] : tensor<3xsi64> to tensor<2xsi64>
@@ -189,9 +189,31 @@ func.func @DecomposeDynamicBidirectionalLSTMSequence(%arg0: tensor<1x?x640xf32, 
     // CHECK:   [[SLICE_14:%.+]] = IE.Slice [[SHAPE_OF_3]] [2] [1] : tensor<4xsi64> to tensor<1xsi64>
     // CHECK:   [[CONCAT_2:%.+]] = IE.Concat([[CST_0]], [[CST_1]], [[SLICE_14]], [[CST]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64>, tensor<1xsi64> -> tensor<4xsi64>
     // CHECK:   [[DYN_RESHAPE_3:%.+]] = IE.DynamicReshape([[MAT_MUL_1]], [[CONCAT_2]]) {output_bounds = [1, 1, 512, 1024], output_shape = [1, 1, -9223372036854775808, 1024]} : tensor<1x1x512x1024xf32>, tensor<4xsi64> -> tensor<1x1x?x1024xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 1024]> : tensor<4xsi64>, order = #NCHW}>
-    // CHECK:   [[OUT_HV_2:%.+]], [[OUT_HS_3:%.+]], [[OUT_CS_4:%.+]] = IE.LSTMSequence([[DYN_RESHAPE_3]], [[SLICE_1]], [[SLICE_3]], [[SLICE_7]], [[UNSQUEEZE_3]]) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1>} : tensor<1x1x?x1024xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 1024]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>, tensor<1x1024x256xf32>, tensor<1x1x1024xf32> -> tensor<1x1x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>
+    // CHECK:   [[OUT_HV_2:%.+]], [[OUT_HS_3:%.+]], [[OUT_CS_4:%.+]] = IE.LSTMSequence([[DYN_RESHAPE_3]], [[SLICE_1]], [[SLICE_3]], [[SLICE_7]], [[UNSQUEEZE_3]]) {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 0, 1, 1>} : tensor<1x1x?x1024xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 1024]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>, tensor<1x1024x256xf32>, tensor<1x1x1024xf32> -> tensor<1x1x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x256xf32>, tensor<1x1x256xf32>
     // CHECK:   [[CONCAT_3:%.+]] = IE.Concat([[OUT_HV]], [[OUT_HV_2]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 512, 256]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x2x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 512, 256]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:   [[CONCAT_4:%.+]] = IE.Concat([[OUT_HS]], [[OUT_HS_3]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x256xf32>, tensor<1x1x256xf32> -> tensor<1x2x256xf32>
     // CHECK:   [[CONCAT_5:%.+]] = IE.Concat([[OUT_CS]], [[OUT_CS_4]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x256xf32>, tensor<1x1x256xf32> -> tensor<1x2x256xf32>
     // CHECK:   return [[CONCAT_3]], [[CONCAT_4]], [[CONCAT_5]] : tensor<1x2x?x256xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 512, 256]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x2x256xf32>, tensor<1x2x256xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @DecomposeUnsupportedLSTMSequenceSeqLenParamInput(
+// CHECK-SAME:  [[ARG_0:.+]]: tensor<2x25x64xf32>, [[ARG_1:.+]]: tensor<2x2x128xf32>, [[ARG_2:.+]]: tensor<2x2x128xf32>, [[ARG_3:.+]]: tensor<2xsi64>) -> (tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>) {
+func.func @DecomposeUnsupportedLSTMSequenceSeqLenParamInput(%arg0: tensor<2x25x64xf32>, %arg1: tensor<2x2x128xf32>, %arg2: tensor<2x2x128xf32>, %arg3: tensor<2xsi64>) -> (tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>) {
+    %cst = const.Declare tensor<2x512x64xf32> = dense<0.000000e+00> : tensor<2x512x64xf32>
+    %cst_0 = const.Declare tensor<2x512x128xf32> = dense<1.000000e+00> : tensor<2x512x128xf32>
+    %cst_1 = const.Declare tensor<2x512xf32> = dense<2.000000e+00> : tensor<2x512xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %arg1, %arg2, %arg3, %cst, %cst_0, %cst_1) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1>} : tensor<2x25x64xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>, tensor<2xsi64>, tensor<2x512x64xf32>, tensor<2x512x128xf32>, tensor<2x512xf32> -> tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>
+    return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<2x1x512xf32> = dense<2.000000e+00> : tensor<2x512xf32>, [#const.Reshape<[2, 1, 512]>]
+    // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<2x2x512x64xf32> = dense<0.000000e+00> : tensor<2x512x64xf32>, [#const.Reshape<[1, 2, 512, 64]>, #const.Broadcast<0 : i64, 2 : i64>]
+    // CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<4xsi32> = dense<[2, 2, 25, 64]> : tensor<4xsi64>, [#const.CastElemType<si32>]
+    // CHECK-DAG:   [[CST_2:%.+]] = const.Declare tensor<2x512x128xf32> = dense<1.000000e+00> : tensor<2x512x128xf32>
+    // CHECK:   [[UNSQUEEZE:%.+]] = IE.Unsqueeze(%arg0) {axes_value = [1]} : tensor<2x25x64xf32> -> tensor<2x1x25x64xf32>
+    // CHECK:   [[BROADCAST:%.+]] = IE.Broadcast([[UNSQUEEZE]], [[CST_1]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<2x1x25x64xf32>, tensor<4xsi32> -> tensor<2x2x25x64xf32>
+    // CHECK:   [[MATMUL:%.+]] = IE.MatMul([[BROADCAST]], [[CST_0]]) {transpose_b} : tensor<2x2x25x64xf32>, tensor<2x2x512x64xf32> -> tensor<2x2x25x512xf32>
+    // CHECK:   [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] = IE.LSTMSequence([[MATMUL]], [[ARG_1]], [[ARG_2]], [[ARG_3]], [[CST_2]], [[CST]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 0, 1, 1>} : tensor<2x2x25x512xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>, tensor<2xsi64>, tensor<2x512x128xf32>, tensor<2x1x512xf32> -> tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>
+    // CHECK:   return [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] : tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>
 }

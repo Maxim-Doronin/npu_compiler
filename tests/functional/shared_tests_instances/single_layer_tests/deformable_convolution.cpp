@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -40,6 +41,14 @@ TEST_P(DeformableConvolutionLayerTestCommon, NPU5010_SW) {
 TEST_P(DeformableConvolutionLayerTestTiling, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(DeformableConvolutionLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+TEST_P(DeformableConvolutionLayerTestTiling, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

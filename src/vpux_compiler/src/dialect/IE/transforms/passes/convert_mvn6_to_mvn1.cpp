@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -275,14 +275,14 @@ mlir::LogicalResult ConvertMVN6ToMVN1::matchAndRewrite(IE::MVN6Op origOp, mlir::
                                     .getOutput();
 
         } else {
-            auto staticReshapeInput = rewriter.create<IE::ReshapeOp>(origLoc, reshapeInputSource, nullptr, false,
+            auto staticReshapeInput = rewriter.create<IE::ReshapeOp>(origLoc, reshapeInputSource,
                                                                      getIntArrayAttr(getContext(), newInShape))
                                               .getOutput();
 
             auto mvnOp = rewriter.create<IE::MVNOp>(origLoc, staticReshapeInput, acrossChannelsAttr, normVarianceAttr,
                                                     epsAttr);
 
-            reshapeOutput = rewriter.create<IE::ReshapeOp>(origLoc, mvnOp.getOutput(), nullptr, false,
+            reshapeOutput = rewriter.create<IE::ReshapeOp>(origLoc, mvnOp.getOutput(),
                                                            getIntArrayAttr(getContext(), inputShapeVal))
                                     .getOutput();
         }

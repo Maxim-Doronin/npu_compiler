@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @RemoveDuplicatedSparsify
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @RemoveDuplicatedSparsify(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.Sparsify(%arg0) : tensor<1x16x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
     %1 = VPU.Sparsify(%arg0) : tensor<1x16x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
@@ -21,7 +23,7 @@ func.func @RemoveDuplicatedSparsify(%arg0: tensor<1x16x16x16xf16, {order = #NHWC
     // CHECK-NOT:   VPU.Sparsify
     // CHECK-NOT:   VPU.Sparsify
 
-    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise(%arg0, %arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise([[ARG_0]], [[ARG_0]])
     // CHECK-NOT:       !VPU.SparseTensor
     // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -34,6 +36,8 @@ func.func @RemoveDuplicatedSparsify(%arg0: tensor<1x16x16x16xf16, {order = #NHWC
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @RemoveSparsifyOps
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @RemoveSparsifyOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %arg1: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.Sparsify(%arg0) : tensor<1x16x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
     %1 = VPU.Sparsify(%arg1) : tensor<1x16x16x16xf16, {order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
@@ -47,7 +51,7 @@ func.func @RemoveSparsifyOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %ar
     // CHECK-NOT:   VPU.Sparsify
     // CHECK-NOT:   VPU.Sparsify
 
-    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise(%arg0, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise([[ARG_0]], [[ARG_1]])
     // CHECK-NOT:       !VPU.SparseTensor
     // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -60,6 +64,8 @@ func.func @RemoveSparsifyOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %ar
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @RemoveExtraDesparsify
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @RemoveExtraDesparsify(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Eltwise(%arg0, %arg0) {
         op_type = #VPU.eltwise_type<ADD>,
@@ -76,7 +82,7 @@ func.func @RemoveExtraDesparsify(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
 
     return %2 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise(%arg0, %arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise([[ARG_0]], [[ARG_0]])
     // CHECK-NOT:   !VPU.SparseTensor
     // CHECK-NOT:   VPU.Desparsify
 

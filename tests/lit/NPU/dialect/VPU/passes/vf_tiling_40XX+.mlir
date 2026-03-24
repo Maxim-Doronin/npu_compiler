@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,6 +18,8 @@
 !qElemType6 = !quant.uniform<u8:f16, 0.011832303860608269:83>
 !qElemType7 = !quant.uniform<u8:f16, 0.020894650851978974:128>
 
+// CHECK-LABEL: @TileEltwiseWithTwoVFLinkedInputs
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>
 func.func @TileEltwiseWithTwoVFLinkedInputs(%arg0: tensor<1x16x256x256x!qElemType1, {order = #NHWC}>) -> tensor<1x16x256x256x!qElemType, {order = #NHWC}> {
 
    %cst_4 = const.Declare tensor<16x32x3x3x!qElemType4, {order = #NHWC}> = dense<1.0> : tensor<16x32x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType4>, #const.Reorder<#NHWC>]
@@ -54,42 +56,42 @@ func.func @TileEltwiseWithTwoVFLinkedInputs(%arg0: tensor<1x16x256x256x!qElemTyp
     // CHECK-DAG: [[WEIGHTS0:%.+]] = const.Declare tensor<16x32x3x3x
     // CHECK-DAG: [[WEIGHTS1:%.+]] = const.Declare tensor<32x32x3x3x
     // CHECK-DAG: [[WEIGHTS2:%.+]] = const.Declare tensor<32x16x3x3x
-    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 46, 256]
+    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 16, 46, 256]
     // CHECK: [[CONV0TILE0:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE0]], [[WEIGHTS2]])
     // CHECK: [[CONV1TILE0:%.+]] = VPU.NCE.Convolution([[CONV0TILE0]], [[WEIGHTS1]])
     // CHECK: [[SLICETILE0:%.+]] = VPU.Slice [[CONV0TILE0]] [0, 0, 0, 0] [1, 32, 44, 256]
     // CHECK: [[ELTWISETILE0:%.+]] = VPU.NCE.Eltwise([[SLICETILE0]], [[CONV1TILE0]])
     // CHECK: [[CONV2TILE0:%.+]] = VPU.NCE.Convolution([[ELTWISETILE0]], [[WEIGHTS0]])
-    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice %arg0 [0, 0, 40, 0] [1, 16, 49, 256]
+    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 40, 0] [1, 16, 49, 256]
     // CHECK: [[CONV0TILE1:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE1]], [[WEIGHTS2]])
     // CHECK: [[CONV1TILE1:%.+]] = VPU.NCE.Convolution([[CONV0TILE1]], [[WEIGHTS1]])
     // CHECK: [[SLICETILE1:%.+]] = VPU.Slice [[CONV0TILE1]] [0, 0, 1, 0] [1, 32, 45, 256]
     // CHECK: [[ELTWISETILE1:%.+]] = VPU.NCE.Eltwise([[SLICETILE1]], [[CONV1TILE1]])
     // CHECK: [[CONV2TILE1:%.+]] = VPU.NCE.Convolution([[ELTWISETILE1]], [[WEIGHTS0]])
-    // CHECK: [[SLICEARG0TILE2:%.+]] = VPU.Slice %arg0 [0, 0, 83, 0] [1, 16, 49, 256]
+    // CHECK: [[SLICEARG0TILE2:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 83, 0] [1, 16, 49, 256]
     // CHECK: [[CONV0TILE2:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE2]], [[WEIGHTS2]])
     // CHECK: [[CONV1TILE2:%.+]] = VPU.NCE.Convolution([[CONV0TILE2]], [[WEIGHTS1]])
     // CHECK: [[SLICETILE2:%.+]] = VPU.Slice [[CONV0TILE2]] [0, 0, 1, 0] [1, 32, 45, 256]
     // CHECK: [[ELTWISETILE2:%.+]] = VPU.NCE.Eltwise([[SLICETILE2]], [[CONV1TILE2]])
     // CHECK: [[CONV2TILE2:%.+]] = VPU.NCE.Convolution([[ELTWISETILE2]], [[WEIGHTS0]])
-    // CHECK: [[SLICEARG0TILE3:%.+]] = VPU.Slice %arg0 [0, 0, 126, 0] [1, 16, 49, 256]
+    // CHECK: [[SLICEARG0TILE3:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 126, 0] [1, 16, 49, 256]
     // CHECK: [[CONV0TILE3:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE3]], [[WEIGHTS2]])
     // CHECK: [[CONV1TILE3:%.+]] = VPU.NCE.Convolution([[CONV0TILE3]], [[WEIGHTS1]])
     // CHECK: [[SLICETILE3:%.+]] = VPU.Slice [[CONV0TILE3]] [0, 0, 1, 0] [1, 32, 45, 256]
     // CHECK: [[ELTWISETILE3:%.+]] = VPU.NCE.Eltwise([[SLICETILE3]], [[CONV1TILE3]])
     // CHECK: [[CONV2TILE3:%.+]] = VPU.NCE.Convolution([[ELTWISETILE3]], [[WEIGHTS0]])
-    // CHECK: [[SLICEARG0TILE4:%.+]] = VPU.Slice %arg0 [0, 0, 169, 0] [1, 16, 48, 256]
+    // CHECK: [[SLICEARG0TILE4:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 169, 0] [1, 16, 48, 256]
     // CHECK: [[CONV0TILE4:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE4]], [[WEIGHTS2]])
     // CHECK: [[CONV1TILE4:%.+]] = VPU.NCE.Convolution([[CONV0TILE4]], [[WEIGHTS1]])
     // CHECK: [[SLICETILE4:%.+]] = VPU.Slice [[CONV0TILE4]] [0, 0, 1, 0] [1, 32, 44, 256]
     // CHECK: [[ELTWISETILE4:%.+]] = VPU.NCE.Eltwise([[SLICETILE4]], [[CONV1TILE4]])
     // CHECK: [[CONV2TILE4:%.+]]  = VPU.NCE.Convolution([[ELTWISETILE4]], [[WEIGHTS0]])
-    // CHECK: [[SLICEARG0TILE5:%.+]] = VPU.Slice %arg0 [0, 0, 211, 0] [1, 16, 45, 256]
+    // CHECK: [[SLICEARG0TILE5:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 211, 0] [1, 16, 45, 256]
     // CHECK: [[CONV0TILE5:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE5]], [[WEIGHTS2]])
     // CHECK: [[CONV1TILE5:%.+]] = VPU.NCE.Convolution([[CONV0TILE5]], [[WEIGHTS1]])
     // CHECK: [[SLICETILE5:%.+]] = VPU.Slice [[CONV0TILE5]] [0, 0, 1, 0] [1, 32, 43, 256]
     // CHECK: [[ELTWISETILE5:%.+]] = VPU.NCE.Eltwise([[SLICETILE5]], [[CONV1TILE5]])
-    // CHECK: [[CONV2TILE5:%.+]] = VPU.NCE.Convolution(%34, [[WEIGHTS0]])
+    // CHECK: [[CONV2TILE5:%.+]] = VPU.NCE.Convolution([[ELTWISETILE5]], [[WEIGHTS0]])
 
     // CHECK: [[CONCAT:%.+]] = VPU.Concat([[CONV2TILE0]], [[CONV2TILE1]], [[CONV2TILE2]], [[CONV2TILE3]], [[CONV2TILE4]], [[CONV2TILE5]])
     // CHECK-SAME: {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 43, 0], [0, 0, 86, 0], [0, 0, 129, 0], [0, 0, 172, 0], [0, 0, 214, 0]]}
@@ -101,6 +103,8 @@ func.func @TileEltwiseWithTwoVFLinkedInputs(%arg0: tensor<1x16x256x256x!qElemTyp
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @TileEltwiseChain
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x56x56xf16, {order = #NHWC}>)
 func.func @TileEltwiseChain(%arg0: tensor<1x64x56x56xf16, {order = #NHWC}>) -> tensor<1x256x56x56xf16, {order = #NHWC}> {
 
    %cst_3 = const.Declare tensor<64x64x3x3xf16, {order = #NHWC}> = dense<1.0> : tensor<64x64x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -142,10 +146,10 @@ func.func @TileEltwiseChain(%arg0: tensor<1x64x56x56xf16, {order = #NHWC}>) -> t
     return %0 : tensor<1x256x56x56xf16, {order = #NHWC}>
 
 
-    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 64, 56, 31]
+    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 64, 56, 31]
     // CHECK: [[SLICE0TILE0:%.+]] = VPU.Slice [[SLICEARG0TILE0]] [0, 0, 0, 0] [1, 64, 56, 30]
     // CHECK: [[CONV0TILE0:%.+]] = VPU.NCE.Convolution([[SLICE0TILE0]]
-    // CHECK: [[SLICE1ARG0TILE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 64, 56, 31]
+    // CHECK: [[SLICE1ARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 64, 56, 31]
     // CHECK: [[CONV1TILE0:%.+]] = VPU.NCE.Convolution([[SLICE1ARG0TILE0]],
     // CHECK: [[CONV2TILE0:%.+]] = VPU.NCE.Convolution([[CONV1TILE0]],
     // CHECK: [[CONV3TILE0:%.+]] = VPU.NCE.Convolution([[CONV2TILE0]],
@@ -161,10 +165,10 @@ func.func @TileEltwiseChain(%arg0: tensor<1x64x56x56xf16, {order = #NHWC}>) -> t
     // CHECK: [[SLICE1TILE0:%.+]] = VPU.Slice [[ELTWISE1TILE0]] [0, 0, 0, 0] [1, 256, 56, 28]
     // CHECK: [[ELTWISE2TILE0:%.+]] = VPU.NCE.Eltwise([[CONV9TILE0]], [[SLICE1TILE0]])
 
-    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 25] [1, 64, 56, 31]
+    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 25] [1, 64, 56, 31]
     // CHECK: [[SLICE0TILE1:%.+]] = VPU.Slice [[SLICEARG0TILE1]] [0, 0, 0, 1] [1, 64, 56, 30]
     // CHECK: [[CONV0TILE1:%.+]] = VPU.NCE.Convolution([[SLICE0TILE1]]
-    // CHECK: [[SLICE1ARG0TILE1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 25] [1, 64, 56, 31]
+    // CHECK: [[SLICE1ARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 25] [1, 64, 56, 31]
     // CHECK: [[CONV1TILE1:%.+]] = VPU.NCE.Convolution([[SLICE1ARG0TILE1]],
     // CHECK: [[CONV2TILE1:%.+]] = VPU.NCE.Convolution([[CONV1TILE1]],
     // CHECK: [[CONV3TILE1:%.+]] = VPU.NCE.Convolution([[CONV2TILE1]],
@@ -191,6 +195,10 @@ func.func @TileEltwiseChain(%arg0: tensor<1x64x56x56xf16, {order = #NHWC}>) -> t
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x128x68x120xf16, {order = #NHWC}>,
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x32x272x480xf16, {order = #NHWC}>,
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x64x136x240xf16, {order = #NHWC}>)
 func.func @main(%arg0: tensor<1x128x68x120xf16, {order = #NHWC}>, %arg1: tensor<1x32x272x480xf16, {order = #NHWC}>,
 %arg2: tensor<1x64x136x240xf16, {order = #NHWC}>) -> tensor<1x32x272x480xf16, {order = #NHWC}> {
 
@@ -240,15 +248,15 @@ func.func @main(%arg0: tensor<1x128x68x120xf16, {order = #NHWC}>, %arg1: tensor<
     return %vf_0 : tensor<1x32x272x480xf16, {order = #NHWC}>
 
 
-    // CHECK: [[SLICE_ARG0_0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 128, 68, 27]
+    // CHECK: [[SLICE_ARG0_0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 128, 68, 27]
     // CHECK: VPU.NCE.Convolution
     // CHECK: [[CONV_1:%.+]] = VPU.NCE.Convolution
-    // CHECK: [[SLICE_ARG0_1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 128, 68, 27]
+    // CHECK: [[SLICE_ARG0_1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 128, 68, 27]
     // CHECK: [[SLICE_0:%.+]] = VPU.Slice [[SLICE_ARG0_1]] [0, 0, 0, 0] [1, 128, 68, 26]
     // CHECK: [[ELTWISE_0:%.+]] = VPU.NCE.Eltwise([[CONV_1]], [[SLICE_0]])
     // CHECK: [[GROUP_SPARSE_0:%.+]] = VPU.GroupSparseTensor([[ELTWISE_0]]
     // CHECK: [[CONV_2:%.+]] = VPU.NCE.Convolution([[GROUP_SPARSE_0]]
-    // CHECK: [[SLICE_ARG2:%.+]] = VPU.Slice %arg2 [0, 0, 0, 0] [1, 64, 136, 50]
+    // CHECK: [[SLICE_ARG2:%.+]] = VPU.Slice [[ARG_2]] [0, 0, 0, 0] [1, 64, 136, 50]
     // CHECK: [[ELTWISE_1:%.+]] = VPU.NCE.Eltwise([[CONV_2]], [[SLICE_ARG2]])
     // CHECK: [[CONV_3:%.+]] = VPU.NCE.Convolution([[ELTWISE_1]]
     // CHECK: [[CONV_4:%.+]] = VPU.NCE.Convolution([[CONV_3]]
@@ -256,7 +264,7 @@ func.func @main(%arg0: tensor<1x128x68x120xf16, {order = #NHWC}>, %arg1: tensor<
     // CHECK: [[ELTWISE_2:%.+]] = VPU.NCE.Eltwise([[CONV_4]], [[SLICE_1]])
     // CHECK: [[GROUP_SPARSE_1:%.+]] = VPU.GroupSparseTensor([[ELTWISE_2]]
     // CHECK: [[CONV_5:%.+]] = VPU.NCE.Convolution([[GROUP_SPARSE_1]]
-    // CHECK: [[SLICE_ARG1:%.+]] = VPU.Slice %arg1 [0, 0, 0, 0] [1, 32, 272, 97]
+    // CHECK: [[SLICE_ARG1:%.+]] = VPU.Slice [[ARG_1]] [0, 0, 0, 0] [1, 32, 272, 97]
     // CHECK: [[ELTWISE_3:%.+]] = VPU.NCE.Eltwise([[CONV_5]], [[SLICE_ARG1]])
     // CHECK: VPU.NCE.Convolution([[ELTWISE_3]]
 

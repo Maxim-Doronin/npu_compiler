@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -121,7 +121,7 @@ module @executors {
     }
 
     // CHECK-LABEL: func.func @InterpSplitOverHW
-    // CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x128x35x35xf16, {order = #NHWC}>
+    // CHECK-SAME:        [[ARG_0:%[^:]+]]: tensor<1x128x35x35xf16, {order = #NHWC}>
     func.func @InterpSplitOverHW(
         %input1: tensor<1x128x35x35xf16, {order = #NHWC}>)
                 -> tensor<1x128x168x335xf16, {order = #NHWC}> {
@@ -133,7 +133,7 @@ module @executors {
             tensor<1x128x35x35xf16, {order = #NHWC}> -> tensor<1x128x168x335xf16, {order = #NHWC}>
         return %0 : tensor<1x128x168x335xf16, {order = #NHWC}>
 
-        // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+        // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[ARG_0]])
         // CHECK-SAME:  tilingStrategy = [1, 1, 1, 11]
         // CHECK-SAME:  : tensor<1x128x35x35xf16, {order = #NHWC}>
         // CHECK-SAME:  -> tensor<1x128x168x335xf16, {order = #NHWC}>
@@ -155,7 +155,7 @@ module @executors {
     }
 
     // CHECK-LABEL: func.func @InterpSplitOverCNoCommonFactor
-    // CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x64x31x31xf16, {order = #NHWC}>
+    // CHECK-SAME:        [[ARG_0:%[^:]+]]: tensor<1x64x31x31xf16, {order = #NHWC}>
     func.func @InterpSplitOverCNoCommonFactor(
         %arg0: tensor<1x64x31x31xf16, {order = #NHWC}>)
                 -> tensor<1x64x121x121xf16, {order = #NHWC}> {
@@ -168,7 +168,7 @@ module @executors {
             tensor<1x64x31x31xf16, {order = #NHWC}> -> tensor<1x64x121x121xf16, {order = #NHWC}>
         return %0 : tensor<1x64x121x121xf16, {order = #NHWC}>
 
-        // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+        // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[ARG_0]])
         // CHECK-SAME:  tilingStrategy = [1, 1, 2, 1]
         // CHECK-SAME:  : tensor<1x64x31x31xf16, {order = #NHWC}>
         // CHECK-SAME:  -> tensor<1x64x121x121xf16, {order = #NHWC}>
@@ -1031,12 +1031,12 @@ module @executors {
     }
 
     // CHECK-LABEL: @SplitNegativeActivationSw
-    // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x8x80x960xf16>) -> tensor<1x8x80x960xf16>
+    // CHECK-SAME:      [[ARG_0:%.+]]: tensor<1x8x80x960xf16>) -> tensor<1x8x80x960xf16>
     func.func @SplitNegativeActivationSw(%arg0: tensor<1x8x80x960xf16>) -> tensor<1x8x80x960xf16> {
         %0 = VPU.Negative(%arg0) : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
         return %0 : tensor<1x8x80x960xf16>
 
-        // CHECK:       [[OUTPUT:%.+]] = VPU.Negative(%arg0) {
+        // CHECK:       [[OUTPUT:%.+]] = VPU.Negative([[ARG_0]]) {
         // CHECK-SAME:  tilingStrategy = [1, 1, 1, 2]} : tensor<1x8x80x960xf16> -> tensor<1x8x80x960xf16>
 
         // CHECK:       return [[OUTPUT]] : tensor<1x8x80x960xf16>

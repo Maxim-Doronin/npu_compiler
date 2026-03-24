@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,10 @@
 !qElemType = !quant.uniform<u8:f16, 0.013744638480392157:128>
 !qElemType1 = !quant.uniform<u8<0:254>:f16:0, {0.003883181594488189:127,0.0031930517962598425:127,0.0036140501968503938:127,0.0036563422736220473:127,0.0035063976377952754:127,0.0039908341535433069:127,0.0036659541092519685:127,0.003196896530511811:127,0.0035217765748031494:127,0.0032622570127952754:127,0.0038408895177165355:127,0.0035256213090551179:127,0.0038332000492125986:127,0.003371831938976378:127,0.0035813699557086616:127,0.0037024790846456692:127,0.0038197434793307088:127,0.0036121278297244095:127,0.0033449187992125986:127,0.0031161571112204725:127,0.0036505751722440945:127,0.0034890963336614172:127,0.0038735697588582678:127,0.0033756766732283465:127,0.0030584860974409451:127,0.0037178580216535432:127,0.003456416092519685:127,0.0033256951279527561:127,0.0033487635334645671:127,0.0041484682578740153:127,0.0041215551181102358:127,0.0034910187007874014:127}>
 
+// CHECK-LABEL: @VfTilingWithEltwise
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>,
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>,
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>)
 func.func @VfTilingWithEltwise(%arg0: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %weights_1: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>, %weights_2: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>) -> tensor<1x32x256x256x!qElemType, {order = #NHWC}>  {
     %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %weights_1 as %arg2: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>, %weights_2 as %arg4: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 2, 1], vf_loop_index = 0} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
       %1 = VPU.NCE.Convolution(%arg1, %arg2)
@@ -32,14 +36,14 @@ func.func @VfTilingWithEltwise(%arg0: tensor<1x16x256x256x!qElemType, {order = #
 
     return %0 : tensor<1x32x256x256x!qElemType, {order = #NHWC}>
 
-    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 130, 256]
-    // CHECK: [[CONV0TILE0:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE0]], %arg1)
+    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 16, 130, 256]
+    // CHECK: [[CONV0TILE0:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE0]], [[ARG_1]])
     // CHECK-SAME: {
     // CHECK-SAME:   multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:   pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>,
     // CHECK-SAME:   rawFilterShape = [32, 16, 3, 3], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64}
     // CHECK-SAME:   -> tensor<1x32x129x256x!qElemType, {order = #NHWC}>
-    // CHECK: [[CONV1TILE0:%.+]] = VPU.NCE.Convolution([[CONV0TILE0]], %arg2)
+    // CHECK: [[CONV1TILE0:%.+]] = VPU.NCE.Convolution([[CONV0TILE0]], [[ARG_2]])
     // CHECK-SAME: {
     // CHECK-SAME: multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME: pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>,
@@ -48,7 +52,7 @@ func.func @VfTilingWithEltwise(%arg0: tensor<1x16x256x256x!qElemType, {order = #
     // CHECK: [[SLICETILE0:%.+]] = VPU.Slice [[CONV0TILE0]] [0, 0, 0, 0] [1, 32, 128, 256]
     // CHECK: [[ELTWISETILE0:%.+]] = VPU.NCE.Eltwise([[SLICETILE0]], [[CONV1TILE0]])
     // CHECK-SAME: vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64
-    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice %arg0 [0, 0, 126, 0] [1, 16, 130, 256]
+    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 126, 0] [1, 16, 130, 256]
     // CHECK: [[CONV0TILE1:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE1]], %arg1)
     // CHECK-SAME: {
     // CHECK-SAME:   multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
@@ -56,7 +60,7 @@ func.func @VfTilingWithEltwise(%arg0: tensor<1x16x256x256x!qElemType, {order = #
     // CHECK-SAME:   rawFilterShape = [32, 16, 3, 3],
    // CHECK-SAME:    strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 1 : i64}
    // CHECK-SAME:    -> tensor<1x32x129x256x!qElemType, {order = #NHWC}>
-    // CHECK: [[CONV1TILE1:%.+]] = VPU.NCE.Convolution([[CONV0TILE1]], %arg2)
+    // CHECK: [[CONV1TILE1:%.+]] = VPU.NCE.Convolution([[CONV0TILE1]], [[ARG_2]])
     // CHECK-SAME: {
     // CHECK-SAME:   multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:   pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>,
@@ -127,6 +131,8 @@ func.func @VfTilingWithEltwiseAdjustOffset(
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @TileGroupSparseTensor
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x24x30xf16, {order = #NHWC}>)
 func.func @TileGroupSparseTensor(%arg0: tensor<1x32x24x30xf16, {order = #NHWC}>) -> tensor<1x16x48x60xf16, {order = #NHWC}> {
     %cst_0 = const.Declare tensor<1x32x49x61xi1, {order = #NHWC}> = dense<1> : tensor<1x32x49x61xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     %cst_1 = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
@@ -138,21 +144,23 @@ func.func @TileGroupSparseTensor(%arg0: tensor<1x32x24x30xf16, {order = #NHWC}>)
     }
     return %1 : tensor<1x16x48x60xf16, {order = #NHWC}>
 
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<1x32x49x61xi1, {order = #NHWC}> = dense<1> : tensor<1x32x49x61xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
+    // CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<16x32x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x32x2x2xf16, {order = #NHWC}>
     // CHECK: [[SET:%.+]] = VPU.StorageElementTable {dataElemType = f16, dataShape = [1, 32, 24, 30], seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 1, 1]>, seDepth = 1 : i64, seSize = [32]} -> tensor<1x1x49x61xi32, {order = #NHWC}>
-    // CHECK: [[SLICE_ARG_0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 12, 30]
-    // CHECK: [[SLICE_CST_0:%.+]] = VPU.Slice %cst [0, 0, 0, 0] [1, 32, 25, 61]
+    // CHECK: [[SLICE_ARG_0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 32, 12, 30]
+    // CHECK: [[SLICE_CST_0:%.+]] = VPU.Slice [[CST]] [0, 0, 0, 0] [1, 32, 25, 61]
     // CHECK: [[SLICE_SET_0:%.+]] = VPU.Slice [[SET]] [0, 0, 0, 0] [1, 1, 25, 61]
     // CHECK: [[GST0:%.+]] = VPU.GroupSparseTensor([[SLICE_ARG_0]], [[SLICE_CST_0]], [[SLICE_SET_0]])
     // CHECK-SAME: {seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 2, 2], offsets = [0, 0, 0, 0], sizes = [1, 32, 25, 61]>, vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64}
-    // CHECK: [[CONV0:%.+]] = VPU.NCE.Convolution([[GST0]], %cst_0)
+    // CHECK: [[CONV0:%.+]] = VPU.NCE.Convolution([[GST0]], [[CST_0]])
     // CHECK-SAME: vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64
     // CHECK-SAME: tensor<1x16x24x60xf16, {order = #NHWC}>
-    // CHECK: [[SLICE_ARG_1:%.+]] = VPU.Slice %arg0 [0, 0, 11, 0] [1, 32, 13, 30]
-    // CHECK: [[SLICE_CST_1:%.+]] = VPU.Slice %cst [0, 0, 24, 0] [1, 32, 25, 61]
+    // CHECK: [[SLICE_ARG_1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 11, 0] [1, 32, 13, 30]
+    // CHECK: [[SLICE_CST_1:%.+]] = VPU.Slice [[CST]] [0, 0, 24, 0] [1, 32, 25, 61]
     // CHECK: [[SLICE_SET_1:%.+]] = VPU.Slice [[SET]] [0, 0, 24, 0] [1, 1, 25, 61]
     // CHECK: [[GST1:%.+]] = VPU.GroupSparseTensor([[SLICE_ARG_1]], [[SLICE_CST_1]], [[SLICE_SET_1]])
     // CHECK-SAME: {seAttr = #VPU.SEUpsampling<factors = [1, 1], padding = [1, 1, 2, 2], offsets = [0, 0, 2, 0], sizes = [1, 32, 25, 61]>, vf_loop_index = 0 : i64, vf_loop_layer_index = 1 : i64}
-    // CHECK: [[CONV1:%.+]] = VPU.NCE.Convolution([[GST1]], %cst_0)
+    // CHECK: [[CONV1:%.+]] = VPU.NCE.Convolution([[GST1]], [[CST_0]])
     // CHECK-SAME: vf_loop_index = 0 : i64, vf_loop_layer_index = 1 : i64
     // CHECK-SAME: tensor<1x16x24x60xf16, {order = #NHWC}>
     // CHECK: [[CONCAT:%.+]] = VPU.Concat([[CONV0]], [[CONV1]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 0, 24, 0]]}

@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -90,6 +91,10 @@ TEST_P(MatMulSoftmaxMatMulTestCommon, NPU4000_HW) {
 TEST_P(MatMulSoftmaxMatMulTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(MatMulSoftmaxMatMulTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 INSTANTIATE_TEST_SUITE_P(smoke_MatMulSoftmaxMatMul, MatMulSoftmaxMatMulTestCommon,

@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -104,6 +105,10 @@ TEST_P(ConvInterpolateTransposeTestCommon, NPU4000_HW) {
 TEST_P(ConvInterpolateTransposeTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(ConvInterpolateTransposeTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 const std::vector<ConvInterpolateTransposeTestParams> cSzParams = {{1},  {3},  {4},  {7},  {8}, {9},

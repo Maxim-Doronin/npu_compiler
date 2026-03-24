@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/small_vector.hpp"
@@ -78,6 +79,23 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::AvgPoolOp avgPoolOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    const SupportedMixedPrecisionFunctor _isMixPrecisionSupported;
+    Logger _log;
+};
+
+class QuantizeWithConvolution final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
+public:
+    QuantizeWithConvolution(mlir::MLIRContext* ctx, const SupportedMixedPrecisionFunctor& isMixPrecisionSupported,
+                            Logger log)
+            : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx),
+              _isMixPrecisionSupported(isMixPrecisionSupported),
+              _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::ConvolutionOp convOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     const SupportedMixedPrecisionFunctor _isMixPrecisionSupported;

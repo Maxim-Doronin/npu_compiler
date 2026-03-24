@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @fusePadIntoConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x8x13x29xf16>
 func.func @fusePadIntoConv(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x16x12x28xf16> {
     %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 1, 2], pads_end_attr = [0, 0, 2, 1]}
                         : tensor<1x8x13x29xf16> -> tensor<1x8x16x32xf16>
@@ -23,7 +24,7 @@ func.func @fusePadIntoConv(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x16x12x28xf1
 
     // CHECK-NOT:      IE.Pad
     // CHECK-DAG:      [[CST0:%.+]] = const.Declare tensor<16x8x5x5xf16> = dense<1.000000e+00> : tensor<16x8x5x5xf16>
-    // CHECK:       [[VAR0:%.+]] = IE.Convolution(%arg0, [[CST0]])
+    // CHECK:       [[VAR0:%.+]] = IE.Convolution([[ARG_0]], [[CST0]])
     // CHECK-SAME:        {dilations = [1, 1], pads_begin = [1, 2], pads_end = [2, 1], strides = [1, 1]}
     // CHECK:       tensor<1x8x13x29xf16>, tensor<16x8x5x5xf16> -> tensor<1x16x12x28xf16>
     // CHECK:       return [[VAR0]] : tensor<1x16x12x28xf16>
@@ -32,6 +33,7 @@ func.func @fusePadIntoConv(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x16x12x28xf1
 // -----
 
 // CHECK-LABEL: @fusePadIntoGroupConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x8x13x29xf16>
 func.func @fusePadIntoGroupConv(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x8x12x28xf16> {
     %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 1, 2], pads_end_attr = [0, 0, 2, 1]}
                         : tensor<1x8x13x29xf16> -> tensor<1x8x16x32xf16>
@@ -51,7 +53,7 @@ func.func @fusePadIntoGroupConv(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x8x12x2
     // CHECK-NOT:      IE.Pad
     // CHECK-DAG:      [[CST0:%.+]] = const.Declare tensor<1x8x1x1xf16> = dense<0.000000e+00> : tensor<1x8x1x1xf16>
     // CHECK-DAG:      [[CST1:%.+]] = const.Declare tensor<8x1x5x5xf16> = dense<1.000000e+00> : tensor<8x1x5x5xf16>
-    // CHECK:       [[VAR0:%.+]] = IE.GroupConvolution(%arg0, [[CST1]], [[CST0]])
+    // CHECK:       [[VAR0:%.+]] = IE.GroupConvolution([[ARG_0]], [[CST1]], [[CST0]])
     // CHECK-SAME:        {dilations = [1, 1], groups = 8 : i64, pads_begin = [1, 2], pads_end = [2, 1], strides = [1, 1]}
     // CHECK:       tensor<1x8x13x29xf16>, tensor<8x1x5x5xf16>, tensor<1x8x1x1xf16> -> tensor<1x8x12x28xf16>
     // CHECK:       return [[VAR0]] : tensor<1x8x12x28xf16>
@@ -60,6 +62,7 @@ func.func @fusePadIntoGroupConv(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x8x12x2
 // -----
 
 // CHECK-LABEL: @fusePadIntoMaxPool
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x8x13x29xf16>
 func.func @fusePadIntoMaxPool(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x8x6x14xf16> {
     %0 = IE.Pad(%arg0) {mode = #IE.pad_mode<CONSTANT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 1, 2], pads_end_attr = [0, 0, 2, 1]}
                         : tensor<1x8x13x29xf16> -> tensor<1x8x16x32xf16>
@@ -67,7 +70,7 @@ func.func @fusePadIntoMaxPool(%arg0: tensor<1x8x13x29xf16>) -> tensor<1x8x6x14xf
     return %1 : tensor<1x8x6x14xf16>
 
     // CHECK-NOT:      IE.Pad
-    // CHECK:       [[VAR0:%.+]] = IE.MaxPool(%arg0)
+    // CHECK:       [[VAR0:%.+]] = IE.MaxPool([[ARG_0]])
     // CHECK-SAME:        {kernel_size = [5, 5], pads_begin = [1, 2], pads_end = [2, 1], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]}
     // CHECK:       tensor<1x8x13x29xf16> -> tensor<1x8x6x14xf16>
     // CHECK:       return [[VAR0]] : tensor<1x8x6x14xf16>

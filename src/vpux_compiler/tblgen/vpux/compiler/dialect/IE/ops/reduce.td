@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -269,18 +269,19 @@ def IE_ReduceSumOp :
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT];
 }
 
-def IE_ReduceMeanSquareOp :
+def IE_ReduceSquareOp :
         IE_LayerOp<
-            "ReduceMeanSquare"
+            "ReduceSquare"
         > {
-    let summary = "InferenceEngine ReduceMeanSquare layer";
+    let summary = "InferenceEngine ReduceSquare layer";
 
     let arguments = (ins
         AnyRankedTensor:$input,
         Optional<TensorRankOf<[AnyInteger], [0, 1]>>:$axes,
         OptionalAttr<F64Attr>:$epsilon,
         OptionalAttr<I64ArrayAttr>:$axes_value,
-        UnitAttr:$keep_dims
+        UnitAttr:$keep_dims,
+        OptionalAttr<I64Attr>:$scale
     );
 
     let results = (outs

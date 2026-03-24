@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -30,32 +31,16 @@ namespace {
 class ConvertNonConstantPadToSliceAndConcatPass final :
         public IE::impl::ConvertNonConstantPadToSliceAndConcatBase<ConvertNonConstantPadToSliceAndConcatPass> {
 public:
-    explicit ConvertNonConstantPadToSliceAndConcatPass(const bool enableSEPPad, Logger log)
-            : _enableSEPPad(enableSEPPad) {
+    explicit ConvertNonConstantPadToSliceAndConcatPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 public:
     class NonConstantPadConverter;
 
 private:
     void safeRunOnFunc() final;
-    bool _enableSEPPad;
 };
-
-mlir::LogicalResult ConvertNonConstantPadToSliceAndConcatPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    if (enableSEPPad.hasValue()) {
-        _enableSEPPad = enableSEPPad.getValue();
-    }
-
-    return mlir::success();
-}
 
 //
 // NonConstantPadConverter
@@ -179,6 +164,8 @@ mlir::LogicalResult ConvertNonConstantPadToSliceAndConcatPass::NonConstantPadCon
 void ConvertNonConstantPadToSliceAndConcatPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
+    auto moduleOp = getModuleOp(func);
+    const auto hasSEPtrsEnabled = config::hasEnableSEPtrsOperations(moduleOp);
 
     mlir::ConversionTarget target(ctx);
 
@@ -192,7 +179,7 @@ void ConvertNonConstantPadToSliceAndConcatPass::safeRunOnFunc() {
             return true;
         }
 
-        if (_enableSEPPad &&
+        if (hasSEPtrsEnabled &&
             VPU::isSupportedSEPPadOp(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false)) {
             _log.nest().trace("Pad Operation {0} can be executed using SEP", op);
             return true;
@@ -217,7 +204,6 @@ void ConvertNonConstantPadToSliceAndConcatPass::safeRunOnFunc() {
 // createConvertNonConstantPadToSliceAndConcatPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertNonConstantPadToSliceAndConcatPass(const bool enableSEPPad,
-                                                                                      Logger log) {
-    return std::make_unique<ConvertNonConstantPadToSliceAndConcatPass>(enableSEPPad, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertNonConstantPadToSliceAndConcatPass(Logger log) {
+    return std::make_unique<ConvertNonConstantPadToSliceAndConcatPass>(log);
 }

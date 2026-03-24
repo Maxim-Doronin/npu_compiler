@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/constraints.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <cstdint>
 
@@ -53,9 +54,7 @@ SmallVector<SmallVector<uint64_t>> getBWTicks(mlir::ModuleOp module) {
     // inferenceTime table will be zero defaultly when InferenceExecutionAnalysisPass disabled
     // In this way the runtime will be able to use measured ticks instead
     size_t inferenceTimebyDPUCycle = 0;
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto netInfo = net::getNetworkInfo(module);
     if (netInfo.getInferenceTiming().has_value()) {
         inferenceTimebyDPUCycle = netInfo.getInferenceTiming().value();
     } else {

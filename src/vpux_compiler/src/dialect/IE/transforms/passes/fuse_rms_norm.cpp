@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,9 +11,12 @@
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/broadcast_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/power_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
@@ -53,7 +56,45 @@ private:
 //   |                                                                                   |
 //    ------------------------------------------------------------------------------------
 //                     Fuses to IE.RMS with gamma = 1/Sqrt(inputDims[axis])
+// Or
+// Input -> IE.Power|IE.Multiply -> IE.ReduceSum -> IE.Multiply(Cst_Scale) -> (optional IE.Add)
+//   |                                                                                 |
+//   |                               --------------------------------------------------
+//   |                               |
+//   |                               v
+//   |                     (optional IE.AffineReshape) -> IE.Power(-0.5) -> IE.Multiply
+//   |                                                                           ^
+//   |                                                                           |
+//    ----------------------------------------------------------------------------
+//                     Fuses to IE.RMS with gamma = 1/Sqrt(inputDims[axis]*Cst_Scale)
+// Or
+// Input -> IE.Power|IE.Multiply -> IE.ReduceSum -> IE.Multiply(Cst_Scale_1) -> (optional IE.Add)
+//   |                                                                                 |
+//   |                               --------------------------------------------------
+//   |                               |
+//   |                               v
+//   |                     (optional IE.AffineReshape) -> IE.Power(-0.5) -> IE.Multiply -> IE.Multiply(Cst_Scale_2)
+//   |                                                                           ^
+//   |                                                                           |
+//    ----------------------------------------------------------------------------
+//                     Fuses to IE.RMS with gamma = Cst_Scale_2/Sqrt(inputDims[axis]*Cst_Scale_1)
 // Since (X/Sqrt(ReduceMean(X^2, axis)))*(1/Sqrt(inputDims[axis])) = X/Sqrt(ReduceSum(X^2, axis))
+
+bool isDimExpansionOp(mlir::Operation* op) {
+    // Helper to check if op is a dimension expansion operation (unsqueeze-like)
+    if (auto affineReshapeOp = mlir::dyn_cast_if_present<IE::AffineReshapeOp>(op)) {
+        auto inShape = getShape(affineReshapeOp.getInput());
+        auto outShape = getShape(affineReshapeOp.getOutput());
+        return !IE::isNotDimExpansionReshape(inShape, outShape);
+    }
+    return mlir::isa_and_present<IE::UnsqueezeOp>(op);
+}
+
+Const::DeclareOp getMultiplyConstOperand(mlir::Operation* op) {
+    auto const1 = op->getOperand(0).getDefiningOp<Const::DeclareOp>();
+    auto const2 = op->getOperand(1).getDefiningOp<Const::DeclareOp>();
+    return const1 ? const1 : const2;
+}
 
 mlir::Operation* getPowerOp(mlir::Operation* op) {
     // Check the case of x^2
@@ -62,10 +103,34 @@ mlir::Operation* getPowerOp(mlir::Operation* op) {
         return powerOp;
     }
 
+    auto skipDimExpansionParent = [](mlir::Operation* op) -> mlir::Value {
+        if (op == nullptr) {
+            return mlir::Value();
+        }
+        if (isDimExpansionOp(op) && op->hasOneUse()) {
+            return op->getOperand(0);
+        }
+        return op->getResult(0);
+    };
+
     // Check the case of x*x
     auto multiplyOp = mlir::dyn_cast_or_null<IE::MultiplyOp>(op);
-    if (multiplyOp != nullptr && multiplyOp.getInput1() == multiplyOp.getInput2() && multiplyOp->hasOneUse()) {
-        return multiplyOp;
+    if (multiplyOp != nullptr && multiplyOp->hasOneUse()) {
+        if (multiplyOp.getInput1() == multiplyOp.getInput2()) {
+            return multiplyOp;
+        } else {
+            // Support mixed inputs - one is multiplyOp, another is multiplyOp + affineReshapeOp
+            mlir::Value input1 = multiplyOp.getInput1();
+            mlir::Value input2 = multiplyOp.getInput2();
+            mlir::Value parentValue = skipDimExpansionParent(input1.getDefiningOp());
+            if (parentValue && parentValue == input2) {
+                return multiplyOp;
+            }
+            parentValue = skipDimExpansionParent(input2.getDefiningOp());
+            if (parentValue && parentValue == input1) {
+                return multiplyOp;
+            }
+        }
     }
 
     return nullptr;
@@ -133,7 +198,53 @@ mlir::FailureOr<float> getEpsilon(mlir::Operation* op) {
             return mlir::failure();
         }
         return maybeEpsilonVal.value();
+    } else if (auto multiplyOp = mlir::dyn_cast_or_null<IE::MultiplyOp>(op)) {
+        // Handle MultiplyOp(Cst_Scale) + AddOp pattern
+        if (!multiplyOp->hasOneUse()) {
+            return mlir::failure();
+        }
+
+        Const::DeclareOp multiplyConstOp = getMultiplyConstOperand(multiplyOp);
+        if (multiplyConstOp) {
+            const auto multiplyConstVal = Const::getSplatValue<float>(multiplyConstOp);
+            if (mlir::succeeded(multiplyConstVal)) {
+                if (auto addOp = mlir::dyn_cast<IE::AddOp>(*multiplyOp->getUsers().begin())) {
+                    auto epsilonConstOp = mlir::isa_and_nonnull<Const::DeclareOp>(addOp->getOperand(0).getDefiningOp())
+                                                  ? addOp->getOperand(0).getDefiningOp<Const::DeclareOp>()
+                                                  : addOp->getOperand(1).getDefiningOp<Const::DeclareOp>();
+                    if (epsilonConstOp == nullptr) {
+                        return mlir::failure();
+                    }
+
+                    const auto maybeEpsilonVal = Const::getSplatValue<float>(epsilonConstOp);
+                    if (mlir::failed(maybeEpsilonVal)) {
+                        return mlir::failure();
+                    }
+
+                    return maybeEpsilonVal.value() / multiplyConstVal.value();
+                }
+            }
+        }
     }
+    return mlir::failure();
+}
+
+mlir::FailureOr<float> getMultiplyScale(mlir::Operation* op) {
+    // Handle MultiplyOp as Cst_Scale
+    if (auto multiplyOp = mlir::dyn_cast_or_null<IE::MultiplyOp>(op)) {
+        if (!multiplyOp->hasOneUse()) {
+            return mlir::failure();
+        }
+
+        Const::DeclareOp multiplyConstOp = getMultiplyConstOperand(multiplyOp);
+        if (multiplyConstOp) {
+            const auto multiplyConstVal = Const::getSplatValue<float>(multiplyConstOp);
+            if (mlir::succeeded(multiplyConstVal)) {
+                return multiplyConstVal.value();
+            }
+        }
+    }
+
     return mlir::failure();
 }
 
@@ -158,9 +269,45 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
     auto powerInput = powerOp->getOperand(0);
     auto powerInputShape = getShape(powerInput);
     auto epsilon = std::numeric_limits<type::float16>::smallest_mixed_precision_eps;
+    mlir::Operation* divideOp = nullptr;
+    float multiplyScale = 1.0f;
 
-    auto sqrtOp = mlir::dyn_cast_or_null<IE::SqrtOp>(*reduceSumOp->getUsers().begin());
-    if (sqrtOp == nullptr) {
+    // Support both Sqrt->Divide and Power(-0.5) patterns
+    divideOp = getSqrtAndDivideOps(*reduceSumOp->getUsers().begin());
+
+    // Try getSqrtAndDivideOps again after epsilon operation
+    auto tryGetSqrtAndDivideOps = [&divideOp](mlir::Operation* op) -> bool {
+        // Skip dimension expansion op (AffineReshape/Unsqueeze) if present
+        auto nextOp = *op->getUsers().begin();
+        if (isDimExpansionOp(nextOp)) {
+            if (!nextOp->hasOneUse()) {
+                return false;
+            }
+            nextOp = *nextOp->getUsers().begin();
+        }
+
+        divideOp = getSqrtAndDivideOps(nextOp);
+        if (divideOp == nullptr) {
+            auto maybeAddOp = mlir::dyn_cast_or_null<IE::AddOp>(nextOp);
+            if (!maybeAddOp || !maybeAddOp->hasOneUse()) {
+                return false;
+            }
+
+            nextOp = *maybeAddOp->getUsers().begin();
+            if (isDimExpansionOp(nextOp)) {
+                if (!nextOp->hasOneUse()) {
+                    return false;
+                }
+                nextOp = *nextOp->getUsers().begin();
+            }
+
+            divideOp = getSqrtAndDivideOps(nextOp);
+            return divideOp != nullptr;
+        }
+        return true;
+    };
+
+    if (divideOp == nullptr) {
         auto preventDivByZeroOp = *reduceSumOp->getUsers().begin();
         if (!preventDivByZeroOp->hasOneUse()) {
             return;
@@ -171,19 +318,16 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
         }
         epsilon = epsilonResult.value();
 
-        sqrtOp = mlir::dyn_cast_or_null<IE::SqrtOp>(*preventDivByZeroOp->getUsers().begin());
-        if (sqrtOp == nullptr) {
+        auto multiplyScaleResult = getMultiplyScale(preventDivByZeroOp);
+        if (mlir::succeeded(multiplyScaleResult)) {
+            multiplyScale = multiplyScaleResult.value();
+        }
+
+        if (!tryGetSqrtAndDivideOps(preventDivByZeroOp)) {
             return;
         }
     }
 
-    if (!sqrtOp->hasOneUse()) {
-        return;
-    }
-
-    const auto epsilonAttr = getFPAttr(&ctx, epsilon);
-
-    auto divideOp = mlir::dyn_cast_or_null<IE::DivideOp>(*sqrtOp->getUsers().begin());
     if (divideOp == nullptr) {
         return;
     }
@@ -214,21 +358,35 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
         return;
     }
     int64_t reduceSize = reduceSizeResult.value();
-    float gammaScale = sqrtf(reduceSize);
+    float gammaScale = sqrtf(reduceSize * multiplyScale);
+    const auto epsilonAttr = getFPAttr(&ctx, epsilon / reduceSize);
 
     mlir::Operation* opBeforeScale = divideOp;
-    // In case the first input of the DivideOp is 1
-    auto divideInput = mlir::dyn_cast_or_null<Const::DeclareOp>(divideOp.getInput1().getDefiningOp());
-    if (divideInput != nullptr && divideInput.getContent().getSplatValue<int64_t>() == 1) {
-        if (!divideOp->hasOneUse()) {
+    if (auto realDivideOp = mlir::dyn_cast_or_null<IE::DivideOp>(divideOp)) {
+        // Sqrt->Divide pattern
+        // In case the first input of the DivideOp is 1
+        auto divideInput = mlir::dyn_cast_or_null<Const::DeclareOp>(realDivideOp.getInput1().getDefiningOp());
+        if (divideInput != nullptr && divideInput.getContent().getSplatValue<int64_t>() == 1) {
+            if (!realDivideOp->hasOneUse()) {
+                return;
+            }
+            auto selfMultiplyOp =
+                    mlir::dyn_cast_or_null<IE::MultiplyOp>(skipReshapeIfPresent(*realDivideOp->getUsers().begin()));
+            if (selfMultiplyOp == nullptr) {
+                return;
+            }
+            opBeforeScale = selfMultiplyOp;
+        }
+    } else if (auto powerDivideOp = mlir::dyn_cast_or_null<IE::PowerOp>(divideOp)) {
+        // Power(-0.5) pattern
+        if (!powerDivideOp->hasOneUse()) {
             return;
         }
         auto selfMultiplyOp =
-                mlir::dyn_cast_or_null<IE::MultiplyOp>(skipReshapeIfPresent(*divideOp->getUsers().begin()));
+                mlir::dyn_cast_or_null<IE::MultiplyOp>(skipReshapeIfPresent(*powerDivideOp->getUsers().begin()));
         if (selfMultiplyOp == nullptr) {
             return;
         }
-
         opBeforeScale = selfMultiplyOp;
     }
 
@@ -253,17 +411,15 @@ void isReduceSumPattern(mlir::Operation* maybePowerOp, IE::ReduceSumOp reduceSum
         const SmallVector<int64_t> newInShape = {1, 1, reduceSumOutputShape[Dim(reduceSumOutputShape.size() - 1)],
                                                  reduceSize};
 
-        auto inReshapeOp =
-                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "in_reshape"), powerOp->getOperand(0),
-                                              nullptr, false, getIntArrayAttr(&ctx, newInShape));
+        auto inReshapeOp = builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "in_reshape"),
+                                                         powerOp->getOperand(0), getIntArrayAttr(&ctx, newInShape));
 
         // Create RMSOp
         auto rmsOp = builder.create<IE::RMSOp>(appendLoc(powerOp->getLoc(), "rms"), inReshapeOp, gamma, epsilonAttr);
 
         // Reshape Output
-        auto outReshapeOp =
-                builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "out_reshape"), rmsOp->getResult(0), nullptr,
-                                              false, getIntArrayAttr(&ctx, powerInputShape));
+        auto outReshapeOp = builder.create<IE::ReshapeOp>(appendLoc(powerOp->getLoc(), "out_reshape"),
+                                                          rmsOp->getResult(0), getIntArrayAttr(&ctx, powerInputShape));
 
         opBeforeScale->replaceAllUsesWith(outReshapeOp);
 
@@ -333,9 +489,8 @@ IE::RMSOp createRMSOp(mlir::OpBuilder& builder, mlir::Operation* headOp, mlir::V
                       mlir::FloatAttr epsilonAttr) {
     auto gammaRank = mlir::cast<vpux::NDTypeInterface>(gamma.getType()).getRank();
     if (gammaRank != 1) {
-        auto reshapeOp =
-                builder.create<IE::ReshapeOp>(gamma.getLoc(), gamma, nullptr, false,
-                                              getIntArrayAttr(headOp->getContext(), SmallVector<int64_t>({layerSize})));
+        auto reshapeOp = builder.create<IE::ReshapeOp>(
+                gamma.getLoc(), gamma, getIntArrayAttr(headOp->getContext(), SmallVector<int64_t>({layerSize})));
         gamma = reshapeOp;
     }
     auto rmsOp =
@@ -349,16 +504,21 @@ IE::RMSOp createRMSOp(mlir::OpBuilder& builder, mlir::Operation* headOp, mlir::V
 //
 
 // Match pattern
-// Input -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> IE.Sqrt -> IE.Divide -> IE.Multiply -> IE.Multiply (gamma)
-//   |                                                                                   ^
-//   |                                                                                   |
-//    -----------------------------------------------------------------------------------
+// Input -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> [IE.AffineReshape] -> IE.Sqrt -> IE.Divide -> IE.Multiply
+//   \                                                                                             /
+//    ---------------------------------------------------------------------------------------------
+// -> IE.Multiply (gamma)
 // Or
-// Input -> IE.Convert -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> IE.Sqrt -> IE.Divide -> IE.Multiply ->
-// IE.Convert -> IE.Multiply (gamma)
-//   |                                                                                                  ^
-//   |                                                                                                  |
-//    --------------------------------------------------------------------------------------------------
+// Input -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> [IE.AffineReshape] -> IE.Power(-0.5) -> IE.Multiply
+//   \                                                                                                   /
+//    ---------------------------------------------------------------------------------------------------
+// -> IE.Multiply (gamma)
+// Or
+// Input -> IE.Convert -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> [IE.AffineReshape] -> IE.Sqrt -> IE.Divide
+//   \                                                                                                           /
+//    -----------------------------------------------------------------------------------------------------------
+// -> IE.Multiply -> IE.Convert -> IE.Multiply (gamma)
+// Note: [IE.AffineReshape] is optional, present when ReduceMean uses keep_dims=false
 // Convert to RMS
 // RMS = x * 1/Sqrt(ReduceMean(x^2,axes)+eps) * gamma
 void FuseRMSNormPass::safeRunOnFunc() {
@@ -408,7 +568,18 @@ void FuseRMSNormPass::safeRunOnFunc() {
                 return;
             }
             epsilon = epsilonResult.value();
-            divideOp = getSqrtAndDivideOps(*preventDivByZeroOp->getUsers().begin());
+            // Get the next op after epsilon op
+            auto nextOp = *preventDivByZeroOp->getUsers().begin();
+
+            // Skip dimension expansion op (AffineReshape/Unsqueeze) if present
+            if (isDimExpansionOp(nextOp)) {
+                if (!nextOp->hasOneUse()) {
+                    return;
+                }
+                nextOp = *nextOp->getUsers().begin();
+            }
+
+            divideOp = getSqrtAndDivideOps(nextOp);
             if (divideOp == nullptr) {
                 return;
             }
@@ -484,9 +655,25 @@ void FuseRMSNormPass::safeRunOnFunc() {
             auto inputDims = getShape(powerOp->getOperand(0));
             auto inputWidth = inputDims[Dim(inputDims.size() - 1)];
 
-            // Gamma should have only one non-one dimension, and the width should be the same as the input width
-            if (inputWidth != gammaWidth || getNonOneDim(gammaDims).size() != 1) {
+            if (getNonOneDim(gammaDims).size() > 1 || !isBroadcastable(gammaWidth, inputWidth)) {
                 return;
+            }
+
+            if (gammaWidth != inputWidth) {
+                auto gammaConstOp = gamma.getDefiningOp<Const::DeclareOp>();
+                if (gammaConstOp == nullptr) {
+                    return;
+                }
+
+                SmallVector<int64_t> newGammaShape(gammaDims.begin(), gammaDims.end());
+                newGammaShape[gammaDims.size() - 1] = inputWidth;
+
+                auto broadcastedContentAttr =
+                        gammaConstOp.transformContentAttr().broadcast(Dim(gammaDims.size() - 1), inputWidth).get();
+                auto newGammaType = mlir::RankedTensorType::get(
+                        newGammaShape, mlir::cast<mlir::ShapedType>(gamma.getType()).getElementType());
+                gamma = builder.create<Const::DeclareOp>(appendLoc(headOp->getLoc(), "gamma_broadcast"), newGammaType,
+                                                         broadcastedContentAttr);
             }
         }
 

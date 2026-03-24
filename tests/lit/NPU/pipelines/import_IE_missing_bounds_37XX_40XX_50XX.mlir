@@ -1,10 +1,10 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // Expected this test to fail, so revert error code
-// RUN: not vpux-translate --vpu-arch=%arch% --import-IE ./IR/test_dynamic_shapes.xml | FileCheck %s
+// RUN: not vpux-translate --vpu-arch=%arch% --import-IE ./IR/test_dynamic_shapes.xml 2>&1 | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // Input: Validate IR without upper bounds specified, should fail on frontend level

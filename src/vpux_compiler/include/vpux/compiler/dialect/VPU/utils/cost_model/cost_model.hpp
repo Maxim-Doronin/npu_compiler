@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -107,8 +107,7 @@ VPUNN::DPULayer getDPULayer(const VPUIP::WorkloadCostParams& params);
 std::vector<VPUNN::DPULayer> getPerClusterDPULayers(VPU::NCEOpInterface nceOp, const VPUIP::WorkloadCostParams& params,
                                                     Logger log);
 std::vector<VPUNN::SHAVEWorkload> getPerClusterShaveWorkloads(VPU::SWOpInterface swOp,
-                                                              const VPUIP::ShaveWorkloadCostParams& params, Logger log,
-                                                              bool isShave2ApiUsed);
+                                                              const VPUIP::ShaveWorkloadCostParams& params, Logger log);
 VPUNN::DPUWorkload getDPUWorkload(const VPUIP::WorkloadCostParams& tileParams, const VPUIP::WorkloadTile& wl);
 VPUIP::WorkloadCostParams getWorkloadCostParam(VPU::NCEOpInterface nceOp, config::ArchKind arch, int64_t numDPU,
                                                int64_t numTiles = 1,

@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mvn-fusion --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
+// CHECK-LABEL: @FuseMVNInsideSqrt
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x1500x512xf32>) -> tensor<1500x512xf32>
 func.func @FuseMVNInsideSqrt(%arg0: tensor<1x1500x512xf32>) -> tensor<1500x512xf32> {
     %1 = IE.Reshape(%arg0) {shape_value = [1500, 512]} : tensor<1x1500x512xf32> -> tensor<1500x512xf32>
 
@@ -34,7 +36,7 @@ func.func @FuseMVNInsideSqrt(%arg0: tensor<1x1500x512xf32>) -> tensor<1500x512xf
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK:        tensor<1x1500x512xf32> -> tensor<1x1500x512x1xf32>
     // CHECK:  [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
     // CHECK-SAME:    across_channels = false,
@@ -47,6 +49,8 @@ func.func @FuseMVNInsideSqrt(%arg0: tensor<1x1500x512xf32>) -> tensor<1500x512xf
 
 // -----
 
+// CHECK-LABEL: @FuseMVNOutsideSqrt
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1500x512xf32>) -> tensor<1500x512xf32>
 func.func @FuseMVNOutsideSqrt(%arg0: tensor<1500x512xf32>) -> tensor<1500x512xf32> {
     %mean1Axes = const.Declare tensor<si32> = dense<1> : tensor<si32>
     %mean1 = IE.ReduceMean(%arg0, %mean1Axes) {keep_dims} : tensor<1500x512xf32>, tensor<si32> -> tensor<1500x1xf32>
@@ -73,7 +77,7 @@ func.func @FuseMVNOutsideSqrt(%arg0: tensor<1500x512xf32>) -> tensor<1500x512xf3
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK:        tensor<1500x512xf32> -> tensor<1x1500x512x1xf32>
     // CHECK:  [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
     // CHECK-SAME:    across_channels = false,
@@ -86,6 +90,8 @@ func.func @FuseMVNOutsideSqrt(%arg0: tensor<1500x512xf32>) -> tensor<1500x512xf3
 
 // -----
 
+// CHECK-LABEL: @FuseMVNAxes2D
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<16x1500x512xf32>) -> tensor<16x1500x512xf32>
 func.func @FuseMVNAxes2D(%arg0: tensor<16x1500x512xf32>) -> tensor<16x1500x512xf32> {
     %mean1Axes = const.Declare tensor<2xsi32> = dense<[1,2]> : tensor<2xsi32>
     %mean1 = IE.ReduceMean(%arg0, %mean1Axes) {keep_dims} : tensor<16x1500x512xf32>, tensor<2xsi32> -> tensor<16x1x1xf32>
@@ -112,7 +118,7 @@ func.func @FuseMVNAxes2D(%arg0: tensor<16x1500x512xf32>) -> tensor<16x1500x512xf
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[PRE_RESHAPE:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK:        tensor<16x1500x512xf32> -> tensor<1x16x1500x512xf32>
     // CHECK:  [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
     // CHECK-SAME:    across_channels = false,
@@ -125,6 +131,8 @@ func.func @FuseMVNAxes2D(%arg0: tensor<16x1500x512xf32>) -> tensor<16x1500x512xf
 
 // -----
 
+// CHECK-LABEL: @FuseMVNAcrossChannel
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x1500x512xf32>) -> tensor<1x16x1500x512xf32>
 func.func @FuseMVNAcrossChannel(%arg0: tensor<1x16x1500x512xf32>) -> tensor<1x16x1500x512xf32> {
     %mean1Axes = const.Declare tensor<3xsi32> = dense<[1,2,3]> : tensor<3xsi32>
     %mean1 = IE.ReduceMean(%arg0, %mean1Axes) {keep_dims} : tensor<1x16x1500x512xf32>, tensor<3xsi32> -> tensor<1x1x1x1xf32>
@@ -151,7 +159,7 @@ func.func @FuseMVNAcrossChannel(%arg0: tensor<1x16x1500x512xf32>) -> tensor<1x16
     // CHECK-NOT: IE.ReduceMean
     // CHECK-NOT: IE.Divide
     // CHECK-NOT: IE.Sqrt
-    // CHECK:  [[MVN:%.+]] = IE.MVN(%arg0)
+    // CHECK:  [[MVN:%.+]] = IE.MVN([[ARG_0]])
     // CHECK-SAME:    across_channels = true,
     // CHECK:         eps
     // CHECK-SAME:    normalize_variance = true} : tensor<1x16x1500x512xf32> -> tensor<1x16x1500x512xf32>

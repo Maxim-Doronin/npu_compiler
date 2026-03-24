@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -28,6 +29,11 @@ TEST_P(GroupConvBackpropLayerTestCommon, NPU5010_HW) {
     abs_threshold = 0.1;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(GroupConvBackpropLayerTestCommon, NPU5020_HW) {
+    abs_threshold = 0.1;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

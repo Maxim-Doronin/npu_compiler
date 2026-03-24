@@ -1,14 +1,17 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
 #include <mlir/IR/Attributes.h>
+
+namespace vpux::VPU {
+enum class MemoryKind : uint64_t;
+}  // namespace vpux::VPU
 
 //
 // Generated

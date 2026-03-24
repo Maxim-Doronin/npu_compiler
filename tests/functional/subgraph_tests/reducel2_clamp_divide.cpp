@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -43,6 +44,11 @@ TEST_F(ReduceL2ClampDivideTestCommon, NPU4000_TestKindSubgraph) {
 TEST_F(ReduceL2ClampDivideTestCommon, NPU5010_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+
+TEST_F(ReduceL2ClampDivideTestCommon, NPU5020_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace ov::test

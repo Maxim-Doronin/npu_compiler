@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPUIP/interfaces/common_rewriters/unroll_expand_dma.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/unroll_expand_dma_strategy_getter.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
@@ -42,10 +42,10 @@ void UnrollExpandDMAPass::safeRunOnFunc() {
     auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
 
-    auto unrollStrategy = VPUIP::createUnrollExpandDMAStrategy(func);
-
-    unrollStrategy->addPatterns(patterns, _log);
+    patterns.add<VPUIP::SingleClusterExpandDMARewriter>(&ctx, dmaPortCount, _log);
+    patterns.add<VPUIP::MultiClusterExpandDMARewriter>(&ctx, dmaPortCount, _log);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), vpux::getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

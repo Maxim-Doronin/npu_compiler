@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@ namespace vpux {
 void InterfacesRegistry37XX::registerInterfaces(mlir::DialectRegistry& registry) {
     IE::arch37xx::registerElemTypeInfoOpInterfaces(registry);
     IE::arch37xx::registerExecutorOpInterfaces(registry);
+    IE::arch37xx::registerQuantizedLayerOpInterfaces(registry);
     VPU::arch37xx::registerLayerWithPostOpModelInterface(registry);
     VPU::arch37xx::registerLayoutInfoOpInterfaces(registry);
     VPU::arch37xx::registerDDRAccessOpModelInterface(registry);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,76 @@ namespace vpux {
 namespace IE {
 
 bool doesAffineReshapeChangeRank(IE::AffineReshapeOp reshape);
+
+// Check if operation is a valid compute op (Conv/GroupConv or Elementwise)
+bool isValidComputeOp(mlir::Operation* op);
+
+// Find single operation of type OpType from the largest input on concat axis
+// Returns the operation if found, nullptr otherwise
+// This function prevents infinite loops by ensuring:
+// 1. Only one input has maximum size on concat axis
+// 2. Only the largest input has the target operation
+// 3. All other inputs don't have the target operation
+template <typename OpType>
+OpType findSingleOpFromLargestInput(mlir::OperandRange inputs, const mlir::DenseSet<int64_t>& modifiedAxes,
+                                    const Logger& log) {
+    // Only support single dimension concat
+    if (modifiedAxes.size() != 1) {
+        return nullptr;
+    }
+
+    const auto concatAxis = *modifiedAxes.begin();
+
+    struct InputInfo {
+        mlir::Value value;
+        int64_t concatAxisSize;
+    };
+
+    SmallVector<InputInfo> inputInfos;
+    inputInfos.reserve(inputs.size());
+
+    for (const auto& input : inputs) {
+        const auto inputShape = getShape(input);
+        inputInfos.push_back({input, inputShape[Dim(concatAxis)]});
+    }
+
+    // Sort by concat axis size in descending order
+    llvm::sort(inputInfos, [](const InputInfo& a, const InputInfo& b) {
+        return a.concatAxisSize > b.concatAxisSize;
+    });
+
+    // Check if only the largest input on concat axis exists
+    const int64_t maxConcatAxisSize = inputInfos[0].concatAxisSize;
+    size_t maxSizeInputCount = 0;
+
+    for (const auto& info : inputInfos) {
+        if (info.concatAxisSize == maxConcatAxisSize) {
+            maxSizeInputCount++;
+        }
+    }
+
+    // Prevent infinite loop: only apply if there's exactly one max-size input on concat axis
+    if (maxSizeInputCount > 1) {
+        log.trace("Multiple inputs with same max concat axis size, avoiding potential infinite loop");
+        return nullptr;
+    }
+
+    // Check if the largest input has the target operation
+    auto targetOp = mlir::dyn_cast_if_present<OpType>(inputInfos[0].value.getDefiningOp());
+    if (targetOp == nullptr) {
+        return nullptr;
+    }
+
+    // Check that other inputs don't have the target operation
+    for (size_t i = 1; i < inputInfos.size(); i++) {
+        if (mlir::isa_and_present<OpType>(inputInfos[i].value.getDefiningOp())) {
+            log.trace("Other inputs also have the target operation, avoiding transformation");
+            return nullptr;
+        }
+    }
+
+    return targetOp;
+}
 
 SmallVector<int64_t> invertDimMappingWithAxesNotSplitOrMerged(ArrayRef<SmallVector<int64_t>> dimMapping,
                                                               ShapeRef affineInShape, ShapeRef affineOutShape);

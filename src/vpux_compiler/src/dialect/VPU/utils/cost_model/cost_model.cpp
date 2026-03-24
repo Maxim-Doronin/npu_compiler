@@ -181,6 +181,8 @@ VPUNN::VPUDevice vpux::VPU::getVPUDeviceType(config::Platform platform) {
     case config::Platform::NPU5000:
     case config::Platform::NPU5010:
         return VPUNN::VPUDevice::NPU_5_0;
+    case config::Platform::NPU5020:
+        return VPUNN::VPUDevice::NPU_5_0_W;
     default:
         VPUX_THROW("Unsupported VPU Platform type: '{0}'", platform);
     }
@@ -473,7 +475,7 @@ void setAutopadFields(VPUNN::DPUWorkload& workload, const VPUIP::WorkloadCostPar
     // padding them to 4. For these workloads, VPUNN does not expect the IDU autopad to be marked as enabled
     const auto usesIDUAutopad =
             workload.inputs[0].z() < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT && !params.isNceCompressConv;
-    const auto usesODUAutopad = workload.outputs[0].z() < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
+    const auto usesODUAutopad = workload.outputs[0].z() % VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT != 0;
     if (usesIDUAutopad) {
         workload.input_autopad = true;
     }
@@ -733,8 +735,8 @@ std::vector<VPUNN::DPULayer> vpux::VPU::getPerClusterDPULayers(VPU::NCEOpInterfa
 
 std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SWOpInterface swOp,
                                                                          const VPUIP::ShaveWorkloadCostParams& params,
-                                                                         Logger log, bool isShave2APIused) {
-    const auto getPerClusterShapes = [&](VPU::DistributedTensorType distributedType, int input_index,
+                                                                         Logger log) {
+    const auto getPerClusterShapes = [&](VPU::DistributedTensorType distributedType, int index,
                                          bool isOutput = false) -> SmallVector<Shape> {
         if (distributedType != nullptr) {
             // For output tensor, compute shape is required to get correct shapes for computation
@@ -742,7 +744,7 @@ std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SW
             return isOutput ? distributedType.getPerClusterComputeShapes()
                             : distributedType.getPerClusterMemoryShapes();
         }
-        return isOutput ? SmallVector({params.outputShapes[0]}) : SmallVector({params.inputShapes[input_index]});
+        return isOutput ? SmallVector({params.outputShapes[index]}) : SmallVector({params.inputShapes[index]});
     };
 
     const auto getPerClusterShape = [&](VPU::DistributedTensorType distributedType,
@@ -754,7 +756,7 @@ std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SW
     auto clusteredOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(swOp.getOperation());
     if (clusteredOp == nullptr) {
         std::vector<VPUNN::SHAVEWorkload> workloads;
-        auto workloadPtr = getVPUNNSWKernelOp(swOp, isShave2APIused);
+        auto workloadPtr = getVPUNNSWKernelOp(swOp);
         if (workloadPtr) {
             workloads.push_back(std::move(*workloadPtr));
         }
@@ -763,21 +765,27 @@ std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SW
 
     auto strategy = params.layerStrategy;
     auto numClusters = params.numTiles;
-    const auto offsets = Shape(params.outputShapes[0].size(), 0);
+    auto archKind = config::getArch(swOp.getOperation());
 
-    auto outputDistributedType = getDistributedTensor(clusteredOp->getResult(0));
-    if (outputDistributedType == nullptr) {
-        // When the distributedTypes are not created, generate distributedTypes from strategy
-
-        auto outType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
-
-        outType = outType.extractDenseTile(offsets, params.outputShapes[0]);
-        outputDistributedType = mlir::cast<VPU::DistributedTensorType>(
-                getDistributedOutputTypeFromOp(clusteredOp, outType, numClusters, strategy));
+    SmallVector<VPU::DistributedTensorType> outputDistributedTypes;
+    // For devices up to 40XX, preserve old behavior: only process first output (index 0)
+    const size_t numOutputs = (archKind <= config::ArchKind::NPU40XX) ? 1 : params.outputShapes.size();
+    for (size_t outIdx = 0; outIdx < numOutputs; outIdx++) {
+        const auto offsets = Shape(params.outputShapes[outIdx].size(), 0);
+        auto outputDistributedType = getDistributedTensor(clusteredOp->getResult(outIdx));
+        if (outputDistributedType == nullptr) {
+            // When the distributedTypes are not created, generate distributedTypes from strategy
+            auto outType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(outIdx).getType());
+            outType = outType.extractDenseTile(offsets, params.outputShapes[outIdx]);
+            outputDistributedType = mlir::cast<VPU::DistributedTensorType>(
+                    getDistributedOutputTypeFromOp(clusteredOp, outType, numClusters, strategy));
+        }
+        outputDistributedTypes.push_back(outputDistributedType);
     }
 
     SmallVector<VPU::DistributedTensorType> actInputDistributedTypes;
     for (size_t i = 0; i < params.inputShapes.size(); i++) {
+        const auto offsets = Shape(params.inputShapes[i].size(), 0);
         auto operand = clusteredOp->getOperand(i);
         auto distributedType = getDistributedTensor(operand);
         if (distributedType == nullptr) {
@@ -788,12 +796,22 @@ std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SW
         }
         actInputDistributedTypes.push_back(distributedType);
     }
-    // For now, use the first input distributed type for per-cluster shape calculation.
-    // If you need to handle all inputs, further logic is needed below.
     log.trace("Number of input distributed types: {0}", actInputDistributedTypes.size());
-    auto outputPerClusterShapes = getPerClusterShape(outputDistributedType, true);
-    std::vector<SmallVector<Shape>> actInputPerClusterShapes;
+    log.trace("Number of output distributed types: {0}", outputDistributedTypes.size());
 
+    std::vector<SmallVector<Shape>> outputPerClusterShapes;
+    // For devices up to 40XX, preserve old behavior: use getPerClusterShape (single output)
+    if (archKind <= config::ArchKind::NPU40XX) {
+        auto perClusterShapes = getPerClusterShape(outputDistributedTypes[0], true);
+        outputPerClusterShapes.push_back(std::move(perClusterShapes));
+    } else {
+        for (size_t outIdx = 0; outIdx < outputDistributedTypes.size(); outIdx++) {
+            auto perClusterShapes = getPerClusterShapes(outputDistributedTypes[outIdx], outIdx, true);
+            outputPerClusterShapes.push_back(std::move(perClusterShapes));
+        }
+    }
+
+    std::vector<SmallVector<Shape>> actInputPerClusterShapes;
     for (size_t i = 0; i < actInputDistributedTypes.size(); i++) {
         auto inputPerClusterShapes = getPerClusterShapes(actInputDistributedTypes[i], i);
         actInputPerClusterShapes.push_back(std::move(inputPerClusterShapes));
@@ -803,12 +821,16 @@ std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SW
 
     std::vector<VPUNN::VPUTensor> outputTensors;
     std::vector<VPUNN::VPUTensor> actInputTensors;
-    outputTensors.reserve(numClusters);
+    int number_of_tensors = archKind <= config::ArchKind::NPU40XX ? 1 : params.outDataTypes.size();
+    outputTensors.reserve(numClusters * number_of_tensors);
     actInputTensors.reserve(numClusters * actInputPerClusterShapes.size());
 
     for (auto index : irange(numClusters)) {
-        const auto outputOneClusterShape = outputPerClusterShapes[index];
-        outputTensors.push_back(VPU::getVPUTensor(outputOneClusterShape, params.outDataTypes[0], params.outOrders[0]));
+        for (size_t j = 0; j < params.outDataTypes.size(); ++j) {
+            const auto& outputOneClusterShape = outputPerClusterShapes[j][index];
+            outputTensors.push_back(
+                    VPU::getVPUTensor(outputOneClusterShape, params.outDataTypes[j], params.outOrders[j]));
+        }
 
         for (size_t i = 0; i < (actInputPerClusterShapes.size()); i++) {
             const auto& inType = actInputPerClusterShapes[i][index];
@@ -821,12 +843,30 @@ std::vector<VPUNN::SHAVEWorkload> vpux::VPU::getPerClusterShaveWorkloads(VPU::SW
 
     for (auto index : irange(numClusters)) {
         std::vector<VPUNN::VPUTensor> inputsVector;
+        std::vector<VPUNN::VPUTensor> outputsVector;
 
         for (size_t i = 0; i < actInputPerClusterShapes.size(); i++) {
             inputsVector.push_back(actInputTensors[index * actInputPerClusterShapes.size() + i]);
         }
 
-        auto vpunnLayer = getVPUNNSWKernelOp(swOp, {outputTensors[index]}, std::move(inputsVector), isShave2APIused);
+        for (size_t j = 0; j < params.outDataTypes.size(); j++) {
+            outputsVector.push_back(outputTensors[index * params.outDataTypes.size() + j]);
+        }
+
+        // For devices up to 40XX, preserve old behavior: pass single output tensor at index
+        std::optional<VPUNN::SHAVEWorkload> vpunnLayer;
+        if (archKind <= config::ArchKind::NPU40XX) {
+            auto workloadPtr = getVPUNNSWKernelOp(swOp, {outputTensors[index]}, std::move(inputsVector));
+            if (workloadPtr) {
+                vpunnLayer = std::move(*workloadPtr);
+            }
+        } else {
+            auto workloadPtr = getVPUNNSWKernelOp(swOp, std::move(outputsVector), std::move(inputsVector));
+            if (workloadPtr) {
+                vpunnLayer = std::move(*workloadPtr);
+            }
+        }
+
         if (vpunnLayer) {
             vpunnLayers.push_back(std::move(*vpunnLayer));
         }

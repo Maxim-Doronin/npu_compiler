@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 !qElemType = !quant.uniform<u8:f16, 0.0078407292272530352:128>
 
 // CHECK-LABEL: @ExpandPermuteQuantizeWidth
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x299x299xf16>)
 func.func @ExpandPermuteQuantizeWidth(%arg0: tensor<1x3x299x299xf16>) -> tensor<1x3x299x299x!qElemType, {order = #NHWC}> {
     %PERMUTE_QUANTIZE = IE.PermuteQuantize(%arg0) {
         dstElemType = !qElemType,
@@ -23,7 +24,7 @@ func.func @ExpandPermuteQuantizeWidth(%arg0: tensor<1x3x299x299xf16>) -> tensor<
 
     return %PERMUTE_QUANTIZE : tensor<1x3x299x299x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:  pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:  pads_end = [0, 0, 0, 5]
     // CHECK-SAME:  } : tensor<1x3x299x299xf16> -> tensor<1x3x299x304xf16>
@@ -50,6 +51,7 @@ func.func @ExpandPermuteQuantizeWidth(%arg0: tensor<1x3x299x299xf16>) -> tensor<
 !qElemType = !quant.uniform<u8:f16, 0.0078407292272530352:128>
 
 // CHECK-LABEL: @SkipPermuteQuantizeWithBatch2
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<2x3x299x299xf16>)
 func.func @SkipPermuteQuantizeWithBatch2(%arg0: tensor<2x3x299x299xf16>) -> tensor<2x3x299x299x!qElemType, {order = #NHWC}> {
     %PERMUTE_QUANTIZE = IE.PermuteQuantize(%arg0) {
         dstElemType = !qElemType,
@@ -61,7 +63,7 @@ func.func @SkipPermuteQuantizeWithBatch2(%arg0: tensor<2x3x299x299xf16>) -> tens
 
     return %PERMUTE_QUANTIZE : tensor<2x3x299x299x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {
+    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -80,6 +82,7 @@ func.func @SkipPermuteQuantizeWithBatch2(%arg0: tensor<2x3x299x299xf16>) -> tens
 !qElemType = !quant.uniform<u8:f16, 0.0078407292272530352:128>
 
 // CHECK-LABEL: @SkipPermuteQuantizeToNCWH
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x299x299xf16>)
 func.func @SkipPermuteQuantizeToNCWH(%arg0: tensor<1x3x299x299xf16>) -> tensor<1x3x299x299x!qElemType, {order = #NCWH}> {
     %PERMUTE_QUANTIZE = IE.PermuteQuantize(%arg0) {
         dstElemType = !qElemType,
@@ -91,7 +94,7 @@ func.func @SkipPermuteQuantizeToNCWH(%arg0: tensor<1x3x299x299xf16>) -> tensor<1
 
     return %PERMUTE_QUANTIZE : tensor<1x3x299x299x!qElemType, {order = #NCWH}>
 
-    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {
+    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NCWH,
     // CHECK-SAME:      mem_perm = #NCWH,
@@ -110,6 +113,7 @@ func.func @SkipPermuteQuantizeToNCWH(%arg0: tensor<1x3x299x299xf16>) -> tensor<1
 !qElemType = !quant.uniform<u8:f16, 0.0078407292272530352:128>
 
 // CHECK-LABEL: @SkipWidth1
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x299x1xf16>)
 func.func @SkipWidth1(%arg0: tensor<1x3x299x1xf16>) -> tensor<1x3x299x1x!qElemType, {order = #NHWC}> {
     %PERMUTE_QUANTIZE = IE.PermuteQuantize(%arg0) {
         dstElemType = !qElemType,
@@ -121,7 +125,7 @@ func.func @SkipWidth1(%arg0: tensor<1x3x299x1xf16>) -> tensor<1x3x299x1x!qElemTy
 
     return %PERMUTE_QUANTIZE : tensor<1x3x299x1x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {
+    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -139,6 +143,7 @@ func.func @SkipWidth1(%arg0: tensor<1x3x299x1xf16>) -> tensor<1x3x299x1x!qElemTy
 !qElemType = !quant.uniform<u8:f16, 0.0078407292272530352:128>
 
 // CHECK-LABEL: @SkipWidthFP32
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x2x2xf32>)
 func.func @SkipWidthFP32(%arg0: tensor<1x1x2x2xf32>) -> tensor<1x1x2x2x!qElemType, {order = #NHWC}> {
     %PERMUTE_QUANTIZE = IE.PermuteQuantize(%arg0) {
         dstElemType = !qElemType,
@@ -150,7 +155,7 @@ func.func @SkipWidthFP32(%arg0: tensor<1x1x2x2xf32>) -> tensor<1x1x2x2x!qElemTyp
 
     return %PERMUTE_QUANTIZE : tensor<1x1x2x2x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {
+    // CHECK:   [[PERMUTE_QUANTIZE:%.+]] = IE.PermuteQuantize([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType,
     // CHECK-SAME:      dst_order = #NHWC,
     // CHECK-SAME:      mem_perm = #NHWC,
@@ -166,6 +171,7 @@ func.func @SkipWidthFP32(%arg0: tensor<1x1x2x2xf32>) -> tensor<1x1x2x2x!qElemTyp
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @ExpandLogSoftmaxWidth
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x151x7049xf16>)
 func.func @ExpandLogSoftmaxWidth(%arg0: tensor<1x1x151x7049xf16>) -> tensor<1x1x151x7049xf16> {
     %LOG_SOFTMAX = IE.LogSoftmax(%arg0) {
         axisInd = 3 : i64
@@ -173,7 +179,7 @@ func.func @ExpandLogSoftmaxWidth(%arg0: tensor<1x1x151x7049xf16>) -> tensor<1x1x
 
     return %LOG_SOFTMAX : tensor<1x1x151x7049xf16>
 
-    // CHECK:   [[EXPAND:%.+]] = IE.Expand(%arg0) {
+    // CHECK:   [[EXPAND:%.+]] = IE.Expand([[ARG_0]]) {
     // CHECK-SAME:  pads_begin = [0, 0, 0, 0],
     // CHECK-SAME:  pads_end = [0, 0, 0, 7]
     // CHECK-SAME:  } : tensor<1x1x151x7049xf16> -> tensor<1x1x151x7056xf16>
@@ -194,6 +200,7 @@ func.func @ExpandLogSoftmaxWidth(%arg0: tensor<1x1x151x7049xf16>) -> tensor<1x1x
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @SkipLogSoftmaxNonInnermostAxis
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x151x7049xf16>)
 func.func @SkipLogSoftmaxNonInnermostAxis(%arg0: tensor<1x1x151x7049xf16>) -> tensor<1x1x151x7049xf16> {
     %LOG_SOFTMAX = IE.LogSoftmax(%arg0) {
         axisInd = 2 : i64
@@ -201,7 +208,7 @@ func.func @SkipLogSoftmaxNonInnermostAxis(%arg0: tensor<1x1x151x7049xf16>) -> te
 
     return %LOG_SOFTMAX : tensor<1x1x151x7049xf16>
 
-    // CHECK:   [[LOG_SOFTMAX:%.+]] = IE.LogSoftmax(%arg0) {
+    // CHECK:   [[LOG_SOFTMAX:%.+]] = IE.LogSoftmax([[ARG_0]]) {
     // CHECK-SAME:      axisInd = 2 : i64
     // CHECK-SAME:  } : tensor<1x1x151x7049xf16> -> tensor<1x1x151x7049xf16>
 

@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true ppe-version=IntPPE" --calculate-async-region-cycle-cost  %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --calculate-async-region-cycle-cost  %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
@@ -57,7 +57,7 @@ module @AddCycleCostForSWMultiCluster attributes {config.compilationMode = #conf
         %3 = async.await %results_3 : !async.value<!MemRef1>
 
         // CHECK:   [[T1:%.+]], [[F1:%.+]] = async.execute -> !async.value<!VPUIP.DistributedBuffer<1x128x64x32xf16
-        // CHECK:   async.execute [[[T1]]] ([[F1]] as %arg1: !async.value<!VPUIP.DistributedBuffer<1x128x64x32xf16
+        // CHECK:   async.execute [[[T1]]] ([[F1]] as {{%[^:]+}}: !async.value<!VPUIP.DistributedBuffer<1x128x64x32xf16
         // CHECK-SAME:  VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64, cycleCost = 318646 : i64
         return %3 : !MemRef1
     }
@@ -121,7 +121,7 @@ module @AddCycleCostForSWSingleCluster {
         %3 = async.await %results_5 : !async.value<memref<4x8x12x16xf16, @DDR>>
 
         // CHECK:   [[T1:%.+]], [[F1:%.+]] = async.execute -> !async.value<memref<4x8x12x16xf16, #NHWC, [@CMX_NN, 0]>>
-        // CHECK:   async.execute [[[T1]]] ([[F1]] as %arg2: !async.value<memref<4x8x12x16xf16, #NHWC, [@CMX_NN, 0]>>
+        // CHECK:   async.execute [[[T1]]] ([[F1]] as {{%[^:]+}}: !async.value<memref<4x8x12x16xf16, #NHWC, [@CMX_NN, 0]>>
         // CHECK-SAME:  VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64, cycleCost = 10212 : i64
         return %3 : memref<4x8x12x16xf16, @DDR>
     }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 
 !qElemType = !quant.uniform<i8:f16, 1.1534313725490195>
 // CHECK-LABEL: @MixedPrecisionFloatInputQuantWeightsConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16>)
 func.func @MixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16xf16> {
   %weights = const.Declare tensor<16x16x1x1x!qElemType> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>]
   %qweights = IE.Dequantize(%weights) {dstElemType = f16} : tensor<16x16x1x1x!qElemType> -> tensor<16x16x1x1xf16>
@@ -17,7 +18,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x16x16x16xf16
 
   //CHECK: [[VAL0:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
 
-  //CHECK: [[VAL1:%.+]] = IE.Convolution(%arg0, [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  //CHECK: [[VAL1:%.+]] = IE.Convolution([[ARG_0]], [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
   //CHECK: return [[VAL1]]
 }
 
@@ -25,6 +26,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x16x16x16xf16
 
 !qElemType = !quant.uniform<i8:f16, 1.1534313725490195>
 // CHECK-LABEL: @MixedPrecisionFloatInputQuantWeightsGroupConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16>)
 func.func @MixedPrecisionFloatInputQuantWeightsGroupConv(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16xf16> {
   %weights = const.Declare tensor<16x1x1x1x!qElemType> = dense<1.0> : tensor<16x1x1x1xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>]
   %qweights = IE.Dequantize(%weights) {dstElemType = f16} : tensor<16x1x1x1x!qElemType> -> tensor<16x1x1x1xf16>
@@ -33,7 +35,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsGroupConv(%arg0: tensor<1x16x16x1
 
   //CHECK: [[VAL0:%.+]] = const.Declare tensor<16x1x1x1x!qElemType>
 
-  //CHECK: [[VAL1:%.+]] = IE.GroupConvolution(%arg0, [[VAL0]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x1x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  //CHECK: [[VAL1:%.+]] = IE.GroupConvolution([[ARG_0]], [[VAL0]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x1x1x1x!qElemType> -> tensor<1x16x16x16xf16>
   //CHECK: return [[VAL1]]
 }
 
@@ -41,6 +43,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsGroupConv(%arg0: tensor<1x16x16x1
 
 !qElemType = !quant.uniform<i8:f16:0, {1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153, 1.153}>
 // CHECK-LABEL: @MixedPrecisionFloatInputQuantWeightsConvPerAxis
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16>)
 func.func @MixedPrecisionFloatInputQuantWeightsConvPerAxis(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16xf16> {
   %weights = const.Declare tensor<16x16x1x1x!qElemType> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>]
   %qweights = IE.Dequantize(%weights) {dstElemType = f16} : tensor<16x16x1x1x!qElemType> -> tensor<16x16x1x1xf16>
@@ -50,7 +53,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsConvPerAxis(%arg0: tensor<1x16x16
 
   //CHECK: [[VAL0:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
 
-  //CHECK: [[VAL1:%.+]] = IE.Convolution(%arg0, [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  //CHECK: [[VAL1:%.+]] = IE.Convolution([[ARG_0]], [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
   //CHECK: return [[VAL1]]
 }
 
@@ -58,6 +61,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsConvPerAxis(%arg0: tensor<1x16x16
 
 !qElemType = !quant.uniform<u8:f16, 1.1534313725490195>
 // CHECK-LABEL: @InvalidDTypeMixedPrecisionFloatInputQuantWeightsConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16>)
 func.func @InvalidDTypeMixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16xf16> {
   %weights = const.Declare tensor<16x16x1x1x!qElemType> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
   %qweights = IE.Dequantize(%weights) {dstElemType = f16} : tensor<16x16x1x1x!qElemType> -> tensor<16x16x1x1xf16>
@@ -67,7 +71,7 @@ func.func @InvalidDTypeMixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x
 
   //CHECK: [[VAL0:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
   //CHECK: [[VAL1:%.+]] = IE.Dequantize([[VAL0]])
-  //CHECK: [[VAL2:%.+]] = IE.Convolution(%arg0, [[VAL1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x16x16xf16>
+  //CHECK: [[VAL2:%.+]] = IE.Convolution([[ARG_0]], [[VAL1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x16x16xf16>
   //CHECK: return [[VAL2]]
 }
 
@@ -75,6 +79,7 @@ func.func @InvalidDTypeMixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x
 
 !qElemType = !quant.uniform<i8:f16, 1.1534313725490195>
 // CHECK-LABEL: @MixedPrecisionFloatInputQuantWeightsAndOutputConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16>)
 func.func @MixedPrecisionFloatInputQuantWeightsAndOutputConv(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16x!qElemType> {
   %weights = const.Declare tensor<16x16x1x1x!qElemType> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.CastElemType<si8>, #const.CastElemType<!qElemType>]
   %qweights = IE.Dequantize(%weights) {dstElemType = f16} : tensor<16x16x1x1x!qElemType> -> tensor<16x16x1x1xf16>
@@ -84,7 +89,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsAndOutputConv(%arg0: tensor<1x16x
 
   //CHECK: [[VAL0:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
 
-  //CHECK: [[VAL1:%.+]] = IE.Convolution(%arg0, [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16x!qElemType>
+  //CHECK: [[VAL1:%.+]] = IE.Convolution([[ARG_0]], [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16x!qElemType>
   //CHECK: return [[VAL1]]
 }
 
@@ -92,6 +97,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsAndOutputConv(%arg0: tensor<1x16x
 
 !qElemType = !quant.uniform<i4:f16, 1.1534313725490195>
 // CHECK-LABEL: @MixedPrecisionFloatInputQuantWeightsConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16>)
 func.func @MixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x16x16xf16> {
   %weights = const.Declare tensor<16x16x1x1x!qElemType> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.CastElemType<si4>, #const.CastElemType<!qElemType>]
   %qweights = IE.Dequantize(%weights) {dstElemType = f16} : tensor<16x16x1x1x!qElemType> -> tensor<16x16x1x1xf16>
@@ -101,7 +107,7 @@ func.func @MixedPrecisionFloatInputQuantWeightsConv(%arg0: tensor<1x16x16x16xf16
 
   //CHECK: [[VAL0:%.+]] = const.Declare tensor<16x16x1x1x!qElemType>
 
-  //CHECK: [[VAL1:%.+]] = IE.Convolution(%arg0, [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
+  //CHECK: [[VAL1:%.+]] = IE.Convolution([[ARG_0]], [[VAL0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x16x16xf16>, tensor<16x16x1x1x!qElemType> -> tensor<1x16x16x16xf16>
   //CHECK: return [[VAL1]]
 }
 

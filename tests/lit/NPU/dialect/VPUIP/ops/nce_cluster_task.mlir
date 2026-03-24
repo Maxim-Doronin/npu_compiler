@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,12 +20,12 @@ func.func @ParsePrintClusterTask(%arg0: memref<1x32x16x16xf16, #NHWC, @CMX_NN>) 
     %t1, %r1 = async.execute
                 -> !async.value<memref<1x64x14x14xf16, #NHWC, @CMX_NN>>
                     attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
-        %0 = VPUIP.NCEClusterTask {
+        %0 = VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }  input(%arg0 : memref<1x32x16x16xf16, #NHWC, @CMX_NN>)
+            }>  input(%arg0 : memref<1x32x16x16xf16, #NHWC, @CMX_NN>)
                 weights(%weights : memref<64x32x3x3xf16, #NHWC, @CMX_NN>)
                 weight_table(%weight_table_cmx : memref<64x1x1x4xsi32, @CMX_NN>)
                 parent_input(%arg0 : memref<1x32x16x16xf16, #NHWC, @CMX_NN>)
@@ -139,12 +139,12 @@ func.func @ParsePrintDistributedBuffer(%input: !Input_DDR) -> !Output_DDR {
 
     %t3 = async.execute [%t0, %t1, %t2]
                 attributes {VPUIP.executor = @DPU, VPUIP.num_units = 4 : i64, "async-deps-index" = 3 : i64} {
-            %0 = VPUIP.NCEClusterTask {
+            %0 = VPUIP.NCEClusterTask <{
                     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     kernel_size = [1, 1],
                     kernel_strides = [1, 1],
                     task_type = #VPUIP.nce_task_type<CONV>
-                }  input(%input_cmx : !InputDistributed)
+                }>  input(%input_cmx : !InputDistributed)
                     weights(%weights_cmx : !WeightsDistributed)
                     weight_table(%weights_table_cmx : !WeightsTableDistributed)
                     parent_input(%input_cmx : !InputDistributed)
@@ -199,7 +199,7 @@ func.func @ParsePrintDistributedBuffer(%input: !Input_DDR) -> !Output_DDR {
     // CHECK:        }
 
     // CHECK:        {{[^:]+}} = async.execute [[[TOKEN]], [[TOKEN_0]], [[TOKEN_1]]] attributes {VPUIP.executor = @DPU, VPUIP.num_units = 4 : i64, "async-deps-index" = 3 : i64} {
-    // CHECK:                VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK:                VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
     // CHECK-SAME:               input([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     // CHECK-SAME:               weights([[WEIGHTS_CMX]] : !VPUIP.DistributedBuffer
     // CHECK-SAME:               weight_table([[WEIGHTS_TABLE_CMX]] : !VPUIP.DistributedBuffer

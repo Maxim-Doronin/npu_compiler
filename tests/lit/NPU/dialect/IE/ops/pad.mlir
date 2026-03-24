@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
+// CHECK-LABEL:   @OperandsToAttrs
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x5x10x11xf16>
 func.func @OperandsToAttrs(%arg0: tensor<1x5x10x11xf16>) -> tensor<1x11x12x12xf16> {
     %0 = const.Declare tensor<4xsi64> = dense<[0, 3, 0, 1]> : tensor<4xsi64>
     %1 = const.Declare tensor<4xsi64> = dense<[0, 3, 2, 0]> : tensor<4xsi64>
@@ -13,7 +15,7 @@ func.func @OperandsToAttrs(%arg0: tensor<1x5x10x11xf16>) -> tensor<1x11x12x12xf1
     // CHECK-NOT:   const.Declare
 
     %3 = IE.Pad(%arg0)[%0, %1, %2] {mode = #IE.pad_mode<SYMMETRIC>} : tensor<1x5x10x11xf16>, tensor<4xsi64>, tensor<4xsi64>, tensor<f16> -> tensor<1x11x12x12xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.Pad(%arg0) {
+    // CHECK:       [[VAL0:%.+]] = IE.Pad([[ARG_0]]) {
     // CHECK-SAME:      mode = #IE.pad_mode<SYMMETRIC>
     // CHECK-SAME:      pad_value_attr = 1.000000e+00
     // CHECK-SAME:      pads_begin_attr = [0, 3, 0, 1]

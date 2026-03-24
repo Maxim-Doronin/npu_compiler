@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -262,5 +262,32 @@ func.func @AddFakeQuantizeFusion(%arg0: tensor<1x12x32x32xf32>) -> tensor<1x12x3
     // CHECK-DAG:   [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<1.200000e+01> : tensor<1x1x1x1xf32>
     // CHECK-NOT:   IE.Add
     // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[INPUT]], [[CST_0]], [[CST_1]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x12x32x32xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x12x32x32xf32>
+    // CHECK:       return [[FQ]] : tensor<1x12x32x32xf32>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<u8:f16, 2.4627450980392158>
+
+// CHECK-LABEL: @DoNotMultiplyFakeQuantizeFusionScalarConstLhsWithDQConst
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x12x32x32xf32>
+func.func @DoNotMultiplyFakeQuantizeFusionScalarConstLhsWithDQConst(%arg0: tensor<1x12x32x32xf32>) -> tensor<1x12x32x32xf32> {
+    %cst = const.Declare tensor<1x1x1x1x!qElemType> = dense<3.0> : tensor<1x1x1x1xf32>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %cst_0 = const.Declare tensor<1x1x1x1xf32> = dense<2.00> : tensor<1x1x1x1xf32>
+    %cst_1 = const.Declare tensor<1x1x1x1xf32> = dense<12.00> : tensor<1x1x1x1xf32>
+    %0 = IE.Dequantize(%cst) {dstElemType = f32} : tensor<1x1x1x1x!qElemType> -> tensor<1x1x1x1xf32>
+    %1 = IE.Gelu(%arg0) : tensor<1x12x32x32xf32> -> tensor<1x12x32x32xf32>
+    %2 = IE.Multiply(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf32>, tensor<1x12x32x32xf32>  -> tensor<1x12x32x32xf32>
+    %3 = IE.FakeQuantize(%2, %cst_0, %cst_1, %cst_0, %cst_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x12x32x32xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x12x32x32xf32>
+    return %3 : tensor<1x12x32x32xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1x1x1x!qElemType> = dense<3.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<2.000000e+00> : tensor<1x1x1x1xf32>
+    // CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<1.200000e+01> : tensor<1x1x1x1xf32>
+    // CHECK:       [[DQ:%.+]] = IE.Dequantize([[CST]]) {dstElemType = f32} : tensor<1x1x1x1x!qElemType> -> tensor<1x1x1x1xf32>
+    // CHECK:       [[GELU:%.+]] = IE.Gelu([[INPUT]]) : tensor<1x12x32x32xf32> -> tensor<1x12x32x32xf32>
+    // CHECK:       [[MUL:%.+]] = IE.Multiply([[DQ]], [[GELU]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x1xf32>, tensor<1x12x32x32xf32> -> tensor<1x12x32x32xf32>
+    // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[MUL]], [[CST_0]], [[CST_1]], [[CST_0]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x12x32x32xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32> -> tensor<1x12x32x32xf32>
     // CHECK:       return [[FQ]] : tensor<1x12x32x32xf32>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -559,12 +559,6 @@ mlir::LogicalResult vpux::IE::OptimizeSlicePermuteCastExpand::matchAndRewrite(IE
         return mlir::failure();
     }
 
-    // Check if the transformation is valid
-    auto memPerm = DimsOrder::fromAffineMap(permuteCastOp.getMemPerm());
-    if (memPerm != DimsOrder::NCHW) {
-        innerLog.trace("memPerm at '{0}' is not 'NCHW'", permuteCastOp->getLoc());
-        return mlir::failure();
-    }
     auto expandInMemShape = Shape(getMemShape(expandOp.getInput()).raw());
     auto expandOutMemShape = Shape(getMemShape(expandOp.getResult()).raw());
     auto expandMemAxis = IE::getSingleDiffAxis(expandInMemShape, expandOutMemShape);
@@ -577,8 +571,25 @@ mlir::LogicalResult vpux::IE::OptimizeSlicePermuteCastExpand::matchAndRewrite(IE
     if (!sliceMemAxis.has_value()) {
         return mlir::failure();
     }
-    if (expandMemAxis.value() != sliceMemAxis.value()) {
-        innerLog.trace("'Expand' at '{0}' and 'Slice' on different mem axis", expandOp->getLoc());
+
+    auto isSupportedPermuteCastOp = [&](IE::PermuteCastOp permuteCastOp) {
+        auto memPerm = permuteCastOp.getMemPerm();
+        if (sliceOutMemShape[sliceMemAxis.value()] != 1) {
+            // If the slice size is greater than 1 on the slice axis, the sliceMemIdx should be compatible with
+            // expandMemIdx after PermuteCast.
+            // [1,16,48,48] -> Slice -> [1,16,32,48] -> PermuteCast -> [16,32,1,48] -> expand -> [16,48,1,48]
+            auto sliceInMemIdxAfterPermute = DimsOrder::fromAffineMap(memPerm).dimPos(sliceMemAxis.value());
+            return static_cast<int32_t>(sliceInMemIdxAfterPermute) == expandMemAxis.value().ind();
+        } else {
+            // If the slice size is 1 on the slice axis, the expandMemAxis should be the same as the sliceMemAxis
+            // and the memPerm should be NCHW
+            // [1,16,48,48] -> Slice -> [1,16,1,48] -> PermuteCast -> [1,16,1,48] -> expand -> [1,16,48,48]
+            return DimsOrder::fromAffineMap(memPerm) == DimsOrder::NCHW &&
+                   expandMemAxis.value() == sliceMemAxis.value();
+        }
+    };
+    if (!isSupportedPermuteCastOp(permuteCastOp)) {
+        innerLog.trace("'PermuteCast' at '{0}' is not supported", permuteCastOp->getLoc());
         return mlir::failure();
     }
 
@@ -887,8 +898,9 @@ SmallVector<mlir::Value> vpux::IE::OptimizeSliceConcatExpand::updateInputsForOp(
 
 /**
  * Fuse slice and expand when operations between them are supported with any order and numbers.
- * Insert Expand and SliceOp between ops, then we can get single SliceOp-Op-ExpandOp patterns and call related pattern
- * optimizations. It's easier to handle single SliceOp-Op-ExpandOp than many ops between SliceOp and ExpandOp.
+ * Insert Expand and SliceOp between ops, then we can get single SliceOp-Op-ExpandOp patterns and call related
+ * pattern optimizations. It's easier to handle single SliceOp-Op-ExpandOp than many ops between SliceOp and
+ * ExpandOp.
  *
  *         SliceOp                         SliceOp                      op1
  *            |                               |                          |
@@ -1063,7 +1075,7 @@ mlir::LogicalResult IE::OptimizeSliceConcatExpandWithViewLikeOps::matchAndRewrit
 
     auto implicitOp = expandOp.getInput().getDefiningOp();
     auto implicitOpOrFailure = walkThroughViewLikeOps(implicitOp);
-    if (mlir::failed(implicitOpOrFailure)) {
+    if (mlir::failed(implicitOpOrFailure) || !hasViewLikeOp) {
         return mlir::failure();
     }
     implicitOp = implicitOpOrFailure.value();
@@ -1128,10 +1140,6 @@ mlir::LogicalResult IE::OptimizeSliceConcatExpandWithViewLikeOps::matchAndRewrit
         return mlir::failure();
     }
 
-    if (!hasViewLikeOp) {
-        return mlir::failure();
-    }
-
     // Check the compatibility between the concat output and the expand input.
     // ExpandAxis should be the highest dim and that the corresponding size remains unchanged through view-like ops.
     auto expandInShape = getShape(expandOp.getInput());
@@ -1174,9 +1182,9 @@ mlir::LogicalResult IE::OptimizeSliceConcatExpandWithViewLikeOps::matchAndRewrit
 
     auto outputShape = getShape(expandOp.getResult());
     if (getShape(resultValue) != outputShape) {
-        resultValue = rewriter.create<IE::ShapeCastOp>(expandOp.getLoc(), expandOp.getType(), resultValue,
-                                                       getIntArrayAttr(ctx, outputShape))
-                              .getResult();
+        resultValue =
+                rewriter.create<IE::ShapeCastOp>(expandOp.getLoc(), resultValue, getIntArrayAttr(ctx, outputShape))
+                        .getResult();
     }
 
     auto newElemType = mlir::cast<vpux::NDTypeInterface>(resultValue.getType()).getElementType();
@@ -1227,7 +1235,7 @@ public:
 
         auto expandedShape = to_small_vector(getShape(origOp.getOutput()));
         auto implicitShape = to_small_vector(getShape(implicitOp->getResult(0)));
-        int64_t expandedAxisSize = expandedShape[axisIdx] - implicitShape[axisIdx];
+        const auto expandAxis = IE::getExpandAxis(origOp);
         const auto loc = origOp->getLoc();
         auto optimizeSuccess = genericOptimizeSliceImplicitExpand(origOp, implicitOp.getOperation(),
                                                                   /*hasCalculationCost=*/true, rewriter, innerLog);
@@ -1235,7 +1243,10 @@ public:
             return mlir::failure();
         }
         // update necessary attribute
-        implicitOp.setPadSizeAttr(getIntAttr(rewriter.getContext(), expandedAxisSize));
+        if (expandAxis.has_value() && expandAxis.value() == Dim(axisIdx)) {
+            int64_t expandedAxisSize = expandedShape[axisIdx] - implicitShape[axisIdx];
+            implicitOp.setPadSizeAttr(getIntAttr(rewriter.getContext(), expandedAxisSize));
+        }
         innerLog.trace("Optimization completed successfully at '{0}'", loc);
         return mlir::success();
     }
@@ -1255,7 +1266,8 @@ private:
 //
 // This pattern optimizes the sequence by moving Slice0 to the end of the chain:
 // LayoutCast0 -> Expand -> Add(large) -> Slice1(large) -> LayoutCast1(large) -> Slice0.
-// This exposes opportunities for other rewriters (e.g., expandRewriter) to eliminate the Expand and Slice1 operations.
+// This exposes opportunities for other rewriters (e.g., expandRewriter) to eliminate the Expand and Slice1
+// operations.
 class SliceAfterAddForLayoutCastExpandAddRewriter final : public mlir::OpRewritePattern<IE::AddOp> {
 public:
     SliceAfterAddForLayoutCastExpandAddRewriter(mlir::MLIRContext* ctx, Logger log)

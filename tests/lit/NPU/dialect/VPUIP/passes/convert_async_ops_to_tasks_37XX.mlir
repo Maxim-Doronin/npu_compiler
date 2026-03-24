@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 // CHECK-LABEL: @WithProfiling
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x512xf16>, [[ARG_1:%[^:]+]]: memref<1x512xf16>)
 func.func @WithProfiling(%arg0: memref<1x512xf16>, %arg1: memref<1x512xf16>) -> memref<1x512xf16> {
     %t1, %f1 = async.execute -> !async.value<memref<1x512xf16>>
         attributes { VPUIP.executor = @DMA_NN, VPUIP.num_units = 1} {
@@ -42,12 +43,12 @@ func.func @WithProfiling(%arg0: memref<1x512xf16>, %arg1: memref<1x512xf16>) -> 
     // CHECK:       VPURT.Task
     // CHECK-NEXT:  [[NNDMA2:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[VAR0]] : memref<1x512xf16, @DDR>)
-    // CHECK-SAME:      outputs(%arg1 : memref<1x512xf16>)
+    // CHECK-SAME:      outputs([[ARG_1]] : memref<1x512xf16>)
 
     // CHECK:       VPURT.Task
     // CHECK-NEXT:  [[NNDMA3:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[VAR4]] : memref<1xui32, @Register>)
     // CHECK-SAME:      outputs([[VAR3]] : memref<1xui32, [@CMX_NN, 0]>)
 
-    // CHECK:  return %arg1 : memref<1x512xf16>
+    // CHECK:  return [[ARG_1]] : memref<1x512xf16>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -114,10 +114,10 @@ mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::mat
     auto newInputShape = getIntArrayAttr(ctx, SmallVector<int64_t>({batchSize * seqLength, 1, 1, inputSize}));
     auto newWeightsShape = getIntArrayAttr(ctx, SmallVector<int64_t>({1, 1, weightsShape[1], inputSize}));
 
-    auto inputReshapeOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "in_reshape"), origOp.getInputData(),
-                                                         nullptr, false, newInputShape);
-    auto weightsReshapeOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "weights_reshape"), origOp.getWeights(),
-                                                           nullptr, false, newWeightsShape);
+    auto inputReshapeOp =
+            rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "in_reshape"), origOp.getInputData(), newInputShape);
+    auto weightsReshapeOp =
+            rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "weights_reshape"), origOp.getWeights(), newWeightsShape);
 
     auto strides = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
     auto padsBegin = getIntArrayAttr(ctx, SmallVector<int64_t>{0, 0});
@@ -129,8 +129,8 @@ mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::mat
                                                inputReshapeOp.getOutput(), strides, padsBegin, padsEnd, dilations);
     auto newResultShape = getIntArrayAttr(ctx, SmallVector<int64_t>({batchSize, seqLength, weightsShape[1], 1}));
 
-    auto resultReshapeOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "out_reshape"), convolutionOp.getOutput(),
-                                                          nullptr, false, newResultShape);
+    auto resultReshapeOp =
+            rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "out_reshape"), convolutionOp.getOutput(), newResultShape);
 
     auto memPerm = mlir::AffineMapAttr::get(DimsOrder::NCHW.toAffineMap(ctx));
     auto dstOrder = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(ctx));

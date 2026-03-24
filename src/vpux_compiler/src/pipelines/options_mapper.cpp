@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/compilation_options.hpp"
 #include "vpux/compiler/compiler.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
@@ -33,6 +34,8 @@ uint32_t getPlatformDPUClusterNum(const std::string& platform) {
         return VPUX50XX_MAX_DPU_GROUPS;
     } else if (platform == ov::intel_npu::Platform::NPU5010) {
         return VPUX5010_MAX_DPU_GROUPS;
+    } else if (platform == ov::intel_npu::Platform::NPU5020) {
+        return VPUX5020_MAX_DPU_GROUPS;
     } else {
         VPUX_THROW("Unsupported VPUX platform");
     }
@@ -91,8 +94,9 @@ std::optional<std::string> getPerformanceHintOverride(const intel_npu::Config& c
 
 int getNumberOfDPUGroupsUnchecked(const intel_npu::Config& config) {
     const std::string platform = ov::intel_npu::Platform::standardize(config.get<intel_npu::PLATFORM>());
-    const bool is50XXPlatform =
-            platform == ov::intel_npu::Platform::NPU5000 || platform == ov::intel_npu::Platform::NPU5010;
+    const bool is50XXPlatform = platform == ov::intel_npu::Platform::NPU5000 ||
+                                platform == ov::intel_npu::Platform::NPU5010 ||
+                                platform == ov::intel_npu::Platform::NPU5020;
     const auto& performanceHintOverride = getPerformanceHintOverride(config);
     // NPUPerformanceMode consists of same enums as ov::hint::PerformanceMode + EFFICIENCY
     // In future, ov::hint::PerformanceMode can be extended with the new value, so
@@ -179,6 +183,8 @@ config::Platform getPlatform(const intel_npu::Config& config) {
         return config::Platform::NPU5000;
     } else if (platform == ov::intel_npu::Platform::NPU5010) {
         return config::Platform::NPU5010;
+    } else if (platform == ov::intel_npu::Platform::NPU5020) {
+        return config::Platform::NPU5020;
     } else {
         VPUX_THROW("Unsupported NPU platform");
     }
@@ -262,37 +268,13 @@ std::optional<int> getNumberOfDMAEngines(const intel_npu::Config& config) {
     auto numOfDpuGroups = getNumberOfDPUGroups(config);
     int maxDmaPorts = VPU::getMaxDMAPorts(archKind);
     const std::string platform = ov::intel_npu::Platform::standardize(config.get<intel_npu::PLATFORM>());
-    const auto maxArchTiles = getPlatformDPUClusterNum(platform);
 
-    auto getNumOfDmaPortsWithDpuCountLimit = [&]() {
-        /*For architectures that have only 1 cluster, we want to bypass
-        (numOfDPUGroups >= numOfDMAPorts) requirement
-
-        Revert this back to "return maxDmaPorts" and implement E#135226 */
-        if (maxArchTiles == 1) {
-            return 1;
-        } else if (archKind == config::ArchKind::NPU50XX) {
-            // E#182008 We can support maxDmaPorts once FWLM is enabled for NPU50XX+
-            return maxDmaPorts;
-        } else {
-            return std::min(maxDmaPorts, numOfDpuGroups.value_or(maxDmaPorts));
-        }
-    };
-
-    if (archKind == config::ArchKind::NPU37XX) {
-        return getNumOfDmaPortsWithDpuCountLimit();
-    } else if (archKind == config::ArchKind::NPU40XX) {
-        return getNumOfDmaPortsWithDpuCountLimit();
-    } else if (archKind == config::ArchKind::NPU50XX) {
-        return getNumOfDmaPortsWithDpuCountLimit();
+    if (archKind == config::ArchKind::NPU37XX || archKind == config::ArchKind::NPU40XX) {
+        // Without FWLM we do not support the case in which the number of DMA engines is greater than number of DPU
+        // groups
+        return std::min(maxDmaPorts, numOfDpuGroups.value_or(maxDmaPorts));
     } else {
-        switch (config.get<intel_npu::PERFORMANCE_HINT>()) {
-        case ov::hint::PerformanceMode::THROUGHPUT:
-            return 1;
-        case ov::hint::PerformanceMode::LATENCY:
-        default:
-            return getNumOfDmaPortsWithDpuCountLimit();
-        }
+        return maxDmaPorts;
     }
 }  // namespace vpux
 
@@ -311,6 +293,8 @@ Byte getAvailableCmx(const intel_npu::Config& config) {
         return VPUX50XX_CMX_WORKSPACE_SIZE;
     } else if (platform == ov::intel_npu::Platform::NPU5010) {
         return VPUX5010_CMX_WORKSPACE_SIZE;
+    } else if (platform == ov::intel_npu::Platform::NPU5020) {
+        return VPUX5020_CMX_WORKSPACE_SIZE;
     } else {
         VPUX_THROW("Unsupported VPUX platform");
     }
@@ -359,30 +343,6 @@ std::optional<bool> getWlmEnabled(const intel_npu::Config& config) {
         return getWlmEnabled<DefaultHWOptions40XX>(config);
     } else if (arch == config::ArchKind::NPU50XX) {
         return getWlmEnabled<DefaultHWOptions50XX>(config);
-    } else {
-        return std::nullopt;
-    }
-}
-
-template <typename Options>
-std::optional<bool> getWlmRollback(const intel_npu::Config& config) {
-    if (getCompilationMode(config) == config::CompilationMode::ReferenceSW) {
-        return std::nullopt;
-    }
-
-    const auto options =
-            parseCompilationModeParams<Options>(config.get<intel_npu::COMPILATION_MODE_PARAMS>(), getArchKind(config));
-    return options != nullptr ? std::optional<bool>{options->wlmRollback} : std::nullopt;
-}
-
-std::optional<bool> getWlmRollback(const intel_npu::Config& config) {
-    const auto arch = getArchKind(config);
-    if (arch == config::ArchKind::NPU37XX) {
-        return std::nullopt;
-    } else if (arch == config::ArchKind::NPU40XX) {
-        return getWlmRollback<DefaultHWOptions40XX>(config);
-    } else if (arch == config::ArchKind::NPU50XX) {
-        return getWlmRollback<DefaultHWOptions50XX>(config);
     } else {
         return std::nullopt;
     }
@@ -544,7 +504,8 @@ std::optional<bool> getEnableDecomposeSDPA(const intel_npu::Config& config) {
     } else if (arch == config::ArchKind::NPU40XX) {
         return getEnableDecomposeSDPA<DefaultHWOptions40XX>(config);
     } else if (arch == config::ArchKind::NPU50XX) {
-        return getEnableDecomposeSDPA<DefaultHWOptions50XX>(config);
+        // Disable ngraph SDPA decomposition for NPU50XX - custom decomposition is applied in IE pipeline
+        return std::nullopt;
     } else {
         return std::nullopt;
     }

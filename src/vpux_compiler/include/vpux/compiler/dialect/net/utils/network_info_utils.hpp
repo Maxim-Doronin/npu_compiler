@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,7 +9,46 @@
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include <utility>
+
 namespace vpux::net {
+
+/** @brief Get NetworkInfoOp from the immediate parent module of an operation.
+
+    Finds the nearest parent ModuleOp and returns the NetworkInfoOp within it.
+    The NetworkInfoOp must exist in the same module as the operation - this function
+    does NOT search parent modules. For operations inside nested modules (e.g., @VPU.SW)
+    that don't contain their own NetworkInfoOp, callers should pass an operation from
+    the appropriate module level.
+
+    @param op Operation inside the target module, or the ModuleOp itself.
+    @throws VPUX_THROW if op is nullptr, parent ModuleOp not found, or exactly one
+            NetworkInfoOp is not present in the module.
+ */
+net::NetworkInfoOp getNetworkInfo(mlir::Operation* op);
+
+/** @brief Get the main entry point function from the immediate parent module.
+
+    Finds the nearest parent ModuleOp and returns the entry point function defined
+    in the NetworkInfoOp. The NetworkInfoOp and entry point must exist in the same
+    module as the operation.
+
+    @param op Operation inside the target module, or the ModuleOp itself.
+    @throws VPUX_THROW if NetworkInfoOp or entry point function is not found.
+ */
+mlir::func::FuncOp getMainFunc(mlir::Operation* op);
+
+/** @brief Get both NetworkInfoOp and main function from the immediate parent module.
+
+    Enables structured binding: auto [netInfo, netFunc] = net::getFromModule(op);
+
+    Finds the nearest parent ModuleOp and returns both the NetworkInfoOp and entry
+    point function. Both must exist in the same module as the operation.
+
+    @param op Operation inside the target module, or the ModuleOp itself.
+    @throws VPUX_THROW if NetworkInfoOp or entry point function is not found.
+ */
+std::pair<net::NetworkInfoOp, mlir::func::FuncOp> getFromModule(mlir::Operation* op);
 
 /** @brief Utility that sets up basic sections of the net::NetworkInfoOp.
 

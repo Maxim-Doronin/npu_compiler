@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -85,6 +85,7 @@ constexpr StringRef SHV_FIFO_ADDRS = "config.ShvFIFOAddrs";
 constexpr StringRef DPU_FIFO_ADDRS = "config.DpuFIFOAddrs";
 constexpr StringRef BARRIER_FIFO_ADDR = "config.BarrierFIFOAddr";
 constexpr StringRef BARRIER_FIFO_DEPTH = "config.BarrierFIFODepth";
+constexpr StringRef MAX_BARRIERS_PER_TASK = "config.MaxBarriersPerTask";
 
 // VPUNN Configurations
 constexpr StringRef VPUNN_PRE_SPLIT = "config.EnableVPUNNPreSplit";

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,11 +7,12 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @FoldTile
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<3x4x2xf32>)
 func.func @FoldTile(%arg0: tensor<3x4x2xf32>) -> tensor<3x4x2xf32> {
     %0 = IE.Tile(%arg0) {repeats_values = [1, 1, 1]} : tensor<3x4x2xf32> -> tensor<3x4x2xf32>
     // CHECK-NOT:   IE.Tile
     return %0 : tensor<3x4x2xf32>
-    // CHECK:       return %arg0
+    // CHECK:       return [[ARG_0]]
 }
 
 // -----

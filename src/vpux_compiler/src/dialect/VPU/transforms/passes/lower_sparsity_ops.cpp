@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -185,7 +185,7 @@ mlir::LogicalResult rewriteSparsityOpWithEltwiseOp(mlir::PatternRewriter& rewrit
     outputTypeForPPEAttr = outputTypeForPPEAttr.changeElemType(newType);
 
     const auto opType = VPU::EltwiseType::ADD;
-    const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    const auto ppeAttr = VPU::getPpeConfig(ctx).retrievePPEAttribute(origOp);
 
     auto inputPaddingAttr = origOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)
                                     ? mlir::cast<mlir::ArrayAttr>(origOp->getAttr(VPU::INPUT_PADDING_ATTR_NAME))
@@ -351,13 +351,14 @@ mlir::LogicalResult rewriteSparsityOpWithConv(mlir::PatternRewriter& rewriter, m
     auto filter = createFilter(rewriter, origOp->getLoc(), filterType);
 
     // TODO: add weights sparsity map to save compute
-    const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    const auto ppeAttr = ppeConfig.retrievePPEAttribute(origOp);
     const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(arch);
     const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(arch);
     const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
 
     const auto adaptedOutElemType =
-            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
+            ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     ppeAttr, outputType.getElementType());
 
     auto weightsTableVec = VPU::createWeightsTableData(origOp->getOperand(0), adaptedOutElemType, filter,

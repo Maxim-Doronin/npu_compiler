@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@ namespace ov {
 namespace intel_npu {
 namespace Platform {
 constexpr std::string_view NPU5000 = "5000";
+constexpr std::string_view NPU5020 = "5020";
 }  // namespace Platform
 }  // namespace intel_npu
 }  // namespace ov

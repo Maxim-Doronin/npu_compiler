@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,13 +7,14 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @BroadcastFoldFold
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x8x4x4xf32>)
 func.func @BroadcastFoldFold(%arg0 : tensor<1x8x4x4xf32>)-> tensor<1x8x4x4xf32> {
     %0 = const.Declare tensor<4xsi64> = dense<1> : tensor<4xsi64>
     %1 = IE.Broadcast(%arg0, %0) {mode = #IE.broadcast_type<BIDIRECTIONAL>} : tensor<1x8x4x4xf32>, tensor<4xsi64> -> tensor<1x8x4x4xf32>
     return %1 : tensor<1x8x4x4xf32>
 
     // CHECK-NOT: IE.Broadcast
-    // CHECK:     return %arg0
+    // CHECK:     return [[ARG_0]]
 }
 
 // CHECK-LABEL: @ConstBroadcastFuseBidirectional

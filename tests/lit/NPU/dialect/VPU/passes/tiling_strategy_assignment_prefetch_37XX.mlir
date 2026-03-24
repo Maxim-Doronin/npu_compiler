@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -148,7 +148,7 @@ func.func @InterpSplitOverH(
         tensor<1x64x48x80xf16, {order = #NHWC}> -> tensor<1x64x192x320xf16, {order = #NHWC}>
     return %0 : tensor<1x64x192x320xf16, {order = #NHWC}>
 
-    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[INPUT]])
     // CHECK-SAME:  tilingStrategy = [1, 1, 1, 5]
     // CHECK-SAME:  : tensor<1x64x48x80xf16, {order = #NHWC}>
     // CHECK-SAME:  -> tensor<1x64x192x320xf16, {order = #NHWC}>
@@ -173,7 +173,7 @@ func.func @InterpSplitOverHW(
         tensor<1x128x35x35xf16, {order = #NHWC}> -> tensor<1x128x168x335xf16, {order = #NHWC}>
     return %0 : tensor<1x128x168x335xf16, {order = #NHWC}>
 
-    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[INPUT]])
     // CHECK-SAME:  tilingStrategy = [1, 1, 1, 8]
     // CHECK-SAME:  : tensor<1x128x35x35xf16, {order = #NHWC}>
     // CHECK-SAME:  -> tensor<1x128x168x335xf16, {order = #NHWC}>
@@ -200,7 +200,7 @@ func.func @InterpSplitOverCNoCommonFactor(
         tensor<1x64x31x31xf16, {order = #NHWC}> -> tensor<1x64x121x121xf16, {order = #NHWC}>
     return %0 : tensor<1x64x121x121xf16, {order = #NHWC}>
 
-    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[INPUT]])
     // CHECK-SAME:  tilingStrategy = [1, 1, 2, 1]
     // CHECK-SAME:  : tensor<1x64x31x31xf16, {order = #NHWC}>
     // CHECK-SAME:  -> tensor<1x64x121x121xf16, {order = #NHWC}>
@@ -1056,7 +1056,7 @@ func.func @SplitNegativeActivationSw(%arg0: tensor<1x8x80x1280xf16>) -> tensor<1
     %0 = VPU.Negative(%arg0) : tensor<1x8x80x1280xf16> -> tensor<1x8x80x1280xf16>
     return %0 : tensor<1x8x80x1280xf16>
 
-    // CHECK:       [[OUTPUT:%.+]] = VPU.Negative(%arg0) {
+    // CHECK:       [[OUTPUT:%.+]] = VPU.Negative([[INPUT]]) {
     // CHECK-SAME:  tilingStrategy = [1, 1, 1, 2]} : tensor<1x8x80x1280xf16> -> tensor<1x8x80x1280xf16>
 
     // CHECK:       return [[OUTPUT]] : tensor<1x8x80x1280xf16>
@@ -1312,6 +1312,9 @@ func.func @ReLUSplitOverH(%arg0: tensor<1x80x80x80xf16, {order = #NHWC}>) -> ten
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL:   @SplitNCECompressConv
+// CHECK-SAME:        [[ARG_0:%[^:]+]]: tensor<1x4x448x224xf16, {order = #NHWC}>,
+// CHECK-SAME:        [[ARG_1:%[^:]+]]: tensor<64x1x1x160xf16, {order = #NHWC}>,
+// CHECK-SAME:        [[ARG_2:%[^:]+]]: tensor<64x1x1x4xsi32>) -> tensor<1x64x224x112xf16, {order = #NHWC}>
 func.func @SplitNCECompressConv(
         %arg0: tensor<1x4x448x224xf16, {order = #NHWC}>,
         %arg1: tensor<64x1x1x160xf16, {order = #NHWC}>,
@@ -1327,7 +1330,7 @@ func.func @SplitNCECompressConv(
 
     return %0 : tensor<1x64x224x112xf16, {order = #NHWC}>
 
-    // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.CompressConvolution(%arg0, %arg1, %arg2) {
+    // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.CompressConvolution([[ARG_0]], [[ARG_1]], [[ARG_2]]) {
     // CHECK-SAME:      cm_sp_pattern = 15 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
     // CHECK-SAME:      pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
     // CHECK-SAME:      rawFilterShape = [64, 4, 7, 7], strides = [2, 2], tilingStrategy = [1, 1, 2, 1]}
@@ -1339,14 +1342,14 @@ func.func @SplitNCECompressConv(
 // -----
 
 // CHECK-LABEL: @SplitDFT
-// CHECK-SAME: (%arg0: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf16>
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf16>
 func.func @SplitDFT(%arg0: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf16> {
     %cst = const.Declare tensor<16384xf16> = dense<2.0> : tensor<16384xf16>
     %0 = VPU.DFT(%arg0, %cst) {axes_attr = [2, 3], signal_size_attr = [-1, -1]} : tensor<1x120x64x64x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
     return %0 : tensor<1x120x64x64x2xf16>
 
 // CHECK: [[CST:%.+]]  = const.Declare tensor<16384xf16> = dense<2.000000e+00> : tensor<16384xf16>
-// CHECK: [[OUTPUT:%.+]] = VPU.DFT(%arg0, [[CST]]) {axes_attr = [2, 3], signal_size_attr = [-1, -1], tilingStrategy = [1, 3, 1, 1, 1]} : tensor<1x120x64x64x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
+// CHECK: [[OUTPUT:%.+]] = VPU.DFT([[ARG_0]], [[CST]]) {axes_attr = [2, 3], signal_size_attr = [-1, -1], tilingStrategy = [1, 3, 1, 1, 1]} : tensor<1x120x64x64x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
 // CHECK: return [[OUTPUT]] : tensor<1x120x64x64x2xf16>
 
 }
@@ -1354,42 +1357,42 @@ func.func @SplitDFT(%arg0: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf1
 // -----
 
 // CHECK-LABEL: @SplitIDFT
-// CHECK-SAME: (%arg0: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf16>
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf16>
 func.func @SplitIDFT(%arg0: tensor<1x120x64x64x2xf16>) -> tensor<1x120x64x64x2xf16> {
      %cst = const.Declare tensor<16384xf16> = dense<2.0> : tensor<16384xf16>
     %0 = VPU.IDFT(%arg0, %cst) {axes_attr = [2, 3], signal_size_attr = [-1, -1]} : tensor<1x120x64x64x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
     return %0 : tensor<1x120x64x64x2xf16>
 
 // CHECK: [[CST:%.+]]  = const.Declare tensor<16384xf16> = dense<2.000000e+00> : tensor<16384xf16>
-// CHECK: [[OUTPUT:%.+]] = VPU.IDFT(%arg0, [[CST]]) {axes_attr = [2, 3], signal_size_attr = [-1, -1], tilingStrategy = [1, 3, 1, 1, 1]} : tensor<1x120x64x64x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
+// CHECK: [[OUTPUT:%.+]] = VPU.IDFT([[ARG_0]], [[CST]]) {axes_attr = [2, 3], signal_size_attr = [-1, -1], tilingStrategy = [1, 3, 1, 1, 1]} : tensor<1x120x64x64x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
 // CHECK: return [[OUTPUT]] : tensor<1x120x64x64x2xf16>
 }
 
 // -----
 
 // CHECK-LABEL: @SplitRDFTUncut
-// CHECK-SAME: (%arg0: tensor<1x120x64x64xf16>) -> tensor<1x120x64x64x2xf16>
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x120x64x64xf16>) -> tensor<1x120x64x64x2xf16>
 func.func @SplitRDFTUncut(%arg0: tensor<1x120x64x64xf16>) -> tensor<1x120x64x64x2xf16> {
     %cst = const.Declare tensor<16384xf16> = dense<2.0> : tensor<16384xf16>
     %0 = VPU.RDFTUncut(%arg0, %cst) {axes_attr = [2, 3], signal_size_attr = [-1, -1]} : tensor<1x120x64x64xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
     return %0 : tensor<1x120x64x64x2xf16>
 
 // CHECK: [[CST:%.+]]  = const.Declare tensor<16384xf16> = dense<2.000000e+00> : tensor<16384xf16>
-// CHECK: [[OUTPUT:%.+]] = VPU.RDFTUncut(%arg0, [[CST]]) {axes_attr = [2, 3], signal_size_attr = [-1, -1], tilingStrategy = [1, 2, 1, 1, 1]} : tensor<1x120x64x64xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
+// CHECK: [[OUTPUT:%.+]] = VPU.RDFTUncut([[ARG_0]], [[CST]]) {axes_attr = [2, 3], signal_size_attr = [-1, -1], tilingStrategy = [1, 2, 1, 1, 1]} : tensor<1x120x64x64xf16>, tensor<16384xf16> -> tensor<1x120x64x64x2xf16>
 // CHECK: return [[OUTPUT]] : tensor<1x120x64x64x2xf16>
 }
 
 // -----
 
 // CHECK-LABEL: @SplitIRDFTLastAxis
-// CHECK-SAME: (%arg0: tensor<1x120x64x33x2xf16>) -> tensor<1x120x64x64xf16>
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x120x64x33x2xf16>) -> tensor<1x120x64x64xf16>
 func.func @SplitIRDFTLastAxis(%arg0: tensor<1x120x64x33x2xf16>) -> tensor<1x120x64x64xf16> {
     %cst = const.Declare tensor<16384xf16> = dense<2.0> : tensor<16384xf16>
     %0 = VPU.IRDFTLastAxis(%arg0, %cst) {axes_attr = [3], signal_size_attr = [-1]} : tensor<1x120x64x33x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64xf16>
     return %0 : tensor<1x120x64x64xf16>
 
 // CHECK: [[CST:%.+]]  = const.Declare tensor<16384xf16> = dense<2.000000e+00> : tensor<16384xf16>
-// CHECK: [[OUTPUT:%.+]] = VPU.IRDFTLastAxis(%arg0, [[CST]]) {axes_attr = [3], signal_size_attr = [-1], tilingStrategy = [1, 2, 1, 1]} : tensor<1x120x64x33x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64xf16>
+// CHECK: [[OUTPUT:%.+]] = VPU.IRDFTLastAxis([[ARG_0]], [[CST]]) {axes_attr = [3], signal_size_attr = [-1], tilingStrategy = [1, 2, 1, 1]} : tensor<1x120x64x33x2xf16>, tensor<16384xf16> -> tensor<1x120x64x64xf16>
 // CHECK: return [[OUTPUT]] : tensor<1x120x64x64xf16>
 }
 
@@ -1478,6 +1481,7 @@ func.func @PrefetchTilingWithSOKParentConsidered(
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @PermuteOpWithHugeInputSize
+// CHECK-SAME:        [[ARG_0:%[^:]+]]: tensor<1x4x2048x336xf16>
 func.func @PermuteOpWithHugeInputSize(%arg0: tensor<1x4x2048x336xf16>) -> tensor<1x4x2048x336xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Permute(%arg0) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 4 : i64,
                                  multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
@@ -1485,7 +1489,7 @@ func.func @PermuteOpWithHugeInputSize(%arg0: tensor<1x4x2048x336xf16>) -> tensor
     return %0 : tensor<1x4x2048x336xf16, {order = #NHWC}>
 
 
-    //CHECK: [[RET:%.+]] = VPU.NCE.Permute(%arg0) {
+    //CHECK: [[RET:%.+]] = VPU.NCE.Permute([[ARG_0]]) {
     //CHECK-SAME{LITERAL}:            tilingStrategy = [1, 1, 3, 1]
     //CHECK:                  tensor<1x4x2048x336xf16, {order = #NHWC}>
 

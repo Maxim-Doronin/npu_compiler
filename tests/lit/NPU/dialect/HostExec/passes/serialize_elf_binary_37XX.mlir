@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -167,7 +167,7 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
   // CHECK-SAME:   <object = "\7FELF\02\01\00\00\00\{{.+}}">
   // CHECK:   func.func private @dma_copy(memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
   // CHECK:   }
-  // CHECK:   func.func @main(%arg0: memref<1x3x60x60xf16, @DDR>, %arg1: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {
+  // CHECK:   func.func @main([[ARG_0:%[^:]+]]: memref<1x3x60x60xf16, @DDR>, [[ARG_1:%[^:]+]]: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {
   // CHECK:   %alloc = memref.alloc() : memref<1x3x60x60xf16, @DDR>
-  // CHECK:   Core.NestedCall @module0::@dma_copy(%arg0, %alloc) : (memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
+  // CHECK:   Core.NestedCall @module0::@dma_copy([[ARG_0]], %alloc) : (memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
 }

@@ -1,10 +1,10 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-vpuip-copy-to-sw-copy --canonicalize  %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
-
 
 // -----
 

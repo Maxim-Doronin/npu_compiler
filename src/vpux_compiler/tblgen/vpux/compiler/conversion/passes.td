@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,20 +26,6 @@ def ConvertIEToVPUNCE : PassBase<"convert-IE-to-VPU-NCE", "vpux::FunctionPass"> 
     }];
 
     let constructor = "vpux::createConvertIEToVPUNCEPass()";
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// ConvertIEToVPUM2I
-//
-
-def ConvertIEToVPUM2I : PassBase<"convert-IE-to-VPU-M2I", "vpux::FunctionPass"> {
-    let summary = "Convert supported IE layers to VPU M2I operations";
-
-    let constructor = "vpux::createConvertIEToVPUM2IPass()";
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,7 +70,7 @@ SmallVector<SmallVector<int64_t>> getClusteringOffsets(VPU::DistributedTensorTyp
 }
 
 void applyClusteringOffset(VPU::DPUWorkloadOp dpuWorkloadOp, ArrayRef<int64_t> clusteringOffset, Logger log) {
-    auto wlOffsets = parseIntArrayAttr<int64_t>(dpuWorkloadOp.getOutOffsetsAttr());
+    auto wlOffsets = dpuWorkloadOp.getConstOutputOffsets();
     if (mlir::isa<VPU::NCEPermuteOp>(dpuWorkloadOp->getParentOp())) {
         // NCEPermute CHW will be casted to HWC, so need to process offsets on C and H
         wlOffsets[Dims4D::Act::C.ind()] -= clusteringOffset[Dims4D::Act::C.ind()];
@@ -82,9 +82,10 @@ void applyClusteringOffset(VPU::DPUWorkloadOp dpuWorkloadOp, ArrayRef<int64_t> c
 
     mlir::OpBuilder builder(dpuWorkloadOp);
     auto newWorkload = builder.create<VPU::DPUWorkloadOp>(
-            dpuWorkloadOp.getLoc(), getIntArrayAttr(dpuWorkloadOp.getContext(), wlOffsets),
-            dpuWorkloadOp.getOutSizesAttr(), dpuWorkloadOp.getInOffsetsAttr(), dpuWorkloadOp.getInSizesAttr(),
-            dpuWorkloadOp.getPadAttr(), dpuWorkloadOp.getMpeModeAttr(), dpuWorkloadOp.getClusterIdAttr());
+            dpuWorkloadOp.getLoc(), mlir::DenseI64ArrayAttr::get(dpuWorkloadOp.getContext(), wlOffsets),
+            dpuWorkloadOp.getStaticOutSizesAttr(), dpuWorkloadOp.getStaticInOffsetsAttr(),
+            dpuWorkloadOp.getStaticInSizesAttr(), dpuWorkloadOp.getPadAttribute(), dpuWorkloadOp.getMpeModeAttr(),
+            dpuWorkloadOp.getClusterIdAttr());
 
     log.nest().trace("Applied overlapped offset for workload: before '{0}', after '{1}'", dpuWorkloadOp, newWorkload);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,10 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
 
+// CHECK-LABEL: @NotFuseLastCopyWithQuantizeCastOpWithMultipleUsers
+// CHECK-SAME:  [[ARG_0:%[^:]+]]: memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: memref<1x32x56x56xui8, #NHWC>
+// CHECK-SAME:  [[ARG_2:%[^:]+]]: memref<1x16x56x56xui8, #NHWC>
 func.func @NotFuseLastCopyWithQuantizeCastOpWithMultipleUsers(%arg0: memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>,
                                                           %arg1: memref<1x32x56x56xui8, #NHWC>, %arg2: memref<1x16x56x56xui8, #NHWC>)
                                                           -> (memref<1x32x56x56xui8, #NHWC>, memref<1x16x56x56xui8, #NHWC>) {
@@ -57,10 +61,10 @@ func.func @NotFuseLastCopyWithQuantizeCastOpWithMultipleUsers(%arg0: memref<1x16
 
     // CHECK:       [[BUFFER0:%.+]] = memref.alloc() : memref<1x32x56x56x!qElemType, #NHWC, @DDR>
     // CHECK:       [[SUBVIEW:%.+]] = VPUIP.SubView [[BUFFER0]] [0, 0, 0, 0] [1, 16, 56, 56] : memref<1x32x56x56x!qElemType, #NHWC, @DDR> to memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
-    // CHECK:       [[COPY0:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>) outputs([[SUBVIEW]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>)
+    // CHECK:       [[COPY0:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>) outputs([[SUBVIEW]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>)
     // CHECK-SAME:      -> memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
     // CHECK:       [[SUBVIEW1:%.+]] = VPUIP.SubView [[BUFFER0]] [0, 16, 0, 0] [1, 16, 56, 56] : memref<1x32x56x56x!qElemType, #NHWC, @DDR> to memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>) outputs([[SUBVIEW1]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>)
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>) outputs([[SUBVIEW1]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>)
     // CHECK-SAME:      -> memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
     // CHECK:       [[VAL5:%.+]] = VPUIP.ConcatView
     // CHECK-SAME:     inputs([[COPY0]], [[COPY1]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>, memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>)
@@ -71,8 +75,8 @@ func.func @NotFuseLastCopyWithQuantizeCastOpWithMultipleUsers(%arg0: memref<1x16
     // CHECK:       [[COPY2:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[SUBVIEW2]] : memref<1x16x56x56xui8, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>)
     // CHECK-SAME:     outputs([[BUFFER1]] : memref<1x16x56x56xui8, #NHWC, @CMX_NN>)  ->  memref<1x16x56x56xui8, #NHWC, @CMX_NN>
-    // CHECK:       [[COPY3:%.+]] = VPUIP.Copy inputs([[QUANTIZECAST0]] : memref<1x32x56x56xui8, #NHWC, @DDR>) outputs(%arg1 : memref<1x32x56x56xui8, #NHWC>) -> memref<1x32x56x56xui8, #NHWC>
-    // CHECK:       [[COPY4:%.+]] = VPUIP.Copy inputs([[COPY2]] : memref<1x16x56x56xui8, #NHWC, @CMX_NN>) outputs(%arg2 : memref<1x16x56x56xui8, #NHWC>) -> memref<1x16x56x56xui8, #NHWC>
+    // CHECK:       [[COPY3:%.+]] = VPUIP.Copy inputs([[QUANTIZECAST0]] : memref<1x32x56x56xui8, #NHWC, @DDR>) outputs([[ARG_1]] : memref<1x32x56x56xui8, #NHWC>) -> memref<1x32x56x56xui8, #NHWC>
+    // CHECK:       [[COPY4:%.+]] = VPUIP.Copy inputs([[COPY2]] : memref<1x16x56x56xui8, #NHWC, @CMX_NN>) outputs([[ARG_2]] : memref<1x16x56x56xui8, #NHWC>) -> memref<1x16x56x56xui8, #NHWC>
     // CHECK:       return [[COPY3]], [[COPY4]] : memref<1x32x56x56xui8, #NHWC>, memref<1x16x56x56xui8, #NHWC>
 }
 
@@ -568,18 +572,23 @@ func.func @NoChangesSourceIsConstantOp(%arg0: memref<1x2x4x4xf16>) -> memref<1x2
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @NoChangesDifferentMemSpace
+// CHECK-SAME:  [[ARG_0:%[^:]+]]: memref<1x16x4x4xf16, #NHWC>
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: memref<16x1x1x4xsi32, @CMX_NN>
+// CHECK-SAME:  [[ARG_2:%[^:]+]]: memref<16x1x1x16xui8, @CMX_NN>
+// CHECK-SAME:  [[ARG_3:%[^:]+]]: memref<1x16x2x2xf16, #NHWC>
 func.func @NoChangesDifferentMemSpace(%arg0: memref<1x16x4x4xf16, #NHWC>, %arg1 : memref<16x1x1x4xsi32, @CMX_NN>,
                                  %arg2 : memref<16x1x1x16xui8, @CMX_NN>, %arg3: memref<1x16x2x2xf16, #NHWC>) -> memref<1x16x2x2xf16, #NHWC> {
     %0 = memref.alloc() : memref<1x16x4x4xf16, #NHWC, @CMX_NN>
     %1 = VPUIP.Copy inputs(%arg0 : memref<1x16x4x4xf16, #NHWC>) outputs(%0 : memref<1x16x4x4xf16, #NHWC, @CMX_NN>) -> memref<1x16x4x4xf16, #NHWC, @CMX_NN>
 
     %2 = memref.alloc() : memref<1x16x2x2xf16, #NHWC, @CMX_NN>
-    %3 = VPUIP.NCEClusterTask {
+    %3 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [2, 2],
             kernel_strides = [2, 2],
             task_type = #VPUIP.nce_task_type<MAXPOOL>
-        }
+        }>
         input(%1 : memref<1x16x4x4xf16, #NHWC, @CMX_NN>)
         weight_table(%arg1 : memref<16x1x1x4xsi32, @CMX_NN>)
         parent_input(%1 : memref<1x16x4x4xf16, #NHWC, @CMX_NN>)
@@ -599,97 +608,9 @@ func.func @NoChangesDifferentMemSpace(%arg0: memref<1x16x4x4xf16, #NHWC>, %arg1 
 
     // CHECK: [[VAR0:%.+]] = VPUIP.NCEClusterTask
     // CHECK: [[VAR1:%.+]] = VPUIP.Copy inputs([[VAR0]] : memref<1x16x2x2xf16, #NHWC, @CMX_NN>)
-    // CHECK-SAME:                      outputs(%arg3 : memref<1x16x2x2xf16, #NHWC>)
+    // CHECK-SAME:                      outputs([[ARG_3]] : memref<1x16x2x2xf16, #NHWC>)
 
     // CHECK: return [[VAR1]]
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-!IDataCMXType = memref<1x16x4x4xf16, #NHWC, @CMX_NN>
-!ISMCMXType = memref<1x16x4x4xi1, #NHWC, @CMX_NN>
-
-// CHECK-LABEL: @NoChangesDifferentMemSpaceSparse
-// CHECK-SAME: ([[IN_DATA:%.+]]: memref<1x16x4x4xf16, #NHWC>, [[IN_SM:%.+]]: memref<1x16x4x4xi1, #NHWC>,
-// CHECK-SAME: {{%.+}}: memref<16x1x1x4xsi32, @CMX_NN>, {{%.+}}: memref<16x1x1x16xui8, @CMX_NN>,
-// CHECK-SAME: [[OUT_DATA:%.+]]: memref<1x16x4x4xf16, #NHWC>, [[OUT_SM:%.+]]: memref<1x16x4x4xi1, #NHWC>)
-func.func @NoChangesDifferentMemSpaceSparse(
-        %arg0data: memref<1x16x4x4xf16, #NHWC>, %arg0sm: memref<1x16x4x4xi1, #NHWC>,
-        %arg1 : memref<16x1x1x4xsi32, @CMX_NN>,
-        %arg2 : memref<16x1x1x16xui8, @CMX_NN>,
-        %arg3data: memref<1x16x4x4xf16, #NHWC>, %arg3sm: memref<1x16x4x4xi1, #NHWC>)
-        -> (memref<1x16x4x4xf16, #NHWC>, memref<1x16x4x4xi1, #NHWC>) {
-    %data_buff = memref.alloc() : !IDataCMXType
-    %sm_buff = memref.alloc() : !ISMCMXType
-    %in_data_0 = VPUIP.Copy
-        inputs(%arg0data: memref<1x16x4x4xf16, #NHWC>)
-        outputs(%data_buff: !IDataCMXType)
-        -> !IDataCMXType
-    %in_sm_0 = VPUIP.Copy
-        inputs(%arg0sm: memref<1x16x4x4xi1, #NHWC>)
-        outputs(%sm_buff: !ISMCMXType)
-        -> !ISMCMXType
-
-    %out_data_0 = memref.alloc() : !IDataCMXType
-    %out_sm_0 = memref.alloc() : !ISMCMXType
-    %mp:2 = VPUIP.NCEClusterTask {
-            kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 1 : i64>,
-            kernel_size = [2, 2],
-            kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<MAXPOOL>
-        }
-        input(%in_data_0 : !IDataCMXType)
-        input_sparsity_map(%in_sm_0 : !ISMCMXType)
-        weight_table(%arg1 : memref<16x1x1x4xsi32, @CMX_NN>)
-        parent_input(%in_data_0 : !IDataCMXType)
-        parent_input_sparsity_map(%in_sm_0 : !ISMCMXType)
-        parent_output(%out_data_0 : !IDataCMXType)
-        parent_output_sparsity_map(%out_sm_0 : !ISMCMXType)
-        outputs(%out_data_0 : !IDataCMXType)
-        output_sparsity_map(%out_sm_0 : !ISMCMXType) -> !IDataCMXType, !ISMCMXType
-        variants :
-        {
-            DPUTask { outEnd = [16, 2, 2], mpe_mode = #VPU.mpe_mode<VECTOR_FP16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, outStart = [0, 0, 0] }
-        }
-        PPE : {
-        }
-
-    %3 = VPUIP.Copy inputs(%mp#0 : !IDataCMXType) outputs(%arg3data : memref<1x16x4x4xf16, #NHWC>)
-        -> memref<1x16x4x4xf16, #NHWC>
-    %4 = VPUIP.Copy inputs(%mp#1 : !ISMCMXType) outputs(%arg3sm : memref<1x16x4x4xi1, #NHWC>)
-        -> memref<1x16x4x4xi1, #NHWC>
-    return %3, %4 : memref<1x16x4x4xf16, #NHWC>, memref<1x16x4x4xi1, #NHWC>
-
-    // CHECK:       [[BUFF_0_DATA:%.+]] = memref.alloc() : memref<1x16x4x4xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[BUFF_0_SM:%.+]] = memref.alloc() : memref<1x16x4x4xi1, #NHWC, @CMX_NN>
-
-    // CHECK:       [[IN_COPY_DATA:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs([[IN_DATA]]
-    // CHECK-SAME:      outputs([[BUFF_0_DATA]]
-    // CHECK:       [[IN_COPY_SM:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs([[IN_SM]]
-    // CHECK-SAME:      outputs([[BUFF_0_SM]]
-
-    // CHECK:       [[NCE_OUT_DATA:%.+]] = memref.alloc() : memref<1x16x4x4xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[NCE_OUT_SM:%.+]] = memref.alloc() : memref<1x16x4x4xi1, #NHWC, @CMX_NN>
-
-    // CHECK:       [[NCE_0:%.+]]:2 = VPUIP.NCEClusterTask
-    // CHECK-SAME:          input([[IN_COPY_DATA]]
-    // CHECK-SAME:          input_sparsity_map([[IN_COPY_SM]]
-    // CHECK-SAME:          outputs([[NCE_OUT_DATA]]
-    // CHECK-SAME:          output_sparsity_map([[NCE_OUT_SM]]
-
-    // CHECK:       [[COPY_DATA:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs([[NCE_0]]#0
-    // CHECK-SAME:      outputs([[OUT_DATA]]
-
-    // CHECK:       [[COPY_SM:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs([[NCE_0]]#1
-    // CHECK-SAME:      outputs([[OUT_SM]]
-
-    // CHECK:       return [[COPY_DATA]], [[COPY_SM]]
 }
 
 // -----
@@ -697,6 +618,11 @@ func.func @NoChangesDifferentMemSpaceSparse(
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @NotFuseCopyWithPermuteCastOpWithMultipleUsers
+// CHECK-SAME:  [[ARG_0:%[^:]+]]: memref<1x131584x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: memref<1x131585x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>,
+// CHECK-SAME:  [[ARG_2:%[^:]+]]: memref<1x11x513x513xf16, #NHWC, @DDR>,
+// CHECK-SAME:  [[ARG_3:%[^:]+]]: memref<1x11x256x513xf16, #NHWC, @DDR>)
 func.func @NotFuseCopyWithPermuteCastOpWithMultipleUsers(%arg0: memref<1x131584x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>,
                                                          %arg1: memref<1x131585x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>,
                                                          %out0: memref<1x11x513x513xf16, #NHWC, @DDR>,
@@ -715,7 +641,7 @@ func.func @NotFuseCopyWithPermuteCastOpWithMultipleUsers(%arg0: memref<1x131584x
     return %7, %8: memref<1x11x513x513xf16, #NHWC, @DDR>, memref<1x11x256x513xf16, #NHWC, @DDR>
 
     // CHECK:       [[ALLOC0:%.+]] = memref.alloc() : memref<1x263169x11x1xf16, @DDR>
-    // CHECK:       [[CONCATVIEW:%.+]] = VPUIP.ConcatView inputs(%arg0, %arg1 : memref<1x131584x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>, memref<1x131585x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>)
+    // CHECK:       [[CONCATVIEW:%.+]] = VPUIP.ConcatView inputs([[ARG_0]], [[ARG_1]] : memref<1x131584x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>, memref<1x131585x11x1xf16, {order = #NCHW, strides = [2894859, 11, 1, 1]}, @DDR>)
     // CHECK-SAME:      outputs([[ALLOC0]] : memref<1x263169x11x1xf16, @DDR>) -> memref<1x263169x11x1xf16, @DDR>
     // CHECK:       [[RESHAPE:%.+]] = VPUIP.GenericReshape inputs([[CONCATVIEW]] : memref<1x263169x11x1xf16, @DDR>) -> memref<1x513x513x11xf16, @DDR>
     // CHECK:       [[PERMUTECAST:%.+]] = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NCHW} inputs([[RESHAPE]] : memref<1x513x513x11xf16, @DDR>) -> memref<1x11x513x513xf16, #NHWC, @DDR>
@@ -724,8 +650,8 @@ func.func @NotFuseCopyWithPermuteCastOpWithMultipleUsers(%arg0: memref<1x131584x
     // CHECK-SAME:      memref<1x11x256x513xf16, {order = #NHWC, strides = [2894859, 1, 5643, 11]}, @DDR>
     // CHECK:       [[ALLOC1:%.+]] = memref.alloc() : memref<1x11x256x513xf16, #NHWC, @CMX_NN>
     // CHECK:       [[DISTRIBUTEDOP:%.+]] = VPUIP.Copy inputs([[SUBVIEW]] : memref<1x11x256x513xf16, {order = #NHWC, strides = [2894859, 1, 5643, 11]}, @DDR>) outputs([[ALLOC1]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) -> memref<1x11x256x513xf16, #NHWC, @CMX_NN>
-    // CHECK:       [[COPY0:%.+]] = VPUIP.Copy inputs([[PERMUTECAST]] : memref<1x11x513x513xf16, #NHWC, @DDR>) outputs(%arg2 : memref<1x11x513x513xf16, #NHWC, @DDR>) -> memref<1x11x513x513xf16, #NHWC, @DDR>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[DISTRIBUTEDOP]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) outputs(%arg3 : memref<1x11x256x513xf16, #NHWC, @DDR>) -> memref<1x11x256x513xf16, #NHWC, @DDR>
+    // CHECK:       [[COPY0:%.+]] = VPUIP.Copy inputs([[PERMUTECAST]] : memref<1x11x513x513xf16, #NHWC, @DDR>) outputs([[ARG_2]] : memref<1x11x513x513xf16, #NHWC, @DDR>) -> memref<1x11x513x513xf16, #NHWC, @DDR>
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[DISTRIBUTEDOP]] : memref<1x11x256x513xf16, #NHWC, @CMX_NN>) outputs([[ARG_3]] : memref<1x11x256x513xf16, #NHWC, @DDR>) -> memref<1x11x256x513xf16, #NHWC, @DDR>
     // CHECK:       return [[COPY0]], [[COPY1]] : memref<1x11x513x513xf16, #NHWC, @DDR>, memref<1x11x256x513xf16, #NHWC, @DDR>
 }
 

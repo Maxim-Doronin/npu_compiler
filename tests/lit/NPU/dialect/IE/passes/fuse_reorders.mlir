@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FusePermuteToConvolution
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x11x16x23xf16, {order = #NHWC}>
 func.func @FusePermuteToConvolution(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) -> tensor<1x11x15x21xf16> {
     %cst = const.Declare tensor<11x11x2x3xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<11x11x2x3xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -31,7 +32,7 @@ func.func @FusePermuteToConvolution(%arg0: tensor<1x11x16x23xf16, {order = #NHWC
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<11x11x2x3xf16, {order = #NHWC}> =
     // CHECK-SAME:  dense<1.000000e+00> : tensor<11x11x2x3xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:   [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  dilations = [1, 1],
     // CHECK-SAME:  pads_begin = [0, 0],
     // CHECK-SAME:  pads_end = [0, 0],
@@ -48,6 +49,7 @@ func.func @FusePermuteToConvolution(%arg0: tensor<1x11x16x23xf16, {order = #NHWC
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FusePermuteToConvolutionWithConvertOp
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x11x16x23xf16, {order = #NHWC}>
 func.func @FusePermuteToConvolutionWithConvertOp(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) -> tensor<1x11x15x21xf32> {
     %cst = const.Declare tensor<11x11x2x3xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<11x11x2x3xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -71,7 +73,7 @@ func.func @FusePermuteToConvolutionWithConvertOp(%arg0: tensor<1x11x16x23xf16, {
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<11x11x2x3xf16, {order = #NHWC}> =
     // CHECK-SAME:  dense<1.000000e+00> : tensor<11x11x2x3xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:   [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  dilations = [1, 1],
     // CHECK-SAME:  pads_begin = [0, 0],
     // CHECK-SAME:  pads_end = [0, 0],
@@ -91,6 +93,7 @@ func.func @FusePermuteToConvolutionWithConvertOp(%arg0: tensor<1x11x16x23xf16, {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FusePermuteToMaxPool
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x11x16x23xf16, {order = #NHWC}>
 func.func @FusePermuteToMaxPool(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) -> tensor<1x11x14x21xf16> {
     %MAX_POOL = IE.MaxPool(%arg0) {
         kernel_size = [3, 3],
@@ -106,7 +109,7 @@ func.func @FusePermuteToMaxPool(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) 
 
     return %REORDER : tensor<1x11x14x21xf16>
 
-    // CHECK:   [[POOL:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:   [[POOL:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:  kernel_size = [3, 3],
     // CHECK-SAME:  pads_begin = [0, 0],
     // CHECK-SAME:  pads_end = [0, 0],
@@ -123,6 +126,7 @@ func.func @FusePermuteToMaxPool(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FusePermuteToGroupConv
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x11x16x23xf16, {order = #NHWC}>
 func.func @FusePermuteToGroupConv(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) -> tensor<1x11x15x21xf16> {
     %cst = const.Declare tensor<11x1x2x3xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<11x1x1x2x3xf32>,
@@ -147,7 +151,7 @@ func.func @FusePermuteToGroupConv(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>
     // CHECK-SAME:  dense<1.000000e+00> : tensor<11x1x1x2x3xf32>,
     // CHECK-SAME:  [#const.Reshape<[11, 1, 2, 3]>, #const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[DWCONV:%.+]] = IE.GroupConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[DWCONV:%.+]] = IE.GroupConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  dilations = [1, 1],
     // CHECK-SAME:  groups = 11 : i64,
     // CHECK-SAME:  pads_begin = [0, 0],
@@ -164,6 +168,7 @@ func.func @FusePermuteToGroupConv(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FusePermuteToAvgPool
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x11x16x23xf16, {order = #NHWC}>
 func.func @FusePermuteToAvgPool(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) -> tensor<1x11x14x21xf16> {
     %AVG_POOL = IE.AvgPool(%arg0) {
         exclude_pads,
@@ -180,7 +185,7 @@ func.func @FusePermuteToAvgPool(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) 
 
     return %REORDER : tensor<1x11x14x21xf16>
 
-    // CHECK:   [[AVG_POOL:%.+]] = IE.AvgPool(%arg0) {
+    // CHECK:   [[AVG_POOL:%.+]] = IE.AvgPool([[ARG_0]]) {
     // CHECK-SAME:  exclude_pads,
     // CHECK-SAME:  kernel_size = [3, 3],
     // CHECK-SAME:  pads_begin = [0, 0],
@@ -232,6 +237,7 @@ func.func @FusePermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) -> t
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DoNotFusePermuteToAdd
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x11x16x23xf16, {order = #NHWC}>
 func.func @DoNotFusePermuteToAdd(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>) -> tensor<1x11x16x23xf16> {
     %cst = const.Declare tensor<1x11x16x23xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<1x11x16x23xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -251,7 +257,7 @@ func.func @DoNotFusePermuteToAdd(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>)
     // CHECK-SAME:  dense<1.000000e+00> : tensor<1x11x16x23xf32>,
     // CHECK-SAME:  [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[CST]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x11x16x23xf16, {order = #NHWC}>,
     // CHECK-SAME:  tensor<1x11x16x23xf16, {order = #NHWC}> -> tensor<1x11x16x23xf16, {order = #NHWC}>
@@ -267,6 +273,7 @@ func.func @DoNotFusePermuteToAdd(%arg0: tensor<1x11x16x23xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FuseNCWHPermuteToAdd
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x16x23xf16, {order = #NHWC}>
 func.func @FuseNCWHPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) -> tensor<1x16x16x23xf16, {order = #NCWH}> {
     %cst = const.Declare tensor<1x16x16x23xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<1x16x16x23xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -286,7 +293,7 @@ func.func @FuseNCWHPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
     // CHECK-SAME:  dense<1.000000e+00> : tensor<1x16x16x23xf32>,
     // CHECK-SAME:  [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[CST]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x16x16x23xf16, {order = #NHWC}>,
     // CHECK-SAME:  tensor<1x16x16x23xf16, {order = #NHWC}> -> tensor<1x16x16x23xf16, {order = #NCWH}>
@@ -300,6 +307,7 @@ func.func @FuseNCWHPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FuseNHCWPermuteToAdd
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x16x23xf16, {order = #NHWC}>
 func.func @FuseNHCWPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) -> tensor<1x16x16x23xf16, {order = #NHCW}> {
     %cst = const.Declare tensor<1x16x16x23xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<1x16x16x23xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -319,7 +327,7 @@ func.func @FuseNHCWPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
     // CHECK-SAME:  dense<1.000000e+00> : tensor<1x16x16x23xf32>,
     // CHECK-SAME:  [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[CST]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x16x16x23xf16, {order = #NHWC}>,
     // CHECK-SAME:  tensor<1x16x16x23xf16, {order = #NHWC}> -> tensor<1x16x16x23xf16, {order = #NHCW}>
@@ -333,6 +341,7 @@ func.func @FuseNHCWPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FuseNWHCPermuteToAdd
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x16x23xf16, {order = #NHWC}>
 func.func @FuseNWHCPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) -> tensor<1x16x16x23xf16, {order = #NWHC}> {
     %cst = const.Declare tensor<1x16x16x23xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<1x16x16x23xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -352,7 +361,7 @@ func.func @FuseNWHCPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
     // CHECK-SAME:  dense<1.000000e+00> : tensor<1x16x16x23xf32>,
     // CHECK-SAME:  [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[CST]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x16x16x23xf16, {order = #NHWC}>,
     // CHECK-SAME:  tensor<1x16x16x23xf16, {order = #NHWC}> -> tensor<1x16x16x23xf16, {order = #NWHC}>
@@ -366,6 +375,7 @@ func.func @FuseNWHCPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FuseNWCHPermuteToAdd
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x16x23xf16, {order = #NHWC}>
 func.func @FuseNWCHPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) -> tensor<1x16x16x23xf16, {order = #NWCH}> {
     %cst = const.Declare tensor<1x16x16x23xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<1x16x16x23xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
@@ -385,7 +395,7 @@ func.func @FuseNWCHPermuteToAdd(%arg0: tensor<1x16x16x23xf16, {order = #NHWC}>) 
     // CHECK-SAME:  dense<1.000000e+00> : tensor<1x16x16x23xf32>,
     // CHECK-SAME:  [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
 
-    // CHECK:   [[ADD:%.+]] = IE.Add(%arg0, [[CST]]) {
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  auto_broadcast = #IE.auto_broadcast_type<NUMPY>
     // CHECK-SAME:  } : tensor<1x16x16x23xf16, {order = #NHWC}>,
     // CHECK-SAME:  tensor<1x16x16x23xf16, {order = #NHWC}> -> tensor<1x16x16x23xf16, {order = #NWCH}>
@@ -434,6 +444,7 @@ func.func @FusePermuteToConvolutionBeforeInterpolate(%arg0: tensor<1x32x64x64xf1
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FusePermuteToTransposedConv
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x2x256x144xf16, {order = #NHWC}>
 func.func @FusePermuteToTransposedConv(%arg0: tensor<1x2x256x144xf16, {order = #NHWC}>) -> tensor<1x2x512x288xf16> {
     %cst = const.Declare tensor<2x2x4x4xf16, {order = #NHWC}> =
         dense<1.000000e+00> : tensor<2x2x4x4xf16>, [#const.Reorder<#NHWC>]
@@ -457,7 +468,7 @@ func.func @FusePermuteToTransposedConv(%arg0: tensor<1x2x256x144xf16, {order = #
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<2x2x4x4xf16, {order = #NHWC}> =
     // CHECK-SAME:  dense<1.000000e+00> : tensor<2x2x4x4xf16>, [#const.Reorder<#NHWC>]
 
-    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:  dilations = [1, 1],
     // CHECK-SAME:  operandSegmentSizes = array<i32: 1, 1, 0, 0>,
     // CHECK-SAME:  pads_begin = [1, 1],

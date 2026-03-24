@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,8 +12,6 @@ namespace vpux {
 namespace ShaveCodeGen {
 
 constexpr StringRef IntrinsicAttrName = "ShaveCodeGenIntrinsic";
-
-bool hasOnlySupportedTypes(mlir::Operation* op);
 
 }  // namespace ShaveCodeGen
 }  // namespace vpux

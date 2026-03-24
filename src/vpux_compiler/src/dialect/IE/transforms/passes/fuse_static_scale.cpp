@@ -203,7 +203,7 @@ private:
 mlir::LogicalResult InsertMultiplyBeforeConcat::matchAndRewrite(IE::MultiplyOp origOp,
                                                                 mlir::PatternRewriter& rewriter) const {
     _log.trace("Found IE.Multiply at {0}", origOp->getLoc());
-    if (origOp.getPostOpAttr() != nullptr) {
+    if (origOp.getPostOpAttr() != nullptr || origOp.getClampAttr() != nullptr) {
         _log.trace("Ignore: IE.Multiply is not simple (has ppe)");
         return mlir::failure();
     }
@@ -301,7 +301,7 @@ mlir::LogicalResult InsertMultiplyBeforeConcat::matchAndRewrite(IE::MultiplyOp o
 bool validateAndExtract(IE::MultiplyOp origOp, const Logger& log, float& constSplatValue,
                         mlir::Value& nonConstMultiplyOperand) {
     log.trace("Found IE.Multiply at {0} for static scale fusion", origOp->getLoc());
-    if (origOp.getPostOpAttr() != nullptr) {
+    if (origOp.getPostOpAttr() != nullptr || origOp.getClampAttr() != nullptr) {
         log.trace("Ignore: IE.Multiply is not simple (has ppe)");
         return false;
     }

@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
@@ -210,9 +211,8 @@ mlir::LogicalResult GroupWisePatternRewriter<ConcreteOp>::matchAndRewrite(Concre
                       "Got illegal group-wise pattern!");
     auto seqLen = actShape.totalSize() / (wtShape[Dims3D::Filter::IC] * wtShape[Dims3D::Filter::OC]);
     auto newActShape = Shape({seqLen, wtShape[Dims3D::Filter::IC], wtShape[Dims3D::Filter::OC]});
-    auto actReshapeOp =
-            rewriter.create<IE::ReshapeOp>(appendLoc(origMatMulOp->getLoc(), "reshape_act"), activation, nullptr, false,
-                                           getIntArrayAttr(rewriter.getContext(), newActShape));
+    auto actReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(origMatMulOp->getLoc(), "reshape_act"), activation,
+                                                       getIntArrayAttr(rewriter.getContext(), newActShape));
 
     auto axis = actReshapeOp.getOutput().getType().getRank() - 1;
     auto axesAttr = getIntArrayAttr(rewriter, SmallVector<int64_t>{axis});
@@ -229,8 +229,8 @@ mlir::LogicalResult GroupWisePatternRewriter<ConcreteOp>::matchAndRewrite(Concre
             Shape({multiplyScaleZPOutShape[Dims3D::Act::B],
                    multiplyScaleZPOutShape.totalSize() / multiplyScaleZPOutShape[Dims3D::Act::B]});
     auto multiplyScaleZPReshapeOp = rewriter.create<IE::ReshapeOp>(
-            appendLoc(multiplyScaleZP.getLoc(), "reshape_multiply_scale_zp"), multiplyScaleZP.getOutput(), nullptr,
-            false, getIntArrayAttr(rewriter.getContext(), newMultiplyScaleZPOutShape));
+            appendLoc(multiplyScaleZP.getLoc(), "reshape_multiply_scale_zp"), multiplyScaleZP.getOutput(),
+            getIntArrayAttr(rewriter.getContext(), newMultiplyScaleZPOutShape));
 
     auto newMatMulRhs = multiplyScaleZPReshapeOp.getOutput();
     auto reduceSumOutElemType = mlir::cast<vpux::NDTypeInterface>(reduceSumOp.getOutput().getType()).getElementType();

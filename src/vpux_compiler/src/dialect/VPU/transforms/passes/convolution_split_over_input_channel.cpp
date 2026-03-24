@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,6 @@
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/mpe_engine_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -140,25 +139,24 @@ void NCEConvolutionSplitOverInputChannel::setStrategies(
     if (newOps.empty()) {
         return;
     }
-    auto firstOp = newOps[0];
-    std::optional<VPU::MultiClusterStrategy> opMultiClusterStrategy = std::nullopt;
-    std::optional<vpux::Shape> opTilingStrategy = std::nullopt;
-    if (!getStrategies(firstOp.getOperation(), clusterStrategies, opTilingStrategy, opMultiClusterStrategy, _log)) {
-        // TODO: iterate all supported multiClusterStrategy, E#178645
-        // TODO: generate warning, clear new ops and return failure, or retry with a different tiling number,
-        // E#178732
-        VPUX_THROW("Failed to find legal tilingStrategy for new ops: {0}", firstOp);
-    }
-
-    _log.debug("[{0}] Set '{1}' at '{2}': '{3}' '{4}'", this->getDebugName(), firstOp->getName(), firstOp->getLoc(),
-               opTilingStrategy.value(), firstOp);
 
     for (auto newOp : newOps) {
+        std::optional<VPU::MultiClusterStrategy> opMultiClusterStrategy = std::nullopt;
+        std::optional<vpux::Shape> opTilingStrategy = std::nullopt;
+        if (!getStrategies(newOp.getOperation(), clusterStrategies, opTilingStrategy, opMultiClusterStrategy, _log)) {
+            // TODO: iterate all supported multiClusterStrategy, E#178645
+            // TODO: generate warning, clear new ops and return failure, or retry with a different tiling number,
+            // E#178732
+            VPUX_THROW("Failed to find legal tilingStrategy for new ops: {0}", newOp);
+        }
         newOp.getOperation()->setAttr(vpux::tilingStrategy,
                                       getIntArrayAttr(newOp.getOperation()->getContext(), opTilingStrategy.value()));
         if (_numClusters > 1 && opMultiClusterStrategy.has_value()) {
             newOp.setMultiClusterStrategy(opMultiClusterStrategy.value());
         }
+
+        _log.debug("[{0}] Set '{1}' at '{2}': '{3}' '{4}'", this->getDebugName(), newOp->getName(), newOp->getLoc(),
+                   opTilingStrategy.value(), newOp);
     }
 }
 
@@ -308,8 +306,7 @@ mlir::LogicalResult NCEConvolutionSplitOverInputChannel::matchAndRewrite(VPU::NC
     setStrategies<VPU::DequantizeOp>(dequantizeOps);
     setStrategies<VPU::NCEConvolutionOp>(
             convOps, {VPU::MultiClusterStrategy::SplitOverKernel, VPU::MultiClusterStrategy::SplitOverHeight});
-    setStrategies<VPU::NCEEltwiseOp>(llvm::ArrayRef(addOps).drop_back(), {VPU::MultiClusterStrategy::SplitOverHeight});
-    setStrategies<VPU::NCEEltwiseOp>(llvm::ArrayRef(addOps).take_back(), {VPU::MultiClusterStrategy::SplitOverHeight});
+    setStrategies<VPU::NCEEltwiseOp>(addOps, {VPU::MultiClusterStrategy::SplitOverHeight});
 
     auto lastOp = result.getDefiningOp();
     if (mlir::isa<VPU::NCEDepthConvolutionOp>(lastOp)) {

@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -182,6 +183,10 @@ TEST_P(FuseRoPETestCommon, NPU4000_HW) {
 TEST_P(FuseRoPETestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(FuseRoPETestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 const std::vector<RoPEParams> precommit_testValues = {{{1, 32, 32, 96}, {1, 1, 32, 96}, {1, 1, 32, 96}, false},

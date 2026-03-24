@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,7 +47,7 @@ auto createFQ(mlir::PatternRewriter& rewriter, mlir::Value input, IE::FakeQuanti
         const auto newFqInputShapeSqueezedAttr = getIntArrayAttr(rewriter.getContext(), newFqInputShape);
 
         return rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(fq, "reshape_in_dim{0}_{1}_{2}", index, composedIndex, locSuffix), inputSlice, nullptr, false,
+                takeOpLoc(fq, "reshape_in_dim{0}_{1}_{2}", index, composedIndex, locSuffix), inputSlice,
                 newFqInputShapeSqueezedAttr);
     };
     auto inputLow = sliceFqConstInput(fq.getInputLow(), "in_low");
@@ -74,7 +74,7 @@ auto createDQ(mlir::PatternRewriter& rewriter, IE::DequantizeOp dq, int64_t inde
         const auto newDqInputShapeSqueezedAttr = getIntArrayAttr(rewriter.getContext(), newDqInputShape);
 
         return rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(dq, "reshape_in_dim{0}_{1}_{2}", index, composedIndex, locSuffix), inputSlice, nullptr, false,
+                takeOpLoc(dq, "reshape_in_dim{0}_{1}_{2}", index, composedIndex, locSuffix), inputSlice,
                 newDqInputShapeSqueezedAttr);
     };
     auto slicedInput = sliceDqConstInput(dq.getInput(), "in_slice");
@@ -212,12 +212,11 @@ mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(Concrete
     }
 
     const auto newInputShapeAttr = getIntArrayAttr(rewriter.getContext(), newInputShape);
-    auto newInput = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), input, nullptr, false,
-                                                         newInputShapeAttr);
+    auto newInput = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), input, newInputShapeAttr);
 
     const auto newFilterShapeAttr = getIntArrayAttr(rewriter.getContext(), newFilterShape);
-    auto newFilter = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_filter"), filter, nullptr, false,
-                                                          newFilterShapeAttr);
+    auto newFilter =
+            rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_filter"), filter, newFilterShapeAttr);
 
     mlir::IRMapping mapper;
     mapper.map(origOp->getOperands(), SmallVector<mlir::Value>{newInput, newFilter});
@@ -235,8 +234,7 @@ mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(Concrete
 
     const auto outputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputType.getShape());
-    auto reshapeOut = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), nullptr, false,
-                                                                 outputShapeAttr);
+    auto reshapeOut = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), outputShapeAttr);
     extendOpLoc(reshapeOut, "reshape_out");
 
     _log.trace("Replaced with 4D '{0}'", origOp->getName());
@@ -329,9 +327,9 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
                             .getResult();
             SmallVector<int64_t> reshapeShape{inputShape[Dims5D::Act::N], inputShape[Dims5D::Act::C],
                                               inputShape[Dims5D::Act::H], inputShape[Dims5D::Act::W]};
-            auto reshapeSlicedActivation = rewriter.create<IE::ReshapeOp>(
-                    takeOpLoc(origOp, "reshape_{0}_{1}", actIndex, depthIndex), slicedActivation, nullptr, false,
-                    getIntArrayAttr(ctx, reshapeShape));
+            auto reshapeSlicedActivation =
+                    rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_{0}_{1}", actIndex, depthIndex),
+                                                   slicedActivation, getIntArrayAttr(ctx, reshapeShape));
             mlir::Operation* lastOp = reshapeSlicedActivation;
 
             mlir::Builder builder(origOp->getContext());
@@ -399,16 +397,15 @@ mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp 
     SmallVector<int64_t> subOutputShape{outputShape[Dims5D::Act::N], outputShape[Dims5D::Act::C], 1,
                                         outputShape[Dims5D::Act::H] * outputShape[Dims5D::Act::W]};
     for (auto subConv : newConvs) {
-        auto subOutputReshape =
-                rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}", concatInputs.size()), subConv,
-                                               nullptr, false, getIntArrayAttr(ctx, subOutputShape))
-                        .getOutput();
+        auto subOutputReshape = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}", concatInputs.size()),
+                                                               subConv, getIntArrayAttr(ctx, subOutputShape))
+                                        .getOutput();
         concatInputs.push_back(subOutputReshape);
     }
     auto concatOutput =
             rewriter.create<IE::ConcatOp>(takeOpLoc(origOp, "concat_out"), concatInputs, Dims4D::Act::H).getOutput();
-    auto outputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), concatOutput, nullptr,
-                                                              false, getIntArrayAttr(ctx, outputShape));
+    auto outputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), concatOutput,
+                                                              getIntArrayAttr(ctx, outputShape));
     rewriter.replaceOp(origOp, outputReshape);
 
     return mlir::success();
@@ -489,9 +486,9 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                             .getResult();
             SmallVector<int64_t> reshapeShape{inputShape[Dims5D::Act::N], inputShape[Dims5D::Act::C],
                                               inputShape[Dims5D::Act::H], inputShape[Dims5D::Act::W]};
-            auto reshapeSlicedActivation = rewriter.create<IE::ReshapeOp>(
-                    takeOpLoc(origOp, "reshape_in_{0}_{1}", actIndex, depthIndex), slicedActivation, nullptr, false,
-                    getIntArrayAttr(ctx, reshapeShape));
+            auto reshapeSlicedActivation =
+                    rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}_{1}", actIndex, depthIndex),
+                                                   slicedActivation, getIntArrayAttr(ctx, reshapeShape));
             mlir::Operation* lastOp = reshapeSlicedActivation;
 
             if (inputFQ != nullptr) {
@@ -545,9 +542,9 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
     SmallVector<int64_t> subOutputShape{outputShape[Dims5D::Act::N], outputShape[Dims5D::Act::C], 1,
                                         outputShape[Dims5D::Act::H] * outputShape[Dims5D::Act::W]};
     for (auto subConv : newConvs) {
-        auto subOutputReshape = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), subConv, nullptr, false,
-                                                               getIntArrayAttr(ctx, subOutputShape))
-                                        .getOutput();
+        auto subOutputReshape =
+                rewriter.create<IE::ReshapeOp>(origOp->getLoc(), subConv, getIntArrayAttr(ctx, subOutputShape))
+                        .getOutput();
         concatInputs.push_back(subOutputReshape);
     }
 
@@ -560,8 +557,8 @@ mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::Transpose
                                                ShapeRef(outputPaddingEnd));
     }
 
-    auto outReshapeOp = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, lastOp->getResult(0), nullptr, false,
-                                                                   getIntArrayAttr(ctx, outputShape));
+    auto outReshapeOp =
+            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, lastOp->getResult(0), getIntArrayAttr(ctx, outputShape));
     extendOpLoc(outReshapeOp, "reshape_out");
 
     return mlir::success();

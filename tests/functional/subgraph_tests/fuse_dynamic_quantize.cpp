@@ -1,6 +1,8 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <ov_ops/dynamic_quantize.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "openvino/opsets/opset6_decl.hpp"
@@ -153,6 +155,10 @@ TEST_P(FuseDQTestCommon, NPU4000_HW) {
 TEST_P(FuseDQTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(FuseDQTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 namespace {

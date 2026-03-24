@@ -114,7 +114,7 @@ TEST_F(MLIR_CostModelAnalysisTest, CostModelAnalysisBehavior) {
     const auto arch = config::ArchKind::NPU40XX;
     auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
     interfacesRegistry->registerInterfaces(registry);
-    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{std::nullopt, config::ArchKind::NPU40XX});
+    VPU::initializeSingletons(registry, VPU::DeviceVersion{std::nullopt, config::ArchKind::NPU40XX});
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
@@ -149,7 +149,7 @@ TEST_F(MLIR_CostModelAnalysisTest, CostModelCachedSharedInstance_NPU50XX) {
     auto registry = vpux::createDialectRegistry();
     auto interfacesRegistry = vpux::createInterfacesRegistry(config::ArchKind::NPU50XX);
     interfacesRegistry->registerInterfaces(registry);
-    VPU::initializeSingletonCache(registry, VPU::DeviceVersion{std::nullopt, config::ArchKind::NPU50XX});
+    VPU::initializeSingletons(registry, VPU::DeviceVersion{std::nullopt, config::ArchKind::NPU50XX});
 
     mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR50XX, &ctx);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -201,4 +201,20 @@ func.func @ConvertReverseToGroupConvolutionWithAxisOfNonW(%arg0: tensor<512x512x
     // CHECK:        [[TRANSPOSE_OUT:%.+]] = IE.Transpose([[SHAPECAST_OUT]]) {order_value = #NCWH} : tensor<512x512x3x3xf16> -> tensor<512x512x3x3xf16>
 
     // CHECK:        return [[TRANSPOSE_OUT]] : tensor<512x512x3x3xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertReverseToGroupConvForUnsupportedDataType
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x512x512x3xui8>
+func.func @NotConvertReverseToGroupConvForUnsupportedDataType(%arg0: tensor<1x512x512x3xui8>) -> (tensor<1x512x512x3xui8>) {
+    %0 = IE.Reverse(%arg0) {
+        axis_value = [3],
+        mode = #IE.reverse_mode<INDEX>
+    } : tensor<1x512x512x3xui8> -> tensor<1x512x512x3xui8>
+    return %0 : tensor<1x512x512x3xui8>
+
+    // CHECK:        [[REVERSE:%.+]] = IE.Reverse([[INPUT]]) {axis_value = [3], mode = #IE.reverse_mode<INDEX>} : tensor<1x512x512x3xui8> -> tensor<1x512x512x3xui8>
+
+    // CHECK:        return [[REVERSE]] : tensor<1x512x512x3xui8>
 }

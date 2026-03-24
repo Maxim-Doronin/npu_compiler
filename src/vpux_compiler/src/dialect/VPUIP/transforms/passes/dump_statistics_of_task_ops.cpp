@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,9 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/counters_category.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -26,7 +28,7 @@ namespace vpux::VPUIP {
 #include "vpux/compiler/dialect/VPUIP/passes.hpp.inc"
 }  // namespace vpux::VPUIP
 
-using namespace vpux;
+using namespace vpux::VPUIP;
 
 namespace {
 
@@ -34,94 +36,7 @@ namespace {
 // Declare utility functions
 //
 
-std::string convertBytesToReadableSize(uint64_t);
-bool printDMASizes(const std::string&, const uint64_t&);
-
-class SpecificCategoryCounter final : public utils::OpCounter {
-public:
-    using utils::OpCounter::OpCounter;
-
-    bool record(mlir::Operation* op) override {
-        if (!utils::OpCounter::record(op)) {
-            return false;
-        }
-
-        if (mlir::isa_and_nonnull<VPUIP::DMATypeOpInterface>(op)) {
-            auto opType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
-            _size += opType.getCompactAllocSize().count();
-        }
-        return true;
-    }
-
-    void printStatistics(const vpux::Logger& log) const override {
-        if (_count == 0) {
-            return;
-        }
-        if (printDMASizes(_category, _size)) {
-            log.info("{0} - {1} ops : Size - {2}", _category, _count, convertBytesToReadableSize(_size));
-        } else {
-            log.info("{0} - {1} ops", _category, _count);
-        }
-    }
-
-private:
-    uint64_t _size{0};
-};
-
-using CountersNode = utils::OpCounterTree::Node;
-using CountersVec = std::vector<CountersNode>;
-
-// Dummy wrapper around SpecificCategoryCounter that produces a Tree::Node{counter}
-CountersNode makeCounterNode(const std::string& category, utils::OpCounter::IsOperationSuitable predicate,
-                             CountersVec&& nestedCounters = {},
-                             utils::OpCounter::HandleUnrecognizedCounter handler = {}) {
-    return {std::unique_ptr<utils::OpCounter>(
-                    new SpecificCategoryCounter(category, std::move(predicate), std::move(handler))),
-            std::move(nestedCounters)};
-}
-
-//
-// Utility Functions
-//
-
-bool printDMASizes(const std::string& category, const uint64_t& size) {
-    std::vector<std::string> dmaSubStrings = {"DDR", "CMX", "NNDMA"};
-
-    bool anyDmaSubStringFound =
-            std::any_of(dmaSubStrings.begin(), dmaSubStrings.end(), [&](const std::string& dmaSubString) {
-                return category.find(dmaSubString) != std::string::npos;
-            });
-
-    return anyDmaSubStringFound && size;
-}
-
-std::string convertBytesToReadableSize(uint64_t bytes) {
-    const uint64_t kilobyte = 1024;
-    const uint64_t megabyte = kilobyte * 1024;
-    const uint64_t gigabyte = megabyte * 1024;
-
-    std::string result;
-    if (bytes >= gigabyte) {
-        double size = static_cast<double>(bytes) / gigabyte;
-        result = std::to_string(size);
-        result.resize(result.find('.') + 3);  // Truncate to two decimal digits
-        result += " GB";
-    } else if (bytes >= megabyte) {
-        double size = static_cast<double>(bytes) / megabyte;
-        result = std::to_string(size);
-        result.resize(result.find('.') + 3);
-        result += " MB";
-    } else if (bytes >= kilobyte) {
-        double size = static_cast<double>(bytes) / kilobyte;
-        result = std::to_string(size);
-        result.resize(result.find('.') + 3);
-        result += " KB";
-    } else {
-        result = std::to_string(bytes) + " bytes";
-    }
-
-    return result;
-}
+using CountersNode = vpux::utils::OpCounterTree::Node;
 
 bool isNameLocContainsStr(mlir::Location loc, const std::string& substr) {
     if (auto nameLoc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
@@ -374,7 +289,7 @@ CountersNode getM2ICounter() {
     });
 }
 
-utils::OpCounterTree populateCounters() {
+utils::OpCounterTree populateCounters(mlir::MLIRContext* ctx) {
     utils::OpCounter::HandleUnrecognizedCounter remainedOpHandler = [](mlir::Operation* op) {
         return op->getName().getIdentifier().str();
     };
@@ -383,6 +298,9 @@ utils::OpCounterTree populateCounters() {
     counters.push_back(getSWKernelsCounter());
     counters.push_back(getSparsityCounter());
     counters.push_back(getM2ICounter());
+
+    auto mpeModeCountersStrategy = VPUIP::getVPUIPStrategyFactory(ctx)->getCountersStrategy();
+    mpeModeCountersStrategy->appendCounters(counters);
 
     CountersVec roots;
     roots.push_back(makeCounterNode(
@@ -638,7 +556,7 @@ private:
 void DumpStatisticsOfTaskOpsPass::safeRunOnFunc() {
     auto func = getOperation();
 
-    auto opStatisticsCounter = populateCounters();
+    auto opStatisticsCounter = populateCounters(&getContext());
     BarrierCounter barrierCounter;
     CompressionRateCounter compressionCounter;
     ConstSwizzlingCounter constSwizzlingCounter;

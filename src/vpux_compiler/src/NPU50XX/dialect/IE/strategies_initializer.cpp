@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/NPU50XX/dialect/IE/impl/fuse_outstanding_quant_strategy.hpp"
 #include "vpux/compiler/NPU50XX/dialect/IE/impl/fuse_quantized_ops_strategy.hpp"
 #include "vpux/compiler/NPU50XX/dialect/IE/impl/initial_low_precision_transformations_pipeline_strategy.hpp"
+#include "vpux/compiler/NPU50XX/dialect/IE/impl/weights_dequantize_to_dynamic_dequantize_strategy.hpp"
 #include "vpux/compiler/NPU50XX/dialect/IE/impl/weights_dequantize_to_fakequantize_strategy.hpp"
 #include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 
@@ -24,6 +25,11 @@ namespace vpux::IE {
 class StrategyFactory50XX : public IE::StrategyFactory {
     std::unique_ptr<IE::IConvertQuantizeOpsToNceOpsStrategy> getConvertQuantizeOpsToNceOpsStrategy() override {
         return std::make_unique<IE::arch37xx::ConvertQuantizeOpsToNceOpsStrategy>();
+    }
+
+    std::unique_ptr<IDynamicRewriterStrategy> getWeightsDequantizeToDynamicDequantizeStrategy(
+            ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index) override {
+        return std::make_unique<IE::arch50xx::WeightsDequantizeToDynamicDequantizeStrategy>(benefitLevels, index);
     }
 
     std::unique_ptr<IDynamicRewriterStrategy> getWeightsDequantizeToFakeQuantizeStrategy(
@@ -68,8 +74,9 @@ class StrategyFactory50XX : public IE::StrategyFactory {
     }
 
     std::unique_ptr<IDynamicRewriterStrategy> getInitialLowPrecisionTransformationsPipelineStrategy(
-            mlir::func::FuncOp func) override {
-        return std::make_unique<IE::arch50xx::InitialLowPrecisionTransformationsPipelineStrategy>(func);
+            mlir::func::FuncOp func, const bool enableDynamicQuantizationForStaticCase) override {
+        return std::make_unique<IE::arch50xx::InitialLowPrecisionTransformationsPipelineStrategy>(
+                enableDynamicQuantizationForStaticCase, func);
     }
 };
 }  // namespace vpux::IE

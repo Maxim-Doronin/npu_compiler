@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,15 +48,6 @@ void MoveTensorOpsToCMXPass::safeRunOnFunc() {
 
         auto consumerOp = nceOp.getOperation();
         auto input = nceOp.getOperation()->getOperand(0);
-
-        if (auto extractSlice = mlir::dyn_cast_or_null<mlir::tensor::ExtractSliceOp>(input.getDefiningOp())) {
-            if (extractSlice->getParentOfType<mlir::scf::ForallOp>() == nullptr) {
-                return;
-            }
-
-            input = extractSlice.getSource();
-            consumerOp = extractSlice.getOperation();
-        }
 
         auto inputCopy = mlir::dyn_cast_or_null<VPU::CopyOp>(input.getDefiningOp());
         if (inputCopy == nullptr) {

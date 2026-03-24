@@ -1,10 +1,9 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU50XX/dialect/VPU/utils/cost_model_factory.hpp"
-#include "vpux/compiler/NPU50XX/dialect/VPU/utils/cost_model_shave_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model_data.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -28,10 +27,20 @@ namespace {
  */
 ArrayRef<char> getCostModelData([[maybe_unused]] bool isFastModel,
                                 [[maybe_unused]] std::optional<config::Platform> platform) {
+    if (platform.has_value()) {
+        if (platform.value() == config::Platform::NPU5020) {
+            return ArrayRef(VPU::COST_MODEL_5_2, VPU::COST_MODEL_5_2_SIZE);
+        }
+    }
     return ArrayRef(VPU::COST_MODEL_5_1, VPU::COST_MODEL_5_1_SIZE);
 }
 
 ArrayRef<char> getCostModelCacheData([[maybe_unused]] std::optional<config::Platform> platform) {
+    if (platform.has_value()) {
+        if (platform.value() == config::Platform::NPU5020) {
+            return ArrayRef(VPU::COST_MODEL_CACHE_5_2, VPU::COST_MODEL_CACHE_5_2_SIZE);
+        }
+    }
     return ArrayRef(VPU::COST_MODEL_CACHE_5_1, VPU::COST_MODEL_CACHE_5_1_SIZE);
 }
 

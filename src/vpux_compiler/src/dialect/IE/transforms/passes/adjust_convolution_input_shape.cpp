@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -512,6 +512,51 @@ mlir::LogicalResult ReshapeConvInput<ConcreteOp>::matchAndRewrite(ConcreteOp con
     inputShape = getShape(convOp.getInput());
     nestedLog.debug("Adjust input shape for convolution at '{0}'", convOp->getLoc());
 
+    SmallVector<SmallVector<int64_t>> outDimMappingOnW{{Dims4D::Act::N.ind()},
+                                                       {Dims4D::Act::C.ind()},
+                                                       {Dims4D::Act::H.ind()},
+                                                       {Dims4D::Act::H.ind(), Dims4D::Act::W.ind()}};
+    SmallVector<SmallVector<int64_t>> outDimMappingOnH{{Dims4D::Act::N.ind()},
+                                                       {Dims4D::Act::C.ind()},
+                                                       {Dims4D::Act::H.ind(), Dims4D::Act::W.ind()},
+                                                       {Dims4D::Act::W.ind()}};
+    auto outDimMapping = alignOnH ? outDimMappingOnH : outDimMappingOnW;
+
+    auto maybeReshapeOp = convOp.getInput().getDefiningOp();
+    if (mlir::isa_and_present<IE::ShapeCastOp>(maybeReshapeOp) && maybeReshapeOp->hasOneUse()) {
+        auto reshapeInputOp = maybeReshapeOp->getOperand(0).getDefiningOp();
+        auto isProducerLegalOp =
+                reshapeInputOp != nullptr && reshapeInputOp->hasOneUse() && !IE::isPureViewOp(reshapeInputOp);
+
+        auto userOp = *convOp->getUsers().begin();
+        auto isUserLegalOp = !convOp->hasOneUse() || userOp->template hasTrait<mlir::OpTrait::IsTerminator>() ||
+                             IE::isPureViewOp(userOp);
+
+        if (isProducerLegalOp && isUserLegalOp) {
+            auto reshapeInputShape = getShape(maybeReshapeOp->getOperand(0));
+            // Match op1->reshapeOp->op2->[viewOp] to op1->op2->reshapeOp->[viewOp]
+            // to reuse the reshape input for better tiling and fusion, and avoid extra copy
+            if (reshapeInputShape.size() == 4 &&
+                reshapeInputShape[Dims4D::Act::H] > VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT &&
+                reshapeInputShape[Dims4D::Act::W] > VPU::NCEInvariant::VPU_SPATIAL_ALIGNMENT &&
+                reshapeInputShape[Dims4D::Act::C] == inputShape[Dims4D::Act::C] &&
+                reshapeInputShape[Dims4D::Act::N] == inputShape[Dims4D::Act::N]) {
+                nestedLog.debug("Found Reshape input with H={0}, W={1}. Using it directly.",
+                                reshapeInputShape[Dims4D::Act::H], reshapeInputShape[Dims4D::Act::W]);
+
+                mlir::IRMapping mapper;
+                mapper.map(convOp.getInput(), maybeReshapeOp->getOperand(0));
+                auto newConvOp = rewriter.clone(*convOp, mapper);
+                vpux::inferReturnTypes(newConvOp, vpux::InferShapedTypeMode::SHAPE);
+
+                const auto outShapeAttr = getIntArrayAttr(ctx, getShape(convOp.getOutput()));
+                rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(convOp, newConvOp->getResult(0),
+                                                                 getIntArrayOfArray(ctx, outDimMapping), outShapeAttr);
+                return mlir::success();
+            }
+        }
+    }
+
     // Try to move larger dim size to H as it is more likely to lead to beneficial tiling & multiclustering
     int64_t newHeight, newWidth;
     std::tie(newHeight, newWidth) = [&]() -> std::tuple<int64_t, int64_t> {
@@ -565,15 +610,6 @@ mlir::LogicalResult ReshapeConvInput<ConcreteOp>::matchAndRewrite(ConcreteOp con
     const auto outShape = getShape(convOp.getOutput()).raw();
     const auto outShapeAttr = getIntArrayAttr(ctx, outShape);
 
-    SmallVector<SmallVector<int64_t>> outDimMappingOnW{{Dims4D::Act::N.ind()},
-                                                       {Dims4D::Act::C.ind()},
-                                                       {Dims4D::Act::H.ind()},
-                                                       {Dims4D::Act::H.ind(), Dims4D::Act::W.ind()}};
-    SmallVector<SmallVector<int64_t>> outDimMappingOnH{{Dims4D::Act::N.ind()},
-                                                       {Dims4D::Act::C.ind()},
-                                                       {Dims4D::Act::H.ind(), Dims4D::Act::W.ind()},
-                                                       {Dims4D::Act::W.ind()}};
-    auto outDimMapping = alignOnH ? outDimMappingOnH : outDimMappingOnW;
     rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(convOp, newConvOp.getOutput(),
                                                      getIntArrayOfArray(ctx, outDimMapping), outShapeAttr);
 

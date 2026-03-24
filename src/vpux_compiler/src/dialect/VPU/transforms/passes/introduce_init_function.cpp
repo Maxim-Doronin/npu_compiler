@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -729,9 +729,7 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
         return;
     }
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto [netInfo, mainFuncOp] = net::getFromModule(moduleOp);
     const auto& wsAnalysis = getAnalysis<VPU::WeightsSeparationInfo>();
 
     auto tree = VPU::getOutliningRepresentation(mainFuncOp);

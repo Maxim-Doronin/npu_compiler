@@ -1,13 +1,22 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+namespace vpux::IE {
+enum class InterpolateCoordMode : uint64_t;
+class InterpolateCoordModeAttr;
+class InterpolateModeAttr;
+}  // namespace vpux::IE
+namespace vpux::VPU {
+enum class NCEInterpolateMode : uint64_t;
+class NCEInterpolateModeAttr;
+}  // namespace vpux::VPU
 
 namespace vpux::VPU {
 

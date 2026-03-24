@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -123,9 +123,7 @@ void FuseSegmentedDma::safeRunOnFunc() {
         return getStride(log, std::move(tasks), /*input=*/false);
     };
 
-    auto module = funcOp->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
-    auto dmaPortCount = dmaOp.getCount();
+    auto dmaPortCount = config::getNumOfDMAPorts(funcOp);
 
     const auto getPort = [=](SmallVector<VPURT::TaskOp> tasks) {
         auto maybeClusterId = getClusterId(tasks.front());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -148,10 +148,6 @@ public:
     BoolOption enablePipelining{*this, "pipelining",
                                 llvm::cl::desc("Enable vertical fusion pipelining pass and schedule pipelining"),
                                 llvm::cl::init(true)};
-
-    BoolOption enableLoopAllocation{*this, "enable-loop-allocation",
-                                    ::llvm::cl::desc("Enables loop allocation for tiling and vertical fusion regions"),
-                                    ::llvm::cl::init(false)};
 
     StrOption mcOptimizationScope{
             *this, "mc-optimization-scope", llvm::cl::desc("Determine multi-clustering optimization scope"),
@@ -318,6 +314,10 @@ public:
             *this, "enable-cascaded-unrolling",
             llvm::cl::desc("Enable cascaded unrolling with decreasing factors (e.g., 10 -> 5 -> 2)"),
             llvm::cl::init(true)};
+
+    BoolOption enableDynamicQuantizationForStaticCase{*this, "enable-dynamic-quantization-for-static-case",
+                                                      llvm::cl::desc("Enable dynamic quantization for static case"),
+                                                      llvm::cl::init(false)};
 };
 
 //

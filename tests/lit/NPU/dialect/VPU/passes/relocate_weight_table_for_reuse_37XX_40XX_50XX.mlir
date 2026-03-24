@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -221,4 +221,109 @@ func.func @RelocateWtTableReuseMultiClusterNCEMatMul(%input: tensor<8x1x64x1x4xf
     // CHECK:                [[DISTR_WEIGHTS_TABLE:%.+]] = VPU.UnrolledType([[WEIGHTS_TABLE]] : tensor<8x16x1x1x4xsi32>)
 
     // CHECK:                VPU.NCE.MatMul({{%.+}}, {{%.+}}, [[DISTR_WEIGHTS_TABLE]])
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @RelocateWtTableReuseMultiClusterNCEConvSCF
+func.func @RelocateWtTableReuseMultiClusterNCEConvSCF(%arg0: tensor<1x128x1x1xf16, {order = #NHWC}>, %arg1: tensor<64x128x1x1xf16, {order = #NHWC}>) -> tensor<1x64x1x1xf16, {order = #NHWC}> {
+    %wt = const.Declare tensor<64x1x1x4xsi32> = dense<[[[[0, 0, 1065353216, 0]]], [[[256, 0, 1065353216, 0]]], [[[512, 0, 1065353216, 0]]], [[[768, 0, 1065353216, 0]]], [[[1024, 0, 1065353216, 0]]], [[[1280, 0, 1065353216, 0]]], [[[1536, 0, 1065353216, 0]]], [[[1792, 0, 1065353216, 0]]], [[[2048, 0, 1065353216, 0]]], [[[2304, 0, 1065353216, 0]]], [[[2560, 0, 1065353216, 0]]], [[[2816, 0, 1065353216, 0]]], [[[3072, 0, 1065353216, 0]]], [[[3328, 0, 1065353216, 0]]], [[[3584, 0, 1065353216, 0]]], [[[3840, 0, 1065353216, 0]]], [[[4096, 0, 1065353216, 0]]], [[[4352, 0, 1065353216, 0]]], [[[4608, 0, 1065353216, 0]]], [[[4864, 0, 1065353216, 0]]], [[[5120, 0, 1065353216, 0]]], [[[5376, 0, 1065353216, 0]]], [[[5632, 0, 1065353216, 0]]], [[[5888, 0, 1065353216, 0]]], [[[6144, 0, 1065353216, 0]]], [[[6400, 0, 1065353216, 0]]], [[[6656, 0, 1065353216, 0]]], [[[6912, 0, 1065353216, 0]]], [[[7168, 0, 1065353216, 0]]], [[[7424, 0, 1065353216, 0]]], [[[7680, 0, 1065353216, 0]]], [[[7936, 0, 1065353216, 0]]], [[[8192, 0, 1065353216, 0]]], [[[8448, 0, 1065353216, 0]]], [[[8704, 0, 1065353216, 0]]], [[[8960, 0, 1065353216, 0]]], [[[9216, 0, 1065353216, 0]]], [[[9472, 0, 1065353216, 0]]], [[[9728, 0, 1065353216, 0]]], [[[9984, 0, 1065353216, 0]]], [[[10240, 0, 1065353216, 0]]], [[[10496, 0, 1065353216, 0]]], [[[10752, 0, 1065353216, 0]]], [[[11008, 0, 1065353216, 0]]], [[[11264, 0, 1065353216, 0]]], [[[11520, 0, 1065353216, 0]]], [[[11776, 0, 1065353216, 0]]], [[[12032, 0, 1065353216, 0]]], [[[12288, 0, 1065353216, 0]]], [[[12544, 0, 1065353216, 0]]], [[[12800, 0, 1065353216, 0]]], [[[13056, 0, 1065353216, 0]]], [[[13312, 0, 1065353216, 0]]], [[[13568, 0, 1065353216, 0]]], [[[13824, 0, 1065353216, 0]]], [[[14080, 0, 1065353216, 0]]], [[[14336, 0, 1065353216, 0]]], [[[14592, 0, 1065353216, 0]]], [[[14848, 0, 1065353216, 0]]], [[[15104, 0, 1065353216, 0]]], [[[15360, 0, 1065353216, 0]]], [[[15616, 0, 1065353216, 0]]], [[[15872, 0, 1065353216, 0]]], [[[16128, 0, 1065353216, 0]]]]> : tensor<64x1x1x4xsi32>
+    %0 = tensor.empty() : tensor<1x64x1x1xf16, {order = #NHWC}>
+    %1 = scf.forall (%arg2) = (0) to (64) step (16) shared_outs(%arg3 = %0) -> (tensor<1x64x1x1xf16, {order = #NHWC}>) {
+      %extracted_slice = tensor.extract_slice %arg1[%arg2, 0, 0, 0] [16, 128, 1, 1] [1, 1, 1, 1] : tensor<64x128x1x1xf16, {order = #NHWC}> to tensor<16x128x1x1xf16, {order = #NHWC}>
+      %extracted_slice_0 = tensor.extract_slice %wt[%arg2, 0, 0, 0] [16, 1, 1, 4] [1, 1, 1, 1] : tensor<64x1x1x4xsi32> to tensor<16x1x1x4xsi32>
+      %2 = VPU.NCE.Convolution(%arg0, %extracted_slice, %extracted_slice_0) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [16, 128, 1, 1], strides = [1, 1]} : tensor<1x128x1x1xf16, {order = #NHWC}>, tensor<16x128x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x1x1xf16, {order = #NHWC}>
+      scf.forall.in_parallel {
+        tensor.parallel_insert_slice %2 into %arg3[0, %arg2, 0, 0] [1, 16, 1, 1] [1, 1, 1, 1] : tensor<1x16x1x1xf16, {order = #NHWC}> into tensor<1x64x1x1xf16, {order = #NHWC}>
+      }
+    }
+    return %1 : tensor<1x64x1x1xf16, {order = #NHWC}>
+
+    // CHECK:                [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> =
+    // CHECK-SAME{LITERAL}:    dense<[[[[0, 16777215, 1065353216, 0]]], [[[256, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3840, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3840, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3840, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3584, 16777215, 1065353216, 0]]], [[[3840, 16777215, 1065353216, 0]]]]> : tensor<64x1x1x4xsi32>
+
+    // CHECK:                scf.forall
+    // CHECK:                  tensor.extract_slice [[WEIGHTS_TABLE]]
+    // CHECK:                  VPU.NCE.Convolution
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @RelocateWtTableReuseNestedSCFForAndForall
+func.func @RelocateWtTableReuseNestedSCFForAndForall(%arg0: tensor<1x128x1x1xf16, {order = #NHWC}>, %arg1: tensor<64x128x1x1xf16, {order = #NHWC}>) -> tensor<1x64x1x1xf16, {order = #NHWC}> {
+    %wt = const.Declare tensor<64x1x1x4xsi32> = dense<[[[[0, 0, 1065353216, 0]]], [[[256, 0, 1065353216, 0]]], [[[512, 0, 1065353216, 0]]], [[[768, 0, 1065353216, 0]]], [[[1024, 0, 1065353216, 0]]], [[[1280, 0, 1065353216, 0]]], [[[1536, 0, 1065353216, 0]]], [[[1792, 0, 1065353216, 0]]], [[[2048, 0, 1065353216, 0]]], [[[2304, 0, 1065353216, 0]]], [[[2560, 0, 1065353216, 0]]], [[[2816, 0, 1065353216, 0]]], [[[3072, 0, 1065353216, 0]]], [[[3328, 0, 1065353216, 0]]], [[[3584, 0, 1065353216, 0]]], [[[3840, 0, 1065353216, 0]]], [[[4096, 0, 1065353216, 0]]], [[[4352, 0, 1065353216, 0]]], [[[4608, 0, 1065353216, 0]]], [[[4864, 0, 1065353216, 0]]], [[[5120, 0, 1065353216, 0]]], [[[5376, 0, 1065353216, 0]]], [[[5632, 0, 1065353216, 0]]], [[[5888, 0, 1065353216, 0]]], [[[6144, 0, 1065353216, 0]]], [[[6400, 0, 1065353216, 0]]], [[[6656, 0, 1065353216, 0]]], [[[6912, 0, 1065353216, 0]]], [[[7168, 0, 1065353216, 0]]], [[[7424, 0, 1065353216, 0]]], [[[7680, 0, 1065353216, 0]]], [[[7936, 0, 1065353216, 0]]], [[[8192, 0, 1065353216, 0]]], [[[8448, 0, 1065353216, 0]]], [[[8704, 0, 1065353216, 0]]], [[[8960, 0, 1065353216, 0]]], [[[9216, 0, 1065353216, 0]]], [[[9472, 0, 1065353216, 0]]], [[[9728, 0, 1065353216, 0]]], [[[9984, 0, 1065353216, 0]]], [[[10240, 0, 1065353216, 0]]], [[[10496, 0, 1065353216, 0]]], [[[10752, 0, 1065353216, 0]]], [[[11008, 0, 1065353216, 0]]], [[[11264, 0, 1065353216, 0]]], [[[11520, 0, 1065353216, 0]]], [[[11776, 0, 1065353216, 0]]], [[[12032, 0, 1065353216, 0]]], [[[12288, 0, 1065353216, 0]]], [[[12544, 0, 1065353216, 0]]], [[[12800, 0, 1065353216, 0]]], [[[13056, 0, 1065353216, 0]]], [[[13312, 0, 1065353216, 0]]], [[[13568, 0, 1065353216, 0]]], [[[13824, 0, 1065353216, 0]]], [[[14080, 0, 1065353216, 0]]], [[[14336, 0, 1065353216, 0]]], [[[14592, 0, 1065353216, 0]]], [[[14848, 0, 1065353216, 0]]], [[[15104, 0, 1065353216, 0]]], [[[15360, 0, 1065353216, 0]]], [[[15616, 0, 1065353216, 0]]], [[[15872, 0, 1065353216, 0]]], [[[16128, 0, 1065353216, 0]]]]> : tensor<64x1x1x4xsi32>
+    %init = tensor.empty() : tensor<1x64x1x1xf16, {order = #NHWC}>
+    %c0 = arith.constant 0 : index
+    %c64 = arith.constant 64 : index
+    %c32 = arith.constant 32 : index
+    // Outer scf.for: tiling over OC in chunks of 32
+    %result = scf.for %tile = %c0 to %c64 step %c32 iter_args(%acc = %init) -> (tensor<1x64x1x1xf16, {order = #NHWC}>) {
+      %wt_tile = tensor.extract_slice %wt[%tile, 0, 0, 0] [32, 1, 1, 4] [1, 1, 1, 1] : tensor<64x1x1x4xsi32> to tensor<32x1x1x4xsi32>
+      %w_tile = tensor.extract_slice %arg1[%tile, 0, 0, 0] [32, 128, 1, 1] [1, 1, 1, 1] : tensor<64x128x1x1xf16, {order = #NHWC}> to tensor<32x128x1x1xf16, {order = #NHWC}>
+      %tile_init = tensor.empty() : tensor<1x32x1x1xf16, {order = #NHWC}>
+      // Inner scf.forall: multiclustering with 2 clusters of 16 OC each
+      %mc_result = scf.forall (%mc) = (0) to (32) step (16) shared_outs(%mc_acc = %tile_init) -> (tensor<1x32x1x1xf16, {order = #NHWC}>) {
+        %wt_mc = tensor.extract_slice %wt_tile[%mc, 0, 0, 0] [16, 1, 1, 4] [1, 1, 1, 1] : tensor<32x1x1x4xsi32> to tensor<16x1x1x4xsi32>
+        %w_mc = tensor.extract_slice %w_tile[%mc, 0, 0, 0] [16, 128, 1, 1] [1, 1, 1, 1] : tensor<32x128x1x1xf16, {order = #NHWC}> to tensor<16x128x1x1xf16, {order = #NHWC}>
+        %conv = VPU.NCE.Convolution(%arg0, %w_mc, %wt_mc) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [16, 128, 1, 1], strides = [1, 1]} : tensor<1x128x1x1xf16, {order = #NHWC}>, tensor<16x128x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x1x1xf16, {order = #NHWC}>
+        scf.forall.in_parallel {
+          tensor.parallel_insert_slice %conv into %mc_acc[0, %mc, 0, 0] [1, 16, 1, 1] [1, 1, 1, 1] : tensor<1x16x1x1xf16, {order = #NHWC}> into tensor<1x32x1x1xf16, {order = #NHWC}>
+        }
+      }
+      %inserted = tensor.insert_slice %mc_result into %acc[0, %tile, 0, 0] [1, 32, 1, 1] [1, 1, 1, 1] : tensor<1x32x1x1xf16, {order = #NHWC}> into tensor<1x64x1x1xf16, {order = #NHWC}>
+      scf.yield %inserted : tensor<1x64x1x1xf16, {order = #NHWC}>
+    }
+    return %result : tensor<1x64x1x1xf16, {order = #NHWC}>
+
+    // CHECK:                [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> =
+    // CHECK-SAME{LITERAL}:    dense<[[[[0, 16777215, 1065353216, 0]]], [[[256, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3840, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3840, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3840, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3584, 16777215, 1065353216, 0]]], [[[3840, 16777215, 1065353216, 0]]]]> : tensor<64x1x1x4xsi32>
+
+    // CHECK:                scf.for
+    // CHECK:                  tensor.extract_slice [[WEIGHTS_TABLE]]
+    // CHECK:                  scf.forall
+    // CHECK:                    VPU.NCE.Convolution
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @RelocateWtTableReuseUnevenClusterNCEConvSCF
+func.func @RelocateWtTableReuseUnevenClusterNCEConvSCF(%arg0: tensor<1x128x1x1xf16, {order = #NHWC}>, %arg1: tensor<80x128x1x1xf16, {order = #NHWC}>) -> tensor<1x80x1x1xf16, {order = #NHWC}> {
+    %wt = const.Declare tensor<80x1x1x4xsi32> = dense<[[[[0, 0, 1065353216, 0]]], [[[256, 0, 1065353216, 0]]], [[[512, 0, 1065353216, 0]]], [[[768, 0, 1065353216, 0]]], [[[1024, 0, 1065353216, 0]]], [[[1280, 0, 1065353216, 0]]], [[[1536, 0, 1065353216, 0]]], [[[1792, 0, 1065353216, 0]]], [[[2048, 0, 1065353216, 0]]], [[[2304, 0, 1065353216, 0]]], [[[2560, 0, 1065353216, 0]]], [[[2816, 0, 1065353216, 0]]], [[[3072, 0, 1065353216, 0]]], [[[3328, 0, 1065353216, 0]]], [[[3584, 0, 1065353216, 0]]], [[[3840, 0, 1065353216, 0]]], [[[4096, 0, 1065353216, 0]]], [[[4352, 0, 1065353216, 0]]], [[[4608, 0, 1065353216, 0]]], [[[4864, 0, 1065353216, 0]]], [[[5120, 0, 1065353216, 0]]], [[[5376, 0, 1065353216, 0]]], [[[5632, 0, 1065353216, 0]]], [[[5888, 0, 1065353216, 0]]], [[[6144, 0, 1065353216, 0]]], [[[6400, 0, 1065353216, 0]]], [[[6656, 0, 1065353216, 0]]], [[[6912, 0, 1065353216, 0]]], [[[7168, 0, 1065353216, 0]]], [[[7424, 0, 1065353216, 0]]], [[[7680, 0, 1065353216, 0]]], [[[7936, 0, 1065353216, 0]]], [[[8192, 0, 1065353216, 0]]], [[[8448, 0, 1065353216, 0]]], [[[8704, 0, 1065353216, 0]]], [[[8960, 0, 1065353216, 0]]], [[[9216, 0, 1065353216, 0]]], [[[9472, 0, 1065353216, 0]]], [[[9728, 0, 1065353216, 0]]], [[[9984, 0, 1065353216, 0]]], [[[10240, 0, 1065353216, 0]]], [[[10496, 0, 1065353216, 0]]], [[[10752, 0, 1065353216, 0]]], [[[11008, 0, 1065353216, 0]]], [[[11264, 0, 1065353216, 0]]], [[[11520, 0, 1065353216, 0]]], [[[11776, 0, 1065353216, 0]]], [[[12032, 0, 1065353216, 0]]], [[[12288, 0, 1065353216, 0]]], [[[12544, 0, 1065353216, 0]]], [[[12800, 0, 1065353216, 0]]], [[[13056, 0, 1065353216, 0]]], [[[13312, 0, 1065353216, 0]]], [[[13568, 0, 1065353216, 0]]], [[[13824, 0, 1065353216, 0]]], [[[14080, 0, 1065353216, 0]]], [[[14336, 0, 1065353216, 0]]], [[[14592, 0, 1065353216, 0]]], [[[14848, 0, 1065353216, 0]]], [[[15104, 0, 1065353216, 0]]], [[[15360, 0, 1065353216, 0]]], [[[15616, 0, 1065353216, 0]]], [[[15872, 0, 1065353216, 0]]], [[[16128, 0, 1065353216, 0]]], [[[16384, 0, 1065353216, 0]]], [[[16640, 0, 1065353216, 0]]], [[[16896, 0, 1065353216, 0]]], [[[17152, 0, 1065353216, 0]]], [[[17408, 0, 1065353216, 0]]], [[[17664, 0, 1065353216, 0]]], [[[17920, 0, 1065353216, 0]]], [[[18176, 0, 1065353216, 0]]], [[[18432, 0, 1065353216, 0]]], [[[18688, 0, 1065353216, 0]]], [[[18944, 0, 1065353216, 0]]], [[[19200, 0, 1065353216, 0]]], [[[19456, 0, 1065353216, 0]]], [[[19712, 0, 1065353216, 0]]], [[[19968, 0, 1065353216, 0]]], [[[20224, 0, 1065353216, 0]]]]> : tensor<80x1x1x4xsi32>
+    %0 = tensor.empty() : tensor<1x80x1x1xf16, {order = #NHWC}>
+    // scf.forall with step=32 over 80 OC: offsets [0, 32, 64]
+    // Cluster 0: 32ch, Cluster 1: 32ch, Cluster 2: 16ch (remainder)
+    %1 = scf.forall (%arg2) = (0) to (80) step (32) shared_outs(%arg3 = %0) -> (tensor<1x80x1x1xf16, {order = #NHWC}>) {
+      %extracted_slice = tensor.extract_slice %arg1[%arg2, 0, 0, 0] [32, 128, 1, 1] [1, 1, 1, 1] : tensor<80x128x1x1xf16, {order = #NHWC}> to tensor<32x128x1x1xf16, {order = #NHWC}>
+      %extracted_slice_0 = tensor.extract_slice %wt[%arg2, 0, 0, 0] [32, 1, 1, 4] [1, 1, 1, 1] : tensor<80x1x1x4xsi32> to tensor<32x1x1x4xsi32>
+      %2 = VPU.NCE.Convolution(%arg0, %extracted_slice, %extracted_slice_0) {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>, rawFilterShape = [32, 128, 1, 1], strides = [1, 1]} : tensor<1x128x1x1xf16, {order = #NHWC}>, tensor<32x128x1x1xf16, {order = #NHWC}>, tensor<32x1x1x4xsi32> -> tensor<1x32x1x1xf16, {order = #NHWC}>
+      scf.forall.in_parallel {
+        tensor.parallel_insert_slice %2 into %arg3[0, %arg2, 0, 0] [1, 32, 1, 1] [1, 1, 1, 1] : tensor<1x32x1x1xf16, {order = #NHWC}> into tensor<1x80x1x1xf16, {order = #NHWC}>
+      }
+    }
+    return %1 : tensor<1x80x1x1xf16, {order = #NHWC}>
+
+    // Uneven clusters: offsets [0, 32, 64]
+    // CHECK:                [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<80x1x1x4xsi32> =
+    // CHECK-SAME{LITERAL}:    dense<[[[[0, 16777215, 1065353216, 0]]], [[[256, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[7936, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[7936, 16777215, 1065353216, 0]]], [[[0, 16777215, 1065353216, 0]]],
+    // CHECK-SAME{LITERAL}:    [[[3584, 16777215, 1065353216, 0]]], [[[3840, 16777215, 1065353216, 0]]]]> : tensor<80x1x1x4xsi32>
+
+    // CHECK:                scf.forall
+    // CHECK:                  tensor.extract_slice [[WEIGHTS_TABLE]]
+    // CHECK:                  VPU.NCE.Convolution
 }

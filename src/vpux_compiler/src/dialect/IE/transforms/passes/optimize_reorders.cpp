@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/expand_with_layer_rewriter.hpp"
+#include "vpux/compiler/dialect/IE/utils/analysis.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
@@ -1382,7 +1383,7 @@ mlir::FailureOr<mlir::Operation*> getConvertOrReturnOpConsumer(mlir::Operation* 
         return mlir::isa<IE::ConvertOp, mlir::func::ReturnOp>(op);
     };
 
-    return searchOpConsumers(op, isConvertOrReturnOpFound);
+    return IE::searchOpConsumers(op, isConvertOrReturnOpFound);
 }
 
 mlir::FailureOr<mlir::Operation*> getReturnOpConsumer(mlir::Operation* op) {
@@ -1390,7 +1391,7 @@ mlir::FailureOr<mlir::Operation*> getReturnOpConsumer(mlir::Operation* op) {
         return mlir::isa<mlir::func::ReturnOp>(op);
     };
 
-    return searchOpConsumers(op, isReturnOpFound);
+    return IE::searchOpConsumers(op, isReturnOpFound);
 }
 
 bool doesConvertOpIncreaseElemSize(IE::ConvertOp convertOp) {

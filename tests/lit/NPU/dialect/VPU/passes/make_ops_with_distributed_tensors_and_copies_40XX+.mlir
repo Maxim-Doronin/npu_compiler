@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1555,13 +1555,13 @@ func.func @SparseConvToDistributedOpSOHOverlapped(%arg0 : tensor<1x64x28x28xf16,
 
     %0 = VPU.NCE.Convolution(%input_sparse, %weights_sparse) {
             multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
-            pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 01 : i64, bottom = 1 : i64>,
+            pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             ppe = #VPU.PPEStub<>,
             rawFilterShape = [80, 64, 3, 3],
             strides = [1, 1]
         } : !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>, sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>>, !VPU.SparseTensor<data=tensor<80x64x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<80x1x1x640xi1>, is_weights> -> !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
                                sparsity_map=tensor<1x80x28x28xi1, {order = #NHWC}>> {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
         }
 
     return %0 : !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
@@ -1667,7 +1667,7 @@ func.func @SparseConvToDistributedOpHKSwitch(%arg0 : tensor<1x64x28x28xf16, {ord
             strides = [1, 1]
         } : !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>, sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>>, !VPU.SparseTensor<data=tensor<80x64x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<80x1x1x640xi1>, is_weights> -> !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
                                sparsity_map=tensor<1x80x28x28xi1, {order = #NHWC}>> {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
         }
 
     return %0 : !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
@@ -2171,6 +2171,7 @@ module @executors {
 config.Resources 6 of @NCE at 1.700000e+03 MHz
 
 // CHECK-LABEL: @UnrollSOKConvOutputSegmented
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x64x64xf16, {order = #NHWC}>)
 func.func @UnrollSOKConvOutputSegmented(%input: tensor<1x64x64x64xf16, {order = #NHWC}>) -> tensor<1x64x64x64xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<64x64x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<64x64x1x1xf16>, [#const.Reorder<#NHWC>]
     %conv = VPU.NCE.Convolution(%input, %weights) {
@@ -2189,7 +2190,7 @@ func.func @UnrollSOKConvOutputSegmented(%input: tensor<1x64x64x64xf16, {order = 
 
     // (DUP 4 CL) CONV (SEG 4 CL) -> (SEG 6 CL) MVN (SEG 6 CL)
 
-    //CHECK:        [[CONV_IN:%.+]] = VPU.Copy(%arg0
+    //CHECK:        [[CONV_IN:%.+]] = VPU.Copy([[ARG_0]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x64x64xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments
     //CHECK-SAME{LITERAL}:   compute_shapes = [[1, 64, 64, 64], [1, 64, 64, 64], [1, 64, 64, 64], [1, 64, 64, 64]],
@@ -2205,7 +2206,10 @@ func.func @UnrollSOKConvOutputSegmented(%input: tensor<1x64x64x64xf16, {order = 
     //CHECK-SAME{LITERAL}:   memory_shapes = [[1, 16, 64, 64], [1, 16, 64, 64], [1, 16, 64, 64], [1, 16, 64, 64]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 16, 0, 0], [0, 32, 0, 0], [0, 48, 0, 0]]
 
-    //CHECK:        [[MVN_IN:%.+]] = VPU.Copy(%3
+    //CHECK:        [[CONV_OUT:%.+]] = VPU.Copy([[SOK_CONV]])
+    //CHECK-SAME:       -> tensor<1x64x64x64xf16, {order = #NHWC}>
+
+    //CHECK:        [[MVN_IN:%.+]] = VPU.Copy([[CONV_OUT]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x64x64xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:           {mode = "SEGMENTED", num_tiles = [1, 6, 1, 1], num_clusters = 6 : i64, uniform_distributed_segments
     //CHECK-SAME{LITERAL}:   compute_shapes = [[1, 11, 64, 64], [1, 11, 64, 64], [1, 11, 64, 64], [1, 11, 64, 64], [1, 10, 64, 64], [1, 10, 64, 64]],
@@ -2260,6 +2264,7 @@ func.func @UnrollSOKDWConvInputOutputDuplicated(%input: tensor<1x1x320x1xf16>) -
 
     // (DUP) MVN (DUP) -> (DUP) DWCONV (SEG) -> (SEG) Sigmoid (SEG)
 
+    //CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<320x16x1x1xf16, {order = #NHWC}>
     //CHECK:        [[MVN_COPY_IN:%.+]] = VPU.Copy([[INPUT]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x1x320x1xf16, #NCHW, @CMX_NN,
     //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 6 : i64, uniform_distributed_segments,
@@ -2291,7 +2296,7 @@ func.func @UnrollSOKDWConvInputOutputDuplicated(%input: tensor<1x1x320x1xf16>) -
     //CHECK-SAME{LITERAL}:   memory_shapes = [[1, 320, 1, 1], [1, 320, 1, 1], [1, 320, 1, 1], [1, 320, 1, 1], [1, 320, 1, 1], [1, 320, 1, 1]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
 
-    //CHECK:        [[DWCONV_WEIGHTS_COPY_IN:%.+]] = VPU.Copy(%cst)
+    //CHECK:        [[DWCONV_WEIGHTS_COPY_IN:%.+]] = VPU.Copy([[CST]])
     //CHECK-SAME:       -> !VPU.DistributedTensor<320x16x1x1xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:           {mode = "SEGMENTED", num_tiles = [6, 1, 1, 1], num_clusters = 6 : i64, alignment = [16, 1, 1, 1], uniform_distributed_segments,
     //CHECK-SAME{LITERAL}:   compute_shapes = [[64, 16, 1, 1], [64, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1], [48, 16, 1, 1]],
@@ -2439,7 +2444,10 @@ func.func @UnrollSOKDWConvInputOutputSegmented(%input: tensor<1x64x64x64xf16, {o
     //CHECK-SAME{LITERAL}:   memory_shapes = [[1, 11, 64, 64], [1, 11, 64, 64], [1, 11, 64, 64], [1, 11, 64, 64], [1, 10, 64, 64], [1, 10, 64, 64]],
     //CHECK-SAME{LITERAL}:   memory_offsets = [[0, 0, 0, 0], [0, 11, 0, 0], [0, 22, 0, 0], [0, 33, 0, 0], [0, 44, 0, 0], [0, 54, 0, 0]]
 
-    //CHECK:        [[DWCONV_IN:%.+]] = VPU.Copy(%2
+    //CHECK:        [[MVN_OUT:%.+]] = VPU.Copy([[SOK_MVN]])
+    //CHECK-SAME:       -> tensor<1x64x64x64xf16, {order = #NHWC}>
+
+    //CHECK:        [[DWCONV_IN:%.+]] = VPU.Copy([[MVN_OUT]]
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x64x64xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:           {mode = "SEGMENTED", num_tiles = [1, 4, 1, 1], num_clusters = 4 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments
     //CHECK-SAME{LITERAL}:   compute_shapes = [[1, 16, 64, 64], [1, 16, 64, 64], [1, 16, 64, 64], [1, 16, 64, 64]],
@@ -2648,7 +2656,7 @@ func.func @ChainSparseOpsoDistributedOpSOHOverlapped(%arg0 : tensor<1x64x28x28xf
             strides = [1, 1]
         } : !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>, sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>>, !VPU.SparseTensor<data=tensor<64x64x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<64x1x1x640xi1>, is_weights> -> !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>,
                                sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>> {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 32, 32] <left = 1 , right = 1, top = 1, bottom = 1> #VPU.mpe_mode<VECTOR_FP16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 32, 32] pad [1, 1, 1, 1] #VPU.mpe_mode<VECTOR_FP16>
         }
 
     %1 = VPU.NCE.Convolution(%0, %weights_sparse) {
@@ -2659,7 +2667,7 @@ func.func @ChainSparseOpsoDistributedOpSOHOverlapped(%arg0 : tensor<1x64x28x28xf
             strides = [1, 1]
         } : !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>, sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>>, !VPU.SparseTensor<data=tensor<64x64x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<64x1x1x640xi1>, is_weights> -> !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>,
                                sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>> {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 32, 32] <left = 1 , right = 1, top = 1, bottom = 1> #VPU.mpe_mode<VECTOR_FP16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 32, 32] pad [1, 1, 1, 1] #VPU.mpe_mode<VECTOR_FP16>
         }
 
     return %1 : !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>,

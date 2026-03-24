@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -113,7 +113,7 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
 
     // Can't fold TileOp if the layer has post operation
     if (auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(outputUserOp)) {
-        if (layerWithPostOp.getPostOp() != nullptr) {
+        if (layerWithPostOp.hasPPE()) {
             return mlir::failure();
         }
     }
@@ -137,8 +137,8 @@ mlir::LogicalResult FoldTileOpRewriter::matchAndRewrite(IE::TileOp origOp, mlir:
     }
 
     auto newShape = SmallVector<int64_t>(mlir::cast<vpux::NDTypeInterface>(outputValue.getType()).getRank(), 1);
-    auto newReshapeOp = rewriter.createOrFold<IE::ReshapeOp>(origOp.getLoc(), origOp.getInput(), nullptr, false,
-                                                             getIntArrayAttr(ctx, newShape));
+    auto newReshapeOp =
+            rewriter.createOrFold<IE::ReshapeOp>(origOp.getLoc(), origOp.getInput(), getIntArrayAttr(ctx, newShape));
 
     outputValue.replaceAllUsesWith(newReshapeOp);
 

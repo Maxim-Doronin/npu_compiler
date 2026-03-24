@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -82,9 +83,7 @@ void ConvertVPUIPDPU2NPUReg40XXPass::safeRunOnModule() {
     }
 
     auto& ctx = getContext();
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     mlir::ConversionTarget target(ctx);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -150,8 +150,7 @@ mlir::LogicalResult ShrinkMatmulGroups::matchAndRewrite(IE::MatMulOp origOp, mli
     VPUX_THROW_WHEN(origLhsShape[Dims4D::Act::C] % newGroupNum != 0, "Unexpected origLhsShape {0} and newGroupNum {1}",
                     origLhsShape, newGroupNum);
     const auto lhsTargetShapeAttr = getIntArrayAttr(ctx, lhsTargetShape);
-    auto newLhs = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "lhs_reshape"), lhs, nullptr, false,
-                                                 lhsTargetShapeAttr)
+    auto newLhs = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "lhs_reshape"), lhs, lhsTargetShapeAttr)
                           .getOutput();
 
     // Create new RHS chain: reshape and transpose the original input of BroadCastOp
@@ -159,7 +158,7 @@ mlir::LogicalResult ShrinkMatmulGroups::matchAndRewrite(IE::MatMulOp origOp, mli
     targetShape[Dims4D::Act::C.ind()] = newGroupNum;
     const auto targetShapeAttr = getIntArrayAttr(ctx, targetShape);
     auto newRhs = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "rhs_reshape"), broadCastOp.getInput(),
-                                                 nullptr, false, targetShapeAttr)
+                                                 targetShapeAttr)
                           .getOutput();
 
     if (transposeOp != nullptr) {
@@ -175,7 +174,7 @@ mlir::LogicalResult ShrinkMatmulGroups::matchAndRewrite(IE::MatMulOp origOp, mli
     auto outputShape = getShape(origOp.getOutput());
     const auto outputShapeAttr = getIntArrayAttr(ctx, outputShape);
     auto outReshape = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "output_reshape"),
-                                                     newMatMul->getResult(0), nullptr, false, outputShapeAttr);
+                                                     newMatMul->getResult(0), outputShapeAttr);
 
     _log.trace("Successfully shrunk number of groups at {0}", origOp.getLoc());
     rewriter.replaceOp(origOp, outReshape.getOutput());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -145,6 +145,20 @@ std::optional<uint32_t> OpTilingCache::getVPUNNLayerCost(llvm::hash_code layerHa
     return result;
 }
 
+std::optional<size_t> OpTilingCache::getDPUWorkloadCost(llvm::hash_code opHash) {
+    if (!_enableCache) {
+        return std::nullopt;
+    }
+    _dpuTaskOpCostAccessCount.fetch_add(1, std::memory_order_relaxed);
+
+    auto result = _dpuTaskOpCostCache.find(opHash);
+    if (result.has_value()) {
+        _dpuTaskOpCostHitCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    return result;
+}
+
 std::optional<SmallVector<DimArr>> OpTilingCache::getValidPermutations(llvm::hash_code opHash) {
     if (!_enableCache) {
         return std::nullopt;
@@ -198,6 +212,9 @@ void OpTilingCache::printStats(Logger& logger) const {
     auto dimOrderHitCount = _dimOrderHitCount.load(std::memory_order_relaxed);
     auto dimOrderAccessCount = _dimOrderAccessCount.load(std::memory_order_relaxed);
 
+    auto dpuTaskOpCostHitCount = _dpuTaskOpCostHitCount.load(std::memory_order_relaxed);
+    auto dpuTaskOpCostAccessCount = _dpuTaskOpCostAccessCount.load(std::memory_order_relaxed);
+
     auto logCacheStats = [&](const char* name, uint64_t hit, uint64_t access) {
         logger.info("{0} cache hit : {1}", name, hit);
         logger.info("{0} cache miss : {1}", name, access - hit);
@@ -212,6 +229,7 @@ void OpTilingCache::printStats(Logger& logger) const {
     logCacheStats("Shape with distributionInfo", perClusterShapeHitCount, perClusterShapeAccessCount);
     logCacheStats("Valid permutations", validPermutationsHitCount, validPermutationsAccessCount);
     logCacheStats("Dim Order", dimOrderHitCount, dimOrderAccessCount);
+    logCacheStats("DPU Workload cost", dpuTaskOpCostHitCount, dpuTaskOpCostAccessCount);
 }
 
 void OpTilingCache::updateOutputTiling(const llvm::hash_code opHash, mlir::Operation* op,
@@ -273,6 +291,14 @@ void OpTilingCache::updateDimOrder(llvm::hash_code opHash, const DimArr& dimOrde
     _dimOrderCache.insert(opHash, dimOrder);
 }
 
+void OpTilingCache::updateDPUWorkloadCost(llvm::hash_code opHash, size_t cost) {
+    if (!_enableCache) {
+        return;
+    }
+
+    _dpuTaskOpCostCache.insert(opHash, cost);
+}
+
 void OpTilingCache::cleanUp() {
     _tilingAccessCount = 0;
     _tilingHitCount = 0;
@@ -286,6 +312,8 @@ void OpTilingCache::cleanUp() {
     _perClusterShapeAccessCount = 0;
     _dimOrderHitCount = 0;
     _dimOrderAccessCount = 0;
+    _dpuTaskOpCostHitCount = 0;
+    _dpuTaskOpCostAccessCount = 0;
 
     _tilingCache.clear();
     _opHashToInputOutputModeHash.clear();
@@ -294,6 +322,7 @@ void OpTilingCache::cleanUp() {
     _validPermutationsCache.clear();
     _dimOrderCache.clear();
     _perClusterShapeCache.clear();
+    _dpuTaskOpCostCache.clear();
 }
 
 bool OpTilingCache::isCacheSupported() {

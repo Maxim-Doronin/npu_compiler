@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,7 +43,7 @@ func.func @AddSyncTaskAfterShaveKernelWithDpu(%arg3: memref<1x1x2x64xf16, @DDR>,
     }
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-      %MATMUL = VPUIP.NCEClusterTask {
+      %MATMUL = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<
               left = 0 : i64,
               right = 0 : i64,
@@ -53,7 +53,7 @@ func.func @AddSyncTaskAfterShaveKernelWithDpu(%arg3: memref<1x1x2x64xf16, @DDR>,
           kernel_size = [1, 1],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%IN : memref<2x1x16x4x1xf16, #GNHWC, [@CMX_NN, 0]>)
       weights(%WEIGHTS : memref<2x32x16x1x1xf16, #GNHWC, [@CMX_NN, 0]>)
       parent_input(%IN : memref<2x1x16x4x1xf16, #GNHWC, [@CMX_NN, 0]>)
@@ -130,7 +130,7 @@ func.func @NotAddSyncTaskAfterShaveKernelBecauseNotInList(%arg3: memref<1x1x2x64
     }
   }
   VPURT.Task waits(%21 : !VPURT.Barrier) {
-      %MATMUL = VPUIP.NCEClusterTask {
+      %MATMUL = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<
               left = 0 : i64,
               right = 0 : i64,
@@ -140,7 +140,7 @@ func.func @NotAddSyncTaskAfterShaveKernelBecauseNotInList(%arg3: memref<1x1x2x64
           kernel_size = [1, 1],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%IN : memref<2x1x16x4x1xf16, #GNHWC, [@CMX_NN, 0]>)
       weights(%WEIGHTS : memref<2x32x16x1x1xf16, #GNHWC, [@CMX_NN, 0]>)
       parent_input(%IN : memref<2x1x16x4x1xf16, #GNHWC, [@CMX_NN, 0]>)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -180,7 +180,7 @@ TEST_P(InferAvgPoolTests, InferOutputShapePooling) {
     ShapeInfo shapeInfo;
     shapeInfo.shape = to_small_vector(params.inDataShape);
     const auto shapeI64 = inferAvgPoolOutputShape(shapeInfo, params.windowStrides, params.padsBegin, params.padsEnd,
-                                                  params.windowShape);
+                                                  params.windowShape, std::nullopt, std::nullopt);
     EXPECT_EQ(to_std_vector(shapeI64.shape), params.outDataShape);
 }
 

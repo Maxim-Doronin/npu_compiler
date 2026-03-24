@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
 
@@ -41,6 +42,19 @@ mlir::OpFoldResult vpux::VPU::ReduceMinOp::fold(FoldAdaptor) {
     }
 
     return nullptr;
+}
+
+//
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::VPU::ReduceMinOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                              mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    if (mlir::failed(reifyReduceTensors(this->getOperation(), builder, getAxesValue(), getKeepDims(),
+                                        reifiedReturnShapes))) {
+        return mlir::failure();
+    }
+    return mlir::success();
 }
 
 //

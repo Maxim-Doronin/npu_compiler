@@ -27,7 +27,7 @@ It makes sense to divide libraries into two "types": common and platform-specifi
   <em>Library dependencies</em>
 </p>
 
-Please note that this diagram does not show all libraries and dependencies in the compiler. The common part(dark rectangles) contains only open (non-embargoed) code reused across multiple platforms. It consists of:
+Please note that this diagram does not show all libraries and dependencies in the compiler. The common part(dark rectangles) contains only open code reused across multiple platforms. It consists of:
 - dialects: `const`, `core`, `net` and `config` which are completely common and widely used in the compiler;
 - `core` – data structures required by compiler;
 - `utils` – helpers to work with core data structures;

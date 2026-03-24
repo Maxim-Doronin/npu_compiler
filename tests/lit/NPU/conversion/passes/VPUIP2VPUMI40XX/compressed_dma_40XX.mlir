@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
   } outputsInfo : {
     DataInfo "Convolution_145" : tensor<8x1x1x1xui8>
   }
+  // CHECK-LABEL: func.func @main
 func.func @main(%arg0: memref<1x16x16x16xf16, @DDR>, %arg1: memref<8x1x1x1xui8, @DDR>) -> memref<8x1x1x1xui8, @DDR> {
   %cst = const.Declare memref<8x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}> = dense<"0xDEADBEEFDEADBEEF"> : tensor<8x1x1x1xui8>
   // CHECK-DAG: [[CST:%.+]] = const.Declare memref<8x1x1x1xui8, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW}>
@@ -79,6 +80,9 @@ module @compressedDecompressedDMA {
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>
   }
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x64x56x56xf16, #NHWC, @DDR>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x64x56x56xf16, #NHWC, @DDR>
 func.func @main(%arg0: memref<1x64x56x56xf16, #NHWC, @DDR>, %arg1: memref<1x64x56x56xf16, #NHWC, @DDR>) -> memref<1x64x56x56xf16, #NHWC, @DDR> {
   %net_in = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x64x56x56xf16, #NHWC, @DDR>
   // CHECK: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x64x56x56xf16, #NHWC, @DDR>
@@ -108,7 +112,7 @@ func.func @main(%arg0: memref<1x64x56x56xf16, #NHWC, @DDR>, %arg1: memref<1x64x5
     %10 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x64x56x56xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
   }
   // CHECK-NOT: VPURT.Task
-  // CHECK: [[DMA0:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x64x56x56xf16, #NHWC, @DDR>) outputs([[BUF_IN]] : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}}-> !VPURegMapped.Index<0:0:0>
+  // CHECK: [[DMA0:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[ARG_0]] : memref<1x64x56x56xf16, #NHWC, @DDR>) outputs([[BUF_IN]] : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}}-> !VPURegMapped.Index<0:0:0>
   %6 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<32xui8, [@CMX_NN, 0]>
   // CHECK-NEXT: [[ACT_COMP_SIZE1:%.+]] = VPURT.DeclareBuffer
   VPURT.Task attributes {isTrailingSWLayer = false} {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/dense_map.hpp"
@@ -54,9 +55,7 @@ private:
 
 void VerticalFusionOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                                           ArrayRef<OutliningInstance> outlinedTargets) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
     builder.setInsertionPoint(netFunc);
@@ -111,9 +110,7 @@ void VerticalFusionOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<Smal
 
 void VerticalFusionOutliner::buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                                           ArrayRef<OutliningInstance> outlinedTargets) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     OpBuilderLogger builderLog(getLogger().nest());
     auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);
@@ -202,9 +199,7 @@ void VerticalFusionOutliningPass::initializeFromOptions() {
 
 void VerticalFusionOutliningPass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     // TODO E#150569: remove this condition when this pass is compatible with pre-outlined functions
     bool containsCallOps = false;

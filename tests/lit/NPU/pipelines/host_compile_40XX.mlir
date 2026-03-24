@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,7 +35,7 @@ module @CopyInputOutput {
   // CHECK-COUNT-1:       VPURT.Task
   // CHECK-NOT:         VPU.Copy
 
-  // CHECK:             func.func @main([[ARG0:%.+]]: memref<1x3x60x60xf16>, [[ARG1:%.+]]: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> attributes {config.pureHostCompileFunc} {
+  // CHECK:             func.func @main([[ARG0:%.+]]: memref<1x3x60x60xf16>, [[ARG1:%.+]]: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> attributes {[[ANY_ATTR:.+]]} {
   // CHECK:               [[C0:%.+]] = arith.constant 0 : index
   // CHECK:               [[ALLOC:%.+]] = memref.alloc() {alignment = 64 : i64} : memref<21600xi8>
   // CHECK:               [[VIEW:%.+]] = memref.view [[ALLOC]][[[C0]]][] : memref<21600xi8> to memref<1x3x60x60xf16>
@@ -79,7 +79,7 @@ module @StaticEltwiseNHWC {
                 -> tensor<1x16x2560x1000xf16, {order = #NHWC}>
         return %0 : tensor<1x16x2560x1000xf16, {order = #NHWC}>
 
-        // CHECK:               func.func @main([[ARG0:%.+]]: memref<1x2560x1000x16xf16>, [[ARG1:%.+]]: memref<1x2560x1000x16xf16>, [[ARG2:%.+]]: memref<1x2560x1000x16xf16>) -> memref<1x2560x1000x16xf16> attributes {config.pureHostCompileFunc}
+        // CHECK:               func.func @main([[ARG0:%.+]]: memref<1x2560x1000x16xf16>, [[ARG1:%.+]]: memref<1x2560x1000x16xf16>, [[ARG2:%.+]]: memref<1x2560x1000x16xf16>) -> memref<1x2560x1000x16xf16> attributes {[[ANY_ATTR:.+]]}
 
         // CHECK-DAG:             [[C0:%.+]] = arith.constant 0 : index
         // CHECK-DAG:             [[END:%.+]] = arith.constant 2560 : index
@@ -88,7 +88,7 @@ module @StaticEltwiseNHWC {
         // CHECK:                 [[GROUP:%.+]] = async.create_group
         // CHECK:                 scf.for [[ARG3:%.+]] = [[C0]] to [[END]] step [[STEP_VAR]] {
 
-        // CHECK:                   [[POS_WITH_BACKTRACK:%.+]] = arith.select
+        // CHECK:                   [[POS_WITH_BACKTRACK:%.+]] = affine.min
 
         // CHECK:                   [[SUBVIEW0:%.+]] = memref.subview [[ARG0]][0, [[POS_WITH_BACKTRACK]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1]
         // CHECK:                   [[SUBVIEW1:%.+]] = memref.subview [[ARG1]][0, [[POS_WITH_BACKTRACK]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1]

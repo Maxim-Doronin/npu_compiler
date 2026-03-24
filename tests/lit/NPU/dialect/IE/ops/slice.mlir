@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,12 +29,13 @@ func.func @Fold() -> tensor<1x3x8x4xf32, {order = #NHWC}> {
 // -----
 
 // CHECK-LABEL: @ComposeSlice
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x3x16x16xf32>
 func.func @ComposeSlice(%arg0: tensor<1x3x16x16xf32>) -> tensor<1x3x8x4xf32> {
     %1 = IE.Slice %arg0 [0, 0, 0, 8] [1, 3, 16, 8] : tensor<1x3x16x16xf32> to tensor<1x3x16x8xf32>
     %2 = IE.Slice %1 [0, 0, 8, 4] [1, 3, 8, 4] : tensor<1x3x16x8xf32> to tensor<1x3x8x4xf32>
     return %2 : tensor<1x3x8x4xf32>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Slice %arg0 [0, 0, 8, 12] [1, 3, 8, 4] :
+    // CHECK:       [[VAR0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 8, 12] [1, 3, 8, 4] :
     // CHECK-SAME:      tensor<1x3x16x16xf32> to tensor<1x3x8x4xf32>
 
     // CHECK:       return [[VAR0]] : tensor<1x3x8x4xf32>
@@ -43,11 +44,12 @@ func.func @ComposeSlice(%arg0: tensor<1x3x16x16xf32>) -> tensor<1x3x8x4xf32> {
 // -----
 
 // CHECK-LABEL: @ProcessNegativeOffset
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x1x16x4xf32>
 func.func @ProcessNegativeOffset(%arg0: tensor<1x1x16x4xf32>) -> tensor<1x1x16x1xf32> {
     %1 = IE.Slice %arg0 [0, 0, 0, -1] [1, 1, 16, 1] : tensor<1x1x16x4xf32> to tensor<1x1x16x1xf32>
     return %1 : tensor<1x1x16x1xf32>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Slice %arg0 [0, 0, 0, 3] [1, 1, 16, 1] :
+    // CHECK:       [[VAR0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 3] [1, 1, 16, 1] :
     // CHECK-SAME:      tensor<1x1x16x4xf32> to tensor<1x1x16x1xf32>
 
     // CHECK:       return [[VAR0]] : tensor<1x1x16x1xf32>
@@ -56,11 +58,12 @@ func.func @ProcessNegativeOffset(%arg0: tensor<1x1x16x4xf32>) -> tensor<1x1x16x1
 // -----
 
 // CHECK-LABEL: @ProcessMultiNegativeOffset
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x1x16x4xf32>
 func.func @ProcessMultiNegativeOffset(%arg0: tensor<1x1x16x4xf32>) -> tensor<1x1x2x1xf32> {
     %1 = IE.Slice %arg0 [0, 0, -2, -1] [1, 1, 2, 1] : tensor<1x1x16x4xf32> to tensor<1x1x2x1xf32>
     return %1 : tensor<1x1x2x1xf32>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Slice %arg0 [0, 0, 14, 3] [1, 1, 2, 1] :
+    // CHECK:       [[VAR0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 14, 3] [1, 1, 2, 1] :
     // CHECK-SAME:      tensor<1x1x16x4xf32> to tensor<1x1x2x1xf32>
 
     // CHECK:       return [[VAR0]] : tensor<1x1x2x1xf32>

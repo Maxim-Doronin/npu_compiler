@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -355,7 +355,7 @@ func.func @CheckSigmoid(%input: !InputDistributed) -> !OutputDistributed {
     return %sigmoidOut : !OutputDistributed
 }
 
-//CHECK:        [[SIGMOID:%.+]] = VPU.Sigmoid(%arg0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>}
+//CHECK:        [[SIGMOID:%.+]] = VPU.Sigmoid([[INPUT0]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>}
 //CHECK-SAME:                           : !VPU.DistributedTensor<1x320x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 //CHECK-SAME:   -> !VPU.DistributedTensor<1x320x1x1xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 

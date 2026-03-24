@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/compilation_options.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/utils/IE/config.hpp"
 
@@ -114,19 +115,18 @@ private:
 
         maybeSetValue(_initCompilerOptions->enableProfiling, getPerfCount(config));
 
-        const auto& numOfDPUGroups = _initCompilerOptions->numberOfDPUGroups;
-        const auto& numOfDMAPorts = _initCompilerOptions->numberOfDMAPorts;
+        auto archKind = vpux::getArchKind(config);
+        if (archKind == config::ArchKind::NPU37XX || archKind == config::ArchKind::NPU40XX) {
+            const auto& numOfDPUGroups = _initCompilerOptions->numberOfDPUGroups;
+            const auto& numOfDMAPorts = _initCompilerOptions->numberOfDMAPorts;
 
-        bool invalidConfig = numOfDPUGroups.hasValue() && numOfDMAPorts.hasValue() &&
-                             numOfDMAPorts.getValue() > numOfDPUGroups.getValue();
-
-        // E#182008 We can support maxDmaPorts once FWLM is enabled for NPU50XX+
-        invalidConfig = invalidConfig && getArchKind(config) != config::ArchKind::NPU50XX;
-
-        VPUX_THROW_WHEN(invalidConfig,
-                        "Requested configuration not supported by runtime. Number of DMA ports ({0}) larger than "
-                        "NCE clusters ({1})",
-                        numOfDMAPorts.getValue(), numOfDPUGroups.getValue());
+            bool validConfig = numOfDPUGroups.hasValue() && numOfDMAPorts.hasValue() &&
+                               numOfDMAPorts.getValue() <= numOfDPUGroups.getValue();
+            VPUX_THROW_WHEN(!validConfig,
+                            "Requested configuration not supported by runtime. Number of DMA ports ({0}) larger than "
+                            "NCE clusters ({1})",
+                            numOfDMAPorts.getValue(), numOfDPUGroups.getValue());
+        }
     }
 
     template <typename OptionType, typename ValType>

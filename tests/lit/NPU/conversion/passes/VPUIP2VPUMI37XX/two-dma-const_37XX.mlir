@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,9 @@ module @Convert {
     DataInfo "Convert_7" : tensor<1x100xui32>
   }
 
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x100xui32, @DDR>
+  // CHECK-SAME: [[ARG_1:%[^:]+]]: memref<1x100xui32, @DDR>
   func.func @main(%arg0: memref<1x100xui32, @DDR>, %arg1: memref<1x100xui32, @DDR>) -> memref<1x100xui32, @DDR> {
     %bar_0 = VPURT.ConfigureBarrier<0> -> !VPURT.Barrier
     // CHECK:       [[VAL1:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
@@ -38,7 +41,7 @@ module @Convert {
     // CHECK:       [[VAL9:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_ALLOC|VPU_SHF_PROC_DMA") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".data.ConstIO"} -> !ELFNPU37XX.Section {
 
     return %arg1 : memref<1x100xui32, @DDR>
-    // CHECK:       return %arg1 : memref<1x100xui32, @DDR>
+    // CHECK:       return [[ARG_1]] : memref<1x100xui32, @DDR>
 
   }
 }

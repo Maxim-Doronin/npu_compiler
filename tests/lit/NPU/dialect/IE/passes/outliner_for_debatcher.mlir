@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,7 +49,7 @@ module @OneInputOneOutput {
 // CHECK: }
 
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32> {
-// CHECK:   [[VAL0:%0]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
 // CHECK:   [[PART:%.+]] = call @main_batching1([[VAL0]]) : (tensor<1x3x62x62xf32>) -> tensor<1x48x60x60xf32>
 // CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast [[PART]] : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
 // CHECK:   return [[VAL1]] : tensor<3x48x60x60xf32>
@@ -104,9 +104,9 @@ module @MultipleInputsOneOutput {
 // CHECK:   return [[RET_SOFT]] : tensor<1x48x60x60xf32>
 // CHECK: }
 
-// CHECK: func.func @main(%arg0: tensor<3x3x62x62xf32>, %arg1: tensor<3x48x60x60xf32>) -> tensor<3x48x60x60xf32> {
-// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
-// CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast %arg1 : tensor<3x48x60x60xf32> to tensor<1x48x60x60xf32>
+// CHECK: func.func @main([[ARG_0:%[^:]+]]: tensor<3x3x62x62xf32>, [[ARG_1:%[^:]+]]: tensor<3x48x60x60xf32>) -> tensor<3x48x60x60xf32> {
+// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast [[ARG_0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+// CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast [[ARG_1]] : tensor<3x48x60x60xf32> to tensor<1x48x60x60xf32>
 // CHECK:   [[FUNC_RES:%.+]] = call @main_batching1([[VAL0]], [[VAL1]]) : (tensor<1x3x62x62xf32>, tensor<1x48x60x60xf32>) -> tensor<1x48x60x60xf32>
 // CHECK:   [[RET:%.+]] = builtin.unrealized_conversion_cast [[FUNC_RES]] : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
 // CHECK:   return [[RET]] : tensor<3x48x60x60xf32>
@@ -161,7 +161,7 @@ module @OneInputMultipleOutputsFirstSlice {
 // CHECK: }
 
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> (tensor<3x48x60x60xf32>, tensor<1x48x60x60xf32>) {
-// CHECK:   [[VAL0:%0]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
 // CHECK:   [[PART:%.+]]:2 = call @main_batching1([[VAL0]]) : (tensor<1x3x62x62xf32>) -> (tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32>)
 // CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast [[PART]]#1 : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
 // CHECK:   return [[VAL1]], [[PART]]#0 : tensor<3x48x60x60xf32>, tensor<1x48x60x60xf32>
@@ -217,7 +217,7 @@ module @OneInputMultipleOutputsLastSlice {
 // CHECK: }
 
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> (tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>) {
-// CHECK:   [[VAL0:%0]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
 // CHECK:   [[PART:%.+]]:2 = call @main_batching1([[VAL0]]) : (tensor<1x3x62x62xf32>) -> (tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32>)
 // CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast [[PART]]#0 : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
 // CHECK:   [[VAL2:%.+]] = builtin.unrealized_conversion_cast [[PART]]#1 : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
@@ -290,7 +290,7 @@ module @MultipleInputsMultipleOutputs {
 // CHECK: }
 
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x62x62xf32>, [[ARG1:%.+]]: tensor<3x3x62x62xf32>, [[ARG2:%.+]]: tensor<3x3x62x62xf32>) -> (tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>, tensor<3x48x60x60xf32>) {
-// CHECK:   [[VAL0:%0]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
 // CHECK:   [[PART:%.+]]:5 = call @main_batching1([[VAL0]]) : (tensor<1x3x62x62xf32>) -> (tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32>)
 // CHECK:   [[VAL11:%.+]] = builtin.unrealized_conversion_cast [[PART]]#0 : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
 // CHECK:   [[VAL22:%.+]] = builtin.unrealized_conversion_cast [[PART]]#1 : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>

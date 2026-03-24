@@ -197,6 +197,15 @@ TEST_P(AvgPoolWithSwishQuantizedTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(AvgPoolWithActivationQuantizedTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(AvgPoolWithSwishQuantizedTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 const std::vector<Activation> activations = {{utils::Tanh, ErrorType::ABSOLUTE},
                                              {utils::Sigmoid, ErrorType::ABSOLUTE},

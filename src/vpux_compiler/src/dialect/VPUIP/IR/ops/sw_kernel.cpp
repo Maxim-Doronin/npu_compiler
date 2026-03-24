@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -100,6 +100,18 @@ mlir::ArrayAttr optionalIoAttr(mlir::Operation* op) {
                 mask |= (mvn.getScale() ? 1 : 0) << 1;
                 mask |= (mvn.getBias() ? 1 : 0) << 2;
                 mask |= 1 << 3;  // output
+            })
+            .Case<VPU::LSTMSequenceOp>([&](VPU::LSTMSequenceOp lstm) {
+                mask |= 1 << 0;                                       // InputData
+                mask |= 1 << 1;                                       // InitialHiddenState
+                mask |= 1 << 2;                                       // InitialCellState
+                mask |= (lstm.getSequenceLengthData() ? 1 : 0) << 3;  // SequenceLengthData
+                mask |= 1 << 4;                                       // RecurrenceWeights
+                mask |= 1 << 5;                                       // Biases
+                mask |= 1 << 6;                                       // SyncBuffer
+                mask |= 1 << 7;                                       // OutputHiddenValues
+                mask |= 1 << 8;                                       // OutputHiddenState
+                mask |= 1 << 9;                                       // OutputCellState
             })
             .Case<VPU::SDPAOp>([&](VPU::SDPAOp sdpa) {
                 mask |= 1 << 0;                               // InputQ
@@ -760,6 +772,16 @@ std::pair<SmallString, SmallString> getKernelImpl(VPU::DepthToSpaceOp op) {
     return std::pair<SmallString, SmallString>{"depth_to_space", "depth_to_space.cpp"};
 }
 
+std::pair<SmallString, SmallString> getKernelImpl(VPU::SelectOp op) {
+    const auto oType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
+    if (oType.isSignedInteger(32)) {
+        // INT32
+        return std::pair<SmallString, SmallString>{"eltwise_select_p01", "eltwise_select_p01.cpp"};
+    }
+    // Default: FP16
+    return std::pair<SmallString, SmallString>{"eltwise_select_p00", "eltwise_select_p00.cpp"};
+}
+
 #define CASE_REDUCE(_OP_, _STR1_, _CTX_)                                                                       \
     .Case<_OP_>([&](_OP_ reduce) {                                                                             \
         const auto keepDims = static_cast<int64_t>(reduce.getKeepDimsAttr() != nullptr);                       \
@@ -1003,6 +1025,9 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             })
             .Case<VPU::EluOp>([&](VPU::EluOp elu) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{elu.getXAttr()}, {"activation_elu"}};
+            })
+            .Case<VPU::SoftSignOp>([&](VPU::SoftSignOp) {
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"activation_softsign"}};
             })
             .Case<VPU::ClampOp>([&](VPU::ClampOp clamp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{clamp.getMinAttr(), clamp.getMaxAttr()},
@@ -1978,8 +2003,9 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{axisParamAttr, exclusiveAttr, reverseAttr},
                                          {"cum_sum"}};
             })
-            .Case<VPU::SelectOp>([&](VPU::SelectOp) {
-                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_select"}};
+            .Case<VPU::SelectOp>([&](VPU::SelectOp select) {
+                auto [kernelEntry, kernelSrc] = getKernelImpl(select);
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, kernelEntry, kernelSrc, {"eltwise_select"}};
             })
             .Case<VPU::EmbeddingBagOffsetsSumOp>([&](VPU::EmbeddingBagOffsetsSumOp op) {
                 const auto delimiterAttr = getIntAttr(ctx, INT64_MAX);
@@ -2042,14 +2068,34 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 const auto direction =
                         static_cast<std::underlying_type_t<IE::RNNSequenceDirection>>(LSTMSequence.getDirection());
                 const auto RNNForward = getIntAttr(ctx, direction);
+
+                SmallVector<int64_t> initialOutputOffsetValues;
+                if (LSTMSequence.getInitialOutputOffsetAttrAttr()) {
+                    const auto initialOutputOffset =
+                            parseIntArrayAttr<int64_t>(LSTMSequence.getInitialOutputOffsetAttrAttr());
+
+                    for (auto values : initialOutputOffset) {
+                        initialOutputOffsetValues.push_back(values);
+                    }
+                } else {
+                    initialOutputOffsetValues.push_back(-1);
+                    initialOutputOffsetValues.push_back(-1);
+                }
+                const auto initialOutputOffsetAttr = getIntArrayAttr(ctx, initialOutputOffsetValues);
+
                 auto useDpu = false;
                 if (LSTMSequence.getUseDpuAttr()) {
                     useDpu = LSTMSequence.getUseDpuAttr().getValue();
                 }
+
                 if (useDpu) {
-                    return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{RNNForward}, {"lstm_dpu"}};
+                    return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{optionalIoAttr(LSTMSequence), RNNForward,
+                                                                          initialOutputOffsetAttr},
+                                             {"lstm_dpu"}};
                 }
-                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{RNNForward}, {"lstm_sequence"}};
+                return VPUIP::KernelInfo{
+                        SmallVector<mlir::Attribute>{optionalIoAttr(LSTMSequence), RNNForward, initialOutputOffsetAttr},
+                        {"lstm_sequence"}};
             })
             .Case<VPU::CTCGreedyDecoderSeqLenOp>([&](VPU::CTCGreedyDecoderSeqLenOp op) {
                 const auto mergeRepeated = static_cast<int64_t>(op.getMergeRepeatedAttr() != nullptr);
@@ -2285,7 +2331,7 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                          kernelSrc,
                                          {"rms_norm"}};
             })
-            .Case<VPU::ReduceMeanSquareOp>([&](VPU::ReduceMeanSquareOp op) {
+            .Case<VPU::ReduceSquareOp>([&](VPU::ReduceSquareOp op) {
                 const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInputs().front().getType());
                 const auto keepDims = static_cast<int64_t>(op.getKeepDimsAttr() != nullptr);
                 auto axesValue = parseIntArrayAttr<int64_t>(op.getAxesValue());
@@ -2308,9 +2354,16 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                     epsilonAttr = mlir::FloatAttr::get(mlir::Float32Type::get(ctx), 0.0f);
                 }
 
-                return VPUIP::KernelInfo{
-                        SmallVector<mlir::Attribute>{keepDimsAttr, axesValueSizeAttr, axesValueAttr, epsilonAttr},
-                        {"reduce_mean_square"}};
+                mlir::Attribute scaleAttr;
+                if (op.getScale().has_value()) {
+                    scaleAttr = getIntAttr(ctx, op.getScale().value());
+                } else {
+                    scaleAttr = getIntAttr(ctx, static_cast<int64_t>(1));
+                }
+
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{keepDimsAttr, axesValueSizeAttr, axesValueAttr,
+                                                                      epsilonAttr, scaleAttr},
+                                         {"reduce_square"}};
             })
             .Case<VPU::InverseOp>([&](VPU::InverseOp inverse) {
                 const auto adjointAttr = getIntAttr(ctx, static_cast<int64_t>(inverse.getAdjoint()));

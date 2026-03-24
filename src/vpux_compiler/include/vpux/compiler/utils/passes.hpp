@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,8 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Pass/Pass.h>
+
+#include <llvm/ADT/ArrayRef.h>
 
 namespace vpux {
 
@@ -48,6 +50,10 @@ extern const mlir::PatternBenefit benefitMid;
 extern const mlir::PatternBenefit benefitHigh;
 
 SmallVector<mlir::PatternBenefit> getBenefitLevels(uint32_t levels);
+llvm::ArrayRef<mlir::PatternBenefit> extractBenefitLevels(llvm::ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                                          size_t startIndex, size_t numLevels);
+llvm::ArrayRef<mlir::PatternBenefit> extractBenefitLevels(llvm::ArrayRef<mlir::PatternBenefit> benefitLevels,
+                                                          size_t numLevels);
 
 //
 // FunctionPass

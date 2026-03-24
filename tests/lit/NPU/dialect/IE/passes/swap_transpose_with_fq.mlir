@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,8 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 !qElemType = !quant.uniform<u8:f16, 0.0024337469362745098>
 
+// CHECK-LABEL: @SwapTransposeWithPerTensorQuant
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70x!qElemType>
 func.func @SwapTransposeWithPerTensorQuant(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70x!qElemType> {
     %0 = IE.Quantize(%arg0) {dstElemType = !qElemType}
         : tensor<1x70x1x28xf16> -> tensor<1x70x1x28x!qElemType>
@@ -16,7 +18,7 @@ func.func @SwapTransposeWithPerTensorQuant(%arg0: tensor<1x70x1x28xf16>) -> tens
     %1 = IE.Transpose(%0) {order_value = #NHWC} : tensor<1x70x1x28x!qElemType> -> tensor<1x1x28x70x!qElemType>
     return %1 : tensor<1x1x28x70x!qElemType>
 
-    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose(%arg0) {order_value = #NHWC}
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NHWC}
     // CHECK-SAME:  : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
 
     // CHECK:   [[FQ:%.+]] = IE.Quantize([[TRANSPOSE]])
@@ -30,6 +32,8 @@ func.func @SwapTransposeWithPerTensorQuant(%arg0: tensor<1x70x1x28xf16>) -> tens
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @SwapTransposeWithPerTensorFQ
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70xf16>
 func.func @SwapTransposeWithPerTensorFQ(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70xf16> {
     %cst_lo = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %cst_hi = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -42,7 +46,7 @@ func.func @SwapTransposeWithPerTensorFQ(%arg0: tensor<1x70x1x28xf16>) -> tensor<
 
     // CHECK-DAG:   [[CST_HI:%.+]] = const.Declare tensor<f32> = dense<2.550000e+02> : tensor<f32>
     // CHECK-DAG:   [[CST_LO:%.+]] = const.Declare tensor<f32> = dense<0.000000e+00> : tensor<f32>
-    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose(%arg0) {order_value = #NHWC}
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NHWC}
     // CHECK-SAME:  : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
 
     // CHECK:   [[FQ:%.+]] = IE.FakeQuantize([[TRANSPOSE]], [[CST_LO]], [[CST_HI]], [[CST_LO]], [[CST_HI]])
@@ -56,6 +60,8 @@ func.func @SwapTransposeWithPerTensorFQ(%arg0: tensor<1x70x1x28xf16>) -> tensor<
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @DoNotSwapTransposeWithPerAxisFQ
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70xf16>
 func.func @DoNotSwapTransposeWithPerAxisFQ(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x1x28x70xf16> {
     %cst_lo = const.Declare tensor<1x70x1x1xf32> = dense<0.0> : tensor<1x70x1x1xf32>
     %cst_hi = const.Declare tensor<1x70x1x1xf32> = dense<255.0> : tensor<1x70x1x1xf32>
@@ -69,7 +75,7 @@ func.func @DoNotSwapTransposeWithPerAxisFQ(%arg0: tensor<1x70x1x28xf16>) -> tens
     // CHECK-DAG:   [[CST_HI:%.+]] = const.Declare tensor<1x70x1x1xf32> = dense<2.550000e+02> : tensor<1x70x1x1xf32>
     // CHECK-DAG:   [[CST_LO:%.+]] = const.Declare tensor<1x70x1x1xf32> = dense<0.000000e+00> : tensor<1x70x1x1xf32>
 
-    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST_LO]], [[CST_HI]], [[CST_LO]], [[CST_HI]])
+    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_LO]], [[CST_HI]], [[CST_LO]], [[CST_HI]])
     // CHECK-SAME:  {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK-SAME:  : tensor<1x70x1x28xf16>, tensor<1x70x1x1xf32>, tensor<1x70x1x1xf32>, tensor<1x70x1x1xf32>, tensor<1x70x1x1xf32>
     // CHECK-SAME:  -> tensor<1x70x1x28xf16>
@@ -84,6 +90,8 @@ func.func @DoNotSwapTransposeWithPerAxisFQ(%arg0: tensor<1x70x1x28xf16>) -> tens
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @SwapConvertTransposeWithFQ
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x70x1x28xui8>) -> tensor<1x1x28x70xf16>
 func.func @SwapConvertTransposeWithFQ(%arg0: tensor<1x70x1x28xui8>) -> tensor<1x1x28x70xf16> {
     %cst_lo = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %cst_hi = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -101,7 +109,7 @@ func.func @SwapConvertTransposeWithFQ(%arg0: tensor<1x70x1x28xui8>) -> tensor<1x
 
     // CHECK-DAG:   [[CST_HI:%.+]] = const.Declare tensor<f32> = dense<2.550000e+02> : tensor<f32>
     // CHECK-DAG:   [[CST_LO:%.+]] = const.Declare tensor<f32> = dense<0.000000e+00> : tensor<f32>
-    // CHECK:   [[CONVERT:%.+]] = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x70x1x28xui8> -> tensor<1x70x1x28xf16>
+    // CHECK:   [[CONVERT:%.+]] = IE.Convert([[ARG_0]]) {dstElemType = f16} : tensor<1x70x1x28xui8> -> tensor<1x70x1x28xf16>
     // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[CONVERT]]) {order_value = #NHWC}
     // CHECK-SAME:  : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
 

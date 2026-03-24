@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -71,7 +71,7 @@ mlir::LogicalResult vpux::IE::NonMaxSuppressionOp::inferReturnTypeComponents(
     if (inScoresShapeInfo.isDynamic()) {
         // Handle dynamic case: use the actual shape as bound and set output shape to dynamic
         Bounds bounds(outShape);
-        outTensorAttr = vpux::getTensorAttr(ctx, nullptr, nullptr, bounds);
+        outTensorAttr = vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()), nullptr, bounds);
         outShape = SmallVector<int64_t>{mlir::ShapedType::kDynamic, 3};
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -172,7 +172,7 @@ mlir::LogicalResult generalReduceRewrite(
         if (inputShape != outputShape) {
             const auto outputShapeAttr = getIntArrayAttr(ctx, outputShape);
             newResult = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_0"), origOp->getOperand(0),
-                                                       nullptr, false, outputShapeAttr);
+                                                       outputShapeAttr);
         }
         rewriter.replaceOp(origOp, newResult);
         return mlir::success();
@@ -232,7 +232,7 @@ mlir::LogicalResult generalReduceRewrite(
 
         Shape newShape{newN, newC, newH, newW};
         const auto newShapeAttr = getIntArrayAttr(ctx, ShapeRef(newShape));
-        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), input, nullptr, false, newShapeAttr);
+        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), input, newShapeAttr);
 
         DimArr perm{Dims4D::Act::N, Dims4D::Act::W, Dims4D::Act::C, Dims4D::Act::H};
         auto order = DimsOrder::fromPermutation(ArrayRef(perm));
@@ -243,8 +243,7 @@ mlir::LogicalResult generalReduceRewrite(
 
     if (shapeBegin != inputShape) {
         const auto shapeBeginAttr = getIntArrayAttr(ctx, ArrayRef(shapeBegin));
-        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_2"), input, nullptr, false,
-                                               shapeBeginAttr);
+        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_2"), input, shapeBeginAttr);
     }
 
     const auto kernelAttr = getIntArrayAttr(ctx, ArrayRef(kernel));
@@ -269,7 +268,7 @@ mlir::LogicalResult generalReduceRewrite(
         const auto newOutH = newPoolOutShape[Dims4D::Act::H.ind()];
         const auto newOutW = newPoolOutShape[Dims4D::Act::W.ind()];
         const auto splitNCShape = getIntArrayAttr(ctx, SmallVector<int64_t>({newOutN, newOutC, newOutH, newOutW}));
-        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out_2"), input, nullptr, false, splitNCShape);
+        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out_2"), input, splitNCShape);
     }
 
     if (avoidExpandCase) {
@@ -281,7 +280,7 @@ mlir::LogicalResult generalReduceRewrite(
 
     if (shapeEnd != to_small_vector(getShape(input))) {
         const auto shapeEndAttr = getIntArrayAttr(ctx, ArrayRef(shapeEnd));
-        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), input, nullptr, false, shapeEndAttr);
+        input = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), input, shapeEndAttr);
     }
 
     rewriter.replaceOp(origOp, input);
@@ -556,7 +555,7 @@ mlir::LogicalResult ReduceSumBatchToChannelRewriter::matchAndRewrite(IE::ReduceS
     const auto newShape = SmallVector<int64_t>{inputShape[Dims4D::Act::C], inputShape[Dims4D::Act::N],
                                                inputShape[Dims4D::Act::H], inputShape[Dims4D::Act::W]};
     const auto newShapeAttr = getIntArrayAttr(getContext(), newShape);
-    auto reshapeOp = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), origOp.getInput(), nullptr, false, newShapeAttr);
+    auto reshapeOp = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), origOp.getInput(), newShapeAttr);
 
     const auto newAxesAttr = getIntArrayAttr(getContext(), SmallVector<int64_t>{Dims4D::Act::C.ind()});
     auto newReduceOp = rewriter.create<IE::ReduceSumOp>(origOp->getLoc(), reshapeOp.getOutput(), nullptr, newAxesAttr,

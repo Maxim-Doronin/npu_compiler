@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2019-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -29,6 +30,7 @@ class ConvolutionBackpropDataLayerTest_NPU5010 : public ConvolutionBackpropDataL
     }
 };
 class ConvolutionBackpropDataSEPLayerTest_NPU5010 : public ConvolutionBackpropDataLayerTestCommon {};
+class ConvolutionBackpropDataSEPLayerTest_NPU5020 : public ConvolutionBackpropDataLayerTestCommon {};
 
 TEST_P(ConvolutionBackpropDataSEPLayerTest_NPU3720, HW) {
     rel_threshold = 0.01;
@@ -52,6 +54,11 @@ TEST_P(ConvolutionBackpropDataSEPLayerTest_NPU5010, HW) {
     rel_threshold = 0.01;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(ConvolutionBackpropDataSEPLayerTest_NPU5020, HW) {
+    rel_threshold = 0.01;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 TEST_P(ConvolutionBackpropDataLayerTest_NPU3720, HW) {
@@ -253,6 +260,29 @@ INSTANTIATE_TEST_SUITE_P(
                            ::testing::ValuesIn(static_shapes_to_test_representation(seTablePatchInputShapes)),
                            ::testing::ValuesIn(emptyOutputShape), ::testing::Values(test_utils::TARGET_DEVICE)),
         ConvolutionBackpropDataSEPLayerTest_NPU5010::getTestCaseName);
+// ------ NPU5020 ------
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_SEP_ConvolutionBackpropData2D_ExplicitPadding,
+                         ConvolutionBackpropDataSEPLayerTest_NPU5020,
+                         ::testing::Combine(se_conv2DParams_ExplicitPadding, ::testing::ValuesIn(netPrecisions),
+                                            ::testing::ValuesIn(static_shapes_to_test_representation(seInputShapes)),
+                                            ::testing::ValuesIn(emptyOutputShape),
+                                            ::testing::Values(test_utils::TARGET_DEVICE)),
+                         ConvolutionBackpropDataSEPLayerTest_NPU5020::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_SEP_ConvolutionBackpropData2D_OutputPadding,
+                         ConvolutionBackpropDataSEPLayerTest_NPU5020,
+                         ::testing::Combine(se_conv2DParams_OutputPadding, ::testing::ValuesIn(netPrecisions),
+                                            ::testing::ValuesIn(static_shapes_to_test_representation(seInputShapes)),
+                                            ::testing::ValuesIn(emptyOutputShape),
+                                            ::testing::Values(test_utils::TARGET_DEVICE)),
+                         ConvolutionBackpropDataSEPLayerTest_NPU5020::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_precommit_SEP_ConvolutionBackpropData2D_SETablePatch, ConvolutionBackpropDataSEPLayerTest_NPU5020,
+        ::testing::Combine(se_conv2DParams_SETablePatch, ::testing::ValuesIn(netPrecisions),
+                           ::testing::ValuesIn(static_shapes_to_test_representation(seTablePatchInputShapes)),
+                           ::testing::ValuesIn(emptyOutputShape), ::testing::Values(test_utils::TARGET_DEVICE)),
+        ConvolutionBackpropDataSEPLayerTest_NPU5020::getTestCaseName);
 
 /* ============= 2D ConvolutionBackpropData with outputShape Convert to SEP Op ============= */
 const std::vector<std::vector<ov::Shape>> seInputShapesWithOS = {{{1, 16, 128, 128}}};

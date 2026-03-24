@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -361,8 +361,8 @@ mlir::LogicalResult vpux::VPU::NCEEltwiseOp::verifyEltwiseCMX(mlir::Location loc
 
     const auto cmxSize = vpux::VPU::getTotalCMXSize(module);
     if (requiredCMX > cmxSize) {
-        log.trace("[{0}] CMX memory is not enough for Eltwise, available '{1}', required '{2}'", loc, cmxSize,
-                  requiredCMX);
+        log.trace("[{0}] CMX memory is not enough for Eltwise, available '{1}', required '{2}' output '{3}'", loc,
+                  cmxSize, requiredCMX, outputType);
         return mlir::failure();
     }
 

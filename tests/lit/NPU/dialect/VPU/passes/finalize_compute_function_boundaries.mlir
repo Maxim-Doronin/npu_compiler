@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -242,3 +242,58 @@ func.func @TensorDimForDynamicDimWHCN(%arg0: tensor<1x16x256x?xf16, {bounds = #c
     // CHECK:   [[DIM:%.+]] = tensor.dim [[ARG]], [[C0]] : tensor<?x256x16x1xf16>
     // CHECK:   return [[DIM]] : index
 }
+
+// -----
+
+// Test validates that quantized types are converted to storage types in function signatures
+
+!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607:128>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+module @StaticQuantizedNHWC {
+    func.func private @main_func0(%arg0: tensor<1x16x90x1000x!qElemType, {order = #NHWC}>,
+                                  %arg1: tensor<1x16x90x1000x!qElemType, {order = #NHWC}>)
+                                  -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}> {
+        %0 = VPU.NCE.Eltwise(%arg0, %arg1) {
+                multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+                op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>,
+                clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
+                lrelu_mult = 1 : i64, lrelu_shift = 0 : i64,
+                quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>}
+            -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+        return %0 : tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+    }
+    
+    func.func @main(%arg0: tensor<1x16x720x1000x!qElemType, {order = #NHWC}>,
+                    %arg1: tensor<1x16x720x1000x!qElemType, {order = #NHWC}>)
+                    -> tensor<1x16x720x1000x!qElemType, {order = #NHWC}> {
+        %c90 = arith.constant 90 : index
+        %c720 = arith.constant 720 : index
+        %c0 = arith.constant 0 : index
+        %0 = tensor.empty() : tensor<1x16x720x1000x!qElemType, {order = #NHWC}>
+        %1 = scf.for %arg2 = %c0 to %c720 step %c90 iter_args(%arg3 = %0) -> (tensor<1x16x720x1000x!qElemType, {order = #NHWC}>) {
+            %extracted_slice = tensor.extract_slice %arg0[0, 0, %arg2, 0] [1, 16, 90, 1000] [1, 1, 1, 1] : tensor<1x16x720x1000x!qElemType, {order = #NHWC}> to tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+            %extracted_slice_0 = tensor.extract_slice %arg1[0, 0, %arg2, 0] [1, 16, 90, 1000] [1, 1, 1, 1] : tensor<1x16x720x1000x!qElemType, {order = #NHWC}> to tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+            %2 = func.call @main_func0(%extracted_slice, %extracted_slice_0) : (tensor<1x16x90x1000x!qElemType, {order = #NHWC}>, tensor<1x16x90x1000x!qElemType, {order = #NHWC}>) -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+            %inserted_slice = tensor.insert_slice %2 into %arg3[0, 0, %arg2, 0] [1, 16, 90, 1000] [1, 1, 1, 1] : tensor<1x16x90x1000x!qElemType, {order = #NHWC}> into tensor<1x16x720x1000x!qElemType, {order = #NHWC}>
+            scf.yield %inserted_slice : tensor<1x16x720x1000x!qElemType, {order = #NHWC}>
+        }
+        return %1 : tensor<1x16x720x1000x!qElemType, {order = #NHWC}>
+    }
+}
+
+// CHECK-LABEL: @StaticQuantizedNHWC
+// CHECK: func.func private @main_func0([[ARG0:%.+]]: tensor<1x90x1000x16xi8>, [[ARG1:%.+]]: tensor<1x90x1000x16xi8>) -> tensor<1x90x1000x16xi8>
+// CHECK-DAG:   [[CAST0:%.+]] = Core.ReinterpretCast([[ARG1]]) : tensor<1x90x1000x16xi8> -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+// CHECK-DAG:   [[CAST1:%.+]] = Core.ReinterpretCast([[ARG0]]) : tensor<1x90x1000x16xi8> -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+// CHECK:       [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[CAST1]], [[CAST0]]) {{.*}} -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
+// CHECK:       [[CAST2:%.+]] = Core.ReinterpretCast([[ELTWISE]]) : tensor<1x16x90x1000x!qElemType, {order = #NHWC}> -> tensor<1x90x1000x16xi8>
+// CHECK:       return [[CAST2]] : tensor<1x90x1000x16xi8>
+
+// CHECK: func.func @main([[ARG0:%.+]]: tensor<1x720x1000x16xi8>, [[ARG1:%.+]]: tensor<1x720x1000x16xi8>) -> tensor<1x720x1000x16xi8>
+// CHECK:       tensor.empty() : tensor<1x720x1000x16xi8>
+// CHECK:       scf.for
+// CHECK:         tensor.extract_slice{{.*}}[0, %{{.*}}, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
+// CHECK:         tensor.extract_slice{{.*}}[0, %{{.*}}, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
+// CHECK:         func.call @main_func0
+// CHECK:       return{{.*}} : tensor<1x720x1000x16xi8>

@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dump-statistics-of-task-ops -o /dev/null %s | FileCheck %s
+// RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dump-statistics-of-task-ops -o /dev/null %s 2>&1 | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 // This test verifies that scalar tensor DMAs (rank=0, e.g., memref<f16>) are handled correctly

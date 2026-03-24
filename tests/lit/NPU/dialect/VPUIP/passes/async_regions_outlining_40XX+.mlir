@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,7 @@ module @AsyncRegionOutliningThroughDDR {
     // NCE Op with CMX output
     %token_2, %bodyResults_3 = async.execute [%token, %token_0] (%bodyResults as %arg3: !async.value<!DistributedBufferType0>, %bodyResults_1 as %arg4: !async.value<!DistributedBufferType0>) -> !async.value<!DistributedBufferType0> attributes {VPUIP.executor = @DPU, "async-deps-index" = 2 : i64} {
       %6 = VPUIP.ViewOp %2 : !DistributedBufferType0 to !DistributedBufferType0
-      %7 = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 13984 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%arg3 : !DistributedBufferType0) weights(%arg4 : !DistributedBufferType0) parent_input(%arg3 : !DistributedBufferType0) parent_output(%6 : !DistributedBufferType0) outputs(%6 : !DistributedBufferType0) -> !DistributedBufferType0 variants : {
+      %7 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 13984 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg3 : !DistributedBufferType0) weights(%arg4 : !DistributedBufferType0) parent_input(%arg3 : !DistributedBufferType0) parent_output(%6 : !DistributedBufferType0) outputs(%6 : !DistributedBufferType0) -> !DistributedBufferType0 variants : {
         DPUTask {cluster_id = 0 : i64, inEnd = [255, 63, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [255, 63, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
         DPUTask {cluster_id = 1 : i64, inEnd = [255, 64, 31], inStart = [0, 1, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [255, 64, 31], outStart = [0, 1, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
         DPUTask {cluster_id = 2 : i64, inEnd = [255, 64, 31], inStart = [0, 1, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [255, 64, 31], outStart = [0, 1, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
@@ -59,7 +59,7 @@ module @AsyncRegionOutliningThroughDDR {
     }
     // NCE Op with CMX output
     %token_8, %bodyResults_9 = async.execute [%token_6] (%bodyResults_7 as %arg3: !async.value<!DistributedBufferType1>) -> !async.value<!DistributedBufferType1> attributes {VPUIP.executor = @DPU, "async-deps-index" = 5 : i64} {
-      %6 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 22748 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<AVEPOOL>} input(%arg3 : !DistributedBufferType1) parent_input(%arg3 : !DistributedBufferType1) parent_output(%4 : !DistributedBufferType1) outputs(%4 : !DistributedBufferType1) -> !DistributedBufferType1 variants : {
+      %6 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 22748 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<AVEPOOL>}> input(%arg3 : !DistributedBufferType1) parent_input(%arg3 : !DistributedBufferType1) parent_output(%4 : !DistributedBufferType1) outputs(%4 : !DistributedBufferType1) -> !DistributedBufferType1 variants : {
         DPUTask {cluster_id = 0 : i64, inEnd = [127, 63, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
         DPUTask {cluster_id = 1 : i64, inEnd = [127, 63, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
         DPUTask {cluster_id = 2 : i64, inEnd = [127, 63, 31], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [127, 63, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
@@ -110,7 +110,7 @@ module @AsyncRegionOutliningThroughDDR {
 //CHECK-SAME:    ([[bodyResults]] as [[ARG3:%[^:]+]]
 //CHECK-SAME:    [[bodyResults_1]] as [[ARG4:%[^:]+]]
 //CHECK:       [[ViewOp:%.+]] = VPUIP.ViewOp [[output_buffer]]
-//CHECK:       [[NCEOp:%.+]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 13984 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+//CHECK:       [[NCEOp:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 13984 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
 //CHECK-SAME:                 input([[ARG3]]
 //CHECK-SAME:                 weights([[ARG4]]
 //CHECK-SAME:                 parent_input([[ARG3]]
@@ -150,7 +150,7 @@ module @AsyncRegionOutliningThroughDDR {
 //CHECK:     }
 
 //CHECK:     [[token_0:%.+]], [[bodyResults_1:%.+]] = async.execute [[[token]]] ([[bodyResults]] as [[ARG2:%[^:]+]]
-//CHECK:       [[NCEOp:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 22748 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<AVEPOOL>}
+//CHECK:       [[NCEOp:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 22748 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<AVEPOOL>}>
 //CHECK-SAME:       input([[ARG2]]
 //CHECK-SAME:       parent_input([[ARG2]]
 //CHECK-SAME:       parent_output([[NCE_OUTPUT_CMX]]

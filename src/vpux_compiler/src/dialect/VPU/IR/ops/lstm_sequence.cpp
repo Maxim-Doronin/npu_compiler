@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,6 @@
 #include "vpux/compiler/dialect/IE/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/max_lstm_hidden_size_constant.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -127,8 +126,11 @@ mlir::Value createIntermediateSumsBuffer(mlir::OpBuilder& rewriter, int64_t hidd
 }
 
 bool isSupported(config::ArchKind arch, ShapeRef initialHiddenStateShape, bool useDpu) {
-    auto maxHiddenSize = VPU::getMaxLstmSequenceHiddenSizeConstant(arch);
+    if (arch == config::ArchKind::NPU37XX) {
+        return false;
+    }
 
+    constexpr int64_t maxHiddenSize(256);
     // shave implementation allow reduced size. Bigger size can and are map on DPU.
     if (initialHiddenStateShape.back() > maxHiddenSize) {
         return false;
@@ -139,9 +141,11 @@ bool isSupported(config::ArchKind arch, ShapeRef initialHiddenStateShape, bool u
     if (useDpu) {
         alignmentRequired = 32;
     }
+
     if (initialHiddenStateShape.back() % alignmentRequired != 0) {
         return false;
     }
+
     return true;
 }
 
@@ -149,9 +153,10 @@ bool isSupported(config::ArchKind arch, ShapeRef initialHiddenStateShape, bool u
 
 void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
                                       ::mlir::Value inputData, ::mlir::Value initialHiddenState,
-                                      ::mlir::Value initialCellState, ::mlir::Value reccurenceWeights,
-                                      ::mlir::Value biases, ::mlir::IntegerAttr sequenceLength,
-                                      vpux::IE::RNNSequenceDirectionAttr direction, ::mlir::BoolAttr useDpu,
+                                      ::mlir::Value initialCellState, ::mlir::Value sequenceLengthData,
+                                      ::mlir::Value recurrenceWeights, ::mlir::Value biases,
+                                      ::mlir::IntegerAttr sequenceLength, vpux::IE::RNNSequenceDirectionAttr direction,
+                                      ::mlir::BoolAttr useDpu, ::mlir::ArrayAttr initial_output_offset_attr,
                                       vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
     const auto module = getModule(odsBuilder);
     auto tileOp = config::getTileExecutor(module);
@@ -168,15 +173,16 @@ void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Ope
         internalBuffer = createSyncBuffer(odsBuilder, shape);
     }
 
-    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, reccurenceWeights, biases,
-          internalBuffer, sequenceLength, direction, useDpu, multiClusterStrategy);
+    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, sequenceLengthData, recurrenceWeights,
+          biases, internalBuffer, sequenceLength, direction, useDpu, initial_output_offset_attr, multiClusterStrategy);
 }
 
 void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
                                       ::mlir::Value inputData, ::mlir::Value initialHiddenState,
-                                      ::mlir::Value initialCellState, ::mlir::Value reccurenceWeights,
-                                      ::mlir::Value biases, ::mlir::IntegerAttr sequenceLength,
-                                      vpux::IE::RNNSequenceDirectionAttr direction,
+                                      ::mlir::Value initialCellState, ::mlir::Value sequenceLengthData,
+                                      ::mlir::Value recurrenceWeights, ::mlir::Value biases,
+                                      ::mlir::IntegerAttr sequenceLength, vpux::IE::RNNSequenceDirectionAttr direction,
+                                      ::mlir::ArrayAttr initial_output_offset_attr,
                                       vpux::VPU::MultiClusterStrategyAttr multiClusterStrategy) {
     const auto module = getModule(odsBuilder);
     auto useDpu = VPU::getShaveControlsDpu(config::getArch(module));
@@ -184,12 +190,12 @@ void vpux::VPU::LSTMSequenceOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::Ope
     useDpu = useDpu ? ::isSupported(config::getArch(module), getShape(initialHiddenState), useDpu) : useDpu;
     mlir::BoolAttr useDpuAttr(nullptr);
     useDpuAttr = useDpu ? mlir::BoolAttr::get(odsBuilder.getContext(), useDpu) : useDpuAttr;
-    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, reccurenceWeights, biases,
-          sequenceLength, direction, useDpuAttr, multiClusterStrategy);
+    build(odsBuilder, odsState, inputData, initialHiddenState, initialCellState, sequenceLengthData, recurrenceWeights,
+          biases, sequenceLength, direction, useDpuAttr, initial_output_offset_attr, multiClusterStrategy);
 }
 
 bool vpux::VPU::LSTMSequenceOp::isSupported(vpux::IE::LSTMSequenceOp op, bool useDpu) {
-    if (op.getReccurenceWeights().getDefiningOp<Const::DeclareOp>() == nullptr) {
+    if (op.getRecurrenceWeights().getDefiningOp<Const::DeclareOp>() == nullptr) {
         return false;
     }
     return ::isSupported(config::getArch(op), getShape(op.getInitialHiddenState()), useDpu);

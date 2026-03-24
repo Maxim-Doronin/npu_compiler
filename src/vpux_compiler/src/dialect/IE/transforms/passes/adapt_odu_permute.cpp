@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 #include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/common_utils/layer_permute_ie.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -100,11 +101,51 @@ mlir::LogicalResult AdaptODUPermuteRewriter::matchAndRewrite(IE::LayerWithPermut
     const auto lastDim = *(newDimOrder.toPermutation().end() - 1);
     auto needPermuteCastOnInput = inShape[lastDim] == 1 && lastDim == Dims4D::Act::H &&
                                   !mlir::isa_and_present<IE::AddOp, IE::ConvolutionOp>(origOp);
+    auto transposedConvOp = mlir::dyn_cast<IE::TransposedConvolutionOp>(origOp.getOperation());
+
+    auto updateOutputShape = [&](IE::TransposedConvolutionOp transConvOp) -> mlir::Value {
+        auto outputShape = transConvOp.getOutputShape();
+        if (!needPermuteCastOnInput) {
+            return outputShape;
+        }
+        auto outputShapeConst = outputShape.getDefiningOp<Const::DeclareOp>();
+        VPUX_THROW_WHEN(outputShapeConst == nullptr, "Only constant input is supported for output_shape");
+
+        const auto outputShapeContent = outputShapeConst.getContent();
+        const auto outputShapeVals = outputShapeContent.getValues<int64_t>();
+
+        SmallVector<int64_t> newOutputShapeVals(outputShapeVals.begin(), outputShapeVals.end());
+        std::swap(newOutputShapeVals[0], newOutputShapeVals[1]);
+        auto newOutputShapeType = mlir::cast<mlir::RankedTensorType>(outputShapeConst.getType());
+        auto intTy = mlir::cast<mlir::IntegerType>(newOutputShapeType.getElementType());
+        auto width = intTy.getWidth();
+
+        // build DenseElementsAttr with APInt using ORIGINAL element bitwidth
+        SmallVector<llvm::APInt> apVals;
+        apVals.reserve(newOutputShapeVals.size());
+        for (auto v : newOutputShapeVals) {
+            apVals.emplace_back(width, static_cast<int64_t>(v), /*isSigned=*/intTy.isSignedInteger());
+        }
+
+        auto denseAttr = mlir::DenseElementsAttr::get(newOutputShapeType, apVals);
+        Const::ContentAttr newOutputShapeContentAttr = Const::ContentAttr::get(denseAttr);
+        auto newOutputShapeOp = rewriter.create<Const::DeclareOp>(transConvOp.getLoc(), newOutputShapeType,
+                                                                  std::move(newOutputShapeContentAttr));
+        return newOutputShapeOp.getOutput();
+    };
+
     if (needPermuteCastOnInput) {
         for (auto inputIter : origOp->getOperands() | indexed) {
             auto inputValue = inputIter.value();
             auto index = inputIter.index();
             auto newInputShapeRef = getShape(inputValue);
+
+            if (transposedConvOp != nullptr && inputValue != nullptr &&
+                transposedConvOp.getOutputShape() == inputValue) {
+                // Current value of transposedConv is one dim tensor.
+                mapper.map(origOp->getOperand(index), updateOutputShape(transposedConvOp));
+                continue;
+            }
             Shape newInputShape = Shape(newInputShapeRef);
             newInputShape[Dims4D::Act::H] = newInputShape[Dims4D::Act::W];
             newInputShape[Dims4D::Act::W] = 1;

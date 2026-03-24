@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -120,6 +120,15 @@ mlir::LogicalResult ReverseOpConverter::matchAndRewrite(IE::ReverseOp origOp, ml
     const int64_t rank4D = 4;
     if (inputShape.size() != rank4D) {
         return matchFailed(rewriter, origOp, "Input shape size is not 4");
+    }
+
+    // IE::ReverseOp generally supports any data type, but the target IE::GroupConvolutionOp
+    // has limited support (e.g., F16, F32, F64, SI32, QuantizedType).
+    // Direct conversion only works when the input type is compatible with GroupConvolutionOp.
+    const auto inputElemType = inputType.getElementType();
+    if (!inputElemType.isF16() && !inputElemType.isF32() && !inputElemType.isF64() &&
+        !inputElemType.isSignedInteger(32) && !mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
+        return matchFailed(rewriter, origOp, "Input type is not supported by GroupConvolutionOp");
     }
 
     // Check the ReverseMode

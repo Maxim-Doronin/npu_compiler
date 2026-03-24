@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/NPU40XX/pipeline_options.hpp"
 #include "vpux/compiler/NPU50XX/pipeline_options.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
+#include "vpux/utils/IE/config.hpp"
 
 #include <intel_npu/config/options.hpp>
 

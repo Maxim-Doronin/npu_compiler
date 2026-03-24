@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <vpux/compiler/dialect/config/version.hpp>
+#include "vpux/utils/core/error.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -71,6 +72,38 @@ bool hasCompileMethodDebatch(mlir::ModuleOp module);
 // dialects (tensor, scf, async, memref and arith) and which code is compiled into CPU code
 void setPureHostCompileFuncAttribute(mlir::func::FuncOp func);
 bool isPureHostCompileFunc(mlir::func::FuncOp func);
+
+// Sets the FunctionToPack attribute on a function with a required target module name.
+// The target module name must not be empty.
+void setFunctionToPackAttribute(mlir::func::FuncOp func, llvm::StringRef targetModuleName);
+// Returns the target module name, or empty string if function should go to top cluster
+std::string getFunctionToPackTargetModule(mlir::func::FuncOp func);
+
+// Removes the FunctionToPack attribute from a function.
+void removeFunctionToPackAttribute(mlir::func::FuncOp func);
+
+//
+// FunctionToPackEntryPoint
+//
+
+// Marks a function as the designated entry point when packed into a module.
+// This function will be promoted to have an EntryPoint when the module is created.
+void setFunctionToPackEntryPointAttribute(mlir::func::FuncOp func);
+bool hasFunctionToPackEntryPointAttribute(mlir::func::FuncOp func);
+void removeFunctionToPackEntryPointAttribute(mlir::func::FuncOp func);
+
+//
+// PackedModule
+//
+
+// Sets the PackedModule attribute on a module to indicate it was created via FunctionToPack.
+void setPackedModuleAttribute(mlir::ModuleOp module);
+
+// Returns true if the module has the PackedModule attribute.
+bool hasPackedModuleAttribute(mlir::ModuleOp module);
+
+/// Removes the PackedModule attribute from a module.
+void removePackedModuleAttribute(mlir::ModuleOp module);
 
 }  // namespace config
 }  // namespace vpux

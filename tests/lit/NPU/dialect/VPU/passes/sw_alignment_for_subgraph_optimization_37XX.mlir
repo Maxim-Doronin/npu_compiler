@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,7 +53,7 @@ func.func @MVNInputAlignForSegmentedInput(%input: tensor<1x32x64x64xf16, {order 
 
     //CHECK:        [[PERMUTE:%.+]] = VPU.PermuteCast([[CONV_OUT_COPY]]) {dst_order = #NWHC, mem_perm = #NCHW} : tensor<1x32x64x64xf16, {order = #NHWC}> -> tensor<1x32x64x64xf16, {order = #NWHC}>
 
-    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.+]] = VPU.Copy([[PERMUTE]] as %arg1: tensor<1x32x64x64xf16, {order = #NWHC}>)
+    //CHECK:        [[CLUSTERED_COPY_TO_MVN:%.+]] = VPU.Copy([[PERMUTE]] as {{%[^:]+}}: tensor<1x32x64x64xf16, {order = #NWHC}>)
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x64x64xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
     //CHECK:        [[CLUSTERED_MVN:%.+]] = VPU.MVN([[CLUSTERED_COPY_TO_MVN]]
@@ -279,7 +279,7 @@ func.func @MVNOutputAlignForSegmentedOutput(%input: tensor<1x32x64x64xf16, {orde
     //CHECK:        [[DWCONV_OUT_COPY:%.+]] = VPU.Copy([[DWCONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        return %9 : tensor<1x32x64x64xf16, {order = #NHWC}>
+    //CHECK:        return [[DWCONV_OUT_COPY]] : tensor<1x32x64x64xf16, {order = #NHWC}>
 }
 
 // -----
@@ -386,7 +386,7 @@ func.func @DoNotAlignForUnalignedChannel(%input: tensor<1x32x64x64xf16, {order =
     //CHECK:        [[CONV_OUT_COPY:%.+]] = VPU.Copy([[CLUSTERED_CONV]]
     //CHECK-SAME:   -> tensor<1x32x64x64xf16, {order = #NHWC}>
 
-    //CHECK:        [[SLICE:%.+]] = VPU.Slice %4 [0, 0, 0, 0] [1, 3, 64, 64] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x3x64x64xf16, {order = #NHWC}>
+    //CHECK:        [[SLICE:%.+]] = VPU.Slice [[CONV_OUT_COPY]] [0, 0, 0, 0] [1, 3, 64, 64] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x3x64x64xf16, {order = #NHWC}>
 
     //CHECK:        [[TANH_IN_COPY:%.+]] = VPU.Copy([[SLICE]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x3x64x64xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>

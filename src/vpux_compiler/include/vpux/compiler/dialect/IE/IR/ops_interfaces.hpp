@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/ShaveCodeGen/utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/utils/jit_utils.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/small_vector.hpp"
@@ -145,6 +145,14 @@ mlir::LogicalResult inferTensorTypes(InferTypeComponentsCb componentsCb, mlir::M
 //
 
 PostOpAttr attributizePostOp(mlir::Operation* postOp);
+
+class LayerWithPostOpInterface;
+
+template <typename T>
+bool hasPPE(T op) {
+    auto postOpIfc = mlir::cast<LayerWithPostOpInterface>(op.getOperation());
+    return postOpIfc.hasPPE();
+}
 
 /* Sets clamp attribute for the main operation.
    If clamp attribute exist it merges with the new one:

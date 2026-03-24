@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@ namespace vpux {
 
 std::string stringifyPrimaryLocation(mlir::Location);
 std::string stringifyPrimaryLocationSanitized(mlir::Location location);
+std::string getLayerNameFromLocation(mlir::Location);
 std::string getLayerTypeFromLocation(mlir::Location);
 
 std::vector<std::string> splitAndTrimStringByDelimiter(const std::string& str, char delimiter = ',');

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -91,8 +91,8 @@ mlir::LogicalResult ConvertToMultiInputs::matchAndRewrite(IE::YuvToRgbOp yuvToRg
             input2_sizes[W] = input2_sizes[W] / 2;
             input2_sizes[C] = 2;
             auto shapeEndAttr = getIntArrayAttr(ctx, input2_sizes);
-            auto input2_slice_reshape = rewriter.create<IE::ReshapeOp>(
-                    appendLoc(sliceOpLoc, "reshape_UV"), input2_slice.getResult(), nullptr, false, shapeEndAttr);
+            auto input2_slice_reshape = rewriter.create<IE::ReshapeOp>(appendLoc(sliceOpLoc, "reshape_UV"),
+                                                                       input2_slice.getResult(), shapeEndAttr);
 
             rewriter.replaceOpWithNewOp<IE::YuvToRgbOp>(yuvToRgbOp, input1_slice.getResult(), input2_slice_reshape,
                                                         nullptr, yuvToRgbOp.getInFmt(), yuvToRgbOp.getOutFmt());
@@ -123,8 +123,8 @@ mlir::LogicalResult ConvertToMultiInputs::matchAndRewrite(IE::YuvToRgbOp yuvToRg
             inputUV_sizes[W] = inShapeType[W] / 2;
 
             auto shape2EndAttr = getIntArrayAttr(ctx, inputUV_sizes);
-            auto inputUV_slice_reshape = rewriter.create<IE::ReshapeOp>(
-                    appendLoc(sliceOpLoc, "reshape_UV"), inputUV_slice.getResult(), nullptr, false, shape2EndAttr);
+            auto inputUV_slice_reshape = rewriter.create<IE::ReshapeOp>(appendLoc(sliceOpLoc, "reshape_UV"),
+                                                                        inputUV_slice.getResult(), shape2EndAttr);
 
             SmallVector<int64_t> inputU_sizes(inputShape.begin(), inputShape.end());
             SmallVector<int64_t> inputV_sizes(inputShape.begin(), inputShape.end());

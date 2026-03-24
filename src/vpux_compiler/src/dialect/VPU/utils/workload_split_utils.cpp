@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,9 +7,11 @@
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/hash.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
 
 #include <vpu_cost_model.h>
@@ -34,7 +36,6 @@ int64_t computeSplitCost(const VPUIP::WorkloadSplit& split, const VPUIP::Workloa
     VPUX_THROW_WHEN(params.arch < config::ArchKind::NPU37XX, "Unexpected architecture {0}", params.arch);
     std::vector<int64_t> workloadCost;
     workloadCost.reserve(split.size());
-
     std::string vpunnInputCheckInfo;
 
     // Correct invalid input channels for depthwise workload before passing to VPUNN
@@ -64,6 +65,32 @@ int64_t computeSplitCost(const VPUIP::WorkloadSplit& split, const VPUIP::Workloa
         return newWorkloads;
     };
 
+    auto getDPUWorkloadCost = [](const VPUNN::VPUCostModel& costModel, const VPUNN::DPUWorkload& vpunnWorkload,
+                                 std::string& vpunnInputCheckInfo) -> size_t {
+        // Enable a cache for DPU workload costs because the sanity check step within the VPU cost model is
+        // computationally expensive. This sanity check may be invoked multiple times for the same workload when it is
+        // split to fit hardware constraints.
+        // TODO: This cache can be removed once the sanity check cost is sufficiently optimized.
+        auto& cache = VPU::getGlobalOpTilingCache();
+        const auto useCache = cache.isCacheSupported();
+        llvm::hash_code wlHash;
+        if (useCache) {
+            wlHash = llvm::hash_combine(static_cast<const void*>(&costModel), vpunnWorkload.hash());
+            auto cachedCost = cache.getDPUWorkloadCost(wlHash);
+            if (cachedCost.has_value()) {
+                return cachedCost.value();
+            }
+        }
+
+        auto wlCost =
+                VPU::checkAndReturnCost(costModel.DPU(vpunnWorkload, vpunnInputCheckInfo), Logger::global(), true);
+
+        if (useCache) {
+            cache.updateDPUWorkloadCost(wlHash, static_cast<size_t>(wlCost));
+        }
+        return static_cast<size_t>(wlCost);
+    };
+
     std::vector<VPUIP::WorkloadTile> correctWls;
     for (const auto& wl : split) {
         correctWls.push_back(wl);
@@ -79,8 +106,7 @@ int64_t computeSplitCost(const VPUIP::WorkloadSplit& split, const VPUIP::Workloa
 
         for (const auto& correctWl : correctWls) {
             const auto vpunnWorkload = VPU::getDPUWorkload(params, correctWl);
-            auto wlCost =
-                    VPU::checkAndReturnCost(costModel.DPU(vpunnWorkload, vpunnInputCheckInfo), Logger::global(), true);
+            auto wlCost = getDPUWorkloadCost(costModel, vpunnWorkload, vpunnInputCheckInfo);
             if (wlCost >= VPU::INVALID_COST_BASE) {
                 logCb(formatv("[VPUNN LOG] INVALID_COST is caught. Please check possible VPUNN debug info: {0}",
                               vpunnInputCheckInfo));

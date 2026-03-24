@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,10 +67,10 @@ module @Graph {
 // CHECK:        profilingOutputsInfo
 // CHECK-NEXT:      DataInfo "dma" : tensor<2xui64>
 // CHECK-NEXT:      DataInfo "pll" : tensor<16xui32>
-// CHECK:        func.func @main(%arg0: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
-// CHECK-SAME:      %arg1: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
-// CHECK-SAME:      %arg2: memref<2xui64>,
-// CHECK-SAME:      %arg3: memref<16xui32>) -> (
+// CHECK:        func.func @main([[ARG_0:%[^:]+]]: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
+// CHECK-SAME:      [[ARG_2:%[^:]+]]: memref<2xui64>,
+// CHECK-SAME:      [[ARG_3:%[^:]+]]: memref<16xui32>) -> (
 // CHECK-SAME:      memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
 // CHECK-SAME:      memref<2xui64>, memref<16xui32>) {
 

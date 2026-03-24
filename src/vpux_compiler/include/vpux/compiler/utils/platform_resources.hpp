@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,10 +33,15 @@ constexpr Byte VPUX5010_CMX_WORKSPACE_SIZE = Byte(1439_KB);
 constexpr Byte VPUX5010_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE = Byte(
         static_cast<int64_t>(static_cast<double>(VPUX5010_CMX_WORKSPACE_SIZE.count()) * FRAGMENTATION_AVOID_RATIO));
 
+constexpr Byte VPUX5020_CMX_WORKSPACE_SIZE = Byte(1951_KB);
+constexpr Byte VPUX5020_CMX_WORKSPACE_FRAGMENTATION_AWARE_SIZE = Byte(
+        static_cast<int64_t>(static_cast<double>(VPUX5020_CMX_WORKSPACE_SIZE.count()) * FRAGMENTATION_AVOID_RATIO));
+
 constexpr int VPUX37XX_MAX_DPU_GROUPS = 2;
 constexpr int VPUX40XX_MAX_DPU_GROUPS = 6;
 constexpr int VPUX5010_MAX_DPU_GROUPS = 3;
-constexpr int VPUX50XX_MAX_DPU_GROUPS = VPUX5010_MAX_DPU_GROUPS;
+constexpr int VPUX5020_MAX_DPU_GROUPS = 1;
+constexpr int VPUX50XX_MAX_DPU_GROUPS = std::max(VPUX5010_MAX_DPU_GROUPS, VPUX5020_MAX_DPU_GROUPS);
 
 constexpr int VPUX37XX_MAX_SHAVES_PER_TILE = 2;
 constexpr int VPUX40XX_MAX_SHAVES_PER_TILE = 2;

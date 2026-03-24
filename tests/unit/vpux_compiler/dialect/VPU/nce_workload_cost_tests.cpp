@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -61,6 +61,7 @@ TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
     mlir::MLIRContext ctx;
     ctx.loadDialect<vpux::VPU::VPUDialect>();
     vpux::VPU::arch37xx::initializeSingletonCache(&ctx, std::nullopt);
+    vpux::VPU::arch37xx::initializePPEVersionConfig(&ctx);
 
     llvm::SmallVector<vpux::VPU::MPEMode> mpeModeList{vpux::VPU::MPEMode::VECTOR_FP16, vpux::VPU::MPEMode::VECTOR,
                                                       vpux::VPU::MPEMode::MATRIX};

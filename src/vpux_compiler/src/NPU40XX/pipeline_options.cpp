@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -72,7 +72,6 @@ void setupParamsAccordingToOptimizationLevel(int optimizationLevel, DefaultHWOpt
             compilationOptions.workloadManagementBarrierCountThreshold = std::numeric_limits<int>::max();
             compilationOptions.workloadManagementMode = WorkloadManagementMode::FWLM_V1_PAGES;
             compilationOptions.workloadManagementDmaFifoType = DMAFifoType::HW;
-            compilationOptions.wlmRollback = false;
             compilationOptions.enableSwKernelFifoPerShaveEngine = true;
             break;
         }

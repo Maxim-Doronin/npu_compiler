@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ func.func @ConvLargeSparseOutput(%input_ddr: tensor<1x64x40x40xf16, {order = #NH
             rawFilterShape = [384, 64, 4, 4],
             strides = [1, 1]
         } : tensor<1x64x40x40xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<384x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x384x37x37xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x384x37x37xi1, {mem_space = @CMX_NN, order = #NHWC}>> {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 384, 40, 80] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16>
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 384, 40, 80] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_4x16>
             }
 
     %output = VPU.Copy(%conv_out) : !VPU.SparseTensor<data=tensor<1x384x37x37xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x384x37x37xi1, {mem_space = @CMX_NN, order = #NHWC}>>
@@ -38,7 +38,7 @@ func.func @ConvLargeSparseOutput(%input_ddr: tensor<1x64x40x40xf16, {order = #NH
     // CHECK-SAME:      ppe = #VPU.PPEStub<>,
     // CHECK-SAME:      strides = [1, 1]}
     // CHECK-SAME:      -> !VPU.SparseTensor<data=tensor<1x384x37x37xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x384x37x37xi1, {mem_space = @CMX_NN, order = #NHWC}>> {
-    // CHECK:               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 384, 40, 80] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_4x16>
+    // CHECK:               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 384, 40, 80] pad [0, 0, 0, 0] <CUBOID_4x16>
     // CHECK:           }
 
     // CHECK:       [[OUTPUT:%.+]] = VPU.Copy([[CONV_OUT]])
@@ -89,8 +89,8 @@ func.func @NCEPermuteClustered(%arg0: !Input_DDR) -> !Output_CMX {
             expandedChannels = 4 : i64, minimumHardwareExecutionCost = 4294967195 : i64,
             ppe = #VPU.PPEStub<>
         } -> !Output_CMX {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 4, 112, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-            VPU.DPU.Workload outOffsets [0, 0, 112, 0] outSizes [1, 4, 112, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 4, 112, 224] pad [0, 0, 0, 0]  <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 112, 0] outSizes [1, 4, 112, 224] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %output : !Output_CMX
@@ -108,12 +108,12 @@ func.func @NCEPermuteClustered(%arg0: !Input_DDR) -> !Output_CMX {
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 3, 112, 224]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 0
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 112, 0] outSizes [1, 3, 112, 224]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 1
 }
 
@@ -161,9 +161,9 @@ module @NCEPermuteODUAutopadRemoveChannelPadding {
                     bias = 0.000000e+00 : f64,
                     adder = 0.000000e+00 : f64
                 >} -> !OutputType {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 4, 75, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 0 : i64}
-            VPU.DPU.Workload outOffsets [0, 0, 75, 0] outSizes [1, 4, 75, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 1 : i64}
-            VPU.DPU.Workload outOffsets [0, 0, 150, 0] outSizes [1, 4, 74, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 2 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 4, 75, 224] pad [0, 0, 0, 0] <CUBOID_8x16> attributes {cluster_id = 0 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 75, 0] outSizes [1, 4, 75, 224] pad [0, 0, 0, 0] <CUBOID_8x16> attributes {cluster_id = 1 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 150, 0] outSizes [1, 4, 74, 224] pad [0, 0, 0, 0] <CUBOID_8x16> attributes {cluster_id = 2 : i64}
         }
 
         return %output : !OutputType
@@ -172,17 +172,17 @@ module @NCEPermuteODUAutopadRemoveChannelPadding {
 
         // CHECK-NEXT:  VPU.DPU.Workload
         // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 3, 75, 224]
-        // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:      pad [0, 0, 0, 0]
         // CHECK-SAME:      cluster_id = 0
 
         // CHECK-NEXT:  VPU.DPU.Workload
         // CHECK-SAME:      outOffsets [0, 0, 75, 0] outSizes [1, 3, 75, 224]
-        // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:      pad [0, 0, 0, 0]
         // CHECK-SAME:      cluster_id = 1
 
         // CHECK-NEXT:  VPU.DPU.Workload
         // CHECK-SAME:      outOffsets [0, 0, 150, 0] outSizes [1, 3, 74, 224]
-        // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:      pad [0, 0, 0, 0]
         // CHECK-SAME:      cluster_id = 2
     }
 }
@@ -220,7 +220,7 @@ func.func @DepthConvSparseInputWithoutL1aOpt(
         VPU.DPU.Workload
             outOffsets [0, 0, 0, 0]
             outSizes [1, 64, 16, 16]
-            <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+            pad [1, 1, 1, 1]
             <CUBOID_16x16>
     }
     // CHECK:   [[DWCONV:%.+]] = VPU.NCE.DepthConvolution([[ACT]], [[FILT]])
@@ -317,15 +317,15 @@ func.func @SOKConvSparseOutput(%arg0: !Input_CMX, %arg1: !Weights_CMX) -> !Outpu
             pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
             ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>,
             rawFilterShape = [256, 512, 3, 3], strides = [2, 2]} : !Input_CMX, !Weights_CMX -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 1 : i64}
-                VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 2 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 96, 7, 7] pad [1, 0, 1, 0] <CUBOID_4x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 96, 7, 7] pad [1, 0, 1, 0] <CUBOID_4x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 7, 7] pad [1, 0, 1, 0] <CUBOID_8x16> attributes {cluster_id = 2 : i64}
         }
 
     return %2 : !Output_CMX
 
     // CHECK:       VPU.NCE.Convolution
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 0 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 96, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_4x16> attributes {cluster_id = 1 : i64}
-    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 7, 7] <left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 2 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 96, 7, 7] pad [1, 0, 1, 0] <CUBOID_4x16> attributes {cluster_id = 0 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 96, 7, 7] pad [1, 0, 1, 0] <CUBOID_4x16> attributes {cluster_id = 1 : i64}
+    // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 192, 0, 0] outSizes [1, 64, 7, 7] pad [1, 0, 1, 0] <CUBOID_8x16> attributes {cluster_id = 2 : i64}
 }

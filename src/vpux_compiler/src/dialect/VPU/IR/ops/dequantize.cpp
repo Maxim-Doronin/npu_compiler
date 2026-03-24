@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
@@ -58,7 +59,7 @@ bool VPU::DequantizeOp::isOperationSplitOverKernelCompatible(ShapeRef outputShap
     if (outputShape == ShapeRef()) {
         outputShape = getShape(getResult());
     }
-    auto numOfCluster = getNumTiles(*this);
+    auto numOfCluster = config::getNumOfTiles(*this);
     //  Currently dequantize is used for filters of convolutions which are tiled on OC for SOK
     auto OC = outputShape[Dims4D::Filter::OC];
     // Dequantize is tiled like a hardware op so alignment must be enforced after temporal/cluster tiling

@@ -1,10 +1,8 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/ShaveCodeGen/passes.hpp"
-#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
@@ -66,10 +64,10 @@ std::optional<double> getWeightsSparsityThreshold(const DoubleOption& weightsSpa
 void vpux::VPU::buildInitCompilerPipeline(mlir::OpPassManager& pm, const VPU::InitCompilerOptions& options,
                                           Logger log) {
     log.info("InitCompilerOptions:\n arch = {0}\n DPU groups = {1}\n DMA ports = {2}\n"
-             " compilation mode = {3}\n PPE version = {4}\n adaptive stripping = {5}\n aggressive "
-             "QDQ = {6}\n weights dynamic dequantization {7}\n",
+             " compilation mode = {3}\n adaptive stripping = {4}\n aggressive "
+             "QDQ = {5}\n weights dynamic dequantization {6}\n",
              options.arch, options.numberOfDPUGroups, options.numberOfDMAPorts, options.compilationMode,
-             options.ppeVersion, options.enableAdaptiveStripping, options.enableQDQOptimizationAggressive,
+             options.enableAdaptiveStripping, options.enableQDQOptimizationAggressive,
              options.enableWeightsDynamicDequantization);
 
     pm.addPass(VPU::createInitResourcesPass(options, log));
@@ -145,9 +143,12 @@ void VPU::registerVPUPipelines() {
                                                            VPU::buildVFPipeline(pm, options);
                                                        });
 
-    mlir::PassPipelineRegistration<>("shavecodegen-vpu", "Shavecodegen specific passes", [](mlir::OpPassManager& pm) {
-        VPU::buildShaveCodeGenPipeline(pm);
-    });
+    mlir::PassPipelineRegistration<VPU::ScfComputeOpsOutliningOptions>(
+            "scf-ops-outlining", "SCF compute ops outlining transformations",
+            [](mlir::OpPassManager& pm, const VPU::ScfComputeOpsOutliningOptions& options) {
+                VPU::buildScfComputeOpsOutliningPipeline(pm, options.loopUnrollFactor, options.enableProfiling,
+                                                         options.enableCascadedUnrolling, Logger::global());
+            });
 }
 
 void vpux::VPU::buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& options, Logger log) {
@@ -224,12 +225,13 @@ void vpux::VPU::buildScfComputeOpsOutliningPipeline(mlir::OpPassManager& pm, con
 
     if (loopUnrollFactor.hasValue() && !loopUnrollFactor.getValue().empty()) {
         pm.addPass(VPU::createUnrollSCFLoopPass(loopUnrollFactor.getValue(), enableCascadedUnrolling.getValue(), log));
-        pm.addPass(mlir::createCanonicalizerPass(grc));
-        pm.addPass(mlir::createCSEPass());
     }
+    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(mlir::createCSEPass());
 
-    pm.addPass(Core::createPackNestedModulesPass(log, Core::NestingMode::Default, enableProfiling));
     pm.addPass(VPU::createFinalizeComputeFunctionBoundariesPass(log));
+    pm.addPass(Core::createPackNestedModulesPass(log, Core::NestingMode::Default, enableProfiling));
 }
 
 //
@@ -291,30 +293,4 @@ void vpux::VPU::buildSMPipeline(mlir::OpPassManager& pm, const vpux::MCAndTiling
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(/*enableOutputEnsurance=*/true,
                                                            /*enableDequantWeightEnsuranceBeforeStrategy=*/false,
                                                            /*skipNonConvOC=*/false, log));
-}
-
-//
-// ShaveCodeGen
-//
-
-void vpux::VPU::buildShaveCodeGenPipeline(mlir::OpPassManager& pm) {
-    pm.addPass(ShaveCodeGen::createShaveKernelSimplifyPass());
-    const auto grc = getDefaultGreedyRewriteConfig();
-    // Move kernel results to arguments before doing any other
-    // optimizations. This allows us to see a simpler form of the IR
-    // and helps with the empty tensor elimination performed by this pass.
-    //
-    // In particular, empty tensor elimination needs to walk use-def
-    // chains to find tensor.empty() ops but will refuse to traverse
-    // any reshape-like ops. However these ops are introduced by our
-    // optimization passes (specifically FlattenEltwiseKernel).
-    pm.addPass(ShaveCodeGen::createMoveKernelResultsToArgumentsPass());
-
-    pm.addPass(ShaveCodeGen::createDecomposeAggregateOpsPass());
-    pm.addPass(ShaveCodeGen::createFlattenEltwiseKernelPass());
-    pm.addPass(ShaveCodeGen::createLinalgTileAndFuseSwLayersPass());
-    pm.addPass(mlir::createLinalgGeneralizeNamedOpsPass());
-    pm.addPass(mlir::createCanonicalizerPass(grc));
-    pm.addPass(ShaveCodeGen::createOneShotBufferizeSWKernelsPass());
-    pm.addPass(ShaveCodeGen::createShaveStackAllocationPass());
 }

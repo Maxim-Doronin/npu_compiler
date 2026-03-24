@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -101,7 +101,7 @@ mlir::LogicalResult VPUIPDPU::arch50xx::PPE::configurePPE(VPUIPDPU::arch50xx::PP
 
 mlir::LogicalResult VPUIPDPU::arch50xx::PPE::buildPPEConfig(mlir::OpBuilder& builder, const mlir::Location& loc,
                                                             const Logger& log, const PPEConfig& config,
-                                                            mlir::Value weightsTable) {
+                                                            mlir::Value weightsTable, bool hasBypassOp) {
     // PPEFpBiasAdd
     auto biasStaticAttr = getF32FloatAttrOrNull(builder, config.biasAdd.biasStatic);
     if (biasStaticAttr) {
@@ -127,7 +127,9 @@ mlir::LogicalResult VPUIPDPU::arch50xx::PPE::buildPPEConfig(mlir::OpBuilder& bui
     }
 
     // PPEFpAddMultBypass
-    builder.create<VPUIPDPU::PPEFpAddMultBypassOp>(loc, VPUIPDPU::PPEBypassMode::OFF);
+    if (hasBypassOp) {
+        builder.create<VPUIPDPU::PPEFpAddMultBypassOp>(loc, VPUIPDPU::PPEBypassMode::OFF);
+    }
 
     // PPEFpSprLUT
     builder.create<PPEFpSprLUTModeOp>(loc, config.sprLUT.enableLookUpTable);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,7 +17,7 @@
 #include <openvino/openvino.hpp>
 #include <openvino/util/file_util.hpp>
 #include <openvino/util/shared_object.hpp>
-#include "vpux/utils/IE/network_metadata.hpp"
+#include "vpux/compiler/network_metadata.hpp"
 
 struct npu_mlir_runtime_fntbl {
     using npu_mlir_runtime_get_api_version_t = npu_mlir_runtime_result_t(npu_mlir_runtime_version_t* pVersion);

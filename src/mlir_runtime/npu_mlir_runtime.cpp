@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -6,7 +7,8 @@
 #include <variant>
 #include "intel_npu/utils/zero/zero_utils.hpp"
 #include "level_zero_wrapper/level_zero_wrapper.h"
-#include "vpux/utils/IE/network_metadata.hpp"
+#include "openvino/util/file_util.hpp"
+#include "vpux/compiler/network_metadata.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #if defined(_WIN32)
@@ -246,7 +248,8 @@ void NPUMLIRRuntime::createExecutionEngine(const npu_mlir_runtime_blob_desc_t* d
     engineOptions.jitCodeGenOptLevel = llvm::CodeGenOptLevel::None;
 
     llvm::SmallVector<mlir::StringRef, 4> sharedLibs;
-    sharedLibs.push_back(MLIR_ZERO_WRAPPER_FILE_NAME);
+    static std::string libpath = (ov::util::get_ov_lib_path() / MLIR_ZERO_WRAPPER_FILE_NAME).string();
+    sharedLibs.push_back(libpath);
     engineOptions.sharedLibPaths = sharedLibs;
     _logger.debug("Creating engine");
     auto expectedEngine = mlir::ExecutionEngine::create(*module, engineOptions, std::move(tmOrError.get()));
@@ -389,6 +392,9 @@ void NPUMLIRRuntime::execute(npu_mlir_runtime_execute_params_t* pParams) {
         _logger.debug("Output : {0}, info: {1}", i, handle->toString().c_str());
     }
 
+    // execution context is not used now, pass a dummy nullptr
+    // This is reserved for future use to support mutable command list
+    void* dummyExecutionContext = nullptr;
     mlir::ExecutionEngine::Argument<ze_context_handle_t>::pack(packedArgs, pParams->ctx);
     mlir::ExecutionEngine::Argument<ze_device_handle_t>::pack(packedArgs, pParams->device);
     mlir::ExecutionEngine::Argument<ze_graph_dditable_ext_t*>::pack(packedArgs, pParams->graphDdiTableExt);
@@ -397,6 +403,7 @@ void NPUMLIRRuntime::execute(npu_mlir_runtime_execute_params_t* pParams) {
     mlir::ExecutionEngine::Argument<ze_command_queue_handle_t>::pack(packedArgs, pParams->commandQueue);
     mlir::ExecutionEngine::Argument<ze_fence_handle_t>::pack(packedArgs, pParams->inferenceFence);
     mlir::ExecutionEngine::Argument<ze_event_handle_t>::pack(packedArgs, pParams->event);
+    mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, dummyExecutionContext);
 
     const std::string adapterName = "_mlir_ciface_main";
     auto error = _engine->invokePacked(adapterName, packedArgs);

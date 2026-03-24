@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,6 +40,7 @@ void HostExec::buildHostExecPipeline(mlir::OpPassManager& pm, Logger /*log*/) {
     pm.addPass(HostExec::createSerializeELFToBinaryPass());
     pm.addPass(HostExec::createConvertToLLVMUMDCallsPass());
     pm.addPass(HostExec::createSerializeNetworkMetadataPass());
+    pm.addPass(HostExec::createGenerateExecutionContextFuncsPass());
 
     // This should be placed after ConvertToLLVMUMDCalls
     // as additional arguments (e.g., L0 command list, command queue, and so on)

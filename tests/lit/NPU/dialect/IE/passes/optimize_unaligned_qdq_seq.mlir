@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,8 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @OptimizeQuantDequantSequence
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x40x1x1xf16>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<512x40x1x1xf16>
 func.func @OptimizeQuantDequantSequence(%arg0 : tensor<1x40x1x1xf16>, %arg1 : tensor<512x40x1x1xf16>) -> tensor<1x64x1x8xf16> {
   %cst_0 = const.Declare tensor<f16> = dense<0.0> : tensor<f16>
   %cst_1 = const.Declare tensor<f16> = dense<1.0> : tensor<f16>
@@ -17,7 +19,7 @@ func.func @OptimizeQuantDequantSequence(%arg0 : tensor<1x40x1x1xf16>, %arg1 : te
   %5 = IE.Transpose(%4) {order_value = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x1x8x64xf16> -> tensor<1x64x1x8xf16>
   return %5 : tensor<1x64x1x8xf16>
 
-  // CHECK:  [[VAL1:%.+]] = IE.Convolution(%arg0, %arg1)
+  // CHECK:  [[VAL1:%.+]] = IE.Convolution([[ARG_0]], [[ARG_1]])
   // CHECK:  [[VAL2:%.+]] = IE.FakeQuantize([[VAL1]]
   // CHECK-SAME: -> tensor<1x512x1x1xf16>
   // CHECK:  [[VAL3:%.+]] = IE.AffineReshape([[VAL2]])
@@ -25,6 +27,7 @@ func.func @OptimizeQuantDequantSequence(%arg0 : tensor<1x40x1x1xf16>, %arg1 : te
 }
 
 // CHECK-LABEL: @NoOptimizeQuantDequantSequence
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1xf16>
 func.func @NoOptimizeQuantDequantSequence(%arg0 : tensor<1xf16>) -> tensor<1x1x1x1xf16> {
   %cst_0 = const.Declare tensor<f16> = dense<0.0> : tensor<f16>
   %cst_1 = const.Declare tensor<f16> = dense<1.0> : tensor<f16>
@@ -32,7 +35,7 @@ func.func @NoOptimizeQuantDequantSequence(%arg0 : tensor<1xf16>) -> tensor<1x1x1
   %2 = IE.FakeQuantize(%1, %cst_0, %cst_1, %cst_0, %cst_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x1x1x1xf16>, tensor<f16>, tensor<f16>, tensor<f16>, tensor<f16> -> tensor<1x1x1x1xf16>
   return %2 : tensor<1x1x1x1xf16>
 
-  // CHECK:  [[VAL1:%.+]] = IE.AffineReshape(%arg0)
+  // CHECK:  [[VAL1:%.+]] = IE.AffineReshape([[ARG_0]])
   // CHECK-SAME: tensor<1xf16> -> tensor<1x1x1x1xf16>
   // CHECK:  [[VAL2:%.+]] = IE.FakeQuantize([[VAL1]]
   // CHECK-SAME: -> tensor<1x1x1x1xf16>

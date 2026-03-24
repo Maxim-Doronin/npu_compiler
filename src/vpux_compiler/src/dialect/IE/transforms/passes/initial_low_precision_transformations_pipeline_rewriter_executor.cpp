@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,13 +32,18 @@ public:
     using Base = impl::InitialLowPrecisionTransformationsPipelineRewriterExecutorBase<
             InitialLowPrecisionTransformationsPipelineRewriterExecutorPass>;
 
-    explicit InitialLowPrecisionTransformationsPipelineRewriterExecutorPass(Logger log) {
+    explicit InitialLowPrecisionTransformationsPipelineRewriterExecutorPass(
+            const bool enableDynamicQuantizationForStaticCase, Logger log)
+            : _enableDynamicQuantizationForStaticCase(enableDynamicQuantizationForStaticCase) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
     void safeRunOnFunc() final;
+
+private:
+    bool _enableDynamicQuantizationForStaticCase;
 };
 
 mlir::LogicalResult InitialLowPrecisionTransformationsPipelineRewriterExecutorPass::initialize(mlir::MLIRContext* ctx) {
@@ -49,6 +54,12 @@ mlir::LogicalResult InitialLowPrecisionTransformationsPipelineRewriterExecutorPa
         setRewriterName(rewriterName.getValue());
     }
 
+    // When this parameter has a value, it probably comes from LIT test.
+    // Override the default
+    if (enableDynamicQuantizationForStaticCase.hasValue()) {
+        _enableDynamicQuantizationForStaticCase = enableDynamicQuantizationForStaticCase.getValue();
+    }
+
     return mlir::success();
 }
 
@@ -57,7 +68,8 @@ void InitialLowPrecisionTransformationsPipelineRewriterExecutorPass::safeRunOnFu
     auto& ctx = getContext();
 
     auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
-    auto strategy = strategyFactory->getInitialLowPrecisionTransformationsPipelineStrategy(func);
+    auto strategy = strategyFactory->getInitialLowPrecisionTransformationsPipelineStrategy(
+            func, _enableDynamicQuantizationForStaticCase);
     auto customRegistry = vpux::RegistryManager::createCustomRegistry();
     strategy->registerRewriters(*customRegistry, _log);
 
@@ -73,6 +85,8 @@ void InitialLowPrecisionTransformationsPipelineRewriterExecutorPass::safeRunOnFu
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createInitialLowPrecisionTransformationsPipelineRewriterExecutorPass(Logger log) {
-    return std::make_unique<InitialLowPrecisionTransformationsPipelineRewriterExecutorPass>(log);
+std::unique_ptr<mlir::Pass> vpux::IE::createInitialLowPrecisionTransformationsPipelineRewriterExecutorPass(
+        const bool enableDynamicQuantizationForStaticCase, Logger log) {
+    return std::make_unique<InitialLowPrecisionTransformationsPipelineRewriterExecutorPass>(
+            enableDynamicQuantizationForStaticCase, log);
 }

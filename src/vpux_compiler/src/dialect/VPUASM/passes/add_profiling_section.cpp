@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 namespace vpux::VPUASM {
@@ -33,9 +34,7 @@ private:
 
 void AddProfilingSection::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(moduleOp);
     const auto arch = config::getArch(moduleOp);
     if (netInfo.getProfilingOutputsInfo().empty()) {
         return;

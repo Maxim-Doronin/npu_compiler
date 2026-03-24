@@ -820,31 +820,31 @@ rewriters](./guides/mlir_good_practices.md#running-multiple-rewriters-within-one
 
 ### Rewriter types
 
-There are multiple ways to apply pattern matching and rewriting (fastest to slowest): 
+There are multiple ways to apply pattern matching and rewriting (fastest to slowest):
 - Walk Based Pattern Rewriting (Default choice)
-    - `collectOpsAndApplyPatterns` 
+    - `collectOpsAndApplyPatterns`
 - MLIR built in methods:
     - `applyPatternsAndFoldGreedily`
     - `applyPartialConversion`
     - `applyFullConversion`
 
-Default choice should be walk based pattern rewriting and if it does not suit your case then other methods should be considered.  
+Default choice should be walk based pattern rewriting and if it does not suit your case then other methods should be considered.
 
 - `collectOpsAndApplyPatterns` Performs one IR walk, collecting (snapshotting) all operations whose types/interfaces match root of the patterns; ops created or modified later in the pass are not reconsidered. This API mimics pattern-based IR modification (uses `mlir::PatternRewriter`) but internally calls `mlir::Operation::walk()` which makes it faster than some of the MLIR's alternatives.
 
-- Limitations of `collectOpsAndApplyPatterns`:  
-    - It does not work when rewriters depend on each other or have ordering requirements.  
+- Limitations of `collectOpsAndApplyPatterns`:
+    - It does not work when rewriters depend on each other or have ordering requirements.
     If pattern2 is applicable to ops created/modified by pattern1, pattern2 won't see new ops as ops won't be recollected after pattern application.
-    
+
     - Not greedy. Does not work for repeatedly applicable patterns.
     - No folding is applied.
 
-`collectOpsAndApplyPatterns` is best suited for passes with single rewriter or multiple rewriters with mutually exclusive patterns.  
+`collectOpsAndApplyPatterns` is best suited for passes with single rewriter or multiple rewriters with mutually exclusive patterns.
 
 When ordering of the rewriters are important or updated view of graph is required `collectOpsAndApplyPatterns` can be called multiple times to enforce ordering of rewriters and to taking updated snapshot of the graph
 
 
-Only when walk based methods are not sufficient then `applyPatternsAndFoldGreedily` should be considered. 
+Only when walk based methods are not sufficient then `applyPatternsAndFoldGreedily` should be considered.
 - [MLIR operation folding](https://mlir.llvm.org/docs/Canonicalization/#canonicalizing-with-the-fold-method) is required.
 - Patterns are dependent on each other and repeatedly applicable.
 
@@ -926,10 +926,10 @@ rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "vertical_split_{0}_horizontal_sp
 
 void implementPattern(IE::ConvolutionOp origOp) {
     auto* newConvOp = rewriter.clone(*origOp.getOperation(), mapper);
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), nullptr, false, outputShapeAttr); // BAD, newConv and Reshape has same locations
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), outputShapeAttr); // BAD, newConv and Reshape has same locations
 
     // OK, locations are preserved
-    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), nullptr, false, outputShapeAttr);
+    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp->getResult(0), outputShapeAttr);
     extendOpLoc(outReshape, "reshape_out");
 
     // BAD, use extendOpLoc

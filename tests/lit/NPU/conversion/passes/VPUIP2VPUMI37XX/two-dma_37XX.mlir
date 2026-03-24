@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,9 @@ module @Convert {
     DataInfo "Convert_7" : tensor<1x2x3x4xf16>
   }
 
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
+  // CHECK-SAME: [[ARG_1:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>) -> memref<1x2x3x4xf16, @DDR> {
     %0 = VPURT.ConfigureBarrier<0> -> !VPURT.Barrier
     // CHECK:       [[VAL1:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
@@ -42,6 +45,6 @@ module @Convert {
     // CHECK:           ELFNPU37XX.Reloc
 
     return %arg1 : memref<1x2x3x4xf16, @DDR>
-    // CHECK:       return %arg1 : memref<1x2x3x4xf16, @DDR>
+    // CHECK:       return [[ARG_1]] : memref<1x2x3x4xf16, @DDR>
   }
 }

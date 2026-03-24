@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
-#include "vpux/compiler/utils/logging.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/Types.h>
+
+namespace vpux::VPU {
+enum class EltwiseType : uint64_t;
+}  // namespace vpux::VPU
 
 namespace vpux {
 namespace VPU {

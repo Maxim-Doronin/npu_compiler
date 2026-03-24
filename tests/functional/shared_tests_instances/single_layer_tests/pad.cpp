@@ -39,6 +39,10 @@ TEST_P(PadLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(PadLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 TEST_P(Pad12LayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
@@ -53,6 +57,10 @@ TEST_P(Pad12LayerTestCommon, NPU4000_SW) {
 TEST_P(Pad12LayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(Pad12LayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 TEST_P(PadLayerTestSW, NPU4000_SW) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -249,8 +249,9 @@ def IE_LSTMSequenceOp :
         RankedTensorOf<[F16, F32, F64]>:$inputData,
         RankedTensorOf<[F16, F32, F64]>:$initialHiddenState,
         RankedTensorOf<[F16, F32, F64]>:$initialCellState,
+        Optional<RankedTensorOf<[SI32, SI64]>>:$sequenceLengthData,
         Optional<RankedTensorOf<[F16, F32, F64]>>:$weights,
-        RankedTensorOf<[F16, F32, F64]>:$reccurenceWeights,
+        RankedTensorOf<[F16, F32, F64]>:$recurrenceWeights,
         Optional<RankedTensorOf<[F16, F32, F64]>>:$biases,
 
         OptionalAttr<IntAttr>:$sequenceLength,

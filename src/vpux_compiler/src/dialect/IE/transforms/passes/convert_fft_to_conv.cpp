@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -56,7 +56,7 @@ auto reshapeRestoreAndComplexAdd(mlir::PatternRewriter& rewriter, mlir::Location
     }
     if (newShape != shapeInput) {
         const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-        auto reshapeOp = rewriter.create<IE::ReshapeOp>(loc, input, nullptr, false, newShapeAttr);
+        auto reshapeOp = rewriter.create<IE::ReshapeOp>(loc, input, newShapeAttr);
         return reshapeOp.getOutput();
     }
     return input;
@@ -72,7 +72,7 @@ auto reshapeRestoreIrdftLastAxis(mlir::PatternRewriter& rewriter, mlir::Location
     newShape.pop_back();
     newShape.push_back(axisShape);
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    auto reshapeOp = rewriter.create<IE::ReshapeOp>(loc, input, nullptr, false, newShapeAttr);
+    auto reshapeOp = rewriter.create<IE::ReshapeOp>(loc, input, newShapeAttr);
     return reshapeOp.getOutput();
 }
 
@@ -113,7 +113,7 @@ auto reshapeToMatMulNeedRank(mlir::PatternRewriter& rewriter, mlir::Location loc
     }
     if (shapeWasChanged) {
         const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-        auto reshapeOp = rewriter.create<IE::ReshapeOp>(loc, input, nullptr, false, newShapeAttr);
+        auto reshapeOp = rewriter.create<IE::ReshapeOp>(loc, input, newShapeAttr);
         return reshapeOp.getOutput();
     }
     return input;

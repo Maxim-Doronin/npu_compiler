@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include <vpux/compiler/dialect/core/transforms/passes.hpp>
 #include <vpux/compiler/utils/func_dialect.hpp>
 #include "vpux/compiler/dialect/HostExec/params.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
@@ -69,9 +70,17 @@ void mergeInto(FuncOrModuleOpSet& dst, const FuncOrModuleOpSet& src) {
 // PackNestedModules
 //
 
+struct NestedClusterInfo {
+    FuncOrModuleOpSet functions;
+    std::string moduleName;
+    mlir::func::FuncOp entryPointFunc = nullptr;
+    Core::NestingMode mode = Core::NestingMode::Default;
+    bool isFunctionToPack = false;  // True if created from FunctionToPack attribute
+};
+
 struct Clusters {
     FuncOrModuleOpSet topCluster;
-    SmallVector<FuncOrModuleOpSet> nestedClusters;
+    SmallVector<NestedClusterInfo> nestedClusters;
 };
 
 class PackNestedModules : public vpux::Core::impl::PackNestedModulesBase<PackNestedModules> {
@@ -97,8 +106,9 @@ private:
     SmallVector<FuncOrModuleOpSet> createClusters(const CallGraph& callGraph, mlir::func::FuncOp mainFuncOp);
     SmallVector<FuncOrModuleOpSet> createMainCluster(const CallGraph& callGraph);
     Clusters collectClusters(mlir::func::FuncOp mainFuncOp);
+    Clusters collectClustersFromAttributes();
     void patchCallSites(const Clusters& clusters);
-    mlir::ModuleOp nestCluster(mlir::OpBuilder& builder, FuncOrModuleOpSet&& cluster, size_t clusterIndex);
+    mlir::ModuleOp nestCluster(mlir::OpBuilder& builder, NestedClusterInfo&& clusterInfo);
     // updating PipelineOptions, Resources and NetworkInfo
     void clonePipelineOptionsOp(mlir::OpBuilder& builder, mlir::ModuleOp topModuleOp);
     void cloneResourcesOps(mlir::OpBuilder& builder, mlir::ModuleOp topModuleOp);
@@ -292,50 +302,107 @@ SmallVector<FuncOrModuleOpSet> PackNestedModules::createMainCluster(const CallGr
     return {std::move(topCluster), std::move(mainCluster)};
 }
 
-/// Returns a vector of vector of FuncOps. Every vector of FuncOps represents one set of operations that will
-/// be nested inside a submodule. The resulting vectors will be sorted to ensure deterministic IR.
+// Returns Clusters with FuncOps grouped for nesting. Every nested cluster represents one set of operations
+// that will be nested inside a submodule. The resulting clusters will be sorted to ensure deterministic IR.
 Clusters PackNestedModules::collectClusters(mlir::func::FuncOp mainFuncOp) {
     const auto callGraph = collectCallGraph(mainFuncOp);
     const auto clustersSet = _nestingMode == Core::NestingMode::EntryPoint ? createMainCluster(callGraph)
                                                                            : createClusters(callGraph, mainFuncOp);
 
-    return {clustersSet.front(), SmallVector<FuncOrModuleOpSet>(std::next(clustersSet.begin()), clustersSet.end())};
+    VPUX_THROW_WHEN(clustersSet.empty(), "Expected at least one cluster (top cluster), but got empty set");
+
+    Clusters result;
+    result.topCluster = std::move(clustersSet.front());
+
+    // Convert FuncOrModuleOpSet to NestedClusterInfo with auto-generated module names
+    for (size_t index = 1; index < clustersSet.size(); ++index) {
+        NestedClusterInfo clusterInfo;
+        clusterInfo.functions = std::move(clustersSet[index]);
+        clusterInfo.moduleName = getSubModuleName(index - 1);
+        clusterInfo.entryPointFunc = nullptr;
+        clusterInfo.mode = _nestingMode;
+        result.nestedClusters.push_back(std::move(clusterInfo));
+    }
+
+    return result;
+}
+
+/// Collects clusters from functions marked with the FunctionToPack attribute.
+/// Functions are grouped by their target module name. Functions without the attribute go into the top cluster.
+Clusters PackNestedModules::collectClustersFromAttributes() {
+    auto topModuleOp = getOperation();
+
+    llvm::StringMap<NestedClusterInfo> moduleGroups;
+    Clusters result;
+
+    for (auto funcOp : topModuleOp.getOps<mlir::func::FuncOp>()) {
+        auto targetModule = config::getFunctionToPackTargetModule(funcOp);
+        if (targetModule.empty()) {
+            result.topCluster.insert(funcOp.getOperation());
+            continue;
+        }
+
+        _log.trace("Function '{0}' will be packed into module '{1}'", funcOp.getSymName(), targetModule);
+        auto& clusterInfo = moduleGroups[targetModule];
+        if (clusterInfo.moduleName.empty()) {
+            clusterInfo.moduleName = targetModule;
+        }
+        clusterInfo.functions.insert(funcOp.getOperation());
+
+        // Check if this function is designated as entry point
+        if (config::hasFunctionToPackEntryPointAttribute(funcOp)) {
+            VPUX_THROW_WHEN(clusterInfo.entryPointFunc != nullptr,
+                            "Multiple functions marked as FunctionToPackEntryPoint in module '{0}'. "
+                            "Found '{1}' and '{2}'. Only one entry point is allowed.",
+                            targetModule, clusterInfo.entryPointFunc.getSymName(), funcOp.getSymName());
+            clusterInfo.entryPointFunc = funcOp;
+            _log.trace("Function '{0}' designated as entry point for module '{1}'", funcOp.getSymName(), targetModule);
+        }
+    }
+
+    for (auto& entry : moduleGroups) {
+        VPUX_THROW_WHEN(topModuleOp.lookupSymbol<mlir::ModuleOp>(entry.second.moduleName) != nullptr,
+                        "Module with name '{0}' already exists. Cannot create a new module for FunctionToPack "
+                        "functions.",
+                        entry.second.moduleName);
+        entry.second.mode = Core::NestingMode::Default;
+        entry.second.isFunctionToPack = true;
+        result.nestedClusters.push_back(std::move(entry.second));
+    }
+
+    return result;
 }
 
 /// Replaces all mlir::CallOps in the top cluster with Core::NestedCallOps that point to the newly nested functions.
 void PackNestedModules::patchCallSites(const Clusters& clusters) {
-    auto topModuleOp = getOperation();
-
+    // Build mapping from function/module name to target module name
     mlir::OpBuilder::Listener listener;
     mlir::OpBuilder builder(&getContext(), &listener);
-
-    std::map<FuncOrModule, size_t, FuncOrModuleComparator> nestedClusterMap;
-    for (const auto& [index, nestedCluster] : clusters.nestedClusters | indexed) {
-        for (auto funcOp : nestedCluster) {
-            nestedClusterMap[funcOp] = index;
+    llvm::DenseMap<mlir::StringAttr, mlir::SymbolRefAttr> nestedClusterMap;
+    for (const auto& clusterInfo : clusters.nestedClusters) {
+        for (auto funcOrModuleOp : clusterInfo.functions) {
+            auto symName = mlir::cast<mlir::SymbolOpInterface>(funcOrModuleOp).getNameAttr();
+            nestedClusterMap[symName] = mlir::SymbolRefAttr::get(builder.getStringAttr(clusterInfo.moduleName));
         }
     }
 
     for (auto funcOrModuleOp : clusters.topCluster) {
         funcOrModuleOp->walk([&](mlir::CallOpInterface callOp) {
-            const auto calleeOpSymRef = mlir::dyn_cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee());
+            const auto calleeOpSymRef = mlir::cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee());
+
             const auto firstSymName = calleeOpSymRef.getRootReference();
-            auto callee = topModuleOp.lookupSymbol(firstSymName);
-            assert(callee != nullptr);
-            auto it = nestedClusterMap.find(callee);
-            // callOp does not point to a future nested function
+            auto it = nestedClusterMap.find(firstSymName);
             if (it == nestedClusterMap.end()) {
                 return;
             }
 
-            const auto clusterIndex = it->second;
-            const auto moduleName = getSubModuleName(clusterIndex);
+            const auto& moduleSymRef = it->second;
 
             // Construct a vector of FlatSymbolRefAttr from callee op reference symbols and then
             // build a new SymbolRefAttr as @Module + {symVec}
             SmallVector<mlir::FlatSymbolRefAttr> symVec{mlir::FlatSymbolRefAttr::get(firstSymName)};
             symVec.append(calleeOpSymRef.getNestedReferences().begin(), calleeOpSymRef.getNestedReferences().end());
-            const auto nestedSymbolAttr = mlir::SymbolRefAttr::get(builder.getStringAttr(moduleName), symVec);
+            const auto nestedSymbolAttr = mlir::SymbolRefAttr::get(moduleSymRef.getRootReference(), symVec);
 
             builder.setInsertionPoint(callOp);
             const auto nestedCallOp = builder.create<Core::NestedCallOp>(
@@ -348,16 +415,20 @@ void PackNestedModules::patchCallSites(const Clusters& clusters) {
 }
 
 /// Creates a new ModuleOp at the builder's current location and moves all FuncOps in the cluster into it.
-mlir::ModuleOp PackNestedModules::nestCluster(mlir::OpBuilder& builder, FuncOrModuleOpSet&& cluster,
-                                              size_t clusterIndex) {
-    const auto moduleName = getSubModuleName(clusterIndex);
+mlir::ModuleOp PackNestedModules::nestCluster(mlir::OpBuilder& builder, NestedClusterInfo&& clusterInfo) {
+    const auto& moduleName = clusterInfo.moduleName;
 
     auto topModuleOp = getOperation();
     auto subModuleOp = builder.create<mlir::ModuleOp>(appendLoc(topModuleOp.getLoc(), "{0}", moduleName), moduleName);
     auto& targetOps = subModuleOp.getBody()->getOperations();
 
-    for (auto funcOrModuleOp : cluster) {
+    for (auto funcOrModuleOp : clusterInfo.functions) {
         targetOps.splice(targetOps.end(), funcOrModuleOp->getBlock()->getOperations(), funcOrModuleOp->getIterator());
+    }
+
+    // Mark module as created via FunctionToPack for later identification by unpack pass
+    if (clusterInfo.isFunctionToPack) {
+        config::setPackedModuleAttribute(subModuleOp);
     }
 
     return subModuleOp;
@@ -438,22 +509,31 @@ void PackNestedModules::nestNetworkInfo(mlir::ModuleOp subModuleOp, net::Network
 
 void PackNestedModules::safeRunOnModule() {
     auto topModuleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(topModuleOp, netInfo, mainFuncOp);
+    auto [netInfo, mainFuncOp] = net::getFromModule(topModuleOp);
 
-    auto clusters = collectClusters(mainFuncOp);
+    // Dispatch cluster collection based on whether FunctionToPack attributes are present
+    auto clusters = collectClustersFromAttributes();
+    if (clusters.nestedClusters.empty()) {
+        clusters = collectClusters(mainFuncOp);
+    }
+
     VPUX_THROW_WHEN(_nestingMode == Core::NestingMode::EntryPoint && clusters.nestedClusters.size() != 1,
                     "Cannot nest entryPoint function: no valid count of nested clusters found {0}",
                     clusters.nestedClusters.size());
+
     patchCallSites(clusters);
 
     mlir::OpBuilder::Listener listener;
     mlir::OpBuilder builder(&getContext(), &listener);
     builder.setInsertionPoint(getFirstClusterInsertionPoint(clusters.topCluster));
-    for (auto&& [index, nestedCluster] : clusters.nestedClusters | indexed) {
+
+    for (auto&& clusterInfo : clusters.nestedClusters) {
+        mlir::func::FuncOp entryPointFunc = clusterInfo.entryPointFunc;
+        Core::NestingMode clusterMode = clusterInfo.mode;
+        bool isFunctionToPack = clusterInfo.isFunctionToPack;
+
         // move because the FuncOps in cluster will be invalidated
-        auto subModuleOp = nestCluster(builder, std::move(nestedCluster), index);
+        auto subModuleOp = nestCluster(builder, std::move(clusterInfo));
 
         // subModule ops should have the same attributes as the top module
         // that have not already been set
@@ -465,9 +545,20 @@ void PackNestedModules::safeRunOnModule() {
 
         builder.setInsertionPointToStart(subModuleOp.getBody());
 
-        if (_nestingMode == Core::NestingMode::EntryPoint) {
+        // If no explicit entry point was set, default to the first function in the module
+        if (entryPointFunc == nullptr) {
+            auto funcOps = subModuleOp.getOps<mlir::func::FuncOp>();
+            assert(std::distance(funcOps.begin(), funcOps.end()) > 0 &&
+                   "A nested module must have at least 1 function");
+            entryPointFunc = *funcOps.begin();
+        }
+
+        if (clusterMode == Core::NestingMode::EntryPoint) {
             // If we nest entryPoint func then networkInfo should be moved to the subModule as well
             nestNetworkInfo(subModuleOp, netInfo);
+        } else if (isFunctionToPack) {
+            // FunctionToPack mode: use the designated entry point function
+            createNetInfoForFuncOp(builder, entryPointFunc, _enableProfiling);
         } else {
             // In case of the default nesting mode we use the func of each subModule op as its new entryPoint
             // and create new NetworkInfo operations
@@ -476,7 +567,7 @@ void PackNestedModules::safeRunOnModule() {
             if (funcOpsCount != 1) {
                 continue;
             }
-            createNetInfoForFuncOp(builder, *funcOps.begin(), _enableProfiling);
+            createNetInfoForFuncOp(builder, entryPointFunc, _enableProfiling);
         }
 
         builder.setInsertionPointToStart(subModuleOp.getBody());

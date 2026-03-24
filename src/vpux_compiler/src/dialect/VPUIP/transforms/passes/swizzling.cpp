@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -273,7 +273,7 @@ bool Swizzling::canSwizzleWeights(VPUIP::NCEClusterTaskOp nceOp, DeviceInfo& dev
 
     // Swizzling for ELTWISE is handled with activation swizzling
     if (weights == nullptr || weightTable == nullptr || nceOp.getTaskType() == VPUIP::NCETaskType::ELTWISE) {
-        _log.nest().trace("Cannot swizzle weights because of missed weights", nceOp->getLoc());
+        _log.nest().trace("Cannot swizzle weights because of missing weights at '{0}'", nceOp->getLoc());
         return false;
     }
 

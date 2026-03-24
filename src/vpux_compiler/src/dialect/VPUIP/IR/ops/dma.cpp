@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -246,7 +246,17 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
                                      mlir::IntegerAttr padding, int64_t port = 0) {
     GatherDMAOp::build(builder, state, input, indices, outputBuff, elementSize, padding,
                        /* port = */ vpux::getIntAttr(builder, port),
-                       /* isOutOfOrder = */ false, /* isCritical = */ false,
+                       /* isOutOfOrder = */ false, /* isCritical = */ false, /*split_candidate*/ false,
+                       /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
+                       /* gatherAddressingMode = */ nullptr);
+}
+
+void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
+                                     mlir::Value indices, mlir::Value outputBuff, mlir::IntegerAttr elementSize,
+                                     mlir::IntegerAttr padding, bool split_candidate, int64_t port = 0) {
+    GatherDMAOp::build(builder, state, input, indices, outputBuff, elementSize, padding,
+                       /* port = */ vpux::getIntAttr(builder, port),
+                       /* isOutOfOrder = */ false, /* isCritical = */ false, split_candidate,
                        /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
                        /* gatherAddressingMode = */ nullptr);
 }
@@ -257,7 +267,7 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
     GatherDMAOp::build(builder, state, input, indices, outputBuff, vpux::getIntAttr(builder, elementSize),
                        vpux::getIntAttr(builder, padding),
                        /* port = */ vpux::getIntAttr(builder, port),
-                       /* isOutOfOrder = */ false, /* isCritical = */ false,
+                       /* isOutOfOrder = */ false, /* isCritical = */ false, /*split_candidate*/ false,
                        /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
                        /* gatherAddressingMode = */ nullptr);
 }
@@ -269,7 +279,7 @@ void vpux::VPUIP::GatherDMAOp::build(mlir::OpBuilder& builder, mlir::OperationSt
     GatherDMAOp::build(builder, state, input, indices, outputBuff, vpux::getIntAttr(builder, elementSize),
                        vpux::getIntAttr(builder, padding),
                        /* port = */ vpux::getIntAttr(builder, port),
-                       /* isOutOfOrder = */ false, /* isCritical = */ false,
+                       /* isOutOfOrder = */ false, /* isCritical = */ false, /*split_candidate*/ false,
                        /* DMADescriptor = */ nullptr, /* dmaHwpId = */ nullptr, /* profilingMetadata = */ nullptr,
                        VPUIP::GatherAddressingModeAttr::get(builder.getContext(), addressingMode));
 }

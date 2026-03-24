@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -70,8 +70,7 @@ mlir::LogicalResult ShuffleChannelsOpConverter::matchAndRewrite(IE::ShuffleChann
         }
     }
     const auto shape1Attr = getIntArrayAttr(getContext(), shape1);
-    auto reShape1Op = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(), nullptr, false,
-                                                     shape1Attr);
+    auto reShape1Op = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(), shape1Attr);
 
     auto permuteNdOrder = !fuseDimsHW ? SmallVector<uint32_t>{1, 0, 2, 3} : SmallVector<uint32_t>{0, 2, 1, 3};
     const auto permutationMap = mlir::AffineMap::getPermutationMap(ArrayRef(permuteNdOrder), getContext());
@@ -79,8 +78,7 @@ mlir::LogicalResult ShuffleChannelsOpConverter::matchAndRewrite(IE::ShuffleChann
                                                      mlir::AffineMapAttr::get(permutationMap));
 
     const auto outShapeAttr = getIntArrayAttr(getContext(), outShape);
-    auto outReshape =
-            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, transpOp.getOutput(), nullptr, false, outShapeAttr);
+    auto outReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, transpOp.getOutput(), outShapeAttr);
     extendOpLoc(outReshape, "reshape_out");
 
     return mlir::success();

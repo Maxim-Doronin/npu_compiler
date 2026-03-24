@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @FullyConnected
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16xf32>
 func.func @FullyConnected(%arg0: tensor<1x16xf32>) -> tensor<1x64xf32> {
     %weights = const.Declare tensor<64x16xf32> = dense<1.0> : tensor<64x16xf32>
     %bias = const.Declare tensor<1x64xf32> = dense<1.0> : tensor<1x64xf32>
@@ -17,13 +18,14 @@ func.func @FullyConnected(%arg0: tensor<1x16xf32>) -> tensor<1x64xf32> {
     // CHECK-NOT:   IE.Convolution
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16xf32> = dense<1.000000e+00> : tensor<64x16xf32>
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x64xf32> = dense<1.000000e+00> : tensor<1x64xf32>
-    // CHECK:       [[FC:%.+]] = IE.FullyConnected(%arg0, [[WEIGHTS]], [[BIAS]])
+    // CHECK:       [[FC:%.+]] = IE.FullyConnected([[ARG_0]], [[WEIGHTS]], [[BIAS]])
     // CHECK:       return [[FC]]
 }
 
 // -----
 
 // CHECK-LABEL: @MatMul4dInputsTo2d
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x1x512xf32>
 func.func @MatMul4dInputsTo2d(%arg0: tensor<1x2x1x512xf32>) -> tensor<1x2x1x40xf32> {
     %cst = const.Declare tensor<1x2x512x40xf32> = dense<1.0> : tensor<1x2x512x40xf32>
     %0 = IE.MatMul(%arg0, %cst) : tensor<1x2x1x512xf32>, tensor<1x2x512x40xf32> -> tensor<1x2x1x40xf32>
@@ -32,10 +34,10 @@ func.func @MatMul4dInputsTo2d(%arg0: tensor<1x2x1x512xf32>) -> tensor<1x2x1x40xf
 
     // CHECK-DAG:      [[CST_0:%.+]] = const.Declare tensor<40x512xf32> = dense<1.000000e+00>
     // CHECK-DAG:      [[CST_1:%.+]] = const.Declare tensor<40x512xf32> = dense<1.000000e+00>
-    // CHECK:          [[IN_1:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 1, 512] : tensor<1x2x1x512xf32> to tensor<1x1x1x512xf32>
+    // CHECK:          [[IN_1:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 1, 512] : tensor<1x2x1x512xf32> to tensor<1x1x1x512xf32>
     // CHECK:          [[IN_1_2D:%.+]] = IE.AffineReshape([[IN_1]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [0], [1]], shape_value = [1, 512]} : tensor<1x1x1x512xf32> -> tensor<1x512xf32>
-    // CHECK:          [[IN_2:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 1, 1, 512] : tensor<1x2x1x512xf32> to tensor<1x1x1x512xf32>
+    // CHECK:          [[IN_2:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 1, 1, 512] : tensor<1x2x1x512xf32> to tensor<1x1x1x512xf32>
     // CHECK:          [[IN_2_2D:%.+]] = IE.AffineReshape([[IN_2]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [0], [1]], shape_value = [1, 512]} : tensor<1x1x1x512xf32> -> tensor<1x512xf32>
 
@@ -195,7 +197,7 @@ func.func @UnrollSDPAPattern(%arg0: tensor<1x8x128x128xf32>, %arg1: tensor<1x8x1
   // CHECK: [[BROADCAST:%.+]] = IE.Broadcast([[V_IN]], [[TARGET_SHAPE]])
   // CHECK: [[RESHAPE:%.+]] = IE.AffineReshape([[BROADCAST]])
   // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[RESHAPE]])
-  
+
   // CHECK: [[SLICE_Q_0:%.+]] = IE.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 128, 128]
   // CHECK: [[SLICE_Q_1:%.+]] = IE.Slice [[ARG0]] [0, 1, 0, 0] [1, 1, 128, 128]
   // CHECK: [[SLICE_Q_2:%.+]] = IE.Slice [[ARG0]] [0, 2, 0, 0] [1, 1, 128, 128]

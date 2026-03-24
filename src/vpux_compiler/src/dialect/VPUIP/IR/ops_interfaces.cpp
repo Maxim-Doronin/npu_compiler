@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -105,7 +105,7 @@ bool verifyCMX(mlir::Operation* op, Logger log) {
         bool isInplace = clusterTaskOp.getIsInplace().value_or(false);
         bool isInplaceOrPoolingOp = (taskType == VPUIP::NCETaskType::ELTWISE && isInplace) ||
                                     taskType == VPUIP::NCETaskType::AVEPOOL ||
-                                    taskType == VPUIP::NCETaskType::MAXPOOL || clusterTaskOp.getIsPermuteQuantizeAttr();
+                                    taskType == VPUIP::NCETaskType::MAXPOOL || clusterTaskOp.getIsPermuteQuantize();
         if (isInplaceOrPoolingOp) {
             appendToVectorIfInCMX(clusterTaskOp.getInput());
             appendToVectorIfInCMX(clusterTaskOp.getOutputBuff());

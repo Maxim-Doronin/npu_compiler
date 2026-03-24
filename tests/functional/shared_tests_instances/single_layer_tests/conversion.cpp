@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2019-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -42,6 +43,11 @@ TEST_P(ConversionLayerTestCommon_HW, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(ConversionLayerTestCommon_HW, NPU5020_HW) {
+    setDefaultHardwareMode();
+    setBatchCompilerMode("unroll");
+    run(Platform::NPU5020);
+}
 TEST_P(ShaveCodeGenConversionLayerTest, NPU5010) {
     setReferenceSoftwareMode();
     setPluginCompilerType();
@@ -56,6 +62,10 @@ TEST_P(ConversionLayerTestCommon, NPU4000_SW) {
 TEST_P(ConversionLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(ConversionLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 class ConversionLayerTest_HostCompile : public ConversionLayerTestCommon {};

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 !qElemType = !quant.uniform<u8:f16, 0.11231384651333678:131>
 
 // CHECK-LABEL: PropagateAffineReshapeAndTransposeSubgraph
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x768x512x1x!qElemType>
 func.func @PropagateAffineReshapeAndTransposeSubgraph(%arg0: tensor<1x768x512x1x!qElemType>) -> tensor<1x3072x512x1x!qElemType> {
     %cst = const.Declare tensor<3072x768x1x1x!qElemType> = dense<2.000000e+00> : tensor<3072x768x1x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
     %0 = IE.Convolution(%arg0, %cst) {
@@ -24,7 +25,7 @@ func.func @PropagateAffineReshapeAndTransposeSubgraph(%arg0: tensor<1x768x512x1x
     return %7 : tensor<1x3072x512x1x!qElemType>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<3072x768x1x1x!qElemType
-    // CHECK:       [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]])
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]])
     // CHECK-SAME:    -> tensor<1x3072x512x1x!qElemType>
     // CHECK:       [[AVG1:%.+]] = IE.AvgPool([[CONV]])
     // CHECK-SAME:       -> tensor<1x3072x512x1xf16>
@@ -252,4 +253,60 @@ func.func @PropagateAffineReshapeAndTransposeThroughAddWithSymmetricalInput(%arg
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1024, 3584]} : tensor<1024x3584x1x1xf16> -> tensor<1x1x1024x3584xf16>
 
     // CHECK:           return [[RESHAPE]] : tensor<1x1x1024x3584xf16>
+}
+
+// -----
+
+#map = affine_map<(d0, d1, d2, d3) -> (d2, d1, d0, d3)>
+
+// CHECK-LABEL: @PropagateAffineReshapeAndTransposeThroughAddConcatWithBlockArgInput
+// CHECK-SAME:     [[INPUT_0:%.+]]: tensor<1x64x1024x1xf16>,
+// CHECK-SAME:     [[INPUT_1:%.+]]: tensor<1x1x1024x1024xf16>,
+// CHECK-SAME:     [[INPUT_2:%.+]]: tensor<1x64x1024x1xf16>
+func.func @PropagateAffineReshapeAndTransposeThroughAddConcatWithBlockArgInput(%arg0: tensor<1x64x1024x1xf16>, %arg1: tensor<1x1x1024x1024xf16>, %arg2: tensor<1x64x1024x1xf16>) -> tensor<1x64x1024x1xf16> {
+    %weights0 = const.Declare tensor<1024x64x1x1xf16> = dense<1.0> : tensor<1024x64x1x1xf16>
+    %weights1 = const.Declare tensor<64x1040x1x1xf16> = dense<2.0> : tensor<64x1040x1x1xf16>
+    %cst = const.Declare tensor<1x1x1024x15xf16> = dense<3.0> : tensor<1x1x1024x15xf16>
+
+    %0 = IE.Convolution(%arg0, %weights0) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x64x1024x1xf16>, tensor<1024x64x1x1xf16> -> tensor<1x1024x1024x1xf16>
+    %1 = IE.Transpose(%0) {order_value = #map} : tensor<1x1024x1024x1xf16> -> tensor<1024x1024x1x1xf16>
+    %2 = IE.AffineReshape(%1) {dim_mapping = [[0, 1, 2], [3], [3], [3]], shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024x1x1xf16> -> tensor<1x1x1024x1024xf16>
+
+    %3 = IE.Add(%2, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf16>, tensor<1x1x1024x1024xf16> -> tensor<1x1x1024x1024xf16>
+
+    %4 = IE.Slice %arg2 [0, 1, 0, 0] [1, 1, 1024, 1] : tensor<1x64x1024x1xf16> to tensor<1x1x1024x1xf16>
+    %5 = IE.Concat(%3, %4, %cst) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 1024], [0, 0, 0, 1025]]} : tensor<1x1x1024x1024xf16>, tensor<1x1x1024x1xf16>, tensor<1x1x1024x15xf16> -> tensor<1x1x1024x1040xf16>
+
+    %6 = IE.SoftMax(%5) {axisInd = 3 : i64} : tensor<1x1x1024x1040xf16> -> tensor<1x1x1024x1040xf16>
+
+    %7 = IE.AffineReshape(%6) {dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [1024, 1040, 1, 1]} : tensor<1x1x1024x1040xf16> -> tensor<1024x1040x1x1xf16>
+
+    %8 = IE.Transpose(%7) {order_value = #map} : tensor<1024x1040x1x1xf16> -> tensor<1x1040x1024x1xf16>
+
+    %9 = IE.Convolution(%8, %weights1) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1040x1024x1xf16>, tensor<64x1040x1x1xf16> -> tensor<1x64x1024x1xf16>
+
+    return %9 : tensor<1x64x1024x1xf16>
+
+    // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<1x15x1024x1xf16> = dense<3.000000e+00> : tensor<1x1x1024x15xf16>
+    // CHECK-SAME{LITERAL}:     [#const.AffineReshape<[[0], [0], [0], [1, 2, 3]], [1024, 15, 1, 1]>, #const.Transpose<#map>]
+    // CHECK-DAG:       [[WEIGHTS_0:%.+]] = const.Declare tensor<1024x64x1x1xf16> = dense<1.000000e+00> : tensor<1024x64x1x1xf16>
+    // CHECK-DAG:       [[WEIGHTS_1:%.+]] = const.Declare tensor<64x1040x1x1xf16> = dense<2.000000e+00> : tensor<64x1040x1x1xf16>
+
+    // CHECK:           [[CONV_0:%.+]] = IE.Convolution([[INPUT_0]], [[WEIGHTS_0]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x64x1024x1xf16>, tensor<1024x64x1x1xf16> -> tensor<1x1024x1024x1xf16>
+
+    // CHECK:           [[RESHAPE_0:%.+]] = IE.AffineReshape([[INPUT_1]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [1024, 1024, 1, 1]} : tensor<1x1x1024x1024xf16> -> tensor<1024x1024x1x1xf16>
+    // CHECK:           [[TRANSPOSE_0:%.+]] = IE.Transpose([[RESHAPE_0]]) {order_value = #map} : tensor<1024x1024x1x1xf16> -> tensor<1x1024x1024x1xf16>
+
+    // CHECK:           [[ADD:%.+]] = IE.Add([[CONV_0]], [[TRANSPOSE_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024x1024x1xf16>, tensor<1x1024x1024x1xf16> -> tensor<1x1024x1024x1xf16>
+
+    // CHECK:           [[SLICE:%.+]] = IE.Slice [[INPUT_2]] [0, 1, 0, 0] [1, 1, 1024, 1] : tensor<1x64x1024x1xf16> to tensor<1x1x1024x1xf16>
+    // CHECK:           [[CONCAT:%.+]] = IE.Concat([[ADD]], [[SLICE]], [[CST]])
+    // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 1024, 0, 0], [0, 1025, 0, 0]]} : tensor<1x1024x1024x1xf16>, tensor<1x1x1024x1xf16>, tensor<1x15x1024x1xf16> -> tensor<1x1040x1024x1xf16>
+
+    // CHECK:           [[SOFTMAX:%.+]] = IE.SoftMax([[CONCAT]]) {axisInd = 1 : i64} : tensor<1x1040x1024x1xf16> -> tensor<1x1040x1024x1xf16>
+
+    // CHECK:           [[CONV_1:%.+]] = IE.Convolution([[SOFTMAX]], [[WEIGHTS_1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1040x1024x1xf16>, tensor<64x1040x1x1xf16> -> tensor<1x64x1024x1xf16>
+
+    // CHECK:           return [[CONV_1]] : tensor<1x64x1024x1xf16>
 }

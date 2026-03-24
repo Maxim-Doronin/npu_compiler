@@ -90,6 +90,22 @@ class ReduceLayerTest_FP32 : public ReduceLayerTestCommon {
                 "convert-precision-to-fp16=false";
     }
 };
+class ReduceLayerTest_SCFTiling_HW_Reduce_FP16 : public ReduceLayerTestCommon {
+    void configure_model() override {
+        VpuOv2LayerTest::configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "scf-tiling=true enable-is-reduce-supported";
+        // E-190336 for MC support
+        VpuOv2LayerTest::configuration["NPU_TILES"] = "1";
+    }
+};
+class ReduceLayerTest_SCFTiling_HW_FP16 : public ReduceLayerTestCommon {
+    void configure_model() override {
+        VpuOv2LayerTest::configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        VpuOv2LayerTest::configuration["NPU_TILES"] = "1";
+    }
+};
+
 class ShaveCodeGenReduceLayerTest_FP16 : public ReduceLayerTestCommon {
     void configure_model() override {
         VpuOv2LayerTest::configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-shave-code-gen=true";
@@ -114,6 +130,10 @@ class ReduceLayerTest_ChannelAxis_HW_FP16 : public ReduceLayerTestCommon {
 TEST_P(ReduceLayerTest_ChannelAxis_HW_FP16, NPU5010) {
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(ReduceLayerTest_ChannelAxis_HW_FP16, NPU5020) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
 }
 
 /// FP16 SW/HW
@@ -149,6 +169,36 @@ TEST_P(ShaveCodeGenReduceLayerTest_FP16, NPU5010) {
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
 
+TEST_P(ReduceLayerTest_SCFTiling_HW_Reduce_FP16, NPU5010) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5010);
+}
+
+TEST_P(ReduceLayerTest_SCFTiling_HW_FP16, NPU5010) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(ReduceLayerTest_SW_FP16, NPU5020) {
+    VpuOv2LayerTest::setReferenceSoftwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
+
+TEST_P(ShaveCodeGenReduceLayerTest_FP16, NPU5020) {
+    VpuOv2LayerTest::setPluginCompilerType();
+    VpuOv2LayerTest::setReferenceSoftwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
+
+TEST_P(ReduceLayerTest_SCFTiling_HW_Reduce_FP16, NPU5020) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
+
+TEST_P(ReduceLayerTest_SCFTiling_HW_FP16, NPU5020) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
+
 /// FP32 HW
 TEST_P(ReduceLayerTest_FP32, NPU3720_HW) {
     VpuOv2LayerTest::setDefaultHardwareMode();
@@ -176,6 +226,16 @@ TEST_P(ShaveCodeGenReduceLayerTest_FP32, NPU5010) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
 }
+TEST_P(ReduceLayerTest_FP32, NPU5020_HW) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
+
+TEST_P(ShaveCodeGenReduceLayerTest_FP32, NPU5020) {
+    VpuOv2LayerTest::setPluginCompilerType();
+    VpuOv2LayerTest::setReferenceSoftwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
+}
 
 /// FP32 SW
 TEST_P(ReduceLayerTest_FP32, NPU3720_SW) {
@@ -191,6 +251,10 @@ TEST_P(ReduceLayerTest_FP32, NPU4000_SW) {
 TEST_P(ReduceLayerTest_FP32, NPU5010_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(ReduceLayerTest_FP32, NPU5020_SW) {
+    VpuOv2LayerTest::setReferenceSoftwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
 }
 
 }  // namespace test
@@ -235,6 +299,16 @@ const auto scgParamsSWFP16 = testing::Combine(
 const auto paramsTiling = testing::Combine(
         testing::ValuesIn(decltype(axes){{2}, {1, -1}}), testing::Values(OpType::VECTOR), testing::ValuesIn(keepDims),
         testing::Values(ReductionType::Sum), testing::ValuesIn(modelTypes),
+        testing::Values(std::vector<size_t>{1, 20, 175, 512}), testing::Values(test_utils::TARGET_DEVICE));
+
+const auto paramsTilingReduceNCE = testing::Combine(
+        testing::ValuesIn(decltype(axes){{1}, {1, -1}}), testing::Values(OpType::VECTOR), testing::ValuesIn(keepDims),
+        testing::Values(ReductionType::Sum), testing::ValuesIn(modelTypes),
+        testing::Values(std::vector<size_t>{1, 20, 175, 512}), testing::Values(test_utils::TARGET_DEVICE));
+
+const auto paramsSCFTiling = testing::Combine(
+        testing::ValuesIn(decltype(axes){{2}, {1, -1}}), testing::Values(OpType::VECTOR), testing::ValuesIn(keepDims),
+        testing::ValuesIn(reduceOperations), testing::ValuesIn(modelTypes),
         testing::Values(std::vector<size_t>{1, 20, 175, 512}), testing::Values(test_utils::TARGET_DEVICE));
 
 // ReduceMax config for U8 data type resnet-50-pytorch
@@ -305,9 +379,14 @@ INSTANTIATE_TEST_SUITE_P(smoke_Reduce, ShaveCodeGenReduceLayerTest_FP16, scgPara
 INSTANTIATE_TEST_SUITE_P(smoke_Reduce_tiling, ReduceLayerTest_SW_FP16, paramsTiling,
                          ReduceLayerTest_SW_FP16::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_Reduce_tiling, ReduceLayerTest_SCFTiling_HW_FP16, paramsSCFTiling,
+                         ReduceLayerTest_SCFTiling_HW_FP16::getTestCaseName);
+
 INSTANTIATE_TEST_SUITE_P(smoke_Reduce_Resnet, ReduceLayerTest_SW_FP16, paramsResnet,
                          ReduceLayerTest_SW_FP16::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_Reduce_tiling, ReduceLayerTest_SCFTiling_HW_Reduce_FP16, paramsTilingReduceNCE,
+                         ReduceLayerTest_SCFTiling_HW_Reduce_FP16::getTestCaseName);
 // All axes reduced tests
 INSTANTIATE_TEST_SUITE_P(smoke_ReduceAllAxis, ReduceLayerTest_SW_FP16, paramsReduceAllAxis,
                          ReduceLayerTest_SW_FP16::getTestCaseName);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -193,7 +193,7 @@ func.func @InterpSplitOverCNoCommonFactor(
         tensor<1x64x31x31xf16, {order = #NHWC}> -> tensor<1x64x121x121xf16, {order = #NHWC}>
     return %0 : tensor<1x64x121x121xf16, {order = #NHWC}>
 
-    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[INPUT]])
     // CHECK-SAME:  tilingStrategy = [1, 1, 2, 1]
     // CHECK-SAME:  : tensor<1x64x31x31xf16, {order = #NHWC}>
     // CHECK-SAME:  -> tensor<1x64x121x121xf16, {order = #NHWC}>
@@ -227,7 +227,7 @@ func.func @InterpSplitOverHW(
         tensor<1x128x35x35xf16, {order = #NHWC}> -> tensor<1x128x168x335xf16, {order = #NHWC}>
     return %0 : tensor<1x128x168x335xf16, {order = #NHWC}>
 
-    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate(%arg0)
+    // CHECK:  [[INTERP0:%.+]] = VPU.Interpolate([[INPUT]])
     // CHECK-SAME:  tilingStrategy = [1, 1, 1, 11]
     // CHECK-SAME:  : tensor<1x128x35x35xf16, {order = #NHWC}>
     // CHECK-SAME:  -> tensor<1x128x168x335xf16, {order = #NHWC}>
@@ -376,6 +376,7 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: func.func @Yuv2RGBSplit
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x993x736x1xf16>
 func.func @Yuv2RGBSplit(%arg0: tensor<1x993x736x1xf16>) -> tensor<1x662x736x3xf16> {
     %0 = VPU.Slice %arg0 [0, 0, 0, 0] [1, 662, 736, 1] : tensor<1x993x736x1xf16> to tensor<1x662x736x1xf16>
     %1 = VPU.Slice %arg0 [0, 662, 0, 0] [1, 331, 736, 1] : tensor<1x993x736x1xf16> to tensor<1x331x736x1xf16>
@@ -383,8 +384,8 @@ func.func @Yuv2RGBSplit(%arg0: tensor<1x993x736x1xf16>) -> tensor<1x662x736x3xf1
     %3 = VPU.YuvToRgb(%0, %2) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<RGB>} : tensor<1x662x736x1xf16>, tensor<1x331x368x2xf16> -> tensor<1x662x736x3xf16>
     return %3 : tensor<1x662x736x3xf16>
 
-    // CHECK:    [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 662, 736, 1] : tensor<1x993x736x1xf16> to tensor<1x662x736x1xf16>
-    // CHECK:    [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 662, 0, 0] [1, 331, 736, 1] : tensor<1x993x736x1xf16> to tensor<1x331x736x1xf16>
+    // CHECK:    [[SLICE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 662, 736, 1] : tensor<1x993x736x1xf16> to tensor<1x662x736x1xf16>
+    // CHECK:    [[SLICE1:%.+]] = VPU.Slice [[ARG_0]] [0, 662, 0, 0] [1, 331, 736, 1] : tensor<1x993x736x1xf16> to tensor<1x331x736x1xf16>
     // CHECK:    [[RESHAPE:%.+]] = VPU.Reshape([[SLICE1]]) {shape_value = [1, 331, 368, 2]} : tensor<1x331x736x1xf16> -> tensor<1x331x368x2xf16>
     // CHECK:    [[YUV2RGB:%.+]] = VPU.YuvToRgb([[SLICE0]], [[RESHAPE]]) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<RGB>, tilingStrategy = [1, {{.}}, 1, 1]} : tensor<1x662x736x1xf16>, tensor<1x331x368x2xf16> -> tensor<1x662x736x3xf16>
     // CHECK:    return [[YUV2RGB]] : tensor<1x662x736x3xf16>
@@ -402,13 +403,14 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: func.func @GatherNDSplit
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<3x5x512x512xf16>)
 func.func @GatherNDSplit(%arg0: tensor<3x5x512x512xf16>) -> tensor<3x1x100x512xf16> {
     %cst = const.Declare tensor<3x1x100x2xsi32> = dense<1> : tensor<3x1x100x2xsi32>
     %0 = VPU.GatherND(%arg0, %cst) {batch_dims = 1 : i64} : tensor<3x5x512x512xf16>, tensor<3x1x100x2xsi32> -> tensor<3x1x100x512xf16>
     return %0 : tensor<3x1x100x512xf16>
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<3x1x100x2xsi32> = dense<1> : tensor<3x1x100x2xsi32>
-    // CHECK:       [[GATHER:%.+]] = VPU.GatherND(%arg0, [[CST]]) {
+    // CHECK:       [[GATHER:%.+]] = VPU.GatherND([[ARG_0]], [[CST]]) {
     // CHECK-SAME:               batch_dims = 1 : i64,
     // CHECK-SAME:               tilingStrategy = [3, 1, 1, 2]}
     // CHECK-SAME:           : tensor<3x5x512x512xf16>, tensor<3x1x100x2xsi32> -> tensor<3x1x100x512xf16>
@@ -428,13 +430,14 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: func.func @GatherNDSplitIndices
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<64x2xf16>)
 func.func @GatherNDSplitIndices(%arg0: tensor<64x2xf16>) -> tensor<300000x2xf16> {
     %cst = const.Declare tensor<300000x1xsi32> = dense<1> : tensor<300000x1xsi32>
     %0 = VPU.GatherND(%arg0, %cst) {batch_dims = 0 : i64} : tensor<64x2xf16>, tensor<300000x1xsi32> -> tensor<300000x2xf16>
     return %0 : tensor<300000x2xf16>
 
     // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<300000x1xsi32> = dense<1> : tensor<300000x1xsi32>
-    // CHECK:       [[GATHER:%.+]] = VPU.GatherND(%arg0, [[CST]]) {
+    // CHECK:       [[GATHER:%.+]] = VPU.GatherND([[ARG_0]], [[CST]]) {
     // CHECK-SAME:               batch_dims = 0 : i64,
     // CHECK-SAME:               tilingStrategy = [2, 1]}
     // CHECK-SAME:           : tensor<64x2xf16>, tensor<300000x1xsi32> -> tensor<300000x2xf16>
@@ -641,13 +644,14 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: func.func @DepthToSpaceBlocksFirstSplit
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x384x10x120xf32, {order = #NHWC}>)
 func.func @DepthToSpaceBlocksFirstSplit(%arg0: tensor<1x384x10x120xf32, {order = #NHWC}>) -> tensor<1x24x40x480xf32, {order = #NHWC}> {
     %0 = VPU.Convert(%arg0) {dstElemType = f16} : tensor<1x384x10x120xf32, {order = #NHWC}> -> tensor<1x384x10x120xf16, {order = #NHWC}>
     %1 = VPU.DepthToSpace(%0) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x384x10x120xf16, {order = #NHWC}> -> tensor<1x24x40x480xf16, {order = #NHWC}>
     %2 = VPU.Convert(%1) {dstElemType = f32} : tensor<1x24x40x480xf16, {order = #NHWC}> -> tensor<1x24x40x480xf32, {order = #NHWC}>
     return %2 : tensor<1x24x40x480xf32, {order = #NHWC}>
 
-    // CHECK:       [[CONVERT0:%.+]] = VPU.Convert(%arg0) {dstElemType = f16, tilingStrategy = [1, 2, 1, 1]} : tensor<1x384x10x120xf32, {order = #NHWC}> -> tensor<1x384x10x120xf16, {order = #NHWC}>
+    // CHECK:       [[CONVERT0:%.+]] = VPU.Convert([[ARG_0]]) {dstElemType = f16, tilingStrategy = [1, 2, 1, 1]} : tensor<1x384x10x120xf32, {order = #NHWC}> -> tensor<1x384x10x120xf16, {order = #NHWC}>
     // CHECK:       [[D2S:%.+]] = VPU.DepthToSpace([[CONVERT0]]) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, tilingStrategy = [1, 1, 2, 1]} : tensor<1x384x10x120xf16, {order = #NHWC}> -> tensor<1x24x40x480xf16, {order = #NHWC}>
     // CHECK:       [[CONVERT1:%.+]] = VPU.Convert([[D2S]]) {dstElemType = f32, tilingStrategy = [1, 1, 1, 2]} : tensor<1x24x40x480xf16, {order = #NHWC}> -> tensor<1x24x40x480xf32, {order = #NHWC}>
 
@@ -668,13 +672,14 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: func.func @DepthToSpaceDepthFirstSplit
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x384x10x120xf32, {order = #NHWC}>)
 func.func @DepthToSpaceDepthFirstSplit(%arg0: tensor<1x384x10x120xf32, {order = #NHWC}>) -> tensor<1x24x40x480xf32, {order = #NHWC}> {
     %0 = VPU.Convert(%arg0) {dstElemType = f16} : tensor<1x384x10x120xf32, {order = #NHWC}> -> tensor<1x384x10x120xf16, {order = #NHWC}>
     %1 = VPU.DepthToSpace(%0) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>} : tensor<1x384x10x120xf16, {order = #NHWC}> -> tensor<1x24x40x480xf16, {order = #NHWC}>
     %2 = VPU.Convert(%1) {dstElemType = f32} : tensor<1x24x40x480xf16, {order = #NHWC}> -> tensor<1x24x40x480xf32, {order = #NHWC}>
     return %2 : tensor<1x24x40x480xf32, {order = #NHWC}>
 
-    // CHECK:       [[CONVERT0:%.+]] = VPU.Convert(%arg0) {dstElemType = f16, tilingStrategy = [1, 2, 1, 1]} : tensor<1x384x10x120xf32, {order = #NHWC}> -> tensor<1x384x10x120xf16, {order = #NHWC}>
+    // CHECK:       [[CONVERT0:%.+]] = VPU.Convert([[ARG_0]]) {dstElemType = f16, tilingStrategy = [1, 2, 1, 1]} : tensor<1x384x10x120xf32, {order = #NHWC}> -> tensor<1x384x10x120xf16, {order = #NHWC}>
     // CHECK:       [[D2S:%.+]] = VPU.DepthToSpace([[CONVERT0]]) {block_size = 4 : i64, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, tilingStrategy = [1, 1, 2, 1]} : tensor<1x384x10x120xf16, {order = #NHWC}> -> tensor<1x24x40x480xf16, {order = #NHWC}>
     // CHECK:       [[CONVERT1:%.+]] = VPU.Convert([[D2S]]) {dstElemType = f32, tilingStrategy = [1, 1, 1, 2]} : tensor<1x24x40x480xf16, {order = #NHWC}> -> tensor<1x24x40x480xf32, {order = #NHWC}>
 
@@ -693,11 +698,12 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL:   func.func @SpaceToDepthBlockFirstSplit
+// CHECK-SAME:        ([[ARG_0:%[^:]+]]: tensor<1x48x160x80xf16>
 func.func @SpaceToDepthBlockFirstSplit(%arg0: tensor<1x48x160x80xf16>) -> tensor<1x768x40x20xf16> {
     %0 = VPU.SpaceToDepthOp(%arg0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>} : tensor<1x48x160x80xf16> -> tensor<1x768x40x20xf16>
     return %0 : tensor<1x768x40x20xf16>
 
-    // CHECK:       [[S2D:%.+]] = VPU.SpaceToDepthOp(%arg0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, tilingStrategy = [1, 1, 1, 2]} : tensor<1x48x160x80xf16> -> tensor<1x768x40x20xf16>
+    // CHECK:       [[S2D:%.+]] = VPU.SpaceToDepthOp([[ARG_0]]) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<BLOCKS_FIRST>, tilingStrategy = [1, 1, 1, 2]} : tensor<1x48x160x80xf16> -> tensor<1x768x40x20xf16>
     // CHECK:       return [[S2D]] : tensor<1x768x40x20xf16>
 }
 
@@ -713,13 +719,14 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL: func.func @SpaceToDepthDepthFirstSplit
+// CHECK-SAME:        ([[ARG_0:%[^:]+]]: tensor<1x48x160x80xf32>)
 func.func @SpaceToDepthDepthFirstSplit(%arg0: tensor<1x48x160x80xf32>) -> tensor<1x768x40x20xf32> {
     %0 = VPU.Convert(%arg0) {dstElemType = f16} : tensor<1x48x160x80xf32> -> tensor<1x48x160x80xf16>
     %1 = VPU.SpaceToDepthOp(%0) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>} : tensor<1x48x160x80xf16> -> tensor<1x768x40x20xf16>
     %2 = VPU.Convert(%1) {dstElemType = f32} : tensor<1x768x40x20xf16> -> tensor<1x768x40x20xf32>
     return %2 : tensor<1x768x40x20xf32>
 
-    // CHECK:       [[CONVERT0:%.+]] = VPU.Convert(%arg0) {dstElemType = f16, tilingStrategy = [1, 1, 3, 1]} : tensor<1x48x160x80xf32> -> tensor<1x48x160x80xf16>
+    // CHECK:       [[CONVERT0:%.+]] = VPU.Convert([[ARG_0]]) {dstElemType = f16, tilingStrategy = [1, 1, 3, 1]} : tensor<1x48x160x80xf32> -> tensor<1x48x160x80xf16>
     // CHECK:       [[S2D:%.+]] = VPU.SpaceToDepthOp([[CONVERT0]]) {block_size = 4 : i64, mode = #IE.space_to_depth_mode<DEPTH_FIRST>, tilingStrategy = [1, 1, 1, 2]} : tensor<1x48x160x80xf16> -> tensor<1x768x40x20xf16>
     // CHECK:       [[CONVERT1:%.+]] = VPU.Convert([[S2D]]) {dstElemType = f32, tilingStrategy = [1, 3, 1, 1]} : tensor<1x768x40x20xf16> -> tensor<1x768x40x20xf32>
 
@@ -1365,11 +1372,12 @@ config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, con
 }
 
 // CHECK-LABEL:   func.func @MVN1NormalizeSplit
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x1x520001xf16>, [[ARG_1:%[^:]+]]: tensor<1x1x1x2xf16, {order = #NHWC}>
 func.func @MVN1NormalizeSplit(%arg0: tensor<1x1x1x520001xf16>, %arg1: tensor<1x1x1x2xf16, {order = #NHWC}>) -> tensor<1x1x1x520001xf16> {
     %0 = VPU.MVN1Normalize(%arg0, %arg1) {across_channels = false, normalize_variance = true} : tensor<1x1x1x520001xf16>, tensor<1x1x1x2xf16, {order = #NHWC}> -> tensor<1x1x1x520001xf16>
     return %0 : tensor<1x1x1x520001xf16>
 
-    // CHECK:       [[OUTPUT:%.+]] = VPU.MVN1Normalize(%arg0, %arg1)
+    // CHECK:       [[OUTPUT:%.+]] = VPU.MVN1Normalize([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:          tilingStrategy = [1, 1, 1, 2]
     // CHECK-SAME:     :  tensor<1x1x1x520001xf16>, tensor<1x1x1x2xf16, {order = #NHWC}> -> tensor<1x1x1x520001xf16>
 

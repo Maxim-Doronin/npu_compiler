@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -166,8 +166,8 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
           -> !ConvInputDistributed
       %21 = VPUIP.ConcatView inputs(%arg4, %arg5 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
         outputs(%3 : !WTDistributed) -> !WTDistributed
-      %22 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
-                kernel_strides = [1, 1], minimumHardwareExecutionCost = 4294967295 : i64, populateWeightTable = true, task_type = #VPUIP.nce_task_type<CONV>}
+      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+                kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%20 : !ConvInputDistributed)
         weights(%arg3 : !WeightsDistributed)
         weight_table(%21 : !WTDistributed)
@@ -459,8 +459,8 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
           -> !ConvInputDistributed
       %21 = VPUIP.ConcatView inputs(%arg4, %arg5 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
         outputs(%3 : !WTDistributed) -> !WTDistributed
-      %22 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
-                kernel_strides = [1, 1], minimumHardwareExecutionCost = 4294967295 : i64, populateWeightTable = true, task_type = #VPUIP.nce_task_type<CONV>}
+      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+                kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%20 : !ConvInputDistributed)
         weights(%arg3 : !WeightsDistributed)
         weight_table(%21 : !WTDistributed)

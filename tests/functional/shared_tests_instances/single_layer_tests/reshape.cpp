@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2019-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -48,6 +49,10 @@ TEST_P(ReshapeLayerTestCommon, NPU4000_SW) {
 TEST_P(ReshapeLayerTestCommon, NPU5010_SW) {
     VpuOv2LayerTest::setReferenceSoftwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(ReshapeLayerTestCommon, NPU5020_SW) {
+    VpuOv2LayerTest::setReferenceSoftwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
 }
 
 }  // namespace test

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,7 +11,6 @@
 #include <mlir/Tools/mlir-opt/MlirOptMain.h>
 
 #include <cstdlib>
-#include <iostream>
 
 int main(int argc, char* argv[]) {
     try {
@@ -23,7 +22,7 @@ int main(int argc, char* argv[]) {
 
         return mlir::asMainReturnCode(mlir::MlirLspServerMain(argc, argv, registry));
     } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+        llvm::errs() << e.what() << '\n';
         return EXIT_FAILURE;
     }
 }

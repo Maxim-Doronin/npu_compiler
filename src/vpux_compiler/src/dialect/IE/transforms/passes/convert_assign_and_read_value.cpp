@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -46,9 +47,7 @@ private:
 mlir::LogicalResult AssignRewriter::matchAndRewrite(IE::AssignOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got Assign layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFunc;
-    net::NetworkInfoOp::getFromModule(_topModule, netInfo, mainFunc);
+    auto [netInfo, mainFunc] = net::getFromModule(_topModule);
 
     const auto mainFuncType = mainFunc.getFunctionType();
     const auto assignInputType = origOp.getInput().getType();
@@ -98,9 +97,7 @@ private:
 mlir::LogicalResult ReadValueRewriter::matchAndRewrite(IE::ReadValueOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got ReadValue layer at '{1}'", getDebugName(), origOp->getLoc());
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFunc;
-    net::NetworkInfoOp::getFromModule(_topModule, netInfo, mainFunc);
+    auto [netInfo, mainFunc] = net::getFromModule(_topModule);
 
     const auto mainFuncType = mainFunc.getFunctionType();
     const auto readValueInputType = origOp.getInput().getType();

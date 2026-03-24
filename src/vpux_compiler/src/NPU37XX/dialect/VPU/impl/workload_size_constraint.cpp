@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,13 @@ using namespace vpux;
 // No further workload split is needed for depthwise operation
 bool VPU::arch37xx::WorkloadSizeConstraint::doesDWOperationNeedWorkloadSplit(mlir::Operation* op) const {
     VPUX_UNUSED(op);
+    return false;
+}
+
+bool VPU::arch37xx::WorkloadSizeConstraint::checkDWOperationWorkloadLimit(mlir::Operation* op,
+                                                                          const OutputTiling& tiles) const {
+    VPUX_UNUSED(op);
+    VPUX_UNUSED(tiles);
     return false;
 }
 

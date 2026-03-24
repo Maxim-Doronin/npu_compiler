@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops_interfaces.hpp"
+#include "vpux/compiler/NPU50XX/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPUIPDPU/ops_interfaces.hpp"
@@ -29,6 +30,8 @@ void InterfacesRegistry50XX::registerInterfaces(mlir::DialectRegistry& registry)
     IE::arch37xx::registerElemTypeInfoOpInterfaces(registry);
     // NB: arch40xx ExecutorOpModel is shared for all NPU40XX+ architectures
     IE::arch40xx::registerExecutorOpInterfaces(registry);
+    // NB: arch50xx has its own QuantizedLayerOpModel implementation
+    IE::arch50xx::registerQuantizedLayerOpInterfaces(registry);
     VPU::arch50xx::registerLayerWithPostOpModelInterface(registry);
     // NB: arch37xx::LayoutInfo can be re-used for 50XX
     VPU::arch37xx::registerLayoutInfoOpInterfaces(registry);

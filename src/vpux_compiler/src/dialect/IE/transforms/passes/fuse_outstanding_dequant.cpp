@@ -1,16 +1,16 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU37XX/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/walk_utils.hpp"
-
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
@@ -23,6 +23,15 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+// Helper function to check if operation is allowed to be walked through during backward search from Dequantize.
+// These are view-like/layout transformation operations that reorganize data without computation.
+// They're transparent to quantization - they don't change numerical values or quantization parameters,
+// only how the data is organized in memory.
+bool isAllowedElemTypeOp(mlir::Operation* op) {
+    return mlir::isa<IE::AffineReshapeOp, IE::ExpandOp, IE::ExpandDilatedOp, IE::ReorderOp, IE::ReshapeOp,
+                     IE::TransposeOp, IE::SliceOp>(op);
+}
 
 //
 // FuseOutstandingDequantPass
@@ -71,15 +80,15 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
 
     const auto dequantOutputType = origOp.getOutput().getType();
 
-    auto maybeNCETask = origOp.getInput().getDefiningOp();
-    if (maybeNCETask == nullptr) {
+    auto maybeQuantizedLayerOp = origOp.getInput().getDefiningOp();
+    if (maybeQuantizedLayerOp == nullptr) {
         return matchFailed(rewriter, origOp, "Producer is a block argument");
     }
-    if (!maybeNCETask->getResult(0).hasOneUse()) {
-        return matchFailed(rewriter, origOp, "NCE task has more than one consumer");
+    if (!maybeQuantizedLayerOp->getResult(0).hasOneUse()) {
+        return matchFailed(rewriter, origOp, "Producer has more than one consumer");
     }
 
-    if (!mlir::isa<IE::LayerWithPostOpInterface>(maybeNCETask)) {
+    if (!mlir::isa<IE::QuantizedLayerOpInterface>(maybeQuantizedLayerOp)) {
         SmallVector<mlir::Operation*> targetOps;
         mlir::Operation* operation = origOp;
         _log.trace("[{0}] Search quantized NCE task for {1} at {2}", this->getDebugName(), origOp->getName(),
@@ -87,9 +96,18 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
         while (operation) {
             auto input = (*operation->getOperands().begin()).getDefiningOp();
 
-            if (!mlir::isa<IE::ElemTypeInfoOpInterface, IE::LayerWithPostOpInterface>(input)) {
+            // Input is a block argument - no NCE producer to find
+            if (input == nullptr) {
+                return matchFailed(rewriter, origOp, "Reached block argument while searching for NCE producer");
+            }
+
+            // Check if input is either an allowed elem-type operation or NCE task
+            const bool isAllowedElemOp = isAllowedElemTypeOp(input);
+            const bool isQuantizedLayerOp = mlir::isa<IE::QuantizedLayerOpInterface>(input);
+
+            if (!isAllowedElemOp && !isQuantizedLayerOp) {
                 return matchFailed(rewriter, origOp,
-                                   "Ancestor {0} at {1} is neither FakeQuantize agnostic operation nor NCE operation",
+                                   "Ancestor {0} at {1} is neither allowed operation nor NCE operation",
                                    input->getName(), input->getLoc());
             }
 
@@ -98,22 +116,24 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
                                    input->getLoc());
             }
 
-            if (mlir::isa<IE::ElemTypeInfoOpInterface>(input)) {
+            if (isAllowedElemOp) {
                 if (input->getNumOperands() > 1) {
                     return matchFailed(rewriter, origOp, "Ancestor {0} at {1} has more than one ancestors",
                                        input->getName(), input->getLoc());
                 }
-                _log.trace("[{0}] Push ElemTypeInfoOpInterface {1} at {2}", this->getDebugName(), input->getName(),
+
+                // This is an allowed memory operation - continue walking
+                _log.trace("[{0}] Push allowed operation {1} at {2}", this->getDebugName(), input->getName(),
                            input->getLoc());
                 targetOps.push_back(input);
                 operation = input;
                 continue;
             }
 
-            if (mlir::isa<IE::LayerWithPostOpInterface>(input)) {
-                _log.trace("[{0}] Found NCE task {1} at {2}, stop pattern searching", this->getDebugName(),
+            if (isQuantizedLayerOp) {
+                _log.trace("[{0}] Found quantized layer {1} at {2}, stop pattern searching", this->getDebugName(),
                            input->getName(), input->getLoc());
-                maybeNCETask = input;
+                maybeQuantizedLayerOp = input;
                 break;
             }
         }
@@ -121,22 +141,32 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
         _log.trace("[{0}] Capture the pattern for {1} at {2}", this->getDebugName(), origOp->getName(),
                    origOp->getLoc());
 
-        if (!IE::arch37xx::isMixPrecisionSupported(maybeNCETask, !isPerChannel, _log)) {
-            return matchFailed(rewriter, origOp, "Producer {0} is not supported", maybeNCETask->getName());
+        auto quantizedLayerOp = mlir::dyn_cast_or_null<IE::QuantizedLayerOpInterface>(maybeQuantizedLayerOp);
+        if (quantizedLayerOp == nullptr) {
+            return matchFailed(rewriter, origOp, "Producer is not a quantized layer operation");
+        }
+        if (!quantizedLayerOp.isMixPrecisionSupported(!isPerChannel)) {
+            return matchFailed(rewriter, origOp, "Producer {0} is not supported", maybeQuantizedLayerOp->getName());
         }
 
-        auto* newNCETask = rewriter.clone(*maybeNCETask);
-        vpux::NDTypeInterface newType = newNCETask->getResult(0).getType();
+        // Check if we have intermediate operations
+        if (targetOps.empty()) {
+            return matchFailed(rewriter, origOp, "No intermediate operations found");
+        }
+
+        auto* newQuantizedLayerOp = rewriter.clone(*maybeQuantizedLayerOp);
+        vpux::NDTypeInterface newType = newQuantizedLayerOp->getResult(0).getType();
         newType = newType.changeElemType(dequantOutputType.getElementType());
-        newNCETask->getResult(0).setType(newType);
-        newNCETask->moveBefore(targetOps.back());
+        newQuantizedLayerOp->getResult(0).setType(newType);
+        newQuantizedLayerOp->moveBefore(targetOps.back());
 
-        _log.trace("[{0}] Replace {1} {2} at {3} with {4} {5} at {6}", this->getDebugName(), maybeNCETask->getName(),
-                   maybeNCETask->getResult(0).getType(), maybeNCETask->getLoc(), newNCETask->getName(),
-                   newNCETask->getResult(0).getType(), newNCETask->getLoc());
-        rewriter.replaceOp(maybeNCETask, newNCETask->getResult(0));
+        _log.trace("[{0}] Replace {1} {2} at {3} with {4} {5} at {6}", this->getDebugName(),
+                   maybeQuantizedLayerOp->getName(), maybeQuantizedLayerOp->getResult(0).getType(),
+                   maybeQuantizedLayerOp->getLoc(), newQuantizedLayerOp->getName(),
+                   newQuantizedLayerOp->getResult(0).getType(), newQuantizedLayerOp->getLoc());
+        rewriter.replaceOp(maybeQuantizedLayerOp, newQuantizedLayerOp->getResult(0));
 
-        // [NCE with quantized output]->[ElemTypeInfoOpInterface] ... ->[Dequantize] pattern is captured
+        // [NCE with quantized output]->[Allowed operations] ... ->[Dequantize] pattern is captured
         // Rewrite the sub-graph.
         for (auto iterator = targetOps.rbegin(); iterator != targetOps.rend(); ++iterator) {
             _log.trace("[{0}] Change {1} at {2} to {3}", this->getDebugName(), (*iterator)->getName(),
@@ -149,12 +179,16 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
                    origOp->getLoc(), targetOps.front()->getName(), targetOps.front()->getLoc());
         rewriter.replaceOp(origOp, targetOps.front()->getResult(0));
     } else {
-        if (!IE::arch37xx::isMixPrecisionSupported(maybeNCETask, !isPerChannel, _log)) {
-            return matchFailed(rewriter, origOp, "Producer {0} is not supported", maybeNCETask->getName());
+        auto quantizedLayerOp = mlir::dyn_cast_or_null<IE::QuantizedLayerOpInterface>(maybeQuantizedLayerOp);
+        if (quantizedLayerOp == nullptr) {
+            return matchFailed(rewriter, origOp, "Producer is not a quantized layer operation");
+        }
+        if (!quantizedLayerOp.isMixPrecisionSupported(!isPerChannel)) {
+            return matchFailed(rewriter, origOp, "Producer {0} is not supported", maybeQuantizedLayerOp->getName());
         }
 
-        auto* newNCETask = rewriter.clone(*maybeNCETask);
-        mlir::Value result = newNCETask->getResult(0);
+        auto* newQuantizedLayerOp = rewriter.clone(*maybeQuantizedLayerOp);
+        mlir::Value result = newQuantizedLayerOp->getResult(0);
         result.setType(dequantOutputType);
         if (dequantUniformType && !isPerChannel && !dequantUniformType.isSigned() &&
             dequantUniformType.getZeroPoint() == 0) {
@@ -162,7 +196,7 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
             result = rewriter.create<IE::ReLUOp>(takeOpLoc(origOp, "as_relu"), dequantOutputType, result);
         }
         rewriter.replaceOp(origOp, result);
-        rewriter.eraseOp(maybeNCETask);
+        rewriter.eraseOp(maybeQuantizedLayerOp);
     }
 
     return mlir::success();

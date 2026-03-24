@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -56,7 +56,7 @@ def AddRelocationsForDynamicStridesDmas : PassBase<"add-relocations-for-dynamic-
         a corresponding DMASymbolOp and RelocOp.
     }];
 
-    let constructor = "vpux::ELF::createAddRelocationsForDynamicStridesDMAs()";
+    let constructor = "vpux::ELF::createAddRelocationsForDynamicStridesDMAsPass()";
 }
 
 //

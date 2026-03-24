@@ -1,10 +1,11 @@
 #
-# Copyright (C) 2022-2026 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
 add_subdirectory(sol-generator)
 add_subdirectory(query_model)
+add_subdirectory(infer_tool)
 
 add_subdirectory(vpux-opt)
 add_subdirectory(vpux-translate)
@@ -16,6 +17,7 @@ endif()
 add_subdirectory(profiling_parser)
 
 add_subdirectory(vpux-binutils)
+
 add_subdirectory(npureg-tblgen)
 
 #

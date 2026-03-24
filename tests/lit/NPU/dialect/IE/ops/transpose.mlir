@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,13 +9,14 @@
 // CHECK: #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 // CHECK-LABEL: @ConvertConstToAttr
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x200x300xf32>
 func.func @ConvertConstToAttr(%arg0: tensor<1x16x200x300xf32>) -> tensor<1x16x300x200xf32> {
     %0 = const.Declare tensor<4xsi64> = dense<[0, 1, 3, 2]> : tensor<4xsi64>
     %1 = IE.Transpose(%arg0, %0) :
         tensor<1x16x200x300xf32>, tensor<4xsi64> -> tensor<1x16x300x200xf32>
     return %1 : tensor<1x16x300x200xf32>
 
-    // CHECK:       [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #NCWH} : tensor<1x16x200x300xf32> -> tensor<1x16x300x200xf32>
+    // CHECK:       [[VAL0:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NCWH} : tensor<1x16x200x300xf32> -> tensor<1x16x300x200xf32>
     // CHECK:       return [[VAL0]] : tensor<1x16x300x200xf32>
 }
 
@@ -23,6 +24,8 @@ func.func @ConvertConstToAttr(%arg0: tensor<1x16x200x300xf32>) -> tensor<1x16x30
 
 // CHECK: #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
+// CHECK-LABEL: @FuseTransposes
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x2x3xf32>
 func.func @FuseTransposes(%arg0: tensor<1x16x2x3xf32>) -> tensor<1x3x16x2xf32> {
     %0 = const.Declare tensor<4xsi64> = dense<[0, 1, 3, 2]> : tensor<4xsi64>
     %1 = IE.Transpose(%arg0, %0) :
@@ -35,7 +38,7 @@ func.func @FuseTransposes(%arg0: tensor<1x16x2x3xf32>) -> tensor<1x3x16x2xf32> {
     // CHECK-NOT: const.Declare
     // CHECK-NOT: IE.Transpose
     // CHECK-NOT: const.Declare
-    // CHECK:     [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #NWCH} : tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
+    // CHECK:     [[VAL0:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NWCH} : tensor<1x16x2x3xf32> -> tensor<1x3x16x2xf32>
     // CHECK:     return [[VAL0]] : tensor<1x3x16x2xf32>
 }
 
@@ -78,6 +81,8 @@ func.func @FoldConstTransposeWithQuantizeDimChanged() -> tensor<1x1x4x128x!qElem
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
+// CHECK-LABEL: @CollapseTransposes
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x70x1x28xf16>
 func.func @CollapseTransposes(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x70x28xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1], [2]], shape_value = [1, 28, 70]} : tensor<1x1x28x70xf16> -> tensor<1x28x70xf16>
@@ -86,7 +91,7 @@ func.func @CollapseTransposes(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x70x28xf1
     return %2 : tensor<1x70x28xf16>
 
     // CHECK-NOT:           IE.Transpose
-    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME{LITERAL}:      dim_mapping = [[0], [1], [1], [2]],
     // CHECK-SAME{LITERAL}:      shape_value = [1, 70, 28]
     // CHECK-SAME:          } : tensor<1x70x1x28xf16> -> tensor<1x70x28xf16>
@@ -99,6 +104,8 @@ func.func @CollapseTransposes(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x70x28xf1
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
+// CHECK-LABEL: @DoNotCollapseNonTrivialTransposes
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x70x2x28xf16>
 func.func @DoNotCollapseNonTrivialTransposes(%arg0: tensor<1x70x2x28xf16>) -> tensor<1x70x56xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #NHWC} : tensor<1x70x2x28xf16> -> tensor<1x2x28x70xf16>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1], [2]], shape_value = [1, 56, 70]} : tensor<1x2x28x70xf16> -> tensor<1x56x70xf16>
@@ -106,7 +113,7 @@ func.func @DoNotCollapseNonTrivialTransposes(%arg0: tensor<1x70x2x28xf16>) -> te
 
     return %2 : tensor<1x70x56xf16>
 
-    // CHECK:               [[FIRST_TRANSPOSE:%.+]] = IE.Transpose(%arg0) {order_value = #NHWC}
+    // CHECK:               [[FIRST_TRANSPOSE:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NHWC}
     // CHECK-SAME:              : tensor<1x70x2x28xf16> -> tensor<1x2x28x70xf16>
 
     // CHECK:               [[RESHAPE:%.+]] = IE.AffineReshape([[FIRST_TRANSPOSE]]) {
@@ -125,6 +132,8 @@ func.func @DoNotCollapseNonTrivialTransposes(%arg0: tensor<1x70x2x28xf16>) -> te
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
+// CHECK-LABEL: @CollapseTransposesWithSqueeze
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x70x1x28xf16>
 func.func @CollapseTransposesWithSqueeze(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x70x28xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %1 = IE.Squeeze(%0) { axes_value = [0] } : tensor<1x1x28x70xf16> -> tensor<1x28x70xf16>
@@ -133,7 +142,7 @@ func.func @CollapseTransposesWithSqueeze(%arg0: tensor<1x70x1x28xf16>) -> tensor
     return %2 : tensor<1x70x28xf16>
 
     // CHECK-NOT:           IE.Transpose
-    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME{LITERAL}:      dim_mapping = [[0], [1], [1], [2]],
     // CHECK-SAME{LITERAL}:      shape_value = [1, 70, 28]
     // CHECK-SAME:          } : tensor<1x70x1x28xf16> -> tensor<1x70x28xf16>
@@ -146,6 +155,8 @@ func.func @CollapseTransposesWithSqueeze(%arg0: tensor<1x70x1x28xf16>) -> tensor
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
+// CHECK-LABEL: @CollapseTransposesWithReshape
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x70x1x28xf16>
 func.func @CollapseTransposesWithReshape(%arg0: tensor<1x70x1x28xf16>) -> tensor<1x70x28xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #NHWC} : tensor<1x70x1x28xf16> -> tensor<1x1x28x70xf16>
     %1 = IE.Reshape(%0) { shape_value = [1, 28, 70] } : tensor<1x1x28x70xf16> -> tensor<1x28x70xf16>
@@ -154,7 +165,7 @@ func.func @CollapseTransposesWithReshape(%arg0: tensor<1x70x1x28xf16>) -> tensor
     return %2 : tensor<1x70x28xf16>
 
     // CHECK-NOT:           IE.Transpose
-    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME{LITERAL}:      dim_mapping = [[0], [1], [1], [2]],
     // CHECK-SAME{LITERAL}:      shape_value = [1, 70, 28]
     // CHECK-SAME:          } : tensor<1x70x1x28xf16> -> tensor<1x70x28xf16>
@@ -167,6 +178,8 @@ func.func @CollapseTransposesWithReshape(%arg0: tensor<1x70x1x28xf16>) -> tensor
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
+// CHECK-LABEL: @CollapseTransposesWithUnsqueeze
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x28x70xf16>
 func.func @CollapseTransposesWithUnsqueeze(%arg0: tensor<1x28x70xf16>) -> tensor<1x1x28x70xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #map} : tensor<1x28x70xf16> -> tensor<1x70x28xf16>
     %1 = IE.Unsqueeze(%0) {axes_value = [0]} : tensor<1x70x28xf16> -> tensor<1x1x70x28xf16>
@@ -175,7 +188,7 @@ func.func @CollapseTransposesWithUnsqueeze(%arg0: tensor<1x28x70xf16>) -> tensor
     return %2 : tensor<1x1x28x70xf16>
 
     // CHECK-NOT:           IE.Transpose
-    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape(%arg0) {
+    // CHECK:               [[SQUEEZE:%.+]] = IE.AffineReshape([[ARG_0]]) {
     // CHECK-SAME{LITERAL}:      dim_mapping = [[0, 1], [2], [3]],
     // CHECK-SAME{LITERAL}:      shape_value = [1, 1, 28, 70]
     // CHECK-SAME:          } : tensor<1x28x70xf16> -> tensor<1x1x28x70xf16>
@@ -187,48 +200,56 @@ func.func @CollapseTransposesWithUnsqueeze(%arg0: tensor<1x28x70xf16>) -> tensor
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
+// CHECK-LABEL: @FoldTrivial4dTranspose
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16>
 func.func @FoldTrivial4dTranspose(%arg0: tensor<1x16x32x64xf16>) -> tensor<1x16x32x64xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #NCHW} : tensor<1x16x32x64xf16> -> tensor<1x16x32x64xf16>
 
     return %0 : tensor<1x16x32x64xf16>
 
-    // CHECK:       return %arg0 : tensor<1x16x32x64xf16>
+    // CHECK:       return [[ARG_0]] : tensor<1x16x32x64xf16>
 }
 
 // -----
 
 #map = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 
+// CHECK-LABEL: @FoldTrivial3dTranspose
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x32xf16>
 func.func @FoldTrivial3dTranspose(%arg0: tensor<1x16x32xf16>) -> tensor<1x16x32xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #map} : tensor<1x16x32xf16> -> tensor<1x16x32xf16>
 
     return %0 : tensor<1x16x32xf16>
 
-    // CHECK:       return %arg0 : tensor<1x16x32xf16>
+    // CHECK:       return [[ARG_0]] : tensor<1x16x32xf16>
 }
 
 // -----
 
 #CN = affine_map<(d0, d1) -> (d0, d1)>
 
+// CHECK-LABEL: @FoldTrivial2dTranspose
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16xf16>
 func.func @FoldTrivial2dTranspose(%arg0: tensor<1x16xf16>) -> tensor<1x16xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #CN} : tensor<1x16xf16> -> tensor<1x16xf16>
 
     return %0 : tensor<1x16xf16>
 
-    // CHECK:       return %arg0 : tensor<1x16xf16>
+    // CHECK:       return [[ARG_0]] : tensor<1x16xf16>
 }
 
 // -----
 
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
+// CHECK-LABEL: @DoNotFold4dTransposeWithSameShape
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x32x32xf16>
 func.func @DoNotFold4dTransposeWithSameShape(%arg0: tensor<1x16x32x32xf16>) -> tensor<1x16x32x32xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #NCWH} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
 
     return %0 : tensor<1x16x32x32xf16>
 
-    // CHECK:   [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #NCWH} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
+    // CHECK:   [[VAL0:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NCWH} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
     // CHECK:   return [[VAL0]] : tensor<1x16x32x32xf16>
 }
 
@@ -236,12 +257,14 @@ func.func @DoNotFold4dTransposeWithSameShape(%arg0: tensor<1x16x32x32xf16>) -> t
 
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
+// CHECK-LABEL: @DoNotFold3dTransposeWithSameShape
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x32x32xf16>
 func.func @DoNotFold3dTransposeWithSameShape(%arg0: tensor<1x32x32xf16>) -> tensor<1x32x32xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #map} : tensor<1x32x32xf16> -> tensor<1x32x32xf16>
 
     return %0 : tensor<1x32x32xf16>
 
-    // CHECK:   [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #map} : tensor<1x32x32xf16> -> tensor<1x32x32xf16>
+    // CHECK:   [[VAL0:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #map} : tensor<1x32x32xf16> -> tensor<1x32x32xf16>
     // CHECK:   return [[VAL0]] : tensor<1x32x32xf16>
 }
 
@@ -249,12 +272,14 @@ func.func @DoNotFold3dTransposeWithSameShape(%arg0: tensor<1x32x32xf16>) -> tens
 
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
+// CHECK-LABEL: @DoNotFold2dTransposeWithSameShape
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<32x32xf16>
 func.func @DoNotFold2dTransposeWithSameShape(%arg0: tensor<32x32xf16>) -> tensor<32x32xf16> {
     %0 = IE.Transpose(%arg0) {order_value = #CN} : tensor<32x32xf16> -> tensor<32x32xf16>
 
     return %0 : tensor<32x32xf16>
 
-    // CHECK:   [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #CN} : tensor<32x32xf16> -> tensor<32x32xf16>
+    // CHECK:   [[VAL0:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #CN} : tensor<32x32xf16> -> tensor<32x32xf16>
     // CHECK:   return [[VAL0]] : tensor<32x32xf16>
 }
 

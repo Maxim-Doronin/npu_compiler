@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -97,13 +97,16 @@ func.func @EfficientGPTQOperationsOrder(
 
     return %0: tensor<1x3584x256x4xf16, {order = #NHWC}>
 
+    //CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<3584x128x1x1x!qElemType, {order = #NHWC}>
+    //CHECK-DAG:    [[CST_0:%.+]] = const.Declare tensor<3584x128x1x1x!qElemType, {order = #NHWC}>
+    //CHECK-DAG:    [[CST_1:%.+]] = const.Declare tensor<3584x128x1x1x!qElemType, {order = #NHWC}>
     //CHECK:    [[VF:%.+]] = VPU.VerticalFusion (
     //CHECK-SAME:       [[INPUT0]] as [[ARG0:[^:]+]]: tensor<1x128x256x4xf16, {order = #NHWC}>,
-    //CHECK-SAME:       %cst as [[ARG1:[^:]+]]: tensor<3584x128x1x1x!qElemType, {order = #NHWC}>,
+    //CHECK-SAME:       [[CST]] as [[ARG1:[^:]+]]: tensor<3584x128x1x1x!qElemType, {order = #NHWC}>,
     //CHECK-SAME:       [[INPUT1]] as [[ARG3:[^:]+]]: tensor<1x128x256x4xf16, {order = #NHWC}>,
-    //CHECK-SAME:       %cst_0 as [[ARG4:[^:]+]]: tensor<3584x128x1x1x!qElemType, {order = #NHWC}>,
+    //CHECK-SAME:       [[CST_0]] as [[ARG4:[^:]+]]: tensor<3584x128x1x1x!qElemType, {order = #NHWC}>,
     //CHECK-SAME:       [[INPUT2]] as [[ARG6:[^:]+]]: tensor<1x128x256x4xf16, {order = #NHWC}>,
-    //CHECK-SAME:       %cst_1 as [[ARG7:[^:]+]]: tensor<3584x128x1x1x!qElemType, {order = #NHWC}>
+    //CHECK-SAME:       [[CST_1]] as [[ARG7:[^:]+]]: tensor<3584x128x1x1x!qElemType, {order = #NHWC}>
     //CHECK-SAME:       ) attributes {tilingStrategy = [1, 1, 3, 1]} -> tensor<1x3584x256x4xf16, {order = #NHWC}> {
     //CHECK:        [[CONV_0:%.+]] = VPU.NCE.Convolution([[ARG6]], [[ARG7]])
     //CHECK:        [[CONV_1:%.+]] = VPU.NCE.Convolution([[ARG3]], [[ARG4]])
@@ -147,17 +150,21 @@ func.func @NotReorderOpsOutsideVFBlock(%arg0: tensor<1x64x30x30xf16, {order = #N
 
     return %4: tensor<1x64x15x15x!qElemType2, {order = #NHWC}>
 
+    //CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<64x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00>
+    //CHECK-DAG:    [[CST_0:%.+]] = const.Declare tensor<32x64x3x3x!qElemType1, {order = #NHWC}>
     //CHECK:    [[VF_0:%.+]] = VPU.VerticalFusion (
     //CHECK-SAME:       [[INPUT0]] as [[ARG0:[^:]+]]: tensor<1x64x30x30xf16, {order = #NHWC}>,
-    //CHECK-SAME:       %cst as [[ARG1:[^:]+]]: tensor<64x16x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x64x30x30x!qElemType2, {order = #NHWC}> {
+    //CHECK-SAME:       [[CST]] as [[ARG1:[^:]+]]: tensor<64x16x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x64x30x30x!qElemType2, {order = #NHWC}> {
     //CHECK:        [[DW_CONV_0:%.+]] = VPU.NCE.DepthConvolution([[ARG0]], [[ARG1]])
-    //CHECK:    [[CONV_0:%.+]] = VPU.NCE.Convolution([[VF_0]], %cst_0)
+    //CHECK:    [[CONV_0:%.+]] = VPU.NCE.Convolution([[VF_0]], [[CST_0]])
 
+    //CHECK-DAG:    [[CST_1:%.+]] = const.Declare tensor<64x16x1x1xf16, {order = #NHWC}> = dense<2.000000e+00>
+    //CHECK-DAG:    [[CST_2:%.+]] = const.Declare tensor<32x64x3x3x!qElemType1, {order = #NHWC}>
     //CHECK:    [[VF_1:%.+]] = VPU.VerticalFusion (
-    //CHECK-SAME:       [[INPUT1]] as [[ARG3:[^:]+]]: tensor<1x64x30x30xf16, {order = #NHWC}>,
-    //CHECK-SAME:       %cst_1 as [[ARG4:[^:]+]]: tensor<64x16x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x64x30x30x!qElemType2, {order = #NHWC}> {
-    //CHECK:        [[DW_CONV_1:%.+]] = VPU.NCE.DepthConvolution([[ARG3]], [[ARG4]])
-    //CHECK:    [[CONV_1:%.+]] = VPU.NCE.Convolution([[VF_1]], %cst_2)
+    //CHECK-SAME:       [[INPUT1]] as [[ARG2:[^:]+]]: tensor<1x64x30x30xf16, {order = #NHWC}>,
+    //CHECK-SAME:       [[CST_1]] as [[ARG3:[^:]+]]: tensor<64x16x1x1xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x64x30x30x!qElemType2, {order = #NHWC}> {
+    //CHECK:        [[DW_CONV_1:%.+]] = VPU.NCE.DepthConvolution([[ARG2]], [[ARG3]])
+    //CHECK:    [[CONV_1:%.+]] = VPU.NCE.Convolution([[VF_1]], [[CST_2]])
 
     //CHECK:    [[CONCAT:%.+]] = VPU.Concat([[CONV_1]], [[CONV_0]])
 

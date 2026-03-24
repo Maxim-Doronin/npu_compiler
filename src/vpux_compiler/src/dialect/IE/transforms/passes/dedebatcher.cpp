@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <mlir/IR/Builders.h>
+#include <mlir/Transforms/Inliner.h>
+#include <mlir/Transforms/InliningUtils.h>
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/batch.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -29,6 +32,18 @@ using namespace vpux;
 namespace {
 
 namespace detail {
+
+constexpr StringRef inliningCallAttrName{"dedebatcher_inlined_call"};
+void assignCallForInlining(mlir::func::CallOp op) {
+    VPUX_THROW_WHEN(op == nullptr, "CallOp must not be null");
+    op->setAttr(inliningCallAttrName, mlir::UnitAttr::get(op.getContext()));
+}
+
+bool hasAssignedForInlining(mlir::func::CallOp op) {
+    VPUX_THROW_WHEN(op == nullptr, "CallOp must not be null");
+    return op->hasAttr(inliningCallAttrName);
+}
+
 using CoeffExtractor = std::function<std::tuple<int64_t, int64_t>(int64_t, int64_t)>;
 std::tuple<std::optional<DebatchCoeffDescription>, int64_t> tryExtractDebatchCoefficients(mlir::Value operand,
                                                                                           CoeffExtractor extract) {
@@ -82,8 +97,82 @@ std::tuple<std::optional<DebatchCoeffDescription>, int64_t> tryExtractDebatchCoe
     return detail::tryExtractDebatchCoefficients(inputArgument, extractBatchAttrsFromResult);
 }
 
+mlir::func::FuncOp cloneFunction(mlir::OpBuilder& moduleBuilder, mlir::func::FuncOp origFunc) {
+    VPUX_THROW_WHEN(origFunc == nullptr, "Cannot clone a non-existent function");
+    auto funcName = vpux::formatv("{0}_{1}", origFunc.getName(), detail::inliningCallAttrName);
+    const auto funcLoc = appendLoc(origFunc.getLoc(), funcName);
+    auto newFunc = moduleBuilder.create<mlir::func::FuncOp>(funcLoc, funcName.str(), origFunc.getFunctionType());
+    mlir::IRMapping mapper;
+    origFunc.getBody().cloneInto(&newFunc.getBody(), mapper);
+    newFunc.setPrivate();
+    return newFunc;
+}
+
+mlir::ValueRange getOutputShapes(mlir::func::FuncOp caller, mlir::OpBuilder& builder) {
+    auto module = vpux::getModuleOp(caller);
+    constexpr StringRef shapeCalculationFuncName{"output_shape"};
+    auto outputShapeFuncOp = module.lookupSymbol<mlir::func::FuncOp>(shapeCalculationFuncName);
+    if (outputShapeFuncOp == nullptr) {
+        auto parentModule = module->getParentOfType<mlir::ModuleOp>();
+        if (parentModule != nullptr) {
+            mlir::OpBuilder moduleBuilder(module);
+            moduleBuilder.setInsertionPointAfter(caller);
+            auto origFunc = parentModule.lookupSymbol<mlir::func::FuncOp>(shapeCalculationFuncName);
+            outputShapeFuncOp = cloneFunction(moduleBuilder, origFunc);
+        }
+    }
+
+    VPUX_THROW_WHEN(outputShapeFuncOp == nullptr, "HostCompile pipeline must provide the \"{0}\" function",
+                    shapeCalculationFuncName);
+    auto outputShapeCallOp = builder.create<mlir::func::CallOp>(
+            appendLoc(caller.getLoc(), "output_shape"), outputShapeFuncOp, mlir::ValueRange{caller.getArguments()});
+    detail::assignCallForInlining(outputShapeCallOp);
+    return outputShapeCallOp.getResults();
+}
+
+void inlineAuxiliaryCallOps(mlir::func::FuncOp caller, const Logger& log) {
+    auto module = vpux::getModuleOp(caller);
+    mlir::DenseMap<mlir::func::FuncOp, std::vector<mlir::func::CallOp>> inliningCallOpsPerFunc;
+    caller->walk([&](mlir::func::CallOp op) {
+        if (detail::hasAssignedForInlining(op)) {
+            auto funcOp = module.lookupSymbol<mlir::func::FuncOp>(op.getCallee());
+            VPUX_THROW_WHEN(
+                    funcOp == nullptr,
+                    "DeDebatcherPass doesn't allow orphan calls, found callOp: {0} doesn't relate to any function",
+                    op.getCallee());
+            inliningCallOpsPerFunc[funcOp].push_back(op);
+            log.trace("CallOps of function: {0} to inline count: {1}", funcOp.getName(),
+                      inliningCallOpsPerFunc[funcOp].size());
+        }
+    });
+
+    log.debug("Found functions to inline count: {0}", inliningCallOpsPerFunc.size());
+    size_t inlinedCallOpsCount = 0;
+    mlir::InlinerConfig config;
+    mlir::InlinerInterface interface(caller.getContext());
+    for (auto [funcOp, callOps] : inliningCallOpsPerFunc) {
+        log.trace("Inline function's: {0} calls: {1}", funcOp.getName(), callOps.size());
+        for (auto&& callOp : callOps) {
+            if (mlir::failed(mlir::inlineCall(interface, config.getCloneCallback(), callOp, funcOp, &funcOp.getBody(),
+                                              true))) {
+                VPUX_THROW("Cannot inline the function: {0} required for calculation of sizes of output shapes. "
+                           "DeDebatching with the host-compile has been failed",
+                           funcOp.getName());
+            }
+            callOp.erase();
+            inlinedCallOpsCount++;
+        }
+        if (funcOp.use_empty() && funcOp.getName().find(detail::inliningCallAttrName) != std::string::npos) {
+            log.trace("Remove the intrinsic function: {0}, as it has no uses anymore", funcOp.getName());
+            funcOp.erase();
+        }
+    }
+    log.debug("Inlined calls count: {0}", inlinedCallOpsCount);
+}
+
 SmallVector<mlir::Value> createLoopCapturedVariablesBoundToCallerOutputs(mlir::func::FuncOp caller,
-                                                                         mlir::OpBuilder builder, mlir::Value pivotArg,
+                                                                         mlir::OpBuilder& builder,
+                                                                         mlir::ValueRange outputShapes,
                                                                          const Logger& log) {
     // initialize function outputs, which the loop will use as its results storage,
     // aka captured loop-carried variables
@@ -97,7 +186,8 @@ SmallVector<mlir::Value> createLoopCapturedVariablesBoundToCallerOutputs(mlir::f
         for (auto& op : llvm::make_early_inc_range(block)) {
             if (mlir::isa<mlir::func::ReturnOp>(op)) {
                 log.debug("Capture caller results variables, count: {0}", op.getOperands().size());
-                for (auto const& [resIndex, res] : op.getOperands() | indexed) {
+                for (auto const& [resIndex, resOutputShape] : llvm::zip(op.getOperands(), outputShapes) | indexed) {
+                    auto [res, pivotArg] = resOutputShape;
                     // for each result operand of `main` we create a corresponding
                     // loop-carried variable, which will accumulate every result
                     // of batched function execution.
@@ -117,13 +207,16 @@ SmallVector<mlir::Value> createLoopCapturedVariablesBoundToCallerOutputs(mlir::f
                             } else {
                                 dimLoc = appendLoc(dimLoc, "dynOutTensor_{0}_{1}", resIndex, i);
                             }
-                            auto batchFromOutTensor = builder.create<mlir::tensor::DimOp>(dimLoc, pivotArg, i);
-                            outShape.push_back(batchFromOutTensor);
+                            mlir::Value dimIdxCnst = builder.create<mlir::arith::ConstantIndexOp>(dimLoc, i);
+                            auto dimValByIdx = builder.create<mlir::tensor::ExtractOp>(dimLoc, pivotArg, dimIdxCnst);
+                            auto dynamicDim = builder.create<mlir::arith::IndexCastOp>(dimLoc, builder.getIndexType(),
+                                                                                       dimValByIdx.getResult());
+                            outShape.push_back(dynamicDim);
                         }
                     }
                     auto outType = mlir::cast<mlir::ShapedType>(res.getType());
-                    log.debug("Capture a result: {0} with the debatch coefficient: {1}", resIndex,
-                              debatchCoefficient.value().to_string());
+                    log.debug("Capture a result: {0} of type: {1} with the debatch coefficient: {2}, output shape: {3}",
+                              resIndex, outType, debatchCoefficient.value().to_string(), outShape);
                     loopResults.push_back(builder.create<mlir::tensor::EmptyOp>(appendLoc(loc, "output_{0}", resIndex),
                                                                                 outType, outShape));
                 }
@@ -179,7 +272,7 @@ SmallVector<mlir::Value> generateCalleeInputSlicesFromCallerInputs(mlir::func::F
         auto slice = forBodyBuilder.create<mlir::tensor::ExtractSliceOp>(appendLoc(loc, "slice_{0}", argIndex), arg,
                                                                          offsets, sizes, strides);
         log.debug("Slice: {0} created, sizes: {1}", argIndex, sizes);
-        slice.getResult().setType(mlir::cast<mlir::RankedTensorType>(callee.getArgument(argIndex).getType()));
+        slice.getResult().setType(mlir::cast<mlir::RankedTensorType>(callee.getArgumentTypes()[argIndex]));
         inputArgSlices.push_back(slice);
     }
     return inputArgSlices;
@@ -203,8 +296,8 @@ void generateCalleeResultSlicesInForCtx(mlir::scf::ForOp forCtx, mlir::OpBuilder
         for (int64_t i = 1; i < outType.getRank(); ++i) {
             outOffsets.push_back(forBodyBuilder.getIndexAttr(0));
         }
-        SmallVector<mlir::OpFoldResult> outSizes =
-                collectMixedSizesForSliceOp(forBodyBuilder, loc, forStep.value(), result, argIndex);
+        SmallVector<mlir::OpFoldResult> outSizes = collectMixedSizesForSliceOp(
+                forBodyBuilder, loc, forStep.value(), forCtx.getRegionIterArg(argIndex), argIndex);
         SmallVector<mlir::OpFoldResult> outStrides(outType.getRank(), forBodyBuilder.getIndexAttr(1));
         auto inserted = forBodyBuilder.create<mlir::tensor::InsertSliceOp>(appendLoc(loc, "insert_{0}", argIndex),
                                                                            result, forCtx.getRegionIterArg(argIndex),
@@ -216,6 +309,14 @@ void generateCalleeResultSlicesInForCtx(mlir::scf::ForOp forCtx, mlir::OpBuilder
 
     log.debug("Finalize loop creation by yielding given slices count: {0}", yieldResults.size());
     forBodyBuilder.create<mlir::scf::YieldOp>(appendLoc(loc, "yield"), yieldResults);
+}
+
+mlir::func::FuncOp getAppropriateDebatchingFunction(mlir::func::CallOp op) {
+    /* TODO E#193343:
+     * Insert a mock function and return its instance. Inject WrapFuncDataAttributeView to substitute calls to the mock
+     * function with calls to the real debatching function in WrapFuncCallPass
+     */
+    return getCalledFunction(op);
 }
 
 void injectHostPipelineStage(mlir::func::FuncOp main, mlir::func::CallOp callOp, int64_t ratio,
@@ -274,12 +375,14 @@ void injectHostPipelineStage(mlir::func::FuncOp main, mlir::func::CallOp callOp,
             builder.create<mlir::tensor::DimOp>(appendLoc(loc, "batchFromTensor"), *pivotArg, batchDimIndex);
     auto batchStep = builder.create<mlir::arith::ConstantIndexOp>(appendLoc(loc, "batchStep"), step);
 
-    auto loopCapturedResults = createLoopCapturedVariablesBoundToCallerOutputs(main, builder, *pivotArg, log);
+    // determine which output shapes are required for results
+    auto outputShapes = getOutputShapes(main, builder);
+    auto loopCapturedResults = createLoopCapturedVariablesBoundToCallerOutputs(main, builder, outputShapes, log);
 
     log.debug("Insert a forOp over batch dimension using captured variables count: {0}", loopCapturedResults.size());
     auto forOp = builder.create<mlir::scf::ForOp>(appendLoc(loc, "for"), batchIterBegin, batchFromTensor, batchStep,
                                                   mlir::ValueRange{loopCapturedResults});
-    mlir::func::FuncOp batchingFunc = getCalledFunction(callOp);
+    mlir::func::FuncOp batchingFunc = getAppropriateDebatchingFunction(callOp);
     auto loopBodyBuilder = mlir::OpBuilder(forOp.getBody(), forOp.getBody()->begin());
     auto inputArgSlices = generateCalleeInputSlicesFromCallerInputs(main, loopBodyBuilder, forOp, batchingFunc, log);
 
@@ -298,6 +401,9 @@ void injectHostPipelineStage(mlir::func::FuncOp main, mlir::func::CallOp callOp,
             }
         }
     }
+
+    // Do not keep utility functions in the module, as it may affect further passes
+    inlineAuxiliaryCallOps(main, log);
 }
 
 std::tuple<int64_t, int64_t, SmallVector<DebatchCoeffDescription>> getDeDebatchParams(
@@ -426,8 +532,6 @@ mlir::LogicalResult DeDebatcherPass::initializeOptions(
 //
 
 void DeDebatcherPass::safeRunOnFunc() {
-    _log.debug("{0}::safeRunOnModule", getName());
-
     auto main = getOperation();
     if (main.isPrivate()) {
         return;

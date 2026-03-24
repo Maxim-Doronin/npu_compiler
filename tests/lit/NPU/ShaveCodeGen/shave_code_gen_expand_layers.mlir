@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 // RUN:  vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --expand-layers %s | FileCheck %s
 // REQUIRES: arch-NPU40XX || arch-NPU50XX
 
@@ -97,7 +98,7 @@ module @SingleSinF16Layer {
 
 module @SingleAsinF16Layer {
   module @VPU.SW {
-    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}    
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     func.func @generated_0(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
       affine.for %d0 = 0 to 1 {
         affine.for %d1 = 0 to 1 {
@@ -114,7 +115,7 @@ module @SingleAsinF16Layer {
     }
   }
 }
-// CHECK-LABEL: SingleAsinF16Layer 
+// CHECK-LABEL: SingleAsinF16Layer
 // CHECK: func.func @generated_0([[ARG0:%.+]]: memref<1x1x1x1000xf16>, [[ARG1:%.+]]: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
 // CHECK-NEXT:  [[CST:%.+]] = arith.constant 1.570310e+00 : f16
 // CHECK-NEXT:  [[CST0:%.+]] = arith.constant 1.666260e-01 : f16
@@ -279,7 +280,7 @@ module @SingleCosF16Layer {
 
 module @SingleAcosF16Layer {
   module @VPU.SW {
-    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}    
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     func.func @generated_0(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
       affine.for %d0 = 0 to 1 {
         affine.for %d1 = 0 to 1 {
@@ -296,7 +297,7 @@ module @SingleAcosF16Layer {
     }
   }
 }
-// CHECK-LABEL: SingleAcosF16Layer 
+// CHECK-LABEL: SingleAcosF16Layer
 // CHECK: func.func @generated_0([[ARG0:%.+]]: memref<1x1x1x1000xf16>, [[ARG1:%.+]]: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
 // CHECK-NEXT:  [[CST:%.+]] = arith.constant 3.140630e+00 : f16
 // CHECK-NEXT:  [[CST0:%.+]] = arith.constant 2.000000e+00 : f16
@@ -473,7 +474,7 @@ module @NegFFP16Layer {
   }
 }
 
-// CHECK-LABEL: NegFFP16Layer 
+// CHECK-LABEL: NegFFP16Layer
 // CHECK: func.func @generated_0([[ARG0:%.+]]: f16) -> f16 {
 // CHECK-NEXT:  [[CST:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:  [[RES:%.+]] = arith.subf [[CST]], [[ARG0]] : f16
@@ -493,7 +494,7 @@ module @AcoshF16Layer {
 }
 
     // CHECK-NOT:     math.acosh
-    // CHECK-LABEL: AcoshF16Layer 
+    // CHECK-LABEL: AcoshF16Layer
     // CHECK: func.func @generated_0([[ARG0:%.+]]: f16) -> f16 {
     // CHECK-NEXT:      [[BIG:%.+]] = arith.constant 2.557500e+02 : f16
     // CHECK-NEXT:      [[LN2:%.+]] = arith.constant 6.933590e-01 : f16
@@ -545,7 +546,7 @@ module @AcoshF32Layer {
 }
 
     // CHECK-NOT:     math.acosh
-    // CHECK-LABEL: AcoshF32Layer 
+    // CHECK-LABEL: AcoshF32Layer
     // CHECK: func.func @generated_0([[ARG0:%.+]]: f32) -> f32 {
     // CHECK-NEXT:  [[RES:%.+]] = math.acosh [[ARG0]] : f32
     // CHECK-NEXT:  return [[RES]] : f32
@@ -562,10 +563,10 @@ module @AsinhF16Layer {
       return %0 : f16
     }
   }
-} 
+}
 
     // CHECK-NOT:     math.acosh
-    // CHECK-LABEL: AsinhF16Layer 
+    // CHECK-LABEL: AsinhF16Layer
     // CHECK: func.func @generated_0([[ARG0:%.+]]: f16) -> f16 {
 
     // CHECK-NEXT:      [[HALFONE:%.+]] = arith.constant 5.000000e-01 : f32
@@ -646,7 +647,7 @@ module @AsinhF32Layer {
 }
 
     // CHECK-NOT:     math.asinh
-    // CHECK-LABEL: AsinhF32Layer 
+    // CHECK-LABEL: AsinhF32Layer
     // CHECK: func.func @generated_0([[ARG0:%.+]]: f32) -> f32 {
     // CHECK-NEXT:  [[RES:%.+]] = math.asinh [[ARG0]] : f32
     // CHECK-NEXT:  return [[RES]] : f32

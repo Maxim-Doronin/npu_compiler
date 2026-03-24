@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -146,6 +146,12 @@ exec_resource_if<Enum> getAvailableExecutor(mlir::ModuleOp mainModule, Enum kind
 }
 
 //
+// DMAResources
+//
+
+int64_t getNumOfDMAPorts(mlir::Operation* op);
+
+//
 // EngineResources
 //
 
@@ -153,6 +159,7 @@ int64_t getNumOfEnginesOnTile(mlir::ModuleOp moduleOp, config::ExecutorKind exec
 int64_t getNumOfEnginesOnTile(mlir::Operation* op, config::ExecutorKind execKind);
 int64_t getTotalNumOfEngines(mlir::ModuleOp moduleOp, config::ExecutorKind execKind);
 int64_t getTotalNumOfEngines(mlir::Operation* op, config::ExecutorKind execKind);
+int64_t getNumOfTiles(mlir::Operation* op);
 
 config::ResourcesOp addTileExecutor(mlir::ModuleOp mainModule, size_t count);
 

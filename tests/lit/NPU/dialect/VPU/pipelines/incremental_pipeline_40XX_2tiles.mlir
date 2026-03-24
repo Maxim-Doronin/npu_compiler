@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -337,6 +337,7 @@ rawFilterShape = [96, 16, 7, 7],
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @PerAxisQuantizedDWConvIncrementalPipelineCheck
+// CHECK-SAME:        [[ARG_0:%[^:]+]]: tensor<1x32x256x256xf16, {order = #NHWC}>
 func.func @PerAxisQuantizedDWConvIncrementalPipelineCheck(%arg0: tensor<1x32x256x256xf16, {order = #NHWC}>) -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
     %cst_522 = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.Reorder<#NHWC>, #const.Reorder<#NCHW>, #const.Reshape<[32, 1, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 15, 0, 0]>, #const.Reorder<#NHWC>]
     %cst_521 = const.Declare tensor<32x1x1x4xsi32> = dense<0> : tensor<32x1x1x4xsi32>
@@ -352,7 +353,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x1x1x1xf16>, [#const.Reorder<#NHWC>, #const.Reorder<#NCHW>, #const.Reshape<[32, 1, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 15, 0, 0]>, #const.Reorder<#NHWC>]
     // CHECK-DAG:   [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<0> : tensor<32x1x1x4xsi32>
 
-    // CHECK:       [[SLICE_0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 52, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x52x256xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE_0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 32, 52, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x52x256xf16, {order = #NHWC}>
     // CHECK:       [[COPY_INPUT_0:%.+]] =  VPU.Copy([[SLICE_0]]) {out_mem_space = @CMX_NN} : tensor<1x32x52x256xf16, {order = #NHWC}>
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x52x256xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
@@ -386,7 +387,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK-SAME{LITERAL}:  compute_shapes = [[1, 32, 26, 256], [1, 32, 26, 256]], compute_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 32, 26, 256], [1, 32, 26, 256]], memory_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]}>
 
-    // CHECK:       [[SLICE_1:%.+]] = VPU.Slice %arg0 [0, 0, 52, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE_1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 52, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK:       [[COPY_INPUT_1:%.+]] = VPU.Copy([[SLICE_1]]) {out_mem_space = @CMX_NN} : tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK-SAME:      -> !VPU.DistributedTensor<1x32x51x256xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
@@ -421,7 +422,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], memory_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]}>
     // CHECK-SAME:      -> tensor<1x32x51x256x!qElemType, {order = #NHWC}>
 
-    // CHECK:       [[SLICE_2:%.+]] = VPU.Slice %arg0 [0, 0, 103, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE_2:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 103, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK:       [[COPY_INPUT_2:%.+]] = VPU.Copy([[SLICE_2]]) {out_mem_space = @CMX_NN} : tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK-SAME:       -> !VPU.DistributedTensor<1x32x51x256xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:           {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
@@ -456,7 +457,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], memory_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]}>
     // CHECK-SAME:      -> tensor<1x32x51x256x!qElemType, {order = #NHWC}>
 
-    // CHECK:       [[SLICE_3:%.+]] = VPU.Slice %arg0 [0, 0, 154, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE_3:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 154, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK:       [[COPY_INPUT_3:%.+]] = VPU.Copy([[SLICE_3]]) {out_mem_space = @CMX_NN} : tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK-SAME:       -> !VPU.DistributedTensor<1x32x51x256xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments
@@ -491,7 +492,7 @@ rawFilterShape = [32, 1, 1, 1], strides = [1, 1]
     // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 32, 26, 256], [1, 32, 25, 256]], memory_offsets = [[0, 0, 0, 0], [0, 0, 26, 0]]}>
     // CHECK-SAME:      -> tensor<1x32x51x256x!qElemType, {order = #NHWC}>
 
-    // CHECK:       [[SLICE_4:%.+]] = VPU.Slice %arg0 [0, 0, 205, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
+    // CHECK:       [[SLICE_4:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 205, 0] [1, 32, 51, 256] : tensor<1x32x256x256xf16, {order = #NHWC}> to tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK:       [[COPY_INPUT_4:%.+]] = VPU.Copy([[SLICE_4]]) {out_mem_space = @CMX_NN} : tensor<1x32x51x256xf16, {order = #NHWC}>
     // CHECK-SAME:       -> !VPU.DistributedTensor<1x32x51x256xf16, #NHWC, @CMX_NN,
     // CHECK-SAME:          {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, uniform_distributed_segments

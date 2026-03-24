@@ -1,3 +1,4 @@
+#
 # Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -32,7 +33,7 @@ target_link_libraries(${TARGET_NAME}
         openvino::npu_al
         openvino::npu_zero_utils
         npu_logger
-        npu_ov_utils
+        npu_compiler_interface
 )
 
 target_include_directories(${TARGET_NAME}
@@ -43,6 +44,7 @@ target_include_directories(${TARGET_NAME}
 
 install(TARGETS ${TARGET_NAME}
         ARCHIVE DESTINATION ${OV_CPACK_ARCHIVEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
-        LIBRARY DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT})
+        LIBRARY DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+        RUNTIME DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT})
 
 add_subdirectory(level_zero_wrapper)

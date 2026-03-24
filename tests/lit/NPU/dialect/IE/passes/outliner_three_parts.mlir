@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,8 +49,8 @@ module @OneInputOneOutput {
 // CHECK:   return [[ADD]] : tensor<1x48x60x60xf32>
 // CHECK: }
 
-// CHECK: func.func private @main_part3(%arg0: tensor<1x48x60x60xf32>) -> tensor<1x48x60x60xf32> {
-// CHECK:   [[SOFT:%.+]] = IE.SoftMax(%arg0) {axisInd = 1 : i64} : tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
+// CHECK: func.func private @main_part3([[ARG_0:%[^:]+]]: tensor<1x48x60x60xf32>) -> tensor<1x48x60x60xf32> {
+// CHECK:   [[SOFT:%.+]] = IE.SoftMax([[ARG_0]]) {axisInd = 1 : i64} : tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
 // CHECK:   return [[SOFT]] : tensor<1x48x60x60xf32>
 // CHECK: }
 

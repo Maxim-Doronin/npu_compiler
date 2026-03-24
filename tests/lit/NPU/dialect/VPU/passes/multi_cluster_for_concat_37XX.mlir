@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CMXConcatWithSplitOverHeight
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x4x8xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x4x8xf16, {order = #NHWC}>)
 func.func @CMXConcatWithSplitOverHeight(%arg0: tensor<1x16x4x8xf16, {order = #NHWC}>, %arg1: tensor<1x16x4x8xf16, {order = #NHWC}>) -> tensor<1x16x2x4xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
     %cst_0 = const.Declare tensor<32x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -28,12 +29,12 @@ func.func @CMXConcatWithSplitOverHeight(%arg0: tensor<1x16x4x8xf16, {order = #NH
 
     //CHECK:        [[WEIGHTSTABLE0:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
     //CHECK:        [[WEIGHTS0:%.+]] = const.Declare tensor<32x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
 
     //CHECK:        [[WEIGHTSTABLE1:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
     //CHECK:        [[WEIGHTS1:%.+]] = const.Declare tensor<32x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution(%arg1, [[WEIGHTS1]], [[WEIGHTSTABLE1]])
+    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[WEIGHTS1]], [[WEIGHTSTABLE1]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
 
     //CHECK:        [[VAL2:%.+]] = VPU.Concat([[VAL0]], [[VAL1]])
@@ -49,6 +50,7 @@ func.func @CMXConcatWithSplitOverHeight(%arg0: tensor<1x16x4x8xf16, {order = #NH
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CMXConcatWithClustering
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x4x4xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x4x4xf16, {order = #NHWC}>)
 func.func @CMXConcatWithClustering(%arg0: tensor<1x16x4x4xf16, {order = #NHWC}>, %arg1: tensor<1x16x4x4xf16, {order = #NHWC}>) -> tensor<1x32x2x2xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     %cst_0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -69,12 +71,12 @@ func.func @CMXConcatWithClustering(%arg0: tensor<1x16x4x4xf16, {order = #NHWC}>,
     //CHECK:        [[WEIGHTSTABLE0:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS0:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
 
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<HKSwitch>
 
     //CHECK:        [[WEIGHTSTABLE1:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS1:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution(%arg1, [[WEIGHTS1]], [[WEIGHTSTABLE1]])
+    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[WEIGHTS1]], [[WEIGHTSTABLE1]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<HKSwitch>
 
     //CHECK:        [[VAL2:%.+]] = VPU.Concat([[VAL0]], [[VAL1]])
@@ -92,6 +94,7 @@ func.func @CMXConcatWithClustering(%arg0: tensor<1x16x4x4xf16, {order = #NHWC}>,
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CMXConcatWithClusteringWithHKSwitchConvs
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x8x8xf16, {order = #NHWC}>)
 func.func @CMXConcatWithClusteringWithHKSwitchConvs(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>, %arg1: tensor<1x16x8x8xf16, {order = #NHWC}>) -> tensor<1x32x4x4xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     %cst_0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -112,12 +115,12 @@ func.func @CMXConcatWithClusteringWithHKSwitchConvs(%arg0: tensor<1x16x8x8xf16, 
     //CHECK:        [[WEIGHTSTABLE0:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS0:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
 
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<HKSwitch>
 
     //CHECK:        [[WEIGHTSTABLE1:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS1:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution(%arg1, [[WEIGHTS1]], [[WEIGHTSTABLE1]])
+    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[WEIGHTS1]], [[WEIGHTSTABLE1]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<HKSwitch>
 
     //CHECK:        [[VAL2:%.+]] = VPU.Concat([[VAL0]], [[VAL1]])
@@ -135,6 +138,7 @@ func.func @CMXConcatWithClusteringWithHKSwitchConvs(%arg0: tensor<1x16x8x8xf16, 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CMXConcatWithMultipleUsers
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x8x8xf16, {order = #NHWC}>)
 func.func @CMXConcatWithMultipleUsers(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>, %arg1: tensor<1x16x8x8xf16, {order = #NHWC}>) -> (tensor<1x32x4x4xf16, {order = #NHWC}>, tensor<1x48x8x8xf16, {order = #NHWC}>) {
     %cst = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     %cst_0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -158,12 +162,12 @@ func.func @CMXConcatWithMultipleUsers(%arg0: tensor<1x16x8x8xf16, {order = #NHWC
 
     //CHECK:        [[WEIGHTSTABLE0:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS0:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<HKSwitch>
 
     //CHECK:        [[WEIGHTSTABLE1:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS1:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution(%arg1, [[WEIGHTS1]], [[WEIGHTSTABLE1]])
+    //CHECK:        [[VAL1:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[WEIGHTS1]], [[WEIGHTSTABLE1]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<HKSwitch>
 
     //CHECK:        [[VAL2:%.+]] = VPU.Concat([[VAL0]], [[VAL1]])
@@ -184,6 +188,7 @@ func.func @CMXConcatWithMultipleUsers(%arg0: tensor<1x16x8x8xf16, {order = #NHWC
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CMXConcatWithShortcut
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x8x8xf16, {order = #NHWC}>)
 func.func @CMXConcatWithShortcut(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>) -> tensor<1x32x4x4xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     %cst_0 = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -203,7 +208,7 @@ func.func @CMXConcatWithShortcut(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>) -
 
     //CHECK:        [[WEIGHTSTABLE0:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
     //CHECK:        [[WEIGHTS0:%.+]] = const.Declare tensor<16x16x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x3x3xf16>, [#const.Reorder<#NHWC>]
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
 
     //CHECK:        [[WEIGHTSTABLE1:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<10> : tensor<32x1x1x4xsi32>
@@ -230,6 +235,7 @@ func.func @CMXConcatWithShortcut(%arg0: tensor<1x16x8x8xf16, {order = #NHWC}>) -
 #map1 = affine_map<(d0, d1, d2, d3, d4) -> (d0, d4, d1, d2, d3)>
 
 // CHECK-LABEL: @CMXConcatWithoutSplitOverHeight
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x132x120xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x132x120xf16, {order = #NHWC}>)
 func.func @CMXConcatWithoutSplitOverHeight(%arg0: tensor<1x16x132x120xf16, {order = #NHWC}>, %arg1: tensor<1x16x132x120xf16, {order = #NHWC}>) -> tensor<1x240x64x33xf16, {order = #NHWC}> {
     %cst_0 = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}> = dense<1.562500e-02> : tensor<1x1x1x1xf32>, [#const.Broadcast<0 : i64, 16 : i64>, #const.Reshape<[16, 1, 1, 1]>, #const.CastElemType<f16>, #const.Reorder<#NHWC>, #const.Reorder<#NCHW>, #const.Reshape<[16, 1, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 15, 0, 0]>, #const.Reorder<#NHWC>]
     %cst_1 = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
@@ -259,12 +265,12 @@ func.func @CMXConcatWithoutSplitOverHeight(%arg0: tensor<1x16x132x120xf16, {orde
 
     //CHECK:        [[WEIGHTS0:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}> = dense<1.562500e-02> : tensor<1x1x1x1xf32>, [#const.Broadcast<0 : i64, 16 : i64>, #const.Reshape<[16, 1, 1, 1]>, #const.CastElemType<f16>, #const.Reorder<#NHWC>, #const.Reorder<#NCHW>, #const.Reshape<[16, 1, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 15, 0, 0]>, #const.Reorder<#NHWC>]
     //CHECK:        [[WEIGHTSTABLE0:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<10> : tensor<16x1x1x4xsi32>
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.DepthConvolution(%arg0, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.DepthConvolution([[ARG_0]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
     //CHECK:        [[SHAPECAST0:%.+]] = VPU.ShapeCast {shape = [1, 33, 120, 64]} inputs([[VAL0]] : tensor<1x16x132x120xf16, {order = #NHWC}>) -> tensor<1x33x120x64xf16, {order = #NHWC}>
     //CHECK:        [[AFFINERESHAPE0:%.+]] = VPU.AffineReshape([[SHAPECAST0]])
 
-    //CHECK:        [[VAL1:%.+]] = VPU.NCE.DepthConvolution(%arg1, [[WEIGHTS0]], [[WEIGHTSTABLE0]])
+    //CHECK:        [[VAL1:%.+]] = VPU.NCE.DepthConvolution([[ARG_1]], [[WEIGHTS0]], [[WEIGHTSTABLE0]])
     //CHECK-SAME:    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
     //CHECK:        [[SHAPECAST1:%.+]] = VPU.ShapeCast {shape = [1, 33, 120, 64]} inputs([[VAL1]] : tensor<1x16x132x120xf16, {order = #NHWC}>) -> tensor<1x33x120x64xf16, {order = #NHWC}>
     //CHECK:        [[AFFINERESHAPE1:%.+]] = VPU.AffineReshape([[SHAPECAST1]])

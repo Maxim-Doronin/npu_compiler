@@ -55,6 +55,17 @@ TEST_P(BucketizeLayerTestCommon, NPU5010_SW) {
     run(Platform::NPU5010);
 }
 
+TEST_P(BucketizeLayerTestCommon, NPU5020_SW) {
+    setSkipCompilationCallback([](std::stringstream& skip) {
+        const auto outputType = std::get<4>(GetParam());
+        if (outputType == ov::element::i64) {
+            skip << "I64 Precision is not supported yet!";
+        }
+    });
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
 }  // namespace test
 }  // namespace ov
 

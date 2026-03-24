@@ -33,7 +33,7 @@
   - [Special solution for optional inputs](#special-solution-for-optional-inputs)
   - [VPU → VPUIP lowering lit-test](#vpu--vpuip-lowering-lit-test)
 # Introduction
-This instruction will guide you through steps of adding a new software layer to the MLIR compiler. It has step-by-step plan of actions using `Sigmoid` layer as an example. 
+This instruction will guide you through steps of adding a new software layer to the MLIR compiler. It has step-by-step plan of actions using `Sigmoid` layer as an example.
 > Be aware, that MLIR compiler is in a rapid development and code snippets might be out of date.
 
 # Debugging tips and tricks
@@ -470,7 +470,7 @@ mlir::LogicalResult ConvolutionExpansion::matchAndRewrite(IE::ConvolutionOp orig
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
 
     // Replace old IE::ConvolutionOp with a new IE::ConvolutionOp + IE::ReshapeOp
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp.output(), nullptr, false, outputShapeAttr);
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, newConvOp.output(), outputShapeAttr);
 
     _log.trace("Replaced with 'IE::Convolution' (2D)");
 
@@ -976,7 +976,7 @@ Some operations like FullyConnected/EmbeddingBagPackedSum have optional input, a
     return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{delimiterAttr}, {"fully_connected"}};
 ```
 
-##### Param struct of optional inputs 
+##### Param struct of optional inputs
 ```cpp
 struct LayerData {
     struct MemRefData tensors[MAX_TENSOR_COUNT]; // MAX_TENSOR_COUNT==N

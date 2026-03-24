@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,8 +17,105 @@
 namespace vpux {
 namespace IE {
 
-mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, bool isAttrCheckEnabled) {
+//
+// Helper functions for GroupConv conversion decision
+//
+
+namespace {
+
+// Check if depthwise GroupConv would be supported by NCEDepthConvolution after HandleLargePadsPass
+// reduces the padding to kernel/2
+bool canBecomeNCEDepthConvAfterHandleLargePads(IE::GroupConvolutionOp groupconv, ShapeRef filterShape,
+                                               ShapeRef inputShape, LogCb logCb) {
+    const auto KY = filterShape[Dims4D::Filter::KY];
+    const auto KX = filterShape[Dims4D::Filter::KX];
+    const auto pads = PadInfo(groupconv.getPadsBegin(), groupconv.getPadsEnd());
+
+    // For 1x1 kernel, kernel/2 = 0, so HandleLargePadsPass would reduce all padding to 0.
+    // In this case, GroupConvToSingleConvConverter can handle it more efficiently.
+    if (KY == 1 && KX == 1) {
+        return false;
+    }
+
+    // Check if padding exceeds the NCE limit (padding <= kernel/2)
+    const bool hasLargePadding = pads.top > KY / 2 || pads.bottom > KY / 2 || pads.left > KX / 2 || pads.right > KX / 2;
+    if (!hasLargePadding) {
+        return false;
+    }
+
+    // For single-pixel input (1x1 spatial), DepthwiseConvSinglePixelInputToMultiplyConverter
+    // provides a better optimization, so don't preserve for NCEDepthConv
+    const auto inputH = inputShape[Dims4D::Act::H];
+    const auto inputW = inputShape[Dims4D::Act::W];
+    if (inputH == 1 && inputW == 1) {
+        return false;
+    }
+
+    // Simulate reduced padding as HandleLargePadsPass would do
+    const auto reducedPadTop = std::min(static_cast<int64_t>(pads.top), KY / 2);
+    const auto reducedPadBottom = std::min(static_cast<int64_t>(pads.bottom), KY / 2);
+    const auto reducedPadLeft = std::min(static_cast<int64_t>(pads.left), KX / 2);
+    const auto reducedPadRight = std::min(static_cast<int64_t>(pads.right), KX / 2);
+
+    const auto kernelStrides = parseIntArrayAttr<int64_t>(groupconv.getStrides());
+    const auto kernelStridesShape = Shape(kernelStrides);
+    const auto SY = kernelStridesShape[Dims4D::Strides::Y];
+    const auto SX = kernelStridesShape[Dims4D::Strides::X];
+
+    // Check if NCE constraints would be satisfied with reduced padding
+    if (!VPU::NCEInvariant::isAttrsSupported(groupconv, KY, KX, SY, SX, reducedPadTop, reducedPadBottom, reducedPadLeft,
+                                             reducedPadRight, logCb)) {
+        return false;
+    }
+
+    // Check channel alignment constraints
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getOutput().getType());
+    const auto inputAlignment = VPU::NCEInvariant::getAlignment(inputType.getElementType());
+    const auto outputAlignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
+
+    return VPU::NCEInvariant::isInputActTypeSupported(inputType, inputAlignment, false) &&
+           VPU::NCEInvariant::isOutputActTypeSupported(outputType, outputAlignment);
+}
+
+}  // namespace
+
+//
+// canConvertGroupConvToConv
+//
+// Decision logic for whether a GroupConv should be converted to regular Convolution(s).
+//
+// Decision Tree:
+// +-----------------------------------------------------------------------------------------+
+// | GroupConv                                                                               |
+// +-----------------------------------------------------------------------------------------+
+// | 1. Non-depthwise GroupConv                                                              |
+// |    -> Allow conversion (handled by GroupConvTo*Converter)                               |
+// |                                                                                         |
+// | 2. Depthwise GroupConv:                                                                 |
+// |    2.1 Directly supported by NCEDepthConvolution                                        |
+// |        -> Keep as GroupConv (will become NCEDepthConvolution)                           |
+// |                                                                                         |
+// |    2.2 Not directly supported, but could become supported after HandleLargePadsPass     |
+// |        2.2.1 1x1 kernel (HandleLargePads ineffective, reduces all padding to 0)         |
+// |              -> Allow conversion (GroupConvToSingleConvConverter handles it)            |
+// |        2.2.2 Single-pixel input (1x1 spatial)                                           |
+// |              -> Allow conversion (DepthwiseConvSinglePixelInputToMultiplyConverter)     |
+// |        2.2.3 Otherwise                                                                  |
+// |              -> Keep as GroupConv (HandleLargePadsPass + NCEDepthConv is better)        |
+// |                                                                                         |
+// |    2.3 Not supported even after HandleLargePadsPass                                     |
+// |        -> Allow conversion                                                              |
+// +-----------------------------------------------------------------------------------------+
+//
+// Returns: success() = allow conversion, failure() = keep as GroupConv
+//
+
+mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, bool isAttrCheckEnabled,
+                                              bool checkHandleLargePads) {
     LogCb logCb = globalLogCb;
+
+    // Basic validation
     if (!groupconv.getGroups().has_value()) {
         logCb(formatv("Grouped convolution does not have groups attribute"));
         return mlir::failure();
@@ -27,25 +124,14 @@ mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getInput().getType());
     const auto filterType = mlir::cast<vpux::NDTypeInterface>(groupconv.getFilter().getType());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getOutput().getType());
-    if (inputType.getRank() != 4) {
-        logCb(formatv("Only 4D tensors are supported"));
-        return mlir::failure();
-    }
-    if (outputType.getRank() != 4) {
-        logCb(formatv("Only 4D tensors are supported"));
-        return mlir::failure();
-    }
-    if (filterType.getRank() != 4) {
+
+    if (inputType.getRank() != 4 || outputType.getRank() != 4 || filterType.getRank() != 4) {
         logCb(formatv("Only 4D tensors are supported"));
         return mlir::failure();
     }
 
     const auto dilation = parseIntArrayAttr<int64_t>(groupconv.getDilations());
-    if (dilation.size() != 2) {
-        logCb(formatv("Expected dilations size to be 2, got '{0}'", dilation.size()));
-        return mlir::failure();
-    }
-    if (dilation[0] != 1 || dilation[1] != 1) {
+    if (dilation.size() != 2 || dilation[0] != 1 || dilation[1] != 1) {
         logCb(formatv("Dilated convolution is not supported"));
         return mlir::failure();
     }
@@ -54,80 +140,35 @@ mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, 
     const auto filterShape = getShape(groupconv.getFilter());
     const auto inputShape = getShape(groupconv.getInput());
 
-    // Check if this is a depthwise convolution (each input channel is convolved separately)
-    const auto isDepthwise = filterShape[Dims4D::Filter::OC] == group && inputShape[Dims4D::Act::C] == group;
+    // Check if this is a depthwise convolution
+    const bool isDepthwise = filterShape[Dims4D::Filter::OC] == group && inputShape[Dims4D::Act::C] == group;
 
     if (isDepthwise) {
-        // If DWConv can be directly converted to NCEDepthConvolution, skip conversion to regular Conv.
-        // No need to check layout since this pass runs before adjust layout and channel alignment pipeline.
+        // Case 2.1: Directly supported by NCEDepthConvolution
         if (VPU::NCEDepthConvolutionOp::isSupported(groupconv, logCb, /*checkLayout=*/false,
                                                     /*checkChannelAlignment=*/false)) {
-            logCb(formatv("Conversion is not needed for dw conv"));
+            logCb(formatv("Depthwise GroupConv is directly supported by NCEDepthConvolution"));
             return mlir::failure();
         }
 
-        // NCEDepthConvolution is not directly supported. Check if it could become supported after
-        // HandleLargePadsPass reduces the padding. If so, preserve the GroupConv for later optimization.
-        const auto KY = filterShape[Dims4D::Filter::KY];
-        const auto KX = filterShape[Dims4D::Filter::KX];
-        const auto pads = PadInfo(groupconv.getPadsBegin(), groupconv.getPadsEnd());
-
-        // Check if padding exceeds the NCE limit (padding <= kernel/2)
-        const bool hasLargePadding =
-                pads.top > KY / 2 || pads.bottom > KY / 2 || pads.left > KX / 2 || pads.right > KX / 2;
-
-        // Skip optimization for single-pixel input (1x1 spatial) which should be handled by
-        // DepthwiseConvSinglePixelInputToMultiplyConverter instead
-        const auto inputH = inputShape[Dims4D::Act::H];
-        const auto inputW = inputShape[Dims4D::Act::W];
-        const bool isSinglePixelInput = (inputH == 1 && inputW == 1);
-
-        if (hasLargePadding && !isSinglePixelInput) {
-            // Simulate reduced padding (clamped to kernel/2) as HandleLargePadsPass would do
-            const auto reducedPadTop = std::min(static_cast<int64_t>(pads.top), KY / 2);
-            const auto reducedPadBottom = std::min(static_cast<int64_t>(pads.bottom), KY / 2);
-            const auto reducedPadLeft = std::min(static_cast<int64_t>(pads.left), KX / 2);
-            const auto reducedPadRight = std::min(static_cast<int64_t>(pads.right), KX / 2);
-
-            const auto kernelStrides = parseIntArrayAttr<int64_t>(groupconv.getStrides());
-            const auto kernelStridesShape = Shape(kernelStrides);
-            const auto SY = kernelStridesShape[Dims4D::Strides::Y];
-            const auto SX = kernelStridesShape[Dims4D::Strides::X];
-
-            // Check kernel, stride, and reduced padding constraints
-            if (VPU::NCEInvariant::isAttrsSupported(groupconv, KY, KX, SY, SX, reducedPadTop, reducedPadBottom,
-                                                    reducedPadLeft, reducedPadRight, logCb)) {
-                // Kernel/stride/padding constraints are satisfied with reduced padding
-                // Now check channel alignment using VPU::NCEInvariant::getAlignment directly
-                // (AlignedChannelsOpInterface returns 1 when NCE is not supported due to large padding)
-                const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getInput().getType());
-                const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupconv.getOutput().getType());
-                const auto inputAlignment = VPU::NCEInvariant::getAlignment(inputType.getElementType());
-                const auto outputAlignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
-
-                if (VPU::NCEInvariant::isInputActTypeSupported(inputType, inputAlignment, false) &&
-                    VPU::NCEInvariant::isOutputActTypeSupported(outputType, outputAlignment)) {
-                    logCb(formatv("Depthwise GroupConv with large padding will be handled by HandleLargePadsPass"));
-                    return mlir::failure();
-                }
-            }
+        // Case 2.2/2.3: Check if it could become supported after HandleLarge*Pass
+        if (checkHandleLargePads &&
+            canBecomeNCEDepthConvAfterHandleLargePads(groupconv, filterShape, inputShape, logCb)) {
+            logCb(formatv("Depthwise GroupConv will be supported after HandleLarge*Pass"));
+            return mlir::failure();
         }
     }
 
-    // Channel alignment is not checked here because experiments show that NCE is still able to provide better
-    // performance than SHAVE even if channel expand is done.
-
-    // GroupConv with large kernels, padding, or strides may benefit from being converted to Convolution
-    // to efficiently handle these parameters
+    // Additional attribute check for specific use cases
     if (isAttrCheckEnabled) {
         const auto KY = filterShape[Dims4D::Filter::KY];
         const auto KX = filterShape[Dims4D::Filter::KX];
-
         const auto kernelStrides = parseIntArrayAttr<int64_t>(groupconv.getStrides());
         const auto kernelStridesShape = Shape(kernelStrides);
         const auto SY = kernelStridesShape[Dims4D::Strides::Y];
         const auto SX = kernelStridesShape[Dims4D::Strides::X];
         const auto pads = PadInfo(groupconv.getPadsBegin(), groupconv.getPadsEnd());
+
         if (!VPU::NCEInvariant::isAttrsSupported(groupconv, KY, KX, SY, SX, pads.top, pads.bottom, pads.left,
                                                  pads.right, logCb)) {
             return mlir::failure();

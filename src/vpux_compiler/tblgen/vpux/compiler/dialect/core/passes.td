@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -79,6 +79,24 @@ def PrintDot : PassBase<"print-dot", "vpux::ModulePass"> {
     ];
 
     let constructor = "vpux::Core::createPrintDotPass()";
+}
+
+//
+// DumpIntermediateValues
+//
+
+def DumpIntermediateValues : PassBase<"dump-intermediate-values", "vpux::ModulePass"> {
+    let summary = "Dump intermediate operation results";
+
+    let options = [
+        Option<
+            "opFilters", "op-filters",
+            "std::string", "",
+            "Filters to select which operations to dump intermediate values from"
+        >
+    ];
+
+    let constructor = "vpux::Core::createDumpIntermediateValuesPass()";
 }
 
 //
@@ -169,6 +187,38 @@ def PackNestedModules : PassBase<"pack-nested-modules", "vpux::ModulePass"> {
 
         More involved examples can be found in the pass's LIT test files.
 
+        Additionally, this pass supports explicit module packing via the `config.functionToPack` attribute.
+        Functions marked with this attribute will be packed into a nested module with the specified name.
+        If multiple functions have the same target module name, they will be grouped together.
+        The `config.functionToPackEntryPoint` attribute can be used to mark a function as the entry point
+        of the packed module.
+        Note: Only direct children of the top module are processed; functions inside nested modules
+        with the `config.functionToPack` attribute are not affected by this pass.
+        Example:
+
+        ```MLIR
+            module {
+                func.func private @helper() attributes {config.functionToPack = "my_module"} { ... }
+                func.func private @entry() attributes {config.functionToPack = "my_module", config.functionToPackEntryPoint} { ... }
+                func.func @main() {
+                    call @entry()
+                }
+            }
+        ```
+
+        would produce
+
+        ```MLIR
+            module {
+                module @my_module attributes {config.packedModule} {
+                    func.func private @helper() { ... }
+                    func.func private @entry() { ... }
+                }
+                func.func @main() {
+                    Core.NestedCall @my_module::@entry()
+                }
+            }
+        ```
     }];
 
     let options = [
@@ -270,6 +320,10 @@ def UnpackNestedModules : PassBase<"unpack-nested-modules", "vpux::ModulePass"> 
                 }
             }
         ```
+
+        The pass also handles modules created via the `FunctionToPack` attribute. Modules marked with
+        `config.packedModule = "FunctionToPack[...]"` attribute will be unpacked, and the original
+        `config.functionToPack` attributes will be restored on the functions.
     }];
 
     let options = [

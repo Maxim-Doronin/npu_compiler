@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/dense_map.hpp"
@@ -81,9 +82,7 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -129,9 +128,7 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         OpBuilderLogger builderLog(getLogger().nest());
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);
@@ -187,9 +184,7 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -263,9 +258,7 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         OpBuilderLogger builderLog(getLogger().nest());
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);
@@ -334,9 +327,7 @@ public:
     }
 
     void outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         auto outlinedTargets = getOutliningTargets(netFunc);
         if (outlinedTargets.empty()) {
@@ -374,9 +365,7 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -424,9 +413,7 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front());
         DenseMap<mlir::Value, mlir::Value> oldToNewArgMap;
@@ -498,9 +485,7 @@ public:
 private:
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
         builder.setInsertionPoint(netFunc);
@@ -546,9 +531,7 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override {
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         OpBuilderLogger builderLog(getLogger().nest());
         auto builder = mlir::OpBuilder::atBlockBegin(&netFunc.getBody().front(), &builderLog);

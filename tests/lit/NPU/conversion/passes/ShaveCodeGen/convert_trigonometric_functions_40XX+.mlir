@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -54,13 +54,13 @@ module @SingleAcosF16Layer {
       IE.CGCYield %1 : tensor<1x1x1x1000xf16>
     } -> tensor<1x1x1x1000xf16>
     return %0 : tensor<1x1x1x1000xf16>
-    
+
     // CHECK-NOT:     IE.Acos
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[RES:%.+]] = math.acos [[IN]] fastmath<afn> : f16
-    // CHECK-NEXT:      linalg.yield [[RES]] : f16    
+    // CHECK-NEXT:      linalg.yield [[RES]] : f16
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
@@ -121,13 +121,13 @@ module @SingleAsinF16Layer {
       IE.CGCYield %1 : tensor<1x1x1x1000xf16>
     } -> tensor<1x1x1x1000xf16>
     return %0 : tensor<1x1x1x1000xf16>
-    
+
     // CHECK-NOT:     IE.Asin
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
     // CHECK-NEXT:      [[RES:%.+]] = math.asin [[IN]] fastmath<afn> : f16
-    // CHECK-NEXT:      linalg.yield [[RES]] : f16    
+    // CHECK-NEXT:      linalg.yield [[RES]] : f16
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }

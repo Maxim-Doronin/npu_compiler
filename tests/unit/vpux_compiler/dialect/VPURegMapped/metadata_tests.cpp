@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELFNPU37XX/metadata.hpp"
 
 #include "common/utils.hpp"
+#include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 

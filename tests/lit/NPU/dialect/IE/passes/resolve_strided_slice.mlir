@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @ResolveStridedSliceWithStride
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x10x20x30xf16>
 func.func @ResolveStridedSliceWithStride(%arg0: tensor<1x10x20x30xf16>) -> tensor<1x5x5x5xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0, 0, 0, 15],
@@ -21,7 +22,7 @@ func.func @ResolveStridedSliceWithStride(%arg0: tensor<1x10x20x30xf16>) -> tenso
     } : tensor<1x10x20x30xf16> -> tensor<1x5x5x5xf16>
 
     return %0 : tensor<1x5x5x5xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.StridedSlice(%arg0)
+    // CHECK:       [[VAL0:%.+]] = IE.StridedSlice([[ARG_0]])
 
     // Only attributes with name *_attr could have values != 0
     // CHECK-SAME:  begin_mask = [0, 0, 0, 0]
@@ -61,6 +62,7 @@ func.func @ResolveStridedSliceWoutStride(%arg0: tensor<1x10x20x30xf16>) -> tenso
 // -----
 
 // CHECK-LABEL: @ResolveStridedSliceNegStride
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x10x20x30xf16>
 func.func @ResolveStridedSliceNegStride(%arg0: tensor<1x10x20x30xf16>) -> tensor<1x5x5x5xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0, 0, 0, 15],
@@ -76,7 +78,7 @@ func.func @ResolveStridedSliceNegStride(%arg0: tensor<1x10x20x30xf16>) -> tensor
 
     return %0 : tensor<1x5x5x5xf16>
 
-    // CHECK:       [[VAL0:%.+]] = IE.StridedSlice(%arg0)
+    // CHECK:       [[VAL0:%.+]] = IE.StridedSlice([[ARG_0]])
 
     // Only attributes with name *_attr could have values != 0
     // CHECK-SAME:  begin_mask = [0, 0, 0, 0]
@@ -92,6 +94,7 @@ func.func @ResolveStridedSliceNegStride(%arg0: tensor<1x10x20x30xf16>) -> tensor
 // -----
 
 // CHECK-LABEL: @ResolveStridedSliceWoutStrideMergeAdjacentFirstTwo1
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x9x16x10xf16>
 func.func @ResolveStridedSliceWoutStrideMergeAdjacentFirstTwo1(%arg0: tensor<1x1x9x16x10xf16>) -> tensor<1x1x9x16x1xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0, 0, 0, 0, 0],
@@ -106,7 +109,7 @@ func.func @ResolveStridedSliceWoutStrideMergeAdjacentFirstTwo1(%arg0: tensor<1x1
     } : tensor<1x1x9x16x10xf16> -> tensor<1x1x9x16x1xf16>
 
     return %0 : tensor<1x1x9x16x1xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 9, 16, 10]} : tensor<1x1x9x16x10xf16> -> tensor<1x9x16x10xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 9, 16, 10]} : tensor<1x1x9x16x10xf16> -> tensor<1x9x16x10xf16>
     // CHECK:       [[VAL1:%.+]] = IE.Slice [[VAL0]] [0, 0, 0, 0] [1, 9, 16, 1] : tensor<1x9x16x10xf16> to tensor<1x9x16x1xf16>
     // CHECK:       [[VAL2:%.+]] = IE.Reshape([[VAL1]]) {shape_value = [1, 1, 9, 16, 1]} : tensor<1x9x16x1xf16> -> tensor<1x1x9x16x1xf16>
 }
@@ -114,6 +117,7 @@ func.func @ResolveStridedSliceWoutStrideMergeAdjacentFirstTwo1(%arg0: tensor<1x1
 // -----
 
 // CHECK-LABEL: @ResolveStridedSliceWoutStrideMergeAdjacentLastTwo1
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x9x16x1x1xf16>
 func.func @ResolveStridedSliceWoutStrideMergeAdjacentLastTwo1(%arg0: tensor<1x9x16x1x1xf16>) -> tensor<1x9x8x1x1xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0, 0, 0, 0, 0],
@@ -128,7 +132,7 @@ func.func @ResolveStridedSliceWoutStrideMergeAdjacentLastTwo1(%arg0: tensor<1x9x
     } : tensor<1x9x16x1x1xf16> -> tensor<1x9x8x1x1xf16>
 
     return %0 : tensor<1x9x8x1x1xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 9, 16, 1]} : tensor<1x9x16x1x1xf16> -> tensor<1x9x16x1xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 9, 16, 1]} : tensor<1x9x16x1x1xf16> -> tensor<1x9x16x1xf16>
     // CHECK:       [[VAL1:%.+]] = IE.Slice [[VAL0]] [0, 0, 0, 0] [1, 9, 8, 1] : tensor<1x9x16x1xf16> to tensor<1x9x8x1xf16>
     // CHECK:       [[VAL2:%.+]] = IE.Reshape([[VAL1]]) {shape_value = [1, 9, 8, 1, 1]} : tensor<1x9x8x1xf16> -> tensor<1x9x8x1x1xf16>
 }
@@ -159,6 +163,7 @@ func.func @ResolveStridedSliceWoutStrideNotMergeAdjacentDim(%arg0: tensor<1x8x16
 // -----
 
 // CHECK-LABEL: @AdjustStridedSliceAttrsRank
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<157x1x2048xf16>
 func.func @AdjustStridedSliceAttrsRank(%arg0: tensor<157x1x2048xf16>) -> tensor<79x1x2048xf16> {
     %0 = IE.StridedSlice(%arg0) {
         begins_attr = [0],
@@ -173,7 +178,7 @@ func.func @AdjustStridedSliceAttrsRank(%arg0: tensor<157x1x2048xf16>) -> tensor<
         } : tensor<157x1x2048xf16> -> tensor<79x1x2048xf16>
 
     return %0 : tensor<79x1x2048xf16>
-    // CHECK:       IE.StridedSlice(%arg0)
+    // CHECK:       IE.StridedSlice([[ARG_0]])
     // CHECK-SAME:  begin_mask = [0, 0, 0]
     // CHECK-SAME:  begins_attr = [0, 0, 0]
     // CHECK-SAME:  ellipsis_mask = [0, 0, 0]

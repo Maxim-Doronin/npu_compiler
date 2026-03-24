@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -158,4 +158,5 @@ template class ThreadSafeHashMap<llvm::hash_code, PerClusterShapeCacheItem>;
 template class ThreadSafeHashMap<llvm::hash_code, SmallVector<DimArr>>;
 template class ThreadSafeHashMap<llvm::hash_code, DimArr>;
 template class ThreadSafeHashMap<llvm::hash_code, SmallVector<vpux::NDTypeInterface>>;
+template class ThreadSafeHashMap<llvm::hash_code, size_t>;
 }  // namespace vpux

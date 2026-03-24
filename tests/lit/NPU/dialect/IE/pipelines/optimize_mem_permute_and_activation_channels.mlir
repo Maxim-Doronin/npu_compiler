@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,6 +43,9 @@ func.func @MemPermuteProcessingWithFusing(%arg0: tensor<1x3x32x64xf16, {order = 
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL: @MemPermuteProcessingConvertPass
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf32, {order = #NHWC}>,
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x2x3x4xf32>)
 func.func @MemPermuteProcessingConvertPass(%arg0: tensor<1x2x3x4xf32>,
                             %arg1: tensor<1x2x3x4xf32, {order = #NHWC}>,
                             %arg2: tensor<1x2x3x4xf32>) ->
@@ -57,9 +60,9 @@ func.func @MemPermuteProcessingConvertPass(%arg0: tensor<1x2x3x4xf32>,
     // CHECK-NOT: IE.Transpose
     // CHECK-NOT: IE.Reorder
     // CHECK-NOT: IE.Reorder
-    // CHECK:     [[VAL0:%.+]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32> -> tensor<1x4x2x3xf32>
-    // CHECK:     [[VAL1:%.+]] = IE.MemPermute(%arg1) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32, {order = #NHWC}> -> tensor<1x2x3x4xf32>
-    // CHECK:     [[VAL2:%.+]] = IE.MemPermute(%arg2) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x2x3x4xf32> -> tensor<1x2x3x4xf32, {order = #NHWC}>
+    // CHECK:     [[VAL0:%.+]] = IE.MemPermute([[ARG_0]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32> -> tensor<1x4x2x3xf32>
+    // CHECK:     [[VAL1:%.+]] = IE.MemPermute([[ARG_1]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32, {order = #NHWC}> -> tensor<1x2x3x4xf32>
+    // CHECK:     [[VAL2:%.+]] = IE.MemPermute([[ARG_2]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x2x3x4xf32> -> tensor<1x2x3x4xf32, {order = #NHWC}>
     // CHECK:     return [[VAL0]], [[VAL1:%.+]], [[VAL2:%.+]] : tensor<1x4x2x3xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32, {order = #NHWC}>
 }
 
@@ -88,12 +91,13 @@ func.func @MemPermuteProcessingWithReorderSoftMax(%arg0: tensor<1x16x512x512xf16
 #map1 = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
 
 // CHECK-LABEL: @MemPermuteProcessingWithNDReorder
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<6x10x10x4x1xf16, {order = #map}>
 func.func @MemPermuteProcessingWithNDReorder(%arg0: tensor<6x10x10x4x1xf16, {order = #map}>) -> tensor<6x10x10x4x1xf16> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCDHW} : tensor<6x10x10x4x1xf16, {order = #map}> -> tensor<6x10x10x4x1xf16>
     return %0 : tensor<6x10x10x4x1xf16>
 
     // CHECK-NOT: IE.Reorder
-    // CHECK: [[VAL0:%.+]] = IE.PermuteCast(%arg0) {dst_order = #NCDHW, mem_perm = #NCDHW} : tensor<6x10x10x4x1xf16, {order = #map}> -> tensor<1x10x10x4x6xf16>
+    // CHECK: [[VAL0:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #NCDHW, mem_perm = #NCDHW} : tensor<6x10x10x4x1xf16, {order = #map}> -> tensor<1x10x10x4x6xf16>
     // CHECK: [[VAL1:%.+]] = IE.AffineReshape([[VAL0]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [1], [2], [3]], shape_value = [1, 100, 4, 6]} : tensor<1x10x10x4x6xf16> -> tensor<1x100x4x6xf16>
     // CHECK: [[VAL2:%.+]] = IE.MemPermute([[VAL1]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x100x4x6xf16> -> tensor<1x6x100x4xf16>

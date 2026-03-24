@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,8 +24,8 @@ struct DeviceVersion {
     config::ArchKind arch{config::ArchKind::UNKNOWN};
 };
 
-/** @brief Adds dialect extension in order to initialize singleton cache for the specified architecture. */
-void initializeSingletonCache(mlir::DialectRegistry& registry, const DeviceVersion& deviceVersion);
+/** @brief Adds dialect extension in order to initialize singletons for the specified architecture. */
+void initializeSingletons(mlir::DialectRegistry& registry, const DeviceVersion& deviceVersion);
 
 }  // namespace VPU
 }  // namespace vpux

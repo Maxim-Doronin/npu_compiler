@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
@@ -208,9 +209,13 @@ mlir::LogicalResult verifyAndBroadcastInput(mlir::Location loc, mlir::Value& inp
     // Handle spatial transpose if needed
     if (transposeInfoValue.has_value() && activationInput && transposedActivation) {
         auto transposeInfo = transposeInfoValue.value();
-        // For H/W-expanded weights requiring transpose, activation input must be constant or TransposeOp
+        // For H-expanded weights requiring transpose, activation input must be constant or TransposeOp.
+        // For W-expanded weights, exchanging W and C dimensions for the activationInput in a PermuteCast when
+        // converted to GroupConv (which requires NHWC layout), making the transpose efficient.
         auto preTransposeOp = activationInput.getDefiningOp<IE::TransposeOp>();
-        if (mlir::failed(IE::getConstParentOp(activationInput)) && preTransposeOp == nullptr) {
+        auto weightsConst = input.getDefiningOp<Const::DeclareOp>();
+        if ((transposeInfo.isHExpanded || !weightsConst) && mlir::failed(IE::getConstParentOp(activationInput)) &&
+            preTransposeOp == nullptr) {
             return mlir::failure();
         }
 

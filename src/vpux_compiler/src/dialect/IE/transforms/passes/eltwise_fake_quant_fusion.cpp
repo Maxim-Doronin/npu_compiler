@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -58,14 +58,14 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
     //
     //  Pattern matched:
     //
-    //                                           +------------+
-    //                                           |Scalar Const|
-    //                                           +------------+
-    //                                                 |
-    //     +-----------------------------+   +---------------------+
-    //     | non LayerWithPostOpInterface|   | optional per tensor |
-    //     |     input producer          |   |   FakeQuantizeOp    |
-    //     +-----------------------------+   +---------------------+
+    //                                                +------------+
+    //                                                |Scalar Const|
+    //                                                +------------+
+    //                                                       |
+    //     +-----------------------------+   +--------------------------------+
+    //     | non LayerWithPostOpInterface|   |      optional per tensor       |
+    //     |     input producer          |   | FakeQuantizeOp or DequantizeOp |
+    //     +-----------------------------+   +--------------------------------+
     //           |                                     |
     //     +------------+                              |
     //     | ConcreteOp |------------------------------+
@@ -115,11 +115,13 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
         return mlir::failure();
     }
 
-    bool lhsIsActivation = vpux::VPU::isEltwiseLhsActivation<ConcreteOp>(concreteParentOp);
-    auto concreteProducerOp = lhsIsActivation ? concreteParentOp.getInput1().getDefiningOp()
-                                              : concreteParentOp.getInput2().getDefiningOp();
+    bool isRhsScalar = vpux::VPU::isEltwiseLhsActivation<ConcreteOp>(concreteParentOp);
+    auto scalarInput = isRhsScalar ? concreteParentOp.getInput2() : concreteParentOp.getInput1();
+    auto nonScalarInput =
+            scalarInput == concreteParentOp.getInput1() ? concreteParentOp.getInput2() : concreteParentOp.getInput1();
+    auto nonScalarProducerOp = nonScalarInput.getDefiningOp();
 
-    if (auto layerWithPostOpInterface = mlir::dyn_cast_or_null<IE::LayerWithPostOpInterface>(concreteProducerOp)) {
+    if (auto layerWithPostOpInterface = mlir::dyn_cast_if_present<IE::LayerWithPostOpInterface>(nonScalarProducerOp)) {
         // The ConcreteOp is later fused as bias if producer op is executed on DPU
         if (layerWithPostOpInterface.supportsFuseBiasScale()) {
             _log.nest().trace("The ConcreteOp input must not inherit the LayerWithPostOpInterface with supported bias "
@@ -130,42 +132,39 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
     }
 
     // Subtract/Divide Op can only be fused if constant is on the 2nd input
-    if (mlir::isa<IE::SubtractOp, IE::DivideOp>(concreteParentOp.getOperation()) && !lhsIsActivation) {
+    if (mlir::isa<IE::SubtractOp, IE::DivideOp>(concreteParentOp.getOperation()) && !isRhsScalar) {
         _log.nest().trace("The SubtractOp/DivideOp activation needs to be LHS");
         return mlir::failure();
     }
 
-    auto concreteScalarInputFqOp = lhsIsActivation
-                                           ? concreteParentOp.getInput2().template getDefiningOp<IE::FakeQuantizeOp>()
-                                           : concreteParentOp.getInput1().template getDefiningOp<IE::FakeQuantizeOp>();
-    auto concreteScalarInputDeclareOp =
-            lhsIsActivation ? concreteParentOp.getInput2().template getDefiningOp<Const::DeclareOp>()
-                            : concreteParentOp.getInput1().template getDefiningOp<Const::DeclareOp>();
-    if (concreteScalarInputFqOp != nullptr) {
-        concreteScalarInputDeclareOp = concreteScalarInputFqOp.getInput().template getDefiningOp<Const::DeclareOp>();
+    auto scalarProducerOp = scalarInput.getDefiningOp();
+    mlir::Operation* maybeDequantOrFQ = nullptr;
+    if (mlir::isa_and_present<IE::FakeQuantizeOp, IE::DequantizeOp>(scalarProducerOp)) {
+        maybeDequantOrFQ = scalarProducerOp;
+        scalarProducerOp = scalarProducerOp->getOperand(0).getDefiningOp();
     }
+    auto scalarConstantOp = mlir::dyn_cast_if_present<Const::DeclareOp>(scalarProducerOp);
 
-    if (concreteScalarInputDeclareOp == nullptr) {
+    if (scalarConstantOp == nullptr) {
         _log.nest().trace("Second input of Concrete is not a DeclareOp at '{0}'", fakeQuantizeOp->getLoc());
         return mlir::failure();
     }
 
-    const auto& concreteScalarInputContentAttr = concreteScalarInputDeclareOp.getContentAttr();
-    if (!concreteScalarInputContentAttr.isSplat()) {
+    const auto& scalarConstantContentAttr = scalarConstantOp.getContentAttr();
+    if (!scalarConstantContentAttr.isSplat()) {
         _log.nest().trace("Constant Concrete input must be scalar at '{0}'", fakeQuantizeOp.getLoc());
         return mlir::failure();
     }
 
-    auto concreteScalarInputValue = concreteScalarInputContentAttr.fold().template getSplatValue<float>();
-    if (concreteScalarInputFqOp != nullptr) {
-        auto concreteFQInLowConst = concreteScalarInputFqOp.getInputLow().template getDefiningOp<Const::DeclareOp>();
-        auto concreteFQInHighConst = concreteScalarInputFqOp.getInputHigh().template getDefiningOp<Const::DeclareOp>();
-        auto concreteFQOutLowConst = concreteScalarInputFqOp.getOutputLow().template getDefiningOp<Const::DeclareOp>();
-        auto concreteFQOutHighConst =
-                concreteScalarInputFqOp.getOutputHigh().template getDefiningOp<Const::DeclareOp>();
+    auto scalarConstantValue = scalarConstantContentAttr.fold().template getSplatValue<float>();
+    if (auto scalarInputFqOp = mlir::dyn_cast_if_present<IE::FakeQuantizeOp>(maybeDequantOrFQ)) {
+        auto concreteFQInLowConst = scalarInputFqOp.getInputLow().template getDefiningOp<Const::DeclareOp>();
+        auto concreteFQInHighConst = scalarInputFqOp.getInputHigh().template getDefiningOp<Const::DeclareOp>();
+        auto concreteFQOutLowConst = scalarInputFqOp.getOutputLow().template getDefiningOp<Const::DeclareOp>();
+        auto concreteFQOutHighConst = scalarInputFqOp.getOutputHigh().template getDefiningOp<Const::DeclareOp>();
         if (concreteFQInLowConst == nullptr || concreteFQInHighConst == nullptr || concreteFQOutLowConst == nullptr ||
             concreteFQOutHighConst == nullptr) {
-            _log.nest().trace("Got non constant parameters of FakeQuantize '{0}'", concreteScalarInputFqOp->getLoc());
+            _log.nest().trace("Got non constant parameters of FakeQuantize '{0}'", scalarInputFqOp->getLoc());
             return mlir::failure();
         }
         const auto& concreteFQInLowContentAttr = concreteFQInLowConst.getContentAttr();
@@ -174,7 +173,7 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
         const auto& concreteFQOutHighContentAttr = concreteFQOutHighConst.getContentAttr();
         if (!concreteFQInLowContentAttr.isSplat() || !concreteFQInHighContentAttr.isSplat() ||
             !concreteFQOutLowContentAttr.isSplat() || !concreteFQOutHighContentAttr.isSplat()) {
-            _log.nest().trace("Got non scalar fake quantize range '{0}'", concreteScalarInputFqOp->getLoc());
+            _log.nest().trace("Got non scalar fake quantize range '{0}'", scalarInputFqOp->getLoc());
             return mlir::failure();
         }
         auto concreteInLowValue = concreteFQInLowContentAttr.fold().template getSplatValue<float>();
@@ -182,13 +181,33 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
         auto concreteOutLowValue = concreteFQOutLowContentAttr.fold().template getSplatValue<float>();
         auto concreteOutHighValue = concreteFQOutHighContentAttr.fold().template getSplatValue<float>();
 
-        if (const auto levels = concreteScalarInputFqOp.getLevels()) {
-            concreteScalarInputValue = fakeQuantize(concreteScalarInputValue, concreteInLowValue, concreteInHighValue,
-                                                    concreteOutLowValue, concreteOutHighValue, *levels);
+        if (const auto levels = scalarInputFqOp.getLevels()) {
+            scalarConstantValue = fakeQuantize(scalarConstantValue, concreteInLowValue, concreteInHighValue,
+                                               concreteOutLowValue, concreteOutHighValue, *levels);
         } else {
-            _log.nest().trace("FakeQuantize without levels at '{0}'", concreteScalarInputFqOp->getLoc());
+            _log.nest().trace("FakeQuantize without levels at '{0}'", scalarInputFqOp->getLoc());
             return mlir::failure();
         }
+    } else if (auto scalarInputDqOp = mlir::dyn_cast_if_present<IE::DequantizeOp>(maybeDequantOrFQ)) {
+        if (scalarInputDqOp == nullptr) {
+            _log.nest().trace("Dequantize input is not a Const::DeclareOp at '{0}'", scalarInputDqOp->getLoc());
+            return mlir::failure();
+        }
+        auto constType = scalarConstantOp.getContentAttr().getType();
+        auto elemType = constType.getElementType();
+        auto quantElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType);
+
+        if (quantElemType == nullptr) {
+            _log.nest().trace("Dequantize input is not UniformQuantizedType at '{0}'", scalarInputDqOp->getLoc());
+            return mlir::failure();
+        }
+        int64_t concreteZeroPointValue = 0;
+        const auto concreteScaleValue = quantElemType.getScale();
+        if (quantElemType.getZeroPoint()) {
+            concreteZeroPointValue = quantElemType.getZeroPoint();
+        }
+
+        scalarConstantValue = dequantize(scalarConstantValue, concreteScaleValue, concreteZeroPointValue);
     }
 
     // TODO(E#129083): Remove this condition and isAdaptiveStrippingEnabled
@@ -198,31 +217,30 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
     //   (FuseOutstandingDequant removes DQ, and ConvertToMixedPrecision removes Q)
     // But if adaptive-stripping is disabled, it's better to not fuse Mul,
     //   and Mul will convert into GroupConv and fuse any redundant DQ and Q.
+
     auto moduleOp = getModuleOp(fakeQuantizeOp);
     auto isAdaptiveStrippingEnabled = config::hasEnableAdaptiveStripping(moduleOp);
-    if (mlir::isa<IE::MultiplyOp>(concreteParentOp) && concreteScalarInputFqOp != nullptr &&
-        !isAdaptiveStrippingEnabled) {
-        _log.nest().trace("Do not fuse Mul-FQ when adaptive-stripping disabled "
-                          "and Multiply's constant input has FakeQuantize '{0}'",
-                          concreteScalarInputFqOp->getLoc());
+    if (mlir::isa<IE::MultiplyOp>(concreteParentOp) && maybeDequantOrFQ != nullptr && !isAdaptiveStrippingEnabled) {
+        _log.nest().trace("Do not fuse Mul-FQ/DQ when adaptive-stripping disabled "
+                          "and Multiply's constant input has FakeQuantize or Dequantize '{0}'",
+                          maybeDequantOrFQ->getLoc());
         return mlir::failure();
     }
 
     auto oldInLowValue = inLowContentAttr.fold().getSplatValue<float>();
     auto oldInHighValue = inHighContentAttr.fold().getSplatValue<float>();
-    auto newInLowValue = _compute(oldInLowValue, concreteScalarInputValue);
-    auto newInHighValue = _compute(oldInHighValue, concreteScalarInputValue);
+    auto newInLowValue = _compute(oldInLowValue, scalarConstantValue);
+    auto newInHighValue = _compute(oldInHighValue, scalarConstantValue);
     auto newInLowConst = Const::createFloatConst(
             rewriter, fakeQuantizeOp.getLoc(), mlir::cast<mlir::RankedTensorType>(inLowConst.getType()), newInLowValue);
     auto newInHighConst =
             Const::createFloatConst(rewriter, fakeQuantizeOp.getLoc(),
                                     mlir::cast<mlir::RankedTensorType>(inHighConst.getType()), newInHighValue);
 
-    auto concreteActivationInputOp = lhsIsActivation ? concreteParentOp.getInput1() : concreteParentOp.getInput2();
-    rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(
-            fakeQuantizeOp, concreteActivationInputOp, newInLowConst, newInHighConst, fakeQuantizeOp.getOutputLow(),
-            fakeQuantizeOp.getOutputHigh(), fakeQuantizeOp.getLevelsAttr(), fakeQuantizeOp.getLowFpTypeAttr(),
-            fakeQuantizeOp.getAutoBroadcastAttr());
+    rewriter.replaceOpWithNewOp<IE::FakeQuantizeOp>(fakeQuantizeOp, nonScalarInput, newInLowConst, newInHighConst,
+                                                    fakeQuantizeOp.getOutputLow(), fakeQuantizeOp.getOutputHigh(),
+                                                    fakeQuantizeOp.getLevelsAttr(), fakeQuantizeOp.getLowFpTypeAttr(),
+                                                    fakeQuantizeOp.getAutoBroadcastAttr());
     return mlir::success();
 }
 

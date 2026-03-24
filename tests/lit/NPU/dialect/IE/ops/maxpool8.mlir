@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,7 +45,7 @@ func.func @main(%arg0: tensor<1x6x2x2xf32>) -> (tensor<1x6x2x2xf32>, tensor<1x6x
   return %output, %output_index : tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
   }
 
-  // CHECK:        [[CST_INDEX:%.+]] = const.Declare tensor<1x6x2x2xsi64> 
+  // CHECK:        [[CST_INDEX:%.+]] = const.Declare tensor<1x6x2x2xsi64>
   // CHECK-SAME:                     = dense<[
   // CHECK-SAME{LITERAL}:            [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]], [[12, 13], [14, 15]], [[16, 17], [18, 19]], [[20, 21], [22, 23]]]
   // CHECK-SAME:                     ]> : tensor<1x6x2x2xsi64>
@@ -65,7 +65,7 @@ func.func @main(%arg0: tensor<1x6x2x2xf32>) -> (tensor<1x6x2x2xf32>, tensor<1x6x
   return %output, %output_index : tensor<1x6x2x2xf32>, tensor<1x6x2x2xsi64>
   }
 
-  // CHECK:        [[CST_INDEX:%.+]] = const.Declare tensor<1x6x2x2xsi64> 
+  // CHECK:        [[CST_INDEX:%.+]] = const.Declare tensor<1x6x2x2xsi64>
   // CHECK-SAME:                     = dense<[
   // CHECK-SAME{LITERAL}:            [[[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]], [[0, 1], [2, 3]]]
   // CHECK-SAME:                     ]> : tensor<1x6x2x2xsi64>

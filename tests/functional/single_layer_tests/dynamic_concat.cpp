@@ -80,6 +80,11 @@ TEST_P(DynamicConcatLayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(DynamicConcatLayerTest, NPU5020_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 const std::vector<std::vector<BoundedShape>> inShapes = {
         {generateTestShape(1, 1, 640_Dyn, 128), generateTestShape(1, 1, 640_Dyn, 128)},

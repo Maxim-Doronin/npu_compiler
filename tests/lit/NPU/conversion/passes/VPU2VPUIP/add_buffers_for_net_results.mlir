@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -190,7 +190,7 @@ module @TwoFunctions {
 
         // CHECK:       [[ALLOC0:%.+]] = memref.alloc() : memref<1x2x60x60xf16>
         // CHECK:       [[ALLOC1:%.+]] = memref.alloc() : memref<1x2x60x60xf16>
-        // CHECK:       [[FOO1_RES:%.+]]:2 = call @foo1(%arg0, [[ALLOC0]], [[ALLOC1]]) : (memref<1x8x60x60xf16>, memref<1x2x60x60xf16>, memref<1x2x60x60xf16>)
+        // CHECK:       [[FOO1_RES:%.+]]:2 = call @foo1([[ARG0]], [[ALLOC0]], [[ALLOC1]]) : (memref<1x8x60x60xf16>, memref<1x2x60x60xf16>, memref<1x2x60x60xf16>)
         // CHECK-SAME:                              -> (memref<1x2x60x60xf16>, memref<1x2x60x60xf16>)
 
         // CHECK:       [[ALLOC2:%.+]] = memref.alloc() : memref<1x4x60x60xf16>
@@ -336,7 +336,7 @@ module @TwoFunctionsDistributedType {
         %1 = VPUIP.Copy inputs(%arg0 : memref<1x3x384x336xf16>) outputs(%0 : !DistributedBufferInput) -> !DistributedBufferInput
         %2 = VPUIP.ViewOp %1 : !DistributedBufferInput to !DistributedBufferNCEInput
         %3 = VPURT.AllocDistributed -> !DistributedBufferFoo1Result
-        %4 = VPUIP.NCEClusterTask {is_permute_quantize, minimumHardwareExecutionCost = 9753 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+        %4 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9753 : i64} <{is_permute_quantize, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                 input(%2 : !DistributedBufferNCEInput)
                 weights(%2 : !DistributedBufferNCEInput)
                 parent_input(%2 : !DistributedBufferNCEInput)

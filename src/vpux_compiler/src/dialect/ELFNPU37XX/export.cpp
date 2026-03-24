@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/ELFNPU37XX/ops.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 namespace vpux::ELFNPU37XX {
 
@@ -119,9 +120,7 @@ std::vector<uint8_t> exportToELF(mlir::ModuleOp module, Logger log) {
     //   elf::writer::Symbol* for it.
     SymbolMapType symbolMap;
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp main;
-    net::NetworkInfoOp::getFromModule(module, netInfo, main);
+    auto main = net::getMainFunc(module);
 
     auto elfWriter = calculateBlobSize(main, log, sectionMap, symbolMap);
     elfWriter.prepareWriter();
@@ -145,9 +144,7 @@ BlobView exportToELF(mlir::ModuleOp module, BlobAllocator& allocator, Logger log
     //   elf::writer::Symbol* for it.
     SymbolMapType symbolMap;
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp main;
-    net::NetworkInfoOp::getFromModule(module, netInfo, main);
+    auto main = net::getMainFunc(module);
 
     auto elfWriter = calculateBlobSize(main, log, sectionMap, symbolMap);
     elfWriter.prepareWriter();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,6 +23,9 @@ module @DmaSpillSingleClusterNoCompressionCandSmallBuf {
   } outputsInfo : {
     DataInfo "prob" : tensor<1x1x1x1xf16>
   }
+
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x1x1xf16, #NHWC, @DDR>)
   func.func @main(%arg0: !dataTypeDdr) -> !dataTypeDdr {
 
     %buf_in = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> !dataTypeCmx
@@ -63,7 +66,7 @@ module @DmaSpillSingleClusterNoCompressionCandSmallBuf {
     // CHECK:       [[T0:%.+]], [[R0:%.+]] = async.execute
     // CHECK-SAME:      -> !async.value<memref<1x1x1x1xf16, #NHWC, [@CMX_NN, 0]>>
     // CHECK-NEXT:      VPUIP.NNDMA
-    // CHECK-SAME:          inputs(%arg0 : memref<1x1x1x1xf16, #NHWC, @DDR>)
+    // CHECK-SAME:          inputs([[ARG_0]] : memref<1x1x1x1xf16, #NHWC, @DDR>)
     // CHECK-SAME:          outputs([[BUF_IN]] : memref<1x1x1x1xf16, #NHWC, [@CMX_NN, 0]>)
 
     // CHECK:       [[T1:%.+]], [[R1:%.+]] = async.execute

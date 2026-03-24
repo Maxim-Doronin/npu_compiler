@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -115,7 +115,7 @@ mlir::LogicalResult ConvertScalarToTensorPass::GatherScalarConverter::matchAndRe
         _log.nest().trace("New axis type '{0}'", newArgs.getAxis().getType());
 
         auto axisReshape = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "in_axis"), newArgs.getAxis().getType(),
-                                                          origOp.getAxis(), nullptr, true, shapeAttr);
+                                                          origOp.getAxis(), shapeAttr);
         newOp = rewriter.create<IE::GatherOp>(takeOpLoc(origOp, "gather_axis"), origOp.getInput(), newArgs.getIndices(),
                                               axisReshape.getOutput(), origOp.getAxisValueAttr(), origOp.getBatchDims(),
                                               origOp.getIndicesRankAttr());
@@ -128,7 +128,7 @@ mlir::LogicalResult ConvertScalarToTensorPass::GatherScalarConverter::matchAndRe
 
     const auto origShapeAttr = getIntArrayAttr(origOp->getContext(), getShape(origOp.getOutput()));
     auto reshapeOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "out_reshape"), origOp.getType(),
-                                                    newOp.getOutput(), nullptr, nullptr, origShapeAttr);
+                                                    newOp.getOutput(), origShapeAttr);
     rewriter.replaceOp(origOp, reshapeOp.getOutput());
 
     return mlir::success();
@@ -147,7 +147,7 @@ void ConvertScalarToTensorPass::safeRunOnFunc() {
         VPUX_THROW_UNLESS(inputs.size() == 1, "Got wrong number of inputs : {0}", inputs.size());
 
         const auto outShapeAttr = builder.getI64ArrayAttr(dstType.getShape());
-        return builder.createOrFold<IE::ReshapeOp>(loc, inputs.front(), nullptr, false, outShapeAttr);
+        return builder.createOrFold<IE::ReshapeOp>(loc, inputs.front(), outShapeAttr);
     };
 
     mlir::TypeConverter typeConverter;

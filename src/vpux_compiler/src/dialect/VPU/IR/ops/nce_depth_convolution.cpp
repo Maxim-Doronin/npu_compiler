@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,6 +26,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
 #include <openvino/op/convolution.hpp>
 
@@ -167,13 +168,14 @@ mlir::LogicalResult verifyDepthConv(mlir::Location loc, mlir::Operation* op,
         return mlir::failure();
     }
 
-    const auto OC =
-            VPU::canAutopadOutput(op) ? vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT : outputShape[Dims4D::Act::C];
-
     const auto weightsTableShape = opAdaptor.getWeightsTable() == nullptr
                                            ? std::nullopt
                                            : std::optional<vpux::ShapeRef>(getShape(opAdaptor.getWeightsTable()));
-    const auto expectedWeightsTableShape = VPU::NCESparsity::inferWeightsTableShape(OC);
+
+    // The weights table must always have the number of output channels aligned to 16, even if the operation produces
+    // fewer channels
+    const auto weightsTableOC = alignValUp(outputShape[Dims4D::Act::C], vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT);
+    const auto expectedWeightsTableShape = VPU::NCESparsity::inferWeightsTableShape(weightsTableOC);
 
     if (weightsTableShape.has_value() && weightsTableShape.value() != expectedWeightsTableShape) {
         return errorAt(loc, "Got wrong shape for 'weightsTable' '{0}', expected '{1}'", weightsTableShape.value(),

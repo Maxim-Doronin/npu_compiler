@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,9 +48,9 @@ module @DMAGraph {
 
 // CHECK:        profilingOutputsInfo
 // CHECK-NEXT:   DataInfo "dmahw" : tensor<256xui8>
-// CHECK:        func.func @main(%arg0: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
-// CHECK-SAME:       %arg1: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
-// CHECK-SAME:       %arg2: memref<256xui8, [@DDR, 0]>) ->
+// CHECK:        func.func @main([[ARG_0:%[^:]+]]: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
+// CHECK-SAME:       [[ARG_1:%[^:]+]]: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
+// CHECK-SAME:       [[ARG_2:%[^:]+]]: memref<256xui8, [@DDR, 0]>) ->
 // CHECK-SAME:       (memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
 // CHECK-SAME:       memref<256xui8, [@DDR, 0]>) {
 // CHECK:    [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier
@@ -61,7 +61,7 @@ module @DMAGraph {
 // CHECK:  VPURT.Task
 // CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 1 : si32,
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 1 : i64>}
-// CHECK-SAME:        inputs(%arg0 :
+// CHECK-SAME:        inputs([[ARG_0]] :
 // CHECK-SAME:        outputs([[BUF_DATA_0]] :
 
 // Profiled DMA task 2
@@ -76,9 +76,9 @@ module @DMAGraph {
 // CHECK-NEXT:    VPUIP.NNDMA <{dma_hwp_id = 3 : si32
 // CHECK-SAME:        profilingMetadata = #VPUIP.DmaProfilingMetadataAttr<dataIndex = 3 : i64>}
 // CHECK-SAME:        inputs([[BUF_DATA_1]] :
-// CHECK-SAME:        outputs(%arg1 :
+// CHECK-SAME:        outputs([[ARG_1]] :
 
 // Check network output
-// CHECK:   return %arg1, %arg2
+// CHECK:   return [[ARG_1]], [[ARG_2]]
 // CHECK-SAME:    memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
 // CHECK-SAME:    memref<256xui8, [@DDR, 0]>

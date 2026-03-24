@@ -4,6 +4,7 @@ Example:
         <message>skip_message_xxxxxx</message>
         <enable_rules>
             <backend>LEVEL0</backend>
+            <backend>IMD</backend>
             <backend></backend> (special case for no backend)
             <device>3720</device>
             <device>!4000</device> (using "!" to negate rule)
@@ -168,6 +169,7 @@ Example:
         <enable_rules>
             <backend>LEVEL0</backend>
             <device>5010</device>
+            <device>5020</device>
         </enable_rules>
         <filters>
             <filter>.*InferRequestCheckTensorPrecision.*</filter>
@@ -850,6 +852,7 @@ Example:
         <message>OVBlobCompatibilityNPU tests are designed for NPU3720 and NPU4000 only</message>
         <enable_rules>
             <device>5010</device>
+            <device>5020</device>
         </enable_rules>
         <filters>
             <filter>.*OVBlobCompatibilityNPU.*</filter>
@@ -867,15 +870,15 @@ Example:
         </filters>
     </skip_config>
 
-    <!-- C#166668 -->
+    <!-- E#205075 -->
     <skip_config>
-        <message>Tests enabled only for public platforms, NPU3720 and NPU4000. Related to new getDevice logic from OV PR#30586.</message>
+        <message>Tests fail on private platforms. Unskip after tests updated with E#205075.</message>
         <enable_rules>
-            <device>5010</device>
+            <device>5020</device>
         </enable_rules>
         <filters>
-            <filter>.*ClassExecutableNetworkInvalidDeviceIDTestSuite.InvalidNPUdeviceIDTest.*DEVICE_ID=NPU.1.*</filter>
-            <filter>.*ClassExecutableNetworkInvalidDeviceIDTestSuite.InvalidNPUdeviceIDTest.*DEVICE_ID=NPU.3990.*</filter>
+            <filter>.*ClassExecutableNetworkInvalidDeviceIDTestSuite.InvalidNPUdeviceIDTest.*</filter>
+            <filter>.*OVCompiledModelIncorrectDevice.CanNotCompileModelWithIncorrectDeviceID.*</filter>
         </filters>
     </skip_config>
 
@@ -883,11 +886,29 @@ Example:
     <skip_config>
         <message>LSTM Sequence accuracy fails</message>
         <enable_rules>
+            <device>5020</device>
         </enable_rules>
         <filters>
             <filter>.*smoke_precommit_LSTMSequencePt/LSTMSequenceLayerTestCommon.*</filter>
+            <filter>.*smoke_precommit_LSTMSequencePtConst/LSTMSequenceLayerTestCommon.*</filter>
             <filter>.*smoke_precommit_LSTMSequenceAccuracy/LSTMSequenceLayerTestCommon.*</filter>
             <filter>.*smoke_precommit_LSTMSequenceCommonZeroClip/LSTMSequenceLayerTestCommon.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#185858 -->
+    <skip_config>
+        <message>LSTM Sequence scenario with PARAM input 'sequence_lengths' should not be supported on this platform, because it is not decomposed into LSTMCells. This platform should support only decomposed cases.</message>
+        <enable_rules>
+            <device>3720</device>
+            <backend>IMD</backend>
+            <backend>LEVEL0</backend>
+        </enable_rules>
+        <filters>
+            <filter>.*smoke_precommit_LSTMSequenceCommonZeroClip/LSTMSequenceLayerTestCommon.NPU3720_HW/mode=PURE_SEQ_RAND_SEQ_LEN_PARAM_.*</filter>
+            <filter>.*smoke_precommit_LSTMSequencePt/LSTMSequenceLayerTestCommon.NPU3720_HW/mode=PURE_SEQ_RAND_SEQ_LEN_PARAM_.*</filter>
+            <filter>.*smoke_precommit_LSTMSequencePtConst/LSTMSequenceLayerTestCommon.NPU3720_HW/mode=PURE_SEQ_RAND_SEQ_LEN_PARAM_.*</filter>
+            <filter>.*smoke_precommit_LSTMSequenceAccuracy/LSTMSequenceLayerTestCommon.NPU3720_HW/mode=PURE_SEQ_RAND_SEQ_LEN_PARAM_.*</filter>
         </filters>
     </skip_config>
 
@@ -963,12 +984,14 @@ Example:
         <message>PLUGIN test cases enabled only for public platforms, NPU3720 and NPU4000.</message>
         <enable_rules>
             <device>5010</device>
+            <device>5020</device>
         </enable_rules>
         <filters>
             <filter>.*smoke_BehaviorTestPLUGIN/DynamicBatchedTensorsRunTests.*</filter>
             <filter>.*smoke_DynamicBatchingSeqTests_PLUGIN/DynamicBatchingRunSeqTests.*</filter>
         </filters>
     </skip_config>
+
     <!-- E#186100 -->
     <!-- E#192507 -->
     <!-- E#188471 -->
@@ -990,41 +1013,12 @@ Example:
         </filters>
     </skip_config>
 
-    <!-- E#195941-->
+    <!-- E#202890-->
     <skip_config>
-        <message>Skip HostCompile tests due to compilation errors. To be investigated with E#195941</message>
+        <message>Strided tensor tests fail with current Linux driver. Investigation: E#202890</message>
         <enable_rules>
-            <device>4000</device>
-            <device>5010</device>
+            <operating_system>linux</operating_system>
         </enable_rules>
-        <filters>
-            <filter>.*FuseD2sExpand_Dyn_u8q.*_HC.*</filter>
-        </filters>
-    </skip_config>
-
-    <!-- E#198787-->
-    <skip_config>
-        <message>Skip SCF Tiling tests due to accuracy issues</message>
-        <enable_rules>
-            <device>5010</device>
-        </enable_rules>
-        <filters>
-            <filter>.*DepthToSpace_SCFTilingLayerTest.*</filter>
-        </filters>
-    </skip_config>
-
-    <!-- E#191394-->
-    <skip_config>
-        <message>Skip SCF Tiling tests due to accuracy issues</message>
-        <enable_rules>
-        </enable_rules>
-        <filters>
-            <filter>.*DepthwiseConvolutionSCFTilingLayerTest_HW.*</filter>
-        </filters>
-    </skip_config>
-
-    <skip_config>
-        <message>Strides are not supported with the current driver</message>
         <filters>
             <filter>.*RoiTensorsTestsRun.*</filter>
         </filters>
@@ -1044,4 +1038,6 @@ Example:
         </filters>
     </skip_config>
 
+    <!-- E#203214-->
+    <!-- E#203897-->
 </skip_configs>

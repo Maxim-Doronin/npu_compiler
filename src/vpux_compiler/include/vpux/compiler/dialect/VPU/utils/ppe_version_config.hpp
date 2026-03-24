@@ -1,61 +1,59 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/ppe_factory.hpp"
 
-#include <mutex>
+#include <mlir/IR/DialectInterface.h>
 
 namespace vpux::VPU {
-/* @brief
- * Static class for encapsulating PPE-related objects.
- */
-class PpeVersionConfig {
-private:
-    static std::unique_ptr<IPpeFactory>& _getFactory();
 
-    static std::mutex& _getPpeFactoryMutex() {
-        static std::mutex mtx;
-        return mtx;
-    }
+/** @brief Singleton container for architecture-specific PPE factory. */
+class PPEVersionConfig : public mlir::DialectInterface::Base<PPEVersionConfig> {
+private:
+    std::unique_ptr<IPpeFactory> _factory;
 
 public:
-    template <typename ConcreteFactoryT>
-    static void setFactory() {
-        // Note: Multi-threaded compilation scenarios can concurrently call setFactory in the same process.
-        // A mutex prevents data races, but switching between factory types can lead to undefined behavior, since the
-        // factory object is shared for all compilation threads. In other words, compiling models for platforms with
-        // different PPE factories on separate threads, but part of the same process, is not supported with the current
-        // PPE factory design
-        std::lock_guard lock(_getPpeFactoryMutex());
-        const auto alreadyInit = dynamic_cast<ConcreteFactoryT*>(_getFactory().get()) != nullptr;
-        if (!alreadyInit) {
-            _getFactory() = std::make_unique<ConcreteFactoryT>();
-            Logger::global().info("Changed PpeFactory instance");
-        }
+    // required by MLIR's internal type-id infrastructure:
+    MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PPEVersionConfig)
+
+    PPEVersionConfig(mlir::Dialect* dialect): Base(dialect) {
     }
 
-    static const IPpeFactory& getFactory();
+    void setPpeFactory(std::unique_ptr<IPpeFactory> factory) {
+        _factory = std::move(factory);
+    }
+
+    const IPpeFactory& getFactory() const {
+        VPUX_THROW_WHEN(_factory == nullptr, "PpeFactory not initialized");
+        return *_factory;
+    }
 
     template <typename DstT, std::enable_if_t<std::is_pointer_v<DstT>, bool> = true>
-    static auto getFactoryAs() {
+    auto getFactoryAs() const {
         using ConstDstPtrT = std::add_pointer_t<std::add_const_t<std::remove_pointer_t<DstT>>>;
-        return dynamic_cast<const ConstDstPtrT>(&getFactory());
+        return dynamic_cast<const ConstDstPtrT>(_factory.get());
     }
 
     template <typename DstT, std::enable_if_t<!std::is_pointer_v<DstT>, bool> = true>
-    static const DstT& getFactoryAs() {
-        const auto* casted = dynamic_cast<const DstT*>(&getFactory());
+    const DstT& getFactoryAs() const {
+        const auto* casted = dynamic_cast<const DstT*>(_factory.get());
         VPUX_THROW_WHEN(casted == nullptr, "Failed to cast the default PpeFactory instance to the required type");
         return *casted;
     }
 
-    static PPEAttr retrievePPEAttribute(mlir::Operation* operation) {
-        return getFactory().retrievePPEAttribute(operation);
+    PPEAttr retrievePPEAttribute(mlir::Operation* operation) const {
+        return _factory->retrievePPEAttribute(operation);
     }
 };
+
+void setPpeFactory(mlir::MLIRContext* context, std::unique_ptr<IPpeFactory> ppeFactory);
+const IPpeFactory& getPpeFactory(mlir::MLIRContext* context);
+
+PPEVersionConfig& getPpeConfig(mlir::MLIRContext* context);
 
 }  // namespace vpux::VPU

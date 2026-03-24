@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,6 +22,8 @@ public:
     virtual ~StrategyFactory() = default;
 
     virtual std::unique_ptr<IConvertQuantizeOpsToNceOpsStrategy> getConvertQuantizeOpsToNceOpsStrategy() = 0;
+    virtual std::unique_ptr<IDynamicRewriterStrategy> getWeightsDequantizeToDynamicDequantizeStrategy(
+            ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index) = 0;
     virtual std::unique_ptr<IDynamicRewriterStrategy> getWeightsDequantizeToFakeQuantizeStrategy(
             ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index) = 0;
     virtual std::unique_ptr<IMapBilinearInterpolateOnDPUStrategy> getMapBilinearInterpolateOnDPUStrategy(
@@ -37,7 +39,7 @@ public:
     virtual std::unique_ptr<D2SToTransposedConvVerifierBase> getD2SToTransposedConvVerifier() = 0;
     virtual std::unique_ptr<FuseConvertToDPUCheckerBase> getFuseConvertToDPUChecker() = 0;
     virtual std::unique_ptr<IDynamicRewriterStrategy> getInitialLowPrecisionTransformationsPipelineStrategy(
-            mlir::func::FuncOp funcOp) = 0;
+            mlir::func::FuncOp funcOp, bool enableDynamicQuantizationForStaticCase = false) = 0;
 };
 
 class StrategyFactoryCache final : public mlir::DialectInterface::Base<StrategyFactoryCache> {

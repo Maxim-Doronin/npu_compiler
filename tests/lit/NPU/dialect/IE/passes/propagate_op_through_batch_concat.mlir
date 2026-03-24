@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --propagate-op-through-batch-concat %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-batch-op-processing-rewriters="rewriter=propagate-op-through-batch-concat-set" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @PropagateSoftmaxThroughBatchUnrolledMatmul
@@ -248,6 +248,7 @@ func.func @NoPropagateAddSoftmaxWithInvalidAddShape(%arg0: tensor<16x2xf32>, %ar
 // -----
 
 // CHECK-LABEL: @NoPropagateAddSoftmaxWithInvalidAddSource
+// CHECK-SAME:      [[ARG_2:%arg[0-9]]]: tensor<1x1x1xf32>
 func.func @NoPropagateAddSoftmaxWithInvalidAddSource(%arg0: tensor<16x2xf32>, %arg1: tensor<16x2xf32>, %arg2: tensor<1x1x1xf32>) -> tensor<2x16x2xf32> {
     %cst = const.Declare tensor<2x2xf32> = dense<1.000000e+00> : tensor<2x2xf32>
     %1 = IE.MatMul(%arg0, %cst) : tensor<16x2xf32>, tensor<2x2xf32> -> tensor<16x2xf32>
@@ -264,7 +265,7 @@ func.func @NoPropagateAddSoftmaxWithInvalidAddSource(%arg0: tensor<16x2xf32>, %a
     // CHECK:       [[MATMUL_2:%.+]] = IE.MatMul
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[MATMUL_2]]) {shape_value = [1, 16, 2]} : tensor<16x2xf32> -> tensor<1x16x2xf32>
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RESHAPE_1]], [[RESHAPE_2]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x16x2xf32>, tensor<1x16x2xf32> -> tensor<2x16x2xf32>
-    // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x16x2xf32>, tensor<1x1x1xf32> -> tensor<2x16x2xf32>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], [[ARG_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x16x2xf32>, tensor<1x1x1xf32> -> tensor<2x16x2xf32>
     // CHECK:       [[SOFTMAX:%.+]] = IE.SoftMax([[ADD]]) {axisInd = -1 : i64} : tensor<2x16x2xf32> -> tensor<2x16x2xf32>
     // CHECK:       return [[SOFTMAX]] : tensor<2x16x2xf32>
 }
@@ -272,7 +273,7 @@ func.func @NoPropagateAddSoftmaxWithInvalidAddSource(%arg0: tensor<16x2xf32>, %a
 // -----
 
 // CHECK-LABEL: @NotPropagateNonConstantSmallSizeInputAddSoftmaxThroughBatchUnrolledMatmul
-// CHECK-SAME:      [[INPUT:%arg[0-9]]]: tensor<1x1x77x77xf32>
+// CHECK-SAME:      [[ARG_2:%arg[0-9]]]: tensor<1x1x77x77xf32>
 func.func @NotPropagateNonConstantSmallSizeInputAddSoftmaxThroughBatchUnrolledMatmul(
             %arg0: tensor<77x128xf32>,
             %arg1: tensor<77x128xf32>,
@@ -294,7 +295,7 @@ func.func @NotPropagateNonConstantSmallSizeInputAddSoftmaxThroughBatchUnrolledMa
     // CHECK:       [[RESHAPE_1:%.+]] = IE.Reshape([[MATMUL_1]]) {shape_value = [1, 1, 77, 77]} : tensor<77x77xf32> -> tensor<1x1x77x77xf32>
     // CHECK:       [[RESHAPE_2:%.+]] = IE.Reshape([[MATMUL_2]]) {shape_value = [1, 1, 77, 77]} : tensor<77x77xf32> -> tensor<1x1x77x77xf32>
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RESHAPE_1]], [[RESHAPE_2]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
-    // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[CONCAT]], [[ARG_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x77x77xf32>, tensor<1x1x77x77xf32> -> tensor<1x2x77x77xf32>
     // CHECK:       [[SOFTMAX:%.+]] = IE.SoftMax([[ADD]]) {axisInd = 3 : i64} : tensor<1x2x77x77xf32> -> tensor<1x2x77x77xf32>
 
     // CHECK:       return [[SOFTMAX]] : tensor<1x2x77x77xf32>

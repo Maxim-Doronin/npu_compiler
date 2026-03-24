@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1251,7 +1251,7 @@ mlir::LogicalResult MoveMemPermuteThroughReshape::matchAndRewrite(IE::ReshapeOp 
                                               memPermuteOp.getDstOrderAttr(), memPermuteOp.getMemPermAttr());
 
     // Create new Reshape
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(memPermuteOp, newMemPermuteOp.getOutput(), nullptr, false,
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(memPermuteOp, newMemPermuteOp.getOutput(),
                                                getIntArrayAttr(ctx, getShape(memPermuteOp.getOutput())));
 
     return mlir::success();

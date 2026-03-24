@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -610,8 +610,20 @@ mlir::LogicalResult IE::SDPAExtendedRewriter::matchAndRewrite(IE::SDPAExtendedOp
     expandedInV = expandDimensions(expandedInV, SmallVector<int64_t>{inVRank - 1, inVRank - 2},
                                    SmallVector<int64_t>{inSPad, inEvPad}, inVRank, "_expandedInV");
 
+    auto paddedAttentionMask = mlir::Value{origOp.getInputMask()};
+    if (paddedAttentionMask != nullptr) {
+        const auto inMaskType = mlir::cast<vpux::NDTypeInterface>(paddedAttentionMask.getType());
+        const auto inMaskShape = inMaskType.getShape().toValues();
+        auto inMaskRank = checked_cast<int64_t>(inMaskType.getRank());
+        auto maskSDim = inMaskShape[Dim(inMaskRank - 1)];
+        if (inSDim == maskSDim) {  // Is not broadcast 1d dimension for mask, so it will be aligned as inSDim
+            paddedAttentionMask = expandDimensions(paddedAttentionMask, SmallVector<int64_t>{inMaskRank - 1},
+                                                   SmallVector<int64_t>{inSPad}, inMaskRank, "_expandedAttentionMask");
+        }
+    }
+
     auto sdpaExpanded = rewriter.create<IE::SDPAExtendedOp>(
-            origOp.getLoc(), expandedInQ, expandedInK, expandedInV, origOp.getInputMask(), origOp.getInputScale(),
+            origOp.getLoc(), expandedInQ, expandedInK, expandedInV, paddedAttentionMask, origOp.getInputScale(),
             origOp.getInputBias(), getIntAttr(rewriter.getContext(), inSPad));
 
     if (inEvPad) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,11 +9,13 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <llvm/ADT/StringRef.h>
 #include <mlir/Dialect/Affine/Utils.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
@@ -35,6 +37,8 @@ constexpr size_t NUMBITS = 2;
 
 using SCFShape = SmallVector<mlir::OpFoldResult>;
 using SCFShapeRef = ArrayRef<mlir::OpFoldResult>;
+
+const llvm::StringRef SKIP_CONNECTION_SLICE_MARKER_ATTR_NAME = "skip_connection_slice";
 
 struct SCFTileInfo {
     SCFShape shape;
@@ -82,6 +86,18 @@ struct SCFTilingInfo {
     std::optional<SCFShape> pads;
 };
 
+// Tracks deferred ExtractSlice replacements for skip-connections during SCF tile+fuse.
+struct PendingSliceReplacement {
+    mlir::Operation* biggestUserOp;            // The user op that requires the biggest tile for this skip connection
+    mlir::Value tiledValue;                    // The value from the biggest tile
+    bool biggestUserTiled = false;             // Flag to indicate if the biggest user has been tiled
+    bool allUsersWithTheSameTileSize = false;  // Flag to indicate if all users have the same tile size
+    mlir::SetVector<mlir::tensor::ExtractSliceOp>
+            relatedExtractSlices;  // ExtractSliceOps related to this skip connection that need replacement
+    mlir::tensor::ExtractSliceOp
+            biggestTileExtractSlice;  // The ExtractSliceOp that corresponds to the biggest tile, used for replacement
+};
+
 using OpTilingOperandsFunc = std::function<void(SCFTilingInfo&)>;
 using OpGeneratorFunc = std::function<mlir::Operation*()>;
 
@@ -91,6 +107,9 @@ mlir::OpFoldResult getDimValue(mlir::OpBuilder& builder, mlir::Operation* operat
 // @brief Calculates tile for weights table based on output tile
 SCFTileInfo getWeightsTableSCFTile(mlir::Type origWeightsTableType, mlir::OpBuilder& builder,
                                    const SCFTileInfo& outputTile);
+
+// @brief Builds AffineMap that computes alignValUp(dim, alignment) for a single dimension.
+mlir::AffineMap getAlignValUpMap(mlir::OpBuilder& builder, int64_t alignment);
 
 /** @brief Restores input tiling from output tile data
 
@@ -364,4 +383,40 @@ SmallVector<mlir::Value> applyIndexBacktracking(mlir::tensor::InsertSliceOp inse
                                                 ArrayRef<size_t> dimsToAdjust);
 
 void restorePaddingAttribute(mlir::Operation* region, Logger log);
+
+/**
+ * @brief This function tries to determine if the given OpFoldResult is dependent on any of the induction variables
+ * of the provided scf.forall operation.
+ *
+ * @param ofr OpFoldResult to check for dependency
+ * @param forallOp The scf.forall operation whose induction variables are checked against the OpFoldResult
+ * @return bool True if the OpFoldResult is dependent on any induction variable of the forallOp, false otherwise
+ */
+bool isDependentOnForallIv(mlir::OpFoldResult ofr, mlir::scf::ForallOp forallOp);
+
+/** @brief Analyze skip-connections for SCF tile+fuse planning.
+ *
+ * Scans operations selected for fusion, detects skip-source operations (multiple in-graph users),
+ * and compares per-branch tile requirements using `tilingStorage` (tile 0 input tiling).
+ * For each skip-source, returns precomputed replacement state with:
+ *   - `biggestUserOp`: branch user requiring the largest tile,
+ *   - `allUsersWithTheSameTileSize`: whether all candidate branch tiles are equal.
+ *
+ * The returned map is consumed later by fusion control logic to defer/allow producer fusion
+ * and to drive post-tiling slice replacement for smaller branches.
+ */
+llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement> analyzeSkipConnectionsForTiling(
+        const llvm::SetVector<mlir::Operation*>& allOpsToFuse, const TilingOperationStorage::UPtr& tilingStorage,
+        const Logger& log);
+
+/** @brief Apply deferred ExtractSlice replacements for skip-connections after SCF tile+fuse.
+ *
+ * Replaces recorded branch slices using the tiled value from the selected biggest branch.
+ * If slice sizes match, replacement is direct; otherwise, offsets are adjusted relative to
+ * the biggest-branch slice and a new tensor.extract_slice is created.
+ */
+void applyDeferredSliceReplacements(
+        mlir::RewriterBase& builder,
+        const llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement>& skipConnectionMap, const Logger& log);
+
 }  // namespace vpux::VPU

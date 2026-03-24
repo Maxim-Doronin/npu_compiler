@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,8 +40,8 @@ module @SinhF16Layer {
     // CHECK-NEXT:    } -> tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    IE.CGCYield [[LINALG_OP]] : tensor<1x1x1x1000xf16>
   }
-}      
-    
+}
+
 
 
 // -----
@@ -61,7 +61,7 @@ module @AsinhF32Layer {
       %1 = IE.Asinh(%arg1) : tensor<1x1x1x1000xf32> -> tensor<1x1x1x1000xf32>
       IE.CGCYield %1 : tensor<1x1x1x1000xf32>
     } -> tensor<1x1x1x1000xf32>
-    return %0 : tensor<1x1x1x1000xf32>    
+    return %0 : tensor<1x1x1x1000xf32>
 
     // CHECK-NOT:     IE.Asinh
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf32>
@@ -126,7 +126,7 @@ module @AcoshF16Layer {
       %1 = IE.Acosh(%arg1) : tensor<1x1x1x1000xf16> -> tensor<1x1x1x1000xf16>
       IE.CGCYield %1 : tensor<1x1x1x1000xf16>
     } -> tensor<1x1x1x1000xf16>
-    return %0 : tensor<1x1x1x1000xf16>    
+    return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Acosh
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
@@ -154,7 +154,7 @@ module @AcoshF32Layer {
       %1 = IE.Acosh(%arg1) : tensor<1x1x1x1000xf32> -> tensor<1x1x1x1000xf32>
       IE.CGCYield %1 : tensor<1x1x1x1000xf32>
     } -> tensor<1x1x1x1000xf32>
-    return %0 : tensor<1x1x1x1000xf32>    
+    return %0 : tensor<1x1x1x1000xf32>
 
     // CHECK-NOT:     IE.Acosh
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf32>

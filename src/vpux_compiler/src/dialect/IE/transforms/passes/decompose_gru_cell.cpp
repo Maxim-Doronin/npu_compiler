@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -242,7 +242,7 @@ mlir::LogicalResult GRUSequenceToCellRewriter::matchAndRewrite(IE::GRUSequenceOp
         SmallVector<int64_t> newShape(shape.begin() + 1, shape.end());
 
         const auto newInputShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-        return rewriter.create<IE::ReshapeOp>(origOp.getLoc(), input, nullptr, false, newInputShapeAttr).getResult();
+        return rewriter.create<IE::ReshapeOp>(origOp.getLoc(), input, newInputShapeAttr).getResult();
     };
 
     const auto inputData = getNewReshapeOut(origOp.getInputData());
@@ -255,10 +255,10 @@ mlir::LogicalResult GRUSequenceToCellRewriter::matchAndRewrite(IE::GRUSequenceOp
                                                        origOp.getShouldLinearBeforeResetAttr(), origOp.getClipAttr());
 
     auto newOutReshape1 =
-            rewriter.create<IE::ReshapeOp>(origOp.getLoc(), newGRUCellOp.getResult(), nullptr, false,
+            rewriter.create<IE::ReshapeOp>(origOp.getLoc(), newGRUCellOp.getResult(),
                                            getIntArrayAttr(rewriter.getContext(), getShape(origOp->getResult(0))));
     auto newOutReshape2 =
-            rewriter.create<IE::ReshapeOp>(origOp.getLoc(), newGRUCellOp.getResult(), nullptr, false,
+            rewriter.create<IE::ReshapeOp>(origOp.getLoc(), newGRUCellOp.getResult(),
                                            getIntArrayAttr(rewriter.getContext(), getShape(origOp->getResult(1))));
 
     rewriter.replaceOp(origOp, {newOutReshape1.getResult(), newOutReshape2.getResult()});

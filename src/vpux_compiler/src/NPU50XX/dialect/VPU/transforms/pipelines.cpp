@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -107,12 +107,8 @@ void vpux::VPU::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createSplitRealDFTOpsPass(log));
     pm.addPass(VPU::createAdjustLSTMCellInputsPass(log));
     if (options.enableSEPtrsOperations || options.enableExperimentalSEPtrsOperations) {
-        pm.addPass(VPU::createSplitSEOpsPass(
-                /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-                /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
-        pm.addPass(VPU::createLowerOpsToSENCEPass(
-                /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-                /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+        pm.addPass(VPU::createSplitSEOpsPass(log));
+        pm.addPass(VPU::createLowerOpsToSENCEPass(log));
     }
 
     pm.addPass(VPU::createFuseClampPass(log));
@@ -171,7 +167,7 @@ void vpux::VPU::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     nestedPm.addPass(VPU::createComputeNCEInputWorkloadsPass(log));
     nestedPm.addPass(VPU::createShiftOutputWorkloadsForHaloPass(log));
     if (options.enableShaveCodeGen) {
-        VPU::buildShaveCodeGenPipeline(nestedPm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPU(nestedPm);
     }
     nestedPm.addPass(mlir::createCanonicalizerPass(grc));
     nestedPm.addPass(createAdjustDynamicOpsBeforeBufferizationPass());

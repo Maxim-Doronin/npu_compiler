@@ -1,6 +1,8 @@
+//
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <cmath>
 #include <ov_ops/rms.hpp>
 #include "common_test_utils/ov_tensor_utils.hpp"
@@ -142,6 +144,20 @@ TEST_P(FuseRMSReduceSumTestUnstripped, NPU5010_HW) {
     // TODO E####-159644
     setBatchCompilerMode("unroll");
     run(Platform::NPU5010);
+}
+TEST_P(FuseRMSReduceSumTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
+    run(Platform::NPU5020);
+}
+TEST_P(FuseRMSReduceSumTestUnstripped, NPU5020_HW) {
+    const float fqRange = 3, fqLevels = 256;
+    abs_threshold = fqRange / fqLevels;
+    setDefaultHardwareMode();
+    // TODO E####-159644
+    setBatchCompilerMode("unroll");
+    run(Platform::NPU5020);
 }
 
 namespace {

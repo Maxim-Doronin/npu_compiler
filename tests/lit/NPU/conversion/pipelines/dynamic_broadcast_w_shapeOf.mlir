@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,8 +13,8 @@
 // CHECK:   } outputsInfo : {
 // CHECK:     DataInfo "Broadcast_60" friendlyName = "Result_64" : tensor<1x3x?x?xf32
 // CHECK:   }
-// CHECK:   func.func @main(%arg0: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>, %arg1: tensor<?xf32, {bounds = #const.OpaqueI64Elements<[10]> : tensor<1xsi64>, order = #C}>) -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}> {
-// CHECK:   [[SHAPEOF:%.+]] = IE.ShapeOf(%arg0) {dstElemType = si64} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi64>
-// CHECK:   [[BROADCAST:%.+]] = IE.DynamicBroadcast(%arg1, [[SHAPEOF]]) {mode = #IE.broadcast_type<NUMPY>, output_bounds = [1, 3, 10, 16], output_shape = [1, 3, -9223372036854775808, -9223372036854775808]} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[10]> : tensor<1xsi64>, order = #C}>, tensor<4xsi64> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>
+// CHECK:   func.func @main([[ARG_0:%[^:]+]]: tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>, [[ARG_1:%[^:]+]]: tensor<?xf32, {bounds = #const.OpaqueI64Elements<[10]> : tensor<1xsi64>, order = #C}>) -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}> {
+// CHECK:   [[SHAPEOF:%.+]] = IE.ShapeOf([[ARG_0]]) {dstElemType = si64} : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}> -> tensor<4xsi64>
+// CHECK:   [[BROADCAST:%.+]] = IE.DynamicBroadcast([[ARG_1]], [[SHAPEOF]]) {mode = #IE.broadcast_type<NUMPY>, output_bounds = [1, 3, 10, 16], output_shape = [1, 3, -9223372036854775808, -9223372036854775808]} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[10]> : tensor<1xsi64>, order = #C}>, tensor<4xsi64> -> tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>
 // CHECK:   return [[BROADCAST]] : tensor<1x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 3, 10, 16]> : tensor<4xsi64>, order = #NCHW}>
 // CHECK:   }

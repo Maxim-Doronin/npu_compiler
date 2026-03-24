@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -34,9 +34,9 @@ module {
       }
 
     //CHECK:    VPUIPDPU.DPUInvariant @DPUInvariant_0_0 <{input = @buffer.CMX_NN.0::@DeclareBuffer_ActIn, nce_task_type = #VPUIP.nce_task_type<MAXPOOL>, output = @buffer.CMX_NN.0::@DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @program.metadata.cmx::@DeclareTaskBuffer_DPUInvariant_0_0_0}> DPUCfg : {
-    //CHECK:    ^bb0(%arg0: memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>):
+    //CHECK:    ^bb0([[ARG_0:%.+]]: memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>):
     //CHECK:      VPUIPDPU.IDUCfg {
-    //CHECK:        VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+    //CHECK:        VPUIPDPU.IDUInActivations in_activations([[ARG_0]] : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK:        VPUIPDPU.IDUWeights wmode(f16)
     //CHECK:        VPUIPDPU.IDUKernel kernel_x(2) kernel_y(2)
     //CHECK:        VPUIPDPU.IDUStride stride_x(2) stride_y(2)
@@ -61,7 +61,7 @@ module {
     //CHECK:      VPUIPDPU.ODUCfg {
     //CHECK:        VPUIPDPU.ODUOutTensorSize dim_x(8) dim_y(8) dim_z(64)
     //CHECK:        VPUIPDPU.ODUDataReuse activation_reuse(NTHW_16)
-    //CHECK:        VPUIPDPU.ODUOutActivations out_activations(%arg1 : memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>)
+    //CHECK:        VPUIPDPU.ODUOutActivations out_activations([[ARG_1]] : memref<1x64x8x8xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK:      }
     //CHECK:      VPUIPDPU.BarrierCfg waits([0 : ui8]) updates([1 : ui8]) start_after(0) clean_after(0)
     //CHECK:      VPUIPDPU.DPUGroup invariantIdx(!VPURegMapped.Index<0:0:0>) variantCount(1)

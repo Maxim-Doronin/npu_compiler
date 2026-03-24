@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,7 +49,7 @@ module @SimpleModuleForOutlining attributes {config.debatch} {
 // CHECK: }
 
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32> {
-// CHECK:   [[VAL0:%0]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+// CHECK:   [[VAL0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
 // CHECK:   [[PART:%.+]] = call @main_batching1([[VAL0]]) : (tensor<1x3x62x62xf32>) -> tensor<1x48x60x60xf32>
 // CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast [[PART]] : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
 // CHECK:   return [[VAL1]] : tensor<3x48x60x60xf32>

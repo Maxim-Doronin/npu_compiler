@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,7 +25,7 @@ func.func @main(%input: !InputType, %weights: !WeightType) -> (!OutputType, !Pro
 
 
   VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-    %0:2 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], minimumHardwareExecutionCost = 1 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+    %0:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1 : i64} <{kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
     input(%input : !InputType)
     weights(%weights : !WeightType)
     parent_input(%input : !InputType)

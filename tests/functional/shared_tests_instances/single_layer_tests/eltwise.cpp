@@ -286,6 +286,20 @@ TEST_P(EltwiseLayerTestSCFTiling, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(EltwiseLayerTestCommon, NPU5020_SW) {
+    abs_threshold = 0.6;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(EltwiseLayerTestF32Common, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+TEST_P(EltwiseLayerTestSCFTiling, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 TEST_P(EltwiseEmptyShapeInputLayerTest, NPU3720_HW) {
     setDefaultHardwareMode();
@@ -351,6 +365,12 @@ TEST_P(EltwiseIntegerLayerTest, NPU5010_SW) {
     setCommonSkipCompilationCallback(this);
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(EltwiseIntegerLayerTest, NPU5020_SW) {
+    abs_threshold = 0.6;
+    setCommonSkipCompilationCallback(this);
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 TEST_P(EltwiseLayerTestDynamic, NPU3720_HW) {

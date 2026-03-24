@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,6 +21,8 @@
 !Input_DDR = memref<1x32x16x16xf16, #NHWC, @DDR>
 !Output_DDR = memref<1x32x16x16xf16, #NHWC, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferNNDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x32x16x16xf16, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferNNDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -44,7 +46,7 @@ func.func @ParsePrintDistributedBufferNNDMA(%input: !Input_DDR) -> !Output_DDR {
     //CHECK-SAME:                           {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], kernel = [3, 3],
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
-    //CHECK:              VPUIP.NNDMA inputs(%arg0 : memref<1x32x16x16xf16, #NHWC, @DDR>
+    //CHECK:              VPUIP.NNDMA inputs([[ARG_0]] : memref<1x32x16x16xf16, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
@@ -76,6 +78,8 @@ func.func @ParsePrintDistributedBufferNNDMA(%input: !Input_DDR) -> !Output_DDR {
 !Input_DDR = memref<1x32x16x16xf16, @DDR>
 !Output_DDR = memref<1x32x16x16xf16, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferPermuteDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x32x16x16xf16, @DDR>)
 func.func @ParsePrintDistributedBufferPermuteDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -101,7 +105,7 @@ func.func @ParsePrintDistributedBufferPermuteDMA(%input: !Input_DDR) -> !Output_
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.PermuteDMA
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x32x16x16xf16, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x32x16x16xf16, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
@@ -133,6 +137,8 @@ func.func @ParsePrintDistributedBufferPermuteDMA(%input: !Input_DDR) -> !Output_
 !Input_DDR = memref<1x2x4x6xf16, #NHWC, @DDR>
 !Output_DDR = memref<1x2x4x6xf16, #NHWC, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferSpaceToDepthDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x2x4x6xf16, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferSpaceToDepthDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -161,7 +167,7 @@ func.func @ParsePrintDistributedBufferSpaceToDepthDMA(%input: !Input_DDR) -> !Ou
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.SpaceToDepthDMA
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x2x4x6xf16, #NHWC, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x2x4x6xf16, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
@@ -193,6 +199,8 @@ func.func @ParsePrintDistributedBufferSpaceToDepthDMA(%input: !Input_DDR) -> !Ou
 !Input_DDR = memref<1x8x2x3xf16, #NHWC, @DDR>
 !Output_DDR = memref<1x8x2x3xf16, #NHWC, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferDepthToSpaceDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x8x2x3xf16, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferDepthToSpaceDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -219,15 +227,15 @@ func.func @ParsePrintDistributedBufferDepthToSpaceDMA(%input: !Input_DDR) -> !Ou
     //CHECK:        [[INPUT_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x2x4x6xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                           {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], kernel = [3, 3],
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 2 : i64}>
-    //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
+    //CHECK:        {{%[^=]+}}= async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.DepthToSpaceDMA
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x8x2x3xf16, #NHWC, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x8x2x3xf16, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
 
     //CHECK:        [[OUTPUT:%.+]] = memref.alloc() : memref<1x8x2x3xf16, #NHWC, @DDR>
-    //CHECK:        %token_0 = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
+    //CHECK:        {{%[^=]+}}= async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.SpaceToDepthDMA
     //CHECK-SAME:                          inputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK-SAME:                          outputs([[OUTPUT]] : memref<1x8x2x3xf16, #NHWC, @DDR>
@@ -253,6 +261,8 @@ func.func @ParsePrintDistributedBufferDepthToSpaceDMA(%input: !Input_DDR) -> !Ou
 !Input_DDR = memref<1x2x35x16xf16, #NHWC, @DDR>
 !Output_DDR = memref<1x32x35x16xf16, #NHWC, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferPerAxisTileDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x2x35x16xf16, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferPerAxisTileDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -281,7 +291,7 @@ func.func @ParsePrintDistributedBufferPerAxisTileDMA(%input: !Input_DDR) -> !Out
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.PerAxisTileDMA
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x2x35x16xf16, #NHWC, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x2x35x16xf16, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
@@ -313,6 +323,8 @@ func.func @ParsePrintDistributedBufferPerAxisTileDMA(%input: !Input_DDR) -> !Out
 !Input_DDR = memref<1x32x34x16xf16, #NHWC, @DDR>
 !Output_DDR = memref<1x33x35x16xf16, #NHWC, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferExpandDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x32x34x16xf16, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferExpandDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -341,7 +353,7 @@ func.func @ParsePrintDistributedBufferExpandDMA(%input: !Input_DDR) -> !Output_D
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.ExpandDMA
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x32x34x16xf16, #NHWC, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x32x34x16xf16, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
@@ -373,6 +385,8 @@ func.func @ParsePrintDistributedBufferExpandDMA(%input: !Input_DDR) -> !Output_D
 !Input_DDR = memref<1x16x16x16xf16, #NHWC, @DDR>
 !Output_DDR = memref<1x16x64x64xf16, #NHWC, @DDR>
 
+// CHECK-LABEL: @ParsePrintDistributedBufferUpsamplingDMAOp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x16x16x16xf16, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferUpsamplingDMAOp(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -401,7 +415,7 @@ func.func @ParsePrintDistributedBufferUpsamplingDMAOp(%input: !Input_DDR) -> !Ou
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.UpsamplingDMAOp
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x16x16x16xf16, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }

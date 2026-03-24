@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -205,8 +205,8 @@ mlir::Value FuseSoftmaxPass::createTransposeWithReshape(mlir::OpBuilder& builder
     // Reshape for softmax
     auto reshapeDims = createReshapeDims(axisInfo, originalShape, concatenatedDim);
     auto inputShapeAttr = getIntArrayAttr(builder.getContext(), reshapeDims);
-    auto reshapeInputOp = builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_in"), transposeOp.getOutput(),
-                                                        nullptr, false, inputShapeAttr);
+    auto reshapeInputOp =
+            builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_in"), transposeOp.getOutput(), inputShapeAttr);
 
     // Apply softmax
     int64_t softmaxAxis = static_cast<int64_t>(reshapeDims.size()) - 1;
@@ -221,7 +221,7 @@ mlir::Value FuseSoftmaxPass::createTransposeWithReshape(mlir::OpBuilder& builder
     }
     auto transposedShapeAttr = getIntArrayAttr(builder.getContext(), transposedShape);
     auto reshapeOutputOp = builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_out"), softmaxOp.getOutput(),
-                                                         nullptr, false, transposedShapeAttr);
+                                                         transposedShapeAttr);
 
     // Transpose back to original order
     auto forwardOrderMap = mlir::AffineMap::getPermutationMap(transposeOrder, builder.getContext());
@@ -239,8 +239,7 @@ mlir::Value FuseSoftmaxPass::createReshapeOnly(mlir::OpBuilder& builder, IE::Div
 
     auto reshapeDims = createReshapeDims(axisInfo, originalShape, concatenatedDim);
     auto inputShapeAttr = getIntArrayAttr(builder.getContext(), reshapeDims);
-    auto reshapeInputOp =
-            builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_in"), input, nullptr, false, inputShapeAttr);
+    auto reshapeInputOp = builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_in"), input, inputShapeAttr);
 
     int64_t numOnesNeeded = static_cast<int64_t>(axisInfo.axes.size()) - 1;
     int64_t softmaxAxis = numOnesNeeded + axisInfo.axes[0];
@@ -248,8 +247,8 @@ mlir::Value FuseSoftmaxPass::createReshapeOnly(mlir::OpBuilder& builder, IE::Div
     auto softmaxOp = builder.create<IE::SoftMaxOp>(takeOpLoc(divideOp, "softmax"), reshapeInputOp.getOutput(),
                                                    softmaxAxisAttr, nullptr);
     auto originalShapeAttr = getIntArrayAttr(builder.getContext(), originalShape);
-    auto reshapeOutputOp = builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_out"), softmaxOp.getOutput(),
-                                                         nullptr, false, originalShapeAttr);
+    auto reshapeOutputOp =
+            builder.create<IE::ReshapeOp>(takeOpLoc(divideOp, "reshape_out"), softmaxOp.getOutput(), originalShapeAttr);
 
     return reshapeOutputOp.getOutput();
 }

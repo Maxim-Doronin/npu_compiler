@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -23,7 +23,7 @@ func.func @NcePermute(%arg0: tensor<1x3x224x224xf16, {mem_space = @CMX_NN}>)
         expandedChannels = 4 : i64,
         ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>
     } -> tensor<1x4x224x224xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] pad [0, 0, 0, 0] <CUBOID_16x16>
     }
 
     return %0 : tensor<1x4x224x224xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -76,7 +76,7 @@ func.func @NcePermuteQuantOut(%arg0: tensor<1x3x224x224xf16, {mem_space = @CMX_N
         expandedChannels = 4 : i64,
         ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>
     } -> tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] pad [0, 0, 0, 0] <CUBOID_16x16>
     }
 
     return %0 : tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}>
@@ -130,7 +130,7 @@ func.func @NcePermuteQuantInQuantOut(%arg0: tensor<1x3x224x224x!qElemType, {mem_
         expandedChannels = 4 : i64,
         ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_mult = [16384], quant_shift = [29], quant_post_shift = 0 : i64, in1_quant_mult = [16384], in2_quant_mult = [16384], fp_prelu_alpha = 1.000000e+00 : f64>
     } -> tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] pad [0, 0, 0, 0] <CUBOID_16x16>
     }
 
     return %0 : tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}>
@@ -205,7 +205,7 @@ func.func @NcePermute_MultiTile(%in: !InputTensor) -> !OutputTensor {
             expandedChannels = 4 : i64,
             ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>
         } -> !OutputTensor {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 256, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 256, 224] pad [0, 0, 0, 0] <CUBOID_16x16>
         }
 
     return %out : !OutputTensor

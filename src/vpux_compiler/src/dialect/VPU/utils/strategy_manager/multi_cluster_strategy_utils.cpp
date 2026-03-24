@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,6 +26,7 @@
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
+#include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/convert_to_dma_utils.hpp"
@@ -620,9 +621,11 @@ double LayerCostModel::getSWLayerCost(VPU::SWOpInterface swOp,
     uint32_t fullCost = 0;
     OutputTiling outTiles({TileInfo(getShape(swOp->getResult(0)))});
 
-    auto isShave2APIUsed = _layerCostModel->get_cost_model_shared()->isShave2ApiUsed();
+    const auto& shaveUtilIntf = VPU::getShaveCostModelUtils(swOp->getContext());
+    auto isShave2APIUsed = shaveUtilIntf.isShave2ApiUsed();
+
     if (!isShave2APIUsed) {
-        auto vpunnLayer = getVPUNNSWKernelOp(swOp, isShave2APIUsed);
+        auto vpunnLayer = getVPUNNSWKernelOp(swOp);
 
         auto vpunnStrategy = VPU::getVPULayerStrategy(strategy, _numDPUs, _numTiles, _arch, _numShaveActs, false);
         return _layerCostModel->Layer(*vpunnLayer, vpunnStrategy);
@@ -1270,6 +1273,9 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
     // If we find a strategy in a higher priority bucket, no need to look at any further buckets
     llvm::DenseMap<PriorityBucket, SmallVector<StrategyInfoPair>> priorityBuckets;
 
+    // Map used for npu37xx workaround based on heuristics for soh vs sok selection based on cmx fit
+    llvm::DenseMap<VPU::MultiClusterStrategy, MultiClusterStrategyInfo> strategyInfoMap;
+
     const auto optimalMCTiling = [&](VPU::MultiClusterStrategy strategy) {
         if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
             return mlir::isa<vpux::VPU::NCECompressConvolutionOp, vpux::VPU::NCEPermuteOp>(clusteredOp)
@@ -1304,10 +1310,32 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
                 clusteredOp.doesLayerFitIntoCMX(strategy, _siblingsOpsAnalysis, /*reservedMem=*/Byte(0));
         strategyInfo.cost = getLayerCost(clusteredOp, strategy);
         strategyInfo.usesFullTiles = usesFullTiles(clusteredOp, strategy);
+        strategyInfoMap[strategy] = strategyInfo;
 
         auto bucketKey = getPriority(strategyInfo);
         priorityBuckets[bucketKey].emplace_back(strategy, strategyInfo);
         _log.trace("Strategy {0} saved for evaluation in priority bucket {1}", strategy, bucketKey);
+    }
+
+    auto arch = config::getArch(clusteredOp.getOperation());
+    if (arch == config::ArchKind::NPU37XX) {
+        // In NPU37XX the cost model is not accurate, so implementation relies more on heuristics.
+        // In this case, give precedence to the case in which one strategy fits in CMX, regardless of costs
+        auto sohIt = strategyInfoMap.find(VPU::MultiClusterStrategy::SplitOverHeight);
+        auto sokIt = strategyInfoMap.find(VPU::MultiClusterStrategy::SplitOverKernel);
+
+        if (sohIt != strategyInfoMap.end() && sokIt != strategyInfoMap.end()) {
+            // the case in which one or both strategies are not compatible (hence keys not in the map) is managed by the
+            // general implementation
+            if (sohIt->second.fitsIntoCMX && !sokIt->second.fitsIntoCMX) {
+                _log.trace("Strategy SplitOverHeight chosen as it fits into CMX");
+                return optimalMCTiling(sohIt->first);
+            }
+            if (!sohIt->second.fitsIntoCMX && sokIt->second.fitsIntoCMX && sokIt->second.usesFullTiles) {
+                _log.trace("Strategy SplitOverKernel chosen as it fits into CMX");
+                return VPU::MultiClusterStrategy::SplitOverKernel;
+            }
+        }
     }
 
     // Step 2: Choose best strategy
@@ -1720,7 +1748,6 @@ SmallVector<uint32_t> vpux::VPU::getSHAVECostForSwOpPreSplit(
         const std::shared_ptr<VPUNN::VPULayerCostModel>& vpunnCostModel, int64_t numSHV, Logger log) {
     std::vector<std::vector<VPUNN::SHAVEWorkload>> preSplitVPUNNLayers;
     std::map<int, SmallVector<vpux::NDTypeInterface>> inputNDTypesMap;
-
     if (!outTiles.empty()) {
         auto tilingBuilderOp = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(swOp.getOperation());
         VPUX_THROW_WHEN(tilingBuilderOp == nullptr, "SW op {0} at {1} should be a tiling op", swOp->getName(),
@@ -1752,26 +1779,34 @@ SmallVector<uint32_t> vpux::VPU::getSHAVECostForSwOpPreSplit(
                 for (auto inTile : inputTiles) {
                     curCostParams.inputShapes.push_back(inTile.shape);
                 }
-                curCostParams.outputShapes.push_back(outTile.shape);
 
-                tiledVpunnLayers.push_back(VPU::getPerClusterShaveWorkloads(
-                        swOp, curCostParams, log, vpunnCostModel->get_cost_model_shared()->isShave2ApiUsed()));
+                // Handle multiple outputs - extract shape for each output result
+                // For devices up to 40XX, preserve old behavior: only push first output shape
+                auto arch = config::getArch(swOp.getOperation());
+                if (arch <= config::ArchKind::NPU40XX) {
+                    curCostParams.outputShapes.push_back(outTile.shape);
+                } else {
+                    for (size_t outIdx = 0; outIdx < swOp->getNumResults(); ++outIdx) {
+                        curCostParams.outputShapes.push_back(outTile.shape);
+                    }
+                }
+
+                tiledVpunnLayers.push_back(VPU::getPerClusterShaveWorkloads(swOp, curCostParams, log));
             }
             return tiledVpunnLayers;
         };
         preSplitVPUNNLayers = tilingVPUNNLayer(costParams);
     } else {
-        preSplitVPUNNLayers = {VPU::getPerClusterShaveWorkloads(
-                swOp, costParams, log, vpunnCostModel->get_cost_model_shared()->isShave2ApiUsed())};
+        preSplitVPUNNLayers = {VPU::getPerClusterShaveWorkloads(swOp, costParams, log)};
     }
 
     log.trace("Pre-split of op {0} VPUNN layers size {1}", swOp->getName(), preSplitVPUNNLayers.size());
     // Exclude multiClusterStrategy from hash code for VPUNN statistic
     // to make sure that one operation's hash code won't be changed by temporal multiClusterStrategy attribute
     auto getVPUNNLayersCostFromCache = [&](const std::vector<VPUNN::SHAVEWorkload>& vpunnLayers, int index) {
-        auto cost = checkAndReturnCost(vpunnCostModel->LayersPreSplit(vpunnLayers, numSHV, /*input_in_ddr=*/false,
-                                                                      /*output_in_ddr=*/false),
-                                       log);
+        auto cost = checkAndReturnCost(
+                vpunnCostModel->LayersPreSplit(vpunnLayers, numSHV, /*input_in_ddr=*/false, /*output_in_ddr=*/false),
+                log);
         cost = vpux::VPU::correctSwOpCost(swOp, inputNDTypesMap[index], cost);
         return cost;
     };

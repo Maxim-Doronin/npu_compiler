@@ -113,6 +113,11 @@ TEST_P(DynamicAddWithShapeOfNPUTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(DynamicAddWithShapeOfNPUTest, NPU5020_HW) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 const std::vector<ov::element::Type> inputPrecision = {ov::element::i64};
 const std::vector<BeginAndInputShape> inShapes = {{generateTestShape(1), {1, 1, 1}}};

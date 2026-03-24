@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,6 +31,7 @@
 }>
 
 // CHECK-LABEL: SliceWithExplicitOverlappedDistributedTensorType
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPU.DistributedTensor<1x1x96x160xf16, #NHWC, @CMX_NN,
 func.func @SliceWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistributed)
     -> (!OutputDistributed, !OutputDistributed) {
 
@@ -38,7 +39,7 @@ func.func @SliceWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistrib
     %1 = VPU.Slice %arg0 [0, 0, 47, 0] [1, 1, 49, 160] : !InputDistributed to !OutputDistributed
     return %0, %1 : !OutputDistributed, !OutputDistributed
 
-    // CHECK:        [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 1, 49, 160]
+    // CHECK:        [[SLICE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 49, 160]
     // CHECK-SAME:         !VPU.DistributedTensor<1x1x96x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x1x49x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
@@ -46,7 +47,7 @@ func.func @SliceWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistrib
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 1, 26, 160], [1, 1, 25, 160]], compute_offsets = [[0, 0, 0, 0], [0, 0, 24, 0]],
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 1, 26, 160], [1, 1, 25, 160]], memory_offsets = [[0, 0, 0, 0], [0, 0, 24, 0]]
 
-    // CHECK:        [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 47, 0] [1, 1, 49, 160]
+    // CHECK:        [[SLICE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 47, 0] [1, 1, 49, 160]
     // CHECK-SAME:         !VPU.DistributedTensor<1x1x96x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x1x49x160xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "OVERLAPPED"
@@ -82,6 +83,7 @@ func.func @SliceWithExplicitOverlappedDistributedTensorType(%arg0: !InputDistrib
 }>
 
 // CHECK-LABEL: SliceWithExplicitSegmentedDistributedTensorType
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPU.DistributedTensor<1x16x88x128xf16, #NHWC, @CMX_NN,
 func.func @SliceWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistributed)
     -> (!OutputDistributed, !OutputDistributed) {
 
@@ -89,7 +91,7 @@ func.func @SliceWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistribu
     %1 = VPU.Slice %arg0 [0, 0, 44, 0] [1, 16, 44, 128] : !InputDistributed to !OutputDistributed
     return %0, %1 : !OutputDistributed, !OutputDistributed
 
-    // CHECK:        [[SLICE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 44, 128]
+    // CHECK:        [[SLICE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 16, 44, 128]
     // CHECK-SAME:         !VPU.DistributedTensor<1x16x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x16x44x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"
@@ -97,7 +99,7 @@ func.func @SliceWithExplicitSegmentedDistributedTensorType(%arg0: !InputDistribu
     // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], compute_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
     // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 16, 22, 128], [1, 16, 22, 128]], memory_offsets = [[0, 0, 0, 0], [0, 0, 22, 0]]
 
-    // CHECK:        [[SLICE1:%.+]] = VPU.Slice %arg0 [0, 0, 44, 0] [1, 16, 44, 128]
+    // CHECK:        [[SLICE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 44, 0] [1, 16, 44, 128]
     // CHECK-SAME:         !VPU.DistributedTensor<1x16x88x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:         to !VPU.DistributedTensor<1x16x44x128xf16, #NHWC, @CMX_NN
     // CHECK-SAME:             mode = "SEGMENTED"

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -55,12 +55,14 @@ func.func @WrapNCENonTiledTask(%arg0: tensor<1x32x256x256xf16, {order = #NHWC}>,
 
 // -----
 
+// CHECK-LABEL: @WrapActivation
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x512x512xf16>)
 func.func @WrapActivation(%arg0: tensor<1x3x512x512xf16>) -> tensor<1x3x512x512xf16> {
     %0 = VPU.Tanh(%arg0) {multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>, tilingStrategy = [1, 1, 2, 1]} : tensor<1x3x512x512xf16> -> tensor<1x3x512x512xf16>
     return %0 : tensor<1x3x512x512xf16>
 
-    //CHECK:  VPU.VerticalFusion (%arg0 as %arg1: tensor<1x3x512x512xf16>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x3x512x512xf16> {
-    //CHECK:  VPU.Tanh(%arg1)
+    //CHECK:  VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x3x512x512xf16>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x3x512x512xf16> {
+    //CHECK:  VPU.Tanh([[ARG_1]])
     //CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
     //CHECK-SAME:  tensor<1x3x512x512xf16> -> tensor<1x3x512x512xf16>
     //CHECK:    VPU.Yield
@@ -69,11 +71,13 @@ func.func @WrapActivation(%arg0: tensor<1x3x512x512xf16>) -> tensor<1x3x512x512x
 
 // -----
 
+// CHECK-LABEL: @WrapSwish
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x176x176xf16>)
 func.func @WrapSwish(%arg0: tensor<1x32x176x176xf16>) -> tensor<1x32x176x176xf16> {
     %0 = VPU.Swish(%arg0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, tilingStrategy = [1, 1, 2, 1]} : tensor<1x32x176x176xf16> -> tensor<1x32x176x176xf16>
     return %0 : tensor<1x32x176x176xf16>
-    //CHECK:  VPU.VerticalFusion (%arg0 as %arg1: tensor<1x32x176x176xf16>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x32x176x176xf16> {
-    //CHECK:  VPU.Swish(%arg1)
+    //CHECK:  VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x32x176x176xf16>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x32x176x176xf16> {
+    //CHECK:  VPU.Swish([[ARG_1]])
     //CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
     //CHECK-SAME:  tensor<1x32x176x176xf16> -> tensor<1x32x176x176xf16>
 }
@@ -114,12 +118,14 @@ func.func @WrapDepthToSpaceDF(%arg0: tensor<1x128x180x270xf16, {order = #NHWC}>)
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @WrapMultiply
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4x720x1080xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x4x720x1080xf16, {order = #NHWC}>)
 func.func @WrapMultiply(%arg0: tensor<1x4x720x1080xf16, {order = #NHWC}>, %arg1: tensor<1x4x720x1080xf16, {order = #NHWC}>) -> tensor<1x4x720x1080xf16, {order = #NHWC}> {
     %0 = VPU.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, tilingStrategy = [1, 1, 5, 1]} : tensor<1x4x720x1080xf16, {order = #NHWC}>, tensor<1x4x720x1080xf16, {order = #NHWC}> -> tensor<1x4x720x1080xf16, {order = #NHWC}>
     return %0 : tensor<1x4x720x1080xf16, {order = #NHWC}>
 
-    //CHECK:  VPU.VerticalFusion (%arg0 as %arg2: tensor<1x4x720x1080xf16, {order = #NHWC}>, %arg1 as %arg3: tensor<1x4x720x1080xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 5, 1]} -> tensor<1x4x720x1080xf16, {order = #NHWC}> {
-    //CHECK:  VPU.Multiply(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x720x1080xf16, {order = #NHWC}>, tensor<1x4x720x1080xf16, {order = #NHWC}> -> tensor<1x4x720x1080xf16, {order = #NHWC}>
+    //CHECK:  VPU.VerticalFusion ([[ARG_0]] as [[ARG_2:%[^:]+]]: tensor<1x4x720x1080xf16, {order = #NHWC}>, [[ARG_1]] as [[ARG_3:%[^:]+]]: tensor<1x4x720x1080xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 5, 1]} -> tensor<1x4x720x1080xf16, {order = #NHWC}> {
+    //CHECK:  VPU.Multiply([[ARG_2]], [[ARG_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x720x1080xf16, {order = #NHWC}>, tensor<1x4x720x1080xf16, {order = #NHWC}> -> tensor<1x4x720x1080xf16, {order = #NHWC}>
     //CHECK:    VPU.Yield
 }
 
@@ -142,12 +148,14 @@ func.func @WrapSubtract(%arg0: tensor<1x4x720x1080xf16, {order = #NHWC}>, %arg1:
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @WrapTiledMVN
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x192x16x48xf16, {order = #NHWC}>)
 func.func @WrapTiledMVN(%arg0: tensor<1x192x16x48xf16, {order = #NHWC}>) -> tensor<1x192x16x48xf16, {order = #NHWC}> {
     %0 = VPU.MVN(%arg0) {across_channels = false, eps = 9.9999997473787516E-6 : f64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, normalize_variance = true, tilingStrategy = [1, 2, 1, 1]} : tensor<1x192x16x48xf16, {order = #NHWC}> -> tensor<1x192x16x48xf16, {order = #NHWC}>
     return %0 : tensor<1x192x16x48xf16, {order = #NHWC}>
 
-    //CHECK:  VPU.VerticalFusion (%arg0 as %arg1: tensor<1x192x16x48xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 2, 1, 1]} -> tensor<1x192x16x48xf16, {order = #NHWC}> {
-    //CHECK:  VPU.MVN(%arg1) {across_channels = false, eps = 9.9999997473787516E-6 : f64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, normalize_variance = true} : tensor<1x192x16x48xf16, {order = #NHWC}> -> tensor<1x192x16x48xf16, {order = #NHWC}>
+    //CHECK:  VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x192x16x48xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 2, 1, 1]} -> tensor<1x192x16x48xf16, {order = #NHWC}> {
+    //CHECK:  VPU.MVN([[ARG_1]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, normalize_variance = true} : tensor<1x192x16x48xf16, {order = #NHWC}> -> tensor<1x192x16x48xf16, {order = #NHWC}>
     //CHECK:    VPU.Yield
 }
 

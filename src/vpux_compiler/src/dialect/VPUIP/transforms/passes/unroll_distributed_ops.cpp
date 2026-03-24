@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/unroll_distributed_ops_getter.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/compression_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/memref_utils.hpp"
@@ -36,6 +36,15 @@ namespace vpux::VPUIP {
 using namespace vpux;
 
 namespace {
+// Before NPU4, input data could be read from other clusters. SE pointers could also address data
+// that is not placed in the local cluster of the DPU task, which means that a mechanism was necessary
+// to select which cluster to read from. The base pointer part of the SE pointers would do this.
+// Starting with NPU4, the base pointers no longer need to be configured differently for each cluster
+// as the DPU is only able to read from the local cluster, so they can be reset.
+bool resetBasePtrs(const vpux::config::ArchKind arch) {
+    return arch >= config::ArchKind::NPU40XX;
+}
+
 mlir::FailureOr<Shape> inferShapeFromStrides(vpux::NDTypeInterface originType, StridesRef strides) {
     const auto origShape = originType.getShape();
     const auto dimsOrder = originType.getDimsOrder();
@@ -435,11 +444,11 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
                 /*dynamic_sequence_length=*/nullptr, /*max_per_xy=*/nullptr,
                 /*min_per_xy=*/nullptr, /*min_max_per_tensor=*/mlir::ValueRange(), nceTask.getTaskType(),
                 nceTask.getKernelSizeAttr(), nceTask.getKernelStridesAttr(), padAttrForCluster[clusterId],
-                nceTask.getIsContinuedAttr(), nceTask.getCmSpPatternAttr(), isSegmentedNCETask(parentInputType),
-                outChannelOffsets[clusterId], nceTask.getInputChannelsCompressionAttr(),
-                nceTask.getIsZeroOffsetWeightsTableAttr(), nceTask.getIsSuperdenseAttr(), nceTask.getIsInplaceAttr(),
-                nceTask.getInputSeSizeAttr(), nceTask.getOutputSeSizeAttr(), nceTask.getIsPermuteQuantizeAttr(),
-                nceTask.getIsSmallKernelOptimizedAttr(), nceTask.getMpeEngineAttr(), nceTask.getEltwiseTypeAttr(),
+                nceTask.getIsContinued(), nceTask.getCmSpPatternAttr(), isSegmentedNCETask(parentInputType),
+                outChannelOffsets[clusterId], nceTask.getInputChannelsCompression(),
+                nceTask.getIsZeroOffsetWeightsTable(), nceTask.getIsSuperdense(), nceTask.getIsInplaceAttr(),
+                nceTask.getInputSeSizeAttr(), nceTask.getOutputSeSizeAttr(), nceTask.getIsPermuteQuantize(),
+                nceTask.getIsSmallKernelOptimized(), nceTask.getMpeEngineAttr(), nceTask.getEltwiseTypeAttr(),
                 nceTask.getSparsityConfigAttr(),
                 /*dynamic_scale_config=*/nullptr, localRegion);
 
@@ -656,7 +665,7 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
 
     auto isAcrossClusterReusableWeightTableDMA = [&]() -> bool {
         if (auto task = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(*dmaOp.getOutputBuff().user_begin())) {
-            if (task.getIsZeroOffsetWeightsTableAttr()) {
+            if (task.getIsZeroOffsetWeightsTable()) {
                 if (task.getWeightTable() != dmaOp.getOutputBuff()) {
                     return false;
                 }
@@ -932,6 +941,10 @@ mlir::Value VPUIP::patchSETableValue(mlir::Location loc, Const::DeclareOp constO
                                                      ArrayRef(seTableVals));
     return builder.create<Const::DeclareOp>(loc, constOp.getType(), Const::ContentAttr::get(denseAttr));
 }
+
+//
+// ClusterPerElementDMABaseRewriter
+//
 
 void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::Location loc, VPURT::TaskOp vpurtTask,
                                                                           mlir::OpBuilder& builder,
@@ -1531,6 +1544,10 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollAcrossClusterReusableWeightT
     _log.trace("Insert new DMA op: '{0}'", newDMAOp);
 }
 
+//
+// ClusterDMARewriter
+//
+
 bool VPUIP::ClusterDMARewriter::isTargetOp(VPUIP::DMATypeOpInterface dmaOp) const {
     return mlir::isa<VPUIP::NNDMAOp>(dmaOp.getOperation());
 }
@@ -1566,38 +1583,11 @@ VPUIP::ClusterDMARewriter::UnrollingType VPUIP::ClusterDMARewriter::getUnrolling
     return UnrollingType::FAILED;
 }
 
-namespace {
-
 //
 // ClusterNCERewriter
 //
 
-class ClusterNCERewriter final : public VPUIP::ClusterNCEBaseRewriter {
-public:
-    ClusterNCERewriter(mlir::MLIRContext* ctx, Logger log): ClusterNCEBaseRewriter(ctx, log) {
-    }
-
-private:
-    void getOutputBuffers(SmallVector<mlir::Value>& parentOutputBuffs, SmallVector<mlir::Value>& outputBuffs,
-                          SmallVector<mlir::Value>& parentOutputSparsityMap,
-                          SmallVector<mlir::Value>& outputSparsityMapBuffs,
-                          SmallVector<SmallVector<mlir::Value>>& outputItiBuffs, mlir::Location loc,
-                          VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters,
-                          mlir::OpBuilder& builder) const override;
-
-    void getInputBuffers(SmallVector<mlir::Value>& parentInputBuffs, SmallVector<mlir::Value>& inputBuffs,
-                         SmallVector<mlir::Value>& parentInputSparsityMap,
-                         SmallVector<mlir::Value>& inputSparsityMapBuffs, SmallVector<mlir::Value>& parentInputSETable,
-                         SmallVector<mlir::Value>& inputSETableBuffs, mlir::Location loc,
-                         VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters,
-                         mlir::OpBuilder& builder) const override;
-
-    mlir::UnitAttr isSegmentedNCETask(VPUIP::DistributedBufferType /*inputType*/) const override {
-        return nullptr;
-    };
-};
-
-void ClusterNCERewriter::getInputBuffers(
+void VPUIP::ClusterNCERewriter::getInputBuffers(
         SmallVector<mlir::Value>& parentInputBuffs, SmallVector<mlir::Value>& inputBuffs,
         SmallVector<mlir::Value>& parentInputSparsityMap, SmallVector<mlir::Value>& inputSparsityMapBuffs,
         SmallVector<mlir::Value>& parentInputSETable, SmallVector<mlir::Value>& inputSETableBuffs, mlir::Location loc,
@@ -1612,13 +1602,13 @@ void ClusterNCERewriter::getInputBuffers(
     parentInputSETable = inputSETableBuffs;
 }
 
-void ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Value>& parentOutputBuffs,
-                                          SmallVector<mlir::Value>& outputBuffs,
-                                          SmallVector<mlir::Value>& parentOutputSparsityMap,
-                                          SmallVector<mlir::Value>& outputSparsityMapBuffs,
-                                          SmallVector<SmallVector<mlir::Value>>& outputItiBuffs, mlir::Location loc,
-                                          VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters,
-                                          mlir::OpBuilder& builder) const {
+void VPUIP::ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Value>& parentOutputBuffs,
+                                                 SmallVector<mlir::Value>& outputBuffs,
+                                                 SmallVector<mlir::Value>& parentOutputSparsityMap,
+                                                 SmallVector<mlir::Value>& outputSparsityMapBuffs,
+                                                 SmallVector<SmallVector<mlir::Value>>& outputItiBuffs,
+                                                 mlir::Location loc, VPUIP::NCEClusterTaskOp nceTask,
+                                                 const int64_t numClusters, mlir::OpBuilder& builder) const {
     const auto hasHalo = [&]() -> bool {
         auto operandType = nceTask.getOutputBuff().getType();
         auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandType);
@@ -1660,33 +1650,20 @@ void ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Value>& parentOutput
 // ClusterConvertDMARewriter
 //
 
-class ClusterConvertDMARewriter final : public VPUIP::ClusterPerElementDMABaseRewriter {
-public:
-    ClusterConvertDMARewriter(mlir::MLIRContext* ctx, int64_t dmaPortCount, Logger log)
-            : ClusterPerElementDMABaseRewriter(ctx, dmaPortCount, /*dmaFusionHandler=*/{}, log) {
-    }
-
-private:
-    bool isTargetOp(VPUIP::DMATypeOpInterface dmaOp) const override;
-    virtual VPUIP::DMATypeOpInterface wrapIntoTaskOp(VPUIP::DMATypeOpInterface dmaOp, VPURT::TaskOp vpurtTask,
-                                                     mlir::Location loc, mlir::Value input, mlir::Value output_buff,
-                                                     int64_t port, mlir::OpBuilder& builder) const override;
-    UnrollingType getUnrollingType(VPU::DistributionMode inputMode, VPU::DistributionMode outputMode) const override;
-};
-
-bool ClusterConvertDMARewriter::isTargetOp(VPUIP::DMATypeOpInterface dmaOp) const {
+bool VPUIP::ClusterConvertDMARewriter::isTargetOp(VPUIP::DMATypeOpInterface dmaOp) const {
     return mlir::isa<VPUIP::ConvertDMAOp>(dmaOp.getOperation());
 }
 
-VPUIP::DMATypeOpInterface ClusterConvertDMARewriter::wrapIntoTaskOp(VPUIP::DMATypeOpInterface, VPURT::TaskOp vpurtTask,
-                                                                    mlir::Location loc, mlir::Value input,
-                                                                    mlir::Value output_buff, int64_t port,
-                                                                    mlir::OpBuilder& builder) const {
+VPUIP::DMATypeOpInterface VPUIP::ClusterConvertDMARewriter::wrapIntoTaskOp(VPUIP::DMATypeOpInterface,
+                                                                           VPURT::TaskOp vpurtTask, mlir::Location loc,
+                                                                           mlir::Value input, mlir::Value output_buff,
+                                                                           int64_t port,
+                                                                           mlir::OpBuilder& builder) const {
     return VPURT::wrapIntoTaskOp<VPUIP::ConvertDMAOp>(builder, vpurtTask.getWaitBarriers(),
                                                       vpurtTask.getUpdateBarriers(), loc, input, output_buff, port);
 }
 
-ClusterConvertDMARewriter::UnrollingType ClusterConvertDMARewriter::getUnrollingType(
+VPUIP::ClusterConvertDMARewriter::UnrollingType VPUIP::ClusterConvertDMARewriter::getUnrollingType(
         VPU::DistributionMode inputMode, VPU::DistributionMode outputMode) const {
     // Normally we don't support both distributed input and output NNCMX->NNCMX DMAs
     // but this is an exception since ConvertDMA gets translated from SW Convert layer
@@ -1712,20 +1689,15 @@ ClusterConvertDMARewriter::UnrollingType ClusterConvertDMARewriter::getUnrolling
     return UnrollingType::FAILED;
 }
 
-};  // namespace
-
 void VPUIP::unrollDistributedOpsCommon40XXPlus(mlir::func::FuncOp func,
                                                std::optional<DmaFusionHandlerType> maybeDmaFusionHandler,
                                                vpux::Logger log) {
     auto ctx = func->getContext();
-    auto module = func->getParentOfType<mlir::ModuleOp>();
-
-    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
-    auto dmaPortCount = dmaOp.getCount();
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
 
     const VPUIP::ClusterDMARewriter dmaRewriter(ctx, dmaPortCount, std::move(maybeDmaFusionHandler), log);
-    const ClusterNCERewriter nceRewriter(ctx, log);
-    const ClusterConvertDMARewriter convertDMARewriter(ctx, dmaPortCount, log);
+    const VPUIP::ClusterNCERewriter nceRewriter(ctx, log);
+    const VPUIP::ClusterConvertDMARewriter convertDMARewriter(ctx, dmaPortCount, log);
 
     func.walk<mlir::WalkOrder::PostOrder>([&](VPURT::TaskOp vpurtTask) {
         auto op = vpurtTask.getInnerTaskOp();
@@ -1767,7 +1739,8 @@ void UnrollDistributedOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto strategy = VPUIP::createUnrollDistributedOpsStrategy(func, _enableSegmentedDmaFusion);
+    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getUnrollDistributedOpsStrategy(func, _enableSegmentedDmaFusion);
     strategy->prepareOps(ctx, _log);
 }
 

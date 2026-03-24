@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,9 +48,9 @@ func.func @MoveQuantizeCast(%arg0: tensor<1x48x48x48x!qElemType, {order = #NHWC}
     return %2 : tensor<1x32x48x48xf16, {order = #NHWC}>
 
     //CHECK:  [[SLICE:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 32, 48, 48]
-    //CHECK:  VPU.VerticalFusion ([[SLICE]] as %arg1: tensor<1x32x48x48x!qElemType, {order = #NHWC}>)
+    //CHECK:  VPU.VerticalFusion ([[SLICE]] as [[ARG_1:%[^:]+]]: tensor<1x32x48x48x!qElemType, {order = #NHWC}>)
     //CHECK-SAME: attributes {tilingStrategy = [1, 1, 2, 1]}
-    //CHECK:  [[QUANTIZE_CAST:%.+]] = VPU.QuantizeCast(%arg1)
+    //CHECK:  [[QUANTIZE_CAST:%.+]] = VPU.QuantizeCast([[ARG_1]])
     //CHECK:  [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[QUANTIZE_CAST]], [[QUANTIZE_CAST]])
     //CHECK:  VPU.Yield [[ELTWISE]]
 }
@@ -81,12 +81,12 @@ func.func @NotMoveLayoutCast(%arg0: tensor<1x120x120x40xf16>) -> tensor<1x40x120
 
     //CHECK:  [[PERMUTE_CAST_0:%.+]] = VPU.PermuteCast([[INPUT]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x120x120x40xf16> -> tensor<1x40x120x120xf16, {order = #NHWC}>
     //CHECK:  [[SHAPE_CAST_0:%.+]] = VPU.ShapeCast {shape = [1, 16, 120, 300]} inputs([[PERMUTE_CAST_0]] : tensor<1x40x120x120xf16, {order = #NHWC}>) -> tensor<1x16x120x300xf16, {order = #NHWC}>
-    //CHECK:  [[VERTICAL_FUSION_0:%.+]] = VPU.VerticalFusion ([[SHAPE_CAST_0]] as %arg1: tensor<1x16x120x300xf16, {order = #NHWC}>)
-    //CHECK:  [[MAXPOOL_0:%.+]] = VPU.NCE.MaxPool(%arg1)
+    //CHECK:  [[VERTICAL_FUSION_0:%.+]] = VPU.VerticalFusion ([[SHAPE_CAST_0]] as [[ARG_1:%[^:]+]]: tensor<1x16x120x300xf16, {order = #NHWC}>)
+    //CHECK:  [[MAXPOOL_0:%.+]] = VPU.NCE.MaxPool([[ARG_1]])
     //CHECK:  VPU.Yield [[MAXPOOL_0]]
     //CHECK:  [[LAYOUT_CAST:%.+]] = VPU.LayoutCast([[VERTICAL_FUSION_0]]) {dst_order = #NHWC} : tensor<1x16x120x300xf16, {order = #NWCH}> -> tensor<1x16x120x300xf16, {order = #NHWC}>
-    //CHECK:  [[VERTICAL_FUSION_1:%.+]] = VPU.VerticalFusion ([[LAYOUT_CAST]] as %arg1: tensor<1x16x120x300xf16, {order = #NHWC}>)
-    //CHECK:  [[MAXPOOL_1:%.+]] = VPU.NCE.MaxPool(%arg1)
+    //CHECK:  [[VERTICAL_FUSION_1:%.+]] = VPU.VerticalFusion ([[LAYOUT_CAST]] as [[ARG_1:%[^:]+]]: tensor<1x16x120x300xf16, {order = #NHWC}>)
+    //CHECK:  [[MAXPOOL_1:%.+]] = VPU.NCE.MaxPool([[ARG_1]])
     //CHECK:  VPU.Yield [[MAXPOOL_1]]
     //CHECK:  [[PERMUTE_CAST_1:%.+]] = VPU.PermuteCast([[VERTICAL_FUSION_1]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x16x120x300xf16, {order = #NWCH}> -> tensor<1x300x16x120xf16>
     //CHECK:  [[SHAPE_CAST_1:%.+]] = VPU.ShapeCast {shape = [1, 40, 120, 120]} inputs([[PERMUTE_CAST_1]] : tensor<1x300x16x120xf16>) -> tensor<1x40x120x120xf16>

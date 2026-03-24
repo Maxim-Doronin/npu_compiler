@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -55,9 +56,7 @@ void ActShaveProfilingPass::safeRunOnModule() {
 
     IndexedSymbolAttr memKindAttr = IndexedSymbolAttr::get(ctx, stringifyEnum(VPU::MemoryKind::CMX_NN), 0);
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(module);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
 
@@ -130,9 +129,7 @@ void GroupProfilingBuffersPass::safeRunOnModule() {
     auto ctx = &getContext();
     auto module = getOperation();
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(module);
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
 

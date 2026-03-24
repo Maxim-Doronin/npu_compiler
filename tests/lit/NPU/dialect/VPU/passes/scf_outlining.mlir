@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,16 +57,16 @@ module @ControlFlowOutliningStaticShape {
 // CHECK:    [[OUTPUT:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[CST]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, {{[^:]+}}} : tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}> -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:    return [[OUTPUT]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:  }
-// CHECK:  func.func @main(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
+// CHECK:  func.func @main([[ARG_0:%[^:]+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {[[ANY_ATTR:.+]]} {
 // CHECK:      [[LOCAL_BUFF:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:      [[CST_1:%.+]] = arith.constant 0 : index
 // CHECK:      [[CST_64:%.+]] = arith.constant 64 : index
 // CHECK:      [[CST_32:%.+]] = arith.constant 32 : index
 // CHECK:      [[SCF_FOR:%.+]] = scf.for [[LOCAL_INPUT0:%.+]] = [[CST_1]] to [[CST_64]] step [[CST_32]] iter_args([[LOCAL_INPUT1:%.+]] = [[LOCAL_BUFF]]) -> (tensor<1x256x64x64xf16, {order = #NHWC}>) {
-// CHECK:        [[MAX:%.+]] = affine.max #map(%arg1)
+// CHECK:        [[MAX:%.+]] = affine.max #map({{%[^:]+}})
 // CHECK:        [[CST_2:%.+]] = arith.constant 0 : index
 // CHECK:        [[CMP:%.+]] = arith.cmpi eq, [[LOCAL_INPUT0]], [[CST_2]] : index
-// CHECK:        [[SLICE:%.+]] = tensor.extract_slice %arg0[0, 0, [[MAX]], 0] [1, 32, 33, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x33x64xf16, {order = #NHWC}>
+// CHECK:        [[SLICE:%.+]] = tensor.extract_slice [[ARG_0]][0, 0, [[MAX]], 0] [1, 32, 33, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x33x64xf16, {order = #NHWC}>
 // CHECK:        [[SCF_IF:%.+]] = scf.if [[CMP]] -> (tensor<1x256x32x64xf16, {order = #NHWC}>) {
 // CHECK:          [[CONV_OUTPUT:%.+]] = func.call @main_func0([[SLICE]]) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:          scf.yield [[CONV_OUTPUT]] : tensor<1x256x32x64xf16, {order = #NHWC}>
@@ -74,7 +74,7 @@ module @ControlFlowOutliningStaticShape {
 // CHECK:          [[CONV_OUTPUT:%.+]] = func.call @main_func1([[SLICE]]) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:          scf.yield [[CONV_OUTPUT]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:        }
-// CHECK:        [[MERGED_OUTPUT:%.+]] = tensor.insert_slice %4 into [[LOCAL_INPUT1]][0, 0, [[LOCAL_INPUT0]], 0] [1, 256, 32, 64] [1, 1, 1, 1] : tensor<1x256x32x64xf16, {order = #NHWC}> into tensor<1x256x64x64xf16, {order = #NHWC}>
+// CHECK:        [[MERGED_OUTPUT:%.+]] = tensor.insert_slice [[SCF_IF]] into [[LOCAL_INPUT1]][0, 0, [[LOCAL_INPUT0]], 0] [1, 256, 32, 64] [1, 1, 1, 1] : tensor<1x256x32x64xf16, {order = #NHWC}> into tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:        scf.yield [[MERGED_OUTPUT]] : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:      }
 // CHECK:      return [[SCF_FOR]] : tensor<1x256x64x64xf16, {order = #NHWC}>
@@ -148,12 +148,12 @@ module @ControlFlowOutliningStaticShape1 {
 // CHECK:      [[OUTPUT0:%.+]] = VPU.NCE.MaxPool([[INPUT0]], [[CST]] ) {kernel_size = [3, 3], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:      return [[OUTPUT0]] : tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:    }
-// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x200x200xf16, {order = #NHWC}>) -> tensor<1x16x200x200xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
+// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x200x200xf16, {order = #NHWC}>) -> tensor<1x16x200x200xf16, {order = #NHWC}> attributes {[[ANY_ATTR:.+]]} {
 // CHECK:      [[EMPTY:%.+]] = tensor.empty() : tensor<1x16x200x200xf16, {order = #NHWC}>
 // CHECK:      [[CST0:%.+]] = arith.constant 0 : index
 // CHECK:      [[CST200:%.+]] = arith.constant 200 : index
 // CHECK:      [[CST50:%.+]] = arith.constant 50 : index
-// CHECK:      [[SCF_FOR:%.+]] = scf.for [[ARG1:%.+]] = [[CST0]] to [[CST200]] step [[CST50]] iter_args([[ARG2:%.+]] = %0) -> (tensor<1x16x200x200xf16, {order = #NHWC}>) {
+// CHECK:      [[SCF_FOR:%.+]] = scf.for [[ARG1:%.+]] = [[CST0]] to [[CST200]] step [[CST50]] iter_args([[ARG2:%.+]] = [[EMPTY]]) -> (tensor<1x16x200x200xf16, {order = #NHWC}>) {
 // CHECK:        [[MAX:%.+]] = affine.max #map([[ARG1]])
 // CHECK:        [[CST1:%.+]] = arith.constant 0 : index
 // CHECK:        [[CMP:%.+]] = arith.cmpi eq, [[ARG1]], [[CST1]] : index
@@ -169,7 +169,7 @@ module @ControlFlowOutliningStaticShape1 {
 // CHECK:            [[MAX_POOL:%.+]] = func.call @main_func1([[SLICE]]) : (tensor<1x16x51x200xf16, {order = #NHWC}>) -> tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:            scf.yield [[MAX_POOL]] : tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:          } else {
-// CHECK:            [[SLICE1:%.+]] = tensor.extract_slice %arg0[0, 0, [[MAX]], 0] [1, 16, 52, 200] [1, 1, 1, 1] : tensor<1x16x200x200xf16, {order = #NHWC}> to tensor<1x16x52x200xf16, {order = #NHWC}>
+// CHECK:            [[SLICE1:%.+]] = tensor.extract_slice [[INPUT0]][0, 0, [[MAX]], 0] [1, 16, 52, 200] [1, 1, 1, 1] : tensor<1x16x200x200xf16, {order = #NHWC}> to tensor<1x16x52x200xf16, {order = #NHWC}>
 // CHECK:            [[MAX_POOL:%.+]] = func.call @main_func2([[SLICE1]]) : (tensor<1x16x52x200xf16, {order = #NHWC}>) -> tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:            scf.yield [[MAX_POOL]] : tensor<1x16x50x200xf16, {order = #NHWC}>
 // CHECK:          }
@@ -223,7 +223,7 @@ module @ControlFlowOutliningDynamicShape1 {
 // CHECK:      [[OUTPUT:%.+]] = VPU.NCE.Eltwise([[INPUT0]], [[INPUT1]]) {is_inplace = true, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [1.000000e+00], fp_prelu_alpha = 1.000000e+00 : f64>} -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:      return [[OUTPUT]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:    }
-// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> attributes {config.pureHostCompileFunc} {
+// CHECK:    func.func @main([[INPUT0:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>, [[INPUT1:%.+]]: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> attributes {[[ANY_ATTR:.+]]} {
 // CHECK:        [[CST0:%.+]] = arith.constant 3 : index
 // CHECK:        [[DIM0:%.+]] = tensor.dim [[INPUT0]], [[CST0]] : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
 // CHECK:        [[BUFFER:%.+]] = tensor.empty([[DIM0]]) : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
@@ -305,7 +305,7 @@ module @ControlFlowOutliningMultipleOutput {
 // CHECK:     [[OUT0:%.+]] = VPU.NCE.Convolution([[INPUT0]], [[CST]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [256, 32, 3, 3], strides = [1, 1]} : tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<256x32x3x3xf16, {order = #NHWC}> -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:     return [[OUT0]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:   }
-// CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
+// CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {[[ANY_ATTR:.+]]} {
 // CHECK:     [[BUFFER:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:     [[FROM:%.+]] = arith.constant 0 : index
 // CHECK:     [[TILL:%.+]] = arith.constant 64 : index
@@ -315,16 +315,16 @@ module @ControlFlowOutliningMultipleOutput {
 // CHECK:       [[CST3:%.+]] = arith.constant 0 : index
 // CHECK:       [[CMP:%.+]] = arith.cmpi eq, [[ARG0]], [[CST3]] : index
 // CHECK:       [[SLICE:%.+]] = tensor.extract_slice [[INPUT0]][0, 0, [[MAX]], 0] [1, 32, 33, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x33x64xf16, {order = #NHWC}>
-// CHECK:       %4:2 = func.call @main_func0([[SLICE]]) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> (tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<1x32x33x64xf16, {order = #NHWC}>)
+// CHECK:       [[OUT0:%.+]]:2 = func.call @main_func0([[SLICE]]) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> (tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<1x32x33x64xf16, {order = #NHWC}>)
 // CHECK:       [[TMP_RESULT:%.+]] = scf.if [[CMP]] -> (tensor<1x256x32x64xf16, {order = #NHWC}>) {
-// CHECK:         [[TMP:%.+]] = func.call @main_func1(%4#0) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
+// CHECK:         [[TMP:%.+]] = func.call @main_func1([[OUT0]]#0) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:         scf.yield [[TMP]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:       } else {
-// CHECK:         [[TMP:%.+]] = func.call @main_func2(%4#1) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
+// CHECK:         [[TMP:%.+]] = func.call @main_func2([[OUT0]]#1) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:         scf.yield [[TMP]] : tensor<1x256x32x64xf16, {order = #NHWC}>
 // CHECK:       }
-// CHECK:       %inserted_slice = tensor.insert_slice [[TMP_RESULT]] into [[ARG1]][0, 0, [[ARG0]], 0] [1, 256, 32, 64] [1, 1, 1, 1] : tensor<1x256x32x64xf16, {order = #NHWC}> into tensor<1x256x64x64xf16, {order = #NHWC}>
-// CHECK:       scf.yield %inserted_slice : tensor<1x256x64x64xf16, {order = #NHWC}>
+// CHECK:       [[INSERTED_SLICE:%.+]] = tensor.insert_slice [[TMP_RESULT]] into [[ARG1]][0, 0, [[ARG0]], 0] [1, 256, 32, 64] [1, 1, 1, 1] : tensor<1x256x32x64xf16, {order = #NHWC}> into tensor<1x256x64x64xf16, {order = #NHWC}>
+// CHECK:       scf.yield [[INSERTED_SLICE]] : tensor<1x256x64x64xf16, {order = #NHWC}>
 // CHECK:     }
 // CHECK:     return [[RESULT]] : tensor<1x256x64x64xf16, {order = #NHWC}>
 
@@ -366,7 +366,7 @@ module @Add {
   // CHECK:   [[RESULT:%.+]] = VPU.PermuteCast
   // CHECK:   return [[RESULT]] : tensor<1x1x100x100xf32>
   // CHECK:   }
-  // CHECK:   func.func @main([[ARGS0:%.+]]: tensor<1x1x100x100xf32>, [[ARGS1:%.+]]: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32> attributes {config.pureHostCompileFunc} {
+  // CHECK:   func.func @main([[ARGS0:%.+]]: tensor<1x1x100x100xf32>, [[ARGS1:%.+]]: tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32> attributes {[[ANY_ATTR:.+]]} {
   // CHECK:   [[RESULTS:%.+]] = call @main_func0([[ARGS0]], [[ARGS1]]) : (tensor<1x1x100x100xf32>, tensor<1x1x100x100xf32>) -> tensor<1x1x100x100xf32>
   // CHECK:   return [[RESULTS]] : tensor<1x1x100x100xf32>
   // CHECK:   }
@@ -441,7 +441,7 @@ module @SparseTensorWithCstInputs {
   // CHECK:     return [[CONV]] : tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:   }
 
-  // CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
+  // CHECK:   func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {[[ANY_ATTR:.+]]} {
   // CHECK:     [[BUFFER:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
   // CHECK:     [[FROM:%.+]] = arith.constant 0 : index
   // CHECK:     [[TILL:%.+]] = arith.constant 64 : index
@@ -451,12 +451,12 @@ module @SparseTensorWithCstInputs {
   // CHECK:       [[CST3:%.+]] = arith.constant 0 : index
   // CHECK:       [[CMP:%.+]] = arith.cmpi eq, [[ARG0]], [[CST3]] : index
   // CHECK:       [[SLICE:%.+]] = tensor.extract_slice [[INPUT0]][0, 0, [[MAX]], 0] [1, 32, 33, 64] [1, 1, 1, 1] : tensor<1x32x64x64xf16, {order = #NHWC}> to tensor<1x32x33x64xf16, {order = #NHWC}>
-  // CHECK:       %4:2 = func.call @main_func0([[SLICE]]) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> (tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<1x32x33x64xf16, {order = #NHWC}>)
+  // CHECK:       [[RESULT_4:%.+]]:2 = func.call @main_func0([[SLICE]]) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> (tensor<1x32x33x64xf16, {order = #NHWC}>, tensor<1x32x33x64xf16, {order = #NHWC}>)
   // CHECK:       [[TMP_RESULT:%.+]] = scf.if [[CMP]] -> (tensor<1x256x32x64xf16, {order = #NHWC}>) {
-  // CHECK:         [[TMP:%.+]] = func.call @main_func1(%4#0) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
+  // CHECK:         [[TMP:%.+]] = func.call @main_func1([[RESULT_4]]#0) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:         scf.yield [[TMP]] : tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:       } else {
-  // CHECK:         [[TMP:%.+]] = func.call @main_func2(%4#1) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
+  // CHECK:         [[TMP:%.+]] = func.call @main_func2([[RESULT_4]]#1) : (tensor<1x32x33x64xf16, {order = #NHWC}>) -> tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:         scf.yield [[TMP]] : tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:       }
   // CHECK:       [[INSERTED_SLICE:%.+]] = tensor.insert_slice [[TMP_RESULT]] into [[ARG1]][0, 0, [[ARG0]], 0] [1, 256, 32, 64] [1, 1, 1, 1] : tensor<1x256x32x64xf16, {order = #NHWC}> into tensor<1x256x64x64xf16, {order = #NHWC}>
@@ -518,7 +518,7 @@ module @SparseTensorWithBlockInput {
   // CHECK:    return [[CONV]] : tensor<1x256x32x64xf16, {order = #NHWC}>
   // CHECK:  }
 
-  // CHECK:  func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<256x32x3x3xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
+  // CHECK:  func.func @main([[INPUT0:%.+]]: tensor<1x32x64x64xf16, {order = #NHWC}>, [[INPUT1:%.+]]: tensor<256x32x3x3xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> attributes {[[ANY_ATTR:.+]]} {
   // CHECK:    [[CST:%.+]] = const.Declare tensor<256x1x1x384xi1> = dense<0.000000e+00> : tensor<256x32x3x3xf16, {order = #NHWC}>, [#const.GetSparsityMap]
   // CHECK:    [[EMPTY:%.+]] = tensor.empty() : tensor<1x256x64x64xf16, {order = #NHWC}>
   // CHECK:    [[C0:%.+]] = arith.constant 0 : index
@@ -575,7 +575,7 @@ module @ExtractSliceMoveToTop {
   // CHECK:    return [[ELTWISE]] : tensor<1x1600x16x10xf32, {order = #NHWC}>
   // CHECK:  }
 
-  // CHECK:  func.func @main([[ARG0:%.+]]: tensor<1x16x1600x1600xf32>, [[ARG1:%.+]]: tensor<1x16x1600x1600xf32>) -> tensor<1x16x1600x1600xf32> attributes {config.pureHostCompileFunc} {
+  // CHECK:  func.func @main([[ARG0:%.+]]: tensor<1x16x1600x1600xf32>, [[ARG1:%.+]]: tensor<1x16x1600x1600xf32>) -> tensor<1x16x1600x1600xf32> attributes {[[ANY_ATTR:.+]]} {
   // CHECK:    [[C10:%.+]] = arith.constant 10 : index
   // CHECK:    [[C1600:%.+]] = arith.constant 1600 : index
   // CHECK:    [[C0:%.+]] = arith.constant 0 : index

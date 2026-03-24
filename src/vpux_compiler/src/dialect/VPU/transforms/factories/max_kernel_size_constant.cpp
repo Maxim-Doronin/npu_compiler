@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 #include "vpux/compiler/NPU37XX/dialect/VPU/impl/max_kernel_size_constant.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPU/impl/max_kernel_size_constant.hpp"
 
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/utils/core/error.hpp"
 
 using namespace vpux;

@@ -1,16 +1,23 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --lower-ops-to-se-nce="se-experimental-ops-enabled=true" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --lower-ops-to-se-nce %s | FileCheck %s
 // REQUIRES: arch-NPU50XX
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK-LABEL: func.func @DilatedGroupConvToSeNCE
+// CHECK: @DilatedGroupConvToSeNCE
+module @DilatedGroupConvToSeNCE {
+
+config.PipelineOptions @Options {
+    config.Option @config.EnableExperimentalSEPtrsOperations : true
+}
+
+// CHECK: func.func @main
 // CHECK-SAME:    ([[ARG0:%.+]]: tensor<1x960x65x65xf16, {order = #NHWC}>)
-func.func @DilatedGroupConvToSeNCE(%arg0: tensor<1x960x65x65xf16, {order = #NHWC}>) -> tensor<1x960x65x65xf16> {
+func.func @main(%arg0: tensor<1x960x65x65xf16, {order = #NHWC}>) -> tensor<1x960x65x65xf16> {
   %cst = const.Declare tensor<960x1x3x3xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}> = dense<1.0> :
    tensor<960x1x1x3x3xf32>, [#const.Reshape<[960, 1, 3, 3]>, #const.ConvertElemType<f16>,
     #const.Reorder<affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>>]
@@ -86,6 +93,8 @@ func.func @DilatedGroupConvToSeNCE(%arg0: tensor<1x960x65x65xf16, {order = #NHWC
     // CHECK:       return [[CONCAT]] : tensor<1x960x65x65xf16>
 }
 
+}
+
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -94,13 +103,20 @@ func.func @DilatedGroupConvToSeNCE(%arg0: tensor<1x960x65x65xf16, {order = #NHWC
 !qElemTypeWeights = !quant.uniform<u8:f16, 0.024384656606935989:128>
 !qElemTypeOut = !quant.uniform<u8:f16, 0.023529411764705882>
 
-// CHECK-DAG: [[QELEMTYPE_IN:!.+]] = !quant.uniform<u8:f16, 0.011516255023432714>
-// CHECK-DAG: [[QELEMTYPE_W:!.+]] = !quant.uniform<u8:f16, 0.024384656606935989:128>
-// CHECK-DAG: [[QELEMTYPE_OUT:!.+]] = !quant.uniform<u8:f16, 0.023529411764705882>
+// CHECK-DAG: [[QELEMTYPE_IN:!qElemType[0-9]*]] = !quant.uniform<u8:f16, 0.011516255023432714>
+// CHECK-DAG: [[QELEMTYPE_OUT:!qElemType[0-9]+]] = !quant.uniform<u8:f16, 0.023529411764705882>
+// CHECK-DAG: [[QELEMTYPE_W:!qElemType[0-9]+]] = !quant.uniform<u8:f16, 0.024384656606935989:128>
 
-// CHECK: func.func @QuantizedDilatedGroupConvToSeNCE
+// CHECK: @QuantizedDilatedGroupConvToSeNCE
+module @QuantizedDilatedGroupConvToSeNCE {
+
+config.PipelineOptions @Options {
+    config.Option @config.EnableExperimentalSEPtrsOperations : true
+}
+
+// CHECK: func.func @main
 // CHECK-SAME:    ([[ARG0:%.+]]: tensor<1x960x65x65x[[QELEMTYPE_IN]], {order = #NHWC}>)
-func.func @QuantizedDilatedGroupConvToSeNCE(%arg0: tensor<1x960x65x65x!qElemTypeIn, {order = #NHWC}>) -> tensor<1x960x65x65x!qElemTypeOut> {
+func.func @main(%arg0: tensor<1x960x65x65x!qElemTypeIn, {order = #NHWC}>) -> tensor<1x960x65x65x!qElemTypeOut> {
   %cst = const.Declare tensor<960x1x3x3x!qElemTypeWeights, {order = #NHWC}> = dense<1.0> :
     tensor<960x1x1x3x3xf32>, [#const.Reshape<[960, 1, 3, 3]>, #const.ConvertElemType<!qElemTypeWeights>,
     #const.Reorder<#NHWC>]
@@ -175,4 +191,6 @@ func.func @QuantizedDilatedGroupConvToSeNCE(%arg0: tensor<1x960x65x65x!qElemType
     // CHECK-SAME:          tensor<1x960x33x33x[[QELEMTYPE_OUT]]>, tensor<1x960x33x32x[[QELEMTYPE_OUT]]>, tensor<1x960x32x33x[[QELEMTYPE_OUT]]>, tensor<1x960x32x32x[[QELEMTYPE_OUT]]> -> tensor<1x960x65x65x[[QELEMTYPE_OUT]]>
 
     // CHECK:       return [[CONCAT]] : tensor<1x960x65x65x[[QELEMTYPE_OUT]]>
+}
+
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -137,6 +137,18 @@ std::string vpux::stringifyPrimaryLocationSanitized(mlir::Location location) {
             },
             '_');
     return str;
+}
+
+/**
+ * Retrieves the original OV layer type from the task's location.
+ */
+std::string vpux::getLayerNameFromLocation(mlir::Location location) {
+    auto partsAndMeta = getPrimaryLocationComponents(location);
+    auto locParts = partsAndMeta.first;
+    if (locParts.empty()) {
+        return "<Unknown>";
+    }
+    return locParts[0];
 }
 
 /**

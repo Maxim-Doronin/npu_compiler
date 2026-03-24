@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -83,10 +83,10 @@ module @DefaultHWTestWithOutliner {
 #loc33 = loc(fused<{name = "module", type = "Module"}>["module"])
 #loc34 = loc(fused<{name = "func", type = "Func"}>["func"])
 
-// CHECK: func.func private @main_part1(%arg0: tensor<1x3x62x62xf16>) -> tensor<1x3x62x62xf16> {
+// CHECK: func.func private @main_part1([[ARG_0:%[^:]+]]: tensor<1x3x62x62xf16>) -> tensor<1x3x62x62xf16> {
 // CHECK: }
 
-// CHECK: func.func private @main_part2(%arg0: tensor<1x3x62x62xf16>, %arg1: tensor<1x3x62x62xf16>) -> tensor<1x3x62x62xf16> {
+// CHECK: func.func private @main_part2([[ARG_0:%[^:]+]]: tensor<1x3x62x62xf16>, [[ARG_1:%[^:]+]]: tensor<1x3x62x62xf16>) -> tensor<1x3x62x62xf16> {
 // CHECK: }
 
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x3x62x62xf16>) -> tensor<1x3x62x62xf32> {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @RecomputePtrsForSparseNCEConv
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @RecomputePtrsForSparseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %weights_cst = const.Declare tensor<16x16x4x4xf16, {order = #NHWC}> = dense<0.0> : tensor<16x16x4x4xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
     %sparse_map_cst = const.Declare tensor<16x1x1x256xi1> = dense<0.000000e+00> : tensor<16x16x4x4xf16>, [#const.Reorder<#NHWC>, #const.GetSparsityMap]
@@ -27,7 +28,7 @@ func.func @RecomputePtrsForSparseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
     // CHECK-SAME{LITERAL}:     [[[1, 128, 1, 1]]], [[[1, 160, 1, 1]]], [[[1, 192, 1, 1]]], [[[1, 224, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 256, 1, 1]]], [[[1, 288, 1, 1]]], [[[1, 320, 1, 1]]], [[[1, 352, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 384, 1, 1]]], [[[1, 416, 1, 1]]], [[[1, 448, 1, 1]]], [[[1, 480, 1, 1]]]]>
-    // CHECK:                 {{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
+    // CHECK:                 {{.+}} = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WEIGHTS_TABLE]])
     // CHECK-SAME:                 -> tensor<1x16x16x16xf16, {order = #NHWC}>
 }
 
@@ -36,6 +37,7 @@ func.func @RecomputePtrsForSparseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DontChangePtrsForDenseNCEConv
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @DontChangePtrsForDenseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %weights_cst = const.Declare tensor<16x16x4x4xf16, {order = #NHWC}> = dense<0.0> : tensor<16x16x4x4xf16>, [#const.Reorder<#NHWC>]
     %weights_table_cst = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
@@ -48,7 +50,7 @@ func.func @DontChangePtrsForDenseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
 
     return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
     // CHECK-DAG:       [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
-    // CHECK:       {{.+}} = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WEIGHTS_TABLE]])
+    // CHECK:       {{.+}} = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WEIGHTS_TABLE]])
     // CHECK-SAME:       -> tensor<1x16x16x16xf16, {order = #NHWC}>
 }
 
@@ -57,6 +59,7 @@ func.func @DontChangePtrsForDenseNCEConv(%arg0: tensor<1x16x16x16xf16, {order = 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SharedWeights
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @SharedWeights(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
         -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
     %weights_cst = const.Declare tensor<16x16x4x4xf16, {order = #NHWC}> = dense<0.0> : tensor<16x16x4x4xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
@@ -92,8 +95,8 @@ func.func @SharedWeights(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
     // CHECK-SAME{LITERAL}:     [[[2, 256, 2, 2]]], [[[2, 288, 2, 2]]], [[[2, 320, 2, 2]]], [[[2, 352, 2, 2]]],
     // CHECK-SAME{LITERAL}:     [[[2, 384, 2, 2]]], [[[2, 416, 2, 2]]], [[[2, 448, 2, 2]]], [[[2, 480, 2, 2]]]]>
 
-    // CHECK: [[RES1:%.+]] = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WT1]]) {{{.+}}}
-    // CHECK: [[RES2:%.+]] = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WT2]]) {{{.+}}}
+    // CHECK: [[RES1:%.+]] = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WT1]]) {{{.+}}}
+    // CHECK: [[RES2:%.+]] = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WT2]]) {{{.+}}}
 
     // CHECK: return [[RES1]], [[RES2]]
 }
@@ -103,6 +106,7 @@ func.func @SharedWeights(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SharedWeightsTable
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @SharedWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
         -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
     %weights_cst1 = const.Declare tensor<16x16x4x4xf16, {order = #NHWC}> = dense<0.0> : tensor<16x16x4x4xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
@@ -138,8 +142,8 @@ func.func @SharedWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
     // CHECK-SAME{LITERAL}:     [[[1, 256, 1, 1]]], [[[1, 288, 1, 1]]], [[[1, 320, 1, 1]]], [[[1, 352, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 384, 1, 1]]], [[[1, 416, 1, 1]]], [[[1, 448, 1, 1]]], [[[1, 480, 1, 1]]]]>
 
-    // CHECK: [[RES1:%.+]] = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WT_SHARED]]) {{{.+}}}
-    // CHECK: [[RES2:%.+]] = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WT_SHARED]]) {{{.+}}}
+    // CHECK: [[RES1:%.+]] = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WT_SHARED]]) {{{.+}}}
+    // CHECK: [[RES2:%.+]] = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WT_SHARED]]) {{{.+}}}
 
     // CHECK: return [[RES1]], [[RES2]]
 }
@@ -150,6 +154,7 @@ func.func @SharedWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SharedWeightsAndWeightsTable
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @SharedWeightsAndWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>)
         -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
     %weights_cst = const.Declare tensor<16x16x4x4xf16, {order = #NHWC}> = dense<0.0> : tensor<16x16x4x4xf16>, [#const.Reorder<#NHWC>, #const.Sparsify<false>]
@@ -178,8 +183,8 @@ func.func @SharedWeightsAndWeightsTable(%arg0: tensor<1x16x16x16xf16, {order = #
     // CHECK-SAME{LITERAL}:     [[[1, 256, 1, 1]]], [[[1, 288, 1, 1]]], [[[1, 320, 1, 1]]], [[[1, 352, 1, 1]]],
     // CHECK-SAME{LITERAL}:     [[[1, 384, 1, 1]]], [[[1, 416, 1, 1]]], [[[1, 448, 1, 1]]], [[[1, 480, 1, 1]]]]>
 
-    // CHECK: [[RES1:%.+]] = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WT_SHARED]]) {{{.+}}}
-    // CHECK: [[RES2:%.+]] = VPU.NCE.Convolution(%arg0, {{%.+}}, [[WT_SHARED]]) {{{.+}}}
+    // CHECK: [[RES1:%.+]] = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WT_SHARED]]) {{{.+}}}
+    // CHECK: [[RES2:%.+]] = VPU.NCE.Convolution([[ARG_0]], {{%.+}}, [[WT_SHARED]]) {{{.+}}}
 
     // CHECK: return [[RES1]], [[RES2]]
 }

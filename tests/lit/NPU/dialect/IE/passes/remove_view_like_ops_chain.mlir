@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL: @RemovePermuteCastAffineReshapePermuteCastChain
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x1x1xf16, {order = #NHWC}>
 func.func @RemovePermuteCastAffineReshapePermuteCastChain(%arg0: tensor<1x3x1x1xf16, {order = #NHWC}>) -> tensor<1x3x1x1xf16, {order = #NHWC}> {
     %2 = IE.PermuteCast(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} :
         tensor<1x3x1x1xf16, {order = #NHWC}> -> tensor<1x3x1x1xf16, {order = #NCHW}>
@@ -21,7 +22,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastChain(%arg0: tensor<1x3x1x1x
 
     return %4 : tensor<1x3x1x1xf16, {order = #NHWC}>
 
-    // CHECK: return %arg0 : tensor<1x3x1x1xf16, {order = #NHWC}>
+    // CHECK: return [[ARG_0]] : tensor<1x3x1x1xf16, {order = #NHWC}>
 }
 
 // -----
@@ -32,6 +33,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastChain(%arg0: tensor<1x3x1x1x
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
 // CHECK-LABEL: @RemoveAffineReshapePermuteCastx2Chain
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4096x1024x4xf16, {order = #NHWC}>
 func.func @RemoveAffineReshapePermuteCastx2Chain(%arg0: tensor<1x4096x1024x4xf16, {order = #NHWC}>) -> tensor<1x4096x1024x4xf16, {order = #NHWC}> {
     %1 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 4096, 4096, 1]} :
         tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x4096x1xf16, {order = #NHWC}>
@@ -47,7 +49,7 @@ func.func @RemoveAffineReshapePermuteCastx2Chain(%arg0: tensor<1x4096x1024x4xf16
 
     return %4 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
 
-    // CHECK: return %arg0 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
+    // CHECK: return [[ARG_0]] : tensor<1x4096x1024x4xf16, {order = #NHWC}>
 }
 
 // -----
@@ -58,6 +60,7 @@ func.func @RemoveAffineReshapePermuteCastx2Chain(%arg0: tensor<1x4096x1024x4xf16
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
 // CHECK-LABEL: @RemovePermuteCastAffineReshapePermuteCastSubChain
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4096x1024x4xf16, {order = #NHWC}>
 func.func @RemovePermuteCastAffineReshapePermuteCastSubChain(%arg0: tensor<1x4096x1024x4xf16, {order = #NHWC}>) -> tensor<1x4096x4096x1xf16, {order = #NHWC}> {
     %1 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 4096, 4096, 1]} :
         tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x4096x1xf16, {order = #NHWC}>
@@ -76,7 +79,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastSubChain(%arg0: tensor<1x409
 
     return %5 : tensor<1x4096x4096x1xf16, {order = #NHWC}>
 
-    // CHECK: [[VAL0:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK: [[VAL0:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 4096, 4096, 1]} : tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x4096x1xf16, {order = #NHWC}>
     // CHECK: return [[VAL0]] : tensor<1x4096x4096x1xf16, {order = #NHWC}>
 }
@@ -89,6 +92,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastSubChain(%arg0: tensor<1x409
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
 // CHECK-LABEL: @RemovePermuteCastAffineReshapePermuteCastx2SubChain
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4096x1024x4xf16, {order = #NHWC}>
 func.func @RemovePermuteCastAffineReshapePermuteCastx2SubChain(%arg0: tensor<1x4096x1024x4xf16, {order = #NHWC}>) -> tensor<1x4096x1024x4xf16, {order = #NHWC}> {
     %1 = IE.AffineReshape(%arg0) {dim_mapping = [[0], [1], [2], [2, 3]], shape_value = [1, 4096, 4096, 1]} :
         tensor<1x4096x1024x4xf16, {order = #NHWC}> -> tensor<1x4096x4096x1xf16, {order = #NHWC}>
@@ -116,7 +120,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastx2SubChain(%arg0: tensor<1x4
 
     return %8 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
 
-    // CHECK: return %arg0 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
+    // CHECK: return [[ARG_0]] : tensor<1x4096x1024x4xf16, {order = #NHWC}>
 }
 
 // -----
@@ -125,6 +129,7 @@ func.func @RemovePermuteCastAffineReshapePermuteCastx2SubChain(%arg0: tensor<1x4
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @RemoveShapeCastLayoutCastChain
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4096x1024x4xf16, {order = #NHWC}>
 func.func @RemoveShapeCastLayoutCastChain(%arg0: tensor<1x4096x1024x4xf16, {order = #NHWC}>) -> tensor<1x4096x1024x4xf16, {order = #NHWC}> {
     %1 = IE.ShapeCast {shape = [1, 1, 4096, 4096]}
         inputs(%arg0 : tensor<1x4096x1024x4xf16, {order = #NHWC}>) -> tensor<1x1x4096x4096xf16, {order = #NHWC}>
@@ -140,5 +145,5 @@ func.func @RemoveShapeCastLayoutCastChain(%arg0: tensor<1x4096x1024x4xf16, {orde
 
     return %4 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
 
-    // CHECK: return %arg0 : tensor<1x4096x1024x4xf16, {order = #NHWC}>
+    // CHECK: return [[ARG_0]] : tensor<1x4096x1024x4xf16, {order = #NHWC}>
 }

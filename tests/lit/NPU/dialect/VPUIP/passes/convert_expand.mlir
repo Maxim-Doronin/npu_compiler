@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,8 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: func.func @Expand
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @Expand(%arg0: memref<1x3x4x4xf16>) -> (memref<1x8x4x4xf16>) {
     %0 = memref.alloc() : memref<1x8x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 5, 0, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x8x4x4xf16>) -> memref<1x8x4x4xf16>
@@ -19,7 +21,7 @@ func.func @Expand(%arg0: memref<1x3x4x4xf16>) -> (memref<1x8x4x4xf16>) {
 
     // CHECK:       [[VIEW1:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 0, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x8x4x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [128, 16, 4, 1]}>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW1]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [128, 16, 4, 1]}>)
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 3, 0, 0] [1, 5, 4, 4]
@@ -38,6 +40,8 @@ func.func @Expand(%arg0: memref<1x3x4x4xf16>) -> (memref<1x8x4x4xf16>) {
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandToSubviewWithoutTail
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x4x4x4xf16>)
 func.func @ExpandToSubviewWithoutTail(%arg0: memref<1x4x4x4xf16>) -> memref<1x8x4x4xf16> {
     %0 = memref.alloc() : memref<1x8x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 4, 0, 0]} inputs(%arg0 : memref<1x4x4x4xf16>) outputs(%0 : memref<1x8x4x4xf16>) -> memref<1x8x4x4xf16>
@@ -48,7 +52,7 @@ func.func @ExpandToSubviewWithoutTail(%arg0: memref<1x4x4x4xf16>) -> memref<1x8x
 
     // CHECK:       [[VIEW1:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 0, 0, 0] [1, 4, 4, 4]
     // CHECK-SAME:      : memref<1x8x4x4xf16> to memref<1x4x4x4xf16, {order = #NCHW, strides = [128, 16, 4, 1]}>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x4x4x4xf16>)
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x4x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW1]] : memref<1x4x4x4xf16, {order = #NCHW, strides = [128, 16, 4, 1]}>)
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 4, 0, 0] [1, 4, 4, 4]
@@ -67,6 +71,8 @@ func.func @ExpandToSubviewWithoutTail(%arg0: memref<1x4x4x4xf16>) -> memref<1x8x
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandToSubviewOnlyWithTail
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x5x4x4xf16>)
 func.func @ExpandToSubviewOnlyWithTail(%arg0: memref<1x5x4x4xf16>) -> memref<1x8x4x4xf16> {
     %0 = memref.alloc() : memref<1x8x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 3, 0, 0]} inputs(%arg0 : memref<1x5x4x4xf16>) outputs(%0 : memref<1x8x4x4xf16>) -> memref<1x8x4x4xf16>
@@ -77,7 +83,7 @@ func.func @ExpandToSubviewOnlyWithTail(%arg0: memref<1x5x4x4xf16>) -> memref<1x8
 
     // CHECK:       [[VIEW1:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 0, 0, 0] [1, 5, 4, 4]
     // CHECK-SAME:      : memref<1x8x4x4xf16> to memref<1x5x4x4xf16, {order = #NCHW, strides = [128, 16, 4, 1]}>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x5x4x4xf16>)
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x5x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW1]] : memref<1x5x4x4xf16, {order = #NCHW, strides = [128, 16, 4, 1]}>)
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 5, 0, 0] [1, 3, 4, 4]
@@ -96,6 +102,8 @@ func.func @ExpandToSubviewOnlyWithTail(%arg0: memref<1x5x4x4xf16>) -> memref<1x8
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandOverWidth
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @ExpandOverWidth(%arg0: memref<1x3x4x4xf16>) -> memref<1x3x4x9xf16> {
     %0 = memref.alloc() : memref<1x3x4x9xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 5]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x3x4x9xf16>) -> memref<1x3x4x9xf16>
@@ -106,7 +114,7 @@ func.func @ExpandOverWidth(%arg0: memref<1x3x4x4xf16>) -> memref<1x3x4x9xf16> {
 
     // CHECK:       [[VIEW1:%.+]] = VPUIP.SubView [[BUFFER]] [0, 0, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x3x4x9xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [108, 36, 9, 1]}>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW1]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [108, 36, 9, 1]}>)
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[BUFFER]] [0, 0, 0, 4] [1, 3, 4, 5]
@@ -125,6 +133,8 @@ func.func @ExpandOverWidth(%arg0: memref<1x3x4x4xf16>) -> memref<1x3x4x9xf16> {
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandOverHeight
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @ExpandOverHeight(%arg0: memref<1x3x4x4xf16>) -> memref<1x3x9x4xf16> {
     %0 = memref.alloc() : memref<1x3x9x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 5, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x3x9x4xf16>) -> memref<1x3x9x4xf16>
@@ -135,7 +145,7 @@ func.func @ExpandOverHeight(%arg0: memref<1x3x4x4xf16>) -> memref<1x3x9x4xf16> {
 
     // CHECK:       [[VIEW1:%.+]] = VPUIP.SubView [[BUFFER]] [0, 0, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x3x9x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [108, 36, 4, 1]}>
-    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY1:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW1]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [108, 36, 4, 1]}>)
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[BUFFER]] [0, 0, 4, 0] [1, 3, 5, 4]
@@ -154,6 +164,8 @@ func.func @ExpandOverHeight(%arg0: memref<1x3x4x4xf16>) -> memref<1x3x9x4xf16> {
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandPadsBeginFullCopy
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @ExpandPadsBeginFullCopy(%arg0: memref<1x3x4x4xf16>) -> memref<1x6x4x4xf16> {
     %0 = memref.alloc() : memref<1x6x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 0, 0, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x6x4x4xf16>) -> memref<1x6x4x4xf16>
@@ -170,7 +182,7 @@ func.func @ExpandPadsBeginFullCopy(%arg0: memref<1x3x4x4xf16>) -> memref<1x6x4x4
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 3, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x6x4x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [96, 16, 4, 1]}>
-    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW2]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [96, 16, 4, 1]}>)
 
     // CHECK:       [[OUT:%.+]] = VPUIP.ConcatView
@@ -184,6 +196,8 @@ func.func @ExpandPadsBeginFullCopy(%arg0: memref<1x3x4x4xf16>) -> memref<1x6x4x4
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandPadsBeginSliceCopy
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @ExpandPadsBeginSliceCopy(%arg0: memref<1x3x4x4xf16>) -> memref<1x5x4x4xf16> {
     %0 = memref.alloc() : memref<1x5x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 2, 0, 0], pads_end = [0, 0, 0, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x5x4x4xf16>) -> memref<1x5x4x4xf16>
@@ -200,7 +214,7 @@ func.func @ExpandPadsBeginSliceCopy(%arg0: memref<1x3x4x4xf16>) -> memref<1x5x4x
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 2, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x5x4x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [80, 16, 4, 1]}>
-    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW2]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [80, 16, 4, 1]}>)
 
     // CHECK:       [[OUT:%.+]] = VPUIP.ConcatView
@@ -214,6 +228,8 @@ func.func @ExpandPadsBeginSliceCopy(%arg0: memref<1x3x4x4xf16>) -> memref<1x5x4x
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandPadsBeginCopiesWithTail
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @ExpandPadsBeginCopiesWithTail(%arg0: memref<1x3x4x4xf16>) -> memref<1x11x4x4xf16> {
     %0 = memref.alloc() : memref<1x11x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 8, 0, 0], pads_end = [0, 0, 0, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x11x4x4xf16>) -> memref<1x11x4x4xf16>
@@ -230,7 +246,7 @@ func.func @ExpandPadsBeginCopiesWithTail(%arg0: memref<1x3x4x4xf16>) -> memref<1
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 8, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x11x4x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [176, 16, 4, 1]}>
-    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW2]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [176, 16, 4, 1]}>)
 
     // CHECK:       [[OUT:%.+]] = VPUIP.ConcatView
@@ -244,6 +260,8 @@ func.func @ExpandPadsBeginCopiesWithTail(%arg0: memref<1x3x4x4xf16>) -> memref<1
 
 // -----
 
+// CHECK-LABEL: func.func @ExpandBeginPadsWithEndPads
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @ExpandBeginPadsWithEndPads(%arg0: memref<1x3x4x4xf16>) -> memref<1x9x4x4xf16> {
     %0 = memref.alloc() : memref<1x9x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 3, 0, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x9x4x4xf16>) -> memref<1x9x4x4xf16>
@@ -260,7 +278,7 @@ func.func @ExpandBeginPadsWithEndPads(%arg0: memref<1x3x4x4xf16>) -> memref<1x9x
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 3, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x9x4x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [144, 16, 4, 1]}>
-    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW2]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [144, 16, 4, 1]}>)
 
     // CHECK:       [[VIEW3:%.+]] = VPUIP.SubView [[OUT_BUFFER]] [0, 6, 0, 0] [1, 3, 4, 4]
@@ -280,6 +298,8 @@ func.func @ExpandBeginPadsWithEndPads(%arg0: memref<1x3x4x4xf16>) -> memref<1x9x
 
 // -----
 
+// CHECK-LABEL: func.func @TwoExpandsAndReuseConstant
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x3x4x4xf16>)
 func.func @TwoExpandsAndReuseConstant(%arg0: memref<1x3x4x4xf16>) -> memref<1x9x9x4xf16> {
     %0 = memref.alloc() : memref<1x9x4x4xf16>
     %1 = VPUIP.Expand {pads_begin = [0, 3, 0, 0], pads_end = [0, 3, 0, 0]} inputs(%arg0 : memref<1x3x4x4xf16>) outputs(%0 : memref<1x9x4x4xf16>) -> memref<1x9x4x4xf16>
@@ -300,7 +320,7 @@ func.func @TwoExpandsAndReuseConstant(%arg0: memref<1x3x4x4xf16>) -> memref<1x9x
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER_0]] [0, 3, 0, 0] [1, 3, 4, 4]
     // CHECK-SAME:      : memref<1x9x4x4xf16> to memref<1x3x4x4xf16, {order = #NCHW, strides = [144, 16, 4, 1]}>
-    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x3x4x4xf16>)
+    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x3x4x4xf16>)
     // CHECK-SAME:      outputs([[VIEW2]] : memref<1x3x4x4xf16, {order = #NCHW, strides = [144, 16, 4, 1]}>)
 
     // CHECK:       [[VIEW3:%.+]] = VPUIP.SubView [[OUT_BUFFER_0]] [0, 6, 0, 0] [1, 3, 4, 4]
@@ -340,6 +360,8 @@ func.func @TwoExpandsAndReuseConstant(%arg0: memref<1x3x4x4xf16>) -> memref<1x9x
 
 !qElemType = !quant.uniform<u8:f16, 0.0069734788408466414>
 
+// CHECK-LABEL: func.func @QuantizedExpandWithPadsBegin
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x128x200x!qElemType>)
 func.func @QuantizedExpandWithPadsBegin(%arg0: memref<1x1x128x200x!qElemType>) -> memref<1x1x128x202x!qElemType> {
     %alloc_0 = memref.alloc() : memref<1x1x128x202x!qElemType>
 
@@ -356,7 +378,7 @@ func.func @QuantizedExpandWithPadsBegin(%arg0: memref<1x1x128x200x!qElemType>) -
 
     // CHECK:       [[VIEW2:%.+]] = VPUIP.SubView [[OUT_BUFFER_0]] [0, 0, 0, 1] [1, 1, 128, 200]
     // CHECK-SAME:      : memref<1x1x128x202x!qElemType> to memref<1x1x128x200x!qElemType, {order = #NCHW, strides = [25856, 25856, 202, 1]}>
-    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs(%arg0 : memref<1x1x128x200x!qElemType>)
+    // CHECK:       [[COPY2:%.+]] = VPUIP.Copy inputs([[ARG_0]] : memref<1x1x128x200x!qElemType>)
     // CHECK-SAME:      outputs([[VIEW2]] : memref<1x1x128x200x!qElemType, {order = #NCHW, strides = [25856, 25856, 202, 1]}>)
 
     // CHECK:       [[VIEW3:%.+]] = VPUIP.SubView [[OUT_BUFFER_0]] [0, 0, 0, 201] [1, 1, 128, 1]
@@ -369,7 +391,7 @@ func.func @QuantizedExpandWithPadsBegin(%arg0: memref<1x1x128x200x!qElemType>) -
     // CHECK-SAME:          memref<1x1x128x1x!qElemType, {order = #NCHW, strides = [25856, 25856, 202, 1]}>,
     // CHECK-SAME:          memref<1x1x128x200x!qElemType, {order = #NCHW, strides = [25856, 25856, 202, 1]}>,
     // CHECK-SAME:          memref<1x1x128x1x!qElemType, {order = #NCHW, strides = [25856, 25856, 202, 1]}>)
-    // CHECK-SAME:      outputs([[OUT_BUFFER]] : memref<1x1x128x202x!qElemType>) -> memref<1x1x128x202x!qElemType>
+    // CHECK-SAME:      outputs([[OUT_BUFFER_0]] : memref<1x1x128x202x!qElemType>) -> memref<1x1x128x202x!qElemType>
 
     // CHECK:       return [[OUT]] : memref<1x1x128x202x!qElemType>
 

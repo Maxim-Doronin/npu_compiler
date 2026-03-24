@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,8 @@ public:
         setupOptionsCommon(options, getLogLevel(config));
 
         const auto dynamicQuantization = getCompilerDynamicQuantization(config);
-        if (dynamicQuantization.has_value() && dynamicQuantization.value()) {
+        if ((dynamicQuantization.has_value() && dynamicQuantization.value()) ||
+            (options.enableDynamicQuantizationForStaticCase)) {
             options.weightsTableReuseMode = vpux::WeightsTableReuseMode::ENABLED;
         }
     }
@@ -80,7 +81,8 @@ public:
 
         overwriteIfUnset(options.enableConvertFFTToConv, false);
         overwriteIfUnset(options.enableConvertToSdpaExtended, false);
-        overwriteIfUnset(options.enableConvertToReduceMeanSquare, true);
+        overwriteIfUnset(options.enableFuseSoftwareSDPA, false);
+        overwriteIfUnset(options.enableConvertToReduceSquare, true);
         overwriteIfUnset(options.enableDecomposeGRUSequence, false);
         overwriteIfUnset(options.enableAutoPaddingIDU, false);
         overwriteIfUnset(options.enableAutoPaddingODU, false);
@@ -323,27 +325,6 @@ std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy50X
         const VPU::InitCompilerOptions* initCompilerOptions, const DefaultHWOptions50XX* options) {
     auto wrapper = std::make_unique<ReferenceSWSetup50XX>(initCompilerOptions, options);
     return std::make_unique<DialectPipelineStrategyReferenceSW50XX>(std::move(wrapper));
-}
-
-/// The reason this method is separate from the default and reference compilation modes is that it has to *copy* the
-/// options in order to override them.
-template <>
-std::unique_ptr<IDialectPipelineStrategy> vpux::createDialectPipelineStrategy50XXWS(
-        config::CompilationMode compilationMode, const VPU::InitCompilerOptions* initCompilerOptions,
-        const DefaultHWOptions50XX* options) {
-    switch (compilationMode) {
-    case config::CompilationMode::WSInit: {
-        auto wrapper = std::make_unique<WSInitSetup50XX>(initCompilerOptions, options);
-        return std::make_unique<DialectPipelineStrategy50XX<WSInitSetup50XX>>(std::move(wrapper));
-    }
-    case config::CompilationMode::WSMain: {
-        auto wrapper = std::make_unique<WSMainSetup50XX>(initCompilerOptions, options);
-        return std::make_unique<DialectPipelineStrategy50XX<WSMainSetup50XX>>(std::move(wrapper));
-    }
-    default:
-        VPUX_THROW("Unsupported compilation mode {0} for Monolithic WS.", config::stringifyEnum(compilationMode));
-        return {};
-    }
 }
 
 template <>

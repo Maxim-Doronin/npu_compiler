@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -189,7 +189,7 @@ func.func @main(%arg0: tensor<1x5x512x512xf16>) -> tensor<1x16x512x512xf16, {ord
     // CHECK-SAME:      tensor<16x16x1x1xf16, {order = #NHWC}>
     // CHECK-SAME:      dense<1.000000e+00> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
-    // CHECK:       [[VAR1:%.+]] = IE.Expand(%arg0)
+    // CHECK:       [[VAR1:%.+]] = IE.Expand([[ARG0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
     // CHECK-SAME:      pads_end = [0, 11, 0, 0]
     // CHECK-SAME:      : tensor<1x5x512x512xf16> -> tensor<1x16x512x512xf16>
@@ -227,7 +227,7 @@ func.func @main(%arg0: tensor<1x1x1x32032xf16, {order = #NHWC}>) -> tensor<1x16x
 
     return %3 : tensor<1x16x1x31995xf16, {order = #NHWC}>
 
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0)
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[ARG0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
     // CHECK-SAME:      pads_end = [0, 15, 0, 0]
     // CHECK-SAME:      : tensor<1x1x1x32032xf16, {order = #NHWC}> -> tensor<1x16x1x32032xf16, {order = #NHWC}>
@@ -259,7 +259,7 @@ func.func @main(%arg0: tensor<1x1x1x32032xf16, {order = #NHWC}>) -> (tensor<1x16
 
     return %3, %5 : tensor<1x16x1x31995xf16, {order = #NHWC}>, tensor<1x16x1x31995xf16, {order = #NHWC}>
 
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0)
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[ARG0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
     // CHECK-SAME:      pads_end = [0, 15, 0, 0]
     // CHECK-SAME:      : tensor<1x1x1x32032xf16, {order = #NHWC}> -> tensor<1x16x1x32032xf16, {order = #NHWC}>
@@ -294,7 +294,7 @@ func.func @main(%arg0: tensor<1x1x512x512xf16>) -> tensor<1x16x512x512xf16, {ord
     // CHECK-SAME:      tensor<16x16x1x1xf16, {order = #NHWC}>
     // CHECK-SAME:      dense<1.000000e+00> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>]
 
-    // CHECK:       [[VAR1:%.+]] = IE.Reorder(%arg0)
+    // CHECK:       [[VAR1:%.+]] = IE.Reorder([[ARG0]])
     // CHECK-SAME:      tensor<1x1x512x512xf16> -> tensor<1x1x512x512xf16, {order = #NHWC}>
 
     // CHECK:       [[VAR2:%.+]] = IE.Expand([[VAR1]])
@@ -739,8 +739,8 @@ func.func @main(%arg0: tensor<1x1x30x30xf16, {order = #NHWC}>, %arg1: tensor<1x3
     %3 = IE.Reorder(%2) {dstOrder = #NHWC} : tensor<1x4x16x16xf16> -> tensor<1x4x16x16xf16, {order = #NHWC}>
     return %3 : tensor<1x4x16x16xf16, {order = #NHWC}>
 
-    // CHECK:  [[ARG_REORDER:%.+]] = IE.Reorder(%arg1) {dstOrder = #NHWC} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16xf16, {order = #NHWC}>
-    // CHECK:  [[REORDER_INPUT:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 16, 16]
+    // CHECK:  [[ARG_REORDER:%.+]] = IE.Reorder([[ARG1]]) {dstOrder = #NHWC} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[REORDER_INPUT:%.+]] = IE.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 16, 16]
     // CHECK:  [[CONCAT:%.+]] = IE.Concat([[REORDER_INPUT]], [[ARG_REORDER]]) {per_axis = #IE.Concat<axis = 1 : i64>} :
     // CHECK-SAME:       tensor<1x1x16x16xf16, {order = #NHWC}>,
     // CHECK-SAME:       tensor<1x3x16x16xf16, {order = #NHWC}>
@@ -769,9 +769,9 @@ func.func @main(%arg0: tensor<1x1x30x30xf16, {order = #NHWC}>, %arg1: tensor<1x3
     %3 = IE.Reorder(%2) {dstOrder = #NHWC} : tensor<1x7x16x16xf16> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     return %3 : tensor<1x7x16x16xf16, {order = #NHWC}>
 
-    // CHECK:  [[REORDER_INPUT:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 16, 16]
+    // CHECK:  [[REORDER_INPUT:%.+]] = IE.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 16, 16]
     // CHECK:  [[REORDER_SLICE:%.+]] = IE.Reorder([[REORDER_INPUT]])
-    // CHECK:  [[CONCAT:%.+]] = IE.Concat([[REORDER_SLICE]], %arg1, %arg2) {per_axis = #IE.Concat<axis = 1 : i64>} :
+    // CHECK:  [[CONCAT:%.+]] = IE.Concat([[REORDER_SLICE]], [[ARG1]], [[ARG2]]) {per_axis = #IE.Concat<axis = 1 : i64>} :
     // CHECK:  [[REORDER_OUTPUT:%.+]] = IE.Reorder([[CONCAT]])
     // CHECK:  return [[REORDER_OUTPUT]] : tensor<1x7x16x16xf16, {order = #NHWC}>
 }
@@ -972,7 +972,7 @@ func.func @main(%arg0: tensor<1x48x14x14x!qElemType, {order = #NHWC}>) -> (tenso
    return %5, %6 : tensor<1x48x14x14x!qElemType2, {order = #NHWC}>, tensor<1x14x14x40x!qElemType1>
 
     // CHECK-NOT:  IE.Reorder
-    // CHECK:      [[SLICE:%.+]] = IE.Slice %arg0
+    // CHECK:      [[SLICE:%.+]] = IE.Slice [[ARG0]]
     // CHECK-SAME:  tensor<1x48x14x14x!qElemType, {order = #NHWC}> to tensor<1x40x14x14x!qElemType, {order = #NHWC}>
     // CHECK:      [[QCAST0:%.+]] = IE.QuantizeCast([[SLICE]]) {dstElemType = !qElemType2}
     // CHECK-SAME: tensor<1x40x14x14x!qElemType, {order = #NHWC}> -> tensor<1x40x14x14x!qElemType2, {order = #NHWC}>
@@ -1108,13 +1108,15 @@ func.func @main(%arg0: tensor<1x8x1x128xf16, {order = #NHWC}>) -> (tensor<1x128x
 // CHECK-LABEL: @ReorderWithHwAddNoChange
 module @ReorderWithHwAddNoChange {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16>
 func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16, {order = #NHWC}>
     %1 = IE.Add(%0, %0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16, {order = #NHWC}>, tensor<1x3x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16, {order = #NHWC}>
     %2 = IE.Reorder(%1) {dstOrder = #NCHW} : tensor<1x3x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16>
     return %2 : tensor<1x3x30x30xf16>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC}
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC}
     // CHECK:       [[VAR1:%.+]] = IE.Add([[VAR0]], [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]]) {dstOrder = #NCHW}
 
@@ -1131,6 +1133,8 @@ func.func @main(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
 // CHECK-LABEL: @ReorderWithSwAddHasChange
 module @ReorderWithSwAddHasChange {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x30xf16, {order = #NHWC}>
 func.func @main(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x30xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<1x1x30x30xf16> = dense<1.0> : tensor<1x1x30x30xf16>
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x3x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16>
@@ -1139,7 +1143,7 @@ func.func @main(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x
     return %2 : tensor<1x3x30x30xf16, {order = #NHWC}>
 
     // CHECK-DAG:       [[VAR0:%.+]] = const.Declare tensor<1x1x30x30xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x1x30x30xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:       [[VAR1:%.+]] = IE.Add(%arg0, [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16, {order = #NHWC}>, tensor<1x1x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16, {order = #NHWC}>
+    // CHECK:       [[VAR1:%.+]] = IE.Add([[ARG_0]], [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16, {order = #NHWC}>, tensor<1x1x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16, {order = #NHWC}>
 
     // CHECK:       return [[VAR1]] : tensor<1x3x30x30xf16, {order = #NHWC}>
 }
@@ -1154,6 +1158,8 @@ func.func @main(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x
 // CHECK-LABEL: @ReorderWithSwMultiplyHasChange
 module @ReorderWithSwMultiplyHasChange {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x30xf16, {order = #NHWC}>
 func.func @main(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x30xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<1x1x30x30xf16> = dense<0.1> : tensor<1x1x30x30xf16>
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x3x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16>
@@ -1162,7 +1168,7 @@ func.func @main(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x
     return %2 : tensor<1x3x30x30xf16, {order = #NHWC}>
 
     // CHECK-DAG:       [[VAR0:%.+]] = const.Declare tensor<1x1x30x30xf16, {order = #NHWC}> = dense<9.997550e-02> : tensor<1x1x30x30xf16>, [#const.Reorder<#NHWC>]
-    // CHECK:       [[VAR1:%.+]] = IE.Multiply(%arg0, [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16, {order = #NHWC}>, tensor<1x1x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16, {order = #NHWC}>
+    // CHECK:       [[VAR1:%.+]] = IE.Multiply([[ARG_0]], [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16, {order = #NHWC}>, tensor<1x1x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16, {order = #NHWC}>
 
     // CHECK:       return [[VAR1]] : tensor<1x3x30x30xf16, {order = #NHWC}>
 }
@@ -1177,12 +1183,14 @@ func.func @main(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x30x
 // CHECK-LABEL: @NotSwapExpandWithReorder
 module @NotSwapExpandWithReorder {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x1x8x9xf16, {order = #NCWH}>) -> tensor<1x16x8x9xf16, {order = #NHWC}>
 func.func @main(%arg0: tensor<1x1x8x9xf16, {order = #NCWH}>) -> tensor<1x16x8x9xf16, {order = #NHWC}> {
     %1 = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x1x8x9xf16, {order = #NCWH}> -> tensor<1x1x8x9xf16, {order = #NHWC}>
     %2 = IE.Expand(%1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x8x9xf16, {order = #NHWC}> -> tensor<1x16x8x9xf16, {order = #NHWC}>
     return %2 : tensor<1x16x8x9xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x1x8x9xf16, {order = #NCWH}> -> tensor<1x1x8x9xf16, {order = #NHWC}>
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC} : tensor<1x1x8x9xf16, {order = #NCWH}> -> tensor<1x1x8x9xf16, {order = #NHWC}>
     // CHECK:       [[VAR1:%.+]] = IE.Expand([[VAR0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x8x9xf16, {order = #NHWC}> -> tensor<1x16x8x9xf16, {order = #NHWC}>
 
     // CHECK:       return [[VAR1]] : tensor<1x16x8x9xf16, {order = #NHWC}>
@@ -1198,6 +1206,8 @@ func.func @main(%arg0: tensor<1x1x8x9xf16, {order = #NCWH}>) -> tensor<1x16x8x9x
 // CHECK-LABEL: @SwapReorderWithStridedSlice
 module @SwapReorderWithStridedSlice {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x640x640xf16, {order = #NHWC}>) -> tensor<1x3x320x640xf16>
 func.func @main(%arg0: tensor<1x3x640x640xf16, {order = #NHWC}>) -> tensor<1x3x320x640xf16> {
     %begins = const.Declare tensor<4xsi64> = dense<[0, 0, 0, 0]> : tensor<4xsi64>
     %ends = const.Declare tensor<4xsi64> = dense<[0, 0, 2147483647, 0]> : tensor<4xsi64>
@@ -1217,7 +1227,7 @@ func.func @main(%arg0: tensor<1x3x640x640xf16, {order = #NHWC}>) -> tensor<1x3x3
     // CHECK:       [[CST:%.+]] = const.Declare tensor<4xsi64> = dense<0> : tensor<4xsi64>
     // CHECK:       [[CST_0:%.+]] = const.Declare tensor<4xsi64> = dense<[0, 0, 2147483647, 0]> : tensor<4xsi64>
     // CHECK:       [[CST_1:%.+]] = const.Declare tensor<4xsi64> = dense<[1, 1, 2, 1]> : tensor<4xsi64>
-    // CHECK:       [[VAR0:%.+]] = IE.StridedSlice(%arg0, [[CST]], [[CST_0]], [[CST_1]]) {
+    // CHECK:       [[VAR0:%.+]] = IE.StridedSlice([[ARG_0]], [[CST]], [[CST_0]], [[CST_1]]) {
     // CHECK-SAME:    begin_mask =
     // CHECK-SAME:    [1, 1, 1, 1],
     // CHECK-SAME:    ellipsis_mask =
@@ -1249,6 +1259,8 @@ func.func @main(%arg0: tensor<1x3x640x640xf16, {order = #NHWC}>) -> tensor<1x3x3
 // CHECK-LABEL: @MoveReorderThroughConvertAndViewLikeOps
 module @MoveReorderThroughConvertAndViewLikeOps {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x80x80x85xf16, {order = #map}>) -> tensor<1x3x80x80x85xf32>
 func.func @main(%arg0: tensor<1x3x80x80x85xf16, {order = #NCWDH}>) -> tensor<1x3x80x80x85xf32> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCDHW} : tensor<1x3x80x80x85xf16, {order = #NCWDH}> -> tensor<1x3x80x80x85xf16>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 3, 6400, 85]} : tensor<1x3x80x80x85xf16> -> tensor<1x3x6400x85xf16>
@@ -1258,7 +1270,7 @@ func.func @main(%arg0: tensor<1x3x80x80x85xf16, {order = #NCWDH}>) -> tensor<1x3
 
     return %4 : tensor<1x3x80x80x85xf32>
 
-    // CHECK:               [[RESHAPE0:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:               [[RESHAPE0:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 3, 6400, 85]} : tensor<1x3x80x80x85xf16, {order = #map}> -> tensor<1x3x6400x85xf16, {order = #NCWH}>
     // CHECK:               [[CONVERT:%.+]] = IE.Convert([[RESHAPE0]]) {dstElemType = f32} : tensor<1x3x6400x85xf16, {order = #NCWH}> -> tensor<1x3x6400x85xf32, {order = #NCWH}>
     // CHECK:               [[RESHAPE1:%.+]] = IE.AffineReshape([[CONVERT]])
@@ -1284,6 +1296,8 @@ func.func @main(%arg0: tensor<1x3x80x80x85xf16, {order = #NCWDH}>) -> tensor<1x3
 // CHECK-LABEL: @NotMoveReorderThroughConvertAndViewLikeOpsIfConsumerIsReturnOp
 module @NotMoveReorderThroughConvertAndViewLikeOpsIfConsumerIsReturnOp {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x80x80x85xf16, {order = #map}>) -> tensor<1x3x80x80x85xf32>
 func.func @main(%arg0: tensor<1x3x80x80x85xf16, {order = #NCWDH}>) -> tensor<1x3x80x80x85xf32> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCDHW} : tensor<1x3x80x80x85xf16, {order = #NCWDH}> -> tensor<1x3x80x80x85xf16>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 3, 6400, 85]} : tensor<1x3x80x80x85xf16> -> tensor<1x3x6400x85xf16>
@@ -1291,7 +1305,7 @@ func.func @main(%arg0: tensor<1x3x80x80x85xf16, {order = #NCWDH}>) -> tensor<1x3
     %3 = IE.AffineReshape(%2) {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 3, 80, 80, 85]} : tensor<1x3x6400x85xf32> -> tensor<1x3x80x80x85xf32>
     return %3 : tensor<1x3x80x80x85xf32>
 
-    // CHECK:               [[REORDER:%.+]] = IE.Reorder(%arg0) {dstOrder = #NCDHW} : tensor<1x3x80x80x85xf16, {order = #map}> -> tensor<1x3x80x80x85xf16>
+    // CHECK:               [[REORDER:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NCDHW} : tensor<1x3x80x80x85xf16, {order = #map}> -> tensor<1x3x80x80x85xf16>
     // CHECK:               [[RESHAPE0:%.+]] = IE.AffineReshape([[REORDER]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 3, 6400, 85]} : tensor<1x3x80x80x85xf16> -> tensor<1x3x6400x85xf16>
     // CHECK:               [[CONVERT:%.+]] = IE.Convert([[RESHAPE0]]) {dstElemType = f32} : tensor<1x3x6400x85xf16> -> tensor<1x3x6400x85xf32>
@@ -1316,6 +1330,8 @@ func.func @main(%arg0: tensor<1x3x80x80x85xf16, {order = #NCWDH}>) -> tensor<1x3
 // CHECK-LABEL: @MoveReorderThroughConvertAndViewLikeOpsIfElemTypeDecreased
 module @MoveReorderThroughConvertAndViewLikeOpsIfElemTypeDecreased {
 
+// CHECK-LABEL: func.func @main
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x3x80x80x85xf32, {order = #map}>) -> tensor<1x3x80x80x85xf16>
 func.func @main(%arg0: tensor<1x3x80x80x85xf32, {order = #NCWDH}>) -> tensor<1x3x80x80x85xf16> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCDHW} : tensor<1x3x80x80x85xf32, {order = #NCWDH}> -> tensor<1x3x80x80x85xf32>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 3, 6400, 85]} : tensor<1x3x80x80x85xf32> -> tensor<1x3x6400x85xf32>
@@ -1323,7 +1339,7 @@ func.func @main(%arg0: tensor<1x3x80x80x85xf32, {order = #NCWDH}>) -> tensor<1x3
     %3 = IE.AffineReshape(%2) {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 3, 80, 80, 85]} : tensor<1x3x6400x85xf16> -> tensor<1x3x80x80x85xf16>
     return %3 : tensor<1x3x80x80x85xf16>
 
-    // CHECK:               [[RESHAPE0:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:               [[RESHAPE0:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [2], [2], [3]], shape_value = [1, 3, 6400, 85]} : tensor<1x3x80x80x85xf32, {order = #map}> -> tensor<1x3x6400x85xf32, {order = #NCWH}>
     // CHECK:               [[CONVERT:%.+]] = IE.Convert([[RESHAPE0]]) {dstElemType = f16} : tensor<1x3x6400x85xf32, {order = #NCWH}> -> tensor<1x3x6400x85xf16, {order = #NCWH}>
     // CHECK:               [[REORDER:%.+]] = IE.Reorder([[CONVERT]]) {dstOrder = #NCHW} : tensor<1x3x6400x85xf16, {order = #NCWH}> -> tensor<1x3x6400x85xf16>
@@ -1379,6 +1395,7 @@ func.func @main(%arg0: tensor<1x128x30x30xf16, {order = #NHWC}>) -> (tensor<1x4x
 
 module @ReorderWithReshape {
 // CHECK-LABEL: @MoveReorderThroughReshapeWhenReshapeInImmuatbleGroup
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x32x8x2xf16, {order = #NHWC}>
 func.func @MoveReorderThroughReshapeWhenReshapeInImmuatbleGroup(%arg0: tensor<1x32x8x2xf16, {order = #NHWC}>) -> tensor<1x32x4x4xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x32x8x2xf16, {order = #NHWC}> -> tensor<1x32x8x2xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 32, 4, 4]} : tensor<1x32x8x2xf16> -> tensor<1x32x4x4xf16>
@@ -1386,24 +1403,26 @@ func.func @MoveReorderThroughReshapeWhenReshapeInImmuatbleGroup(%arg0: tensor<1x
     return %2 : tensor<1x32x4x4xf16, {order = #NHWC}>
 
     // CHECK:       [[VAR0:%.+]] = IE.ShapeCast {shape = [1, 32, 4, 4]}
-    // CHECK-SAME:      inputs(%arg0 : tensor<1x32x8x2xf16, {order = #NHWC}>) -> tensor<1x32x4x4xf16, {order = #NHWC}>
+    // CHECK-SAME:      inputs([[ARG_0]] : tensor<1x32x8x2xf16, {order = #NHWC}>) -> tensor<1x32x4x4xf16, {order = #NHWC}>
     // CHECK:       return [[VAR0]] : tensor<1x32x4x4xf16, {order = #NHWC}>
 }
 
 // CHECK-LABEL: @NotMoveReorderThroughReshapeNotInImmuatbleGroup
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x32x8x2xf16, {order = #NHWC}>
 func.func @NotMoveReorderThroughReshapeNotInImmuatbleGroup(%arg0: tensor<1x32x8x2xf16, {order = #NHWC}>) -> tensor<1x16x16x2xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x32x8x2xf16, {order = #NHWC}> -> tensor<1x32x8x2xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 16, 16, 2]} : tensor<1x32x8x2xf16> -> tensor<1x16x16x2xf16>
     %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<1x16x16x2xf16> -> tensor<1x16x16x2xf16, {order = #NHWC}>
     return %2 : tensor<1x16x16x2xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0)
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK:       [[VAR1:%.+]] = IE.Reshape([[VAR0]])
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]])
     // CHECK:       return [[VAR2]] : tensor<1x16x16x2xf16, {order = #NHWC}>
 }
 
 // CHECK-LABEL: @MoveReorderThroughReshapeWithIdenticalMemShapeAndPerm
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x64x128xf16, {order = #NWHC}>
 func.func @MoveReorderThroughReshapeWithIdenticalMemShapeAndPerm(%arg0: tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<1x64x128x1xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x1x64x128xf16, {order = #NWHC}> -> tensor<1x1x64x128xf16>
     %1 = IE.Reshape(%0) {shape_value = [1, 64, 128, 1]} : tensor<1x1x64x128xf16> -> tensor<1x64x128x1xf16>
@@ -1411,33 +1430,35 @@ func.func @MoveReorderThroughReshapeWithIdenticalMemShapeAndPerm(%arg0: tensor<1
     return %2 : tensor<1x64x128x1xf16, {order = #NHWC}>
 
     // CHECK:       [[VAR0:%.+]] = IE.ShapeCast {shape = [1, 64, 128, 1]}
-    // CHECK-SAME:      inputs(%arg0 : tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<1x64x128x1xf16, {order = #NWHC}>
+    // CHECK-SAME:      inputs([[ARG_0]] : tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<1x64x128x1xf16, {order = #NWHC}>
     // CHECK:       [[VAR1:%.+]] = IE.Reorder([[VAR0]]) {dstOrder = #NHWC} :
     // CHECK-SAME:      tensor<1x64x128x1xf16, {order = #NWHC}> -> tensor<1x64x128x1xf16, {order = #NHWC}>
     // CHECK:       return [[VAR1]]
 }
 
 // CHECK-LABEL: @NotMoveReorderThroughReshapeWithNoIdenticalMemShape
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x64x128xf16, {order = #NWHC}>
 func.func @NotMoveReorderThroughReshapeWithNoIdenticalMemShape(%arg0: tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<64x1x128x1xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x1x64x128xf16, {order = #NWHC}> -> tensor<1x1x64x128xf16>
     %1 = IE.Reshape(%0) {shape_value = [64, 1, 128, 1]} : tensor<1x1x64x128xf16> -> tensor<64x1x128x1xf16>
     %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<64x1x128x1xf16> -> tensor<64x1x128x1xf16, {order = #NHWC}>
     return %2 : tensor<64x1x128x1xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0)
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK:       [[VAR1:%.+]] = IE.Reshape([[VAR0]])
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]])
     // CHECK:       return [[VAR2]] : tensor<64x1x128x1xf16, {order = #NHWC}>
 }
 
 // CHECK-LABEL: @NotMoveReorderThroughReshapeWithNoIdenticalPerm
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x9x9xf16, {order = #NCWH}
 func.func @NotMoveReorderThroughReshapeWithNoIdenticalPerm(%arg0: tensor<1x1x9x9xf16, {order = #NCWH}>) -> tensor<9x9x1x1xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x1x9x9xf16, {order = #NCWH}> -> tensor<1x1x9x9xf16>
     %1 = IE.Reshape(%0) {shape_value = [9, 9, 1, 1]} : tensor<1x1x9x9xf16> -> tensor<9x9x1x1xf16>
     %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<9x9x1x1xf16> -> tensor<9x9x1x1xf16, {order = #NHWC}>
     return %2 : tensor<9x9x1x1xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0)
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK:       [[VAR1:%.+]] = IE.Reshape([[VAR0]])
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]])
     // CHECK:       return [[VAR2]] : tensor<9x9x1x1xf16, {order = #NHWC}>
@@ -1484,6 +1505,7 @@ func.func @NotMoveReorderThroughReshapeWithNoContinuousMem(%arg0: tensor<1x8000x
 module @ReorderWithAffineReshape {
 
 // CHECK-LABEL: @MoveReorderThroughAffineReshapeWithCompatibleMem
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x64x128xf16, {order = #NWHC}>
 func.func @MoveReorderThroughAffineReshapeWithCompatibleMem(%arg0: tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<1x64x128x1xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x1x64x128xf16, {order = #NWHC}> -> tensor<1x1x64x128xf16>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [1, 64, 128, 1]} : tensor<1x1x64x128xf16> -> tensor<1x64x128x1xf16>
@@ -1491,20 +1513,21 @@ func.func @MoveReorderThroughAffineReshapeWithCompatibleMem(%arg0: tensor<1x1x64
     return %2 : tensor<1x64x128x1xf16, {order = #NHWC}>
 
     // CHECK:       [[VAR0:%.+]] = IE.ShapeCast {shape = [1, 64, 128, 1]}
-    // CHECK-SAME:      inputs(%arg0 : tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<1x64x128x1xf16, {order = #NWHC}>
+    // CHECK-SAME:      inputs([[ARG_0]] : tensor<1x1x64x128xf16, {order = #NWHC}>) -> tensor<1x64x128x1xf16, {order = #NWHC}>
     // CHECK:       [[VAR1:%.+]] = IE.Reorder([[VAR0]]) {dstOrder = #NHWC} :
     // CHECK-SAME:      tensor<1x64x128x1xf16, {order = #NWHC}> -> tensor<1x64x128x1xf16, {order = #NHWC}>
     // CHECK:       return [[VAR1]]
 }
 
 // CHECK-LABEL: @NotMoveReorderThroughAffineReshapeWithnotCompatibleMem
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x9x9xf16, {order = #NCWH}>
 func.func @NotMoveReorderThroughAffineReshapeWithnotCompatibleMem(%arg0: tensor<1x1x9x9xf16, {order = #NCWH}>) -> tensor<9x9x1x1xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x1x9x9xf16, {order = #NCWH}> -> tensor<1x1x9x9xf16>
     %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [9, 9, 1, 1]} : tensor<1x1x9x9xf16> -> tensor<9x9x1x1xf16>
     %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<9x9x1x1xf16> -> tensor<9x9x1x1xf16, {order = #NHWC}>
     return %2 : tensor<9x9x1x1xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0)
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK:       [[VAR1:%.+]] = IE.AffineReshape([[VAR0]])
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]])
     // CHECK:       return [[VAR2]] : tensor<9x9x1x1xf16, {order = #NHWC}>
@@ -1522,6 +1545,7 @@ func.func @NotMoveReorderThroughAffineReshapeWithnotCompatibleMem(%arg0: tensor<
 module @ReorderWithShapeCast {
 
 // CHECK-LABEL: @MoveReorderThroughShapeCast
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x32x2x4xf16, {order = #map}>
 func.func @MoveReorderThroughShapeCast(%arg0: tensor<1x32x2x4xf16, {order = #map}>) -> tensor<2x8x8x2xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NWCH} : tensor<1x32x2x4xf16, {order = #map}> -> tensor<1x32x2x4xf16, {order = #NWCH}>
     %1 = IE.ShapeCast {shape = [2, 8, 8, 2]} inputs(%0 : tensor<1x32x2x4xf16, {order = #NWCH}>) -> tensor<2x8x8x2xf16, {order = #NWCH}>
@@ -1529,20 +1553,21 @@ func.func @MoveReorderThroughShapeCast(%arg0: tensor<1x32x2x4xf16, {order = #map
     return %2 : tensor<2x8x8x2xf16, {order = #NHWC}>
 
     // CHECK:       [[VAR0:%.+]] = IE.ShapeCast {shape = [2, 8, 8, 2]}
-    // CHECK-SAME:      inputs(%arg0 : tensor<1x32x2x4xf16, {order = #map}>) -> tensor<2x8x8x2xf16, {order = #map}>
+    // CHECK-SAME:      inputs([[ARG_0]] : tensor<1x32x2x4xf16, {order = #map}>) -> tensor<2x8x8x2xf16, {order = #map}>
     // CHECK:       [[VAR1:%.+]] = IE.Reorder([[VAR0]]) {dstOrder = #NHWC}
     // CHECK-SAME:      : tensor<2x8x8x2xf16, {order = #map}> -> tensor<2x8x8x2xf16, {order = #NHWC}>
     // CHECK:       return [[VAR1]] : tensor<2x8x8x2xf16, {order = #NHWC}>
 }
 
 // CHECK-LABEL: @NotMoveReorderThroughShapeCast
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x32x8x2xf16, {order = #NCWH}
 func.func @NotMoveReorderThroughShapeCast(%arg0: tensor<1x32x8x2xf16, {order = #NCWH}>) -> tensor<1x32x4x4xf16, {order = #NHWC}> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NWCH} : tensor<1x32x8x2xf16, {order = #NCWH}> -> tensor<1x32x8x2xf16, {order = #NWCH}>
     %1 = IE.ShapeCast {shape = [1, 32, 4, 4]} inputs(%0 : tensor<1x32x8x2xf16, {order = #NWCH}>) -> tensor<1x32x4x4xf16, {order = #NWCH}>
     %2 = IE.Reorder(%1) {dstOrder = #NHWC} : tensor<1x32x4x4xf16, {order = #NWCH}> -> tensor<1x32x4x4xf16, {order = #NHWC}>
     return %2 : tensor<1x32x4x4xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0)
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK:       [[VAR1:%.+]] = IE.ShapeCast
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]])
     // CHECK:       return [[VAR2]] : tensor<1x32x4x4xf16, {order = #NHWC}>
@@ -1600,9 +1625,9 @@ func.func @main(%arg0: tensor<1x1x16x16xf16>, %arg1: tensor<1x4x16x16xf16, {orde
     %5 = IE.Reorder(%4) {dstOrder = #NHWC} : tensor<1x7x16x16xf16> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     return %5 : tensor<1x7x16x16xf16, {order = #NHWC}>
 
-    // CHECK:  [[REORDER_INPUT0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x1x16x16xf16> -> tensor<1x1x16x16xf16, {order = #NHWC}>
-    // CHECK:  [[REORDER_SLICE0:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
-    // CHECK:  [[REORDER_SLICE1:%.+]] = IE.Slice %arg2 [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[REORDER_INPUT0:%.+]] = IE.Reorder([[ARG0]]) {dstOrder = #NHWC} : tensor<1x1x16x16xf16> -> tensor<1x1x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[REORDER_SLICE0:%.+]] = IE.Slice [[ARG1]] [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[REORDER_SLICE1:%.+]] = IE.Slice [[ARG2]] [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
     // CHECK:  [[CONCAT:%.+]] = IE.Concat([[REORDER_INPUT0]], [[REORDER_SLICE0]], [[REORDER_SLICE1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x16x16xf16, {order = #NHWC}>, tensor<1x3x16x16xf16, {order = #NHWC}>, tensor<1x3x16x16xf16, {order = #NHWC}> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     // CHECK:  return [[CONCAT]] : tensor<1x7x16x16xf16, {order = #NHWC}>
 }
@@ -1630,10 +1655,10 @@ func.func @main(%arg0: tensor<1x1x16x16xf16>, %arg1: tensor<1x4x16x16xf16>, %arg
     %4 = IE.Reorder(%3) {dstOrder = #NHWC} : tensor<1x7x16x16xf16> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     return %4 : tensor<1x7x16x16xf16, {order = #NHWC}>
 
-    // CHECK:  [[REORDER_SLICE0:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16> to tensor<1x3x16x16xf16>
-    // CHECK:  [[REORDER_SLICE1:%.+]] = IE.Slice %arg2 [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[REORDER_SLICE0:%.+]] = IE.Slice [[ARG1]] [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16> to tensor<1x3x16x16xf16>
+    // CHECK:  [[REORDER_SLICE1:%.+]] = IE.Slice [[ARG2]] [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
     // CHECK:  [[REORDER_INPUT0:%.+]] = IE.Reorder([[REORDER_SLICE1]]) {dstOrder = #NCHW} : tensor<1x3x16x16xf16, {order = #NHWC}> -> tensor<1x3x16x16xf16>
-    // CHECK:  [[CONCAT:%.+]] = IE.Concat(%arg0, [[REORDER_SLICE0]], [[REORDER_INPUT0]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x16x16xf16>, tensor<1x3x16x16xf16>, tensor<1x3x16x16xf16> -> tensor<1x7x16x16xf16>
+    // CHECK:  [[CONCAT:%.+]] = IE.Concat([[ARG0]], [[REORDER_SLICE0]], [[REORDER_INPUT0]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x16x16xf16>, tensor<1x3x16x16xf16>, tensor<1x3x16x16xf16> -> tensor<1x7x16x16xf16>
     // CHECK:  [[REORDER_OUTPUT:%.+]] = IE.Reorder([[CONCAT]]) {dstOrder = #NHWC} : tensor<1x7x16x16xf16> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     // CHECK:  return [[REORDER_OUTPUT]] : tensor<1x7x16x16xf16, {order = #NHWC}>
 }
@@ -1731,11 +1756,11 @@ func.func @main(%arg0: tensor<1x1x16x16xf16>, %arg1: tensor<1x4x16x16xf16, {orde
     %6 = IE.Reorder(%5) {dstOrder = #NHWC} : tensor<1x7x16x16xf16> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     return %1, %6 : tensor<1x1x8x32xf16>, tensor<1x7x16x16xf16, {order = #NHWC}>
 
-    // CHECK:  [[INPUT_REORDER:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x1x16x16xf16> -> tensor<1x1x16x16xf16, {order = #NHWC}>
-    // CHECK:  [[INPUT_SLICE_1:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
-    // CHECK:  [[AFFINERESHAPE_OUTPUT:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:  [[INPUT_REORDER:%.+]] = IE.Reorder([[ARG0]]) {dstOrder = #NHWC} : tensor<1x1x16x16xf16> -> tensor<1x1x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[INPUT_SLICE_1:%.+]] = IE.Slice [[ARG1]] [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[AFFINERESHAPE_OUTPUT:%.+]] = IE.AffineReshape([[ARG0]])
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 1, 8, 32]} : tensor<1x1x16x16xf16> -> tensor<1x1x8x32xf16>
-    // CHECK:  [[INPUT_SLICE_2:%.+]] = IE.Slice %arg2 [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
+    // CHECK:  [[INPUT_SLICE_2:%.+]] = IE.Slice [[ARG2]] [0, 0, 0, 0] [1, 3, 16, 16] : tensor<1x4x16x16xf16, {order = #NHWC}> to tensor<1x3x16x16xf16, {order = #NHWC}>
     // CHECK:  [[CONCAT_OUTPUT:%.+]] = IE.Concat([[INPUT_REORDER]], [[INPUT_SLICE_1]], [[INPUT_SLICE_2]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x16x16xf16, {order = #NHWC}>, tensor<1x3x16x16xf16, {order = #NHWC}>, tensor<1x3x16x16xf16, {order = #NHWC}> -> tensor<1x7x16x16xf16, {order = #NHWC}>
     // CHECK:  return [[AFFINERESHAPE_OUTPUT]], [[CONCAT_OUTPUT]]   : tensor<1x1x8x32xf16>, tensor<1x7x16x16xf16, {order = #NHWC}>
 }
@@ -1756,7 +1781,7 @@ func.func @main(%arg0: tensor<1x1x1x32032xf16>) -> tensor<1x16x1x31995xf16, {ord
 
     return %2 : tensor<1x16x1x31995xf16, {order = #NHWC}>
 
-    // CHECK:       [[REORDER_0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC}
+    // CHECK:       [[REORDER_0:%.+]] = IE.Reorder([[ARG0]]) {dstOrder = #NHWC}
     // CHECK-SAME:      tensor<1x1x1x32032xf16> -> tensor<1x1x1x32032xf16, {order = #NHWC}>
     // CHECK:       [[EXPAND:%.+]] = IE.Expand([[REORDER_0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
@@ -1788,7 +1813,7 @@ func.func @main(%arg0: tensor<1x1x1x32032xf16>) -> (tensor<1x16x1x31995xf16, {or
 
     return %2, %4 : tensor<1x16x1x31995xf16, {order = #NHWC}>, tensor<1x16x1x31995xf16, {order = #NHWC}>
 
-    // CHECK:       [[REORDER_0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC}
+    // CHECK:       [[REORDER_0:%.+]] = IE.Reorder([[ARG0]]) {dstOrder = #NHWC}
     // CHECK-SAME:      tensor<1x1x1x32032xf16> -> tensor<1x1x1x32032xf16, {order = #NHWC}>
 
     // CHECK:       [[EXPAND:%.+]] = IE.Expand([[REORDER_0]])
@@ -1823,7 +1848,7 @@ func.func @main(%arg0: tensor<1x1x1x32032xf16>) -> (tensor<1x16x1x200xf16, {orde
 
     return %2, %4 : tensor<1x16x1x200xf16, {order = #NHWC}>, tensor<1x16x1x200xf16, {order = #NHWC}>
 
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0)
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[ARG0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
     // CHECK-SAME:      pads_end = [0, 15, 0, 0]
     // CHECK-SAME:      :  tensor<1x1x1x32032xf16> -> tensor<1x16x1x32032xf16>
@@ -1858,7 +1883,7 @@ func.func @main(%arg0: tensor<1x1x1x32032xf16>) -> (tensor<1x16x1x31995xf16, {or
 
     return %2, %3 : tensor<1x16x1x31995xf16, {order = #NHWC}>, tensor<1x16x1x32032xf32>
 
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0)
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[ARG0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
     // CHECK-SAME:      pads_end = [0, 15, 0, 0]
     // CHECK-SAME:      :  tensor<1x1x1x32032xf16> -> tensor<1x16x1x32032xf16>
@@ -1908,7 +1933,7 @@ func.func @main(%arg0: tensor<1x1x1x31995xf32>) -> (tensor<1x16x1x31995xf16, {or
 
     return %2, %4 : tensor<1x16x1x31995xf16, {order = #NHWC}>, tensor<1x16x1x31995xf16, {order = #NHWC}>
 
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0)
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[ARG0]])
     // CHECK-SAME:      pads_begin = [0, 0, 0, 0]
     // CHECK-SAME:      pads_end = [0, 15, 0, 0]
     // CHECK-SAME:      :  tensor<1x1x1x31995xf32> -> tensor<1x16x1x31995xf32>
@@ -1929,6 +1954,7 @@ func.func @main(%arg0: tensor<1x1x1x31995xf32>) -> (tensor<1x16x1x31995xf16, {or
 #HWC = affine_map<(d0, d1, d2) -> (d1, d2, d0)>
 
 // CHECK-LABEL: @ReorderWithHeterogeneousUsers
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x65x4620xf16, {order = #HWC}>
 func.func @ReorderWithHeterogeneousUsers(%arg0: tensor<1x65x4620xf16, {order = #HWC}>) -> (tensor<1x64x4620xf16>, tensor<65x4620xf16>) {
     %0 = IE.Reorder(%arg0) {dstOrder = #CHW} : tensor<1x65x4620xf16, {order = #HWC}> -> tensor<1x65x4620xf16>
     %1 = IE.Slice %0 [0, 0, 0] [1, 64, 4620] : tensor<1x65x4620xf16> to tensor<1x64x4620xf16>
@@ -1936,9 +1962,9 @@ func.func @ReorderWithHeterogeneousUsers(%arg0: tensor<1x65x4620xf16, {order = #
 
     return %1, %2 : tensor<1x64x4620xf16>, tensor<65x4620xf16>
 
-    // CHECK:  [[REORDER_0:%.+]] = IE.Reorder(%arg0)
+    // CHECK:  [[REORDER_0:%.+]] = IE.Reorder([[ARG_0]])
     // CHECK-SAME:      tensor<1x65x4620xf16, {order = #HWC}> -> tensor<1x65x4620xf16>
-    // CHECK:  [[SLICE_0:%.+]] = IE.Slice %arg0 [0, 0, 0] [1, 64, 4620] : tensor<1x65x4620xf16, {order = #HWC}> to tensor<1x64x4620xf16, {order = #HWC}>
+    // CHECK:  [[SLICE_0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0] [1, 64, 4620] : tensor<1x65x4620xf16, {order = #HWC}> to tensor<1x64x4620xf16, {order = #HWC}>
     // CHECK:  [[REORDER_1:%.+]] = IE.Reorder([[SLICE_0]])
     // CHECK-SAME:      tensor<1x64x4620xf16, {order = #HWC}> -> tensor<1x64x4620xf16>
     // CHECK:  [[RESHAPE:%.+]] = IE.AffineReshape([[REORDER_0]])
@@ -1954,14 +1980,16 @@ func.func @ReorderWithHeterogeneousUsers(%arg0: tensor<1x65x4620xf16, {order = #
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ReorderWithLayerOtherInputAddTrivialReorder
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<1x1x30x30xf16>
 func.func @ReorderWithLayerOtherInputAddTrivialReorder(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>, %arg1: tensor<1x1x30x30xf16>)
         -> tensor<1x3x30x30xf16> {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x3x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16>
     %1 = IE.Multiply(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16>, tensor<1x1x30x30xf16> -> tensor<1x3x30x30xf16>
     return %1 : tensor<1x3x30x30xf16>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg1) {dstOrder = #NHWC} : tensor<1x1x30x30xf16> -> tensor<1x1x30x30xf16, {order = #NHWC}>
-    // CHECK:       [[VAR1:%.+]] = IE.Multiply(%arg0, [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_1]]) {dstOrder = #NHWC} : tensor<1x1x30x30xf16> -> tensor<1x1x30x30xf16, {order = #NHWC}>
+    // CHECK:       [[VAR1:%.+]] = IE.Multiply([[ARG_0]], [[VAR0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      : tensor<1x3x30x30xf16, {order = #NHWC}>, tensor<1x1x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16, {order = #NHWC}>
     // CHECK:       [[VAR2:%.+]] = IE.Reorder([[VAR1]]) {dstOrder = #NCHW} : tensor<1x3x30x30xf16, {order = #NHWC}> -> tensor<1x3x30x30xf16>
     // CHECK:       return [[VAR2]] : tensor<1x3x30x30xf16>
@@ -1973,6 +2001,7 @@ func.func @ReorderWithLayerOtherInputAddTrivialReorder(%arg0: tensor<1x3x30x30xf
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 // CHECK-LABEL: @NotReorderMultiUsersWithAffineReshape
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x96x8xf16, {order = #NCWH}>
 func.func @NotReorderMultiUsersWithAffineReshape(%arg0: tensor<1x3x96x8xf16, {order = #NCWH}>)
         -> (tensor<1x3x8x12x8xf16>, tensor<1x3x96x8xf16>) {
     %0 = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x3x96x8xf16, {order = #NCWH}> -> tensor<1x3x96x8xf16>
@@ -1980,7 +2009,7 @@ func.func @NotReorderMultiUsersWithAffineReshape(%arg0: tensor<1x3x96x8xf16, {or
     %2 = IE.Sigmoid(%0) : tensor<1x3x96x8xf16> -> tensor<1x3x96x8xf16>
     return %1, %2 : tensor<1x3x8x12x8xf16>, tensor<1x3x96x8xf16>
 
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x3x96x8xf16, {order = #NCWH}> -> tensor<1x3x96x8xf16>
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NCHW} : tensor<1x3x96x8xf16, {order = #NCWH}> -> tensor<1x3x96x8xf16>
     // CHECK:       [[VAR1:%.+]] = IE.AffineReshape([[VAR0]])
     // CHECK-SAME{LITERAL}:    {dim_mapping = [[0], [1], [2, 3], [4]], shape_value = [1, 3, 8, 12, 8]} : tensor<1x3x96x8xf16> -> tensor<1x3x8x12x8xf16>
     // CHECK:       [[VAR2:%.+]] = IE.Sigmoid([[VAR0]]) : tensor<1x3x96x8xf16> -> tensor<1x3x96x8xf16>

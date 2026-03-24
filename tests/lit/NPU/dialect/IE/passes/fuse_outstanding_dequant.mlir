@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -511,80 +511,38 @@ func.func @AddConcatDequantNotRemove(%arg0: tensor<1x2x48x25xf16>) -> tensor<1x2
 
 !qElemType = !quant.uniform<u8:f16, 0.0039215686274509803:127>
 
-// CHECK-LABEL: func.func @AddSplitDequantHasOneUse
-// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x2x48x25xf16>) -> tensor<1x1x48x25xf16>
-func.func @AddSplitDequantHasOneUse(%arg0: tensor<1x2x48x25xf16>) -> tensor<1x1x48x25xf16> {
+// CHECK-LABEL: func.func @AddSliceDequantNotHasOneUseNotRemove
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x48x48xf16>) -> (tensor<1x16x32x32xf16>, tensor<1x16x32x32x!qElemType>)
+func.func @AddSliceDequantNotHasOneUseNotRemove(%arg0: tensor<1x16x48x48xf16>) -> (tensor<1x16x32x32xf16>, tensor<1x16x32x32x!qElemType>) {
   %0 = IE.Add(%arg0, %arg0) {
     auto_broadcast = #IE.auto_broadcast_type<NUMPY>
-  } : tensor<1x2x48x25xf16>, tensor<1x2x48x25xf16> -> tensor<1x2x48x25x!qElemType>
+  } : tensor<1x16x48x48xf16>, tensor<1x16x48x48xf16> -> tensor<1x16x48x48x!qElemType>
 
-  %1:2 = IE.Split(%0) {
-    axis_value = 1 : i64, num_splits = 2 : i64
-  } : tensor<1x2x48x25x!qElemType> -> tensor<1x1x48x25x!qElemType>, tensor<1x1x48x25x!qElemType>
+  %1 = IE.Slice %0 [0, 0, 8, 8] [1, 16, 32, 32] : tensor<1x16x48x48x!qElemType> to tensor<1x16x32x32x!qElemType>
 
-  %2 = IE.Dequantize(%1#0) {
+  %2 = IE.Dequantize(%1) {
     dstElemType = f16
-  } : tensor<1x1x48x25x!qElemType> -> tensor<1x1x48x25xf16>
+  } : tensor<1x16x32x32x!qElemType> -> tensor<1x16x32x32xf16>
 
-  %3 = IE.SoftMax(%2) {axisInd = 2} : tensor<1x1x48x25xf16> -> tensor<1x1x48x25xf16>
+  %3 = IE.SoftMax(%2) {axisInd = 1} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
 
-  return %3 : tensor<1x1x48x25xf16>
+  return %3, %1 : tensor<1x16x32x32xf16>, tensor<1x16x32x32x!qElemType>
 
   // CHECK:       [[VAL0:%.+]] = IE.Add([[INPUT]], [[INPUT]]) {
   // CHECK-SAME:    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
-  // CHECK-SAME:  } : tensor<1x2x48x25xf16>, tensor<1x2x48x25xf16> -> tensor<1x2x48x25xf16>
+  // CHECK-SAME:  } : tensor<1x16x48x48xf16>, tensor<1x16x48x48xf16> -> tensor<1x16x48x48x!qElemType>
 
-  // CHECK:       [[VAL1:%.+]]:2 = IE.Split([[VAL0]]) {
-  // CHECK-SAME:    axis_value = 1 : i64, num_splits = 2 : i64
-  // CHECK-SAME:  } : tensor<1x2x48x25xf16> -> tensor<1x1x48x25xf16>, tensor<1x1x48x25xf16>
+  // CHECK:       [[VAL1:%.+]] = IE.Slice [[VAL0]] [0, 0, 8, 8] [1, 16, 32, 32] :
+  // CHECK-SAME:    tensor<1x16x48x48x!qElemType> to tensor<1x16x32x32x!qElemType>
 
-  // CHECK-NOT:   IE.Dequantize
-
-  // CHECK:       [[VAL2:%.+]] = IE.SoftMax([[VAL1]]#0) {axisInd = 2 : i64} :
-  // CHECK-SAME:    tensor<1x1x48x25xf16> -> tensor<1x1x48x25xf16>
-
-  // CHECK:       return [[VAL2]] : tensor<1x1x48x25xf16>
-}
-
-// -----
-
-!qElemType = !quant.uniform<u8:f16, 0.0039215686274509803:127>
-
-// CHECK-LABEL: func.func @AddSplitDequantNotHasOneUseNotRemove
-// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x2x48x25xf16>) -> (tensor<1x1x48x25xf16>, tensor<1x1x48x25x!qElemType>)
-func.func @AddSplitDequantNotHasOneUseNotRemove(%arg0: tensor<1x2x48x25xf16>) -> (tensor<1x1x48x25xf16>, tensor<1x1x48x25x!qElemType>) {
-  %0 = IE.Add(%arg0, %arg0) {
-    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
-  } : tensor<1x2x48x25xf16>, tensor<1x2x48x25xf16> -> tensor<1x2x48x25x!qElemType>
-
-  %1:2 = IE.Split(%0) {
-    axis_value = 1 : i64, num_splits = 2 : i64
-  } : tensor<1x2x48x25x!qElemType> -> tensor<1x1x48x25x!qElemType>, tensor<1x1x48x25x!qElemType>
-
-  %2 = IE.Dequantize(%1#0) {
-    dstElemType = f16
-  } : tensor<1x1x48x25x!qElemType> -> tensor<1x1x48x25xf16>
-
-  %3 = IE.SoftMax(%2) {axisInd = 2} : tensor<1x1x48x25xf16> -> tensor<1x1x48x25xf16>
-
-  return %3, %1#1 : tensor<1x1x48x25xf16>, tensor<1x1x48x25x!qElemType>
-
-  // CHECK:       [[VAL0:%.+]] = IE.Add([[INPUT]], [[INPUT]]) {
-  // CHECK-SAME:    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
-  // CHECK-SAME:  } : tensor<1x2x48x25xf16>, tensor<1x2x48x25xf16> -> tensor<1x2x48x25x!qElemType>
-
-  // CHECK:       [[VAL1:%.+]]:2 = IE.Split([[VAL0]]) {
-  // CHECK-SAME:    axis_value = 1 : i64, num_splits = 2 : i64
-  // CHECK-SAME:  } : tensor<1x2x48x25x!qElemType> -> tensor<1x1x48x25x!qElemType>, tensor<1x1x48x25x!qElemType>
-
-  // CHECK:       [[VAL2:%.+]] = IE.Dequantize([[VAL1]]#0) {
+  // CHECK:       [[VAL2:%.+]] = IE.Dequantize([[VAL1]]) {
   // CHECK-SAME:    dstElemType = f16
-  // CHECK-SAME:  } : tensor<1x1x48x25x!qElemType> -> tensor<1x1x48x25xf16>
+  // CHECK-SAME:  } : tensor<1x16x32x32x!qElemType> -> tensor<1x16x32x32xf16>
 
-  // CHECK:       [[VAL3:%.+]] = IE.SoftMax([[VAL2]]) {axisInd = 2 : i64} :
-  // CHECK-SAME:    tensor<1x1x48x25xf16> -> tensor<1x1x48x25xf16>
+  // CHECK:       [[VAL3:%.+]] = IE.SoftMax([[VAL2]]) {axisInd = 1 : i64} :
+  // CHECK-SAME:    tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
 
-  // CHECK:       return [[VAL3]], [[VAL1]]#1 : tensor<1x1x48x25xf16>, tensor<1x1x48x25x!qElemType>
+  // CHECK:       return [[VAL3]], [[VAL1]] : tensor<1x16x32x32xf16>, tensor<1x16x32x32x!qElemType>
 }
 
 // -----
@@ -676,4 +634,113 @@ func.func @QuantizedConvWithoutImplicitReluSigned(%arg0: tensor<1x16x1x1xf16>) -
   // CHECK-NEXT:  IE.Quantize
   // CHECK-NEXT:  IE.QuantizeCast
   // CHECK-NEXT:  IE.Dequantize
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.0039215686274509803:127>
+
+// CHECK-LABEL: func.func @SliceWithOutstandingDequant
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x48x48xf16>) -> tensor<1x16x32x32xf16>
+func.func @SliceWithOutstandingDequant(%arg0: tensor<1x16x48x48xf16>) -> tensor<1x16x32x32xf16> {
+  %0 = IE.Add(%arg0, %arg0) {
+    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+  } : tensor<1x16x48x48xf16>, tensor<1x16x48x48xf16> -> tensor<1x16x48x48x!qElemType>
+
+  %1 = IE.Slice %0 [0, 0, 8, 8] [1, 16, 32, 32] : tensor<1x16x48x48x!qElemType> to tensor<1x16x32x32x!qElemType>
+
+  %2 = IE.Dequantize(%1) {
+    dstElemType = f16
+  } : tensor<1x16x32x32x!qElemType> -> tensor<1x16x32x32xf16>
+
+  %3 = IE.SoftMax(%2) {axisInd = 1} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
+
+  return %3 : tensor<1x16x32x32xf16>
+
+  // CHECK:       [[VAL0:%.+]] = IE.Add([[INPUT]], [[INPUT]]) {
+  // CHECK-SAME:    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+  // CHECK-SAME:  } : tensor<1x16x48x48xf16>, tensor<1x16x48x48xf16> -> tensor<1x16x48x48xf16>
+
+  // CHECK:       [[VAL1:%.+]] = IE.Slice [[VAL0]] [0, 0, 8, 8] [1, 16, 32, 32] :
+  // CHECK-SAME:    tensor<1x16x48x48xf16> to tensor<1x16x32x32xf16>
+
+  // CHECK-NOT:   IE.Dequantize
+
+  // CHECK:       [[VAL2:%.+]] = IE.SoftMax([[VAL1]]) {axisInd = 1 : i64} :
+  // CHECK-SAME:    tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
+
+  // CHECK:       return [[VAL2]] : tensor<1x16x32x32xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.0039215686274509803:127>
+
+// CHECK-LABEL: func.func @DepthToSpaceWithOutstandingDequantNoRemoval
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x32x32xf16>) -> tensor<1x4x64x64xf16>
+func.func @DepthToSpaceWithOutstandingDequantNoRemoval(%arg0: tensor<1x16x32x32xf16>) -> tensor<1x4x64x64xf16> {
+  %0 = IE.Add(%arg0, %arg0) {
+    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+  } : tensor<1x16x32x32xf16>, tensor<1x16x32x32xf16> -> tensor<1x16x32x32x!qElemType>
+
+  %1 = IE.DepthToSpace(%0) {
+    block_size = 2 : i64,
+    mode = #IE.depth_to_space_mode<BLOCKS_FIRST>
+  } : tensor<1x16x32x32x!qElemType> -> tensor<1x4x64x64x!qElemType>
+
+  %2 = IE.Dequantize(%1) {
+    dstElemType = f16
+  } : tensor<1x4x64x64x!qElemType> -> tensor<1x4x64x64xf16>
+
+  %3 = IE.SoftMax(%2) {axisInd = 1} : tensor<1x4x64x64xf16> -> tensor<1x4x64x64xf16>
+
+  return %3 : tensor<1x4x64x64xf16>
+
+  // CHECK:       [[VAL0:%.+]] = IE.Add([[INPUT]], [[INPUT]]) {
+  // CHECK-SAME:    auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+  // CHECK-SAME:  } : tensor<1x16x32x32xf16>, tensor<1x16x32x32xf16> -> tensor<1x16x32x32x!qElemType>
+
+  // CHECK:       [[VAL1:%.+]] = IE.DepthToSpace([[VAL0]]) {
+  // CHECK-SAME:    block_size = 2 : i64,
+  // CHECK-SAME:    mode = #IE.depth_to_space_mode<BLOCKS_FIRST>
+  // CHECK-SAME:  } : tensor<1x16x32x32x!qElemType> -> tensor<1x4x64x64x!qElemType>
+
+  // CHECK:       [[VAL2:%.+]] = IE.Dequantize([[VAL1]]) {
+  // CHECK-SAME:    dstElemType = f16
+  // CHECK-SAME:  } : tensor<1x4x64x64x!qElemType> -> tensor<1x4x64x64xf16>
+
+  // CHECK:       [[VAL3:%.+]] = IE.SoftMax([[VAL2]]) {axisInd = 1 : i64} :
+  // CHECK-SAME:    tensor<1x4x64x64xf16> -> tensor<1x4x64x64xf16>
+
+  // CHECK:       return [[VAL3]] : tensor<1x4x64x64xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.0039215686274509803:127>
+
+// CHECK-LABEL: func.func @SliceFromBlockArgWithDequantNoRemoval
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x48x48x!qElemType>) -> tensor<1x16x32x32xf16>
+func.func @SliceFromBlockArgWithDequantNoRemoval(%arg0: tensor<1x16x48x48x!qElemType>) -> tensor<1x16x32x32xf16> {
+  %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 16, 32, 32] : tensor<1x16x48x48x!qElemType> to tensor<1x16x32x32x!qElemType>
+
+  %1 = IE.Dequantize(%0) {
+    dstElemType = f16
+  } : tensor<1x16x32x32x!qElemType> -> tensor<1x16x32x32xf16>
+
+  %2 = IE.SoftMax(%1) {axisInd = 1} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
+
+  return %2 : tensor<1x16x32x32xf16>
+
+  // CHECK:       [[VAL0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 16, 32, 32] :
+  // CHECK-SAME:    tensor<1x16x48x48x!qElemType> to tensor<1x16x32x32x!qElemType>
+
+  // CHECK:       [[VAL1:%.+]] = IE.Dequantize([[VAL0]]) {
+  // CHECK-SAME:    dstElemType = f16
+  // CHECK-SAME:  } : tensor<1x16x32x32x!qElemType> -> tensor<1x16x32x32xf16>
+
+  // CHECK:       [[VAL2:%.+]] = IE.SoftMax([[VAL1]]) {axisInd = 1 : i64} :
+  // CHECK-SAME:    tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
+
+  // CHECK:       return [[VAL2]] : tensor<1x16x32x32xf16>
 }

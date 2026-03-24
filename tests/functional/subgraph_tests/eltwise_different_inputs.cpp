@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,7 +44,7 @@ class EltwiseAddQuantizedSubGraphTest_NPU3720 :
 
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(outputFq)};
         function = std::make_shared<ov::Model>(results, params, "EltwiseAddQuantized");
-        rel_threshold = 0.1f;
+        abs_threshold = 0.06f;
     }
 
 public:

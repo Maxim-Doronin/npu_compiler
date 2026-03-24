@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,7 +25,7 @@ module @EltwiseNHWCDynamic {
       return %0 : tensor<1x16x?x1000xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 2560, 1000]> : tensor<4xsi64>, order = #NHWC}>
     }
 
-    // CHECK: func.func @output_shape([[ARG0:%.+]]: memref<1x16x?x1000xf16, #NHWC>, [[ARG1:%.+]]: memref<1x16x?x1000xf16, #NHWC>, [[ARG2:%.+]]: memref<4xi64>) -> memref<4xi64> attributes {config.pureHostCompileFunc} {
+    // CHECK: func.func @output_shape([[ARG0:%.+]]: memref<1x16x?x1000xf16, #NHWC>, [[ARG1:%.+]]: memref<1x16x?x1000xf16, #NHWC>, [[ARG2:%.+]]: memref<4xi64>) -> memref<4xi64> attributes {[[ANY_ATTR:.+]]} {
     // CHECK:    [[CST_3:%.+]] = arith.constant 3 : index
     // CHECK:    [[CST_1:%.+]] = arith.constant 1 : index
     // CHECK:    [[CST_0:%.+]] = arith.constant 0 : index
@@ -48,7 +48,7 @@ module @EltwiseNHWCDynamic {
     // CHECK-NPU50XX-COUNT-3: VPUIP.NCEClusterTask
     // CHECK-NOT: IE.Add
 
-    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x?x1000x16xf16>, [[ARG1:%.+]]: memref<1x?x1000x16xf16>, [[ARG2:%.+]]: memref<1x?x1000x16xf16>) -> memref<1x?x1000x16xf16> attributes {config.pureHostCompileFunc} {
+    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x?x1000x16xf16>, [[ARG1:%.+]]: memref<1x?x1000x16xf16>, [[ARG2:%.+]]: memref<1x?x1000x16xf16>) -> memref<1x?x1000x16xf16> attributes {[[ANY_ATTR:.+]]} {
     // CHECK: [[STEP_VAR:%.+]] = arith.constant [[STEP]] : index
     // CHECK: [[C0:%.+]] = arith.constant 0 : index
     // CHECK: [[C1:%.+]] = arith.constant 1 : index
@@ -59,14 +59,7 @@ module @EltwiseNHWCDynamic {
     // CHECK: [[DIV:%.+]] = arith.divsi [[SUB]], [[STEP_VAR]] : index
     // CHECK: [[GROUP:%.+]] = async.create_group [[DIV]] : !async.group
     // CHECK: scf.for [[ARG3:%.+]] = [[C0]] to [[DIM]] step [[STEP_VAR]] {
-    // CHECK:   [[ADJ_OFFSET:%.+]] = arith.addi
-    // CHECK:   [[CMP_EQ:%.+]] = arith.cmpi sgt, [[ADJ_OFFSET]], [[DIM]] : index
-    // CHECK:   [[OFFSET:%.+]] = scf.if [[CMP_EQ]] -> (index) {
-    // CHECK:     [[APPLY12:%.+]] = affine.apply #map()[[[DIM]]]
-    // CHECK:     scf.yield [[APPLY12]] : index
-    // CHECK:   } else {
-    // CHECK:     scf.yield [[ARG3]] : index
-    // CHECK:   }
+    // CHECK:   [[OFFSET:%.+]] = affine.min #map([[ARG3]]){{\[}}[[DIM]]{{\]}}
     // CHECK:   [[SUBVIEW0:%.+]] = memref.subview [[ARG0]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
     // CHECK:   [[SUBVIEW1:%.+]] = memref.subview [[ARG1]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
     // CHECK:   [[CAST0:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW0]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>

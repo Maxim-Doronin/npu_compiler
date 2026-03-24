@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/logging.hpp"
@@ -206,9 +207,7 @@ void cloneAsyncOpsWithMapping(mlir::OpBuilder& builder, mlir::DenseMap<mlir::Val
 
 void AsyncRegionsOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                                         ArrayRef<OutliningInstance> outlinedTargets) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     OpBuilderLogger builderLog(getLogger().nest());
     auto builder = mlir::OpBuilder(moduleOp.getBodyRegion(), &builderLog);
@@ -248,9 +247,7 @@ void AsyncRegionsOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallV
 
 void AsyncRegionsOutliner::buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                                         ArrayRef<OutliningInstance> outlinedTargets) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     OpBuilderLogger builderLog(getLogger().nest());
     auto builder = mlir::OpBuilder::atBlockBegin(&mainFuncOp.getBody().front(), &builderLog);
@@ -304,9 +301,7 @@ void AsyncRegionsOutliner::buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallV
 // 2. If an operation is moved into a sub-function but has an await user, this await user becomes an isolated node
 // (without a producer or consumer). Such isolated nodes need to be deleted.
 void AsyncRegionsOutliner::updateMainFuncOp(mlir::ModuleOp moduleOp, ArrayRef<OutliningInstance> outlinedTargets) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     auto collectOpsToClone = [&]() {
         std::unordered_set<mlir::Operation*> outlinedOperations;
@@ -363,9 +358,7 @@ void AsyncRegionsOutliner::updateMainFuncOp(mlir::ModuleOp moduleOp, ArrayRef<Ou
 }
 
 void AsyncRegionsOutliner::addBuffersForNetResults(mlir::ModuleOp moduleOp) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     auto logger = getLogger().nest();
     mlir::DenseSet<mlir::CallOpInterface> outlinedCallOps;
@@ -416,10 +409,8 @@ mlir::LogicalResult AsyncRegionsOutliningPass::initialize(mlir::MLIRContext* ctx
 }
 
 void AsyncRegionsOutliningPass::safeRunOnModule() {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
     auto moduleOp = getOperation();
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     auto& depsInfo = getChildAnalysis<AsyncDepsInfo>(mainFuncOp);
     outliner::AsyncRegionsOutliner outliner(_asyncRegionOutliningMinOpsInBlock, depsInfo, _log);

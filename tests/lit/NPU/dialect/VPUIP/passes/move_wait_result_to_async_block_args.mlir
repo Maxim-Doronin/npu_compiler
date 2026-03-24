@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -215,6 +215,7 @@ module @VPU.SW {
 }
 
 // CHECK-LABEL: @TwoOutputs
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x1x2xf16>, [[ARG_1:%[^:]+]]: memref<1x1x1x2xf16>, [[ARG_2:%[^:]+]]: memref<1x1x1x2xf16>)
 func.func @TwoOutputs(%arg0: memref<1x1x1x2xf16>, %arg1: memref<1x1x1x2xf16>, %arg2: memref<1x1x1x2xf16>) -> (memref<1x1x1x2xf16>, memref<1x1x1x2xf16>) {
     %cst = const.Declare memref<1x1x1x2xf16> = dense<1.0> : tensor<1x1x1x2xf16>
 
@@ -270,7 +271,7 @@ func.func @TwoOutputs(%arg0: memref<1x1x1x2xf16>, %arg1: memref<1x1x1x2xf16>, %a
     // CHECK:       [[T1:%.+]], [[F1:%.+]] = async.execute
     // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_relu
     // CHECK-SAME:          inputs(
-    // CHECK-SAME:              %arg0 as {{[^:]+}}: memref<1x1x1x2xf16>
+    // CHECK-SAME:              [[ARG_0]] as {{[^:]+}}: memref<1x1x1x2xf16>
     // CHECK-SAME:          ) outputs(
     // CHECK-SAME:              [[BUF1]] as {{[^:]+}}: memref<1x1x1x2xf16>
     // CHECK-SAME:          )
@@ -287,14 +288,14 @@ func.func @TwoOutputs(%arg0: memref<1x1x1x2xf16>, %arg1: memref<1x1x1x2xf16>, %a
     // CHECK-SAME:          [[T1]]
     // CHECK-NOT:           [[T2]]
     // CHECK-SAME:          [[F1]] as [[VAL1:%.+]]: !async.value<memref<1x1x1x2xf16>>
-    // CHECK:           VPUIP.Copy inputs([[VAL1]] : memref<1x1x1x2xf16>) outputs(%arg1 : memref<1x1x1x2xf16>)
+    // CHECK:           VPUIP.Copy inputs([[VAL1]] : memref<1x1x1x2xf16>) outputs([[ARG_1]] : memref<1x1x1x2xf16>)
 
     // CHECK:       [[T4:%.+]], [[F4:%.+]] = async.execute
     // CHECK-NOT:           [[T1]]
     // CHECK-SAME:          [[T2]]
     // CHECK-NOT:           [[T3]]
     // CHECK-SAME:          [[F2]] as [[VAL2:%.+]]: !async.value<memref<1x1x1x2xf16>>
-    // CHECK:           VPUIP.Copy inputs([[VAL2]] : memref<1x1x1x2xf16>) outputs(%arg2 : memref<1x1x1x2xf16>)
+    // CHECK:           VPUIP.Copy inputs([[VAL2]] : memref<1x1x1x2xf16>) outputs([[ARG_2]] : memref<1x1x1x2xf16>)
 
     // CHECK:       [[VAL3:%.+]] = async.await [[F3]]
     // CHECK:       [[VAL4:%.+]] = async.await [[F4]]

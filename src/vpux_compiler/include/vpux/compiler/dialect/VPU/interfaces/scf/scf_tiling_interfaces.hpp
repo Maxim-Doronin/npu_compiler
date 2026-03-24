@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
@@ -22,6 +23,8 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <mlir/Support/LLVM.h>
+
+#include <optional>
 
 namespace vpux::VPU {
 
@@ -242,15 +245,7 @@ public:
                         "with outputTile: {1}: input channel alignment {2} differs from output channel alignment {3}",
                         operation->getLoc(), outputTile, inChannelAlignment, outChannelAlignment);
 
-        mlir::AffineExpr dimC;
-        bindDims(builder.getContext(), dimC);
-        auto alignmentExpr = builder.getAffineConstantExpr(inChannelAlignment);
-        auto oneExpr = builder.getAffineConstantExpr(1);
-
-        // Expression: ((dimC + alignment - 1) floordiv alignment) * alignment
-        mlir::AffineExpr alignedExpr = ((dimC + alignmentExpr - oneExpr).floorDiv(alignmentExpr)) * alignmentExpr;
-
-        auto alignMap = mlir::AffineMap::get(1, 0, {alignedExpr}, builder.getContext());
+        auto alignMap = getAlignValUpMap(builder, inChannelAlignment);
 
         SmallVector<SCFTileInfo> inputTiles;
         for (auto origInput : operation->getOperands()) {
@@ -289,8 +284,13 @@ class SCFTilingPoolingModelOp : public SCFTilingCommonModelOp<ConcreteModel, Con
 protected:
     SCFTilingInfo backInferPoolTile(mlir::Location loc, mlir::OpBuilder& builder, const SCFTileInfo& outputTile,
                                     SCFShapeRef origInputShape, ArrayRef<int64_t> origOutputShape,
-                                    mlir::ArrayAttr kernelSize, mlir::ArrayAttr strides,
-                                    const PadInfo& origPadding) const {
+                                    mlir::ArrayAttr kernelSize, mlir::ArrayAttr strides, const PadInfo& origPadding,
+                                    std::optional<int64_t> inChannelAlignment) const {
+        mlir::AffineMap alignMap;
+        if (inChannelAlignment.has_value()) {
+            alignMap = getAlignValUpMap(builder, inChannelAlignment.value());
+        }
+
         SCFTileInfo inputTile(origInputShape, builder);
         inputTile.shape[Dims4D::Act::N.ind()] = outputTile.shape[Dims4D::Act::N.ind()];
         inputTile.offsets[Dims4D::Act::N.ind()] = outputTile.offsets[Dims4D::Act::N.ind()];
@@ -299,12 +299,20 @@ protected:
 
         if (!outputTile.bounds.raw().empty()) {
             inputTile.bounds = outputTile.bounds;
+            if (inChannelAlignment.has_value()) {
+                // same as alignValUp(outputTile.bounds[Dims4D::Act::C], inChannelAlignment);
+                // just to have same function for bounds calculation as for shape calculation below
+                auto outCBound = builder.getI64IntegerAttr(outputTile.bounds[Dims4D::Act::C]);
+                auto inCBound = mlir::affine::makeComposedFoldedAffineApply(builder, appendLoc(loc, "inputBoundsSize"),
+                                                                            alignMap, {outCBound});
+                inputTile.bounds[Dims4D::Act::C] = mlir::getConstantIntValue(inCBound).value();
+            }
         }
 
         auto padMap = origPadding.toPadByDims();
 
         auto pads = mlir::getAsIndexOpFoldResult(
-                builder.getContext(), {origPadding.left, origPadding.top, origPadding.right, origPadding.bottom});
+                builder.getContext(), {origPadding.top, origPadding.left, origPadding.bottom, origPadding.right});
 
         for (auto index : irange(Dims4D::Act::numSpatialDims)) {
             const auto dim = Dims4D::Act::getSpatialDim(index);
@@ -323,6 +331,12 @@ protected:
             if (dimBound.has_value()) {
                 inputTile.bounds[dim] = dimBound.value();
             }
+        }
+
+        if (inChannelAlignment.has_value()) {
+            auto& inChannelsTile = inputTile.shape[Dims4D::Act::C.ind()];
+            inChannelsTile = mlir::affine::makeComposedFoldedAffineApply(builder, appendLoc(loc, "inputChSize"),
+                                                                         alignMap, {inChannelsTile});
         }
 
         return {std::move(inputTile), std::move(pads)};
@@ -349,6 +363,16 @@ public:
 
     SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
                                        const SCFTileInfo& outputTile) const {
+        auto alignedOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(operation);
+        const auto inChannelAlignment = alignedOp != nullptr ? alignedOp.getInputChannelAlignment() : 1;
+        const auto outChannelAlignment = alignedOp != nullptr ? alignedOp.getOutputChannelAlignment() : 1;
+
+        VPUX_THROW_WHEN(!mlir::isConstantIntValue(outputTile.axis[Dims4D::Act::C.ind()], 1) &&
+                                inChannelAlignment != outChannelAlignment,
+                        "[Pool] Dynamic tiling step for Channel dimension is not supported for operation: {0} "
+                        "with outputTile: {1}: input channel alignment {2} differs from output channel alignment {3}",
+                        operation->getLoc(), outputTile, inChannelAlignment, outChannelAlignment);
+
         auto poolingOperation = mlir::cast<ConcreteOp>(operation);
         const auto origInputShape =
                 mlir::tensor::getMixedSizes(builder, operation->getLoc(), poolingOperation.getInput());
@@ -357,9 +381,9 @@ public:
         const auto origOutputShape = outputType.getShape();
         const auto origPadding = toPadInfo(poolingOperation.getPad());
 
-        auto inputTiling =
-                backInferPoolTile(operation->getLoc(), builder, outputTile, origInputShape, origOutputShape,
-                                  poolingOperation.getKernelSize(), poolingOperation.getStrides(), origPadding);
+        auto inputTiling = backInferPoolTile(operation->getLoc(), builder, outputTile, origInputShape, origOutputShape,
+                                             poolingOperation.getKernelSize(), poolingOperation.getStrides(),
+                                             origPadding, inChannelAlignment);
 
         auto nceOp = mlir::dyn_cast<NCEOpInterface>(operation);
         if (nceOp != nullptr && nceOp.getWeightsTableOperand() != nullptr &&
@@ -407,7 +431,10 @@ protected:
 
         auto padMap = origPadding.toPadByDims();
         auto pads = mlir::getAsIndexOpFoldResult(
-                builder.getContext(), {origPadding.left, origPadding.top, origPadding.right, origPadding.bottom});
+                builder.getContext(), {origPadding.top, origPadding.left, origPadding.bottom, origPadding.right});
+        // spatial dims are ind = 0 -> H, ind = 1 -> W
+        // so padding for H -> pads[0] = padBefore = top and pads[2] = padAfter = bottom,
+        //  for W -> pads[1] = padBefore = left and pads[3] = padAfter = right
         for (auto index : irange(Dims4D::Act::numSpatialDims)) {
             const auto dim = Dims4D::Act::getSpatialDim(index);
             const auto stride = mlir::cast<mlir::IntegerAttr>(strides[index]).getValue().getSExtValue();
@@ -502,6 +529,8 @@ public:
 
 class SCFConvOpModel : public SCFTilingConvModelOp<SCFConvOpModel, NCEConvolutionOp> {};
 
+class SCFCompressConvOpModel : public SCFTilingConvModelOp<SCFCompressConvOpModel, NCECompressConvolutionOp> {};
+
 class SCFTilingDepthConvModelOp : public SCFTilingConvModelOp<SCFTilingDepthConvModelOp, NCEDepthConvolutionOp> {
 public:
     SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
@@ -570,8 +599,8 @@ public:
     SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
                                        const SCFTileInfo& outputTile) const {
         auto permuteOperation = mlir::cast<NCEOpInterface>(operation);
-        const auto origInputShape =
-                mlir::getAsIndexOpFoldResult(builder.getContext(), getShape(operation->getOperand(0)).raw());
+        auto inputShape = getShape(operation->getOperand(0));
+        const auto origInputShape = mlir::getAsIndexOpFoldResult(builder.getContext(), inputShape.raw());
         const auto outputType = mlir::cast<mlir::ShapedType>(operation->getResult(0).getType());
         const auto origOutputShape = outputType.getShape();
         auto loc = operation->getLoc();
@@ -579,23 +608,29 @@ public:
         const auto strides = getIntArrayAttr(builder.getContext(), permuteOperation.getStridesVal());
 
         auto inputTiling = SCFTilingPoolingModelOp<SCFTilingPermuteModelOp, NCEPermuteOp>::backInferPoolTile(
-                loc, builder, outputTile, origInputShape, origOutputShape, kernelSize, strides, PadInfo());
+                loc, builder, outputTile, origInputShape, origOutputShape, kernelSize, strides, PadInfo(),
+                std::nullopt);
 
         if (mlir::isConstantIntValue(outputTile.axis[Dims4D::Act::C.ind()], 1)) {
             inputTiling.tiles[0].shape[Dims4D::Act::C.ind()] = origInputShape[Dims4D::Act::C.ind()];
-            auto origInputRawShape = getShape(operation->getOperand(0)).raw();
+            auto origInputRawShape = inputShape.raw();
             if (!inputTiling.tiles[0].bounds.raw().empty()) {
                 inputTiling.tiles[0].bounds[Dims4D::Act::C] = origInputRawShape[Dims4D::Act::C.ind()];
             }
         } else {
-            mlir::AffineExpr d0, d1, s0;
-            bindDims(builder.getContext(), d0, d1);
-            bindSymbols(builder.getContext(), s0);
-            auto reminderMap = mlir::AffineMap::get(2, 1, {s0 - d0, d1}, builder.getContext());
-            inputTiling.tiles[0].shape[Dims4D::Act::C.ind()] = mlir::affine::makeComposedFoldedAffineMin(
-                    builder, loc, reminderMap,
-                    {outputTile.offsets[Dims4D::Act::C.ind()], outputTile.shape[Dims4D::Act::C.ind()],
-                     origInputShape[Dims4D::Act::C.ind()]});
+            auto outputTileShape = mlir::getConstantIntValue(outputTile.shape[Dims4D::Act::C.ind()]);
+            if (outputTileShape.has_value() && inputShape[Dims4D::Act::C] % outputTileShape.value() == 0) {
+                inputTiling.tiles[0].shape[Dims4D::Act::C.ind()] = outputTile.shape[Dims4D::Act::C.ind()];
+            } else {
+                mlir::AffineExpr d0, d1, s0;
+                bindDims(builder.getContext(), d0, d1);
+                bindSymbols(builder.getContext(), s0);
+                auto reminderMap = mlir::AffineMap::get(2, 1, {s0 - d0, d1}, builder.getContext());
+                inputTiling.tiles[0].shape[Dims4D::Act::C.ind()] = mlir::affine::makeComposedFoldedAffineMin(
+                        builder, loc, reminderMap,
+                        {outputTile.offsets[Dims4D::Act::C.ind()], outputTile.shape[Dims4D::Act::C.ind()],
+                         origInputShape[Dims4D::Act::C.ind()]});
+            }
         }
 
         return inputTiling;
@@ -687,4 +722,90 @@ public:
     }
 };
 
+class SCFNCEReduceModelOp : public SCFTilingCommonModelOp<SCFNCEReduceModelOp, VPU::NCEReduceOp> {
+public:
+    mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                              unsigned resultNumber, ArrayRef<mlir::OpFoldResult> offsets,
+                                              ArrayRef<mlir::OpFoldResult> sizes,
+                                              SmallVector<mlir::OpFoldResult>& resultOffsets,
+                                              SmallVector<mlir::OpFoldResult>& resultSizes) const {
+        this->fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        return mlir::success();
+    }
+
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* op, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        SCFTileInfo inputTile = outputTile;
+        const auto origInputShape =
+                mlir::getAsIndexOpFoldResult(builder.getContext(), getShape(op->getOperand(0)).raw());
+        const auto origBoundedInputShape = getBoundedShape(op->getOperand(0));
+
+        inputTile.offsets[Dims4D::Act::C.ind()] = builder.getIndexAttr(0);
+        inputTile.shape[Dims4D::Act::C.ind()] = origInputShape[Dims4D::Act::C.ind()];
+        if (!outputTile.bounds.raw().empty()) {
+            inputTile.bounds[Dims4D::Act::C] = origBoundedInputShape[Dims4D::Act::C];
+        }
+        return SCFTilingInfo(inputTile);
+    }
+
+    mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
+                                          mlir::OpBuilder&, SCFTilingInfo& inputTiling, const SCFTileInfo&, DimArrRef,
+                                          SmallVector<mlir::Value>&, mlir::Operation*) const {
+        operandsGenerator(inputTiling);
+        return opGenerator();
+    }
+};
+
+template <typename ConcreteModel, typename ConcreteOp>
+class SCFReduceModelOp : public SCFTilingCommonModelOp<ConcreteModel, ConcreteOp> {
+public:
+    mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                              unsigned resultNumber, ArrayRef<mlir::OpFoldResult> offsets,
+                                              ArrayRef<mlir::OpFoldResult> sizes,
+                                              SmallVector<mlir::OpFoldResult>& resultOffsets,
+                                              SmallVector<mlir::OpFoldResult>& resultSizes) const {
+        this->fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        return mlir::success();
+    }
+
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* op, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        const auto axesValue = parseIntArrayAttr<int64_t>(mlir::cast<ConcreteOp>(op).getAxesValue());
+        const auto inShape = mlir::getAsIndexOpFoldResult(builder.getContext(), getShape(op->getOperand(0)).raw());
+        const auto origBoundedInputShape = getBoundedShape(op->getOperand(0));
+
+        VPUX_THROW_WHEN(!mlir::cast<ConcreteOp>(op).getKeepDims(),
+                        "[SW Reduce] Expected reduce op to have keep_dims {0} "
+                        "outputTile: {1}",
+                        op->getLoc(), outputTile);
+
+        SCFTileInfo inTile = outputTile;
+        for (auto axesInd : axesValue) {
+            inTile.shape[Dim(axesInd).ind()] = inShape[Dim(axesInd).ind()];
+            if (!outputTile.bounds.raw().empty()) {
+                inTile.bounds[Dim(axesInd)] = origBoundedInputShape[Dim(axesInd)];
+            }
+        }
+
+        return SCFTilingInfo(inTile);
+    }
+
+    mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
+                                          mlir::OpBuilder&, SCFTilingInfo& inputTiling, const SCFTileInfo&, DimArrRef,
+                                          SmallVector<mlir::Value>&, mlir::Operation*) const {
+        operandsGenerator(inputTiling);
+        return opGenerator();
+    }
+};
+
+class SCFReduceLogicalOrModelOp : public SCFReduceModelOp<SCFReduceLogicalOrModelOp, VPU::ReduceLogicalOrOp> {};
+class SCFReduceLogicalAndModelOp : public SCFReduceModelOp<SCFReduceLogicalAndModelOp, VPU::ReduceLogicalAndOp> {};
+class SCFReduceMeanModelOp : public SCFReduceModelOp<SCFReduceMeanModelOp, VPU::ReduceMeanOp> {};
+class SCFReduceSumModelOp : public SCFReduceModelOp<SCFReduceSumModelOp, VPU::ReduceSumOp> {};
+class SCFReduceL2ModelOp : public SCFReduceModelOp<SCFReduceL2ModelOp, VPU::ReduceL2Op> {};
+class SCFReduceL1ModelOp : public SCFReduceModelOp<SCFReduceL1ModelOp, VPU::ReduceL1Op> {};
+class SCFReduceSquareModelOp : public SCFReduceModelOp<SCFReduceSquareModelOp, VPU::ReduceSquareOp> {};
+class SCFReduceMinModelOp : public SCFReduceModelOp<SCFReduceMinModelOp, VPU::ReduceMinOp> {};
+class SCFReduceMaxModelOp : public SCFReduceModelOp<SCFReduceMaxModelOp, VPU::ReduceMaxOp> {};
+class SCFReduceProdModelOp : public SCFReduceModelOp<SCFReduceProdModelOp, VPU::ReduceProdOp> {};
 }  // namespace vpux::VPU
